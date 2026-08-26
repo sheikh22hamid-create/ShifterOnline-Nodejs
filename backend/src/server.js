@@ -1,9 +1,22 @@
 require("dotenv").config();
 
+const logger = require("./utils/logger");
+
+// Without these, a startup crash on a host like Render shows only
+// "Application exited early" with no indication of why — log the real
+// error before the process dies.
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught exception — process exiting:", err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection — process exiting:", reason);
+  process.exit(1);
+});
+
 const http = require("http");
 const app = require("./app");
 const { initSocket } = require("./sockets/socketServer");
-const logger = require("./utils/logger");
 
 const PORT = process.env.PORT || 5000;
 
