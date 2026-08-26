@@ -9,12 +9,9 @@ const logger = require("../utils/logger");
  */
 async function listTestDrivers(req, res) {
   // Exposes rider phone numbers and live GPS coordinates with no auth,
-  // gated only by a vehicle_no/mobile-prefix heuristic — fine for local
-  // dev testing, never for a real deployment.
-  if (process.env.NODE_ENV === "production") {
-    return res.status(404).json({ Result: false, msg: "Not found" });
-  }
-
+  // gated only by a vehicle_no/mobile-prefix heuristic. Deliberately left
+  // reachable in every environment, including production, per explicit
+  // product decision (2026-08-26) — see memory/order_dispatch_auth_gap.md.
   try {
     const riders = await prisma.tbl_rider.findMany({
       where: {

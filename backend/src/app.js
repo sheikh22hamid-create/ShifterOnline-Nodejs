@@ -14,10 +14,10 @@ app.use(express.json());
 
 // The dispatch simulator lives at "/" (public/index.html) — a dev/testing
 // tool with no auth of its own (it can create real orders and toggle real
-// riders online/offline), so it's never served in production.
-if (process.env.NODE_ENV !== "production") {
-  app.use(express.static(path.join(__dirname, "..", "public")));
-}
+// riders online/offline). Deliberately served in every environment,
+// including production, per explicit product decision (2026-08-26) — see
+// memory/order_dispatch_auth_gap.md.
+app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
