@@ -1,0 +1,1086 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Pkg_tracking {
+  id      Int    @id @default(autoincrement())
+  link    String @db.Text
+  orderid Int
+  uid     Int
+}
+
+model admin {
+  id       Int         @id @default(autoincrement())
+  username String      @db.LongText
+  password String      @db.LongText
+  role     admin_role? @default(admin)
+  city_id  Int?
+}
+
+model app_settings {
+  id            Int       @id @default(autoincrement())
+  setting_key   String?   @unique(map: "setting_key") @db.VarChar(100)
+  setting_value String?   @db.VarChar(255)
+  updated_at    DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model buy_order {
+  id                        Int                @id @default(autoincrement())
+  rid                       Int                @default(0)
+  uid                       Int
+  flow_id                   Int                @default(0)
+  o_status                  buy_order_o_status @default(Pending)
+  distance                  Float              @db.Float
+  d_charge                  Decimal            @db.Decimal(10, 2)
+  extra_mile_charge         Float              @db.Float
+  total_dcharge             Decimal            @db.Decimal(10, 2)
+  cou_id                    Int                @default(0)
+  cou_amt                   Float              @default(0) @db.Float
+  title                     String             @db.Text
+  pick_address              String             @db.Text
+  pick_lat                  String             @db.Text
+  pick_long                 String             @db.Text
+  drop_address              String             @db.Text
+  drop_lat                  String             @db.Text
+  drop_long                 String             @db.Text
+  total_amt                 Float              @default(0) @db.Float
+  item_total                Float              @default(0) @db.Float
+  service_charge            Float              @default(0) @db.Float
+  p_method_id               Float              @db.Float
+  transaction_id            String             @db.Text
+  order_date                DateTime?          @db.DateTime(0)
+  delivery_date             DateTime?          @db.DateTime(0)
+  commission                Float              @db.Float
+  comment_reject            String?            @db.Text
+  pick_type                 String             @db.Text
+  drop_type                 String             @db.Text
+  drop_name                 String             @db.Text
+  time_duration             Float              @db.Float
+  service_charge_percentage Float              @default(0) @db.Float
+  bill_img                  String?            @db.Text
+  service_payment_id        Int                @default(0)
+  service_transaction_id    String?            @db.Text
+  is_rate                   Int?               @default(0)
+  cust_rate                 Int?               @default(0)
+  cust_comment              String?            @db.Text
+  drop_mobile               String             @db.Text
+}
+
+model buy_order_item {
+  id           Int     @id @default(autoincrement())
+  order_id     Int
+  item_title   String  @db.Text
+  quantity     Float   @db.Float
+  item_img     String? @db.Text
+  item_total   Float?  @db.Float
+  item_confirm Int     @default(0)
+  is_available Int     @default(1)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model driver_activity {
+  id                  Int
+  driver_id           Int
+  time_duration       Int
+  date                DateTime @db.Date
+  ride_count          Int
+  driver_schudle_type String   @db.VarChar(20)
+  zone                String   @db.VarChar(20)
+  total_fair_monthly  Int
+
+  @@ignore
+}
+
+model driver_withdraw_requests {
+  id         Int                              @id @default(autoincrement())
+  rider_id   Int?
+  amount     Decimal?                         @db.Decimal(10, 2)
+  status     driver_withdraw_requests_status? @default(pending)
+  city_id    Int?
+  created_at DateTime?                        @default(now()) @db.Timestamp(0)
+}
+
+model make_list_item {
+  id       Int    @id @default(autoincrement())
+  uid      Int
+  title    String @db.Text
+  quantity Int
+}
+
+model order_status_history {
+  id         Int       @id @default(autoincrement())
+  order_id   Int?
+  rider_id   Int?
+  status     String?   @db.VarChar(50)
+  remark     String?   @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model payout_setting {
+  id         Int                   @id @default(autoincrement())
+  rid        Int
+  amt        Float                 @db.Float
+  status     String                @db.Text
+  proof      String?               @db.Text
+  r_date     DateTime              @db.DateTime(0)
+  r_type     payout_setting_r_type
+  acc_number String?               @db.Text
+  bank_name  String?               @db.Text
+  acc_name   String?               @db.Text
+  ifsc_code  String?               @db.Text
+  upi_id     String?               @db.Text
+  paypal_id  String?               @db.Text
+}
+
+model pkg_category {
+  cat_img     String  @db.Text
+  other_image String? @db.VarChar(255)
+  id          Int     @id @default(autoincrement())
+  cat_status  Int
+  cat_name    String  @db.Text
+  city_id     Int?
+  sort_order  Int?
+}
+
+model pkg_order {
+  id                     Int                @id @default(autoincrement())
+  uid                    Int
+  rid                    Int                @default(0)
+  order_status           Int                @default(0)
+  comment_reject         String?            @db.Text
+  sign                   String?            @db.Text
+  trans_id               String?            @db.Text
+  daddress               String?            @db.Text
+  paddress               String?            @db.Text
+  pmobile                String?            @db.Text
+  dmobile                String?            @db.Text
+  description            String?            @db.Text
+  photos                 String?            @db.Text
+  o_status               pkg_order_o_status
+  cancel_reason          String?            @db.VarChar(255)
+  category               String             @db.Text
+  odate                  DateTime           @db.DateTime(0)
+  p_method_id            Int
+  plat                   String             @db.Text
+  plong                  String             @db.Text
+  dlat                   String             @db.Text
+  dlong                  String             @db.Text
+  ddate                  DateTime?          @db.DateTime(0)
+  distance               Float              @db.Float
+  d_charge               Float              @db.Float
+  extra_mile_charge      Float              @db.Float
+  commission             Float              @db.Float
+  total_dcharge          Float              @db.Float
+  pick_type              String             @db.Text
+  drop_type              String             @db.Text
+  pick_name              String             @db.Text
+  drop_name              String             @db.Text
+  time_duration          Int
+  is_rate                Int                @default(0)
+  cust_rate              Int                @default(0)
+  cust_comment           String?            @db.Text
+  package_weight         Float              @db.Float
+  package_cost           Float              @db.Float
+  cou_id                 Int
+  cou_amt                Float              @db.Float
+  accept_time            DateTime?          @db.DateTime(0)
+  pickup_time            DateTime?          @db.DateTime(0)
+  drop_time              DateTime?          @db.DateTime(0)
+  delivery_type          Int?               @default(1)
+  current_package_step   Int?               @default(0)
+  driver_earning         Decimal?           @db.Decimal(10, 2)
+  booking_type           Int?
+  city_id                Int?
+  schedule_date_time     String?            @db.VarChar(255)
+  allowed_delivery_types String?            @db.Text
+  user_reminder_sent     Boolean?           @default(false)
+  driver_notify_sent     Boolean?           @default(false)
+  loading_charge         Decimal?           @db.Decimal(8, 2)
+  unloading_charge       Decimal?           @db.Decimal(8, 2)
+  service_charge         Decimal?           @db.Decimal(8, 2)
+  wating_charge          Decimal?           @db.Decimal(8, 2)
+  free_waiting_time      String?            @db.VarChar(150)
+  radius_range           Int
+  radius_charge          Decimal            @db.Decimal(8, 2)
+  distance_refund        Decimal?           @db.Decimal(10, 2)
+  otp                    Int?
+  payment_status         Int?               @default(0)
+  razorpay_payment_id    String?            @db.VarChar(255)
+  gst_number             String?            @db.VarChar(255)
+}
+
+model pkg_order_wait_timer {
+  id                  Int       @id @default(autoincrement())
+  order_id            Int
+  rid                 Int
+  pickup_wait_start   DateTime? @db.DateTime(0)
+  pickup_wait_end     DateTime? @db.DateTime(0)
+  pickup_wait_seconds Int?      @default(0)
+  drop_wait_start     DateTime? @db.DateTime(0)
+  drop_wait_end       DateTime? @db.DateTime(0)
+  drop_wait_seconds   Int?      @default(0)
+  total_wait_seconds  Int?      @default(0)
+  created_at          DateTime? @db.DateTime(0)
+  updated_at          DateTime? @db.DateTime(0)
+  pickup_distance     Decimal?  @db.Decimal(10, 2)
+  drop_distance       Decimal?  @db.Decimal(10, 2)
+  total_distance      Decimal?  @db.Decimal(10, 2)
+
+  @@unique([order_id, rid], map: "order_rid_unique")
+}
+
+model reject_rider_list {
+  id       Int    @id @default(autoincrement())
+  rid      Int
+  order_id Int
+  type     String @db.Text
+}
+
+model setting {
+  id                 Int      @id @default(autoincrement())
+  d_title            String   @db.MediumText
+  one_key            String   @db.MediumText
+  one_hash           String   @db.MediumText
+  r_key              String   @db.Text
+  r_hash             String   @db.Text
+  ukms               Float    @db.Float
+  utprice            Float    @db.Float
+  afprice            Float    @db.Float
+  bkms               Int
+  bprice             Int
+  abprice            Int
+  d_s_title          String   @db.Text
+  timezone           String   @db.Text
+  itemlimit          Int
+  itemkg             Int
+  mile_charge        Int
+  service_charge     Int
+  rider_commission   Int
+  currency           String   @db.Text
+  kilo_limit         Int
+  is_wether_bad      Int
+  sms_type           String   @db.Text
+  auth_key           String   @db.Text
+  otp_id             String   @db.Text
+  acc_id             String   @db.Text
+  auth_token         String   @db.Text
+  twilio_number      String   @db.Text
+  otp_auth           String   @db.Text
+  refer_type         Boolean? @default(false)
+  user_count         Int?     @default(0)
+  driver_count       Int?     @default(0)
+  service_zone       String?  @db.VarChar(255)
+  time_period        Int?     @default(0)
+  drive_cancellation Int?
+  user_cancellation  Int?
+  reject_timer       Int?
+  payment_cod        Int?
+  payment_wallet     Int?
+  payment_online     Int?
+  status             Boolean? @default(true)
+  admin_earning      Int?
+  driver_pay         Int?
+  refer_amount       Decimal? @default(50.00) @db.Decimal(10, 2)
+  refer_join_amount  Decimal? @default(25.00) @db.Decimal(10, 2)
+}
+
+model tbl_address {
+  id          Int     @id @default(autoincrement())
+  uid         Int
+  address     String  @db.Text
+  houseno     String  @db.Text
+  landmark    String? @db.Text
+  type        String  @db.Text
+  lat_map     String  @db.Text
+  long_map    String  @db.Text
+  c_number    String  @db.Text
+  c_name      String  @db.Text
+  is_tracking Int
+}
+
+model tbl_bank_account {
+  id          Int     @id @default(autoincrement())
+  rider_id    Int
+  iban_num    String  @db.Text
+  ifsc_code   String? @db.VarChar(20)
+  bank_name   String  @db.Text
+  branch_name String? @db.VarChar(100)
+  a_name      String  @db.Text
+  vat_id      String  @db.Text
+  status      Int     @default(0)
+}
+
+model tbl_banner {
+  id      Int    @id @default(autoincrement())
+  img     String @db.Text
+  city_id Int
+  status  Int
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tbl_cancel_reason {
+  id         Int                    @id @default(autoincrement())
+  reason     String                 @db.VarChar(255)
+  type       tbl_cancel_reason_type @default(both)
+  status     Boolean                @default(true)
+  created_at DateTime?              @default(now()) @db.DateTime(0)
+  updated_at DateTime?              @default(now()) @db.DateTime(0)
+}
+
+model tbl_city {
+  id     Int     @id @default(autoincrement())
+  title  String  @db.Text
+  lat    String? @db.VarChar(255)
+  lng    String? @db.VarChar(255)
+  status Int
+}
+
+model tbl_code {
+  id     Int    @id @default(autoincrement())
+  ccode  String @db.Text
+  status Int
+}
+
+model tbl_coupon {
+  id      Int      @id @default(autoincrement())
+  c_img   String   @db.Text
+  cdate   DateTime @db.Date
+  c_desc  String   @db.Text
+  c_value String   @db.Text
+  c_title String   @db.Text
+  status  Int      @default(1)
+  ctitle  String   @db.Text
+  min_amt Int
+  ulimit  Int
+  cusefor Int
+  city    Int
+}
+
+model tbl_custom_order {
+  id             Int                      @id @default(autoincrement())
+  user_id        Int?
+  pickup_address String?                  @db.Text
+  drop_address   String?                  @db.Text
+  description    String?                  @db.Text
+  base_price     Decimal?                 @db.Decimal(10, 2)
+  booking_scudle String?                  @db.VarChar(20)
+  date           DateTime?                @db.Date
+  time           DateTime?                @db.Time(0)
+  status         tbl_custom_order_status? @default(open)
+  city_id        Int?
+  category       String?                  @db.VarChar(50)
+  created_at     DateTime?                @default(now()) @db.Timestamp(0)
+}
+
+model tbl_custom_order_bid {
+  id         Int                          @id @default(autoincrement())
+  order_id   Int?
+  rider_id   Int?
+  bid_amount Decimal?                     @db.Decimal(10, 2)
+  status     tbl_custom_order_bid_status? @default(pending)
+  created_at DateTime?                    @default(now()) @db.Timestamp(0)
+}
+
+model tbl_dynamic {
+  id           Int    @id @default(autoincrement())
+  title        String @db.Text
+  question     String @db.Text
+  id_status    Int    @default(0)
+  dynamic_type String @db.Text
+}
+
+model tbl_eme_contact {
+  id       Int    @id @default(autoincrement())
+  rider_id Int
+  name     String @db.Text
+  relation String @db.Text
+  mobile   String @db.Text
+  status   Int    @default(0)
+}
+
+model tbl_faq {
+  id       Int    @id @default(autoincrement())
+  question String @db.Text
+  answer   String @db.Text
+  status   Int
+}
+
+model tbl_fav_driver {
+  id         Int      @id @default(autoincrement())
+  uid        Int
+  rid        Int
+  source     String   @default("manual") @db.VarChar(20)
+  status     Boolean  @default(true)
+  created_at DateTime @db.DateTime(0)
+
+  @@unique([uid, rid], map: "uniq_fav")
+  @@index([rid], map: "idx_rid")
+  @@index([uid], map: "idx_uid")
+}
+
+model tbl_favorite_driver {
+  id       Int  @id @default(autoincrement())
+  user_id  Int?
+  rider_id Int?
+  status   Int? @default(1) @db.TinyInt
+}
+
+model tbl_joining_plan {
+  id             Int                        @id @default(autoincrement())
+  screen_show    Int                        @default(1)
+  title          String?                    @db.VarChar(255)
+  subtitle       String?                    @db.VarChar(255)
+  description    String?                    @db.Text
+  price          Float?                     @default(0) @db.Float
+  discount_price Float?                     @default(0) @db.Float
+  benefit_1      String?                    @db.VarChar(255)
+  benefit_2      String?                    @db.VarChar(255)
+  benefit_3      String?                    @db.VarChar(255)
+  benefit_4      String?                    @db.VarChar(255)
+  plan_for       tbl_joining_plan_plan_for?
+}
+
+model tbl_kit {
+  id         Int     @id @default(autoincrement())
+  rider_id   Int
+  qu_answer  Int
+  img        String? @db.Text
+  kit_status Int     @default(0)
+}
+
+model tbl_notification {
+  id          Int      @id @default(autoincrement())
+  uid         Int
+  datetime    DateTime @db.DateTime(0)
+  title       String   @db.Text
+  description String   @db.Text
+}
+
+model tbl_notification_logs {
+  id           Int       @id @default(autoincrement())
+  order_id     String?   @db.VarChar(100)
+  fcm_token    String?   @db.Text
+  title        String?   @db.Text
+  body         String?   @db.Text
+  fcm_response String?   @db.LongText
+  status       String?   @db.VarChar(50)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+  notData      String    @db.LongText
+}
+
+model tbl_option {
+  id          Int    @id @default(autoincrement())
+  question_id Int
+  title       String @db.Text
+  status      Int
+}
+
+model tbl_order_items {
+  id   Int    @id @default(autoincrement())
+  data String @db.LongText
+}
+
+model tbl_order_requests {
+  id         Int       @id @default(autoincrement())
+  order_id   Int?
+  rider_id   Int?
+  status     String?   @db.VarChar(100)
+  lat        String?   @db.VarChar(255)
+  lng        String?   @db.VarChar(255)
+  created_at DateTime? @default(now()) @db.DateTime(0)
+  package_id Int       @default(0)
+}
+
+model tbl_otp {
+  id         Int       @id @default(autoincrement())
+  mobile     String?   @db.VarChar(20)
+  otp        String?   @db.VarChar(6)
+  status     Int?      @default(0) @db.TinyInt
+  created_at DateTime? @default(now()) @db.DateTime(0)
+  session_id String?   @db.VarChar(255)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tbl_package {
+  id                           Int              @id @default(autoincrement())
+  title                        String           @db.Text
+  type                         tbl_package_type
+  min_charge                   Decimal          @db.Decimal(10, 2)
+  per_km_charge                Decimal          @db.Decimal(10, 2)
+  driver_per_trip              String?          @default("0") @db.VarChar(512)
+  driver_per_percent           String?          @default("0") @db.VarChar(512)
+  free_waiting_time            Int
+  waiting_charge               Decimal          @db.Decimal(10, 2)
+  service_charge_percent       Decimal?         @default(0.00) @db.Decimal(5, 2)
+  night_charge_percent         Decimal?         @default(0.00) @db.Decimal(5, 2)
+  start_time                   DateTime         @db.Time(0)
+  end_time                     DateTime         @db.Time(0)
+  cat_id                       Int
+  city_id                      String           @db.VarChar(25)
+  user_detail_image            String?          @db.VarChar(255)
+  driver_detail_image          String?          @db.VarChar(255)
+  loading_charge               Decimal?         @db.Decimal(8, 2)
+  unloading_charge             Decimal?         @db.Decimal(8, 2)
+  service_charge               Decimal?         @db.Decimal(8, 2)
+  pickup_charge                Decimal?         @db.Decimal(8, 2)
+  status                       Int
+  premium_plan_id              Int?             @db.UnsignedInt
+  sort_order                   Int              @default(0)
+  pickup_per_km_charge         Decimal?         @db.Decimal(8, 2)
+  cancellation_charge_customer Decimal          @default(0.00) @db.Decimal(10, 2)
+  cancellation_charge_driver   Decimal          @default(0.00) @db.Decimal(10, 2)
+
+  @@index([premium_plan_id], map: "idx_premium_plan")
+}
+
+model tbl_page {
+  id          Int    @id @default(autoincrement())
+  title       String @db.Text
+  status      Int
+  description String @db.Text
+}
+
+model tbl_payment_list {
+  id         Int    @id @default(autoincrement())
+  title      String @db.Text
+  img        String @db.Text
+  attributes String @db.Text
+  status     Int    @default(1)
+  subtitle   String @db.Text
+  p_show     Int
+}
+
+model tbl_personal_doc {
+  id               Int     @id @default(autoincrement())
+  rider_id         Int
+  is_bycle         Int     @default(0)
+  residence_status Int     @default(0)
+  residence_id     String? @db.Text
+  residence_front  String? @db.Text
+  residence_back   String? @db.Text
+  address_status   Int     @default(0)
+  address_id       String? @db.Text
+  address_front    String? @db.Text
+  address_back     String? @db.Text
+  lic_status       Int     @default(0)
+  lic_id           String? @db.Text
+  lic_front        String? @db.Text
+  lic_back         String? @db.Text
+  status           Int     @default(0)
+  pan_status       Int?    @default(0)
+  pan_id           String? @db.VarChar(255)
+  pan_front        String? @db.Text
+  pan_back         String? @db.Text
+  aadhar_status    Int?    @default(0)
+  aadhar_id        String? @db.VarChar(255)
+  aadhar_front     String? @db.Text
+  aadhar_back      String? @db.Text
+  aadhaar_back     String? @db.VarChar(255)
+  upi_image        String? @db.VarChar(255)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tbl_plan_benefit_log {
+  id                  Int                           @id @default(autoincrement()) @db.UnsignedInt
+  subscription_id     Int                           @db.UnsignedInt
+  user_id             Int                           @db.UnsignedInt
+  ride_id             Int                           @db.UnsignedInt
+  plan_id             Int                           @db.UnsignedInt
+  plan_for            tbl_plan_benefit_log_plan_for
+  ride_fare           Decimal                       @default(0.00) @db.Decimal(10, 2)
+  discount_applied    Decimal                       @default(0.00) @db.Decimal(10, 2)
+  fare_after_discount Decimal                       @default(0.00) @db.Decimal(10, 2)
+  incentive_earned    Decimal                       @default(0.00) @db.Decimal(10, 2)
+  benefit_note        String?                       @db.VarChar(255)
+  created_at          DateTime                      @default(now()) @db.Timestamp(0)
+
+  @@index([plan_id], map: "idx_plan")
+  @@index([subscription_id], map: "idx_sub")
+  @@index([user_id, ride_id], map: "idx_user_ride")
+}
+
+model tbl_plan_payment {
+  id         Int                    @id @default(autoincrement())
+  user_id    Int?
+  plan_id    Int?
+  payment_id String?                @db.VarChar(100)
+  type       tbl_plan_payment_type?
+  created_at DateTime?              @default(now()) @db.Timestamp(0)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tbl_premium_plan {
+  id                           Int                                      @id @default(autoincrement()) @db.UnsignedInt
+  plan_name                    String                                   @db.VarChar(150)
+  plan_for                     tbl_premium_plan_plan_for                @default(USER)
+  plan_type                    String                                   @default("CUSTOMER_PREMIUM") @db.VarChar(30)
+  validity_days                Int                                      @default(30) @db.UnsignedInt
+  expire_date                  DateTime?                                @db.Date
+  price                        Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  description                  String?                                  @db.Text
+  plan_image                   String?                                  @db.VarChar(255)
+  discount_enabled             Boolean                                  @default(false)
+  discount_percent             Decimal                                  @default(0.00) @db.Decimal(5, 2)
+  discount_max_cap             Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  incentive_enabled            Boolean                                  @default(false)
+  incentive_type               tbl_premium_plan_incentive_type          @default(flat)
+  incentive_value              Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  incentive_min_fare           Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  incentive_monthly_cap        Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  guaranteed_enabled           Boolean                                  @default(false)
+  guaranteed_rides_per_month   Int                                      @default(0) @db.UnsignedInt
+  guaranteed_compensation      tbl_premium_plan_guaranteed_compensation @default(wallet_credit)
+  cancellation_enabled         Boolean                                  @default(false)
+  free_cancellations           Int                                      @default(0)
+  cancellation_window_min      Int                                      @default(5) @db.UnsignedInt
+  priority_enabled             Boolean                                  @default(false)
+  guarantee_driver             Boolean
+  wallet_bonus_enabled         Boolean                                  @default(false)
+  wallet_bonus_amount          Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  city                         String                                   @db.VarChar(50)
+  sort_order                   Int                                      @default(0)
+  is_popular                   Boolean                                  @default(false)
+  cumponsation_charge          String?                                  @db.VarChar(20)
+  status                       Boolean                                  @default(true)
+  created_at                   DateTime                                 @default(now()) @db.Timestamp(0)
+  updated_at                   DateTime                                 @default(now()) @db.Timestamp(0)
+  initial_price                Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  subscription_price           Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  commission_percent           Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  per_trip_charge              Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  referral_enabled             Boolean                                  @default(false)
+  referral_points_per_referral Int                                      @default(0)
+  referral_point_value         Decimal                                  @default(1.00) @db.Decimal(10, 2)
+  number_of_referrals          Int                                      @default(0)
+  auto_activate_on_referrals   Boolean                                  @default(false)
+  rides_carry_forward          Boolean                                  @default(true)
+  no_advance_payment           Boolean                                  @default(false)
+  priority_support             Boolean                                  @default(false)
+  special_offers               Boolean                                  @default(false)
+  compunsation_charge          Int?
+
+  @@index([expire_date], map: "idx_expire_date")
+  @@index([plan_for], map: "idx_plan_for")
+  @@index([plan_type], map: "idx_plan_type")
+  @@index([status], map: "idx_status")
+}
+
+model tbl_question {
+  id       Int    @id @default(autoincrement())
+  question String @db.Text
+  status   Int
+  type     String @db.Text
+}
+
+model tbl_referral {
+  id             Int       @id @default(autoincrement())
+  referrer_id    Int
+  referrer_type  String    @default("USER") @db.VarChar(10)
+  referred_id    Int
+  referred_type  String    @default("USER") @db.VarChar(10)
+  referral_code  String    @db.VarChar(20)
+  status         String    @default("pending") @db.VarChar(15)
+  points_awarded Int       @default(0)
+  ride_id        Int       @default(0)
+  registered_at  DateTime  @db.DateTime(0)
+  verified_at    DateTime? @db.DateTime(0)
+
+  @@unique([referred_id, referred_type], map: "uniq_referred")
+  @@index([referrer_id, referrer_type], map: "idx_referrer")
+  @@index([status], map: "idx_status")
+}
+
+model tbl_referral_point_log {
+  id            Int      @id @default(autoincrement())
+  user_id       Int
+  user_type     String   @default("USER") @db.VarChar(10)
+  points        Int
+  txn_type      String   @db.VarChar(10)
+  source        String   @db.VarChar(30)
+  ref_id        Int      @default(0)
+  balance_after Int      @default(0)
+  note          String?  @db.VarChar(255)
+  created_at    DateTime @db.DateTime(0)
+
+  @@index([created_at], map: "idx_created")
+  @@index([user_id, user_type], map: "idx_user")
+}
+
+model tbl_referral_setting {
+  id                         Int       @id @default(autoincrement())
+  user_points_per_referral   Int       @default(100)
+  driver_points_per_referral Int       @default(100)
+  point_value                Decimal   @default(1.00) @db.Decimal(10, 2)
+  referral_enabled           Boolean   @default(true)
+  share_message              String?   @db.Text
+  updated_at                 DateTime? @db.DateTime(0)
+}
+
+model tbl_rider {
+  id                  Int                            @id @default(autoincrement())
+  first_name          String?                        @db.Text
+  last_name           String?                        @db.Text
+  full_name           String?                        @db.VarChar(150)
+  email               String?                        @db.VarChar(150)
+  account_name        String?                        @db.VarChar(150)
+  account_number      String?                        @db.VarChar(50)
+  ifsc                String?                        @db.VarChar(20)
+  verification_type   tbl_rider_verification_type?   @default(manual)
+  verification_status tbl_rider_verification_status? @default(pending)
+  fmobile             String                         @db.Text
+  smobile             String?                        @db.Text
+  nationality         String?                        @db.Text
+  dob                 String?                        @db.Text
+  city_id             Int?                           @default(1)
+  full_address        String?                        @db.Text
+  know_language       String?                        @db.Text
+  profile_picture     String                         @db.Text
+  survey_status       Int                            @default(0)
+  status              Int                            @default(1)
+  a_status            Int                            @default(1)
+  rlats               String?                        @db.Text
+  rlongs              String?                        @db.Text
+  all_verify          Int                            @default(0)
+  rdate               DateTime                       @db.DateTime(0)
+  add_info            Int                            @default(0)
+  update_by           String?                        @db.Text
+  password            String?                        @db.Text
+  fcm_token           String                         @db.VarChar(2048)
+  vehicle             String                         @db.VarChar(1024)
+  driver_basic_type   Int?
+  wallet_balance      Decimal?                       @default(0.00) @db.Decimal(10, 2)
+  plan_type           tbl_rider_plan_type?           @default(general)
+  monthly_plan        Int?                           @default(0)
+  working_hours       Int?                           @default(0)
+  vehicle_no          String?                        @db.VarChar(255)
+  upi_id              String?                        @db.VarChar(255)
+  device_id           String                         @db.VarChar(255)
+  reffer_code         String?                        @unique(map: "uniq_reffer_code") @db.VarChar(20)
+  refferal_code       String?                        @db.VarChar(20)
+  refer_by            Int                            @default(0)
+  wallet_points       Int?
+  referral_code       String?                        @unique(map: "uniq_rider_ref_code") @db.VarChar(20)
+  referred_by         Int                            @default(0)
+  referred_by_type    String                         @default("") @db.VarChar(10)
+  referral_points     Int                            @default(0)
+  payment_complete    Int?
+}
+
+model tbl_rider_delivery_type {
+  id            Int     @id @default(autoincrement())
+  rider_id      Int?
+  delivery_type String? @db.VarChar(50)
+  status        Int?    @default(0)
+}
+
+model tbl_rider_location {
+  id         Int       @id @default(autoincrement())
+  rider_id   Int
+  lat        String?   @db.VarChar(50)
+  lng        String?   @db.VarChar(50)
+  updated_at DateTime? @db.DateTime(0)
+}
+
+model tbl_rnoti {
+  id    Int      @id @default(autoincrement())
+  rid   Int
+  msg   String   @db.Text
+  type  String?  @db.Text
+  date  DateTime @db.DateTime(0)
+  title String?  @db.Text
+}
+
+model tbl_survery_answer {
+  id            Int    @id @default(autoincrement())
+  rider_id      Int
+  question_text String @db.Text
+  answer_text   String @db.Text
+}
+
+model tbl_text_answer {
+  id         Int     @id @default(autoincrement())
+  rider_id   Int
+  dynamic_id Int
+  id_num     String? @db.Text
+  id_front   String? @db.Text
+  id_back    String? @db.Text
+  id_status  Int     @default(0)
+}
+
+model tbl_user {
+  id               Int                 @id @default(autoincrement())
+  name             String              @db.Text
+  email            String              @db.Text
+  mobile           Float
+  password         String              @db.Text
+  ccode            String              @db.Text
+  status           Int                 @default(1)
+  city_id          Int?
+  rdate            DateTime            @db.DateTime(0)
+  r_img            String?             @db.Text
+  otp              Int?
+  wallet           Decimal             @default(0.00) @db.Decimal(10, 2)
+  fcm_token        String?             @db.VarChar(2048)
+  plan_type        tbl_user_plan_type? @default(general)
+  device_id        String?             @db.VarChar(255)
+  reffer_code      String?             @db.VarChar(255)
+  refer_by         String?             @db.VarChar(255)
+  refferal_code    String              @db.VarChar(255)
+  refer_paid       Boolean             @default(false)
+  wallet_points    Int?
+  referral_code    String?             @unique(map: "uniq_user_ref_code") @db.VarChar(20)
+  referred_by      Int                 @default(0)
+  referred_by_type String              @default("") @db.VarChar(10)
+  referral_points  Int                 @default(0)
+}
+
+model tbl_user_device {
+  id            Int       @id @default(autoincrement())
+  uid           Int
+  device_id     String
+  fcm_token     String?   @db.Text
+  platform      String?   @db.VarChar(20)
+  device_name   String?   @db.VarChar(100)
+  app_version   String?   @db.VarChar(20)
+  ip            String?   @db.VarChar(45)
+  is_active     Boolean   @default(true)
+  login_count   Int       @default(1)
+  last_login_at DateTime? @db.DateTime(0)
+  logged_out_at DateTime? @db.DateTime(0)
+  created_at    DateTime  @db.DateTime(0)
+
+  @@index([uid, is_active], map: "idx_uid_active")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tbl_user_plan_subscription {
+  id                    Int                                 @id @default(autoincrement()) @db.UnsignedInt
+  user_id               Int                                 @db.UnsignedInt
+  plan_for              tbl_user_plan_subscription_plan_for
+  plan_id               Int                                 @db.UnsignedInt
+  plan_type             String                              @default("CUSTOMER_PREMIUM") @db.VarChar(30)
+  plan_snapshot         String?                             @db.LongText
+  amount_paid           Decimal                             @default(0.00) @db.Decimal(10, 2)
+  points_used           Int                                 @default(0)
+  points_amount         Decimal                             @default(0.00) @db.Decimal(10, 2)
+  payment_txn_id        String?                             @db.VarChar(100)
+  payment_method        String?                             @db.VarChar(50)
+  wallet_bonus_credited Decimal                             @default(0.00) @db.Decimal(10, 2)
+  start_date            DateTime                            @db.Date
+  end_date              DateTime                            @db.Date
+  rides_completed       Int                                 @default(0) @db.UnsignedInt
+  guaranteed_target     Int                                 @default(0)
+  guaranteed_used       Int                                 @default(0) @db.UnsignedInt
+  carry_forward_rides   Int                                 @default(0)
+  cancellations_used    Int                                 @default(0) @db.UnsignedInt
+  incentive_earned      Decimal                             @default(0.00) @db.Decimal(10, 2)
+  discount_saved        Decimal                             @default(0.00) @db.Decimal(10, 2)
+  status                tbl_user_plan_subscription_status   @default(pending)
+  auto_renew            Boolean                             @default(false)
+  bookings_used         Int?
+  incentive_total       Int?
+  cancelled_at          DateTime?                           @db.Timestamp(0)
+  created_at            DateTime                            @default(now()) @db.Timestamp(0)
+  updated_at            DateTime                            @default(now()) @db.Timestamp(0)
+
+  @@index([plan_id], map: "idx_plan")
+  @@index([plan_for, user_id, status], map: "idx_plan_for")
+  @@index([status, end_date], map: "idx_status_date")
+  @@index([plan_type], map: "idx_sub_plan_type")
+  @@index([user_id], map: "idx_user")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tbl_user_referrals {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  referred_user_id Int
+  referred_type    Boolean
+  referral_code    String    @db.VarChar(50)
+  status           Boolean?  @default(true)
+  city_id          Int?
+  created_at       DateTime? @default(now()) @db.Timestamp(0)
+  updated_at       DateTime? @db.Timestamp(0)
+}
+
+model tbl_vechicle {
+  id        Int    @id @default(autoincrement())
+  title     String @db.Text
+  v_rquired String @db.Text
+  status    Int
+}
+
+model tbl_vehicle_details {
+  id       Int    @id @default(autoincrement())
+  rider_id Int
+  type_id  Int
+  reg_num  String @db.Text
+  v_pic    String @db.Text
+  status   Int    @default(0)
+}
+
+model tbl_wallet_history {
+  id          Int                             @id @default(autoincrement())
+  user_id     Int
+  mobile      String?                         @db.VarChar(20)
+  amount      Decimal                         @db.Decimal(10, 2)
+  type        tbl_wallet_history_type
+  remark      String?                         @db.VarChar(255)
+  payment_id  String?                         @db.VarChar(255)
+  created_at  DateTime?                       @default(now()) @db.DateTime(0)
+  wallet_type tbl_wallet_history_wallet_type? @default(user)
+  order_id    Int?
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model user_referal_manage {
+  id           Int
+  refer_type   Int
+  user_count   Int
+  driver_count Int
+  service_zone String @db.VarChar(20)
+  time_period  BigInt
+  city_id      Int?
+  status       Int
+
+  @@ignore
+}
+
+enum tbl_user_plan_subscription_plan_for {
+  USER
+  DRIVER
+}
+
+enum tbl_premium_plan_plan_for {
+  USER
+  DRIVER
+}
+
+enum tbl_cancel_reason_type {
+  user
+  driver
+  both
+}
+
+enum tbl_package_type {
+  USER
+  DRIVER
+}
+
+enum driver_withdraw_requests_status {
+  pending
+  approved
+  rejected
+}
+
+enum admin_role {
+  superadmin
+  admin
+}
+
+enum tbl_custom_order_bid_status {
+  pending
+  accepted
+  rejected
+}
+
+enum buy_order_o_status {
+  Pending
+  Processing
+  On_Route   @map("On Route")
+  Completed
+  Cancelled
+}
+
+enum tbl_wallet_history_type {
+  credit
+  debit
+}
+
+enum tbl_plan_payment_type {
+  user
+  driver
+}
+
+enum tbl_plan_benefit_log_plan_for {
+  USER
+  DRIVER
+}
+
+enum payout_setting_r_type {
+  UPI
+  BANK_Transfer @map("BANK Transfer")
+  Paypal
+}
+
+enum tbl_wallet_history_wallet_type {
+  user
+  driver
+}
+
+enum tbl_rider_verification_type {
+  manual
+  automatic
+  digilocker
+}
+
+enum tbl_custom_order_status {
+  open
+  accepted
+  completed
+  cancel
+}
+
+enum tbl_rider_verification_status {
+  pending
+  approved
+  rejected
+}
+
+enum tbl_joining_plan_plan_for {
+  user
+  driver
+}
+
+enum tbl_user_plan_type {
+  general
+  premium
+}
+
+enum tbl_premium_plan_incentive_type {
+  flat
+  percent
+}
+
+enum pkg_order_o_status {
+  Pending
+  Processing
+  On_Route   @map("On Route")
+  Completed
+  Cancelled
+  Pickup
+}
+
+enum tbl_premium_plan_guaranteed_compensation {
+  wallet_credit
+  prorate_refund
+  carry_forward
+}
+
+enum tbl_user_plan_subscription_status {
+  active
+  expired
+  cancelled
+  pending
+}
+
+enum tbl_rider_plan_type {
+  general
+  super
+  premium
+}
