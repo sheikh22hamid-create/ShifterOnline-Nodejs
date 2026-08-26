@@ -70,6 +70,7 @@ async function createOrder(req, res) {
       extra_mile_charge,
       cou_id,
       cou_amt,
+      radius_km,
     } = req.body;
 
     if (
@@ -101,6 +102,11 @@ async function createOrder(req, res) {
         ResponseMsg: `Invalid or inactive package id(s) in delivery_type: ${invalidPackageIds.join(", ")}. Call /api/order/fare-estimate first to get valid package_id values for this cat_id.`,
       });
     }
+
+    // Clamp to a sane range — an unbounded radius would let the SQL scan
+    // match riders across an entire country.
+    const parsedRadiusKm = Number(radius_km);
+    const radiusKm = Number.isFinite(parsedRadiusKm) ? Math.min(Math.max(parsedRadiusKm, 1), 100) : SEARCH_RADIUS_KM;
 
     const firstTierPackageId = requestedPackageIds[0];
     const { distanceKm } = await getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
@@ -141,7 +147,7 @@ async function createOrder(req, res) {
         package_cost: Number(package_cost) || 0,
         cou_id: Number(cou_id) || 0,
         cou_amt: Number(cou_amt) || 0,
-        radius_range: SEARCH_RADIUS_KM,
+        radius_range: Math.round(radiusKm),
         radius_charge: 0,
         booking_type: Number(booking_type) || 1,
         delivery_type: firstTierPackageId,

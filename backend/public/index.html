@@ -129,6 +129,25 @@
     50% { box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
   }
 
+  /* ---------- Mode toggle ---------- */
+  .mode-toggle { display: flex; gap: 6px; }
+  .mode-btn {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--bg-panel);
+    color: var(--text-dim);
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .mode-btn:hover { opacity: 0.8; }
+  .mode-btn--customer[aria-pressed="true"] { opacity: 1; color: var(--accent-live); border-color: rgba(53, 208, 186, 0.4); background: var(--accent-live-dim); }
+  .mode-btn--driver[aria-pressed="true"] { opacity: 1; color: var(--accent-signal); border-color: rgba(255, 157, 77, 0.4); background: var(--accent-signal-dim); }
+
   /* ---------- Layout ---------- */
   .stage {
     max-width: 1440px;
@@ -138,6 +157,8 @@
     grid-template-columns: 1fr 1fr;
     gap: 20px;
   }
+
+  .stage.single-panel { grid-template-columns: 1fr; }
 
   @media (max-width: 920px) {
     .stage { grid-template-columns: 1fr; }
@@ -291,6 +312,10 @@
   }
   .fare-row__title { color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
   .fare-row__fare { font-family: var(--font-mono); font-weight: 600; }
+  .fare-row--toggle { cursor: pointer; user-select: none; transition: opacity 0.15s ease, border-color 0.15s ease; }
+  .fare-row--toggle:hover { border-color: var(--text-dim); }
+  .fare-row--toggle:has(.fare-row__check:not(:checked)) { opacity: 0.4; }
+  .fare-row__check { accent-color: var(--accent-live); width: 14px; height: 14px; cursor: pointer; }
   .night-badge {
     font-size: 9.5px;
     padding: 1px 6px;
@@ -547,6 +572,10 @@
       </div>
     </div>
     <div class="topbar__meta">
+      <div class="mode-toggle">
+        <button class="mode-btn mode-btn--customer" id="toggleCustomerPanel" aria-pressed="true">📱 Customer</button>
+        <button class="mode-btn mode-btn--driver" id="toggleDriverPanel" aria-pressed="true">🛵 Driver</button>
+      </div>
       <span class="pill"><span class="dot" id="customerConnDot"></span> customer socket</span>
       <span class="pill"><span class="dot" id="driverConnDot"></span> driver socket</span>
     </div>
@@ -555,7 +584,7 @@
   <div class="stage">
 
     <!-- ============ CUSTOMER PANEL ============ -->
-    <section class="panel">
+    <section class="panel" id="customerPanel">
       <div class="panel__head">
         <div class="panel__role">
           <div class="role-glyph role-glyph--customer">📱</div>
@@ -591,6 +620,10 @@
             <div class="field">
               <label for="dropLng">Drop longitude</label>
               <input type="text" id="dropLng" value="75.88" />
+            </div>
+            <div class="field">
+              <label for="searchRadiusKm">Search radius (km)</label>
+              <input type="number" id="searchRadiusKm" value="10" min="1" max="100" step="1" />
             </div>
           </div>
 
@@ -654,7 +687,7 @@
     </section>
 
     <!-- ============ DRIVER PANEL ============ -->
-    <section class="panel">
+    <section class="panel" id="driverPanel">
       <div class="panel__head">
         <div class="panel__role">
           <div class="role-glyph role-glyph--driver">🛵</div>
@@ -679,6 +712,16 @@
               <label for="riderLng">Current longitude</label>
               <input type="text" id="riderLng" value="75.913299" />
             </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <p class="section-label" style="margin:0;">Model access <span style="text-transform:none; letter-spacing:0;" id="modelAccessVehicle"></span></p>
+            <button class="btn btn--ghost" id="btnReloadModelAccess" style="flex:none; padding:5px 10px; font-size:11.5px;">Reload</button>
+          </div>
+          <div class="fare-list" id="modelAccessList">
+            <p class="empty-note">Loading…</p>
           </div>
         </div>
 
@@ -775,6 +818,49 @@
     function esc(value) {
       return String(value ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
     }
+
+    // ---------------------------------------------------------------
+    // Customer / Driver panel toggle — lets one browser tab show just
+    // one role (handy when handing the URL to a real test driver) or
+    // both side by side. Persisted in localStorage; ?mode=customer|
+    // driver|both in the URL overrides it for direct-linking.
+    // ---------------------------------------------------------------
+    const PANEL_MODE_KEY = "shifter_simulator_panel_mode";
+
+    function readInitialPanelMode() {
+      const fromUrl = new URLSearchParams(location.search).get("mode");
+      if (fromUrl === "customer") return { customer: true, driver: false };
+      if (fromUrl === "driver") return { customer: false, driver: true };
+      if (fromUrl === "both") return { customer: true, driver: true };
+      try {
+        const saved = JSON.parse(localStorage.getItem(PANEL_MODE_KEY));
+        if (saved && typeof saved.customer === "boolean" && typeof saved.driver === "boolean") return saved;
+      } catch {}
+      return { customer: true, driver: true };
+    }
+
+    function applyPanelMode(mode) {
+      $("customerPanel").style.display = mode.customer ? "" : "none";
+      $("driverPanel").style.display = mode.driver ? "" : "none";
+      $("toggleCustomerPanel").setAttribute("aria-pressed", String(mode.customer));
+      $("toggleDriverPanel").setAttribute("aria-pressed", String(mode.driver));
+      document.querySelector(".stage").classList.toggle("single-panel", !(mode.customer && mode.driver));
+      try {
+        localStorage.setItem(PANEL_MODE_KEY, JSON.stringify(mode));
+      } catch {}
+    }
+
+    let panelMode = readInitialPanelMode();
+    applyPanelMode(panelMode);
+
+    function togglePanel(role) {
+      const next = { ...panelMode, [role]: !panelMode[role] };
+      if (!next.customer && !next.driver) return; // always keep at least one visible
+      panelMode = next;
+      applyPanelMode(panelMode);
+    }
+    $("toggleCustomerPanel").addEventListener("click", () => togglePanel("customer"));
+    $("toggleDriverPanel").addEventListener("click", () => togglePanel("driver"));
 
     const logBody = $("logBody");
     const logEmpty = $("logEmpty");
@@ -910,25 +996,39 @@
       lastFarePackages = json.packages;
       const list = $("fareList");
       list.style.display = "flex";
-      list.innerHTML = `<div style="font-size:11.5px; color:var(--text-dim); margin-bottom:2px;">${json.distance_km} km · ~${json.duration_min} min</div>`;
+      list.innerHTML = `<div style="font-size:11.5px; color:var(--text-dim); margin-bottom:2px;">${json.distance_km} km · ~${json.duration_min} min — untick a model to leave it out of the dispatch cascade</div>`;
       for (const p of json.packages) {
-        const row = document.createElement("div");
-        row.className = "fare-row";
-        row.innerHTML = `<span class="fare-row__title">${esc(p.title)}${p.is_night ? '<span class="night-badge">night rate</span>' : ""}</span><span class="fare-row__fare">₹${Number(p.estimated_fare)}</span>`;
+        const row = document.createElement("label");
+        row.className = "fare-row fare-row--toggle";
+        row.innerHTML = `
+          <span class="fare-row__title">
+            <input type="checkbox" class="fare-row__check" data-package-id="${esc(p.package_id)}" checked />
+            ${esc(p.title)}${p.is_night ? '<span class="night-badge">night rate</span>' : ""}
+          </span>
+          <span class="fare-row__fare">₹${Number(p.estimated_fare)}</span>`;
         list.appendChild(row);
       }
       $("btnPlaceOrder").disabled = false;
     });
 
+    function getSelectedPackageIds() {
+      return Array.from(document.querySelectorAll(".fare-row__check:checked")).map((cb) => Number(cb.dataset.packageId));
+    }
+
     $("btnPlaceOrder").addEventListener("click", async () => {
       $("customerError").textContent = "";
       if (!lastFarePackages) return;
+      const selectedPackageIds = getSelectedPackageIds();
+      if (selectedPackageIds.length === 0) {
+        $("customerError").textContent = "Select at least one model to dispatch to.";
+        return;
+      }
       const catSelect = $("custCategory");
       const categoryName = catSelect.selectedOptions[0]?.dataset.name || "Bike";
       const body = {
         uid: Number($("custUid").value),
         category: categoryName,
-        delivery_type: lastFarePackages.map((p) => p.package_id),
+        delivery_type: selectedPackageIds,
         booking_type: 1,
         plat: Number($("pickLat").value),
         plong: Number($("pickLng").value),
@@ -950,6 +1050,7 @@
         extra_mile_charge: 0,
         cou_id: 0,
         cou_amt: 0,
+        radius_km: Number($("searchRadiusKm").value),
       };
       logEvent("customer", "out", "POST /api/order/create", body);
       const { ok, json } = await api("POST", "/api/order/create", body);
@@ -1072,7 +1173,64 @@
       $("riderId").value = btn.dataset.useDriver;
       if (btn.dataset.lat) $("riderLat").value = btn.dataset.lat;
       if (btn.dataset.lng) $("riderLng").value = btn.dataset.lng;
+      loadRiderModelAccess();
     });
+
+    async function loadRiderModelAccess() {
+      const riderId = Number($("riderId").value);
+      const list = $("modelAccessList");
+      const vehicleLabel = $("modelAccessVehicle");
+      list.style.display = "flex";
+      list.innerHTML = '<p class="empty-note">Loading…</p>';
+      vehicleLabel.textContent = "";
+
+      if (!riderId) return;
+      const { ok, json } = await api("GET", `/api/rider/${riderId}/delivery-types`);
+      if (!ok || !json.Result) {
+        list.innerHTML = `<p class="empty-note">${esc(json.msg || "Could not load this rider.")}</p>`;
+        return;
+      }
+
+      vehicleLabel.textContent = `— ${json.vehicle}`;
+      if (json.packages.length === 0) {
+        list.innerHTML = `<p class="empty-note">No active package tiers match vehicle "${esc(json.vehicle)}" — this rider's vehicle doesn't correspond to any real category, so it can never be dispatched to regardless of toggles here.</p>`;
+        return;
+      }
+
+      list.innerHTML = "";
+      for (const p of json.packages) {
+        const row = document.createElement("label");
+        row.className = "fare-row fare-row--toggle";
+        row.innerHTML = `
+          <span class="fare-row__title">
+            <input type="checkbox" class="model-access-check" data-package-id="${esc(p.package_id)}" ${p.enabled ? "checked" : ""} />
+            ${esc(p.title)}
+          </span>`;
+        list.appendChild(row);
+      }
+    }
+
+    $("modelAccessList").addEventListener("change", async (e) => {
+      const checkbox = e.target.closest(".model-access-check");
+      if (!checkbox) return;
+      checkbox.disabled = true;
+      const { ok, json } = await api("POST", "/api/rider/delivery-type", {
+        rider_id: Number($("riderId").value),
+        package_id: Number(checkbox.dataset.packageId),
+        enabled: checkbox.checked,
+      });
+      checkbox.disabled = false;
+      if (!ok || !json.Result) {
+        checkbox.checked = !checkbox.checked; // revert on failure
+        $("driverError").textContent = json.msg || "Could not update this model.";
+        return;
+      }
+      loadTestDrivers(); // dummy-driver list's "enabled packages" summary is now stale
+    });
+
+    $("btnReloadModelAccess").addEventListener("click", loadRiderModelAccess);
+    $("riderId").addEventListener("change", loadRiderModelAccess);
+    loadRiderModelAccess();
 
     let isOnline = false;
     let activeRequest = null; // { orderId, packageId, popupDuration, pickup:{lat,lng}, drop:{lat,lng} }

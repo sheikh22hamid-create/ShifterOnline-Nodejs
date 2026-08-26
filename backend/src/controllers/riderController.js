@@ -80,6 +80,71 @@ async function listTestDrivers(req, res) {
   }
 }
 
+/** Every package tier for this rider's vehicle category, flagged with whether the rider is currently enabled for it. */
+async function getDeliveryTypes(req, res) {
+  try {
+    const riderId = Number(req.params.riderId);
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { vehicle: true } });
+    if (!rider) {
+      return res.status(404).json({ Result: false, msg: "Rider not found" });
+    }
+
+    const category = await prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
+    if (!category) {
+      return res.status(200).json({ Result: true, vehicle: rider.vehicle, packages: [] });
+    }
+
+    const packages = await prisma.tbl_package.findMany({
+      where: { cat_id: category.id, status: 1 },
+      orderBy: { sort_order: "asc" },
+      select: { id: true, title: true },
+    });
+
+    const enabledRows = await prisma.tbl_rider_delivery_type.findMany({
+      where: { rider_id: riderId, delivery_type: { in: packages.map((p) => String(p.id)) }, status: 1 },
+    });
+    const enabledPackageIds = new Set(enabledRows.map((r) => Number(r.delivery_type)));
+
+    return res.status(200).json({
+      Result: true,
+      vehicle: rider.vehicle,
+      packages: packages.map((p) => ({ package_id: p.id, title: p.title, enabled: enabledPackageIds.has(p.id) })),
+    });
+  } catch (err) {
+    logger.error("getDeliveryTypes failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
+/** Toggles one rider's eligibility for one package tier (creates the tbl_rider_delivery_type row if it doesn't exist yet). */
+async function setDeliveryType(req, res) {
+  try {
+    const { rider_id, package_id, enabled } = req.body;
+    if (!rider_id || !package_id || typeof enabled !== "boolean") {
+      return res.status(400).json({ Result: false, msg: "rider_id, package_id and enabled (boolean) are required" });
+    }
+
+    const riderId = Number(rider_id);
+    const deliveryType = String(package_id);
+    const status = enabled ? 1 : 0;
+
+    const existing = await prisma.tbl_rider_delivery_type.findFirst({
+      where: { rider_id: riderId, delivery_type: deliveryType },
+    });
+
+    if (existing) {
+      await prisma.tbl_rider_delivery_type.update({ where: { id: existing.id }, data: { status } });
+    } else {
+      await prisma.tbl_rider_delivery_type.create({ data: { rider_id: riderId, delivery_type: deliveryType, status } });
+    }
+
+    return res.status(200).json({ Result: true, msg: "Updated" });
+  } catch (err) {
+    logger.error("setDeliveryType failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
 async function setStatus(req, res) {
   try {
     const { rider_id, a_status } = req.body;
@@ -119,4 +184,4 @@ async function updateLocation(req, res) {
   }
 }
 
-module.exports = { listTestDrivers, setStatus, updateLocation };
+module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, setStatus, updateLocation };

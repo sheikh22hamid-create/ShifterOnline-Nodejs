@@ -29,11 +29,14 @@ function requireIo() {
 /**
  * Nearest eligible, non-locked drivers for one dispatch tier: matching
  * vehicle/category, enabled for this package_id, online & approved, within
- * SEARCH_RADIUS_KM (haversine computed in SQL), favorites ranked first
- * (spec §4.4).
+ * the order's own radius_range km (haversine computed in SQL, per-order
+ * since pkg_order.radius_range is set at creation — falls back to
+ * SEARCH_RADIUS_KM only for legacy rows that never set it), favorites
+ * ranked first (spec §4.4).
  */
 async function selectEligibleDrivers(order, packageId, excludeRiderIds) {
   const exclude = excludeRiderIds.length > 0 ? excludeRiderIds.map(Number) : [0];
+  const radiusKm = Number(order.radius_range) || SEARCH_RADIUS_KM;
 
   const rows = await prisma.$queryRaw`
     SELECT
@@ -60,7 +63,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds) {
       AND r.rlats IS NOT NULL AND r.rlats != ''
       AND r.rlongs IS NOT NULL AND r.rlongs != ''
       AND r.id NOT IN (${Prisma.join(exclude)})
-    HAVING distance_km <= ${SEARCH_RADIUS_KM}
+    HAVING distance_km <= ${radiusKm}
     ORDER BY is_favorite DESC, distance_km ASC
     LIMIT ${MAX_DRIVERS_PER_BATCH}
   `;
