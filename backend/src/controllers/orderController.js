@@ -10,6 +10,20 @@ function isFiniteNumber(value) {
   return typeof value === "number" ? Number.isFinite(value) : Number.isFinite(Number(value));
 }
 
+async function getCategories(req, res) {
+  try {
+    const categories = await prisma.pkg_category.findMany({
+      where: { cat_status: 1 },
+      orderBy: { sort_order: "asc" },
+      select: { id: true, cat_name: true },
+    });
+    return res.status(200).json({ Result: true, categories });
+  } catch (err) {
+    logger.error("getCategories failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
 async function fareEstimate(req, res) {
   try {
     const { cat_id, plat, plong, dlat, dlong } = req.body;
@@ -72,7 +86,23 @@ async function createOrder(req, res) {
       });
     }
 
-    const firstTierPackageId = delivery_type[0];
+    const requestedPackageIds = delivery_type.map(Number);
+    const validPackages = await prisma.tbl_package.findMany({
+      where: { id: { in: requestedPackageIds }, status: 1 },
+      select: { id: true },
+    });
+    const validPackageIds = new Set(validPackages.map((p) => p.id));
+    const invalidPackageIds = requestedPackageIds.filter((id) => !validPackageIds.has(id));
+
+    if (invalidPackageIds.length > 0) {
+      return res.status(400).json({
+        ResponseCode: "400",
+        Result: "false",
+        ResponseMsg: `Invalid or inactive package id(s) in delivery_type: ${invalidPackageIds.join(", ")}. Call /api/order/fare-estimate first to get valid package_id values for this cat_id.`,
+      });
+    }
+
+    const firstTierPackageId = requestedPackageIds[0];
     const { distanceKm } = await getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
     const { fare, commission } = await pricingEngine.priceForPackageId(firstTierPackageId, distanceKm);
 
@@ -114,8 +144,8 @@ async function createOrder(req, res) {
         radius_range: SEARCH_RADIUS_KM,
         radius_charge: 0,
         booking_type: Number(booking_type) || 1,
-        delivery_type: Number(firstTierPackageId),
-        allowed_delivery_types: JSON.stringify(delivery_type),
+        delivery_type: firstTierPackageId,
+        allowed_delivery_types: JSON.stringify(requestedPackageIds),
         trans_id: transaction_id || null,
       },
     });
@@ -223,4 +253,4 @@ async function rateOrder(req, res) {
   }
 }
 
-module.exports = { fareEstimate, createOrder, getOrderDetails, customerCancel, rateOrder };
+module.exports = { getCategories, fareEstimate, createOrder, getOrderDetails, customerCancel, rateOrder };

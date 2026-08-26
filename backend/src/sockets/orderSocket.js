@@ -13,6 +13,11 @@ function registerOrderHandlers(io, socket) {
 
       if (!result.success) return;
 
+      // order_<id> is the shared tracking room between customer and the
+      // now-assigned driver (spec §6.1) — the driver only joins it here,
+      // once they've actually won the order.
+      socket.join(`order_${order_id}`);
+
       const { order, rider } = result;
       io.to(`customer_${order.uid}`).emit("order:assigned", {
         order_id: order.id,

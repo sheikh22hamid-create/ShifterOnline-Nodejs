@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shifter Online — Dispatch Simulator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛰️</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-void: #0a0d14;
+    --bg-panel: #121828;
+    --bg-panel-raised: #1a2236;
+    --bg-inset: #0d1220;
+    --line: #262f45;
+    --line-soft: #1c2438;
+    --text-primary: #eaedf5;
+    --text-secondary: #9aa5bd;
+    --text-dim: #5c6784;
+    --accent-signal: #ff9d4d;
+    --accent-signal-dim: rgba(255, 157, 77, 0.14);
+    --accent-live: #35d0ba;
+    --accent-live-dim: rgba(53, 208, 186, 0.14);
+    --accent-success: #4ade80;
+    --accent-success-dim: rgba(74, 222, 128, 0.14);
+    --accent-danger: #ff5470;
+    --accent-danger-dim: rgba(255, 84, 112, 0.14);
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 6px;
+    --font-display: "Space Grotesk", "Segoe UI", sans-serif;
+    --font-body: "Inter", "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Consolas", monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-void);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 15% -10%, rgba(255, 157, 77, 0.07), transparent 40%),
+      radial-gradient(circle at 85% 0%, rgba(53, 208, 186, 0.07), transparent 40%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  a { color: inherit; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent-live);
+    outline-offset: 2px;
+  }
+
+  /* ---------- Topbar ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-wrap: wrap;
+  }
+
+  .topbar__brand { display: flex; align-items: center; gap: 12px; }
+
+  .topbar__mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent-signal), var(--accent-live));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: #0a0d14;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
+  .topbar__title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .topbar__subtitle {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-top: 1px;
+  }
+
+  .topbar__meta { display: flex; gap: 10px; align-items: center; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    padding: 5px 10px 5px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+  .dot--live { background: var(--accent-success); box-shadow: 0 0 0 3px var(--accent-success-dim); }
+  .dot--off { background: var(--accent-danger); box-shadow: 0 0 0 3px var(--accent-danger-dim); }
+  .dot--pulse { animation: pulse 1.8s ease-in-out infinite; }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+    50% { box-shadow: 0 0 0 5px rgba(74, 222, 128, 0); }
+  }
+
+  /* ---------- Layout ---------- */
+  .stage {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 22px 28px 40px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 920px) {
+    .stage { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line-soft);
+    gap: 12px;
+  }
+
+  .panel__role { display: flex; align-items: center; gap: 10px; }
+
+  .role-glyph {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  .role-glyph--customer { background: var(--accent-live-dim); }
+  .role-glyph--driver { background: var(--accent-signal-dim); }
+
+  .panel__title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14.5px;
+    letter-spacing: 0.02em;
+  }
+  .panel__title small {
+    display: block;
+    font-family: var(--font-body);
+    font-weight: 400;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    letter-spacing: 0;
+    margin-top: 1px;
+  }
+
+  .panel__body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+  }
+
+  /* ---------- Fields ---------- */
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 11.5px; color: var(--text-secondary); }
+  .field input, .field select, .field textarea {
+    background: var(--bg-inset);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    width: 100%;
+  }
+  .field select { font-family: var(--font-body); }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent-live);
+  }
+  .field textarea { font-family: var(--font-body); resize: vertical; min-height: 46px; }
+
+  details.more-fields { border-top: 1px dashed var(--line); padding-top: 10px; }
+  details.more-fields summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  details.more-fields summary::-webkit-details-marker { display: none; }
+  details.more-fields summary::before { content: "▸"; transition: transform 0.15s; color: var(--text-dim); }
+  details.more-fields[open] summary::before { transform: rotate(90deg); }
+  details.more-fields .field-grid { margin-top: 12px; }
+
+  /* ---------- Buttons ---------- */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button.btn {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform 0.08s ease, opacity 0.15s ease, background 0.15s ease;
+    flex: 1;
+  }
+  button.btn:active:not(:disabled) { transform: scale(0.98); }
+  button.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn--primary { background: var(--accent-live); color: #06231f; }
+  .btn--primary:hover:not(:disabled) { background: #4fe0ca; }
+  .btn--amber { background: var(--accent-signal); color: #2c1602; }
+  .btn--amber:hover:not(:disabled) { background: #ffb06b; }
+  .btn--success { background: var(--accent-success); color: #062713; }
+  .btn--success:hover:not(:disabled) { background: #67e79a; }
+  .btn--danger { background: transparent; color: var(--accent-danger); border-color: rgba(255, 84, 112, 0.4); }
+  .btn--danger:hover:not(:disabled) { background: var(--accent-danger-dim); }
+  .btn--ghost { background: var(--bg-panel-raised); color: var(--text-secondary); border-color: var(--line); }
+  .btn--ghost:hover:not(:disabled) { color: var(--text-primary); border-color: var(--text-dim); }
+
+  .inline-error {
+    font-size: 12px;
+    color: var(--accent-danger);
+    font-family: var(--font-mono);
+  }
+
+  /* ---------- Fare list ---------- */
+  .fare-list { display: flex; flex-direction: column; gap: 6px; }
+  .fare-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 12px;
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+  }
+  .fare-row__title { color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+  .fare-row__fare { font-family: var(--font-mono); font-weight: 600; }
+  .night-badge {
+    font-size: 9.5px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--accent-signal-dim);
+    color: var(--accent-signal);
+    font-family: var(--font-mono);
+  }
+
+  /* ---------- Status card ---------- */
+  .status-card {
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .status-top { display: flex; align-items: center; justify-content: space-between; }
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .badge--pending { background: var(--bg-panel-raised); color: var(--text-secondary); }
+  .badge--processing { background: var(--accent-signal-dim); color: var(--accent-signal); }
+  .badge--pickup, .badge--onroute { background: var(--accent-live-dim); color: var(--accent-live); }
+  .badge--completed { background: var(--accent-success-dim); color: var(--accent-success); }
+  .badge--cancelled { background: var(--accent-danger-dim); color: var(--accent-danger); }
+
+  .order-id-tag { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+  .stepper { display: flex; align-items: center; }
+  .stepper__step {
+    flex: 1;
+    height: 3px;
+    background: var(--line);
+    position: relative;
+  }
+  .stepper__step:first-child { border-radius: 3px 0 0 3px; }
+  .stepper__step:last-child { border-radius: 0 3px 3px 0; }
+  .stepper__step.done { background: var(--accent-live); }
+  .stepper__step.cancelled { background: var(--accent-danger); }
+  .stepper__labels { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text-dim); font-family: var(--font-mono); text-transform: uppercase; }
+
+  .driver-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12.5px; }
+  .driver-info .kv label { display: block; color: var(--text-dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+  .driver-info .kv span { font-family: var(--font-mono); }
+  .otp-chip {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.15em;
+    color: var(--accent-signal);
+  }
+  .empty-note { color: var(--text-dim); font-size: 12.5px; font-style: italic; }
+
+  .coords-readout {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--bg-panel-raised);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--accent-live);
+  }
+  .coords-readout .ts { color: var(--text-dim); font-size: 11px; }
+
+  /* ---------- Dummy driver list ---------- */
+  .driver-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+  .driver-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+  }
+  .driver-row--unusable { opacity: 0.5; }
+  .driver-row__id { font-family: var(--font-mono); font-weight: 700; font-size: 12.5px; flex-shrink: 0; width: 34px; }
+  .driver-row__meta { flex: 1; min-width: 0; }
+  .driver-row__vehicle { font-size: 12.5px; color: var(--text-secondary); }
+  .driver-row__pkgs { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .driver-row__pkgs.none { color: var(--accent-danger); font-family: var(--font-body); font-style: italic; }
+  .driver-row__status { font-size: 10px; font-family: var(--font-mono); text-transform: uppercase; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+  .driver-row__status .dot { width: 6px; height: 6px; }
+
+  /* ---------- Driver toggle ---------- */
+  .go-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+  }
+  .go-toggle__status { font-size: 12.5px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+
+  /* ---------- Incoming request popup (signature element) ---------- */
+  .request-popup {
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 157, 77, 0.35);
+    background: linear-gradient(180deg, rgba(255, 157, 77, 0.09), var(--bg-inset) 60%);
+    padding: 16px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 0 0 1px rgba(255, 157, 77, 0.05), 0 12px 30px -12px rgba(255, 157, 77, 0.35);
+  }
+  .request-popup.visible {
+    display: flex;
+    animation: popIn 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .request-popup__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .tier-badge {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-signal);
+    background: var(--accent-signal-dim);
+    padding: 3px 8px;
+    border-radius: 999px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+
+  .ring-wrap { position: relative; width: 56px; height: 56px; flex-shrink: 0; }
+  .ring-wrap svg { transform: rotate(-90deg); }
+  .ring-wrap circle { fill: none; stroke-width: 5; }
+  .ring-track { stroke: var(--line); }
+  .ring-progress {
+    stroke: var(--accent-signal);
+    stroke-linecap: round;
+    transition: stroke-dashoffset linear;
+  }
+  .ring-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--accent-signal);
+  }
+
+  .route-line { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .route-line .leg { display: flex; gap: 8px; align-items: flex-start; }
+  .route-line .leg .glyph { color: var(--text-dim); width: 14px; flex-shrink: 0; }
+  .route-line .leg .addr { color: var(--text-secondary); }
+
+  .earning-row { display: flex; justify-content: space-between; align-items: center; padding-top: 4px; border-top: 1px dashed var(--line); }
+  .earning-row .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .earning-row .value { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--accent-success); }
+
+  /* ---------- Active trip ---------- */
+  .trip-steps { display: flex; flex-direction: column; gap: 8px; }
+  .trip-steps button.btn { flex: none; text-align: left; }
+
+  /* ---------- Log console ---------- */
+  .log-panel {
+    max-width: 1440px;
+    margin: 0 auto 40px;
+    padding: 0 28px;
+  }
+  .log-shell {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .log-head__title { font-family: var(--font-display); font-weight: 600; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+  .log-count { font-family: var(--font-mono); color: var(--text-dim); font-size: 11.5px; }
+  .log-body {
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 8px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .log-body::-webkit-scrollbar { width: 8px; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+  .log-entry { border-bottom: 1px solid var(--line-soft); }
+  .log-entry:last-child { border-bottom: none; }
+  .log-entry summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 7px 4px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .log-entry summary::-webkit-details-marker { display: none; }
+  .log-entry summary::before { content: "+"; color: var(--text-dim); width: 10px; }
+  .log-entry[open] summary::before { content: "–"; }
+  .log-entry .time { color: var(--text-dim); flex-shrink: 0; }
+  .log-entry .actor { flex-shrink: 0; font-weight: 600; width: 78px; }
+  .log-entry .actor--customer { color: var(--accent-live); }
+  .log-entry .actor--driver { color: var(--accent-signal); }
+  .log-entry .actor--system { color: var(--text-dim); }
+  .log-entry .dir { flex-shrink: 0; color: var(--text-dim); width: 14px; }
+  .log-entry .event-name { color: var(--text-primary); }
+  .log-entry pre {
+    margin: 0 4px 10px 34px;
+    background: var(--bg-inset);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+  }
+  .log-empty { padding: 24px; text-align: center; color: var(--text-dim); font-family: var(--font-body); font-size: 12.5px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="topbar__brand">
+      <div class="topbar__mark">SO</div>
+      <div>
+        <div class="topbar__title">Dispatch Simulator</div>
+        <div class="topbar__subtitle">Shifter Online — live order &amp; socket testbed</div>
+      </div>
+    </div>
+    <div class="topbar__meta">
+      <span class="pill"><span class="dot" id="customerConnDot"></span> customer socket</span>
+      <span class="pill"><span class="dot" id="driverConnDot"></span> driver socket</span>
+    </div>
+  </div>
+
+  <div class="stage">
+
+    <!-- ============ CUSTOMER PANEL ============ -->
+    <section class="panel">
+      <div class="panel__head">
+        <div class="panel__role">
+          <div class="role-glyph role-glyph--customer">📱</div>
+          <div class="panel__title">Customer app<small>places the order &amp; watches it move</small></div>
+        </div>
+      </div>
+      <div class="panel__body">
+
+        <div>
+          <p class="section-label">Trip</p>
+          <p class="empty-note" style="margin:-4px 0 10px;">Defaults match rider #13 (a Bike, online, near this pickup point) — change category or coordinates only if your driver is set up differently.</p>
+          <div class="field-grid">
+            <div class="field">
+              <label for="custUid">Customer ID (uid)</label>
+              <input type="number" id="custUid" value="7" />
+            </div>
+            <div class="field">
+              <label for="custCategory">Category</label>
+              <select id="custCategory"></select>
+            </div>
+            <div class="field">
+              <label for="pickLat">Pickup latitude</label>
+              <input type="text" id="pickLat" value="22.7402368" />
+            </div>
+            <div class="field">
+              <label for="pickLng">Pickup longitude</label>
+              <input type="text" id="pickLng" value="75.913299" />
+            </div>
+            <div class="field">
+              <label for="dropLat">Drop latitude</label>
+              <input type="text" id="dropLat" value="22.72" />
+            </div>
+            <div class="field">
+              <label for="dropLng">Drop longitude</label>
+              <input type="text" id="dropLng" value="75.88" />
+            </div>
+          </div>
+
+          <details class="more-fields">
+            <summary>Trip details (prefilled, edit if needed)</summary>
+            <div class="field-grid">
+              <div class="field"><label for="pickAddress">Pickup address</label><input type="text" id="pickAddress" value="Simulator Pickup, Indore" /></div>
+              <div class="field"><label for="dropAddress">Drop address</label><input type="text" id="dropAddress" value="Simulator Drop, Indore" /></div>
+              <div class="field"><label for="pickName">Pickup contact name</label><input type="text" id="pickName" value="Sim Customer" /></div>
+              <div class="field"><label for="dropName">Drop contact name</label><input type="text" id="dropName" value="Sim Recipient" /></div>
+              <div class="field"><label for="pmobile">Pickup mobile</label><input type="text" id="pmobile" value="9999999999" /></div>
+              <div class="field"><label for="dmobile">Drop mobile</label><input type="text" id="dmobile" value="9999999998" /></div>
+              <div class="field"><label for="packageWeight">Package weight</label><input type="text" id="packageWeight" value="1 Kg" /></div>
+              <div class="field"><label for="packageCost">Package cost</label><input type="number" id="packageCost" value="100" /></div>
+            </div>
+          </details>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn--ghost" id="btnFareEstimate">Calculate fare</button>
+          <button class="btn btn--primary" id="btnPlaceOrder" disabled>Place order</button>
+        </div>
+        <div class="inline-error" id="customerError"></div>
+
+        <div id="fareList" class="fare-list" style="display:none;"></div>
+
+        <div>
+          <p class="section-label">Live order status</p>
+          <div class="status-card">
+            <div class="status-top">
+              <span class="badge badge--pending" id="orderBadge">No order</span>
+              <span class="order-id-tag" id="orderIdTag">—</span>
+            </div>
+
+            <div>
+              <div class="stepper" id="stepper">
+                <div class="stepper__step" data-step="pending"></div>
+                <div class="stepper__step" data-step="processing"></div>
+                <div class="stepper__step" data-step="pickup"></div>
+                <div class="stepper__step" data-step="onroute"></div>
+                <div class="stepper__step" data-step="completed"></div>
+              </div>
+              <div class="stepper__labels">
+                <span>Pending</span><span>Processing</span><span>Pickup</span><span>On route</span><span>Completed</span>
+              </div>
+            </div>
+
+            <div id="driverInfoBlock">
+              <p class="empty-note">No driver assigned yet.</p>
+            </div>
+
+            <div class="coords-readout" id="liveCoords">
+              <span>waiting for driver location…</span>
+            </div>
+
+            <button class="btn btn--danger" id="btnCancelOrder" disabled>Cancel order</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ DRIVER PANEL ============ -->
+    <section class="panel">
+      <div class="panel__head">
+        <div class="panel__role">
+          <div class="role-glyph role-glyph--driver">🛵</div>
+          <div class="panel__title">Driver app<small>receives requests &amp; runs the trip</small></div>
+        </div>
+      </div>
+      <div class="panel__body">
+
+        <div>
+          <p class="section-label">Rider</p>
+          <div class="field-grid">
+            <div class="field">
+              <label for="riderId">Rider ID</label>
+              <input type="number" id="riderId" value="13" />
+            </div>
+            <div class="field"></div>
+            <div class="field">
+              <label for="riderLat">Current latitude</label>
+              <input type="text" id="riderLat" value="22.7402368" />
+            </div>
+            <div class="field">
+              <label for="riderLng">Current longitude</label>
+              <input type="text" id="riderLng" value="75.913299" />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <p class="section-label" style="margin:0;">Dummy test drivers <span style="text-transform:none; letter-spacing:0;">— open one per tab</span></p>
+            <button class="btn btn--ghost" id="btnRefreshDrivers" style="flex:none; padding:5px 10px; font-size:11.5px;">Refresh</button>
+          </div>
+          <div class="driver-list" id="driverList">
+            <p class="empty-note">Loading…</p>
+          </div>
+        </div>
+
+        <div class="go-toggle">
+          <div class="go-toggle__status"><span class="dot" id="riderStatusDot"></span> <span id="riderStatusText">Offline — invisible to dispatch</span></div>
+          <button class="btn btn--amber" id="btnGoOnline" style="flex:none;">Go online</button>
+        </div>
+        <div class="inline-error" id="driverError"></div>
+
+        <div>
+          <p class="section-label">Incoming request</p>
+          <div class="request-popup" id="requestPopup">
+            <div class="request-popup__top">
+              <div>
+                <span class="tier-badge" id="reqTierBadge">Model</span>
+                <div style="font-size:13px; color:var(--text-secondary);">Order <span id="reqOrderId" style="font-family:var(--font-mono); color:var(--text-primary);"></span> · <span id="reqDistance"></span> km</div>
+              </div>
+              <div class="ring-wrap">
+                <svg width="56" height="56" viewBox="0 0 56 56">
+                  <circle class="ring-track" cx="28" cy="28" r="24"></circle>
+                  <circle class="ring-progress" id="ringProgress" cx="28" cy="28" r="24"></circle>
+                </svg>
+                <div class="ring-num" id="ringNum">15</div>
+              </div>
+            </div>
+            <div class="route-line">
+              <div class="leg"><span class="glyph">●</span><span class="addr" id="reqPickup"></span></div>
+              <div class="leg"><span class="glyph">◆</span><span class="addr" id="reqDrop"></span></div>
+            </div>
+            <div class="earning-row">
+              <span class="label">You earn</span>
+              <span class="value" id="reqEarning">₹0</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn--success" id="btnAccept">Accept order</button>
+              <button class="btn btn--danger" id="btnReject">Reject order</button>
+            </div>
+          </div>
+          <p class="empty-note" id="waitingNote">Go online to start receiving order requests.</p>
+        </div>
+
+        <div id="activeTrip" style="display:none;">
+          <p class="section-label">Active trip — order <span id="tripOrderId" style="font-family:var(--font-mono); color:var(--text-primary);"></span></p>
+          <div class="trip-steps">
+            <button class="btn btn--ghost" id="btnArrived">Mark arrived at pickup</button>
+            <button class="btn btn--ghost" id="btnPickup" disabled>Package picked up (start trip)</button>
+            <button class="btn btn--ghost" id="btnComplete" disabled>Complete delivery</button>
+            <button class="btn btn--ghost" id="btnSimulateGps" disabled>Start GPS simulation to drop</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ EVENT LOG ============ -->
+  <div class="log-panel">
+    <div class="log-shell">
+      <div class="log-head">
+        <div class="log-head__title">📜 Live socket event log</div>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <span class="log-count"><span id="logCount">0</span> events</span>
+          <button class="btn btn--ghost" id="btnClearLog" style="flex:none; padding:6px 12px;">Clear</button>
+        </div>
+      </div>
+      <div class="log-body" id="logBody">
+        <div class="log-empty" id="logEmpty">No events yet — connect and place an order to see socket traffic here.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // ---------------------------------------------------------------
+    // Shared helpers
+    // ---------------------------------------------------------------
+    const $ = (id) => document.getElementById(id);
+
+    const logBody = $("logBody");
+    const logEmpty = $("logEmpty");
+    const logCountEl = $("logCount");
+    let logCount = 0;
+
+    function fmtTime(d) {
+      return d.toTimeString().split(" ")[0] + "." + String(d.getMilliseconds()).padStart(3, "0");
+    }
+
+    function logEvent(actor, direction, name, payload) {
+      if (logEmpty) logEmpty.remove();
+      const entry = document.createElement("details");
+      entry.className = "log-entry";
+      const summary = document.createElement("summary");
+      summary.innerHTML = `
+        <span class="time">${fmtTime(new Date())}</span>
+        <span class="actor actor--${actor}">${actor}</span>
+        <span class="dir">${direction === "out" ? "→" : direction === "in" ? "←" : "·"}</span>
+        <span class="event-name">${name}</span>
+      `;
+      entry.appendChild(summary);
+      if (payload !== undefined) {
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify(payload, null, 2);
+        entry.appendChild(pre);
+      }
+      logBody.appendChild(entry);
+      logBody.scrollTop = logBody.scrollHeight;
+      logCount += 1;
+      logCountEl.textContent = logCount;
+    }
+
+    $("btnClearLog").addEventListener("click", () => {
+      logBody.innerHTML = "";
+      logCount = 0;
+      logCountEl.textContent = 0;
+      const empty = document.createElement("div");
+      empty.className = "log-empty";
+      empty.id = "logEmpty";
+      empty.textContent = "No events yet — connect and place an order to see socket traffic here.";
+      logBody.appendChild(empty);
+    });
+
+    async function api(method, path, body) {
+      const res = await fetch(path, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const json = await res.json().catch(() => ({}));
+      return { ok: res.ok, status: res.status, json };
+    }
+
+    // ---------------------------------------------------------------
+    // Two independent socket connections — one per simulated device.
+    // forceNew keeps them from sharing a single multiplexed connection.
+    // ---------------------------------------------------------------
+    const customerSocket = io({ forceNew: true });
+    const driverSocket = io({ forceNew: true });
+
+    customerSocket.on("connect", () => $("customerConnDot").classList.add("dot--live"));
+    customerSocket.on("disconnect", () => $("customerConnDot").classList.remove("dot--live"));
+    driverSocket.on("connect", () => $("driverConnDot").classList.add("dot--live"));
+    driverSocket.on("disconnect", () => $("driverConnDot").classList.remove("dot--live"));
+
+    customerSocket.onAny((event, payload) => logEvent("customer", "in", event, payload));
+    driverSocket.onAny((event, payload) => logEvent("driver", "in", event, payload));
+
+    function emitCustomer(event, payload) {
+      logEvent("customer", "out", event, payload);
+      customerSocket.emit(event, payload);
+    }
+    function emitDriver(event, payload) {
+      logEvent("driver", "out", event, payload);
+      driverSocket.emit(event, payload);
+    }
+
+    // =================================================================
+    // CUSTOMER PANEL
+    // =================================================================
+    let currentOrderId = null;
+    let lastFarePackages = null;
+
+    async function loadCategories() {
+      const { ok, json } = await api("GET", "/api/order/categories");
+      const select = $("custCategory");
+      select.innerHTML = "";
+      if (!ok || !json.categories || json.categories.length === 0) {
+        select.innerHTML = '<option value="">No active categories found</option>';
+        return;
+      }
+      for (const c of json.categories) {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.dataset.name = c.cat_name;
+        opt.textContent = c.cat_name;
+        select.appendChild(opt);
+      }
+      // Every other default in this simulator (rider 13, its coordinates,
+      // its enabled package tiers) is set up for "Bike" — default the
+      // category to match so a fresh page load dispatches correctly,
+      // instead of silently landing on whatever the API returns first.
+      const bikeOption = Array.from(select.options).find((o) => o.dataset.name === "Bike");
+      if (bikeOption) select.value = bikeOption.value;
+    }
+    loadCategories();
+
+    customerSocket.on("connect", () => {
+      emitCustomer("customer:join", { user_id: Number($("custUid").value) });
+    });
+
+    $("btnFareEstimate").addEventListener("click", async () => {
+      $("customerError").textContent = "";
+      const catSelect = $("custCategory");
+      const cat_id = Number(catSelect.value);
+      const body = {
+        uid: Number($("custUid").value),
+        cat_id,
+        plat: Number($("pickLat").value),
+        plong: Number($("pickLng").value),
+        dlat: Number($("dropLat").value),
+        dlong: Number($("dropLng").value),
+      };
+      logEvent("customer", "out", "POST /api/order/fare-estimate", body);
+      const { ok, json } = await api("POST", "/api/order/fare-estimate", body);
+      logEvent("customer", "in", "200 /api/order/fare-estimate", json);
+      if (!ok || !json.Result) {
+        $("customerError").textContent = json.msg || json.ResponseMsg || "Fare estimate failed.";
+        $("btnPlaceOrder").disabled = true;
+        return;
+      }
+      lastFarePackages = json.packages;
+      const list = $("fareList");
+      list.style.display = "flex";
+      list.innerHTML = `<div style="font-size:11.5px; color:var(--text-dim); margin-bottom:2px;">${json.distance_km} km · ~${json.duration_min} min</div>`;
+      for (const p of json.packages) {
+        const row = document.createElement("div");
+        row.className = "fare-row";
+        row.innerHTML = `<span class="fare-row__title">${p.title}${p.is_night ? '<span class="night-badge">night rate</span>' : ""}</span><span class="fare-row__fare">₹${p.estimated_fare}</span>`;
+        list.appendChild(row);
+      }
+      $("btnPlaceOrder").disabled = false;
+    });
+
+    $("btnPlaceOrder").addEventListener("click", async () => {
+      $("customerError").textContent = "";
+      if (!lastFarePackages) return;
+      const catSelect = $("custCategory");
+      const categoryName = catSelect.selectedOptions[0]?.dataset.name || "Bike";
+      const body = {
+        uid: Number($("custUid").value),
+        category: categoryName,
+        delivery_type: lastFarePackages.map((p) => p.package_id),
+        booking_type: 1,
+        plat: Number($("pickLat").value),
+        plong: Number($("pickLng").value),
+        paddress: $("pickAddress").value,
+        pick_name: $("pickName").value,
+        pmobile: $("pmobile").value,
+        pick_type: "Home",
+        dlat: Number($("dropLat").value),
+        dlong: Number($("dropLng").value),
+        daddress: $("dropAddress").value,
+        drop_name: $("dropName").value,
+        dmobile: $("dmobile").value,
+        drop_type: "Office",
+        package_weight: $("packageWeight").value,
+        package_cost: Number($("packageCost").value),
+        description: "Placed from the dispatch simulator",
+        p_method_id: 1,
+        transaction_id: "simulator_test",
+        extra_mile_charge: 0,
+        cou_id: 0,
+        cou_amt: 0,
+      };
+      logEvent("customer", "out", "POST /api/order/create", body);
+      const { ok, json } = await api("POST", "/api/order/create", body);
+      logEvent("customer", "in", "200 /api/order/create", json);
+      if (!ok || json.Result !== "true") {
+        $("customerError").textContent = json.ResponseMsg || "Order creation failed.";
+        return;
+      }
+      currentOrderId = json.order_id;
+      emitCustomer("customer:join", { user_id: Number($("custUid").value), order_id: currentOrderId });
+      setOrderState("pending");
+      $("orderIdTag").textContent = `#${currentOrderId}`;
+      $("driverInfoBlock").innerHTML = '<p class="empty-note">Searching for a nearby driver…</p>';
+      $("liveCoords").innerHTML = "<span>waiting for driver location…</span>";
+      $("btnCancelOrder").disabled = false;
+    });
+
+    function setOrderState(state) {
+      const badge = $("orderBadge");
+      const labels = { pending: "Searching", processing: "Processing", pickup: "Arrived", onroute: "On route", completed: "Completed", cancelled: "Cancelled" };
+      badge.textContent = labels[state] || state;
+      badge.className = `badge badge--${state}`;
+      const order = ["pending", "processing", "pickup", "onroute", "completed"];
+      const steps = document.querySelectorAll("#stepper .stepper__step");
+      if (state === "cancelled") {
+        steps.forEach((s) => s.classList.add("cancelled"));
+        return;
+      }
+      steps.forEach((s) => s.classList.remove("cancelled"));
+      const idx = order.indexOf(state);
+      steps.forEach((s, i) => s.classList.toggle("done", i <= idx));
+    }
+
+    $("btnCancelOrder").addEventListener("click", async () => {
+      if (!currentOrderId) return;
+      const body = { uid: Number($("custUid").value), order_id: currentOrderId, comment: "Cancelled from simulator" };
+      logEvent("customer", "out", "POST /api/order/customer-cancel", body);
+      const { ok, json } = await api("POST", "/api/order/customer-cancel", body);
+      logEvent("customer", "in", "200 /api/order/customer-cancel", json);
+      if (ok && json.Result === "true") {
+        setOrderState("cancelled");
+        $("btnCancelOrder").disabled = true;
+      } else {
+        $("customerError").textContent = json.ResponseMsg || "Could not cancel order.";
+      }
+    });
+
+    customerSocket.on("order:assigned", (data) => {
+      if (Number(data.order_id) !== Number(currentOrderId)) return;
+      setOrderState("processing");
+      $("driverInfoBlock").innerHTML = `
+        <div class="driver-info">
+          <div class="kv"><label>Driver</label><span>${data.rider_name || "(unnamed)"} · #${data.rider_id}</span></div>
+          <div class="kv"><label>Mobile</label><span>${data.rider_phone || "—"}</span></div>
+          <div class="kv"><label>Vehicle no</label><span>${data.vehicle_no || "—"}</span></div>
+          <div class="kv"><label>OTP</label><span class="otp-chip">${data.otp ?? "—"}</span></div>
+        </div>`;
+    });
+
+    customerSocket.on("order:status_changed", (data) => {
+      if (Number(data.order_id) !== Number(currentOrderId)) return;
+      const map = { 2: "pickup", 3: "onroute" };
+      setOrderState(map[data.order_status] || "processing");
+    });
+
+    customerSocket.on("order:completed", (data) => {
+      if (Number(data.order_id) !== Number(currentOrderId)) return;
+      setOrderState("completed");
+      $("btnCancelOrder").disabled = true;
+    });
+
+    customerSocket.on("order:no_driver_found", (data) => {
+      if (Number(data.order_id) !== Number(currentOrderId)) return;
+      setOrderState("cancelled");
+      $("driverInfoBlock").innerHTML = '<p class="empty-note">No driver accepted in time — order closed.</p>';
+      $("btnCancelOrder").disabled = true;
+    });
+
+    customerSocket.on("driver:location_stream", (data) => {
+      if (Number(data.order_id) !== Number(currentOrderId)) return;
+      $("liveCoords").innerHTML = `<span>${Number(data.lat).toFixed(6)}, ${Number(data.lng).toFixed(6)}</span><span class="ts">updated ${fmtTime(new Date())}</span>`;
+    });
+
+    // =================================================================
+    // DRIVER PANEL
+    // =================================================================
+    async function loadTestDrivers() {
+      const list = $("driverList");
+      list.innerHTML = '<p class="empty-note">Loading…</p>';
+      const { ok, json } = await api("GET", "/api/rider/test-drivers");
+      if (!ok || !json.drivers || json.drivers.length === 0) {
+        list.innerHTML = '<p class="empty-note">No dummy drivers found in this database.</p>';
+        return;
+      }
+      list.innerHTML = "";
+      for (const d of json.drivers) {
+        const usable = d.enabled_packages.length > 0 && d.lat && d.lng;
+        const row = document.createElement("div");
+        row.className = "driver-row" + (usable ? "" : " driver-row--unusable");
+        const pkgSummary = usable
+          ? d.enabled_packages.map((p) => p.title.replace("Model ", "M")).join(", ") + ` · ${d.enabled_packages[0].category}`
+          : (d.enabled_packages.length === 0 ? "not enabled for any package — won't receive orders" : "no saved location");
+        row.innerHTML = `
+          <span class="driver-row__id">#${d.id}</span>
+          <div class="driver-row__meta">
+            <div class="driver-row__vehicle">${d.name || "(unnamed)"} · ${d.vehicle}</div>
+            <div class="driver-row__pkgs ${usable ? "" : "none"}">${pkgSummary}</div>
+          </div>
+          <span class="driver-row__status"><span class="dot ${d.online ? "dot--live" : "dot--off"}"></span>${d.online ? "online" : "offline"}</span>
+          <button class="btn btn--ghost" style="flex:none; padding:6px 10px;" data-use-driver="${d.id}" data-lat="${d.lat || ""}" data-lng="${d.lng || ""}" ${usable ? "" : "disabled"}>Use</button>
+        `;
+        list.appendChild(row);
+      }
+    }
+    loadTestDrivers();
+    $("btnRefreshDrivers").addEventListener("click", loadTestDrivers);
+    $("driverList").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-use-driver]");
+      if (!btn) return;
+      $("riderId").value = btn.dataset.useDriver;
+      if (btn.dataset.lat) $("riderLat").value = btn.dataset.lat;
+      if (btn.dataset.lng) $("riderLng").value = btn.dataset.lng;
+    });
+
+    let isOnline = false;
+    let activeRequest = null; // { orderId, packageId, popupDuration, pickup:{lat,lng}, drop:{lat,lng} }
+    let countdownTimer = null;
+    let gpsSimTimer = null;
+    let acceptedOrderId = null;
+    let tripStage = 0; // 0 none, 1 arrived, 2 pickup, 3 complete
+
+    function currentRiderId() { return Number($("riderId").value); }
+
+    driverSocket.on("connect", () => {
+      if (isOnline) emitDriver("driver:join", { rider_id: currentRiderId(), lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
+    });
+
+    $("btnGoOnline").addEventListener("click", async () => {
+      $("driverError").textContent = "";
+      isOnline = !isOnline;
+      const rider_id = currentRiderId();
+
+      if (isOnline) {
+        const statusRes = await api("POST", "/api/rider/status", { rider_id, a_status: 1 });
+        const locRes = await api("POST", "/api/rider/location", { rider_id, lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
+        logEvent("driver", "out", "POST /api/rider/status + /api/rider/location", { statusRes: statusRes.json, locRes: locRes.json });
+        if (!statusRes.ok) {
+          $("driverError").textContent = statusRes.json.msg || "Could not go online.";
+          isOnline = false;
+          return;
+        }
+        emitDriver("driver:join", { rider_id, lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
+        $("riderStatusDot").classList.add("dot--live", "dot--pulse");
+        $("riderStatusDot").classList.remove("dot--off");
+        $("riderStatusText").textContent = "Online — visible to dispatch";
+        $("btnGoOnline").textContent = "Go offline";
+        $("btnGoOnline").className = "btn btn--ghost";
+        $("waitingNote").textContent = "Waiting for order requests…";
+        $("waitingNote").style.display = "block";
+      } else {
+        const statusRes = await api("POST", "/api/rider/status", { rider_id, a_status: 0 });
+        logEvent("driver", "out", "POST /api/rider/status", statusRes.json);
+        $("riderStatusDot").classList.remove("dot--live", "dot--pulse");
+        $("riderStatusDot").classList.add("dot--off");
+        $("riderStatusText").textContent = "Offline — invisible to dispatch";
+        $("btnGoOnline").textContent = "Go online";
+        $("btnGoOnline").className = "btn btn--amber";
+        $("waitingNote").textContent = "Go online to start receiving order requests.";
+      }
+    });
+
+    driverSocket.on("order:request", (data) => {
+      activeRequest = data;
+      $("waitingNote").style.display = "none";
+      $("reqTierBadge").textContent = data.category + " · pkg " + data.package_id;
+      $("reqOrderId").textContent = "#" + data.order_id;
+      $("reqDistance").textContent = data.distance_km;
+      $("reqPickup").textContent = data.pickup_address;
+      $("reqDrop").textContent = data.delivery_address;
+      $("reqEarning").textContent = "₹" + data.driver_earning;
+      $("requestPopup").classList.add("visible");
+      startCountdown(Number(data.popup_duration || 15));
+    });
+
+    function startCountdown(seconds) {
+      clearInterval(countdownTimer);
+      const ring = $("ringProgress");
+      const num = $("ringNum");
+      const circumference = 2 * Math.PI * 24;
+      ring.style.strokeDasharray = circumference;
+      ring.style.transition = "none";
+      ring.style.strokeDashoffset = 0;
+      num.textContent = seconds;
+      // Force reflow so the transition below actually animates from 0.
+      ring.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        ring.style.transition = `stroke-dashoffset ${seconds}s linear`;
+        ring.style.strokeDashoffset = circumference;
+      });
+      const start = Date.now();
+      countdownTimer = setInterval(() => {
+        const remaining = Math.max(0, seconds - (Date.now() - start) / 1000);
+        num.textContent = Math.ceil(remaining);
+        if (remaining <= 0) clearInterval(countdownTimer);
+      }, 200);
+    }
+
+    function hideRequestPopup() {
+      $("requestPopup").classList.remove("visible");
+      clearInterval(countdownTimer);
+      if (isOnline) $("waitingNote").style.display = "block";
+      activeRequest = null;
+    }
+
+    driverSocket.on("order:dismiss", (data) => {
+      if (activeRequest && Number(data.order_id) === Number(activeRequest.order_id)) {
+        hideRequestPopup();
+      }
+    });
+
+    $("btnAccept").addEventListener("click", () => {
+      if (!activeRequest) return;
+      emitDriver("order:accept", { rider_id: currentRiderId(), order_id: Number(activeRequest.order_id) });
+    });
+
+    $("btnReject").addEventListener("click", () => {
+      if (!activeRequest) return;
+      emitDriver("order:reject", { rider_id: currentRiderId(), order_id: Number(activeRequest.order_id) });
+      hideRequestPopup();
+    });
+
+    driverSocket.on("order:accept:ack", (data) => {
+      if (!data.Result) {
+        $("driverError").textContent = data.msg || "Accept failed.";
+        hideRequestPopup();
+        return;
+      }
+      acceptedOrderId = activeRequest ? Number(activeRequest.order_id) : null;
+      const req = activeRequest;
+      hideRequestPopup();
+      tripStage = 0;
+      $("activeTrip").style.display = "block";
+      $("tripOrderId").textContent = "#" + acceptedOrderId;
+      $("btnArrived").disabled = false;
+      $("btnPickup").disabled = true;
+      $("btnComplete").disabled = true;
+      $("btnSimulateGps").disabled = false;
+      $("btnSimulateGps").textContent = "Start GPS simulation to drop";
+      window.__tripRoute = req ? {
+        pickup: { lat: Number(req.pickup_latitude), lng: Number(req.pickup_longitude) },
+        drop: { lat: Number(req.delivery_latitude), lng: Number(req.delivery_longitude) },
+      } : null;
+    });
+
+    async function sendStatusUpdate(status) {
+      $("driverError").textContent = "";
+      emitDriver("order:status_update", { rider_id: currentRiderId(), order_id: acceptedOrderId, status });
+    }
+
+    $("btnArrived").addEventListener("click", () => sendStatusUpdate("arrived"));
+    $("btnPickup").addEventListener("click", () => sendStatusUpdate("pickup"));
+    $("btnComplete").addEventListener("click", () => sendStatusUpdate("complete"));
+
+    driverSocket.on("order:status_update:ack", (data) => {
+      if (!data.Result) {
+        $("driverError").textContent = data.msg || "Status update failed.";
+        return;
+      }
+    });
+
+    driverSocket.on("order:status_changed", (data) => {
+      if (Number(data.order_id) !== Number(acceptedOrderId)) return;
+      if (data.order_status === 2) { tripStage = 1; $("btnArrived").disabled = true; $("btnPickup").disabled = false; }
+      if (data.order_status === 3) { tripStage = 2; $("btnPickup").disabled = true; $("btnComplete").disabled = false; }
+    });
+
+    driverSocket.on("order:completed", (data) => {
+      if (Number(data.order_id) !== Number(acceptedOrderId)) return;
+      tripStage = 3;
+      $("btnComplete").disabled = true;
+      clearInterval(gpsSimTimer);
+      $("btnSimulateGps").disabled = true;
+      $("btnSimulateGps").textContent = "Trip complete";
+    });
+
+    $("btnSimulateGps").addEventListener("click", () => {
+      if (gpsSimTimer) {
+        clearInterval(gpsSimTimer);
+        gpsSimTimer = null;
+        $("btnSimulateGps").textContent = "Start GPS simulation to drop";
+        return;
+      }
+      const route = window.__tripRoute;
+      if (!route || !acceptedOrderId) return;
+      $("btnSimulateGps").textContent = "Stop GPS simulation";
+      let step = 0;
+      const totalSteps = 15;
+      const from = { lat: Number($("riderLat").value), lng: Number($("riderLng").value) };
+      gpsSimTimer = setInterval(() => {
+        step += 1;
+        const t = step / totalSteps;
+        const lat = from.lat + (route.drop.lat - from.lat) * t;
+        const lng = from.lng + (route.drop.lng - from.lng) * t;
+        $("riderLat").value = lat.toFixed(7);
+        $("riderLng").value = lng.toFixed(7);
+        emitDriver("driver:location_ping", { rider_id: currentRiderId(), order_id: acceptedOrderId, lat, lng, heading: 0 });
+        if (step >= totalSteps) {
+          clearInterval(gpsSimTimer);
+          gpsSimTimer = null;
+          $("btnSimulateGps").textContent = "Start GPS simulation to drop";
+        }
+      }, 1000);
+    });
+  </script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 
@@ -11,7 +12,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
+// The dispatch simulator lives at "/" (public/index.html).
+app.use(express.static(path.join(__dirname, "..", "public")));
+
+app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 

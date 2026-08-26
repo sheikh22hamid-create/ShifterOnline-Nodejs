@@ -99,7 +99,7 @@ async function updateStatus(orderId, riderId, status) {
 
     await prisma.pkg_order.update({
       where: { id: orderId },
-      data: { order_status: 3, o_status: "On Route", pickup_time: now },
+      data: { order_status: 3, o_status: "On_Route", pickup_time: now },
     });
     await prisma.pkg_order_wait_timer.update({
       where: { order_id_rid: { order_id: orderId, rid: riderId } },
