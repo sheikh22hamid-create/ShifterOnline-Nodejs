@@ -1,0 +1,116 @@
+{
+  ".claude/settings.json": {
+    "mtime": 1787722196.5636785,
+    "seen": 1787723364.1874814,
+    "ast_hash": "7fbc1de296a7fc559a7c81f63bc29d8a",
+    "semantic_hash": "7fbc1de296a7fc559a7c81f63bc29d8a"
+  },
+  "backend/package.json": {
+    "mtime": 1787717277.9766893,
+    "seen": 1787723364.1874888,
+    "ast_hash": "01d329f26a2c13c14527e9d75b7da540",
+    "semantic_hash": "01d329f26a2c13c14527e9d75b7da540"
+  },
+  "backend/src/app.js": {
+    "mtime": 1787717269.9420898,
+    "seen": 1787723364.1874914,
+    "ast_hash": "61db507cdda289943a83cdde27ea60ec",
+    "semantic_hash": "61db507cdda289943a83cdde27ea60ec"
+  },
+  "backend/src/lib/prisma.js": {
+    "mtime": 1787717262.6765974,
+    "seen": 1787723364.1874928,
+    "ast_hash": "348ad5dc2f29c6493faf3ff5f0972f3d",
+    "semantic_hash": "348ad5dc2f29c6493faf3ff5f0972f3d"
+  },
+  "backend/src/routes/user.routes.js": {
+    "mtime": 1787717266.439864,
+    "seen": 1787723364.1874945,
+    "ast_hash": "60dcaad70cb5ac7fa44c37fe110d5909",
+    "semantic_hash": "60dcaad70cb5ac7fa44c37fe110d5909"
+  },
+  "backend/src/server.js": {
+    "mtime": 1787717273.5727465,
+    "seen": 1787723364.1874962,
+    "ast_hash": "06b4aaaa87eb4aa1e5c197bb85b4b132",
+    "semantic_hash": "06b4aaaa87eb4aa1e5c197bb85b4b132"
+  },
+  "frontend/eslint.config.js": {
+    "mtime": 1787211906.9837372,
+    "seen": 1787723364.1874976,
+    "ast_hash": "3aa4b57d7f08181d86bde52a4dcb7f22",
+    "semantic_hash": "3aa4b57d7f08181d86bde52a4dcb7f22"
+  },
+  "frontend/package.json": {
+    "mtime": 1787211906.998955,
+    "seen": 1787723364.187499,
+    "ast_hash": "1acb95cf1f8b4f3ba5eab9399546e7dd",
+    "semantic_hash": "1acb95cf1f8b4f3ba5eab9399546e7dd"
+  },
+  "frontend/src/App.jsx": {
+    "mtime": 1786356999.3198469,
+    "seen": 1787723364.1875005,
+    "ast_hash": "cd56544ef84672246b9eebbde5b73d5b",
+    "semantic_hash": "cd56544ef84672246b9eebbde5b73d5b"
+  },
+  "frontend/src/main.jsx": {
+    "mtime": 1786356999.3320239,
+    "seen": 1787723364.1875021,
+    "ast_hash": "e13723e2574429d9a6d849727e3ff695",
+    "semantic_hash": "e13723e2574429d9a6d849727e3ff695"
+  },
+  "frontend/vite.config.js": {
+    "mtime": 1786356999.2180753,
+    "seen": 1787723364.1875036,
+    "ast_hash": "88439104b3c207f17d33ef3160e3b080",
+    "semantic_hash": "88439104b3c207f17d33ef3160e3b080"
+  },
+  "backend/README.md": {
+    "mtime": 1787717339.070008,
+    "seen": 1787723364.1875055,
+    "ast_hash": "f57cc270ac9ca68f8736981ea1a3f16f",
+    "semantic_hash": "f57cc270ac9ca68f8736981ea1a3f16f"
+  },
+  "frontend/README.md": {
+    "mtime": 1787211906.9999642,
+    "seen": 1787723364.1875067,
+    "ast_hash": "a28dc4cb878325f3e9e5649f3e1469ac",
+    "semantic_hash": "a28dc4cb878325f3e9e5649f3e1469ac"
+  },
+  "frontend/index.html": {
+    "mtime": 1787211906.938628,
+    "seen": 1787723364.187508,
+    "ast_hash": "89150e536c4a99f73625f46f41f0f437",
+    "semantic_hash": "89150e536c4a99f73625f46f41f0f437"
+  },
+  "frontend/public/favicon.svg": {
+    "mtime": 1786356999.487238,
+    "seen": 1787723364.1875095,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": "7e840862161341271697daa99a40d76b"
+  },
+  "frontend/public/icons.svg": {
+    "mtime": 1786356999.5427978,
+    "seen": 1787723364.1875107,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": "3b4fcfcf393eca4d264dca4a4663bc37"
+  },
+  "frontend/src/assets/hero.png": {
+    "mtime": 1786356999.3993824,
+    "seen": 1787723364.1875122,
+    "ast_hash": "aead493361b27e7510691c5d7072dfc1",
+    "semantic_hash": "aead493361b27e7510691c5d7072dfc1"
+  },
+  "frontend/src/assets/react.svg": {
+    "mtime": 1786356999.5929248,
+    "seen": 1787723364.1875134,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": "f0402b67b6ce880f65666bb49e841696"
+  },
+  "frontend/src/assets/vite.svg": {
+    "mtime": 1786356999.6373127,
+    "seen": 1787723364.1875148,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": "9960a24288958394ac50e57ff638b036"
+  }
+}

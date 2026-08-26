@@ -1,0 +1,103 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: SO
+      - generic [ref=e5]:
+        - generic [ref=e6]: Dispatch Simulator
+        - generic [ref=e7]: Shifter Online — live order & socket testbed
+    - generic [ref=e8]:
+      - generic [ref=e9]: customer socket
+      - generic [ref=e11]: driver socket
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: 📱
+        - generic [ref=e18]:
+          - text: Customer app
+          - generic [ref=e19]: places the order & watches it move
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - paragraph [ref=e22]: Trip
+          - paragraph [ref=e23]: "Defaults match rider #13 (a Bike, online, near this pickup point) — change category or coordinates only if your driver is set up differently."
+          - generic [ref=e24]:
+            - generic [ref=e25]:
+              - generic [ref=e26]: Customer ID (uid)
+              - spinbutton "Customer ID (uid)" [ref=e27]: "7"
+            - generic [ref=e28]:
+              - generic [ref=e29]: Category
+              - combobox "Category" [ref=e30]
+            - generic [ref=e31]:
+              - generic [ref=e32]: Pickup latitude
+              - textbox "Pickup latitude" [ref=e33]: "22.7402368"
+            - generic [ref=e34]:
+              - generic [ref=e35]: Pickup longitude
+              - textbox "Pickup longitude" [ref=e36]: "75.913299"
+            - generic [ref=e37]:
+              - generic [ref=e38]: Drop latitude
+              - textbox "Drop latitude" [ref=e39]: "22.72"
+            - generic [ref=e40]:
+              - generic [ref=e41]: Drop longitude
+              - textbox "Drop longitude" [ref=e42]: "75.88"
+          - group [ref=e43]:
+            - generic "▸ Trip details (prefilled, edit if needed)" [ref=e44] [cursor=pointer]
+        - generic [ref=e45]:
+          - button "Calculate fare" [ref=e46] [cursor=pointer]
+          - button "Place order" [disabled] [ref=e47]
+        - generic [ref=e48]:
+          - paragraph [ref=e49]: Live order status
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - generic [ref=e52]: No order
+              - generic [ref=e53]: —
+            - generic [ref=e61]:
+              - generic [ref=e62]: Pending
+              - generic [ref=e63]: Processing
+              - generic [ref=e64]: Pickup
+              - generic [ref=e65]: On route
+              - generic [ref=e66]: Completed
+            - paragraph [ref=e68]: No driver assigned yet.
+            - generic [ref=e69]: waiting for driver location…
+            - button "Cancel order" [disabled] [ref=e71]
+    - generic [ref=e72]:
+      - generic [ref=e74]:
+        - generic [ref=e75]: 🛵
+        - generic [ref=e76]:
+          - text: Driver app
+          - generic [ref=e77]: receives requests & runs the trip
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - paragraph [ref=e80]: Rider
+          - generic [ref=e81]:
+            - generic [ref=e82]:
+              - generic [ref=e83]: Rider ID
+              - spinbutton "Rider ID" [ref=e84]: "13"
+            - generic [ref=e86]:
+              - generic [ref=e87]: Current latitude
+              - textbox "Current latitude" [ref=e88]: "22.7402368"
+            - generic [ref=e89]:
+              - generic [ref=e90]: Current longitude
+              - textbox "Current longitude" [ref=e91]: "75.913299"
+        - generic [ref=e92]:
+          - generic [ref=e93]:
+            - paragraph [ref=e94]: Dummy test drivers — open one per tab
+            - button "Refresh" [ref=e95] [cursor=pointer]
+          - paragraph [ref=e97]: Loading…
+        - generic [ref=e98]:
+          - generic [ref=e99]: Offline — invisible to dispatch
+          - button "Go online" [ref=e102] [cursor=pointer]
+        - generic [ref=e103]:
+          - paragraph [ref=e104]: Incoming request
+          - paragraph [ref=e105]: Go online to start receiving order requests.
+  - generic [ref=e107]:
+    - generic [ref=e108]:
+      - generic [ref=e109]: 📜 Live socket event log
+      - generic [ref=e110]:
+        - generic [ref=e111]: 1 events
+        - button "Clear" [ref=e112] [cursor=pointer]
+    - group [ref=e114]:
+      - generic "+ 18:15:44.053 customer → customer:join" [ref=e115] [cursor=pointer]:
+        - text: +
+        - generic [ref=e116]: 18:15:44.053
+        - generic [ref=e117]: customer
+        - generic [ref=e118]: →
+        - generic [ref=e119]: customer:join

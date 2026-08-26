@@ -1,0 +1,207 @@
+{
+  "info": {
+    "name": "Shifter Online - Backend (Order Flow)",
+    "description": "REST endpoints for the order/rider flow, plus a guide folder for testing the Socket.io side (accept/reject/status updates/dispatch) which Postman's HTTP-request JSON format can't carry directly.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5000" },
+    { "key": "uid", "value": "1" },
+    { "key": "order_id", "value": "1" },
+    { "key": "rider_id", "value": "1" }
+  ],
+  "item": [
+    {
+      "name": "Order Flow",
+      "item": [
+        {
+          "name": "Fare Estimate",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cat_id\": 1,\n  \"plat\": 28.6139,\n  \"plong\": 77.2090,\n  \"dlat\": 28.7041,\n  \"dlong\": 77.1025\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/order/fare-estimate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order", "fare-estimate"]
+            }
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": {{uid}},\n  \"category\": 1,\n  \"delivery_type\": [1],\n  \"booking_type\": 1,\n  \"plat\": 28.6139,\n  \"plong\": 77.2090,\n  \"paddress\": \"Connaught Place, Delhi\",\n  \"pick_name\": \"Rahul\",\n  \"pmobile\": \"9999999999\",\n  \"pick_type\": \"home\",\n  \"dlat\": 28.7041,\n  \"dlong\": 77.1025,\n  \"daddress\": \"Rohini, Delhi\",\n  \"drop_name\": \"Aman\",\n  \"dmobile\": \"8888888888\",\n  \"drop_type\": \"office\",\n  \"package_weight\": \"5 Kg\",\n  \"package_cost\": 500,\n  \"description\": \"Fragile item\",\n  \"p_method_id\": 1,\n  \"transaction_id\": \"cash_payment\",\n  \"extra_mile_charge\": 0,\n  \"cou_id\": 0,\n  \"cou_amt\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/order/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order", "create"]
+            },
+            "description": "Response ka order_id copy karke collection variable {{order_id}} me daal do agle requests ke liye. Yeh call dispatchManager.startDispatch() bhi trigger karti hai, jo eligible drivers ko Socket.io se order:request event push karta hai."
+          }
+        },
+        {
+          "name": "Order Details",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": {{uid}},\n  \"order_id\": {{order_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/order/details",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order", "details"]
+            }
+          }
+        },
+        {
+          "name": "Customer Cancel",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": {{uid}},\n  \"order_id\": {{order_id}},\n  \"comment\": \"Changed my mind\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/order/customer-cancel",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order", "customer-cancel"]
+            }
+          }
+        },
+        {
+          "name": "Rate Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": {{uid}},\n  \"order_id\": {{order_id}},\n  \"rider_id\": {{rider_id}},\n  \"star\": 5,\n  \"comment\": \"Great delivery\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/order/rate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "order", "rate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rider Flow",
+      "item": [
+        {
+          "name": "Set Rider Status (online/offline)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rider_id\": {{rider_id}},\n  \"a_status\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/rider/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rider", "status"]
+            }
+          }
+        },
+        {
+          "name": "Update Rider Location",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rider_id\": {{rider_id}},\n  \"lat\": 28.65,\n  \"lng\": 77.15\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/rider/location",
+              "host": ["{{base_url}}"],
+              "path": ["api", "rider", "location"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Socket.io Testing Guide (manual setup)",
+      "description": "Postman collection JSON (v2.1 schema) has no stable way to bundle Socket.io requests for import, so this folder is documentation only. In Postman: New -> Socket.io -> URL: {{base_url}} -> Connect. Then emit/listen to these events manually.",
+      "item": [
+        {
+          "name": "1. driver:join (emit, once connected)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://driver:join", "host": ["socketio:"], "path": ["driver:join"] },
+            "description": "Emit payload: { \"rider_id\": {{rider_id}} }\nJoins room driver_{{rider_id}} so this socket receives order:request pushes for that rider."
+          }
+        },
+        {
+          "name": "2. customer:join (emit, on the customer's socket)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://customer:join", "host": ["socketio:"], "path": ["customer:join"] },
+            "description": "Emit payload: { \"user_id\": {{uid}}, \"order_id\": {{order_id}} }\nJoins customer_{{uid}} (and order_{{order_id}} if provided) so this socket receives order:assigned / order:status_changed / order:completed / order:no_driver_found."
+          }
+        },
+        {
+          "name": "3. order:request (listen only, server -> driver)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://order:request", "host": ["socketio:"], "path": ["order:request"] },
+            "description": "Server pushes this automatically to driver_{{rider_id}} when dispatchManager finds this rider eligible after Create Order runs. Nothing to emit here, just listen on the driver socket."
+          }
+        },
+        {
+          "name": "4. order:accept (emit, from driver socket)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://order:accept", "host": ["socketio:"], "path": ["order:accept"] },
+            "description": "Emit payload: { \"rider_id\": {{rider_id}}, \"order_id\": {{order_id}} }\nAck comes back on order:accept:ack. On success, the customer socket gets order:assigned."
+          }
+        },
+        {
+          "name": "5. order:reject (emit, from driver socket)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://order:reject", "host": ["socketio:"], "path": ["order:reject"] },
+            "description": "Emit payload: { \"rider_id\": {{rider_id}}, \"order_id\": {{order_id}} }\nNo ack event; releases this driver's popup lock so dispatch can move on."
+          }
+        },
+        {
+          "name": "6. order:status_update (emit, from driver socket)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://order:status_update", "host": ["socketio:"], "path": ["order:status_update"] },
+            "description": "Emit payload: { \"rider_id\": {{rider_id}}, \"order_id\": {{order_id}}, \"status\": \"arrived\" }\nstatus is one of: arrived | pickup | complete (run in that order). Ack on order:status_update:ack. Broadcasts order:status_changed (or order:completed for the final one) to order_{{order_id}}."
+          }
+        },
+        {
+          "name": "7. driver:location_ping (emit, from driver socket)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "socketio://driver:location_ping", "host": ["socketio:"], "path": ["driver:location_ping"] },
+            "description": "Emit payload: { \"rider_id\": {{rider_id}}, \"order_id\": {{order_id}}, \"lat\": 28.66, \"lng\": 77.16, \"heading\": 90 }\nBroadcasts driver:location_stream to order_{{order_id}}; DB write is throttled server-side."
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -768,6 +768,14 @@
     // ---------------------------------------------------------------
     const $ = (id) => document.getElementById(id);
 
+    // Rider/order fields (names, vehicle numbers, package titles) come from
+    // the live database and are rider/admin-editable — never trust them
+    // when building innerHTML.
+    const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+    }
+
     const logBody = $("logBody");
     const logEmpty = $("logEmpty");
     const logCountEl = $("logCount");
@@ -906,7 +914,7 @@
       for (const p of json.packages) {
         const row = document.createElement("div");
         row.className = "fare-row";
-        row.innerHTML = `<span class="fare-row__title">${p.title}${p.is_night ? '<span class="night-badge">night rate</span>' : ""}</span><span class="fare-row__fare">₹${p.estimated_fare}</span>`;
+        row.innerHTML = `<span class="fare-row__title">${esc(p.title)}${p.is_night ? '<span class="night-badge">night rate</span>' : ""}</span><span class="fare-row__fare">₹${Number(p.estimated_fare)}</span>`;
         list.appendChild(row);
       }
       $("btnPlaceOrder").disabled = false;
@@ -994,10 +1002,10 @@
       setOrderState("processing");
       $("driverInfoBlock").innerHTML = `
         <div class="driver-info">
-          <div class="kv"><label>Driver</label><span>${data.rider_name || "(unnamed)"} · #${data.rider_id}</span></div>
-          <div class="kv"><label>Mobile</label><span>${data.rider_phone || "—"}</span></div>
-          <div class="kv"><label>Vehicle no</label><span>${data.vehicle_no || "—"}</span></div>
-          <div class="kv"><label>OTP</label><span class="otp-chip">${data.otp ?? "—"}</span></div>
+          <div class="kv"><label>Driver</label><span>${esc(data.rider_name || "(unnamed)")} · #${Number(data.rider_id)}</span></div>
+          <div class="kv"><label>Mobile</label><span>${esc(data.rider_phone || "—")}</span></div>
+          <div class="kv"><label>Vehicle no</label><span>${esc(data.vehicle_no || "—")}</span></div>
+          <div class="kv"><label>OTP</label><span class="otp-chip">${esc(data.otp ?? "—")}</span></div>
         </div>`;
     });
 
@@ -1045,13 +1053,13 @@
           ? d.enabled_packages.map((p) => p.title.replace("Model ", "M")).join(", ") + ` · ${d.enabled_packages[0].category}`
           : (d.enabled_packages.length === 0 ? "not enabled for any package — won't receive orders" : "no saved location");
         row.innerHTML = `
-          <span class="driver-row__id">#${d.id}</span>
+          <span class="driver-row__id">#${Number(d.id)}</span>
           <div class="driver-row__meta">
-            <div class="driver-row__vehicle">${d.name || "(unnamed)"} · ${d.vehicle}</div>
-            <div class="driver-row__pkgs ${usable ? "" : "none"}">${pkgSummary}</div>
+            <div class="driver-row__vehicle">${esc(d.name || "(unnamed)")} · ${esc(d.vehicle)}</div>
+            <div class="driver-row__pkgs ${usable ? "" : "none"}">${esc(pkgSummary)}</div>
           </div>
           <span class="driver-row__status"><span class="dot ${d.online ? "dot--live" : "dot--off"}"></span>${d.online ? "online" : "offline"}</span>
-          <button class="btn btn--ghost" style="flex:none; padding:6px 10px;" data-use-driver="${d.id}" data-lat="${d.lat || ""}" data-lng="${d.lng || ""}" ${usable ? "" : "disabled"}>Use</button>
+          <button class="btn btn--ghost" style="flex:none; padding:6px 10px;" data-use-driver="${esc(d.id)}" data-lat="${esc(d.lat || "")}" data-lng="${esc(d.lng || "")}" ${usable ? "" : "disabled"}>Use</button>
         `;
         list.appendChild(row);
       }

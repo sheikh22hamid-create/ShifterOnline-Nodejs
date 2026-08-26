@@ -12,8 +12,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// The dispatch simulator lives at "/" (public/index.html).
-app.use(express.static(path.join(__dirname, "..", "public")));
+// The dispatch simulator lives at "/" (public/index.html) — a dev/testing
+// tool with no auth of its own (it can create real orders and toggle real
+// riders online/offline), so it's never served in production.
+if (process.env.NODE_ENV !== "production") {
+  app.use(express.static(path.join(__dirname, "..", "public")));
+}
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
