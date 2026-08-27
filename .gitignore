@@ -1,1 +1,9 @@
 .playwright-mcp/
+
+# Contains real production DB credentials pasted into the spec — never push.
+ADMIN_PANEL_NODEJS_SPECIFICATION.md
+
+# Claude Code skill-plugin tooling, not part of the app.
+.agents/
+.claude/skills/
+skills-lock.json

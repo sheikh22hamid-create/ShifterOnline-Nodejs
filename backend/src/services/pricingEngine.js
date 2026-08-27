@@ -70,10 +70,23 @@ async function getPackageById(packageId) {
   return prisma.tbl_package.findUnique({ where: { id: Number(packageId) } });
 }
 
-/** Admin's cut of the fare, driven by tbl_package.service_charge_percent. */
-function calculateCommission(pkg, totalFare) {
-  const percent = parseFloat(pkg.service_charge_percent) || 0;
-  return round2((totalFare * percent) / 100);
+/**
+ * Admin's commission RATE (%), driven by tbl_package.service_charge_percent.
+ * This is what gets stored as-is on pkg_order.commission — matching the
+ * legacy PHP convention (confirmed against live data: real values are small
+ * integers like 5 or 0, not absolute ₹ amounts). Never store or read
+ * pkg_order.commission as a rupee figure; convert via commissionAmount()
+ * wherever real money is being moved or displayed.
+ */
+function calculateCommissionPercent(pkg) {
+  return parseFloat(pkg.service_charge_percent) || 0;
+}
+
+/** Actual ₹ commission for an order, given its base fare and stored
+ * (percentage) commission — same formula analyticsController.js uses for
+ * revenue reporting, so the two stay consistent. */
+function commissionAmount(dCharge, commissionPercent) {
+  return round2((Number(dCharge) * Number(commissionPercent)) / 100);
 }
 
 async function priceForPackageId(packageId, distanceKm) {
@@ -84,7 +97,7 @@ async function priceForPackageId(packageId, distanceKm) {
   const isNight = isNightNow(pkg);
   const fare = calculateFare(pkg, distanceKm, isNight);
   const driverEarning = calculateDriverEarning(pkg, fare);
-  const commission = calculateCommission(pkg, fare);
+  const commission = calculateCommissionPercent(pkg);
   return { pkg, fare, driverEarning, commission, isNight };
 }
 
@@ -116,7 +129,8 @@ module.exports = {
   isNightNow,
   calculateFare,
   calculateDriverEarning,
-  calculateCommission,
+  calculateCommissionPercent,
+  commissionAmount,
   getPackagesForCategory,
   getPackageById,
   priceForPackageId,

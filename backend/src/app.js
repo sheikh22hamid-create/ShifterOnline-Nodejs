@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
@@ -19,6 +20,21 @@ app.use(express.json());
 // including production, per explicit product decision (2026-08-26) — see
 // memory/order_dispatch_auth_gap.md.
 app.use(express.static(path.join(__dirname, "..", "public")));
+
+// KYC/vehicle/category document images — legacy PHP DB rows store paths
+// like "images/vehicle/x.jpg" (already including the "images/" segment),
+// so the mounted folder must be the *parent* of "images" (not "images"
+// itself) and mounted at "/", not "/images", or every URL would need a
+// stripped-prefix rewrite. LEGACY_IMAGES_DIR is not present in this repo —
+// point it at wherever the legacy PHP public_html/admin folder actually
+// lives (locally or a synced copy); until then this mount is a safe no-op.
+const legacyImagesDir = process.env.LEGACY_IMAGES_DIR || path.join(__dirname, "..", "..", "..", "php backend", "public_html", "admin");
+if (fs.existsSync(legacyImagesDir)) {
+  app.use(express.static(legacyImagesDir));
+  logger.info(`Serving legacy document images from ${legacyImagesDir}`);
+} else {
+  logger.warn(`LEGACY_IMAGES_DIR not found (${legacyImagesDir}) — KYC document image previews will 404 until this is set.`);
+}
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });

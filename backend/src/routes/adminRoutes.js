@@ -13,6 +13,8 @@ const referralController = require("../controllers/referralController");
 const settingsController = require("../controllers/settingsController");
 const analyticsController = require("../controllers/analyticsController");
 const fleetController = require("../controllers/fleetController");
+const cmsController = require("../controllers/cmsController");
+const questionController = require("../controllers/questionController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -128,5 +130,31 @@ router.get("/analytics/city-comparison", auth, authorize("superadmin"), analytic
 // --- Live Fleet Tracking & Driver Activity -----------------------------------
 router.get("/fleet/live-tracking", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.liveTracking);
 router.get("/fleet/driver-activity", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.driverActivity);
+
+// --- CMS: Cancellation Reasons, Legal Pages, FAQs ----------------------------
+router.get("/cancel-reasons", auth, cmsController.listCancelReasons);
+router.post("/cancel-reasons", auth, authorize("superadmin"), cmsController.createCancelReason);
+router.put("/cancel-reasons/:id", auth, authorize("superadmin"), cmsController.updateCancelReason);
+router.delete("/cancel-reasons/:id", auth, authorize("superadmin"), cmsController.deleteCancelReason);
+
+router.get("/pages", auth, cmsController.listPages);
+router.post("/pages", auth, authorize("superadmin"), cmsController.createPage);
+router.put("/pages/:id", auth, authorize("superadmin"), cmsController.updatePage);
+router.delete("/pages/:id", auth, authorize("superadmin"), cmsController.deletePage);
+
+router.get("/faqs", auth, cmsController.listFaqs);
+router.post("/faqs", auth, authorize("superadmin"), cmsController.createFaq);
+router.put("/faqs/:id", auth, authorize("superadmin"), cmsController.updateFaq);
+router.delete("/faqs/:id", auth, authorize("superadmin"), cmsController.deleteFaq);
+
+// --- Dynamic Questions: post-trip survey questions & choices -----------------
+router.get("/questions", auth, authorize("superadmin"), questionController.listQuestions);
+router.post("/questions", auth, authorize("superadmin"), questionController.createQuestion);
+router.put("/questions/:id", auth, authorize("superadmin"), questionController.updateQuestion);
+router.delete("/questions/:id", auth, authorize("superadmin"), questionController.deleteQuestion);
+
+router.get("/questions/:id/options", auth, authorize("superadmin"), questionController.listOptions);
+router.post("/questions/:id/options", auth, authorize("superadmin"), questionController.createOption);
+router.delete("/questions/:id/options/:optionId", auth, authorize("superadmin"), questionController.deleteOption);
 
 module.exports = router;

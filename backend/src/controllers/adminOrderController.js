@@ -123,6 +123,9 @@ async function getOne(req, res) {
         wait_timer: waitTimer,
         package: pkg,
         payment_method: paymentMethod ? paymentMethod.title : null,
+        // order.commission (from the ...order spread above) is a percentage,
+        // not a ₹ figure — this is the actual platform cut in rupees.
+        commission_amount: pricingEngine.commissionAmount(order.d_charge, order.commission),
       },
     });
   } catch (err) {
@@ -364,7 +367,10 @@ async function invoice(req, res) {
         delivery_address: order.daddress,
         distance_km: order.distance,
         line_items: lineItems,
-        commission: order.commission,
+        // order.commission is a percentage (legacy DB convention) — the
+        // invoice shows the actual ₹ platform cut, not the raw rate.
+        commission_percent: Number(order.commission),
+        commission: pricingEngine.commissionAmount(order.d_charge, order.commission),
         total: order.total_dcharge,
         payment_status: order.payment_status,
         pdf_url: null,

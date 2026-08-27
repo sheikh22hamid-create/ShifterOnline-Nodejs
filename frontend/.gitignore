@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Environment variables (VITE_API_BASE_URL, VITE_SOCKET_URL, VITE_IMAGE_BASE_URL)
+.env
+.env.local
+.env.*.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

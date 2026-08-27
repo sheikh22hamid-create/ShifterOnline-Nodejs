@@ -23,9 +23,18 @@ async function overview(req, res) {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [revenueAgg, todayRevenueAgg, totalOrders, activeOrders, totalDrivers, onlineDrivers, kycPending] = await Promise.all([
-      prisma.pkg_order.aggregate({ where: { ...orderWhere, o_status: "Completed" }, _sum: { total_dcharge: true } }),
-      prisma.pkg_order.aggregate({ where: { ...orderWhere, o_status: "Completed", odate: { gte: todayStart } }, _sum: { total_dcharge: true } }),
+    // "Revenue" here means platform earnings (admin's commission cut of the
+    // delivery charge, plus package_cost), matching the legacy PHP
+    // dashboard's admin_total query exactly — NOT total_dcharge, which is
+    // the customer's full bill (GMV). commission is stored as a percentage
+    // (confirmed against live data: values like 5, 0, not absolute ₹), so
+    // this can't be expressed as a plain Prisma _sum aggregate.
+    const cityFilter = req.scopedCityId ? Prisma.sql`AND city_id = ${req.scopedCityId}` : Prisma.empty;
+    const revenueExpr = Prisma.sql`ROUND(SUM((d_charge * commission / 100) + package_cost), 2)`;
+
+    const [revenueRows, todayRevenueRows, totalOrders, activeOrders, totalDrivers, onlineDrivers, kycPending] = await Promise.all([
+      prisma.$queryRaw`SELECT COALESCE(${revenueExpr}, 0) AS admin_total FROM pkg_order WHERE o_status = 'Completed' ${cityFilter}`,
+      prisma.$queryRaw`SELECT COALESCE(${revenueExpr}, 0) AS admin_total FROM pkg_order WHERE o_status = 'Completed' AND odate >= ${todayStart} ${cityFilter}`,
       prisma.pkg_order.count({ where: orderWhere }),
       // o_status is checked alongside order_status because cancel() never
       // resets order_status, only o_status — see adminOrderController.js.
@@ -38,8 +47,8 @@ async function overview(req, res) {
     return res.status(200).json({
       success: true,
       kpis: {
-        total_revenue: round2(revenueAgg._sum.total_dcharge),
-        today_revenue: round2(todayRevenueAgg._sum.total_dcharge),
+        total_revenue: round2(revenueRows[0]?.admin_total),
+        today_revenue: round2(todayRevenueRows[0]?.admin_total),
         total_orders: totalOrders,
         active_orders: activeOrders,
         total_drivers: totalDrivers,
@@ -65,8 +74,10 @@ async function salesReport(req, res) {
     const statusFilter = status || "Completed";
     const cityFilter = scopedCityId ? Prisma.sql`AND city_id = ${scopedCityId}` : Prisma.empty;
 
+    // "revenue" = platform earnings, same admin_total formula as overview()
+    // — see the comment there for why this can't be a plain Prisma _sum.
     const rows = await prisma.$queryRaw`
-      SELECT DATE(odate) AS day, COUNT(*) AS bookings, COALESCE(SUM(total_dcharge), 0) AS revenue
+      SELECT DATE(odate) AS day, COUNT(*) AS bookings, COALESCE(ROUND(SUM((d_charge * commission / 100) + package_cost), 2), 0) AS revenue
       FROM pkg_order
       WHERE odate BETWEEN ${start} AND ${end}
         AND o_status = ${statusFilter}
@@ -86,6 +97,8 @@ async function salesReport(req, res) {
 
 async function monthComparison(req, res) {
   try {
+    // "gmv" field name is a holdover from the first draft — it's actually
+    // platform earnings (admin_total formula), same as overview()/salesReport().
     const year = parseInt(req.query.year, 10) || new Date().getFullYear();
     const scopedCityId = req.user.role === "superadmin" ? (req.query.city_id ? Number(req.query.city_id) : null) : parseInt(req.user.city_id, 10);
     const yearStart = new Date(`${year}-01-01T00:00:00`);
@@ -96,7 +109,7 @@ async function monthComparison(req, res) {
       prisma.$queryRaw`
         SELECT
           MONTH(odate) AS month,
-          COALESCE(SUM(CASE WHEN o_status = 'Completed' THEN total_dcharge ELSE 0 END), 0) AS gmv,
+          COALESCE(SUM(CASE WHEN o_status = 'Completed' THEN (d_charge * commission / 100) + package_cost ELSE 0 END), 0) AS gmv,
           SUM(CASE WHEN o_status = 'Completed' THEN 1 ELSE 0 END) AS completed_trips,
           SUM(CASE WHEN o_status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_trips,
           COUNT(*) AS total_trips
@@ -143,7 +156,7 @@ async function cityComparison(req, res) {
       prisma.$queryRaw`
         SELECT
           city_id,
-          COALESCE(SUM(CASE WHEN o_status = 'Completed' THEN total_dcharge ELSE 0 END), 0) AS revenue,
+          COALESCE(SUM(CASE WHEN o_status = 'Completed' THEN (d_charge * commission / 100) + package_cost ELSE 0 END), 0) AS revenue,
           SUM(CASE WHEN o_status = 'Completed' THEN 1 ELSE 0 END) AS completed_trips,
           COUNT(*) AS total_trips
         FROM pkg_order

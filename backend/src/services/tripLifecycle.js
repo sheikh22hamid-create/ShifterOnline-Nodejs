@@ -158,7 +158,10 @@ async function updateStatus(orderId, riderId, status) {
     }
 
     if (order.transaction_id === "cash_payment" && Number(order.commission) > 0) {
-      const commission = Number(order.commission);
+      // order.commission is a percentage (matches the legacy PHP DB
+      // convention — see pricingEngine.js), not a ₹ amount — convert before
+      // touching real money.
+      const commission = pricingEngine.commissionAmount(order.d_charge, order.commission);
       await prisma.tbl_rider.update({
         where: { id: riderId },
         data: { wallet_balance: { decrement: commission } },
