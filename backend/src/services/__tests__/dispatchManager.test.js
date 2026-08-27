@@ -1,7 +1,7 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn() },
-  tbl_order_requests: { create: jest.fn(), updateMany: jest.fn() },
+  tbl_order_requests: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
 }));
 
 jest.mock("../pricingEngine", () => ({
@@ -44,9 +44,13 @@ describe("dispatchManager overlapping batch cascade", () => {
 
   let emitted;
   let io;
+  let orderRequestsStore;
 
   beforeEach(() => {
     jest.useFakeTimers();
+    // Clears call history (not just resolved values) so mock.calls-based
+    // assertions in one test never see calls made by a previous test.
+    jest.clearAllMocks();
     emitted = [];
     io = {
       to: (room) => ({
@@ -57,17 +61,51 @@ describe("dispatchManager overlapping batch cascade", () => {
 
     prisma.pkg_order.findUnique.mockResolvedValue({ ...order });
     prisma.pkg_order.update.mockResolvedValue({});
-    prisma.tbl_order_requests.create.mockResolvedValue({});
-    prisma.tbl_order_requests.updateMany.mockResolvedValue({});
+    // count:1 = a real Prisma updateMany affecting a row (the normal timeout
+    // case). Individual tests override this to count:0 to simulate a row
+    // that was already resolved another way (e.g. accepted) by the time the
+    // expiry sweep reaches it.
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
 
+    // Minimal fake backing store so getPreviouslyAttemptedRiderIds() sees
+    // what create() has actually written — real cross-tier dedup behavior,
+    // not a canned return value.
+    orderRequestsStore = [];
+    prisma.tbl_order_requests.create.mockImplementation(({ data }) => {
+      orderRequestsStore.push({ ...data });
+      return Promise.resolve({ id: orderRequestsStore.length, ...data });
+    });
+    prisma.tbl_order_requests.findMany.mockImplementation(({ where }) => {
+      const riderIds = [...new Set(orderRequestsStore.filter((r) => r.order_id === where.order_id).map((r) => r.rider_id))];
+      return Promise.resolve(riderIds.map((rider_id) => ({ rider_id })));
+    });
+
+    // Reset (not just re-stack) — a test that starts a cascade without
+    // advancing every scheduled tier (e.g. the idempotency-guard test)
+    // leaves its later mockResolvedValueOnce entries unconsumed, which
+    // would otherwise bleed into the next test's queue.
+    prisma.$queryRaw.mockReset();
     prisma.$queryRaw
       .mockResolvedValueOnce([1, 2, 3, 4].map(makeRiderRow)) // tier 0 (package 6)
       .mockResolvedValueOnce([5, 6, 7, 8].map(makeRiderRow)); // tier 1 (package 7)
   });
 
   afterEach(() => {
+    // dispatchManager's activeDispatches map is module-level state that
+    // outlives a single test (e.g. a test that ends mid-cascade, with a
+    // later tier still active) — every test here reuses order.id 297, and
+    // the new startDispatch idempotency guard would otherwise treat the
+    // next test's startDispatch call as a duplicate and silently no-op.
+    // Must run BEFORE useRealTimers(): stopDispatch's clearTimeout calls
+    // need to happen while fake timers are still installed, or Jest's fake
+    // timer bookkeeping never learns those pending timers were cancelled —
+    // they then fire (or are seen as "still scheduled") in a LATER test.
+    dispatchManager.stopDispatch(order.id, "test_cleanup");
     jest.useRealTimers();
-    for (const riderId of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    // Generic sweep (not a hardcoded id list) — the concurrency tests below
+    // use their own rider id ranges, so this must catch everything any test
+    // left locked, not just 1-8.
+    for (const riderId of lockManager.getAllLockedRiderIds()) {
       lockManager.releaseLock(riderId);
     }
   });
@@ -135,5 +173,274 @@ describe("dispatchManager overlapping batch cascade", () => {
     await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
     await flush();
     expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(4);
+  });
+
+  describe("cross-tier duplicate-driver exclusion", () => {
+    it("a driver already timed out on this order in an earlier tier is not re-offered in a later tier", async () => {
+      // Simulates: driver 1 was offered in Model 1, its popup expired
+      // (status flipped to 'timeout'). Model 2's batch must exclude them
+      // even though the query (mocked here) still returns them.
+      orderRequestsStore.push({ order_id: order.id, rider_id: 1, package_id: 6, status: "timeout" });
+
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6)
+        .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7) — driver 1 still shows up in the raw query
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+      await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+      await flush();
+
+      const requests = emitted.filter((e) => e.event === "order:request");
+      expect(requests.map((e) => e.room).sort()).toEqual(["driver_2", "driver_3"]);
+      expect(lockManager.isLocked(1)).toBe(false);
+    });
+
+    it("a driver already rejected on this order in an earlier tier is not re-offered in a later tier", async () => {
+      // tripLifecycle.rejectOrder marks the tbl_order_requests row status "10".
+      orderRequestsStore.push({ order_id: order.id, rider_id: 1, package_id: 6, status: "10" });
+
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6)
+        .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7)
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+      await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+      await flush();
+
+      const requests = emitted.filter((e) => e.event === "order:request");
+      expect(requests.map((e) => e.room).sort()).toEqual(["driver_2", "driver_3"]);
+      expect(lockManager.isLocked(1)).toBe(false);
+    });
+  });
+
+  it("zero eligible drivers in tier 0 does not block the cascade from reaching tier 1", async () => {
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // tier 0 (package 6) — nobody eligible
+      .mockResolvedValueOnce([5, 6].map(makeRiderRow)); // tier 1 (package 7)
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(0);
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    expect(requests.map((e) => e.room).sort()).toEqual(["driver_5", "driver_6"]);
+  });
+
+  it("all tiers exhausted with no acceptance still reaches the existing no_driver_found flow", async () => {
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    // T = 5s: tier 1 batch fires
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    // T = 15s: tier 0 expires
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS - BATCH_GAP_MS);
+    await flush();
+
+    // T = 20s: tier 1, the final tier, expires with nobody having accepted
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(0);
+    await flush();
+
+    const noDriverEvents = emitted.filter((e) => e.event === "order:no_driver_found");
+    expect(noDriverEvents).toHaveLength(1);
+    expect(noDriverEvents[0].room).toBe(`customer_${order.uid}`);
+
+    const cancelledUpdate = prisma.pkg_order.update.mock.calls.some(
+      ([args]) => args.data && args.data.o_status === "Cancelled"
+    );
+    expect(cancelledUpdate).toBe(true);
+    expect([1, 2, 3, 4, 5, 6, 7, 8].every((id) => !lockManager.isLocked(id))).toBe(true);
+  });
+
+  it("startDispatch is a no-op if a cascade is already active for the order (idempotency guard)", async () => {
+    await dispatchManager.startDispatch(order);
+    await flush();
+    expect([1, 2, 3, 4].every((id) => lockManager.isLocked(id))).toBe(true);
+
+    // Duplicate call (retry, duplicate event, etc.) must not start a second
+    // overlapping set of timers/batches for the same order.
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(4);
+  });
+
+  it("does not emit order:dismiss for a rider whose request was already resolved by the time the expiry sweep reaches it", async () => {
+    await dispatchManager.startDispatch(order);
+    await flush();
+    expect([1, 2, 3, 4].every((id) => lockManager.isLocked(id))).toBe(true);
+
+    // Simulate rider 1 having been accepted concurrently, just before this
+    // batch's expiry sweep runs: its conditional UPDATE (status:'sent' ->
+    // 'timeout') no-ops because the row is no longer 'sent' (count 0).
+    // Riders 2-4 are still genuinely pending (count 1, real timeouts).
+    prisma.tbl_order_requests.updateMany.mockImplementation(({ where }) =>
+      Promise.resolve({ count: where.rider_id === 1 ? 0 : 1 })
+    );
+
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+    await flush();
+
+    const dismissals = emitted.filter((e) => e.event === "order:dismiss");
+    const dismissedRiderIds = dismissals.map((d) => Number(d.room.split("_")[1])).sort();
+    expect(dismissedRiderIds).toEqual([2, 3, 4]); // rider 1 (already accepted) gets no false timeout dismiss
+  });
+
+  it("uses precomputed tier-0 pricing/order and skips the redundant re-fetch/update for tier 0 only", async () => {
+    // createOrder already validated+priced this exact package/distance
+    // moments earlier — startDispatch is handed that result directly.
+    const tier0Pricing = { fare: 24.78, driverEarning: 1.24, commission: 0 };
+
+    await dispatchManager.startDispatch(order, tier0Pricing);
+    await flush();
+
+    expect(prisma.pkg_order.findUnique).not.toHaveBeenCalled();
+    expect(prisma.pkg_order.update).not.toHaveBeenCalled();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    expect(requests).toHaveLength(4);
+    // Uses the precomputed earning, not pricingEngine.priceForPackageId's mocked 50.
+    expect(requests.every((r) => r.payload.driver_earning === "1.24")).toBe(true);
+  });
+
+  describe("concurrent driver selection (no global mutex)", () => {
+    it("two independent orders with disjoint candidate pools both dispatch fully, concurrently", async () => {
+      const orderA = { ...order, id: 501, category: "Bike" };
+      const orderB = { ...order, id: 502, category: "Scooter" };
+
+      prisma.pkg_order.findUnique.mockImplementation(({ where }) => {
+        if (where.id === 501) return Promise.resolve({ ...orderA });
+        if (where.id === 502) return Promise.resolve({ ...orderB });
+        return Promise.resolve(null);
+      });
+
+      // Discriminate by category (interpolated literally into the raw SQL)
+      // since both orders otherwise share the same fixture fields.
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockImplementation((_strings, ...values) => {
+        const category = values.find((v) => v === "Bike" || v === "Scooter");
+        const pool = category === "Bike" ? [601, 602, 603, 604] : [701, 702, 703, 704];
+        return Promise.resolve(pool.map(makeRiderRow));
+      });
+
+      await Promise.all([dispatchManager.startDispatch(orderA), dispatchManager.startDispatch(orderB)]);
+      await flush();
+
+      const roomsA = emitted.filter((e) => e.event === "order:request" && [601, 602, 603, 604].includes(Number(e.room.split("_")[1])));
+      const roomsB = emitted.filter((e) => e.event === "order:request" && [701, 702, 703, 704].includes(Number(e.room.split("_")[1])));
+      expect(roomsA).toHaveLength(4);
+      expect(roomsB).toHaveLength(4);
+      expect([601, 602, 603, 604].every((id) => lockManager.isLocked(id))).toBe(true);
+      expect([701, 702, 703, 704].every((id) => lockManager.isLocked(id))).toBe(true);
+
+      dispatchManager.stopDispatch(501, "test_cleanup");
+      dispatchManager.stopDispatch(502, "test_cleanup");
+    });
+
+    it("when two orders' candidate queries overlap, exactly one reserves each contested driver and the loser tops up", async () => {
+      // Round 1's SQL (mocked) returns the same 4 nearest candidates
+      // regardless of which order asked — realistic: neither order's query
+      // knew about the other's not-yet-acquired locks. The mock simulates
+      // that a rider becomes locked (by "another order", not by us) between
+      // the query running and us processing its results, exactly the race
+      // this design must survive without a global mutex.
+      const pool = [801, 802, 803, 804, 805, 806, 807, 808];
+      let call = 0;
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockImplementation(() => {
+        call++;
+        const available = pool.filter((id) => !lockManager.isLocked(id));
+        const candidates = available.slice(0, 4);
+        if (call === 1) {
+          // Simulate a concurrent order winning 2 of these 4 first.
+          lockManager.acquireLock(candidates[0], 9999, POPUP_TIMEOUT_MS);
+          lockManager.acquireLock(candidates[2], 9999, POPUP_TIMEOUT_MS);
+        }
+        return Promise.resolve(candidates.map(makeRiderRow));
+      });
+
+      const orderC = { ...order, id: 503, allowed_delivery_types: JSON.stringify([6]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderC });
+
+      await dispatchManager.startDispatch(orderC);
+      await flush();
+
+      const requests = emitted.filter((e) => e.event === "order:request");
+      expect(requests).toHaveLength(4); // topped up to the full batch size despite losing 2 of round 1
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(2); // exactly one top-up round, not more than needed
+
+      // No duplicate offer: every offered rider appears exactly once, and
+      // none of them are the 2 riders the "concurrent order" (9999) won.
+      const offeredIds = requests.map((e) => Number(e.room.split("_")[1]));
+      expect(new Set(offeredIds).size).toBe(offeredIds.length);
+      expect(offeredIds.some((id) => lockManager.peekLock(id)?.orderId === 9999)).toBe(false);
+
+      dispatchManager.stopDispatch(503, "test_cleanup");
+      lockManager.releaseLock(pool[0]);
+      lockManager.releaseLock(pool[2]);
+    });
+
+    it("a genuinely small eligible pool (2 drivers) finishes with 2 and does not retry needlessly", async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockImplementation(() => Promise.resolve([901, 902].map(makeRiderRow)));
+
+      const orderD = { ...order, id: 504, allowed_delivery_types: JSON.stringify([6]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderD });
+
+      await dispatchManager.startDispatch(orderD);
+      await flush();
+
+      const requests = emitted.filter((e) => e.event === "order:request");
+      expect(requests).toHaveLength(2);
+      // A short round (< MAX_DRIVERS_PER_BATCH) means the pool is exhausted —
+      // must not retry looking for candidates that don't exist.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+
+      dispatchManager.stopDispatch(504, "test_cleanup");
+    });
+
+    it("bounds top-up retries even under persistent contention — stops after MAX_TOPUP_ROUNDS, does not loop forever", async () => {
+      const bigPool = Array.from({ length: 40 }, (_, i) => 1000 + i);
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockImplementation(() => {
+        const available = bigPool.filter((id) => !lockManager.isLocked(id));
+        const candidates = available.slice(0, 4);
+        // Aggressive persistent contention: 3 of every 4 returned candidates
+        // get grabbed by "another order" before we can lock them ourselves,
+        // so this order nets at most 1 per round, forever, on a full pool.
+        lockManager.acquireLock(candidates[0], 9999, POPUP_TIMEOUT_MS);
+        lockManager.acquireLock(candidates[1], 9999, POPUP_TIMEOUT_MS);
+        lockManager.acquireLock(candidates[2], 9999, POPUP_TIMEOUT_MS);
+        return Promise.resolve(candidates.map(makeRiderRow));
+      });
+
+      const orderE = { ...order, id: 505, allowed_delivery_types: JSON.stringify([6]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderE });
+
+      await dispatchManager.startDispatch(orderE);
+      await flush();
+
+      // 1 initial round + MAX_TOPUP_ROUNDS(2) retries = 3 rounds max, never more,
+      // even though the batch never actually fills to 4 under this contention.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+      const requests = emitted.filter((e) => e.event === "order:request");
+      expect(requests.length).toBeLessThan(4);
+      expect(requests.length).toBeGreaterThan(0);
+
+      dispatchManager.stopDispatch(505, "test_cleanup");
+      for (const id of bigPool) lockManager.releaseLock(id);
+    });
   });
 });

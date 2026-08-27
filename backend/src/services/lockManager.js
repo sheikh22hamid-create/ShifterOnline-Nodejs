@@ -2,6 +2,20 @@
  * In-memory global driver lock map: one driver can hold at most one active
  * popup at a time, across every concurrent dispatch search. See spec §4.1.
  * rider_id -> { orderId, expiresAt }
+ *
+ * acquireLock() below is the sole concurrency primitive for driver
+ * reservation — a synchronous check-and-set with no `await` inside it, so
+ * Node's single-threaded run-to-completion semantics make it atomic on
+ * their own: two orders racing for the same rider always resolve to
+ * exactly one winner, deterministically, with no additional locking.
+ *
+ * SINGLE-INSTANCE ONLY: this Map lives in one Node process's memory. It
+ * gives no cross-process guarantee — if this service is ever horizontally
+ * scaled to multiple instances without a shared store, two different
+ * instances could each believe they'd won the same rider. A distributed
+ * reservation mechanism (e.g. a DB-level unique constraint, or a shared
+ * cache) would be required before that becomes safe. Not needed for the
+ * current single-instance deployment.
  */
 const activePopups = new Map();
 
@@ -70,23 +84,6 @@ function getAllLockedRiderIds() {
   return riderIds;
 }
 
-/**
- * Minimal promise-chain mutex serializing driver-selection critical
- * sections so two concurrent order searches never pick the same driver
- * (spec §4.2). Not a queue with fairness guarantees beyond FIFO chaining,
- * which is sufficient for a single-process Node server.
- */
-let tail = Promise.resolve();
-
-function withSelectionLock(fn) {
-  const run = tail.then(fn, fn);
-  tail = run.then(
-    () => undefined,
-    () => undefined
-  );
-  return run;
-}
-
 module.exports = {
   isLocked,
   acquireLock,
@@ -95,5 +92,4 @@ module.exports = {
   peekLock,
   getLockedRidersForOrder,
   getAllLockedRiderIds,
-  withSelectionLock,
 };

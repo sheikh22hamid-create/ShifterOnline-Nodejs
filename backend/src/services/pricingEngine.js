@@ -89,16 +89,25 @@ function commissionAmount(dCharge, commissionPercent) {
   return round2((Number(dCharge) * Number(commissionPercent)) / 100);
 }
 
-async function priceForPackageId(packageId, distanceKm) {
-  const pkg = await getPackageById(packageId);
-  if (!pkg) {
-    throw new Error(`tbl_package not found for id ${packageId}`);
-  }
+/**
+ * Pure — no DB access. Callers who already have the package row in hand
+ * (e.g. from a validation query moments earlier) should use this directly
+ * instead of priceForPackageId, to avoid re-fetching a row they already have.
+ */
+function priceForPackage(pkg, distanceKm) {
   const isNight = isNightNow(pkg);
   const fare = calculateFare(pkg, distanceKm, isNight);
   const driverEarning = calculateDriverEarning(pkg, fare);
   const commission = calculateCommissionPercent(pkg);
   return { pkg, fare, driverEarning, commission, isNight };
+}
+
+async function priceForPackageId(packageId, distanceKm) {
+  const pkg = await getPackageById(packageId);
+  if (!pkg) {
+    throw new Error(`tbl_package not found for id ${packageId}`);
+  }
+  return priceForPackage(pkg, distanceKm);
 }
 
 async function getFareEstimate({ cat_id, plat, plong, dlat, dlong }) {
@@ -133,6 +142,7 @@ module.exports = {
   commissionAmount,
   getPackagesForCategory,
   getPackageById,
+  priceForPackage,
   priceForPackageId,
   getFareEstimate,
 };

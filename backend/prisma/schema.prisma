@@ -504,6 +504,8 @@ model tbl_order_requests {
   lng        String?   @db.VarChar(255)
   created_at DateTime? @default(now()) @db.DateTime(0)
   package_id Int       @default(0)
+
+  @@index([order_id], map: "idx_order_id")
 }
 
 model tbl_otp {
@@ -786,6 +788,8 @@ model tbl_rider_delivery_type {
   rider_id      Int?
   delivery_type String? @db.VarChar(50)
   status        Int?    @default(0)
+
+  @@index([delivery_type, status, rider_id], map: "idx_delivery_type_status_rider")
 }
 
 model tbl_rider_location {

@@ -90,12 +90,20 @@ async function createOrder(req, res) {
     }
 
     const requestedPackageIds = delivery_type.map(Number);
-    const validPackages = await prisma.tbl_package.findMany({
-      where: { id: { in: requestedPackageIds }, status: 1 },
-      select: { id: true },
-    });
-    const validPackageIds = new Set(validPackages.map((p) => p.id));
-    const invalidPackageIds = requestedPackageIds.filter((id) => !validPackageIds.has(id));
+
+    // Genuinely independent reads (different tables/keys, no data dependency
+    // between them) — run concurrently instead of one-round-trip-at-a-time.
+    // Package validation now selects the full row (not just `id`) so the
+    // first tier's row can be reused directly for pricing below, instead of
+    // re-fetching the same package a second time via priceForPackageId.
+    const [validPackages, customer, distanceResult] = await Promise.all([
+      prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
+      city_id ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
+      getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
+    ]);
+
+    const packagesById = new Map(validPackages.map((p) => [p.id, p]));
+    const invalidPackageIds = requestedPackageIds.filter((id) => !packagesById.has(id));
 
     if (invalidPackageIds.length > 0) {
       return res.status(400).json({
@@ -109,11 +117,7 @@ async function createOrder(req, res) {
     // ADMIN_PANEL_NODEJS_SPECIFICATION.md §3.2) — prefer a client-supplied
     // value (the customer's current city may differ from their registered
     // one), otherwise fall back to the customer's own tbl_user.city_id.
-    let resolvedCityId = city_id ? Number(city_id) : null;
-    if (!resolvedCityId) {
-      const customer = await prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } });
-      resolvedCityId = customer?.city_id ?? null;
-    }
+    const resolvedCityId = city_id ? Number(city_id) : (customer?.city_id ?? null);
 
     // Clamp to a sane range — an unbounded radius would let the SQL scan
     // match riders across an entire country.
@@ -121,8 +125,9 @@ async function createOrder(req, res) {
     const radiusKm = Number.isFinite(parsedRadiusKm) ? Math.min(Math.max(parsedRadiusKm, 1), 100) : SEARCH_RADIUS_KM;
 
     const firstTierPackageId = requestedPackageIds[0];
-    const { distanceKm } = await getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
-    const { fare, commission } = await pricingEngine.priceForPackageId(firstTierPackageId, distanceKm);
+    const { distanceKm } = distanceResult;
+    // Reuses the package row already fetched above — no second tbl_package query.
+    const { fare, driverEarning, commission } = pricingEngine.priceForPackage(packagesById.get(firstTierPackageId), distanceKm);
 
     // package_weight arrives as a free-text string in the legacy client
     // payload (e.g. "5 Kg") but the live schema types this column as
@@ -169,7 +174,10 @@ async function createOrder(req, res) {
       },
     });
 
-    dispatchManager.startDispatch(order).catch((err) =>
+    // Hand tier 0's already-computed pricing through so the T=0 batch can
+    // skip re-querying/re-computing what was just derived above — it's for
+    // the exact same package_id + distanceKm, guaranteed identical.
+    dispatchManager.startDispatch(order, { fare, driverEarning, commission }).catch((err) =>
       logger.error(`createOrder: dispatch failed to start for order ${order.id}:`, err)
     );
 

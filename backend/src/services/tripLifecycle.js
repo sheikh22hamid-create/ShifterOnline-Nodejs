@@ -4,6 +4,7 @@ const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const { POPUP_TIMEOUT_MS } = require("../config/constants");
 
 function notifyAdminStatus(order) {
   try {
@@ -18,39 +19,93 @@ function round2(n) {
 }
 
 /**
- * Atomic first-come-first-served acceptance (spec §4.5). The conditional
- * UPDATE is the single source of truth for who won the race — affectedRows
- * tells us, never a prior SELECT.
+ * Thrown inside acceptOrder's transaction to trigger a rollback and select
+ * which clean failure message to return. Never escapes acceptOrder itself.
+ */
+class OfferNotFreshError extends Error {}
+class OrderAlreadyTakenError extends Error {}
+
+/**
+ * Atomic first-come-first-served acceptance (spec §4.5), gated on the
+ * accepted offer's own freshness — never the in-memory setTimeout, which is
+ * lost on crash/restart. Two atomic conditional UPDATEs run inside one DB
+ * transaction, so either both apply or neither does:
+ *   1. tbl_order_requests: claims THIS rider's offer for THIS order, only if
+ *      it is still 'sent' and less than POPUP_TIMEOUT_MS old — per MySQL's
+ *      own NOW(), not the Node process clock, so a crashed/restarted server
+ *      can never make a stale offer acceptable again.
+ *   2. pkg_order: claims the booking, only if still unassigned/searchable.
+ * Whichever UPDATE's WHERE clause a concurrent expiry-sweep or a competing
+ * accept fails to match affects 0 rows — InnoDB's row lock on the same
+ * request row is what makes "accept vs. expiry at the same instant"
+ * deterministic, with no extra app-level locking needed.
  */
 async function acceptOrder(orderId, riderId) {
-  const affectedRows = await prisma.$executeRaw`
-    UPDATE pkg_order
-    SET rid = ${riderId},
-        order_status = 1,
-        o_status = 'Processing',
-        accept_time = NOW()
-    WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
-  `;
+  const popupSeconds = POPUP_TIMEOUT_MS / 1000;
+  let acceptedPackageId = null;
 
-  if (affectedRows === 0) {
-    return { success: false, msg: "Order already taken or cancelled" };
+  try {
+    await prisma.$transaction(async (tx) => {
+      const requestAffected = await tx.$executeRaw`
+        UPDATE tbl_order_requests
+        SET status = 'accepted'
+        WHERE order_id = ${orderId}
+          AND rider_id = ${riderId}
+          AND status = 'sent'
+          AND created_at > (NOW() - INTERVAL ${popupSeconds} SECOND)
+      `;
+      if (requestAffected === 0) {
+        throw new OfferNotFreshError();
+      }
+
+      // The offer we just claimed carries the exact package/model the
+      // driver actually saw — pkg_order.delivery_type may have since been
+      // overwritten by a later tier's batch, so it is never used here.
+      const acceptedRequest = await tx.tbl_order_requests.findFirst({
+        where: { order_id: orderId, rider_id: riderId, status: "accepted" },
+        orderBy: { id: "desc" },
+      });
+      acceptedPackageId = acceptedRequest.package_id;
+
+      const orderAffected = await tx.$executeRaw`
+        UPDATE pkg_order
+        SET rid = ${riderId},
+            order_status = 1,
+            o_status = 'Processing',
+            accept_time = NOW()
+        WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
+      `;
+      if (orderAffected === 0) {
+        throw new OrderAlreadyTakenError();
+      }
+    });
+  } catch (err) {
+    if (err instanceof OfferNotFreshError) {
+      // Non-authoritative — only to produce a more specific message than
+      // the rollback alone gives us. Correctness never depends on this read.
+      const requestRow = await prisma.tbl_order_requests.findFirst({
+        where: { order_id: orderId, rider_id: riderId },
+        orderBy: { id: "desc" },
+      });
+      if (requestRow && requestRow.status === "sent") {
+        return { success: false, msg: "Offer expired" };
+      }
+      return { success: false, msg: "Order already taken or cancelled" };
+    }
+    if (err instanceof OrderAlreadyTakenError) {
+      return { success: false, msg: "Order already taken or cancelled" };
+    }
+    throw err;
   }
 
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
-  const { pkg, driverEarning, commission } = await pricingEngine.priceForPackageId(
-    order.delivery_type,
+  const { pkg, fare, driverEarning, commission } = await pricingEngine.priceForPackageId(
+    acceptedPackageId,
     Number(order.distance) || 0
   );
 
-  await prisma.pkg_order.update({
-    where: { id: orderId },
-    data: { driver_earning: driverEarning, commission },
-  });
-
-  await prisma.tbl_order_requests.updateMany({
-    where: { order_id: orderId, rider_id: riderId },
-    data: { status: "accepted" },
-  });
+  const priced = { d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: driverEarning, commission };
+  await prisma.pkg_order.update({ where: { id: orderId }, data: priced });
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
   // still holding a popup for this order and cancel remaining timers.
@@ -62,7 +117,7 @@ async function acceptOrder(orderId, riderId) {
 
   return {
     success: true,
-    order: { ...order, driver_earning: driverEarning, package: pkg },
+    order: { ...order, ...priced, package: pkg },
     rider,
   };
 }

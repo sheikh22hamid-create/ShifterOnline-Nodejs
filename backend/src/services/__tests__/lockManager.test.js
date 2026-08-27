@@ -48,21 +48,21 @@ describe("lockManager driver popup lock", () => {
     lockManager.releaseLock("r4");
     lockManager.releaseLock("r5");
   });
-});
 
-describe("lockManager.withSelectionLock", () => {
-  it("serializes concurrent critical sections instead of interleaving them", async () => {
-    const order = [];
+  it("acquireLock is atomic under concurrent contention: exactly one of two racing callers wins", async () => {
+    // No global mutex exists anymore — this is what actually guarantees
+    // "only one order gets a given driver": acquireLock is synchronous
+    // (no `await` inside it), so two callers "racing" for the same rider
+    // can never truly interleave; whichever's call executes first wins.
+    const results = await Promise.all([
+      Promise.resolve().then(() => lockManager.acquireLock("r-race", 600, 15000)),
+      Promise.resolve().then(() => lockManager.acquireLock("r-race", 601, 15000)),
+    ]);
 
-    const task = (id) =>
-      lockManager.withSelectionLock(async () => {
-        order.push(`start-${id}`);
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        order.push(`end-${id}`);
-      });
+    const winners = results.filter(Boolean);
+    expect(winners).toHaveLength(1);
+    expect(lockManager.isLocked("r-race")).toBe(true);
 
-    await Promise.all([task("A"), task("B")]);
-
-    expect(order).toEqual(["start-A", "end-A", "start-B", "end-B"]);
+    lockManager.releaseLock("r-race");
   });
 });
