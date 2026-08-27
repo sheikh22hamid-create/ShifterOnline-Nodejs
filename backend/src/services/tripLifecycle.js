@@ -2,6 +2,16 @@ const prisma = require("../config/db");
 const dispatchManager = require("./dispatchManager");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const adminSocket = require("../sockets/adminSocket");
+const logger = require("../utils/logger");
+
+function notifyAdminStatus(order) {
+  try {
+    adminSocket.notifyOrderStatusUpdate(order);
+  } catch (err) {
+    logger.error(`notifyAdminStatus failed for order ${order?.id}:`, err);
+  }
+}
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -48,6 +58,7 @@ async function acceptOrder(orderId, riderId) {
   dispatchManager.stopDispatch(orderId, "accepted_by_other");
 
   const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+  notifyAdminStatus(order);
 
   return {
     success: true,
@@ -85,6 +96,7 @@ async function updateStatus(orderId, riderId, status) {
       create: { order_id: orderId, rid: riderId, pickup_wait_start: now, created_at: now },
       update: { pickup_wait_start: now, updated_at: now },
     });
+    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 2, o_status: "Pickup", rid: riderId });
     return { success: true, order_status: 2, o_status: "Pickup" };
   }
 
@@ -105,6 +117,7 @@ async function updateStatus(orderId, riderId, status) {
       where: { order_id_rid: { order_id: orderId, rid: riderId } },
       data: { pickup_wait_end: now, pickup_wait_seconds: pickupWaitSeconds, updated_at: now },
     });
+    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 3, o_status: "On_Route", rid: riderId });
     return { success: true, order_status: 3, o_status: "On Route" };
   }
 
@@ -163,6 +176,7 @@ async function updateStatus(orderId, riderId, status) {
       });
     }
 
+    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     return { success: true, order_status: 5, o_status: "Completed" };
   }
 

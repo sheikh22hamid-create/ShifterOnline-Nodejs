@@ -6,4 +6,7 @@ module.exports = {
   ROAD_DISTANCE_FUDGE_FACTOR: 1.3,
   ASSUMED_URBAN_SPEED_KMH: 30,
   RIDER_LOCATION_WRITE_THROTTLE_MS: 5000,
+
+  ADMIN_ROLES: ["superadmin", "admin", "executive"],
+  BCRYPT_SALT_ROUNDS: 10,
 };

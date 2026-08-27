@@ -5,6 +5,7 @@ const cors = require("cors");
 const userRoutes = require("./routes/user.routes");
 const orderRoutes = require("./routes/orderRoutes");
 const riderRoutes = require("./routes/riderRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 const logger = require("./utils/logger");
 
 const app = express();
@@ -26,6 +27,7 @@ app.get("/health", (req, res) => {
 app.use("/api/users", userRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/rider", riderRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 // Safety net beyond each controller's own try/catch — never leak stack traces.
 app.use((err, req, res, next) => {

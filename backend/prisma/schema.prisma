@@ -15,11 +15,21 @@ model Pkg_tracking {
 }
 
 model admin {
-  id       Int         @id @default(autoincrement())
-  username String      @db.LongText
-  password String      @db.LongText
-  role     admin_role? @default(admin)
-  city_id  Int?
+  id            Int         @id @default(autoincrement())
+  username      String      @db.LongText
+  password      String      @db.LongText
+  name          String?     @db.VarChar(150)
+  email         String?     @db.VarChar(150)
+  mobile        String?     @db.VarChar(20)
+  avatar        String?     @db.VarChar(255)
+  role          admin_role? @default(executive)
+  city_id       Int?
+  status        Int         @default(1)
+  permissions   Json?
+  last_login_at DateTime?
+  created_by    Int?        @default(0)
+  created_at    DateTime?   @default(now())
+  updated_at    DateTime?   @default(now()) @updatedAt
 }
 
 model app_settings {
@@ -981,6 +991,7 @@ enum driver_withdraw_requests_status {
 enum admin_role {
   superadmin
   admin
+  executive
 }
 
 enum tbl_custom_order_bid_status {

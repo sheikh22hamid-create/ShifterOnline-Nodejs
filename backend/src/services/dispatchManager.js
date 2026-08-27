@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const {
   POPUP_TIMEOUT_MS,
@@ -170,6 +171,12 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
 
       const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
       if (order && order.rid === 0 && order.order_status === 0) {
+        try {
+          adminSocket.notifyDispatchAlert(orderId, order.city_id);
+        } catch (adminErr) {
+          logger.error(`dispatchManager: admin socket notify failed for order ${orderId}:`, adminErr);
+        }
+
         await prisma.pkg_order.update({
           where: { id: orderId },
           data: { o_status: "Cancelled", cancel_reason: "No driver found" },

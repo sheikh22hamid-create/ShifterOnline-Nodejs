@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const pricingEngine = require("../services/pricingEngine");
 const tripLifecycle = require("../services/tripLifecycle");
 const dispatchManager = require("../services/dispatchManager");
+const adminSocket = require("../sockets/adminSocket");
 const { getRoadDistanceKm } = require("../utils/geoDistance");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
@@ -71,6 +72,7 @@ async function createOrder(req, res) {
       cou_id,
       cou_amt,
       radius_km,
+      city_id,
     } = req.body;
 
     if (
@@ -101,6 +103,16 @@ async function createOrder(req, res) {
         Result: "false",
         ResponseMsg: `Invalid or inactive package id(s) in delivery_type: ${invalidPackageIds.join(", ")}. Call /api/order/fare-estimate first to get valid package_id values for this cat_id.`,
       });
+    }
+
+    // pkg_order.city_id drives admin-panel city scoping (see
+    // ADMIN_PANEL_NODEJS_SPECIFICATION.md §3.2) — prefer a client-supplied
+    // value (the customer's current city may differ from their registered
+    // one), otherwise fall back to the customer's own tbl_user.city_id.
+    let resolvedCityId = city_id ? Number(city_id) : null;
+    if (!resolvedCityId) {
+      const customer = await prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } });
+      resolvedCityId = customer?.city_id ?? null;
     }
 
     // Clamp to a sane range — an unbounded radius would let the SQL scan
@@ -150,6 +162,7 @@ async function createOrder(req, res) {
         radius_range: Math.round(radiusKm),
         radius_charge: 0,
         booking_type: Number(booking_type) || 1,
+        city_id: resolvedCityId,
         delivery_type: firstTierPackageId,
         allowed_delivery_types: JSON.stringify(requestedPackageIds),
         trans_id: transaction_id || null,
@@ -159,6 +172,12 @@ async function createOrder(req, res) {
     dispatchManager.startDispatch(order).catch((err) =>
       logger.error(`createOrder: dispatch failed to start for order ${order.id}:`, err)
     );
+
+    try {
+      adminSocket.notifyNewOrder(order);
+    } catch (err) {
+      logger.error(`createOrder: admin socket notify failed for order ${order.id}:`, err);
+    }
 
     return res.status(200).json({
       ResponseCode: "200",

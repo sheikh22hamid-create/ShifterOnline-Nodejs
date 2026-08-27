@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const adminSocket = require("./adminSocket");
 const logger = require("../utils/logger");
 const { RIDER_LOCATION_WRITE_THROTTLE_MS } = require("../config/constants");
 
@@ -13,6 +14,8 @@ function registerTrackingHandlers(io, socket) {
       lng,
       heading,
     });
+
+    adminSocket.notifyLiveDriverPing(Number(rider_id), socket.data.riderCityId, lat, lng, heading);
 
     const riderId = Number(rider_id);
     const now = Date.now();

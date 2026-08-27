@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const prisma = require("../config/db");
 const dispatchManager = require("../services/dispatchManager");
+const adminSocket = require("./adminSocket");
 const { registerOrderHandlers } = require("./orderSocket");
 const { registerTrackingHandlers } = require("./trackingSocket");
 const logger = require("../utils/logger");
@@ -46,15 +47,27 @@ function initSocket(httpServer) {
   });
 
   dispatchManager.init(ioInstance);
+  adminSocket.init(ioInstance);
 
   ioInstance.on("connection", (socket) => {
     logger.info(`socket connected: ${socket.id}`);
 
-    socket.on("driver:join", ({ rider_id }) => {
+    socket.on("driver:join", async ({ rider_id }) => {
       socket.data.riderId = Number(rider_id);
       socket.join(`driver_${rider_id}`);
       rejoinActiveOrderRoomForRider(socket, socket.data.riderId);
+
+      // Cached once at join time so driver:location_ping (high-frequency)
+      // doesn't need a DB lookup per ping to route admin:live_driver_ping.
+      try {
+        const rider = await prisma.tbl_rider.findUnique({ where: { id: socket.data.riderId }, select: { city_id: true } });
+        socket.data.riderCityId = rider ? rider.city_id : null;
+      } catch (err) {
+        logger.error(`driver:join: failed loading city_id for rider ${rider_id}:`, err);
+      }
     });
+
+    adminSocket.registerAdminHandlers(ioInstance, socket);
 
     socket.on("customer:join", ({ user_id, order_id }) => {
       socket.data.userId = Number(user_id);
