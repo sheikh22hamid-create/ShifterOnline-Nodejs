@@ -16,8 +16,9 @@
   precision instrument, not a generic dashboard template.
 
   Theme is applied via data-theme="light" | "dark" on <html>, set by
-  ThemeContext (initial value read from localStorage, falling back to
-  prefers-color-scheme once in JS) — no CSS media-query layer needed.
+  ThemeContext (initial value read from localStorage, defaulting to light
+  when nothing is stored — system prefers-color-scheme is intentionally
+  ignored) — no CSS media-query layer needed.
 */
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
