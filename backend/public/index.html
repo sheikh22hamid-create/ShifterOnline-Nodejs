@@ -437,11 +437,15 @@
   }
   .request-popup.visible {
     display: flex;
-    animation: popIn 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    animation: popIn 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2), ringPulse 0.9s ease-in-out infinite alternate;
   }
   @keyframes popIn {
     from { opacity: 0; transform: translateY(8px) scale(0.98); }
     to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes ringPulse {
+    from { box-shadow: 0 0 0 1px rgba(255, 157, 77, 0.2), 0 8px 24px -6px rgba(255, 157, 77, 0.3); }
+    to { box-shadow: 0 0 0 5px rgba(255, 157, 77, 0.6), 0 16px 40px -4px rgba(255, 157, 77, 0.7); }
   }
 
   .request-popup__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -693,6 +697,9 @@
           <div class="role-glyph role-glyph--driver">🛵</div>
           <div class="panel__title">Driver app<small>receives requests &amp; runs the trip</small></div>
         </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="pill" id="btnTestSound" style="cursor:pointer; background:rgba(255,157,77,0.12); border-color:rgba(255,157,77,0.3); color:var(--accent-signal);" title="Click to test ringing sound">🔔 Test Ring</button>
+        </div>
       </div>
       <div class="panel__body">
 
@@ -712,6 +719,9 @@
               <label for="riderLng">Current longitude</label>
               <input type="text" id="riderLng" value="75.913299" />
             </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn btn--ghost" id="btnSnapToPickup" style="width:100%; font-size:12px; padding:7px 10px;" title="Set driver location right at customer pickup so this driver is guaranteed Batch 1">📍 Snap Driver Location to Customer Pickup (Guarantees Instant Dispatch)</button>
           </div>
         </div>
 
@@ -1164,6 +1174,20 @@
         `;
         list.appendChild(row);
       }
+
+      // Auto-sync online status for current active rider if found in list
+      const activeD = json.drivers.find((d) => Number(d.id) === Number($("riderId").value));
+      if (activeD && activeD.online && !isOnline) {
+        isOnline = true;
+        joinDriverSocket();
+        $("riderStatusDot").classList.add("dot--live", "dot--pulse");
+        $("riderStatusDot").classList.remove("dot--off");
+        $("riderStatusText").textContent = "Online — visible to dispatch";
+        $("btnGoOnline").textContent = "Go offline";
+        $("btnGoOnline").className = "btn btn--ghost";
+        $("waitingNote").textContent = "Waiting for order requests…";
+        $("waitingNote").style.display = "block";
+      }
     }
     loadTestDrivers();
     $("btnRefreshDrivers").addEventListener("click", loadTestDrivers);
@@ -1174,6 +1198,8 @@
       if (btn.dataset.lat) $("riderLat").value = btn.dataset.lat;
       if (btn.dataset.lng) $("riderLng").value = btn.dataset.lng;
       loadRiderModelAccess();
+      joinDriverSocket();
+      loadTestDrivers();
     });
 
     async function loadRiderModelAccess() {
@@ -1232,6 +1258,90 @@
     $("riderId").addEventListener("change", loadRiderModelAccess);
     loadRiderModelAccess();
 
+    // ---------------------------------------------------------------
+    // Web Audio API Ringtone & Audio Engine
+    // Synthesizes urgent dual-frequency ride alert chime (Uber/Ola style)
+    // ---------------------------------------------------------------
+    let audioCtx = null;
+    let ringtoneInterval = null;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Unlock Web Audio on first user interaction anywhere on page
+    document.addEventListener("click", () => getAudioContext(), { once: true });
+    document.addEventListener("touchstart", () => getAudioContext(), { once: true });
+
+    function playTone(freq1, freq2, duration) {
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      try {
+        const now = ctx.currentTime;
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc1.type = "sine";
+        osc2.type = "triangle";
+        osc1.frequency.setValueAtTime(freq1, now);
+        osc2.frequency.setValueAtTime(freq2, now);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.exponentialRampToValueAtTime(0.32, now + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + duration);
+        osc2.stop(now + duration);
+      } catch (e) {
+        console.warn("Audio playTone error:", e);
+      }
+    }
+
+    function startRingtone() {
+      stopRingtone();
+      const pulse = () => {
+        playTone(830.61, 1046.5, 0.22); // G#5 + C6
+        setTimeout(() => playTone(987.77, 1318.51, 0.28), 220); // B5 + E6
+      };
+      pulse();
+      ringtoneInterval = setInterval(pulse, 850);
+    }
+
+    function stopRingtone() {
+      if (ringtoneInterval) {
+        clearInterval(ringtoneInterval);
+        ringtoneInterval = null;
+      }
+    }
+
+    function playSuccessTone() {
+      stopRingtone();
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, i) => {
+        setTimeout(() => playTone(freq, freq * 1.5, 0.25), i * 110);
+      });
+    }
+
+    $("btnTestSound").addEventListener("click", () => {
+      getAudioContext();
+      startRingtone();
+      setTimeout(() => stopRingtone(), 2600);
+    });
+
     let isOnline = false;
     let activeRequest = null; // { orderId, packageId, popupDuration, pickup:{lat,lng}, drop:{lat,lng} }
     let countdownTimer = null;
@@ -1241,8 +1351,35 @@
 
     function currentRiderId() { return Number($("riderId").value); }
 
+    // Instant socket join function
+    function joinDriverSocket() {
+      const rider_id = currentRiderId();
+      if (!rider_id) return;
+      emitDriver("driver:join", {
+        rider_id,
+        lat: Number($("riderLat").value) || 22.7402368,
+        lng: Number($("riderLng").value) || 75.913299,
+      });
+    }
+
     driverSocket.on("connect", () => {
-      if (isOnline) emitDriver("driver:join", { rider_id: currentRiderId(), lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
+      joinDriverSocket();
+    });
+
+    // Snap driver location directly to customer's pickup point
+    $("btnSnapToPickup").addEventListener("click", async () => {
+      const pLat = $("pickLat").value;
+      const pLng = $("pickLng").value;
+      $("riderLat").value = pLat;
+      $("riderLng").value = pLng;
+      const rider_id = currentRiderId();
+      joinDriverSocket();
+      await api("POST", "/api/rider/location", { rider_id, lat: Number(pLat), lng: Number(pLng) });
+      logEvent("driver", "out", "📍 Snapped Driver Location to Pickup Point", { rider_id, lat: pLat, lng: pLng, distance_km: 0 });
+      $("btnSnapToPickup").textContent = "✓ Snapped to Pickup (Distance: 0.00 km)";
+      setTimeout(() => {
+        $("btnSnapToPickup").textContent = "📍 Snap Driver Location to Customer Pickup (Guarantees Instant Dispatch)";
+      }, 2500);
     });
 
     $("btnGoOnline").addEventListener("click", async () => {
@@ -1251,15 +1388,8 @@
       const rider_id = currentRiderId();
 
       if (isOnline) {
-        const statusRes = await api("POST", "/api/rider/status", { rider_id, a_status: 1 });
-        const locRes = await api("POST", "/api/rider/location", { rider_id, lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
-        logEvent("driver", "out", "POST /api/rider/status + /api/rider/location", { statusRes: statusRes.json, locRes: locRes.json });
-        if (!statusRes.ok) {
-          $("driverError").textContent = statusRes.json.msg || "Could not go online.";
-          isOnline = false;
-          return;
-        }
-        emitDriver("driver:join", { rider_id, lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
+        // Optimistic instant socket join so socket is ready in 0ms!
+        joinDriverSocket();
         $("riderStatusDot").classList.add("dot--live", "dot--pulse");
         $("riderStatusDot").classList.remove("dot--off");
         $("riderStatusText").textContent = "Online — visible to dispatch";
@@ -1267,28 +1397,38 @@
         $("btnGoOnline").className = "btn btn--ghost";
         $("waitingNote").textContent = "Waiting for order requests…";
         $("waitingNote").style.display = "block";
+
+        // Persist online status and location in DB
+        api("POST", "/api/rider/status", { rider_id, a_status: 1 });
+        api("POST", "/api/rider/location", { rider_id, lat: Number($("riderLat").value), lng: Number($("riderLng").value) });
+        logEvent("driver", "out", "POST /api/rider/status (a_status: 1)", { rider_id });
       } else {
-        const statusRes = await api("POST", "/api/rider/status", { rider_id, a_status: 0 });
-        logEvent("driver", "out", "POST /api/rider/status", statusRes.json);
+        stopRingtone();
         $("riderStatusDot").classList.remove("dot--live", "dot--pulse");
         $("riderStatusDot").classList.add("dot--off");
         $("riderStatusText").textContent = "Offline — invisible to dispatch";
         $("btnGoOnline").textContent = "Go online";
         $("btnGoOnline").className = "btn btn--amber";
         $("waitingNote").textContent = "Go online to start receiving order requests.";
+
+        api("POST", "/api/rider/status", { rider_id, a_status: 0 });
+        logEvent("driver", "out", "POST /api/rider/status (a_status: 0)", { rider_id });
       }
     });
 
     driverSocket.on("order:request", (data) => {
       activeRequest = data;
       $("waitingNote").style.display = "none";
-      $("reqTierBadge").textContent = data.category + " · pkg " + data.package_id;
+      $("reqTierBadge").textContent = (data.category || "Bike") + " · pkg " + data.package_id;
       $("reqOrderId").textContent = "#" + data.order_id;
-      $("reqDistance").textContent = data.distance_km;
-      $("reqPickup").textContent = data.pickup_address;
-      $("reqDrop").textContent = data.delivery_address;
-      $("reqEarning").textContent = "₹" + data.driver_earning;
+      $("reqDistance").textContent = data.distance_km || data.distance || "—";
+      $("reqPickup").textContent = data.pickup_address || "—";
+      $("reqDrop").textContent = data.delivery_address || "—";
+      $("reqEarning").textContent = "₹" + (data.driver_earning || "—");
       $("requestPopup").classList.add("visible");
+      
+      // Ring the phone!
+      startRingtone();
       startCountdown(Number(data.popup_duration || 15));
     });
 
@@ -1311,11 +1451,15 @@
       countdownTimer = setInterval(() => {
         const remaining = Math.max(0, seconds - (Date.now() - start) / 1000);
         num.textContent = Math.ceil(remaining);
-        if (remaining <= 0) clearInterval(countdownTimer);
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          stopRingtone();
+        }
       }, 200);
     }
 
     function hideRequestPopup() {
+      stopRingtone();
       $("requestPopup").classList.remove("visible");
       clearInterval(countdownTimer);
       if (isOnline) $("waitingNote").style.display = "block";
@@ -1330,21 +1474,25 @@
 
     $("btnAccept").addEventListener("click", () => {
       if (!activeRequest) return;
+      stopRingtone();
       emitDriver("order:accept", { rider_id: currentRiderId(), order_id: Number(activeRequest.order_id) });
     });
 
     $("btnReject").addEventListener("click", () => {
       if (!activeRequest) return;
+      stopRingtone();
       emitDriver("order:reject", { rider_id: currentRiderId(), order_id: Number(activeRequest.order_id) });
       hideRequestPopup();
     });
 
     driverSocket.on("order:accept:ack", (data) => {
+      stopRingtone();
       if (!data.Result) {
         $("driverError").textContent = data.msg || "Accept failed.";
         hideRequestPopup();
         return;
       }
+      playSuccessTone();
       acceptedOrderId = activeRequest ? Number(activeRequest.order_id) : null;
       const req = activeRequest;
       hideRequestPopup();
