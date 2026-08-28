@@ -55,7 +55,7 @@ async function getPreviouslyAttemptedRiderIds(orderId) {
  * order (see getPreviouslyAttemptedRiderIds) — no driver sees the same
  * booking twice.
  */
-async function selectEligibleDrivers(order, packageId, excludeRiderIds) {
+async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = MAX_DRIVERS_PER_BATCH + 1) {
   const excludeSet = new Set(excludeRiderIds.map(Number));
   const exclude = excludeSet.size > 0 ? [...excludeSet] : [0];
   const radiusKm = Number(order.radius_range) || SEARCH_RADIUS_KM;
@@ -87,7 +87,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds) {
       AND r.id NOT IN (${Prisma.join(exclude)})
     HAVING distance_km <= ${radiusKm}
     ORDER BY is_favorite DESC, distance_km ASC
-    LIMIT ${MAX_DRIVERS_PER_BATCH}
+    LIMIT ${limit}
   `;
 
   // Belt-and-suspenders: the SQL's own NOT IN already excludes these riders,
@@ -115,38 +115,60 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning) {
   };
 }
 
+async function checkCascadeTermination(orderId) {
+  const state = activeDispatches.get(orderId);
+  if (!state) return;
+
+  const isExhausted = state.currentTierIndex >= state.tiers.length && (state.activeExpiryTimers || 0) === 0;
+  if (!isExhausted) return;
+
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  if (order && order.rid === 0 && order.order_status === 0) {
+    try {
+      adminSocket.notifyDispatchAlert(orderId, order.city_id);
+    } catch (adminErr) {
+      logger.error(`dispatchManager: admin socket notify failed for order ${orderId}:`, adminErr);
+    }
+
+    await prisma.pkg_order.update({
+      where: { id: orderId },
+      data: { o_status: "Cancelled", cancel_reason: "No driver found" },
+    });
+    requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
+      order_id: String(orderId),
+    });
+    activeDispatches.delete(orderId);
+  }
+}
+
 /**
- * Dispatches one tier's batch. Deliberately NOT serialized against other
- * orders (no global mutex) — independent bookings must select/lock/offer
- * concurrently. The only shared resource across orders is lockManager's
- * activePopups map, and acquireLock() is already atomic (synchronous
- * check-and-set, no await inside it), so two orders racing for the same
- * rider always resolve to exactly one winner with no extra locking needed.
- *
- * What the mutex actually used to paper over: two orders' eligibility
- * queries can legitimately return overlapping candidates (neither knows
- * about the other's not-yet-acquired locks), so whichever order loses a
- * given rider to the other must not just ship an under-filled batch — it
- * tops itself back up with a fresh query (excluding everyone now known
- * taken), bounded to MAX_TOPUP_ROUNDS extra rounds so a genuinely small
- * eligible pool still resolves immediately rather than retrying pointlessly.
+ * Dispatches one batch of up to MAX_DRIVERS_PER_BATCH drivers.
+ * Uses Tier Exhaustion:
+ * - Queries the current tier.
+ * - If current tier has more than MAX_DRIVERS_PER_BATCH eligible candidates,
+ *   offers the first MAX_DRIVERS_PER_BATCH and keeps currentTierIndex so the
+ *   next batch continues offering to remaining drivers in the same tier.
+ * - Only advances to the next tier when current tier has exhausted all
+ *   available candidates within the search radius.
  */
-async function runBatch(orderId, tierIndex) {
+async function runBatch(orderId) {
   const state = activeDispatches.get(orderId);
   if (!state) return; // stopDispatch already ran (accepted/cancelled)
 
-  const packageId = state.tiers[tierIndex];
-  if (packageId === undefined) return;
+  if (state.currentTierIndex >= state.tiers.length) {
+    await checkCascadeTermination(orderId);
+    return;
+  }
 
-  // Tier 0 only: startDispatch was handed the just-created order row and
-  // its already-computed pricing (same package_id + distance createOrder
-  // just validated and priced). Nothing external can have changed rid/
-  // order_status/pricing in the sub-millisecond gap between the INSERT and
-  // this call — reusing them skips two remote DB round trips (a re-fetch of
-  // the row we already have, and a re-fetch+re-write of pricing the INSERT
-  // already wrote correctly). Tier 1+ always re-fetch: real time has
-  // passed, so the order's state may have legitimately changed.
-  const precomputed = tierIndex === 0 ? state.tier0Precomputed : null;
+  const tierIndex = state.currentTierIndex;
+  const packageId = state.tiers[tierIndex];
+  if (packageId === undefined) {
+    await checkCascadeTermination(orderId);
+    return;
+  }
+
+  const precomputed = (tierIndex === 0 && !state.hasRunTier0) ? state.tier0Precomputed : null;
+  state.hasRunTier0 = true;
 
   const currentOrder = precomputed ? precomputed.order : await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (!currentOrder || currentOrder.rid !== 0 || currentOrder.order_status !== 0) {
@@ -169,19 +191,24 @@ async function runBatch(orderId, tierIndex) {
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch started`);
 
-  // Riders already tried in THIS batch (won or lost) — re-read fresh each
-  // round via getAllLockedRiderIds() so a rider locked by a *different*
-  // concurrent order between rounds is also excluded, not just our own.
   const consideredThisBatch = new Set();
   const lockedRiderIds = [];
   let round = 0;
+  let hasMoreInTier = false;
 
   while (lockedRiderIds.length < MAX_DRIVERS_PER_BATCH && round <= MAX_TOPUP_ROUNDS) {
     const excludeRiderIds = [...new Set([...lockManager.getAllLockedRiderIds(), ...attemptedRiderIds, ...consideredThisBatch])];
-    const candidates = await selectEligibleDrivers(currentOrder, packageId, excludeRiderIds);
+    const candidates = await selectEligibleDrivers(currentOrder, packageId, excludeRiderIds, MAX_DRIVERS_PER_BATCH + 1);
 
+    if (candidates.length > MAX_DRIVERS_PER_BATCH) {
+      hasMoreInTier = true;
+    }
+
+    const eligibleBatch = candidates.slice(0, MAX_DRIVERS_PER_BATCH - lockedRiderIds.length);
     let lockedThisRound = 0;
-    for (const driver of candidates) {
+    const lockedThisRoundDrivers = [];
+
+    for (const driver of eligibleBatch) {
       if (lockedRiderIds.length >= MAX_DRIVERS_PER_BATCH) break;
       const riderId = Number(driver.rider_id);
       consideredThisBatch.add(riderId);
@@ -189,44 +216,75 @@ async function runBatch(orderId, tierIndex) {
 
       lockedRiderIds.push(riderId);
       lockedThisRound++;
+      lockedThisRoundDrivers.push(driver);
+    }
 
-      await prisma.tbl_order_requests.create({
-        data: {
-          order_id: orderId,
-          rider_id: riderId,
-          package_id: Number(packageId),
-          status: "sent",
-          lat: driver.rlats ? String(driver.rlats) : null,
-          lng: driver.rlongs ? String(driver.rlongs) : null,
-        },
-      });
+    if (lockedThisRoundDrivers.length > 0) {
+      const payload = buildOrderRequestPayload(currentOrder, packageId, distanceKm.toFixed(1), driverEarning);
+      await Promise.all(
+        lockedThisRoundDrivers.map(async (driver) => {
+          const riderId = Number(driver.rider_id);
+          await prisma.tbl_order_requests.create({
+            data: {
+              order_id: orderId,
+              rider_id: riderId,
+              package_id: Number(packageId),
+              status: "sent",
+              lat: driver.rlats ? String(driver.rlats) : null,
+              lng: driver.rlongs ? String(driver.rlongs) : null,
+            },
+          });
 
-      requireIo()
-        .to(`driver_${riderId}`)
-        .emit("order:request", buildOrderRequestPayload(currentOrder, packageId, distanceKm.toFixed(1), driverEarning));
+          requireIo().to(`driver_${riderId}`).emit("order:request", payload);
+        })
+      );
     }
 
     logger.info(
       `dispatchManager: order=${orderId} tier=${tierIndex} round=${round} candidates=${candidates.length} locked_this_round=${lockedThisRound} total_locked=${lockedRiderIds.length}`
     );
 
-    // Fewer candidates than the batch size means the eligible pool is
-    // genuinely exhausted at these exclusions — another round can't find
-    // more, so stop instead of retrying pointlessly.
     if (candidates.length < MAX_DRIVERS_PER_BATCH) break;
     round++;
   }
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length}`);
-  scheduleExpiry(orderId, tierIndex, lockedRiderIds);
+
+  if (lockedRiderIds.length > 0) {
+    scheduleExpiry(orderId, tierIndex, lockedRiderIds);
+  }
+
+  // Tier Progression:
+  // If the tier has no more candidates beyond what we just locked, advance to next tier!
+  // If hasMoreInTier is true, stay on currentTierIndex so the next batch at T+5s finishes this tier.
+  if (!hasMoreInTier) {
+    state.currentTierIndex++;
+  }
+
+  // Schedule next batch after BATCH_GAP_MS if we have more tiers or more drivers in current tier
+  if (state.currentTierIndex < state.tiers.length) {
+    const timer = setTimeout(() => {
+      state.timers.delete(timer);
+      runBatch(orderId).catch((err) =>
+        logger.error(`dispatchManager: next batch failed for order ${orderId}:`, err)
+      );
+    }, BATCH_GAP_MS);
+    state.timers.add(timer);
+  } else {
+    // All tiers exhausted
+    await checkCascadeTermination(orderId);
+  }
 }
 
 function scheduleExpiry(orderId, tierIndex, riderIds) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
 
+  state.activeExpiryTimers = (state.activeExpiryTimers || 0) + 1;
+
   const timer = setTimeout(async () => {
     state.timers.delete(timer);
+    state.activeExpiryTimers = Math.max(0, (state.activeExpiryTimers || 1) - 1);
 
     try {
       const stillPendingRiderIds = riderIds.filter((riderId) => {
@@ -240,10 +298,6 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
           where: { order_id: orderId, rider_id: riderId, status: "sent" },
           data: { status: "timeout" },
         });
-        // 0 rows means this offer was already resolved (accepted/rejected/
-        // cancelled) by the time this sweep reached it — the timer here is
-        // only for cleanup, never authoritative, so don't tell a driver who
-        // already won (or otherwise resolved) that their offer timed out.
         if (result.count === 0) continue;
         requireIo().to(`driver_${riderId}`).emit("order:dismiss", {
           order_id: String(orderId),
@@ -251,26 +305,7 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
         });
       }
 
-      const isLastTier = tierIndex === state.tiers.length - 1;
-      if (!isLastTier) return;
-
-      const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
-      if (order && order.rid === 0 && order.order_status === 0) {
-        try {
-          adminSocket.notifyDispatchAlert(orderId, order.city_id);
-        } catch (adminErr) {
-          logger.error(`dispatchManager: admin socket notify failed for order ${orderId}:`, adminErr);
-        }
-
-        await prisma.pkg_order.update({
-          where: { id: orderId },
-          data: { o_status: "Cancelled", cancel_reason: "No driver found" },
-        });
-        requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
-          order_id: String(orderId),
-        });
-        activeDispatches.delete(orderId);
-      }
+      await checkCascadeTermination(orderId);
     } catch (err) {
       logger.error(`dispatchManager expiry handler failed for order ${orderId}, tier ${tierIndex}:`, err);
     }
@@ -281,15 +316,10 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
 
 /**
  * Kicks off the overlapping batch cascade for a freshly created order.
- * `order.allowed_delivery_types` is the JSON-text column listing package
- * IDs in tier order (spec §3.1). Idempotency guard: a duplicate call for an
- * order that already has a cascade running (retry, duplicate event, etc.)
- * is a no-op rather than starting a second overlapping set of timers.
- *
- * `tier0Pricing` (optional): `{fare, driverEarning, commission}` the caller
- * already computed for `order`'s first tier (e.g. createOrder, which prices
- * it to populate the INSERT) — lets runBatch's T=0 pass skip re-deriving
- * the same numbers. Omit to have tier 0 fetch/compute for itself as before.
+ * Uses adaptive Tier Exhaustion:
+ * - Batches run sequentially with BATCH_GAP_MS stagger.
+ * - Each batch draws from the current tier until that tier has no more
+ *   un-notified eligible candidates, then escalates to the next model tier.
  */
 async function startDispatch(order, tier0Pricing) {
   if (activeDispatches.has(order.id)) {
@@ -308,23 +338,16 @@ async function startDispatch(order, tier0Pricing) {
   const state = {
     timers: new Set(),
     tiers,
+    currentTierIndex: 0,
     tier0Precomputed: tier0Pricing ? { order, ...tier0Pricing } : null,
+    hasRunTier0: false,
+    activeExpiryTimers: 0,
   };
   activeDispatches.set(order.id, state);
 
-  runBatch(order.id, 0).catch((err) =>
+  runBatch(order.id).catch((err) =>
     logger.error(`dispatchManager: batch 0 failed for order ${order.id}:`, err)
   );
-
-  for (let tierIndex = 1; tierIndex < tiers.length; tierIndex++) {
-    const timer = setTimeout(() => {
-      state.timers.delete(timer);
-      runBatch(order.id, tierIndex).catch((err) =>
-        logger.error(`dispatchManager: batch ${tierIndex} failed for order ${order.id}:`, err)
-      );
-    }, tierIndex * BATCH_GAP_MS);
-    state.timers.add(timer);
-  }
 }
 
 /**
@@ -345,19 +368,21 @@ function stopDispatch(orderId, reason) {
   for (const riderId of riderIds) {
     lockManager.releaseLock(riderId);
 
-    prisma.tbl_order_requests
-      .updateMany({
-        where: { order_id: orderId, rider_id: riderId, status: "sent" },
-        data: { status: newRequestStatus },
-      })
-      .catch((err) => logger.error(`stopDispatch: failed updating tbl_order_requests for order ${orderId}:`, err));
-
     if (ioRef) {
       ioRef.to(`driver_${riderId}`).emit("order:dismiss", {
         order_id: String(orderId),
         reason,
       });
     }
+  }
+
+  if (riderIds.length > 0) {
+    prisma.tbl_order_requests
+      .updateMany({
+        where: { order_id: orderId, rider_id: { in: riderIds }, status: "sent" },
+        data: { status: newRequestStatus },
+      })
+      .catch((err) => logger.error(`stopDispatch: failed updating tbl_order_requests for order ${orderId}:`, err));
   }
 }
 
