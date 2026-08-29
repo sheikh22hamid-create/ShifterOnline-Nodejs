@@ -250,6 +250,69 @@
   }
   .field textarea { font-family: var(--font-body); resize: vertical; min-height: 46px; }
 
+  /* ---------- Autocomplete Location Dropdown ---------- */
+  .autocomplete-wrap {
+    position: relative;
+    width: 100%;
+  }
+  .autocomplete-wrap input {
+    background: var(--bg-inset);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--font-body);
+    width: 100%;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .autocomplete-wrap input:focus {
+    border-color: var(--accent-live);
+  }
+  .autocomplete-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    max-height: 230px;
+    overflow-y: auto;
+    display: none;
+  }
+  .autocomplete-dropdown.active {
+    display: block;
+  }
+  .autocomplete-item {
+    padding: 9px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--line-soft);
+    transition: background 0.12s ease;
+  }
+  .autocomplete-item:last-child {
+    border-bottom: none;
+  }
+  .autocomplete-item:hover {
+    background: rgba(255, 157, 77, 0.15);
+  }
+  .autocomplete-item__title {
+    font-weight: 600;
+    font-size: 12.5px;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+  .autocomplete-item__desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   details.more-fields { border-top: 1px dashed var(--line); padding-top: 10px; }
   details.more-fields summary {
     cursor: pointer;
@@ -598,8 +661,8 @@
       <div class="panel__body">
 
         <div>
-          <p class="section-label">Trip</p>
-          <p class="empty-note" style="margin:-4px 0 10px;">Defaults match rider #13 (a Bike, online, near this pickup point) — change category or coordinates only if your driver is set up differently.</p>
+          <p class="section-label">Trip &amp; Locations</p>
+          <p class="empty-note" style="margin:-4px 0 10px;">Type any address to auto-fetch latitude &amp; longitude from suggestions!</p>
           <div class="field-grid">
             <div class="field">
               <label for="custUid">Customer ID (uid)</label>
@@ -609,33 +672,44 @@
               <label for="custCategory">Category</label>
               <select id="custCategory"></select>
             </div>
-            <div class="field">
-              <label for="pickLat">Pickup latitude</label>
-              <input type="text" id="pickLat" value="22.7402368" />
+          </div>
+
+          <div style="margin-top:10px;">
+            <label for="pickAddress" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600;">📍 Pickup address (Type for suggestions)</span>
+              <span class="pill" id="pickCoordsPill" style="font-size:10px; font-family:var(--font-mono); color:var(--accent-teal);">22.7402, 75.9133</span>
+            </label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="pickAddress" value="Simulator Pickup, Indore" autocomplete="off" placeholder="e.g. Palasia Square, Indore" />
+              <div class="autocomplete-dropdown" id="pickAddressDropdown"></div>
             </div>
-            <div class="field">
-              <label for="pickLng">Pickup longitude</label>
-              <input type="text" id="pickLng" value="75.913299" />
+          </div>
+
+          <div style="margin-top:10px;">
+            <label for="dropAddress" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600;">🏁 Drop address (Type for suggestions)</span>
+              <span class="pill" id="dropCoordsPill" style="font-size:10px; font-family:var(--font-mono); color:var(--accent-teal);">22.7200, 75.8800</span>
+            </label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="dropAddress" value="Simulator Drop, Indore" autocomplete="off" placeholder="e.g. Bhawarkua Indore" />
+              <div class="autocomplete-dropdown" id="dropAddressDropdown"></div>
             </div>
-            <div class="field">
-              <label for="dropLat">Drop latitude</label>
-              <input type="text" id="dropLat" value="22.72" />
-            </div>
-            <div class="field">
-              <label for="dropLng">Drop longitude</label>
-              <input type="text" id="dropLng" value="75.88" />
-            </div>
+          </div>
+
+          <div class="field-grid" style="margin-top:10px;">
             <div class="field">
               <label for="searchRadiusKm">Search radius (km)</label>
               <input type="number" id="searchRadiusKm" value="10" min="1" max="100" step="1" />
             </div>
           </div>
 
-          <details class="more-fields">
-            <summary>Trip details (prefilled, edit if needed)</summary>
+          <details class="more-fields" style="margin-top:10px;">
+            <summary>More trip details &amp; raw coordinates</summary>
             <div class="field-grid">
-              <div class="field"><label for="pickAddress">Pickup address</label><input type="text" id="pickAddress" value="Simulator Pickup, Indore" /></div>
-              <div class="field"><label for="dropAddress">Drop address</label><input type="text" id="dropAddress" value="Simulator Drop, Indore" /></div>
+              <div class="field"><label for="pickLat">Pickup latitude</label><input type="text" id="pickLat" value="22.7402368" /></div>
+              <div class="field"><label for="pickLng">Pickup longitude</label><input type="text" id="pickLng" value="75.913299" /></div>
+              <div class="field"><label for="dropLat">Drop latitude</label><input type="text" id="dropLat" value="22.72" /></div>
+              <div class="field"><label for="dropLng">Drop longitude</label><input type="text" id="dropLng" value="75.88" /></div>
               <div class="field"><label for="pickName">Pickup contact name</label><input type="text" id="pickName" value="Sim Customer" /></div>
               <div class="field"><label for="dropName">Drop contact name</label><input type="text" id="dropName" value="Sim Recipient" /></div>
               <div class="field"><label for="pmobile">Pickup mobile</label><input type="text" id="pmobile" value="9999999999" /></div>
@@ -704,25 +778,36 @@
       <div class="panel__body">
 
         <div>
-          <p class="section-label">Rider</p>
+          <p class="section-label">Rider &amp; Location</p>
           <div class="field-grid">
             <div class="field">
               <label for="riderId">Rider ID</label>
               <input type="number" id="riderId" value="13" />
             </div>
-            <div class="field"></div>
-            <div class="field">
-              <label for="riderLat">Current latitude</label>
-              <input type="text" id="riderLat" value="22.7402368" />
-            </div>
-            <div class="field">
-              <label for="riderLng">Current longitude</label>
-              <input type="text" id="riderLng" value="75.913299" />
+          </div>
+
+          <div style="margin-top:10px;">
+            <label for="riderAddress" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="font-size:12px; font-weight:600;">🛵 Driver current location / address</span>
+              <span class="pill" id="riderCoordsPill" style="font-size:10px; font-family:var(--font-mono); color:var(--accent-teal);">22.7402, 75.9133</span>
+            </label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="riderAddress" value="Indore Hub, Palasia" autocomplete="off" placeholder="Type driver location (e.g. Vijay Nagar, Bhawarkua)" />
+              <div class="autocomplete-dropdown" id="riderAddressDropdown"></div>
             </div>
           </div>
+
           <div style="margin-top:8px;">
             <button class="btn btn--ghost" id="btnSnapToPickup" style="width:100%; font-size:12px; padding:7px 10px;" title="Set driver location right at customer pickup so this driver is guaranteed Batch 1">📍 Snap Driver Location to Customer Pickup (Guarantees Instant Dispatch)</button>
           </div>
+
+          <details class="more-fields" style="margin-top:8px;">
+            <summary>Driver raw coordinates</summary>
+            <div class="field-grid">
+              <div class="field"><label for="riderLat">Current latitude</label><input type="text" id="riderLat" value="22.7402368" /></div>
+              <div class="field"><label for="riderLng">Current longitude</label><input type="text" id="riderLng" value="75.913299" /></div>
+            </div>
+          </details>
         </div>
 
         <div>
@@ -929,6 +1014,79 @@
       const json = await res.json().catch(() => ({}));
       return { ok: res.ok, status: res.status, json };
     }
+
+    // ---------------------------------------------------------------
+    // Location Autocomplete Engine (Photon + Nominatim Geocoding)
+    // ---------------------------------------------------------------
+    function setupLocationAutocomplete(inputId, dropdownId, pillId, latId, lngId, onSelect) {
+      const input = $(inputId);
+      const dropdown = $(dropdownId);
+      const pill = $(pillId);
+      const latEl = $(latId);
+      const lngEl = $(lngId);
+      if (!input || !dropdown) return;
+
+      let debounceTimer = null;
+
+      input.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        const query = input.value.trim();
+        if (query.length < 2) {
+          dropdown.classList.remove("active");
+          dropdown.innerHTML = "";
+          return;
+        }
+
+        dropdown.innerHTML = '<div class="autocomplete-item" style="color:var(--text-secondary); font-size:12px;">Searching locations…</div>';
+        dropdown.classList.add("active");
+
+        debounceTimer = setTimeout(async () => {
+          try {
+            const { ok, json } = await api("GET", `/api/location/search?q=${encodeURIComponent(query)}`);
+            if (!ok || !json.Result || !Array.isArray(json.suggestions) || json.suggestions.length === 0) {
+              dropdown.innerHTML = '<div class="autocomplete-item" style="color:var(--text-secondary); font-size:12px;">No locations found. Try typing a landmark or city.</div>';
+              return;
+            }
+
+            dropdown.innerHTML = "";
+            json.suggestions.forEach((item) => {
+              const el = document.createElement("div");
+              el.className = "autocomplete-item";
+              el.innerHTML = `
+                <div class="autocomplete-item__title">📍 ${esc(item.title)}</div>
+                <div class="autocomplete-item__desc">${esc(item.description)}</div>
+              `;
+              el.addEventListener("click", () => {
+                input.value = item.description || item.title;
+                if (latEl) latEl.value = Number(item.lat).toFixed(7);
+                if (lngEl) lngEl.value = Number(item.lng).toFixed(7);
+                if (pill) {
+                  pill.textContent = `✓ ${Number(item.lat).toFixed(4)}, ${Number(item.lng).toFixed(4)}`;
+                  pill.style.color = "var(--accent-teal)";
+                }
+                dropdown.classList.remove("active");
+                dropdown.innerHTML = "";
+                if (typeof onSelect === "function") {
+                  onSelect(item);
+                }
+              });
+              dropdown.appendChild(el);
+            });
+          } catch (err) {
+            dropdown.classList.remove("active");
+          }
+        }, 280);
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.remove("active");
+        }
+      });
+    }
+
+    setupLocationAutocomplete("pickAddress", "pickAddressDropdown", "pickCoordsPill", "pickLat", "pickLng");
+    setupLocationAutocomplete("dropAddress", "dropAddressDropdown", "dropCoordsPill", "dropLat", "dropLng");
 
     // ---------------------------------------------------------------
     // Two independent socket connections — one per simulated device.
@@ -1376,12 +1534,28 @@
       joinDriverSocket();
     });
 
+    // Setup Autocomplete for Driver current location
+    setupLocationAutocomplete("riderAddress", "riderAddressDropdown", "riderCoordsPill", "riderLat", "riderLng", (item) => {
+      const rider_id = currentRiderId();
+      if (rider_id) {
+        joinDriverSocket();
+        api("POST", "/api/rider/location", { rider_id, lat: Number(item.lat), lng: Number(item.lng) });
+        logEvent("driver", "out", "POST /api/rider/location (from Address Autocomplete)", { rider_id, lat: item.lat, lng: item.lng });
+      }
+    });
+
     // Snap driver location directly to customer's pickup point
     $("btnSnapToPickup").addEventListener("click", async () => {
       const pLat = $("pickLat").value;
       const pLng = $("pickLng").value;
+      const pAddr = $("pickAddress").value;
       $("riderLat").value = pLat;
       $("riderLng").value = pLng;
+      $("riderAddress").value = pAddr;
+      if ($("riderCoordsPill")) {
+        $("riderCoordsPill").textContent = `✓ ${Number(pLat).toFixed(4)}, ${Number(pLng).toFixed(4)}`;
+        $("riderCoordsPill").style.color = "var(--accent-teal)";
+      }
       const rider_id = currentRiderId();
       joinDriverSocket();
       await api("POST", "/api/rider/location", { rider_id, lat: Number(pLat), lng: Number(pLng) });

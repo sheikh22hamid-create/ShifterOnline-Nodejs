@@ -40,9 +40,12 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+const locationRoutes = require("./routes/locationRoutes");
+
 app.use("/api/users", userRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/rider", riderRoutes);
+app.use("/api/location", locationRoutes);
 app.use("/api/v1/admin", adminRoutes);
 
 // Safety net beyond each controller's own try/catch — never leak stack traces.
