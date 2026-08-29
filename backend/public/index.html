@@ -908,6 +908,8 @@
     // Shared helpers
     // ---------------------------------------------------------------
     const $ = (id) => document.getElementById(id);
+    var audioCtx = null;
+    var ringtoneInterval = null;
 
     // Rider/order fields (names, vehicle numbers, package titles) come from
     // the live database and are rider/admin-editable — never trust them
@@ -946,14 +948,6 @@
       try {
         localStorage.setItem(PANEL_MODE_KEY, JSON.stringify(mode));
       } catch {}
-
-      // If Driver panel is hidden (Customer-only mode), stop ringtone and leave driver socket room!
-      if (!mode.driver) {
-        if (typeof stopRingtone === "function") stopRingtone();
-        if (typeof emitDriver === "function" && typeof currentRiderId === "function") {
-          emitDriver("driver:leave", { rider_id: currentRiderId() });
-        }
-      }
     }
 
     let panelMode = readInitialPanelMode();
@@ -970,13 +964,13 @@
       if (!next.customer && !next.driver) return; // always keep at least one visible
       panelMode = next;
       applyPanelMode(panelMode);
+      if (!panelMode.driver && typeof stopRingtone === "function") {
+        stopRingtone();
+      }
     }
     $("toggleCustomerPanel").addEventListener("click", () => togglePanel("customer"));
     $("toggleDriverPanel").addEventListener("click", () => togglePanel("driver"));
 
-    const logBody = $("logBody");
-    const logEmpty = $("logEmpty");
-    const logCountEl = $("logCount");
     let logCount = 0;
 
     function fmtTime(d) {
@@ -984,7 +978,11 @@
     }
 
     function logEvent(actor, direction, name, payload) {
-      if (logEmpty) logEmpty.remove();
+      const logBody = $("logBody");
+      const empty = $("logEmpty");
+      if (empty) empty.remove();
+      if (!logBody) return;
+
       const entry = document.createElement("details");
       entry.className = "log-entry";
       const summary = document.createElement("summary");
@@ -1003,18 +1001,21 @@
       logBody.appendChild(entry);
       logBody.scrollTop = logBody.scrollHeight;
       logCount += 1;
-      logCountEl.textContent = logCount;
+      const logCountEl = $("logCount");
+      if (logCountEl) logCountEl.textContent = logCount;
     }
 
     $("btnClearLog").addEventListener("click", () => {
-      logBody.innerHTML = "";
+      const logBody = $("logBody");
+      const logCountEl = $("logCount");
+      if (logBody) logBody.innerHTML = "";
       logCount = 0;
-      logCountEl.textContent = 0;
+      if (logCountEl) logCountEl.textContent = 0;
       const empty = document.createElement("div");
       empty.className = "log-empty";
       empty.id = "logEmpty";
       empty.textContent = "No events yet — connect and place an order to see socket traffic here.";
-      logBody.appendChild(empty);
+      if (logBody) logBody.appendChild(empty);
     });
 
     async function api(method, path, body) {
@@ -1452,9 +1453,6 @@
     // Web Audio API Ringtone & Audio Engine
     // Synthesizes urgent dual-frequency ride alert chime (Uber/Ola style)
     // ---------------------------------------------------------------
-    let audioCtx = null;
-    let ringtoneInterval = null;
-
     function getAudioContext() {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
