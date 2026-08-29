@@ -823,7 +823,10 @@
         <div>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
             <p class="section-label" style="margin:0;">Dummy test drivers <span style="text-transform:none; letter-spacing:0;">— open one per tab</span></p>
-            <button class="btn btn--ghost" id="btnRefreshDrivers" style="flex:none; padding:5px 10px; font-size:11.5px;">Refresh</button>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn--ghost" id="btnIsolateDrivers" style="flex:none; padding:5px 10px; font-size:11px;" title="Turn off all other dummy drivers so only your current test driver remains online">Turn off others</button>
+              <button class="btn btn--ghost" id="btnRefreshDrivers" style="flex:none; padding:5px 10px; font-size:11px;">Refresh</button>
+            </div>
           </div>
           <div class="driver-list" id="driverList">
             <p class="empty-note">Loading…</p>
@@ -1355,6 +1358,16 @@
     }
     loadTestDrivers();
     $("btnRefreshDrivers").addEventListener("click", loadTestDrivers);
+    $("btnIsolateDrivers").addEventListener("click", async () => {
+      const activeId = Number($("riderId").value);
+      $("btnIsolateDrivers").disabled = true;
+      $("btnIsolateDrivers").textContent = "Working…";
+      await api("POST", "/api/rider/isolate-test-drivers", { keep_ids: [activeId] });
+      $("btnIsolateDrivers").textContent = "✓ Others Offline";
+      $("btnIsolateDrivers").disabled = false;
+      loadTestDrivers();
+      setTimeout(() => { $("btnIsolateDrivers").textContent = "Turn off others"; }, 2500);
+    });
     $("driverList").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-use-driver]");
       if (!btn) return;

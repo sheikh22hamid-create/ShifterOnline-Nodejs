@@ -184,4 +184,22 @@ async function updateLocation(req, res) {
   }
 }
 
-module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, setStatus, updateLocation };
+/** Turn offline all test bike riders except the ones specified in keep_ids */
+async function isolateTestDrivers(req, res) {
+  try {
+    const keepIds = (req.body.keep_ids || []).map(Number).filter((n) => !isNaN(n) && n > 0);
+    await prisma.tbl_rider.updateMany({
+      where: {
+        vehicle: "Bike",
+        ...(keepIds.length > 0 ? { id: { notIn: keepIds } } : {}),
+      },
+      data: { a_status: 0 },
+    });
+    return res.status(200).json({ Result: true, msg: "Extra dummy drivers turned offline", kept: keepIds });
+  } catch (err) {
+    logger.error("riderController.isolateTestDrivers failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
+module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, setStatus, updateLocation, isolateTestDrivers };

@@ -8,5 +8,6 @@ router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);
 router.post("/delivery-type", riderController.setDeliveryType);
 router.post("/status", riderController.setStatus);
 router.post("/location", riderController.updateLocation);
+router.post("/isolate-test-drivers", riderController.isolateTestDrivers);
 
 module.exports = router;
