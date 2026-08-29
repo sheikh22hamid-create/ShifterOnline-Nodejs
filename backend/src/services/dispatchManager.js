@@ -257,14 +257,13 @@ async function runBatch(orderId) {
   // Tier Progression:
   // If the tier has no more candidates beyond what we just locked, advance to next tier!
   // If hasMoreInTier is true, stay on currentTierIndex so the next batch at T+5s finishes this tier.
-  let delayMs = BATCH_GAP_MS; // default 5s gap within the same tier
+  let delayMs = BATCH_GAP_MS; // Exactly 5 seconds gap (Batch system jesa)
   if (!hasMoreInTier) {
     state.currentTierIndex++;
-    // When transitioning to a NEW tier (a more expensive model):
-    // If drivers were offered in the current tier, the new tier MUST wait for POPUP_TIMEOUT_MS (15s)
-    // so the lower-priced tier's drivers get their full priority decision window before escalating!
-    // If 0 drivers were found in the current tier, advance immediately (0ms).
-    delayMs = lockedRiderIds.length > 0 ? POPUP_TIMEOUT_MS : 0;
+    // If 0 drivers were found in current tier, advance immediately to next model without waiting
+    if (lockedRiderIds.length === 0) {
+      delayMs = 0;
+    }
   }
 
   // Schedule next batch after delayMs if we have more tiers or more drivers in current tier
