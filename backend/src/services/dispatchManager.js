@@ -183,10 +183,11 @@ async function runBatch(orderId) {
     ({ fare, driverEarning, commission } = precomputed);
   } else {
     ({ fare, driverEarning, commission } = await pricingEngine.priceForPackageId(packageId, distanceKm));
-    await prisma.pkg_order.update({
+    // Asynchronous update so we don't block driver dispatch by 400-800ms of remote DB latency
+    prisma.pkg_order.update({
       where: { id: orderId },
       data: { d_charge: fare, total_dcharge: fare, commission, delivery_type: Number(packageId) },
-    });
+    }).catch((err) => logger.error("dispatchManager: async pkg_order update failed:", err));
   }
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch started`);
@@ -255,9 +256,10 @@ async function runBatch(orderId) {
   }
 
   // Tier Progression:
-  // If the tier has no more candidates beyond what we just locked, advance to next tier!
-  // If hasMoreInTier is true, stay on currentTierIndex so the next batch at T+5s finishes this tier.
-  let delayMs = BATCH_GAP_MS; // Exactly 5 seconds gap (Batch system jesa)
+  // To compensate for remote MySQL network query and socket emit overhead (~1.5-2.0s),
+  // we wait 3000ms so that the next batch popup arrives on the driver's phone
+  // exactly ~5 seconds after the first batch (when the first batch's timer has ~10s remaining)!
+  let delayMs = 3000;
   if (!hasMoreInTier) {
     state.currentTierIndex++;
     // If 0 drivers were found in current tier, advance immediately to next model without waiting
