@@ -769,7 +769,7 @@
       <div class="panel__head">
         <div class="panel__role">
           <div class="role-glyph role-glyph--driver">🛵</div>
-          <div class="panel__title">Driver app<small>receives requests &amp; runs the trip</small></div>
+          <div class="panel__title">Driver app <span class="pill" style="font-size:12px; font-weight:700; color:var(--accent-signal); background:var(--accent-signal-dim); padding:2px 8px; border-radius:999px;">Rider #<span id="activeRiderBadge">13</span></span><small>receives requests &amp; runs the trip</small></div>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
           <button class="pill" id="btnTestSound" style="cursor:pointer; background:rgba(255,157,77,0.12); border-color:rgba(255,157,77,0.3); color:var(--accent-signal);" title="Click to test ringing sound">🔔 Test Ring</button>
@@ -946,6 +946,14 @@
       try {
         localStorage.setItem(PANEL_MODE_KEY, JSON.stringify(mode));
       } catch {}
+
+      // If Driver panel is hidden (Customer-only mode), stop ringtone and leave driver socket room!
+      if (!mode.driver) {
+        if (typeof stopRingtone === "function") stopRingtone();
+        if (typeof emitDriver === "function" && typeof currentRiderId === "function") {
+          emitDriver("driver:leave", { rider_id: currentRiderId() });
+        }
+      }
     }
 
     let panelMode = readInitialPanelMode();
@@ -954,6 +962,7 @@
     const riderIdFromUrl = new URLSearchParams(location.search).get("rider_id");
     if (riderIdFromUrl && $("riderId")) {
       $("riderId").value = riderIdFromUrl;
+      if ($("activeRiderBadge")) $("activeRiderBadge").textContent = riderIdFromUrl;
     }
 
     function togglePanel(role) {
@@ -1493,10 +1502,15 @@
     }
 
     function startRingtone() {
+      if (!panelMode.driver || !isOnline) return;
       stopRingtone();
       const pulse = () => {
+        if (!panelMode.driver || !isOnline) { stopRingtone(); return; }
         playTone(830.61, 1046.5, 0.22); // G#5 + C6
-        setTimeout(() => playTone(987.77, 1318.51, 0.28), 220); // B5 + E6
+        setTimeout(() => {
+          if (!panelMode.driver || !isOnline) return;
+          playTone(987.77, 1318.51, 0.28);
+        }, 220); // B5 + E6
       };
       pulse();
       ringtoneInterval = setInterval(pulse, 850);
@@ -1529,13 +1543,25 @@
     let gpsSimTimer = null;
     let acceptedOrderId = null;
     let tripStage = 0; // 0 none, 1 arrived, 2 pickup, 3 complete
+    let joinedRiderId = null;
 
     function currentRiderId() { return Number($("riderId").value); }
 
-    // Instant socket join function
+    // Instant socket join function — ONLY joins if panel is in driver mode and online!
     function joinDriverSocket() {
+      if (!panelMode.driver || !isOnline) {
+        if (joinedRiderId) {
+          emitDriver("driver:leave", { rider_id: joinedRiderId });
+          joinedRiderId = null;
+        }
+        return;
+      }
       const rider_id = currentRiderId();
       if (!rider_id) return;
+      if (joinedRiderId && joinedRiderId !== rider_id) {
+        emitDriver("driver:leave", { rider_id: joinedRiderId });
+      }
+      joinedRiderId = rider_id;
       emitDriver("driver:join", {
         rider_id,
         lat: Number($("riderLat").value) || 22.7402368,
@@ -1601,6 +1627,10 @@
         logEvent("driver", "out", "POST /api/rider/status (a_status: 1)", { rider_id });
       } else {
         stopRingtone();
+        if (joinedRiderId) {
+          emitDriver("driver:leave", { rider_id: joinedRiderId });
+          joinedRiderId = null;
+        }
         $("riderStatusDot").classList.remove("dot--live", "dot--pulse");
         $("riderStatusDot").classList.add("dot--off");
         $("riderStatusText").textContent = "Offline — invisible to dispatch";
@@ -1614,6 +1644,10 @@
     });
 
     driverSocket.on("order:request", (data) => {
+      // CRITICAL: Do NOT show popup or ring if driver panel is hidden (Customer tab) or driver is offline!
+      if (!panelMode.driver || !isOnline) return;
+      if (Number(data.rider_id) && Number(data.rider_id) !== currentRiderId()) return;
+
       activeRequest = data;
       $("waitingNote").style.display = "none";
       $("reqTierBadge").textContent = (data.category || "Bike") + " · pkg " + data.package_id;

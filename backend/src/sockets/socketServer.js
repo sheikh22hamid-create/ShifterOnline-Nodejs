@@ -67,6 +67,12 @@ function initSocket(httpServer) {
       }
     });
 
+    socket.on("driver:leave", ({ rider_id }) => {
+      if (rider_id) {
+        socket.leave(`driver_${rider_id}`);
+      }
+    });
+
     adminSocket.registerAdminHandlers(ioInstance, socket);
 
     socket.on("customer:join", ({ user_id, order_id }) => {
