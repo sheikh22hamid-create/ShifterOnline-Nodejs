@@ -863,6 +863,11 @@
     let panelMode = readInitialPanelMode();
     applyPanelMode(panelMode);
 
+    const riderIdFromUrl = new URLSearchParams(location.search).get("rider_id");
+    if (riderIdFromUrl && $("riderId")) {
+      $("riderId").value = riderIdFromUrl;
+    }
+
     function togglePanel(role) {
       const next = { ...panelMode, [role]: !panelMode[role] };
       if (!next.customer && !next.driver) return; // always keep at least one visible
@@ -1171,6 +1176,7 @@
           </div>
           <span class="driver-row__status"><span class="dot ${d.online ? "dot--live" : "dot--off"}"></span>${d.online ? "online" : "offline"}</span>
           <button class="btn btn--ghost" style="flex:none; padding:6px 10px;" data-use-driver="${esc(d.id)}" data-lat="${esc(d.lat || "")}" data-lng="${esc(d.lng || "")}" ${usable ? "" : "disabled"}>Use</button>
+          <a class="btn btn--ghost" style="flex:none; padding:6px 10px; text-decoration:none; font-size:11px;" href="?mode=driver&rider_id=${esc(d.id)}" target="_blank" title="Open this driver in a separate browser tab">Tab ↗</a>
         `;
         list.appendChild(row);
       }
@@ -1248,9 +1254,13 @@
       checkbox.disabled = false;
       if (!ok || !json.Result) {
         checkbox.checked = !checkbox.checked; // revert on failure
+        $("driverError").style.color = "var(--accent-coral)";
         $("driverError").textContent = json.msg || "Could not update this model.";
         return;
       }
+      $("driverError").style.color = "var(--accent-teal)";
+      $("driverError").textContent = `✓ Saved to DB: ${checkbox.checked ? "Enabled" : "Disabled"} Model!`;
+      setTimeout(() => { $("driverError").textContent = ""; }, 2500);
       loadTestDrivers(); // dummy-driver list's "enabled packages" summary is now stale
     });
 
