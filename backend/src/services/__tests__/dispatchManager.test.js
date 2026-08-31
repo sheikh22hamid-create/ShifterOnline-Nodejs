@@ -67,8 +67,8 @@ describe("dispatchManager overlapping batch cascade", () => {
     // expiry sweep reaches it.
     prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
 
-    // Minimal fake backing store so getPreviouslyAttemptedRiderIds() sees
-    // what create() has actually written — real cross-tier dedup behavior,
+    // Minimal fake backing store so getRejectedRiderIds() sees what
+    // create() has actually written — real reject-only exclusion behavior,
     // not a canned return value.
     orderRequestsStore = [];
     prisma.tbl_order_requests.create.mockImplementation(({ data }) => {
@@ -76,7 +76,13 @@ describe("dispatchManager overlapping batch cascade", () => {
       return Promise.resolve({ id: orderRequestsStore.length, ...data });
     });
     prisma.tbl_order_requests.findMany.mockImplementation(({ where }) => {
-      const riderIds = [...new Set(orderRequestsStore.filter((r) => r.order_id === where.order_id).map((r) => r.rider_id))];
+      const riderIds = [
+        ...new Set(
+          orderRequestsStore
+            .filter((r) => r.order_id === where.order_id && (where.status === undefined || r.status === where.status))
+            .map((r) => r.rider_id)
+        ),
+      ];
       return Promise.resolve(riderIds.map((rider_id) => ({ rider_id })));
     });
 
@@ -85,6 +91,10 @@ describe("dispatchManager overlapping batch cascade", () => {
     // leaves its later mockResolvedValueOnce entries unconsumed, which
     // would otherwise bleed into the next test's queue.
     prisma.$queryRaw.mockReset();
+    // Base fallback for any round-robin revisit beyond the two queued turns
+    // below (the cursor cycles back to tier 0 once every tier has had a
+    // turn) — an empty pool, not a crash from an unconfigured mock call.
+    prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
       .mockResolvedValueOnce([1, 2, 3, 4].map(makeRiderRow)) // tier 0 (package 6)
       .mockResolvedValueOnce([5, 6, 7, 8].map(makeRiderRow)); // tier 1 (package 7)
@@ -175,17 +185,18 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(4);
   });
 
-  describe("cross-tier duplicate-driver exclusion", () => {
-    it("a driver already timed out on this order in an earlier tier is not re-offered in a later tier", async () => {
+  describe("cross-tier rider re-entry", () => {
+    it("a driver whose popup timed out in an earlier tier IS re-offered in a later tier, once free", async () => {
       // Simulates: driver 1 was offered in Model 1, its popup expired
-      // (status flipped to 'timeout'). Model 2's batch must exclude them
-      // even though the query (mocked here) still returns them.
+      // (status flipped to 'timeout') and its lock is free by the time
+      // Model 2's batch fires. Model 2 must be allowed to re-offer them.
       orderRequestsStore.push({ order_id: order.id, rider_id: 1, package_id: 6, status: "timeout" });
 
       prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
       prisma.$queryRaw
         .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6)
-        .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7) — driver 1 still shows up in the raw query
+        .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7) — driver 1 is free again
 
       await dispatchManager.startDispatch(order);
       await flush();
@@ -193,8 +204,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       await flush();
 
       const requests = emitted.filter((e) => e.event === "order:request");
-      expect(requests.map((e) => e.room).sort()).toEqual(["driver_2", "driver_3"]);
-      expect(lockManager.isLocked(1)).toBe(false);
+      expect(requests.map((e) => e.room).sort()).toEqual(["driver_1", "driver_2", "driver_3"]);
     });
 
     it("a driver already rejected on this order in an earlier tier is not re-offered in a later tier", async () => {
@@ -202,6 +212,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       orderRequestsStore.push({ order_id: order.id, rider_id: 1, package_id: 6, status: "10" });
 
       prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
       prisma.$queryRaw
         .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6)
         .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7)
@@ -217,8 +228,75 @@ describe("dispatchManager overlapping batch cascade", () => {
     });
   });
 
+  it("round-robin: batch 2 goes to Model 2, not Model 1's leftover drivers — Model 1's leftover gets revisited once every tier has had a turn", async () => {
+    // Model 1 (tier 0) has 5 eligible drivers — only 4 fit in one batch, so
+    // driver 5 is left over (never locked, just not selected this turn).
+    // Model 2 (tier 1) has 3 eligible drivers, all of whom fit.
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([1, 2, 3, 4, 5].map(makeRiderRow)) // tier 0 turn 1
+      .mockResolvedValueOnce([6, 7, 8].map(makeRiderRow)) // tier 1 turn 1
+      .mockResolvedValueOnce([5].map(makeRiderRow)); // tier 0 turn 2 (round-robin revisit) — driver 5 still eligible
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    const batch1 = emitted.filter((e) => e.event === "order:request");
+    expect(batch1.map((e) => e.room).sort()).toEqual(["driver_1", "driver_2", "driver_3", "driver_4"]);
+
+    // +5s: batch 2 must be Model 2 (6, 7, 8) — NOT driver 5, Model 1's leftover.
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const batch2 = emitted.filter(
+      (e) => e.event === "order:request" && ["driver_6", "driver_7", "driver_8"].includes(e.room)
+    );
+    expect(batch2.map((e) => e.room).sort()).toEqual(["driver_6", "driver_7", "driver_8"]);
+    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(false);
+
+    // +10s more: the cursor cycles back to Model 1, which now gets driver 5.
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS * 2);
+    await flush();
+
+    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(true);
+  });
+
+  it("stops issuing further topup rounds within a batch the instant the order is accepted mid-batch", async () => {
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([1, 2, 3, 4].map(makeRiderRow)) // tier 0 round 0
+      .mockImplementationOnce(() => {
+        // Tier 1 round 0: 5 and 6 are already locked elsewhere (contention),
+        // so only 7 and 8 lock here — normally that shortfall would trigger
+        // a topup round. But an out-of-band accept lands (via stopDispatch)
+        // right as this round's query resolves, so the topup round must
+        // never fire.
+        lockManager.acquireLock(5, 999, POPUP_TIMEOUT_MS);
+        lockManager.acquireLock(6, 999, POPUP_TIMEOUT_MS);
+        dispatchManager.stopDispatch(order.id, "accepted_by_other");
+        return Promise.resolve([5, 6, 7, 8].map(makeRiderRow));
+      });
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const tier1Requests = emitted.filter(
+      (e) => e.event === "order:request" && [5, 6, 7, 8].includes(Number(e.room.split("_")[1]))
+    );
+    expect(tier1Requests.map((e) => e.room).sort()).toEqual(["driver_7", "driver_8"]);
+    // Exactly one $queryRaw call per tier (tier 0 round 0, tier 1 round 0) —
+    // no topup round despite the shortfall, because the guard broke the
+    // while loop before it could fire.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
   it("zero eligible drivers in tier 0 does not block the cascade from reaching tier 1", async () => {
     prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
       .mockResolvedValueOnce([]) // tier 0 (package 6) — nobody eligible
       .mockResolvedValueOnce([5, 6].map(makeRiderRow)); // tier 1 (package 7)
