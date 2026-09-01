@@ -312,18 +312,25 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
         return lock && lock.orderId === orderId;
       });
 
-      for (const riderId of stillPendingRiderIds) {
-        lockManager.releaseLock(riderId);
-        const result = await prisma.tbl_order_requests.updateMany({
-          where: { order_id: orderId, rider_id: riderId, status: "sent" },
-          data: { status: "timeout" },
-        });
-        if (result.count === 0) continue;
-        requireIo().to(`driver_${riderId}`).emit("order:dismiss", {
-          order_id: String(orderId),
-          reason: "timeout",
-        });
-      }
+      // Runs every rider's release/DB-write/dismiss concurrently — sequential
+      // awaits here previously queued each rider behind the last one's DB
+      // round-trip, so on a remote DB the tail riders in a batch could sit
+      // stuck on an expired ("0s") popup for several extra seconds waiting
+      // their turn.
+      await Promise.all(
+        stillPendingRiderIds.map(async (riderId) => {
+          lockManager.releaseLock(riderId);
+          const result = await prisma.tbl_order_requests.updateMany({
+            where: { order_id: orderId, rider_id: riderId, status: "sent" },
+            data: { status: "timeout" },
+          });
+          if (result.count === 0) return;
+          requireIo().to(`driver_${riderId}`).emit("order:dismiss", {
+            order_id: String(orderId),
+            reason: "timeout",
+          });
+        })
+      );
 
       await checkCascadeTermination(orderId);
     } catch (err) {

@@ -1677,12 +1677,22 @@
         ring.style.strokeDashoffset = circumference;
       });
       const start = Date.now();
+      const expiredRequest = activeRequest;
       countdownTimer = setInterval(() => {
         const remaining = Math.max(0, seconds - (Date.now() - start) / 1000);
         num.textContent = Math.ceil(remaining);
         if (remaining <= 0) {
           clearInterval(countdownTimer);
           stopRingtone();
+          // The server's own order:dismiss is what normally closes this
+          // popup, but on a slow/lost socket round-trip it can arrive late
+          // (or not at all) — this fallback guarantees the screen still
+          // moves on instead of sitting stuck at 0.
+          setTimeout(() => {
+            if (activeRequest && activeRequest.order_id === expiredRequest.order_id) {
+              hideRequestPopup();
+            }
+          }, 3000);
         }
       }, 200);
     }
