@@ -28,7 +28,7 @@ describe("pushNotifier", () => {
       "tok-2",
       expect.any(String),
       expect.any(String),
-      expect.objectContaining({ type: "order_dismiss", order_id: "42", reason: "timeout" })
+      expect.objectContaining({ type: "ORDER_CLOSED", order_id: "42", reason: "timeout" })
     );
   });
 

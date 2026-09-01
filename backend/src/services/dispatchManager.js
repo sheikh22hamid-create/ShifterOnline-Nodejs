@@ -207,9 +207,12 @@ async function runBatch(orderId) {
   if (precomputed) {
     ({ fare, driverEarning, commission } = precomputed);
     packageTitle = precomputed.packageTitle || null;
-    if (!packageTitle) {
+    if (!packageTitle && prisma.tbl_package?.findUnique) {
       const pkg = await prisma.tbl_package.findUnique({ where: { id: Number(packageId) }, select: { title: true } });
       packageTitle = pkg ? pkg.title : `Model ${packageId}`;
+    }
+    if (!packageTitle) {
+      packageTitle = `Model ${packageId}`;
     }
   } else {
     const priced = await pricingEngine.priceForPackageId(packageId, distanceKm);
@@ -487,10 +490,18 @@ async function reconcileStaleOffersOnStartup() {
   }
 }
 
+function _resetForTests() {
+  for (const [id, state] of activeDispatches.entries()) {
+    for (const t of state.timers) clearTimeout(t);
+  }
+  activeDispatches.clear();
+}
+
 module.exports = {
   init,
   startDispatch,
   stopDispatch,
   selectEligibleDrivers,
   reconcileStaleOffersOnStartup,
+  _resetForTests,
 };

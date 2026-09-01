@@ -56,6 +56,7 @@ describe("dispatchManager overlapping batch cascade", () => {
     // Clears call history (not just resolved values) so mock.calls-based
     // assertions in one test never see calls made by a previous test.
     jest.clearAllMocks();
+    dispatchManager._resetForTests();
     emitted = [];
     io = {
       to: (room) => ({
