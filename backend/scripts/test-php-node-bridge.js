@@ -15,7 +15,7 @@ function sleep(ms) {
 async function run() {
   console.log(`Connecting a test driver socket to ${NODE_BASE_URL}...`);
   const driverSocket = ioClient(NODE_BASE_URL, { transports: ["websocket"], forceNew: true });
-  const testRiderId = Number(process.env.TEST_RIDER_ID || 1);
+  const testRiderId = Number(process.env.TEST_RIDER_ID || 5);
 
   await new Promise((resolve) => driverSocket.on("connect", resolve));
   driverSocket.emit("driver:join", { rider_id: testRiderId });
@@ -28,14 +28,14 @@ async function run() {
   const createRes = await fetch(`${PHP_BASE_URL}/cust_api/pks_order.php`, {
     method: "POST",
     body: new URLSearchParams({
-      uid: process.env.TEST_UID || "1",
+      uid: process.env.TEST_UID || "2",
       category: "Bike",
       delivery_type: "[6]",
       booking_type: "1",
-      plat: "22.7356214",
-      plong: "75.9110814",
-      dlat: "22.7156214",
-      dlong: "75.8810814",
+      plat: "22.7389681",
+      plong: "75.8296089",
+      dlat: "22.7489681",
+      dlong: "75.8396089",
       paddress: "Test Pickup",
       daddress: "Test Drop",
       pick_name: "Bridge Test",

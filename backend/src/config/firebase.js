@@ -14,17 +14,21 @@ function initFirebase() {
   }
 
   try {
-    const admin = require("firebase-admin");
+    const { initializeApp, getApps, cert } = require("firebase-admin/app");
+    const { getMessaging } = require("firebase-admin/messaging");
     const serviceAccount = rawJson
       ? JSON.parse(rawJson)
       : require(require("path").resolve(path));
 
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-    }
-    messaging = admin.messaging();
+    const apps = getApps();
+    const app =
+      apps.length > 0
+        ? apps[0]
+        : initializeApp({
+            credential: cert(serviceAccount),
+          });
+
+    messaging = getMessaging(app);
     logger.info("Firebase Admin SDK initialized for FCM push notifications.");
     return messaging;
   } catch (err) {
