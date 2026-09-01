@@ -400,16 +400,17 @@ function stopDispatch(orderId, reason) {
 
   for (const riderId of riderIds) {
     lockManager.releaseLock(riderId);
-
     if (ioRef) {
-      ioRef.to(`driver_${riderId}`).emit("order:dismiss", {
-        order_id: String(orderId),
-        reason,
-      });
+      ioRef.to(`driver_${riderId}`).emit("order:dismiss", { order_id: String(orderId), reason });
     }
   }
 
   if (riderIds.length > 0) {
+    prisma.tbl_rider
+      .findMany({ where: { id: { in: riderIds } }, select: { id: true, fcm_token: true } })
+      .then((riders) => Promise.all(riders.map((r) => pushNotifier.notifyDriverDismiss(r.fcm_token, orderId, reason))))
+      .catch((err) => logger.error(`stopDispatch: failed pushing dismiss for order ${orderId}:`, err));
+
     prisma.tbl_order_requests
       .updateMany({
         where: { order_id: orderId, rider_id: { in: riderIds }, status: "sent" },

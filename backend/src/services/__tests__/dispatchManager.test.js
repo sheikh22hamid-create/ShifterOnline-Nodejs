@@ -2,6 +2,7 @@ jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn() },
   tbl_order_requests: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
+  tbl_rider: { findMany: jest.fn() },
 }));
 
 jest.mock("../pricingEngine", () => ({
@@ -69,6 +70,11 @@ describe("dispatchManager overlapping batch cascade", () => {
     // that was already resolved another way (e.g. accepted) by the time the
     // expiry sweep reaches it.
     prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+    // Default: no riders found, so stopDispatch's push lookup resolves to an
+    // empty list instead of throwing on an unconfigured mock (every test's
+    // afterEach calls stopDispatch as cleanup, whether or not it cares about
+    // the push side-effect).
+    prisma.tbl_rider.findMany.mockResolvedValue([]);
 
     // Minimal fake backing store so getRejectedRiderIds() sees what
     // create() has actually written — real reject-only exclusion behavior,
@@ -206,6 +212,21 @@ describe("dispatchManager overlapping batch cascade", () => {
     await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
     await flush();
     expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(4);
+  });
+
+  it("stopDispatch pushes a dismiss FCM notification to every rider still locked on the order", async () => {
+    lockManager.acquireLock(7, 999, POPUP_TIMEOUT_MS);
+    prisma.tbl_rider.findMany.mockResolvedValue([{ id: 7, fcm_token: "tok-7" }]);
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    dispatchManager.stopDispatch(999, "accepted_by_other");
+    await flush();
+
+    expect(prisma.tbl_rider.findMany).toHaveBeenCalledWith({
+      where: { id: { in: [7] } },
+      select: { id: true, fcm_token: true },
+    });
+    expect(pushNotifier.notifyDriverDismiss).toHaveBeenCalledWith("tok-7", 999, "accepted_by_other");
   });
 
   describe("cross-tier rider re-entry", () => {
