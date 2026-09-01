@@ -103,7 +103,8 @@ function priceForPackage(pkg, distanceKm) {
   const fare = calculateFare(pkg, distanceKm, isNight);
   const driverEarning = calculateDriverEarning(pkg, fare);
   const commission = calculateCommissionPercent(pkg);
-  return { pkg, fare, driverEarning, commission, isNight };
+  const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
+  return { pkg, fare, driverEarning, commission, isNight, packageTitle };
 }
 
 async function priceForPackageId(packageId, distanceKm) {

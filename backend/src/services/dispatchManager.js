@@ -219,7 +219,7 @@ async function runBatch(orderId) {
     fare = priced.fare;
     driverEarning = priced.driverEarning;
     commission = priced.commission;
-    packageTitle = priced.packageTitle || `Model ${packageId}`;
+    packageTitle = priced.packageTitle || priced.pkg?.title || `Model ${packageId}`;
 
     // Asynchronous update so we don't block driver dispatch by 400-800ms of remote DB latency
     prisma.pkg_order.update({
