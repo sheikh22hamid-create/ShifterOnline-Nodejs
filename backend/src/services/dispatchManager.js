@@ -105,19 +105,24 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
 
 function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning) {
   return {
+    type: "order",
     order_id: String(order.id),
     package_id: String(packageId),
     category: order.category,
-    customer_name: order.pick_name,
-    customer_phone: order.pmobile,
-    pickup_address: order.paddress,
-    pickup_latitude: order.plat,
-    pickup_longitude: order.plong,
-    delivery_address: order.daddress,
-    delivery_latitude: order.dlat,
-    delivery_longitude: order.dlong,
+    customer_name: order.pick_name || "Customer",
+    customer_phone: order.pmobile || "",
+    pickup_address: order.paddress || "",
+    pickup_latitude: String(order.plat),
+    pickup_longitude: String(order.plong),
+    delivery_address: order.daddress || "",
+    delivery_latitude: String(order.dlat),
+    delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
+    distance: String(Math.round(Number(distanceKm) * 100) / 100),
+    estimated_earning: String(driverEarning),
     driver_earning: String(driverEarning),
+    pickup_time: new Date().toISOString(),
+    order_details: `${order.category || "Bike"} - ${order.package_weight || 0}`,
     popup_duration: POPUP_TIMEOUT_MS / 1000,
   };
 }

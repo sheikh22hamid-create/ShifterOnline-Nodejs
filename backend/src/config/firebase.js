@@ -59,12 +59,26 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
   }
 
   try {
+    const stringData = Object.fromEntries(
+      Object.entries({ ...data, title: String(title), body: String(body) }).map(([k, v]) => [k, String(v ?? "")])
+    );
+
     await client.send({
       token: fcmToken,
       notification: { title, body },
-      data: Object.fromEntries(
-        Object.entries(data).map(([k, v]) => [k, String(v)])
-      ),
+      android: {
+        priority: "high",
+        notification: {
+          title,
+          body,
+          sound: "default",
+          channelId: "order_channel",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+          visibility: "public",
+        },
+      },
+      data: stringData,
     });
     return { sent: true };
   } catch (err) {
