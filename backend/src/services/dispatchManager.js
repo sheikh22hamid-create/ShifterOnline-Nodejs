@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const {
@@ -247,6 +248,7 @@ async function runBatch(orderId) {
           });
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
+          await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);
         })
       );
     }

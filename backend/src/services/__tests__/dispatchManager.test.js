@@ -8,9 +8,12 @@ jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ fare: 100, driverEarning: 50 }),
 }));
 
+jest.mock("../pushNotifier");
+
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
+const pushNotifier = require("../pushNotifier");
 const { POPUP_TIMEOUT_MS, BATCH_GAP_MS } = require("../../config/constants");
 
 const flush = async (ticks = 20) => {
@@ -163,6 +166,16 @@ describe("dispatchManager overlapping batch cascade", () => {
 
     // Batch 2 (tier 1, the last tier) is still active at this point
     expect([5, 6, 7, 8].every((id) => lockManager.isLocked(id))).toBe(true);
+  });
+
+  it("pushes an FCM notification to each driver locked in a batch, alongside the socket emit", async () => {
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    expect(pushNotifier.notifyDriverOrderRequest).toHaveBeenCalledWith(
+      "tok",
+      expect.objectContaining({ order_id: String(order.id) })
+    );
   });
 
   it("stopDispatch cancels pending timers and dismisses every currently-locked driver", async () => {
