@@ -19,18 +19,11 @@ async function notifyDriverOrderRequest(fcmToken, payload) {
 }
 
 async function notifyDriverDismiss(fcmToken, orderId, reason) {
-  return sendPushNotification(
-    fcmToken,
-    "Order Taken",
-    "This order is no longer available.",
-    {
-      type: "ORDER_CLOSED",
-      action: "close_popup",
-      reason: String(reason),
-      order_id: String(orderId),
-      silent: "1",
-    }
-  );
+  // We do not send FCM push for dismiss because Flutter's background message handler
+  // opens a blank "Unknown Pickup Location" dialog whenever ANY FCM data push arrives.
+  // The Flutter popup automatically dismisses itself on its 15s timer, and Socket.IO
+  // handles real-time UI dismissal when the app is active.
+  return Promise.resolve({ sent: false, skipped: true });
 }
 
 async function notifyCustomerOrderAssigned(fcmToken, data) {

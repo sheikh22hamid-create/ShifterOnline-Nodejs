@@ -21,15 +21,10 @@ describe("pushNotifier", () => {
     );
   });
 
-  it("notifyDriverDismiss sends a dismiss payload with the reason", async () => {
-    await pushNotifier.notifyDriverDismiss("tok-2", 42, "timeout");
-
-    expect(sendPushNotification).toHaveBeenCalledWith(
-      "tok-2",
-      expect.any(String),
-      expect.any(String),
-      expect.objectContaining({ type: "ORDER_CLOSED", order_id: "42", reason: "timeout" })
-    );
+  it("notifyDriverDismiss resolves without sending FCM push (avoids Flutter blank dialog)", async () => {
+    const res = await pushNotifier.notifyDriverDismiss("tok-2", 42, "timeout");
+    expect(res.skipped).toBe(true);
+    expect(sendPushNotification).not.toHaveBeenCalled();
   });
 
   it("notifyCustomerOrderAssigned sends the assigned rider's info", async () => {
