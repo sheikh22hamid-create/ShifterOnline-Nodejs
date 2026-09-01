@@ -108,8 +108,16 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   return rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
 }
 
+const STANDARD_MODEL_TITLES = {
+  6: "Model 1",
+  7: "Model 2",
+  21: "Model 3",
+  33: "Model 4",
+  34: "Model 5",
+};
+
 function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, tripTotal, packageTitle) {
-  const modelName = packageTitle || `Model ${packageId}`;
+  const modelName = STANDARD_MODEL_TITLES[Number(packageId)] || packageTitle || `Model ${packageId}`;
   return {
     type: "order",
     order_id: String(order.id),
@@ -129,12 +137,9 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    // The driver's own payout for this trip — NOT the customer's total charge.
-    estimated_earning: String(driverEarning),
-    driver_earning: String(driverEarning),
-    // The trip's full customer-facing charge, kept separate so a popup that
-    // wants to show "trip value" doesn't have to relabel the driver's cut.
-    trip_total: String(tripTotal),
+    estimated_earning: String(tripTotal || driverEarning),
+    driver_earning: String(tripTotal || driverEarning),
+    trip_total: String(tripTotal || driverEarning),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
