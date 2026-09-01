@@ -146,6 +146,10 @@ async function checkCascadeTermination(orderId) {
     requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
       order_id: String(orderId),
     });
+
+    const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
+    await pushNotifier.notifyCustomerNoDriverFound(customer?.fcm_token, orderId);
+
     activeDispatches.delete(orderId);
   }
 }

@@ -3,6 +3,7 @@ jest.mock("../../config/db", () => ({
   pkg_order: { findUnique: jest.fn(), update: jest.fn() },
   tbl_order_requests: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn() },
+  tbl_user: { findUnique: jest.fn() },
 }));
 
 jest.mock("../pricingEngine", () => ({
@@ -358,6 +359,8 @@ describe("dispatchManager overlapping batch cascade", () => {
   });
 
   it("all tiers exhausted with no acceptance still reaches the existing no_driver_found flow", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+
     await dispatchManager.startDispatch(order);
     await flush();
 
@@ -384,6 +387,8 @@ describe("dispatchManager overlapping batch cascade", () => {
     );
     expect(cancelledUpdate).toBe(true);
     expect([1, 2, 3, 4, 5, 6, 7, 8].every((id) => !lockManager.isLocked(id))).toBe(true);
+
+    expect(pushNotifier.notifyCustomerNoDriverFound).toHaveBeenCalledWith("cust-tok", order.id);
   });
 
   it("startDispatch is a no-op if a cascade is already active for the order (idempotency guard)", async () => {
