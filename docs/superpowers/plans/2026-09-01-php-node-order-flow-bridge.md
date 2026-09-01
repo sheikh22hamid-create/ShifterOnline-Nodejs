@@ -1065,10 +1065,6 @@ Expected: FAIL — `Cannot find module '../legacyController'`.
 
 ```js
 const orderController = require("./orderController");
-const tripLifecycle = require("../services/tripLifecycle");
-const dispatchManager = require("../services/dispatchManager");
-const pushNotifier = require("../services/pushNotifier");
-const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { POPUP_TIMEOUT_MS } = require("../config/constants");
 
@@ -1232,7 +1228,7 @@ describe("legacyController.rejectOrder", () => {
 });
 ```
 
-(Add `const { mockRes } = ...` or inline the same `mockRes()` helper already defined earlier in this test file — do not redefine `describe`/`mockRes` twice; place these two `it`s inside a new `describe` block alongside the existing `createOrder` one.)
+(`mockRes()` is already defined once at the top of this test file, above the `createOrder` describe block from Task 8 — reuse it as-is, do not redefine it. Place this new `describe("legacyController.rejectOrder", ...)` block alongside the existing `describe("legacyController.createOrder", ...)` block, not nested inside it.)
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1240,6 +1236,8 @@ Run: `npx jest src/controllers/__tests__/legacyController.test.js -t "rejectOrde
 Expected: FAIL — `legacyController.rejectOrder` is not a function.
 
 - [ ] **Step 3: Implement `rejectOrder`**
+
+Add `const tripLifecycle = require("../services/tripLifecycle");` to `backend/src/controllers/legacyController.js`'s existing require block at the top (alongside `orderController`/`logger`/`POPUP_TIMEOUT_MS`).
 
 Add to `backend/src/controllers/legacyController.js`, above `module.exports`:
 
@@ -1364,6 +1362,14 @@ Run: `npx jest src/controllers/__tests__/legacyController.test.js -t "stopDispat
 Expected: FAIL — `legacyController.stopDispatch` is not a function.
 
 - [ ] **Step 3: Implement `stopDispatch`**
+
+Add these three requires to `backend/src/controllers/legacyController.js`'s existing require block at the top (alongside `orderController`/`tripLifecycle`/`logger`/`POPUP_TIMEOUT_MS`):
+
+```js
+const dispatchManager = require("../services/dispatchManager");
+const pushNotifier = require("../services/pushNotifier");
+const prisma = require("../config/db");
+```
 
 Add to `backend/src/controllers/legacyController.js`, above `module.exports`:
 
