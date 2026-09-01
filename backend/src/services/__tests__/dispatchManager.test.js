@@ -438,8 +438,8 @@ describe("dispatchManager overlapping batch cascade", () => {
 
     const requests = emitted.filter((e) => e.event === "order:request");
     expect(requests).toHaveLength(4);
-    // Uses the precomputed earning, not pricingEngine.priceForPackageId's mocked 50.
-    expect(requests.every((r) => r.payload.driver_earning === "1.24")).toBe(true);
+    // Uses the precomputed fare, not pricingEngine.priceForPackageId's mocked 50.
+    expect(requests.every((r) => r.payload.driver_earning === "24.78")).toBe(true);
   });
 
   describe("concurrent driver selection (no global mutex)", () => {

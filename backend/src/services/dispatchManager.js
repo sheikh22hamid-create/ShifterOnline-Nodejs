@@ -125,8 +125,8 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, p
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    estimated_earning: (Number(order.total_dcharge) > 0) ? String(order.total_dcharge) : (Number(order.d_charge) > 0 ? String(order.d_charge) : String(driverEarning)),
-    driver_earning: (Number(order.total_dcharge) > 0) ? String(order.total_dcharge) : (Number(order.d_charge) > 0 ? String(order.d_charge) : String(driverEarning)),
+    estimated_earning: String(driverEarning),
+    driver_earning: String(driverEarning),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
@@ -272,7 +272,7 @@ async function runBatch(orderId) {
         currentOrder,
         packageId,
         distanceKm.toFixed(1),
-        driverEarning,
+        fare,
         packageTitle
       );
       await Promise.all(
