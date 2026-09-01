@@ -324,7 +324,11 @@ async function runBatch(orderId) {
     scheduleExpiry(orderId, tierIndex, lockedDrivers);
     state.consecutiveEmptyTurns = 0;
   } else {
-    state.consecutiveEmptyTurns = (state.consecutiveEmptyTurns || 0) + 1;
+    // Only treat a turn as truly empty if nobody is holding an active popup.
+    // When drivers are holding active popups, they will free up when their timers expire.
+    if ((state.activeExpiryTimers || 0) === 0) {
+      state.consecutiveEmptyTurns = (state.consecutiveEmptyTurns || 0) + 1;
+    }
   }
 
   // Tier Exhaustion: Exhaust all eligible drivers of current model before moving to next model
@@ -332,18 +336,16 @@ async function runBatch(orderId) {
     state.tierCursor++;
   }
 
-  if (state.consecutiveEmptyTurns >= state.tiers.length) {
-    // A full cycle came back empty in every tier — nobody left to try.
+  if (state.consecutiveEmptyTurns >= state.tiers.length && (state.activeExpiryTimers || 0) === 0) {
+    // A full cycle came back empty in every tier and no active popups remain
     await checkCascadeTermination(orderId);
     return;
   }
 
   // Tier Progression:
-  // To compensate for remote MySQL network query and socket emit overhead (~1.5-2.0s),
-  // we wait BATCH_GAP_MS so that the next batch popup arrives on the driver's phone
-  // exactly ~5 seconds after the first batch (when the first batch's timer has ~10s remaining)!
-  // If 0 drivers were found this turn, skip straight to the next tier without waiting.
-  const delayMs = lockedRiderIds.length === 0 ? 0 : BATCH_GAP_MS;
+  // If drivers were locked or are currently holding popups, wait BATCH_GAP_MS.
+  // If genuinely nobody was found and no popups are active, advance immediately.
+  const delayMs = (lockedRiderIds.length === 0 && (state.activeExpiryTimers || 0) === 0) ? 0 : BATCH_GAP_MS;
 
   const timer = setTimeout(() => {
     state.timers.delete(timer);
@@ -391,6 +393,14 @@ function scheduleExpiry(orderId, tierIndex, drivers) {
           await pushNotifier.notifyDriverDismiss(driver.fcm_token, orderId, "timeout");
         })
       );
+
+      // Once locks are freed, if cascade is still active, trigger next batch for newly freed drivers
+      if (activeDispatches.has(orderId)) {
+        state.consecutiveEmptyTurns = 0;
+        runBatch(orderId).catch((err) =>
+          logger.error(`dispatchManager: retry batch after expiry failed for order ${orderId}:`, err)
+        );
+      }
 
       await checkCascadeTermination(orderId);
     } catch (err) {
