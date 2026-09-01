@@ -1,0 +1,87 @@
+/**
+ * Drives the full create -> driver popup -> accept flow through the PHP
+ * URLs (not Node directly), confirming the PHP-to-Node bridge works
+ * end-to-end. Requires both servers running locally (see Task 19's Step 1).
+ */
+const ioClient = require("socket.io-client");
+
+const PHP_BASE_URL = process.env.PHP_BASE_URL || "http://localhost:8080";
+const NODE_BASE_URL = process.env.NODE_BASE_URL || "http://localhost:5000";
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function run() {
+  console.log(`Connecting a test driver socket to ${NODE_BASE_URL}...`);
+  const driverSocket = ioClient(NODE_BASE_URL, { transports: ["websocket"], forceNew: true });
+  const testRiderId = Number(process.env.TEST_RIDER_ID || 1);
+
+  await new Promise((resolve) => driverSocket.on("connect", resolve));
+  driverSocket.emit("driver:join", { rider_id: testRiderId });
+
+  const orderRequestPromise = new Promise((resolve) => {
+    driverSocket.once("order:request", resolve);
+  });
+
+  console.log(`Placing an order through the PHP URL (${PHP_BASE_URL}/cust_api/pks_order.php)...`);
+  const createRes = await fetch(`${PHP_BASE_URL}/cust_api/pks_order.php`, {
+    method: "POST",
+    body: new URLSearchParams({
+      uid: process.env.TEST_UID || "1",
+      category: "Bike",
+      delivery_type: "[6]",
+      booking_type: "1",
+      plat: "22.7356214",
+      plong: "75.9110814",
+      dlat: "22.7156214",
+      dlong: "75.8810814",
+      paddress: "Test Pickup",
+      daddress: "Test Drop",
+      pick_name: "Bridge Test",
+      pmobile: "9999900000",
+      package_weight: "2",
+      package_cost: "100",
+      size: "0",
+    }),
+  });
+  const createJson = await createRes.json();
+  console.log("PHP create-order response:", createJson);
+
+  if (createJson.Result !== "true" && createJson.Result !== true) {
+    throw new Error("Order creation through PHP failed");
+  }
+
+  console.log("Waiting up to 10s for the driver socket to receive 'order:request' via Node's cascade...");
+  const orderRequest = await Promise.race([
+    orderRequestPromise,
+    sleep(10000).then(() => null),
+  ]);
+
+  if (!orderRequest) {
+    throw new Error("Driver socket never received order:request — bridge is broken");
+  }
+  console.log("Driver socket received order:request:", orderRequest);
+
+  console.log(`Accepting through the PHP URL (${PHP_BASE_URL}/rider_api/accept_order.php)...`);
+  const acceptRes = await fetch(`${PHP_BASE_URL}/rider_api/accept_order.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rider_id: testRiderId, order_id: Number(createJson.order_id) }),
+  });
+  const acceptJson = await acceptRes.json();
+  console.log("PHP accept response:", acceptJson);
+
+  if (acceptJson.Result !== true) {
+    throw new Error("Accept through PHP failed");
+  }
+
+  console.log("SUCCESS: PHP -> Node bridge round-trip verified.");
+  driverSocket.disconnect();
+  process.exit(0);
+}
+
+run().catch((err) => {
+  console.error("Bridge verification FAILED:", err);
+  process.exit(1);
+});
