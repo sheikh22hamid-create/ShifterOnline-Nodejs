@@ -235,6 +235,7 @@ async function runBatch(orderId) {
   const lockedDrivers = [];
   let round = 0;
 
+  let hasMoreInCurrentTier = false;
   while (lockedRiderIds.length < MAX_DRIVERS_PER_BATCH && round <= MAX_TOPUP_ROUNDS) {
     // Re-check on every round: an accept (or cancel) that lands mid-batch
     // tears down activeDispatches synchronously via stopDispatch, and no
@@ -245,6 +246,10 @@ async function runBatch(orderId) {
 
     const excludeRiderIds = [...new Set([...lockManager.getAllLockedRiderIds(), ...rejectedRiderIds, ...consideredThisBatch])];
     const candidates = await selectEligibleDrivers(currentOrder, packageId, excludeRiderIds, MAX_DRIVERS_PER_BATCH + 1);
+
+    if (candidates.length > (MAX_DRIVERS_PER_BATCH - lockedRiderIds.length)) {
+      hasMoreInCurrentTier = true;
+    }
 
     const eligibleBatch = candidates.slice(0, MAX_DRIVERS_PER_BATCH - lockedRiderIds.length);
     let lockedThisRound = 0;
@@ -298,7 +303,7 @@ async function runBatch(orderId) {
     round++;
   }
 
-  logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length}`);
+  logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier}`);
 
   if (lockedDrivers.length > 0) {
     scheduleExpiry(orderId, tierIndex, lockedDrivers);
@@ -307,9 +312,10 @@ async function runBatch(orderId) {
     state.consecutiveEmptyTurns = (state.consecutiveEmptyTurns || 0) + 1;
   }
 
-  // Round-robin: always hand the next turn to the next tier, whether or not
-  // this tier still has un-notified candidates waiting for a future turn.
-  state.tierCursor++;
+  // Tier Exhaustion: Exhaust all eligible drivers of current model before moving to next model
+  if (!hasMoreInCurrentTier || lockedRiderIds.length === 0) {
+    state.tierCursor++;
+  }
 
   if (state.consecutiveEmptyTurns >= state.tiers.length) {
     // A full cycle came back empty in every tier — nobody left to try.

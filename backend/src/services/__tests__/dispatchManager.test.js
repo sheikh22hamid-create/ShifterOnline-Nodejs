@@ -274,16 +274,16 @@ describe("dispatchManager overlapping batch cascade", () => {
     });
   });
 
-  it("round-robin: batch 2 goes to Model 2, not Model 1's leftover drivers — Model 1's leftover gets revisited once every tier has had a turn", async () => {
-    // Model 1 (tier 0) has 5 eligible drivers — only 4 fit in one batch, so
-    // driver 5 is left over (never locked, just not selected this turn).
-    // Model 2 (tier 1) has 3 eligible drivers, all of whom fit.
+  it("tier exhaustion: exhausts all eligible drivers in Model 1 before advancing to Model 2", async () => {
+    // Model 1 (tier 0) has 5 eligible drivers — batch 1 selects 4, so
+    // driver 5 is left over. Batch 2 in +5s offers driver 5 for Model 1,
+    // and only after Model 1 is exhausted does batch 3 offer Model 2 (6, 7, 8).
     prisma.$queryRaw.mockReset();
     prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
       .mockResolvedValueOnce([1, 2, 3, 4, 5].map(makeRiderRow)) // tier 0 turn 1
-      .mockResolvedValueOnce([6, 7, 8].map(makeRiderRow)) // tier 1 turn 1
-      .mockResolvedValueOnce([5].map(makeRiderRow)); // tier 0 turn 2 (round-robin revisit) — driver 5 still eligible
+      .mockResolvedValueOnce([5].map(makeRiderRow)) // tier 0 turn 2 (leftover exhausted)
+      .mockResolvedValueOnce([6, 7, 8].map(makeRiderRow)); // tier 1 turn 1 (Model 2)
 
     await dispatchManager.startDispatch(order);
     await flush();
@@ -291,21 +291,20 @@ describe("dispatchManager overlapping batch cascade", () => {
     const batch1 = emitted.filter((e) => e.event === "order:request");
     expect(batch1.map((e) => e.room).sort()).toEqual(["driver_1", "driver_2", "driver_3", "driver_4"]);
 
-    // +5s: batch 2 must be Model 2 (6, 7, 8) — NOT driver 5, Model 1's leftover.
+    // +5s: batch 2 must be Model 1's leftover (driver 5), exhausting Model 1.
     await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
     await flush();
 
-    const batch2 = emitted.filter(
-      (e) => e.event === "order:request" && ["driver_6", "driver_7", "driver_8"].includes(e.room)
-    );
-    expect(batch2.map((e) => e.room).sort()).toEqual(["driver_6", "driver_7", "driver_8"]);
-    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(false);
+    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(true);
 
-    // +10s more: the cursor cycles back to Model 1, which now gets driver 5.
-    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS * 2);
+    // +10s: now that Model 1 is exhausted, batch 3 goes to Model 2 (6, 7, 8).
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
     await flush();
 
-    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(true);
+    const batch3 = emitted.filter(
+      (e) => e.event === "order:request" && ["driver_6", "driver_7", "driver_8"].includes(e.room)
+    );
+    expect(batch3.map((e) => e.room).sort()).toEqual(["driver_6", "driver_7", "driver_8"]);
   });
 
   it("stops issuing further topup rounds within a batch the instant the order is accepted mid-batch", async () => {
