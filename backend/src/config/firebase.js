@@ -83,23 +83,30 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
       Object.entries({ ...data, title: String(title), body: String(body) }).map(([k, v]) => [k, String(v ?? "")])
     );
 
-    await client.send({
+    const message = {
       token: fcmToken,
-      notification: { title, body },
       android: {
         priority: "high",
-        notification: {
-          title,
-          body,
-          sound: "default",
-          channelId: "order_channel",
-          defaultSound: true,
-          defaultVibrateTimings: true,
-          visibility: "public",
-        },
       },
       data: stringData,
-    });
+    };
+
+    // Driver order popup requires pure data-only payload so Flutter's background/foreground message handler opens the full-screen dialog popup.
+    // For other system events (e.g. order assigned, user notices), include notification for system tray.
+    if (data.type !== "order") {
+      message.notification = { title, body };
+      message.android.notification = {
+        title,
+        body,
+        sound: "default",
+        channelId: "order_channel",
+        defaultSound: true,
+        defaultVibrateTimings: true,
+        visibility: "public",
+      };
+    }
+
+    await client.send(message);
     return { sent: true };
   } catch (err) {
     logger.error("sendPushNotification failed:", err.message);
