@@ -5,10 +5,15 @@ function stringifyPayload(payload) {
 }
 
 async function notifyDriverOrderRequest(fcmToken, payload) {
+  const customerName = payload.customer_name || "Customer";
+  const earning = payload.estimated_earning || payload.driver_earning || "0";
+  const modelName = payload.package_title || payload.model_name || "";
+  const modelPrefix = modelName ? `[${modelName}] ` : "";
+
   return sendPushNotification(
     fcmToken,
-    "New Order Request",
-    `${payload.pickup_address || ""} -> ${payload.delivery_address || ""}`,
+    `${modelPrefix}New Order Request`,
+    `${modelPrefix}New order from ${customerName} - ₹${earning}`,
     stringifyPayload({ ...payload, type: "order" })
   );
 }

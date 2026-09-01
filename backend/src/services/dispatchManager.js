@@ -104,11 +104,16 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   return rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
 }
 
-function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning) {
+function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, packageTitle) {
+  const modelName = packageTitle || `Model ${packageId}`;
   return {
     type: "order",
     order_id: String(order.id),
     package_id: String(packageId),
+    delivery_type: String(packageId),
+    package_name: modelName,
+    package_title: modelName,
+    model_name: modelName,
     category: order.category,
     customer_name: order.pick_name || "Customer",
     customer_phone: order.pmobile || "",
@@ -123,8 +128,8 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning) {
     estimated_earning: String(driverEarning),
     driver_earning: String(driverEarning),
     pickup_time: new Date().toISOString(),
-    order_details: `${order.category || "Bike"} - ${order.package_weight || 0}`,
-    popup_duration: POPUP_TIMEOUT_MS / 1000,
+    order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
+    popup_duration: String(POPUP_TIMEOUT_MS / 1000),
   };
 }
 
@@ -245,7 +250,13 @@ async function runBatch(orderId) {
     }
 
     if (lockedThisRoundDrivers.length > 0) {
-      const payload = buildOrderRequestPayload(currentOrder, packageId, distanceKm.toFixed(1), driverEarning);
+      const payload = buildOrderRequestPayload(
+        currentOrder,
+        packageId,
+        distanceKm.toFixed(1),
+        driverEarning,
+        tierPricing.packageTitle
+      );
       await Promise.all(
         lockedThisRoundDrivers.map(async (driver) => {
           const riderId = Number(driver.rider_id);
