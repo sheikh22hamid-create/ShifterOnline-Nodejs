@@ -153,7 +153,7 @@ async function checkCascadeTermination(orderId) {
 
     await prisma.pkg_order.update({
       where: { id: orderId },
-      data: { o_status: "Cancelled", cancel_reason: "No driver found" },
+      data: { o_status: "Cancelled", cancel_reason: "No driver found", order_status: 4 },
     });
     requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
       order_id: String(orderId),
