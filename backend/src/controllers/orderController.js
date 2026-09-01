@@ -123,6 +123,7 @@ async function createOrderCore({
       allowed_delivery_types: JSON.stringify(requestedPackageIds),
       trans_id: transactionId || null,
       photos: photos || null,
+      otp: Math.floor(1000 + Math.random() * 9000),
     },
   });
 
