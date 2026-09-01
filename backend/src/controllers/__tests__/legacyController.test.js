@@ -1,5 +1,12 @@
 jest.mock("../orderController", () => ({ createOrderCore: jest.fn() }));
 jest.mock("../../services/tripLifecycle", () => ({ rejectOrder: jest.fn().mockResolvedValue({ success: true }) }));
+jest.mock("../../config/db", () => ({
+  pkg_order: { findUnique: jest.fn() },
+  tbl_rider: { findUnique: jest.fn() },
+  tbl_user: { findUnique: jest.fn() },
+}));
+jest.mock("../../services/dispatchManager", () => ({ stopDispatch: jest.fn(), startDispatch: jest.fn() }));
+jest.mock("../../services/pushNotifier", () => ({ notifyCustomerOrderAssigned: jest.fn().mockResolvedValue({ sent: true }) }));
 
 const orderController = require("../orderController");
 const legacyController = require("../legacyController");
@@ -80,3 +87,48 @@ describe("legacyController.rejectOrder", () => {
   });
 });
 
+describe("legacyController.stopDispatch", () => {
+  const prisma = require("../../config/db");
+  const dispatchManager = require("../../services/dispatchManager");
+  const pushNotifier = require("../../services/pushNotifier");
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("stops the dispatch cascade and returns {Result: true} when no rider is given (cancel path)", async () => {
+    const req = { body: { order_id: "42", reason: "cancelled_by_user" } };
+    const res = mockRes();
+
+    await legacyController.stopDispatch(req, res);
+
+    expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(42, "cancelled_by_user");
+    expect(pushNotifier.notifyCustomerOrderAssigned).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ Result: true });
+  });
+
+  it("also pushes an order-assigned notification to the customer when accepted_rider_id is given (accept path)", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 42, uid: 9, otp: 1234 });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 3, first_name: "Deepak", last_name: "", fmobile: "999", vehicle_no: "MP-01" });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+
+    const req = { body: { order_id: "42", reason: "accepted_by_other", accepted_rider_id: "3" } };
+    const res = mockRes();
+
+    await legacyController.stopDispatch(req, res);
+
+    expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(42, "accepted_by_other");
+    expect(pushNotifier.notifyCustomerOrderAssigned).toHaveBeenCalledWith(
+      "cust-tok",
+      expect.objectContaining({ order_id: 42, rider_name: "Deepak", otp: 1234 })
+    );
+    expect(res.json).toHaveBeenCalledWith({ Result: true });
+  });
+
+  it("returns 400 when order_id is missing", async () => {
+    const req = { body: {} };
+    const res = mockRes();
+
+    await legacyController.stopDispatch(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+});

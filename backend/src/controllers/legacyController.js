@@ -1,5 +1,8 @@
 const orderController = require("./orderController");
 const tripLifecycle = require("../services/tripLifecycle");
+const dispatchManager = require("../services/dispatchManager");
+const pushNotifier = require("../services/pushNotifier");
+const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { POPUP_TIMEOUT_MS } = require("../config/constants");
 
@@ -103,4 +106,40 @@ async function rejectOrder(req, res) {
   }
 }
 
-module.exports = { createOrder, rejectOrder };
+async function stopDispatch(req, res) {
+  try {
+    const orderId = Number(req.body.order_id);
+    if (!Number.isFinite(orderId)) {
+      return res.status(400).json({ Result: false, msg: "order_id is required" });
+    }
+    const reason = req.body.reason || "accepted_by_other";
+
+    dispatchManager.stopDispatch(orderId, reason);
+
+    const riderId = Number(req.body.accepted_rider_id);
+    if (Number.isFinite(riderId) && riderId > 0) {
+      const [order, rider] = await Promise.all([
+        prisma.pkg_order.findUnique({ where: { id: orderId } }),
+        prisma.tbl_rider.findUnique({ where: { id: riderId } }),
+      ]);
+
+      if (order) {
+        const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
+        await pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
+          order_id: orderId,
+          rider_name: rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "",
+          rider_phone: rider ? rider.fmobile : "",
+          vehicle_no: rider ? rider.vehicle_no : "",
+          otp: order.otp,
+        });
+      }
+    }
+
+    return res.json({ Result: true });
+  } catch (err) {
+    logger.error("legacyController.stopDispatch failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
+module.exports = { createOrder, rejectOrder, stopDispatch };
