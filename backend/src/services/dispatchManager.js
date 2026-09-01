@@ -81,13 +81,14 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       )) AS distance_km,
       CASE WHEN fav.id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
     FROM tbl_rider r
-    INNER JOIN tbl_rider_delivery_type dt
-      ON dt.rider_id = r.id AND dt.delivery_type = ${String(packageId)} AND dt.status = 1
+    LEFT JOIN tbl_rider_delivery_type dt
+      ON dt.rider_id = r.id AND dt.delivery_type = ${String(packageId)}
     LEFT JOIN tbl_favorite_driver fav
       ON fav.rider_id = r.id AND fav.user_id = ${Number(order.uid)} AND fav.status = 1
     WHERE r.a_status = 1
       AND r.status = 1
       AND r.vehicle = ${order.category}
+      AND (dt.status = 1 OR dt.status IS NULL)
       AND r.rlats IS NOT NULL AND r.rlats != ''
       AND r.rlongs IS NOT NULL AND r.rlongs != ''
       AND r.id NOT IN (${Prisma.join(exclude)})
