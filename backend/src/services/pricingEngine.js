@@ -43,7 +43,8 @@ function calculateFare(pkg, distanceKm, isNight) {
 
   const serviceCharge = Number(pkg.service_charge) || 0;
   const pickupCharge = Number(pkg.pickup_charge) || 0;
-  const totalFare = fare + serviceCharge + pickupCharge;
+  const cancellationCharge = Number(pkg.cancellation_charge_customer ?? pkg.cancellation_charge) || 0;
+  const totalFare = fare + serviceCharge + pickupCharge + cancellationCharge;
 
   return round2(totalFare);
 }

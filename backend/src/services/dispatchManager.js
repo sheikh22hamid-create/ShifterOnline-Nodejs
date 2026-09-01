@@ -92,7 +92,11 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       AND r.rlats IS NOT NULL AND r.rlats != ''
       AND r.rlongs IS NOT NULL AND r.rlongs != ''
       AND r.id NOT IN (${Prisma.join(exclude)})
-      AND r.id NOT IN (SELECT rid FROM pkg_order WHERE order_status IN (1, 2, 3) AND rid > 0)
+      AND r.id NOT IN (
+        SELECT rid FROM pkg_order
+        WHERE order_status IN (1, 2, 3) AND rid > 0
+          AND o_status NOT IN ('Completed', 'Cancelled')
+      )
     HAVING distance_km <= ${radiusKm}
     ORDER BY is_favorite DESC, distance_km ASC
     LIMIT ${limit}
@@ -104,7 +108,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   return rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
 }
 
-function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, packageTitle) {
+function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, tripTotal, packageTitle) {
   const modelName = packageTitle || `Model ${packageId}`;
   return {
     type: "order",
@@ -125,8 +129,9 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, p
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    estimated_earning: String(driverEarning),
-    driver_earning: String(driverEarning),
+    estimated_earning: String(tripTotal || driverEarning),
+    driver_earning: String(tripTotal || driverEarning),
+    trip_total: String(tripTotal || driverEarning),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
@@ -161,25 +166,30 @@ async function checkCascadeTermination(orderId) {
 
     const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
     await pushNotifier.notifyCustomerNoDriverFound(customer?.fcm_token, orderId);
-
-    activeDispatches.delete(orderId);
   }
+
+  // Once a cascade is exhausted there is nothing left for it to do — release
+  // its in-memory state regardless of which branch above ran (the order may
+  // have been accepted or cancelled through a path that didn't call
+  // stopDispatch, e.g. a race with the check above), so this map can never
+  // accumulate entries for cascades that finished ambiguously.
+  activeDispatches.delete(orderId);
 }
 
 /**
  * Dispatches one batch (one tier's turn) of up to MAX_DRIVERS_PER_BATCH
- * drivers. Uses Round-Robin Tier Rotation:
- * - Every turn queries exactly one tier — state.tierCursor mod tiers.length
- *   — offers up to MAX_DRIVERS_PER_BATCH candidates from it, then always
- *   advances the cursor to the next tier for the next turn, whether or not
- *   this tier still has un-notified candidates left over.
- * - A tier with leftover candidates (more eligible than fit in one batch)
- *   gets revisited on its next turn once the cursor cycles back around —
- *   by then, some previously-locked riders elsewhere may also have freed up
- *   (see getRejectedRiderIds) and be re-offered too.
- * - The within-turn while-loop below is unrelated to tier rotation: it's a
- *   bounded retry against concurrent-order lock contention for this same
- *   tier's candidates (see MAX_TOPUP_ROUNDS), not tier exhaustion.
+ * drivers. Uses Tier Exhaustion (see commit b158d5a — a deliberate change
+ * from this function's earlier round-robin design):
+ * - Every turn queries exactly one tier — state.tierCursor mod tiers.length.
+ * - The cursor only advances to the next tier once this tier has no more
+ *   un-notified eligible candidates left (hasMoreInCurrentTier is false) or
+ *   this turn locked nobody — so a tier with a large eligible pool keeps
+ *   getting turns (5s apart) until it's genuinely exhausted before the next
+ *   tier's drivers are ever offered anything.
+ * - The within-turn while-loop below is a separate concern from tier
+ *   exhaustion: it's a bounded retry against concurrent-order lock
+ *   contention for this same tier's candidates within a single turn (see
+ *   MAX_TOPUP_ROUNDS).
  */
 async function runBatch(orderId) {
   const state = activeDispatches.get(orderId);
@@ -206,14 +216,10 @@ async function runBatch(orderId) {
   let fare, driverEarning, commission, packageTitle;
   if (precomputed) {
     ({ fare, driverEarning, commission } = precomputed);
-    packageTitle = precomputed.packageTitle || null;
-    if (!packageTitle && prisma.tbl_package?.findUnique) {
-      const pkg = await prisma.tbl_package.findUnique({ where: { id: Number(packageId) }, select: { title: true } });
-      packageTitle = pkg ? pkg.title : `Model ${packageId}`;
-    }
-    if (!packageTitle) {
-      packageTitle = `Model ${packageId}`;
-    }
+    // orderController.createOrderCore already had the package row in hand
+    // when it priced tier 0, and passes its title straight through here —
+    // no need for a second DB round-trip to re-fetch what we just fetched.
+    packageTitle = precomputed.packageTitle || `Model ${packageId}`;
   } else {
     const priced = await pricingEngine.priceForPackageId(packageId, distanceKm);
     fare = priced.fare;
@@ -272,6 +278,7 @@ async function runBatch(orderId) {
         currentOrder,
         packageId,
         distanceKm.toFixed(1),
+        driverEarning,
         fare,
         packageTitle
       );
@@ -325,10 +332,10 @@ async function runBatch(orderId) {
 
   // Tier Progression:
   // To compensate for remote MySQL network query and socket emit overhead (~1.5-2.0s),
-  // we wait 3000ms so that the next batch popup arrives on the driver's phone
+  // we wait BATCH_GAP_MS so that the next batch popup arrives on the driver's phone
   // exactly ~5 seconds after the first batch (when the first batch's timer has ~10s remaining)!
   // If 0 drivers were found this turn, skip straight to the next tier without waiting.
-  const delayMs = lockedRiderIds.length === 0 ? 0 : 3000;
+  const delayMs = lockedRiderIds.length === 0 ? 0 : BATCH_GAP_MS;
 
   const timer = setTimeout(() => {
     state.timers.delete(timer);
@@ -388,11 +395,9 @@ function scheduleExpiry(orderId, tierIndex, drivers) {
 
 /**
  * Kicks off the overlapping batch cascade for a freshly created order.
- * Uses Round-Robin Tier Rotation:
- * - Batches run sequentially with BATCH_GAP_MS stagger.
- * - Each batch draws from exactly one tier, then always moves on to the
- *   next tier next turn — cycling back to earlier tiers (which may have
- *   leftover or newly-freed candidates) once every tier has had a turn.
+ * Uses Tier Exhaustion (see runBatch): batches run BATCH_GAP_MS apart, each
+ * drawing from one tier, and the cascade only moves to the next tier once
+ * the current one has no eligible candidates left to offer.
  */
 async function startDispatch(order, tier0Pricing) {
   if (activeDispatches.has(order.id)) {
