@@ -21,9 +21,15 @@ async function notifyDriverOrderRequest(fcmToken, payload) {
 async function notifyDriverDismiss(fcmToken, orderId, reason) {
   return sendPushNotification(
     fcmToken,
-    "Order No Longer Available",
+    "Order Taken",
     "This order is no longer available.",
-    { type: "order_dismiss", order_id: String(orderId), reason: String(reason) }
+    {
+      type: "ORDER_CLOSED",
+      action: "close_popup",
+      reason: String(reason),
+      order_id: String(orderId),
+      silent: "1",
+    }
   );
 }
 

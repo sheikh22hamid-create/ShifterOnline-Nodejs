@@ -91,9 +91,10 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
       data: stringData,
     };
 
-    // Driver order popup requires pure data-only payload so Flutter's background/foreground message handler opens the full-screen dialog popup.
-    // For other system events (e.g. order assigned, user notices), include notification for system tray.
-    if (data.type !== "order") {
+    // Driver events (order popup, popup dismiss) require pure data-only payload so Flutter handlers execute silently without tray popups.
+    // Customer notifications (order assigned, no driver found, etc.) receive a system tray notification.
+    const isDriverEvent = data.type === "order" || data.type === "ORDER_CLOSED" || data.type === "order_dismiss" || data.silent === "1";
+    if (!isDriverEvent) {
       message.notification = { title, body };
       message.android.notification = {
         title,
