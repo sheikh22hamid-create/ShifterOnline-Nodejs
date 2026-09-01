@@ -47,7 +47,7 @@ async function fareEstimate(req, res) {
 async function createOrderCore({
   uid, category, deliveryTypeIds, bookingType, plat, plong, paddress, pickName, pmobile, pickType,
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
-  pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, cityId, photos,
+  pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, cityId, photos, distance,
 }) {
   if (
     !uid ||
@@ -61,10 +61,15 @@ async function createOrderCore({
 
   const requestedPackageIds = deliveryTypeIds.map(Number);
 
+  const clientDistance = Number(distance);
+  const distancePromise = (Number.isFinite(clientDistance) && clientDistance > 0)
+    ? Promise.resolve({ distanceKm: clientDistance, durationMin: Math.round(clientDistance * 2), source: "client" })
+    : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
+
   const [validPackages, customer, distanceResult] = await Promise.all([
     prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
     cityId ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
-    getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
+    distancePromise,
   ]);
 
   const packagesById = new Map(validPackages.map((p) => [p.id, p]));

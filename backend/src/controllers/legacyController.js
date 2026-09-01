@@ -59,6 +59,7 @@ async function createOrder(req, res) {
       radiusKm: resolveRadiusKm(raw),
       cityId: raw.city_id,
       photos: raw.photos || null,
+      distance: raw.distance || raw.distance_km,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
