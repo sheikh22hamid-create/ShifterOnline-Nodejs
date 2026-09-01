@@ -3,16 +3,16 @@ const { calculateFare, calculateDriverEarning } = require("../pricingEngine");
 describe("calculateFare", () => {
   const pkg = { min_charge: 20, per_km_charge: 5, night_charge_percent: 20 };
 
-  it("uses per_km_charge * distance when it exceeds min_charge", () => {
-    expect(calculateFare(pkg, 10, false)).toBe(50);
+  it("calculates min_charge + (per_km_charge * distance)", () => {
+    expect(calculateFare(pkg, 10, false)).toBe(70);
   });
 
-  it("falls back to min_charge when distance is below the minimum", () => {
-    expect(calculateFare(pkg, 1, false)).toBe(20);
+  it("calculates correctly for short distance", () => {
+    expect(calculateFare(pkg, 1, false)).toBe(25);
   });
 
   it("applies night_charge_percent on top of the base fare", () => {
-    expect(calculateFare(pkg, 10, true)).toBe(60);
+    expect(calculateFare(pkg, 10, true)).toBe(84);
   });
 });
 

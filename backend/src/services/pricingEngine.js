@@ -34,19 +34,14 @@ function isNightNow(pkg, now = new Date()) {
 function calculateFare(pkg, distanceKm, isNight) {
   const minCharge = Number(pkg.min_charge) || 0;
   const perKmCharge = Number(pkg.per_km_charge) || 0;
-  let fare = Math.max(minCharge, perKmCharge * distanceKm);
+  let fare = minCharge + (perKmCharge * distanceKm);
 
   if (isNight) {
     const nightPct = parseFloat(pkg.night_charge_percent) || 0;
     fare *= 1 + nightPct / 100;
   }
 
-  const serviceCharge = Number(pkg.service_charge) || 0;
-  const pickupCharge = Number(pkg.pickup_charge) || 0;
-  const cancellationCharge = Number(pkg.cancellation_charge_customer ?? pkg.cancellation_charge) || 0;
-  const totalFare = fare + serviceCharge + pickupCharge + cancellationCharge;
-
-  return round2(totalFare);
+  return round2(fare);
 }
 
 /**
