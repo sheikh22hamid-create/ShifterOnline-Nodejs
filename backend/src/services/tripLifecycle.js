@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const dispatchManager = require("./dispatchManager");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { POPUP_TIMEOUT_MS } = require("../config/constants");
@@ -114,6 +115,15 @@ async function acceptOrder(orderId, riderId) {
 
   const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
   notifyAdminStatus(order);
+
+  const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
+  await pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
+    order_id: orderId,
+    rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
+    rider_phone: rider.fmobile,
+    vehicle_no: rider.vehicle_no,
+    otp: order.otp,
+  });
 
   return {
     success: true,

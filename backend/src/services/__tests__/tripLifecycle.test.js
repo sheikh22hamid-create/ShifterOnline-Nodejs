@@ -4,6 +4,7 @@ jest.mock("../../config/db", () => ({
   pkg_order: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
   tbl_order_requests: { updateMany: jest.fn(), findFirst: jest.fn() },
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
+  tbl_user: { findUnique: jest.fn() },
   tbl_wallet_history: { create: jest.fn() },
   pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
 }));
@@ -14,6 +15,7 @@ jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5 }),
   getPackageById: jest.fn(),
 }));
+jest.mock("../pushNotifier", () => ({ notifyCustomerOrderAssigned: jest.fn().mockResolvedValue({ sent: true }) }));
 
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
@@ -96,7 +98,23 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(result).toEqual({ success: false, msg: "Order already taken or cancelled" });
     expect(dispatchManager.stopDispatch).not.toHaveBeenCalled();
   });
+
+  it("pushes an order-assigned FCM notification to the customer", async () => {
+    const pushNotifier = require("../pushNotifier");
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, otp: 4321 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(pushNotifier.notifyCustomerOrderAssigned).toHaveBeenCalledWith(
+      "cust-tok",
+      expect.objectContaining({ order_id: 297, rider_name: "Deepak", otp: 4321 })
+    );
+  });
 });
+
 
 describe("tripLifecycle.customerCancel", () => {
   beforeEach(() => {
