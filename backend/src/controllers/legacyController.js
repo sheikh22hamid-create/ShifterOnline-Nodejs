@@ -142,4 +142,32 @@ async function stopDispatch(req, res) {
   }
 }
 
-module.exports = { createOrder, rejectOrder, stopDispatch };
+async function testPush(req, res) {
+  try {
+    const riderId = Number(req.body.rider_id || 24);
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) return res.json({ ok: false, msg: "Rider not found" });
+
+    const pushResult = await pushNotifier.notifyDriverOrderRequest(rider.fcm_token, {
+      order_id: "9999",
+      package_id: "6",
+      category: "Bike",
+      customer_name: "Test Customer",
+      customer_phone: "9999999999",
+      pickup_address: "Test Pickup",
+      pickup_latitude: "24.6495",
+      pickup_longitude: "76.0378",
+      delivery_address: "Test Drop",
+      delivery_latitude: "25.2012",
+      delivery_longitude: "75.8566",
+      distance: "10",
+      estimated_earning: "100",
+    });
+
+    return res.json({ ok: true, riderId, fcmPrefix: rider.fcm_token?.substring(0, 25), pushResult });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+}
+
+module.exports = { createOrder, rejectOrder, stopDispatch, testPush };
