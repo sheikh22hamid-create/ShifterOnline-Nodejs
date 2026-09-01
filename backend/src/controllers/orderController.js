@@ -44,149 +44,129 @@ async function fareEstimate(req, res) {
   }
 }
 
+async function createOrderCore({
+  uid, category, deliveryTypeIds, bookingType, plat, plong, paddress, pickName, pmobile, pickType,
+  dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
+  pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, cityId, photos,
+}) {
+  if (
+    !uid ||
+    !category ||
+    !Array.isArray(deliveryTypeIds) ||
+    deliveryTypeIds.length === 0 ||
+    ![plat, plong, dlat, dlong].every(isFiniteNumber)
+  ) {
+    return { ok: false, code: "VALIDATION", msg: "uid, category, a non-empty delivery_type array, and valid coordinates are required" };
+  }
+
+  const requestedPackageIds = deliveryTypeIds.map(Number);
+
+  const [validPackages, customer, distanceResult] = await Promise.all([
+    prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
+    cityId ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
+    getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
+  ]);
+
+  const packagesById = new Map(validPackages.map((p) => [p.id, p]));
+  const invalidPackageIds = requestedPackageIds.filter((id) => !packagesById.has(id));
+
+  if (invalidPackageIds.length > 0) {
+    return { ok: false, code: "INVALID_PACKAGES", invalidPackageIds };
+  }
+
+  const resolvedCityId = cityId ? Number(cityId) : (customer?.city_id ?? null);
+
+  const parsedRadiusKm = Number(radiusKm);
+  const resolvedRadiusKm = Number.isFinite(parsedRadiusKm) ? Math.min(Math.max(parsedRadiusKm, 1), 100) : SEARCH_RADIUS_KM;
+
+  const firstTierPackageId = requestedPackageIds[0];
+  const { distanceKm } = distanceResult;
+  const { fare, driverEarning, commission } = pricingEngine.priceForPackage(packagesById.get(firstTierPackageId), distanceKm);
+
+  const parsedWeight = parseFloat(String(packageWeight));
+
+  const order = await prisma.pkg_order.create({
+    data: {
+      uid: Number(uid),
+      category,
+      o_status: "Pending",
+      odate: new Date(),
+      p_method_id: Number(pMethodId) || 0,
+      plat: String(plat),
+      plong: String(plong),
+      dlat: String(dlat),
+      dlong: String(dlong),
+      paddress: paddress || null,
+      daddress: daddress || null,
+      pmobile: pmobile || null,
+      dmobile: dmobile || null,
+      pick_type: pickType || "",
+      drop_type: dropType || "",
+      pick_name: pickName || "",
+      drop_name: dropName || "",
+      description: description || null,
+      distance: distanceKm,
+      d_charge: fare,
+      total_dcharge: fare,
+      commission,
+      extra_mile_charge: Number(extraMileCharge) || 0,
+      time_duration: 0,
+      package_weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
+      package_cost: Number(packageCost) || 0,
+      cou_id: Number(couId) || 0,
+      cou_amt: Number(couAmt) || 0,
+      radius_range: Math.round(resolvedRadiusKm),
+      radius_charge: 0,
+      booking_type: Number(bookingType) || 1,
+      city_id: resolvedCityId,
+      delivery_type: firstTierPackageId,
+      allowed_delivery_types: JSON.stringify(requestedPackageIds),
+      trans_id: transactionId || null,
+      photos: photos || null,
+    },
+  });
+
+  dispatchManager.startDispatch(order, { fare, driverEarning, commission }).catch((err) =>
+    logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
+  );
+
+  try {
+    adminSocket.notifyNewOrder(order);
+  } catch (err) {
+    logger.error(`createOrderCore: admin socket notify failed for order ${order.id}:`, err);
+  }
+
+  return { ok: true, order };
+}
+
 async function createOrder(req, res) {
   try {
     const {
-      uid,
-      category,
-      delivery_type,
-      booking_type,
-      plat,
-      plong,
-      paddress,
-      pick_name,
-      pmobile,
-      pick_type,
-      dlat,
-      dlong,
-      daddress,
-      drop_name,
-      dmobile,
-      drop_type,
-      package_weight,
-      package_cost,
-      description,
-      p_method_id,
-      transaction_id,
-      extra_mile_charge,
-      cou_id,
-      cou_amt,
-      radius_km,
-      city_id,
+      uid, category, delivery_type, booking_type, plat, plong, paddress, pick_name, pmobile, pick_type,
+      dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
+      p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id,
     } = req.body;
 
-    if (
-      !uid ||
-      !category ||
-      !Array.isArray(delivery_type) ||
-      delivery_type.length === 0 ||
-      ![plat, plong, dlat, dlong].every(isFiniteNumber)
-    ) {
-      return res.status(400).json({
-        ResponseCode: "400",
-        Result: "false",
-        ResponseMsg: "uid, category, a non-empty delivery_type array, and valid coordinates are required",
-      });
-    }
-
-    const requestedPackageIds = delivery_type.map(Number);
-
-    // Genuinely independent reads (different tables/keys, no data dependency
-    // between them) — run concurrently instead of one-round-trip-at-a-time.
-    // Package validation now selects the full row (not just `id`) so the
-    // first tier's row can be reused directly for pricing below, instead of
-    // re-fetching the same package a second time via priceForPackageId.
-    const [validPackages, customer, distanceResult] = await Promise.all([
-      prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
-      city_id ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
-      getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
-    ]);
-
-    const packagesById = new Map(validPackages.map((p) => [p.id, p]));
-    const invalidPackageIds = requestedPackageIds.filter((id) => !packagesById.has(id));
-
-    if (invalidPackageIds.length > 0) {
-      return res.status(400).json({
-        ResponseCode: "400",
-        Result: "false",
-        ResponseMsg: `Invalid or inactive package id(s) in delivery_type: ${invalidPackageIds.join(", ")}. Call /api/order/fare-estimate first to get valid package_id values for this cat_id.`,
-      });
-    }
-
-    // pkg_order.city_id drives admin-panel city scoping (see
-    // ADMIN_PANEL_NODEJS_SPECIFICATION.md §3.2) — prefer a client-supplied
-    // value (the customer's current city may differ from their registered
-    // one), otherwise fall back to the customer's own tbl_user.city_id.
-    const resolvedCityId = city_id ? Number(city_id) : (customer?.city_id ?? null);
-
-    // Clamp to a sane range — an unbounded radius would let the SQL scan
-    // match riders across an entire country.
-    const parsedRadiusKm = Number(radius_km);
-    const radiusKm = Number.isFinite(parsedRadiusKm) ? Math.min(Math.max(parsedRadiusKm, 1), 100) : SEARCH_RADIUS_KM;
-
-    const firstTierPackageId = requestedPackageIds[0];
-    const { distanceKm } = distanceResult;
-    // Reuses the package row already fetched above — no second tbl_package query.
-    const { fare, driverEarning, commission } = pricingEngine.priceForPackage(packagesById.get(firstTierPackageId), distanceKm);
-
-    // package_weight arrives as a free-text string in the legacy client
-    // payload (e.g. "5 Kg") but the live schema types this column as
-    // Float — parse out the leading number, drop the unit text.
-    const parsedWeight = parseFloat(String(package_weight));
-
-    const order = await prisma.pkg_order.create({
-      data: {
-        uid: Number(uid),
-        category,
-        o_status: "Pending",
-        odate: new Date(),
-        p_method_id: Number(p_method_id) || 0,
-        plat: String(plat),
-        plong: String(plong),
-        dlat: String(dlat),
-        dlong: String(dlong),
-        paddress: paddress || null,
-        daddress: daddress || null,
-        pmobile: pmobile || null,
-        dmobile: dmobile || null,
-        pick_type: pick_type || "",
-        drop_type: drop_type || "",
-        pick_name: pick_name || "",
-        drop_name: drop_name || "",
-        description: description || null,
-        distance: distanceKm,
-        d_charge: fare,
-        total_dcharge: fare,
-        commission,
-        extra_mile_charge: Number(extra_mile_charge) || 0,
-        time_duration: 0,
-        package_weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
-        package_cost: Number(package_cost) || 0,
-        cou_id: Number(cou_id) || 0,
-        cou_amt: Number(cou_amt) || 0,
-        radius_range: Math.round(radiusKm),
-        radius_charge: 0,
-        booking_type: Number(booking_type) || 1,
-        city_id: resolvedCityId,
-        delivery_type: firstTierPackageId,
-        allowed_delivery_types: JSON.stringify(requestedPackageIds),
-        trans_id: transaction_id || null,
-      },
+    const result = await createOrderCore({
+      uid, category, deliveryTypeIds: delivery_type, bookingType: booking_type, plat, plong, paddress,
+      pickName: pick_name, pmobile, pickType: pick_type, dlat, dlong, daddress, dropName: drop_name,
+      dmobile, dropType: drop_type, packageWeight: package_weight, packageCost: package_cost, description,
+      pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
+      couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: null,
     });
 
-    // Hand tier 0's already-computed pricing through so the T=0 batch can
-    // skip re-querying/re-computing what was just derived above — it's for
-    // the exact same package_id + distanceKm, guaranteed identical.
-    dispatchManager.startDispatch(order, { fare, driverEarning, commission }).catch((err) =>
-      logger.error(`createOrder: dispatch failed to start for order ${order.id}:`, err)
-    );
-
-    try {
-      adminSocket.notifyNewOrder(order);
-    } catch (err) {
-      logger.error(`createOrder: admin socket notify failed for order ${order.id}:`, err);
+    if (!result.ok && result.code === "VALIDATION") {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "INVALID_PACKAGES") {
+      return res.status(400).json({
+        ResponseCode: "400",
+        Result: "false",
+        ResponseMsg: `Invalid or inactive package id(s) in delivery_type: ${result.invalidPackageIds.join(", ")}. Call /api/order/fare-estimate first to get valid package_id values for this cat_id.`,
+      });
     }
 
+    const { order } = result;
     return res.status(200).json({
       ResponseCode: "200",
       Result: "true",
@@ -286,4 +266,4 @@ async function rateOrder(req, res) {
   }
 }
 
-module.exports = { getCategories, fareEstimate, createOrder, getOrderDetails, customerCancel, rateOrder };
+module.exports = { getCategories, fareEstimate, createOrder, createOrderCore, getOrderDetails, customerCancel, rateOrder };
