@@ -21,10 +21,15 @@ describe("pushNotifier", () => {
     );
   });
 
-  it("notifyDriverDismiss resolves without sending FCM push (avoids Flutter blank dialog)", async () => {
-    const res = await pushNotifier.notifyDriverDismiss("tok-2", 42, "timeout");
-    expect(res.skipped).toBe(true);
-    expect(sendPushNotification).not.toHaveBeenCalled();
+  it("notifyDriverDismiss sends a real (non-data-only) dismiss notification", async () => {
+    await pushNotifier.notifyDriverDismiss("tok-2", 42, "timeout");
+
+    expect(sendPushNotification).toHaveBeenCalledWith(
+      "tok-2",
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ type: "order_dismiss", order_id: "42", reason: "timeout" })
+    );
   });
 
   it("notifyCustomerOrderAssigned sends the assigned rider's info", async () => {

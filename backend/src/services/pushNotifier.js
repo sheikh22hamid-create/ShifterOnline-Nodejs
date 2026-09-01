@@ -19,11 +19,21 @@ async function notifyDriverOrderRequest(fcmToken, payload) {
 }
 
 async function notifyDriverDismiss(fcmToken, orderId, reason) {
-  // We do not send FCM push for dismiss because Flutter's background message handler
-  // opens a blank "Unknown Pickup Location" dialog whenever ANY FCM data push arrives.
-  // The Flutter popup automatically dismisses itself on its 15s timer, and Socket.IO
-  // handles real-time UI dismissal when the app is active.
-  return Promise.resolve({ sent: false, skipped: true });
+  // A backgrounded/killed driver app has no other way to learn its offer is
+  // gone (Socket.IO only reaches an active foreground app), so this must
+  // actually reach the device. It's sent as a real (non-data-only)
+  // notification — see firebase.js's isDriverEvent — specifically so it
+  // does NOT go through Flutter's background *data* handler, which is what
+  // opens a blank "Unknown Pickup Location" dialog for any data-only push.
+  // A real notification is drawn by the OS directly and never reaches that
+  // handler, so it can't retrigger that bug.
+  const reasonText = reason === "timeout" ? "Your offer window has expired." : "This order is no longer available.";
+  return sendPushNotification(
+    fcmToken,
+    "Order No Longer Available",
+    reasonText,
+    { type: "order_dismiss", order_id: String(orderId), reason: String(reason) }
+  );
 }
 
 async function notifyCustomerOrderAssigned(fcmToken, data) {

@@ -7,4 +7,10 @@ ADMIN_PANEL_NODEJS_SPECIFICATION.md
 .agents/
 .claude/skills/
 skills-lock.json
+# php backend/public_html/admin is its own independent git repository
+# (github.com/sheikh22hamid-create/shifteronline-admin, see its own
+# include/NodeBridge.php etc.) — this outer repo correctly treats it as an
+# opaque embedded repo and cannot track individual files inside it via
+# .gitignore negation. Changes to the PHP bridge files (Tasks 13-18) must
+# be committed inside that inner repo directly, not tracked from here.
 php backend

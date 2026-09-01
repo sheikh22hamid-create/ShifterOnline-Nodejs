@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const prisma = require("../config/db");
 const pricingEngine = require("../services/pricingEngine");
 const tripLifecycle = require("../services/tripLifecycle");
@@ -135,11 +136,11 @@ async function createOrderCore({
       allowed_delivery_types: JSON.stringify(requestedPackageIds),
       trans_id: transactionId || null,
       photos: photos || null,
-      otp: Math.floor(1000 + Math.random() * 9000),
+      otp: crypto.randomInt(1000, 10000),
     },
   });
 
-  dispatchManager.startDispatch(order, { fare, driverEarning, commission }).catch((err) =>
+  dispatchManager.startDispatch(order, { fare, driverEarning, commission, packageTitle: firstPkg?.title || null }).catch((err) =>
     logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
   );
 

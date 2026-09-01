@@ -61,7 +61,7 @@ describe("orderController.createOrderCore", () => {
     expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5);
     expect(dispatchManager.startDispatch).toHaveBeenCalledWith(
       result.order,
-      { fare: 50, driverEarning: 40, commission: 5 }
+      { fare: 50, driverEarning: 40, commission: 5, packageTitle: null }
     );
   });
 

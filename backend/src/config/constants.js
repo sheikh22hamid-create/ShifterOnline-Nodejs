@@ -1,6 +1,11 @@
 module.exports = {
   POPUP_TIMEOUT_MS: 15000,
-  BATCH_GAP_MS: 5000,
+  // Inter-tier stagger inside dispatchManager.runBatch — tuned to compensate
+  // for remote MySQL query + socket/push overhead so the next tier's popup
+  // actually lands ~5s after the previous one in the real world (see the
+  // comment at its one use site). Must match the value runBatch actually
+  // uses; keep this a live import there, not a stale reference.
+  BATCH_GAP_MS: 3000,
   MAX_DRIVERS_PER_BATCH: 4,
   SEARCH_RADIUS_KM: 10,
   // Bounded top-up retries when concurrent orders contend for the same

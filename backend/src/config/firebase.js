@@ -91,9 +91,14 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
       data: stringData,
     };
 
-    // Driver events (order popup, popup dismiss) require pure data-only payload so Flutter handlers execute silently without tray popups.
-    // Customer notifications (order assigned, no driver found, etc.) receive a system tray notification.
-    const isDriverEvent = data.type === "order" || data.type === "ORDER_CLOSED" || data.type === "order_dismiss" || data.silent === "1";
+    // Only the driver order-popup itself is pure data-only, so Flutter's
+    // custom ringing dialog can render it silently without a competing tray
+    // notification. Dismiss events are deliberately EXCLUDED from this set
+    // (see pushNotifier.notifyDriverDismiss) — they must carry a real
+    // notification block so they never reach Flutter's background *data*
+    // handler, which is what opens a blank "Unknown Pickup Location" dialog
+    // for any data-only push it doesn't recognize.
+    const isDriverEvent = data.type === "order" || data.silent === "1";
     if (!isDriverEvent) {
       message.notification = { title, body };
       message.android.notification = {

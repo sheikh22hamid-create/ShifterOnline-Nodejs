@@ -129,9 +129,12 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    estimated_earning: String(tripTotal || driverEarning),
-    driver_earning: String(tripTotal || driverEarning),
-    trip_total: String(tripTotal || driverEarning),
+    // The driver's own payout for this trip — NOT the customer's total charge.
+    estimated_earning: String(driverEarning),
+    driver_earning: String(driverEarning),
+    // The trip's full customer-facing charge, kept separate so a popup that
+    // wants to show "trip value" doesn't have to relabel the driver's cut.
+    trip_total: String(tripTotal),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),

@@ -9,6 +9,5 @@ router.use(legacyAuth);
 router.post("/order/create", legacyController.createOrder);
 router.post("/order/reject", legacyController.rejectOrder);
 router.post("/dispatch/stop", legacyController.stopDispatch);
-router.post("/test-push", legacyController.testPush);
 
 module.exports = router;

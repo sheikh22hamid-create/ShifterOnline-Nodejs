@@ -20,7 +20,20 @@
 const ioClient = require("socket.io-client");
 const prisma = require("../src/lib/prisma");
 
-const RENDER_BASE_URL = "https://shifteronline-nodejs.onrender.com";
+// No hardcoded production default on purpose — this script creates a real
+// order, rings real online drivers' real devices, and deletes a real DB row
+// at the end. Both of these must be set explicitly so it can never run by a
+// stray invocation:
+//   RENDER_BASE_URL=https://shifteronline-nodejs.onrender.com \
+//   CONFIRM_PRODUCTION_TEST=yes node scripts/test-render-live-order-flow.js
+const RENDER_BASE_URL = process.env.RENDER_BASE_URL;
+if (!RENDER_BASE_URL || process.env.CONFIRM_PRODUCTION_TEST !== "yes") {
+  console.error(
+    "Refusing to run: this script targets a live production server and creates/deletes real data.\n" +
+    "Set RENDER_BASE_URL and CONFIRM_PRODUCTION_TEST=yes explicitly to proceed."
+  );
+  process.exit(1);
+}
 const BASE_LAT = 22.7356214;
 const BASE_LNG = 75.9110814;
 
