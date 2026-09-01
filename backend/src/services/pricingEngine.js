@@ -32,8 +32,8 @@ function isNightNow(pkg, now = new Date()) {
  * bumped by night_charge_percent when applicable.
  */
 function calculateFare(pkg, distanceKm, isNight) {
-  const minCharge = Number(pkg.min_charge);
-  const perKmCharge = Number(pkg.per_km_charge);
+  const minCharge = Number(pkg.min_charge) || 0;
+  const perKmCharge = Number(pkg.per_km_charge) || 0;
   let fare = Math.max(minCharge, perKmCharge * distanceKm);
 
   if (isNight) {
@@ -41,7 +41,11 @@ function calculateFare(pkg, distanceKm, isNight) {
     fare *= 1 + nightPct / 100;
   }
 
-  return round2(fare);
+  const serviceCharge = Number(pkg.service_charge) || 0;
+  const pickupCharge = Number(pkg.pickup_charge) || 0;
+  const totalFare = fare + serviceCharge + pickupCharge;
+
+  return round2(totalFare);
 }
 
 /**
