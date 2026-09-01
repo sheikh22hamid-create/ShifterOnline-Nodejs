@@ -60,6 +60,8 @@ async function createOrder(req, res) {
       cityId: raw.city_id,
       photos: raw.photos || null,
       distance: raw.distance || raw.distance_km,
+      totalDcharge: raw.total_dcharge,
+      dCharge: raw.d_charge,
     });
 
     if (!result.ok && result.code === "VALIDATION") {

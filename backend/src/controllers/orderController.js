@@ -48,6 +48,7 @@ async function createOrderCore({
   uid, category, deliveryTypeIds, bookingType, plat, plong, paddress, pickName, pmobile, pickType,
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, cityId, photos, distance,
+  totalDcharge, dCharge,
 }) {
   if (
     !uid ||
@@ -85,8 +86,14 @@ async function createOrderCore({
   const resolvedRadiusKm = Number.isFinite(parsedRadiusKm) ? Math.min(Math.max(parsedRadiusKm, 1), 100) : SEARCH_RADIUS_KM;
 
   const firstTierPackageId = requestedPackageIds[0];
+  const firstPkg = packagesById.get(firstTierPackageId);
   const { distanceKm } = distanceResult;
-  const { fare, driverEarning, commission } = pricingEngine.priceForPackage(packagesById.get(firstTierPackageId), distanceKm);
+  const { fare, driverEarning, commission } = pricingEngine.priceForPackage(firstPkg, distanceKm);
+
+  const clientTotal = Number(totalDcharge);
+  const clientBase = Number(dCharge);
+  const finalTotalCharge = (Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare;
+  const finalDCharge = (Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare;
 
   const parsedWeight = parseFloat(String(packageWeight));
 
@@ -111,8 +118,8 @@ async function createOrderCore({
       drop_name: dropName || "",
       description: description || null,
       distance: distanceKm,
-      d_charge: fare,
-      total_dcharge: fare,
+      d_charge: finalDCharge,
+      total_dcharge: finalTotalCharge,
       commission,
       extra_mile_charge: Number(extraMileCharge) || 0,
       time_duration: 0,
