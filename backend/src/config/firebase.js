@@ -7,18 +7,38 @@ function initFirebase() {
   if (messaging) return messaging;
 
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const base64Json = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
   const path = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
-  if (!rawJson && !path) {
+  let serviceAccount = null;
+  if (rawJson) {
+    try {
+      serviceAccount = JSON.parse(rawJson);
+    } catch (e) {
+      logger.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
+    }
+  } else if (base64Json) {
+    try {
+      const decoded = Buffer.from(base64Json, "base64").toString("utf8");
+      serviceAccount = JSON.parse(decoded);
+    } catch (e) {
+      logger.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_BASE64:", e.message);
+    }
+  } else if (path) {
+    try {
+      serviceAccount = require(require("path").resolve(path));
+    } catch (e) {
+      logger.error("Failed to load FIREBASE_SERVICE_ACCOUNT_PATH:", e.message);
+    }
+  }
+
+  if (!serviceAccount) {
     return null;
   }
 
   try {
     const { initializeApp, getApps, cert } = require("firebase-admin/app");
     const { getMessaging } = require("firebase-admin/messaging");
-    const serviceAccount = rawJson
-      ? JSON.parse(rawJson)
-      : require(require("path").resolve(path));
 
     const apps = getApps();
     const app =
