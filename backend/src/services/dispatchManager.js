@@ -203,6 +203,7 @@ async function runBatch(orderId) {
 
   const consideredThisBatch = new Set();
   const lockedRiderIds = [];
+  const lockedDrivers = [];
   let round = 0;
 
   while (lockedRiderIds.length < MAX_DRIVERS_PER_BATCH && round <= MAX_TOPUP_ROUNDS) {
@@ -227,6 +228,7 @@ async function runBatch(orderId) {
       if (!lockManager.acquireLock(riderId, orderId, POPUP_TIMEOUT_MS)) continue; // lost the race to a concurrent order
 
       lockedRiderIds.push(riderId);
+      lockedDrivers.push(driver);
       lockedThisRound++;
       lockedThisRoundDrivers.push(driver);
     }
@@ -263,8 +265,8 @@ async function runBatch(orderId) {
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length}`);
 
-  if (lockedRiderIds.length > 0) {
-    scheduleExpiry(orderId, tierIndex, lockedRiderIds);
+  if (lockedDrivers.length > 0) {
+    scheduleExpiry(orderId, tierIndex, lockedDrivers);
     state.consecutiveEmptyTurns = 0;
   } else {
     state.consecutiveEmptyTurns = (state.consecutiveEmptyTurns || 0) + 1;
@@ -296,7 +298,7 @@ async function runBatch(orderId) {
   state.timers.add(timer);
 }
 
-function scheduleExpiry(orderId, tierIndex, riderIds) {
+function scheduleExpiry(orderId, tierIndex, drivers) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
 
@@ -307,8 +309,8 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
     state.activeExpiryTimers = Math.max(0, (state.activeExpiryTimers || 1) - 1);
 
     try {
-      const stillPendingRiderIds = riderIds.filter((riderId) => {
-        const lock = lockManager.peekLock(riderId);
+      const stillPendingDrivers = drivers.filter((driver) => {
+        const lock = lockManager.peekLock(Number(driver.rider_id));
         return lock && lock.orderId === orderId;
       });
 
@@ -318,7 +320,8 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
       // stuck on an expired ("0s") popup for several extra seconds waiting
       // their turn.
       await Promise.all(
-        stillPendingRiderIds.map(async (riderId) => {
+        stillPendingDrivers.map(async (driver) => {
+          const riderId = Number(driver.rider_id);
           lockManager.releaseLock(riderId);
           const result = await prisma.tbl_order_requests.updateMany({
             where: { order_id: orderId, rider_id: riderId, status: "sent" },
@@ -329,6 +332,7 @@ function scheduleExpiry(orderId, tierIndex, riderIds) {
             order_id: String(orderId),
             reason: "timeout",
           });
+          await pushNotifier.notifyDriverDismiss(driver.fcm_token, orderId, "timeout");
         })
       );
 

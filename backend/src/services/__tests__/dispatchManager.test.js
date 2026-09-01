@@ -178,6 +178,16 @@ describe("dispatchManager overlapping batch cascade", () => {
     );
   });
 
+  it("pushes a dismiss FCM notification to drivers whose popup times out", async () => {
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+    await flush();
+
+    expect(pushNotifier.notifyDriverDismiss).toHaveBeenCalledWith("tok", order.id, "timeout");
+  });
+
   it("stopDispatch cancels pending timers and dismisses every currently-locked driver", async () => {
     await dispatchManager.startDispatch(order);
     await flush();
