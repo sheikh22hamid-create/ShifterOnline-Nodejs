@@ -90,4 +90,43 @@ describe("orderController.createOrderCore", () => {
     expect(result.code).toBe("INVALID_PACKAGES");
     expect(result.invalidPackageIds).toEqual([6]);
   });
+
+  describe("search radius resolution (legacy app field-swap quirk)", () => {
+    // Confirmed against a real order dump (cust_api/last_order_debug.json):
+    // the app sends the package's per-km RATE in radius_range and the
+    // customer's actually-selected km radius in radius_charge.
+    it("uses radiusChargeRaw when radiusRangeRaw exactly matches the package's per_km_charge (the swap)", async () => {
+      prisma.tbl_package.findMany.mockResolvedValue([{ id: 6, per_km_charge: 6.75 }]);
+
+      await createOrderCore({ ...baseInput, radiusRangeRaw: 6.75, radiusChargeRaw: 1 });
+
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ radius_range: 1 }) })
+      );
+    });
+
+    it("uses radiusChargeRaw when radiusRangeRaw is implausibly large for a search radius (>20km)", async () => {
+      await createOrderCore({ ...baseInput, radiusRangeRaw: 45, radiusChargeRaw: 3 });
+
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ radius_range: 3 }) })
+      );
+    });
+
+    it("uses radiusRangeRaw directly when it's a plausible km value and doesn't match the rate", async () => {
+      await createOrderCore({ ...baseInput, radiusRangeRaw: 5, radiusChargeRaw: 0 });
+
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ radius_range: 5 }) })
+      );
+    });
+
+    it("falls back to radiusKm when neither raw field is usable", async () => {
+      await createOrderCore({ ...baseInput, radiusKm: 8, radiusRangeRaw: undefined, radiusChargeRaw: undefined });
+
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ radius_range: 8 }) })
+      );
+    });
+  });
 });

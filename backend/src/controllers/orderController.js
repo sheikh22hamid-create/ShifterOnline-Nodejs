@@ -12,6 +12,45 @@ function isFiniteNumber(value) {
   return typeof value === "number" ? Number.isFinite(value) : Number.isFinite(Number(value));
 }
 
+/**
+ * The legacy mobile app has a confirmed field-swap quirk: it sends the
+ * package's per-km RATE in radius_range and the customer's actually
+ * -selected search radius (km) in radius_charge — verified against a real
+ * order (cust_api/last_order_debug.json: radius_range=6.75 [the rate],
+ * radius_charge=1 [the real 1km radius]; the old PHP code that used to
+ * live here computed radius_range_computed=1, confirming the swap).
+ * Trusting radius_range blindly silently widens every customer's search
+ * radius to whatever the package's per-km rate happens to be, offering
+ * the ride to drivers far outside what the customer actually picked.
+ *
+ * radiusRangeRaw/radiusChargeRaw are the untouched values as received;
+ * fallbackKm is used only when neither raw field resolves to anything
+ * usable (e.g. a client that never had this quirk in the first place).
+ */
+function resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, perKmCharge, fallbackKm) {
+  const range = Number(radiusRangeRaw);
+  const charge = Number(radiusChargeRaw);
+  const rate = Number(perKmCharge);
+
+  const rangeLooksLikeRate =
+    Number.isFinite(range) &&
+    range > 0 &&
+    ((Number.isFinite(rate) && rate > 0 && Math.abs(range - rate) < 0.01) || range > 20);
+
+  if (rangeLooksLikeRate && Number.isFinite(charge) && charge > 0 && charge <= 20) {
+    return charge;
+  }
+  if (Number.isFinite(range) && range > 0 && range <= 20) {
+    return range;
+  }
+  if (Number.isFinite(charge) && charge > 0 && charge <= 20) {
+    return charge;
+  }
+
+  const parsedFallback = Number(fallbackKm);
+  return Number.isFinite(parsedFallback) && parsedFallback > 0 ? parsedFallback : SEARCH_RADIUS_KM;
+}
+
 async function getCategories(req, res) {
   try {
     const categories = await prisma.pkg_category.findMany({
@@ -48,8 +87,8 @@ async function fareEstimate(req, res) {
 async function createOrderCore({
   uid, category, deliveryTypeIds, bookingType, plat, plong, paddress, pickName, pmobile, pickType,
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
-  pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, cityId, photos, distance,
-  totalDcharge, dCharge,
+  pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
+  cityId, photos, distance, totalDcharge, dCharge,
 }) {
   if (
     !uid ||
@@ -83,13 +122,17 @@ async function createOrderCore({
 
   const resolvedCityId = cityId ? Number(cityId) : (customer?.city_id ?? null);
 
-  const parsedRadiusKm = Number(radiusKm);
-  const resolvedRadiusKm = Number.isFinite(parsedRadiusKm) ? Math.min(Math.max(parsedRadiusKm, 1), 100) : SEARCH_RADIUS_KM;
-
   const firstTierPackageId = requestedPackageIds[0];
   const firstPkg = packagesById.get(firstTierPackageId);
   const { distanceKm } = distanceResult;
   const { fare, driverEarning, commission } = pricingEngine.priceForPackage(firstPkg, distanceKm);
+
+  // Needs firstPkg.per_km_charge to detect the legacy app's field-swap
+  // quirk, so this must run after the package lookup above, not before.
+  const resolvedRadiusKm = Math.min(
+    Math.max(resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, firstPkg?.per_km_charge, radiusKm), 1),
+    100
+  );
 
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);

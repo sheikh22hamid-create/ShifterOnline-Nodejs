@@ -16,9 +16,11 @@ function parseDeliveryTypes(raw) {
     .filter((n) => Number.isFinite(n));
 }
 
-function resolveRadiusKm(body) {
-  const radiusRange = Number(body.radius_range);
-  if (Number.isFinite(radiusRange) && radiusRange > 0) return radiusRange;
+// Last-resort fallback only — radius_range/radius_charge are handled by
+// orderController.resolveSearchRadiusKm (needs package context this
+// function doesn't have) via the radiusRangeRaw/radiusChargeRaw params
+// passed straight through below.
+function resolveRadiusFallbackKm(body) {
   return Number(body.radius) || Number(body.search_radius) || Number(body.pickup_radius) || Number(body.driver_radius) || 10;
 }
 
@@ -56,7 +58,9 @@ async function createOrder(req, res) {
       extraMileCharge: raw.extra_mile_charge,
       couId: raw.cou_id,
       couAmt: raw.cou_amt,
-      radiusKm: resolveRadiusKm(raw),
+      radiusKm: resolveRadiusFallbackKm(raw),
+      radiusRangeRaw: raw.radius_range,
+      radiusChargeRaw: raw.radius_charge,
       cityId: raw.city_id,
       photos: raw.photos || null,
       distance: raw.distance || raw.distance_km,

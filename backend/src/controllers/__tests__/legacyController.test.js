@@ -18,21 +18,24 @@ function mockRes() {
 describe("legacyController.createOrder", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("parses PHP's bracket-string delivery_type and resolves radius from radius_range", async () => {
+  it("parses PHP's bracket-string delivery_type and passes radius_range/radius_charge through raw", async () => {
     orderController.createOrderCore.mockResolvedValue({ ok: true, order: { id: 501, booking_type: 1 } });
 
-    const req = { body: { uid: "1", category: "Bike", delivery_type: "[6,7]", radius_range: "12", plat: "28.7", plong: "77.1", dlat: "28.8", dlong: "77.2" } };
+    const req = { body: { uid: "1", category: "Bike", delivery_type: "[6,7]", radius_range: "12", radius_charge: "2", plat: "28.7", plong: "77.1", dlat: "28.8", dlong: "77.2" } };
     const res = mockRes();
 
     await legacyController.createOrder(req, res);
 
+    // radius_range/radius_charge are NOT resolved here — orderController.createOrderCore
+    // does that itself, since detecting the legacy app's field-swap quirk needs the
+    // package's per_km_charge, which isn't available at this layer.
     expect(orderController.createOrderCore).toHaveBeenCalledWith(
-      expect.objectContaining({ deliveryTypeIds: [6, 7], radiusKm: 12 })
+      expect.objectContaining({ deliveryTypeIds: [6, 7], radiusRangeRaw: "12", radiusChargeRaw: "2" })
     );
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", order_id: 501 }));
   });
 
-  it("falls back through the legacy radius aliases when radius_range is absent", async () => {
+  it("falls back through the legacy radius aliases when radius_range/radius_charge are both absent", async () => {
     orderController.createOrderCore.mockResolvedValue({ ok: true, order: { id: 502, booking_type: 1 } });
 
     const req = { body: { uid: "1", category: "Bike", delivery_type: "6", search_radius: "8" } };
