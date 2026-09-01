@@ -203,11 +203,21 @@ async function runBatch(orderId) {
   const rejectedRiderIds = await getRejectedRiderIds(orderId);
 
   const distanceKm = Number(currentOrder.distance) || 0;
-  let fare, driverEarning, commission;
+  let fare, driverEarning, commission, packageTitle;
   if (precomputed) {
     ({ fare, driverEarning, commission } = precomputed);
+    packageTitle = precomputed.packageTitle || null;
+    if (!packageTitle) {
+      const pkg = await prisma.tbl_package.findUnique({ where: { id: Number(packageId) }, select: { title: true } });
+      packageTitle = pkg ? pkg.title : `Model ${packageId}`;
+    }
   } else {
-    ({ fare, driverEarning, commission } = await pricingEngine.priceForPackageId(packageId, distanceKm));
+    const priced = await pricingEngine.priceForPackageId(packageId, distanceKm);
+    fare = priced.fare;
+    driverEarning = priced.driverEarning;
+    commission = priced.commission;
+    packageTitle = priced.packageTitle || `Model ${packageId}`;
+
     // Asynchronous update so we don't block driver dispatch by 400-800ms of remote DB latency
     prisma.pkg_order.update({
       where: { id: orderId },
@@ -255,7 +265,7 @@ async function runBatch(orderId) {
         packageId,
         distanceKm.toFixed(1),
         driverEarning,
-        tierPricing.packageTitle
+        packageTitle
       );
       await Promise.all(
         lockedThisRoundDrivers.map(async (driver) => {
