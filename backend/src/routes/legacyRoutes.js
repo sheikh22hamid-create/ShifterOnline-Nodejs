@@ -7,5 +7,6 @@ const router = express.Router();
 router.use(legacyAuth);
 
 router.post("/order/create", legacyController.createOrder);
+router.post("/order/reject", legacyController.rejectOrder);
 
 module.exports = router;

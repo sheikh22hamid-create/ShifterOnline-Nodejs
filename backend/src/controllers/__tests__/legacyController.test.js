@@ -1,4 +1,5 @@
 jest.mock("../orderController", () => ({ createOrderCore: jest.fn() }));
+jest.mock("../../services/tripLifecycle", () => ({ rejectOrder: jest.fn().mockResolvedValue({ success: true }) }));
 
 const orderController = require("../orderController");
 const legacyController = require("../legacyController");
@@ -56,3 +57,26 @@ describe("legacyController.createOrder", () => {
     expect(res.json).toHaveBeenCalledWith({ Result: false, msg: "No package found" });
   });
 });
+
+describe("legacyController.rejectOrder", () => {
+  it("calls tripLifecycle.rejectOrder and returns {Result: true}", async () => {
+    const tripLifecycle = require("../../services/tripLifecycle");
+    const req = { body: { rider_id: "3", order_id: "42" } };
+    const res = mockRes();
+
+    await legacyController.rejectOrder(req, res);
+
+    expect(tripLifecycle.rejectOrder).toHaveBeenCalledWith(42, 3);
+    expect(res.json).toHaveBeenCalledWith({ Result: true });
+  });
+
+  it("returns 400 when rider_id or order_id is missing", async () => {
+    const req = { body: { rider_id: "3" } };
+    const res = mockRes();
+
+    await legacyController.rejectOrder(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+});
+

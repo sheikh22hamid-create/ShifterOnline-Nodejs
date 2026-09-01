@@ -1,4 +1,5 @@
 const orderController = require("./orderController");
+const tripLifecycle = require("../services/tripLifecycle");
 const logger = require("../utils/logger");
 const { POPUP_TIMEOUT_MS } = require("../config/constants");
 
@@ -86,4 +87,20 @@ async function createOrder(req, res) {
   }
 }
 
-module.exports = { createOrder };
+async function rejectOrder(req, res) {
+  try {
+    const riderId = Number(req.body.rider_id);
+    const orderId = Number(req.body.order_id);
+    if (!Number.isFinite(riderId) || !Number.isFinite(orderId)) {
+      return res.status(400).json({ Result: false, msg: "rider_id and order_id are required" });
+    }
+
+    await tripLifecycle.rejectOrder(orderId, riderId);
+    return res.json({ Result: true });
+  } catch (err) {
+    logger.error("legacyController.rejectOrder failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
+module.exports = { createOrder, rejectOrder };
