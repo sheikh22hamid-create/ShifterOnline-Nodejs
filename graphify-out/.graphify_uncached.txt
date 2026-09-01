@@ -1,6 +1,0 @@
-C:\Users\alkvi\OneDrive\Desktop\Shifter Online\ADMIN_PANEL_SECTIONS_AND_MODULES_SPECIFICATION.md
-C:\Users\alkvi\OneDrive\Desktop\Shifter Online\backend\ORDER_FLOW_NODEJS_SPECIFICATION.md
-C:\Users\alkvi\OneDrive\Desktop\Shifter Online\backend\public\index.html
-C:\Users\alkvi\OneDrive\Desktop\Shifter Online\docs\superpowers\plans\2026-08-26-order-dispatch-engine.md
-C:\Users\alkvi\OneDrive\Desktop\Shifter Online\frontend\index.html
-C:\Users\alkvi\OneDrive\Desktop\Shifter Online\frontend\public\logo.png
