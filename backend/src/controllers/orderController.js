@@ -120,9 +120,19 @@ async function createOrderCore({
     return { ok: false, code: "INVALID_PACKAGES", invalidPackageIds };
   }
 
+  // Dispatch tier order must be cheapest-model-first regardless of what
+  // order the client's delivery_type array arrived in — a caller sending
+  // toggle-state in UI/insertion order (not ascending by tier) previously
+  // caused the cascade to offer the priciest model (e.g. Model 5) first.
+  // tbl_package.sort_order is the source of truth for tier priority, not
+  // package id or client array position.
+  const orderedPackageIds = [...requestedPackageIds].sort(
+    (a, b) => packagesById.get(a).sort_order - packagesById.get(b).sort_order
+  );
+
   const resolvedCityId = cityId ? Number(cityId) : (customer?.city_id ?? null);
 
-  const firstTierPackageId = requestedPackageIds[0];
+  const firstTierPackageId = orderedPackageIds[0];
   const firstPkg = packagesById.get(firstTierPackageId);
   const { distanceKm } = distanceResult;
   const { fare, driverEarning, commission } = pricingEngine.priceForPackage(firstPkg, distanceKm);
@@ -176,7 +186,7 @@ async function createOrderCore({
       booking_type: Number(bookingType) || 1,
       city_id: resolvedCityId,
       delivery_type: firstTierPackageId,
-      allowed_delivery_types: JSON.stringify(requestedPackageIds),
+      allowed_delivery_types: JSON.stringify(orderedPackageIds),
       trans_id: transactionId || null,
       photos: photos || null,
       otp: crypto.randomInt(1000, 10000),

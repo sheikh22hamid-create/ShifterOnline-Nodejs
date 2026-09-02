@@ -91,6 +91,30 @@ describe("orderController.createOrderCore", () => {
     expect(result.invalidPackageIds).toEqual([6]);
   });
 
+  it("dispatches cheapest-tier-first by sort_order even when delivery_type arrives out of order", async () => {
+    // A client that sent Model 5, Model 1, Model 2 in that array order
+    // previously caused the cascade to offer Model 5 first — tier order
+    // must come from tbl_package.sort_order, never client array position.
+    prisma.tbl_package.findMany.mockResolvedValue([
+      { id: 34, per_km_charge: 10, sort_order: 5 }, // Model 5
+      { id: 6, per_km_charge: 10, sort_order: 1 }, // Model 1
+      { id: 7, per_km_charge: 10, sort_order: 2 }, // Model 2
+    ]);
+
+    const result = await createOrderCore({ ...baseInput, deliveryTypeIds: [34, 6, 7] });
+
+    expect(result.ok).toBe(true);
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5);
+    expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          delivery_type: 6,
+          allowed_delivery_types: JSON.stringify([6, 7, 34]),
+        }),
+      })
+    );
+  });
+
   describe("search radius resolution (legacy app field-swap quirk)", () => {
     // Confirmed against a real order dump (cust_api/last_order_debug.json):
     // the app sends the package's per-km RATE in radius_range and the
