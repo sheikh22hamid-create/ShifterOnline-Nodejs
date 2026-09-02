@@ -48,6 +48,10 @@ public class NodeSocketManager {
     }
 
     public synchronized void connect(Context context, int riderId) {
+        if (context == null) {
+            Log.e(TAG, "Cannot connect: context is null");
+            return;
+        }
         if (socket != null && socket.connected() && this.riderId == riderId) {
             return; // already connected for this rider — no-op
         }
