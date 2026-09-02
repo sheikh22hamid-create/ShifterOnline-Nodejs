@@ -14,6 +14,16 @@ describe("calculateFare", () => {
   it("applies night_charge_percent on top of the base fare", () => {
     expect(calculateFare(pkg, 10, true)).toBe(84);
   });
+
+  it("adds flat pickup_charge and service_charge on top, unaffected by night_charge_percent", () => {
+    const pkgWithExtras = { ...pkg, pickup_charge: 10, service_charge: 50 };
+    expect(calculateFare(pkgWithExtras, 10, false)).toBe(130); // 70 + 10 + 50
+    expect(calculateFare(pkgWithExtras, 10, true)).toBe(144); // 84 + 10 + 50
+  });
+
+  it("treats missing pickup_charge/service_charge as 0", () => {
+    expect(calculateFare(pkg, 10, false)).toBe(70);
+  });
 });
 
 describe("calculateDriverEarning", () => {

@@ -30,6 +30,10 @@ function haversineFallback(lat1, lon1, lat2, lon2) {
   return { distanceKm, durationMin, source: "haversine" };
 }
 
+// Routes API v2, not the legacy Distance Matrix API — the legacy endpoint
+// returns REQUEST_DENIED ("You're calling a legacy API, which is not
+// enabled for your project") on this project's key, confirmed live
+// (2026-09-02). Routes API is also Google's current recommended replacement.
 async function getRoadDistanceKm(lat1, lon1, lat2, lon2) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
@@ -37,21 +41,33 @@ async function getRoadDistanceKm(lat1, lon1, lat2, lon2) {
   }
 
   try {
-    const url =
-      `https://maps.googleapis.com/maps/api/distancematrix/json` +
-      `?origins=${lat1},${lon1}&destinations=${lat2},${lon2}&key=${apiKey}`;
-    const response = await fetch(url);
+    const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: lat1, longitude: lon1 } } },
+        destination: { location: { latLng: { latitude: lat2, longitude: lon2 } } },
+        travelMode: "DRIVE",
+      }),
+    });
     if (!response.ok) {
-      throw new Error(`Distance Matrix API HTTP ${response.status}`);
+      throw new Error(`Routes API HTTP ${response.status}`);
     }
     const data = await response.json();
-    const element = data?.rows?.[0]?.elements?.[0];
-    if (!element || element.status !== "OK") {
-      throw new Error(`Distance Matrix API element status: ${element?.status}`);
+    const route = data?.routes?.[0];
+    if (!route || typeof route.distanceMeters !== "number") {
+      throw new Error("Routes API returned no usable route");
     }
+    // duration comes back as a protobuf Duration string like "18880s" —
+    // parseFloat stops at the trailing "s" and returns the numeric seconds.
+    const durationSeconds = parseFloat(route.duration) || 0;
     return {
-      distanceKm: element.distance.value / 1000,
-      durationMin: Math.round(element.duration.value / 60),
+      distanceKm: route.distanceMeters / 1000,
+      durationMin: Math.round(durationSeconds / 60),
       source: "google",
     };
   } catch (err) {

@@ -28,8 +28,11 @@ function isNightNow(pkg, now = new Date()) {
 }
 
 /**
- * Pure fare calculation: max(min_charge, per_km_charge * distance),
- * bumped by night_charge_percent when applicable.
+ * Fare = min_charge + (per_km_charge * distance), bumped by
+ * night_charge_percent when applicable, then flat pickup_charge +
+ * service_charge added on top (matches the live PHP backend's formula —
+ * cancellation_charge_customer is deliberately excluded here since that's
+ * only billed on cancellation, not on every fare).
  */
 function calculateFare(pkg, distanceKm, isNight) {
   const minCharge = Number(pkg.min_charge) || 0;
@@ -40,6 +43,10 @@ function calculateFare(pkg, distanceKm, isNight) {
     const nightPct = parseFloat(pkg.night_charge_percent) || 0;
     fare *= 1 + nightPct / 100;
   }
+
+  const pickupCharge = Number(pkg.pickup_charge) || 0;
+  const serviceCharge = Number(pkg.service_charge) || 0;
+  fare += pickupCharge + serviceCharge;
 
   return round2(fare);
 }
