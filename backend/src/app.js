@@ -41,14 +41,12 @@ app.get("/health", (req, res) => {
 });
 
 const locationRoutes = require("./routes/locationRoutes");
-const legacyRoutes = require("./routes/legacyRoutes");
 
 app.use("/api/users", userRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/rider", riderRoutes);
 app.use("/api/location", locationRoutes);
 app.use("/api/v1/admin", adminRoutes);
-app.use("/legacy", legacyRoutes);
 
 // Safety net beyond each controller's own try/catch — never leak stack traces.
 app.use((err, req, res, next) => {

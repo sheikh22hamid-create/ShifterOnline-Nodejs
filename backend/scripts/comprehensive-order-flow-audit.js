@@ -9,7 +9,6 @@ const ioClient = require("socket.io-client");
 const prisma = require("../src/config/db");
 
 const BASE_URL = process.env.NODE_BASE_URL || "http://localhost:5000";
-const BRIDGE_SECRET = process.env.LEGACY_BRIDGE_SECRET || "c7e3fa49281db259bc840a6b10712e0f8de9217a94f6e1b734891b2c45e89d12";
 
 const TEST_LAT = 26.9124;
 const TEST_LNG = 75.7873;
@@ -78,16 +77,26 @@ async function activateRider(riderId, { aStatus = 1, status = 1, vehicle = "Bike
   }
 }
 
-async function stopOrder(orderId) {
+// Cleanup path for a still-pending (unaccepted) test order — mirrors the real
+// customer-cancel flow, which internally calls dispatchManager.stopDispatch
+// when rid===0 (see tripLifecycle.customerCancel). For an already-accepted
+// order this just marks it Cancelled; dispatch was already stopped by accept.
+async function stopOrder(orderId, uid = 2) {
   if (!orderId) return;
-  await fetch(`${BASE_URL}/legacy/dispatch/stop`, {
+  await fetch(`${BASE_URL}/api/order/customer-cancel`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Legacy-Bridge-Secret": BRIDGE_SECRET,
-    },
-    body: JSON.stringify({ order_id: orderId, reason: "test_cleanup" }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, order_id: orderId, comment: "test_cleanup" }),
   }).catch(() => {});
+}
+
+async function postOrderCreate(body) {
+  const res = await fetch(`${BASE_URL}/api/order/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json();
 }
 
 async function runAllAudits() {
@@ -116,43 +125,40 @@ async function runAllAudits() {
     let popupData = null;
     sock.on("order:request", (d) => { popupData = d; });
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 1",
-        daddress: "Jaipur Drop 1",
-        pick_name: "Customer One",
-        pmobile: "9999900001",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 1",
+      daddress: "Jaipur Drop 1",
+      pick_name: "Customer One",
+      pmobile: "9999900001",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
 
     await sleep(2000);
     const receivedOffer = popupData && Number(popupData.order_id) === orderId;
 
-    const stopRes = await fetch(`${BASE_URL}/legacy/dispatch/stop`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({ order_id: orderId, reason: "accepted_by_other", accepted_rider_id: R1 }),
-    });
-    const stopJson = await stopRes.json();
+    // Real accept path (order:accept) — this is what a driver app actually
+    // sends; internally calls tripLifecycle.acceptOrder -> dispatchManager
+    // .stopDispatch("accepted_by_other") for the other pending drivers.
+    let acceptAck = null;
+    sock.on("order:accept:ack", (d) => { acceptAck = d; });
+    sock.emit("order:accept", { rider_id: R1, order_id: orderId });
+    await sleep(1000);
+
     sock.disconnect();
     await stopOrder(orderId);
 
-    recordResult("1. Happy Path Single Driver Accept", receivedOffer && stopJson.Result === true,
-      `Order #${orderId} created, popup received by Driver #${R1} (${receivedOffer}), cascade stopped (${stopJson.Result})`);
+    recordResult("1. Happy Path Single Driver Accept", receivedOffer && acceptAck?.Result === true,
+      `Order #${orderId} created, popup received by Driver #${R1} (${receivedOffer}), accept ack (${acceptAck?.Result})`);
   } catch (err) {
     recordResult("1. Happy Path Single Driver Accept", false, err.message);
   }
@@ -183,27 +189,22 @@ async function runAllAudits() {
     sock1.on("order:request", (d) => receivedOffers.push({ driver: R_M1, pkg: d.package_id, t: (Date.now() - t0) / 1000 }));
     sock2.on("order:request", (d) => receivedOffers.push({ driver: R_M2, pkg: d.package_id, t: (Date.now() - t0) / 1000 }));
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6, 7]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 2",
-        daddress: "Jaipur Drop 2",
-        pick_name: "Customer Two",
-        pmobile: "9999900002",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6, 7],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 2",
+      daddress: "Jaipur Drop 2",
+      pick_name: "Customer Two",
+      pmobile: "9999900002",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
 
     await sleep(7000);
@@ -235,37 +236,29 @@ async function runAllAudits() {
     sock1.emit("driver:join", { rider_id: R3 });
     await sleep(800);
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 3",
-        daddress: "Jaipur Drop 3",
-        pick_name: "Customer Three",
-        pmobile: "9999900003",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 3",
+      daddress: "Jaipur Drop 3",
+      pick_name: "Customer Three",
+      pmobile: "9999900003",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
     await sleep(2000);
 
-    // Driver rejects
-    const rejectRes = await fetch(`${BASE_URL}/legacy/order/reject`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({ rider_id: R3, order_id: orderId }),
-    });
-    const rejectJson = await rejectRes.json();
+    // Driver rejects via the real order:reject socket event (fire-and-forget,
+    // no ack in the actual handler — verify via the DB row instead).
+    sock1.emit("order:reject", { rider_id: R3, order_id: orderId });
+    await sleep(1000);
 
     const reqRow = await prisma.tbl_order_requests.findFirst({
       where: { order_id: orderId, rider_id: R3 },
@@ -274,7 +267,7 @@ async function runAllAudits() {
     sock1.disconnect();
     await stopOrder(orderId);
 
-    const passed = rejectJson.Result === true && reqRow && reqRow.status === "10";
+    const passed = reqRow && reqRow.status === "10";
     recordResult("3. Driver Explicit Reject Flow", passed,
       `Driver #${R3} rejected order #${orderId}. DB status='${reqRow?.status}' (expected '10')`);
   } catch (err) {
@@ -321,36 +314,28 @@ async function runAllAudits() {
     s3.on("order:dismiss", (d) => receivedDismiss.push({ driver: C3, reason: d.reason }));
     s4.on("order:dismiss", (d) => receivedDismiss.push({ driver: C4, reason: d.reason }));
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 4",
-        daddress: "Jaipur Drop 4",
-        pick_name: "Customer Four",
-        pmobile: "9999900004",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 4",
+      daddress: "Jaipur Drop 4",
+      pick_name: "Customer Four",
+      pmobile: "9999900004",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
     await sleep(2000);
 
-    // C1 accepts
-    await fetch(`${BASE_URL}/legacy/dispatch/stop`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({ order_id: orderId, reason: "accepted_by_other", accepted_rider_id: C1 }),
-    });
+    // C1 accepts via the real order:accept socket event — internally calls
+    // dispatchManager.stopDispatch("accepted_by_other") for the rest.
+    s1.emit("order:accept", { rider_id: C1, order_id: orderId });
 
     await sleep(1500);
 
@@ -388,43 +373,39 @@ async function runAllAudits() {
     sock.on("order:request", () => { offerReceived = true; });
     sock.on("order:dismiss", (d) => { dismissData = d; });
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 5",
-        daddress: "Jaipur Drop 5",
-        pick_name: "Customer Five",
-        pmobile: "9999900005",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 5",
+      daddress: "Jaipur Drop 5",
+      pick_name: "Customer Five",
+      pmobile: "9999900005",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
 
     // Wait until driver has received offer popup
     await sleep(2000);
 
-    const stopRes = await fetch(`${BASE_URL}/legacy/dispatch/stop`, {
+    // Real customer-cancel endpoint — internally calls dispatchManager
+    // .stopDispatch("cancelled_by_user") since rid===0 at this point.
+    const stopRes = await fetch(`${BASE_URL}/api/order/customer-cancel`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({ order_id: orderId, reason: "cancelled_by_user" }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: "2", order_id: orderId, comment: "test_cancel" }),
     });
     const stopJson = await stopRes.json();
     await sleep(1500);
     sock.disconnect();
-    await stopOrder(orderId);
 
-    const passed = stopJson.Result === true && dismissData && dismissData.reason === "cancelled_by_user";
+    const passed = stopJson.Result === "true" && dismissData && dismissData.reason === "cancelled_by_user";
     recordResult("5. Customer Cancellation & Driver Popup Dismiss", passed,
       `Customer cancelled order #${orderId}, Driver #${R5} offer received (${offerReceived}), popup dismissed with reason '${dismissData?.reason}'`);
   } catch (err) {
@@ -457,27 +438,22 @@ async function runAllAudits() {
     sock1.on("order:request", () => { nearGot = true; });
     sock2.on("order:request", () => { farGot = true; });
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 6",
-        daddress: "Jaipur Drop 6",
-        pick_name: "Customer Six",
-        pmobile: "9999900006",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 6",
+      daddress: "Jaipur Drop 6",
+      pick_name: "Customer Six",
+      pmobile: "9999900006",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
 
     await sleep(3000);
@@ -518,27 +494,22 @@ async function runAllAudits() {
     sock1.on("order:request", () => { offGot = true; });
     sock2.on("order:request", () => { onGot = true; });
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 7",
-        daddress: "Jaipur Drop 7",
-        pick_name: "Customer Seven",
-        pmobile: "9999900007",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 7",
+      daddress: "Jaipur Drop 7",
+      pick_name: "Customer Seven",
+      pmobile: "9999900007",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
 
     await sleep(3000);
@@ -609,27 +580,22 @@ async function runAllAudits() {
     let busyGot = false;
     sock1.on("order:request", () => { busyGot = true; });
 
-    const res = await fetch(`${BASE_URL}/legacy/order/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Legacy-Bridge-Secret": BRIDGE_SECRET },
-      body: JSON.stringify({
-        uid: "2",
-        category: "Bike",
-        delivery_type: "[6]",
-        booking_type: "1",
-        plat: String(TEST_LAT),
-        plong: String(TEST_LNG),
-        dlat: String(TEST_LAT + 0.01),
-        dlong: String(TEST_LNG + 0.01),
-        paddress: "Jaipur Pickup 8",
-        daddress: "Jaipur Drop 8",
-        pick_name: "Customer Eight",
-        pmobile: "9999900008",
-        package_weight: "1",
-        package_cost: "50",
-      }),
+    const orderJson = await postOrderCreate({
+      uid: "2",
+      category: "Bike",
+      delivery_type: [6],
+      booking_type: "1",
+      plat: String(TEST_LAT),
+      plong: String(TEST_LNG),
+      dlat: String(TEST_LAT + 0.01),
+      dlong: String(TEST_LNG + 0.01),
+      paddress: "Jaipur Pickup 8",
+      daddress: "Jaipur Drop 8",
+      pick_name: "Customer Eight",
+      pmobile: "9999900008",
+      package_weight: "1",
+      package_cost: "50",
     });
-    const orderJson = await res.json();
     const orderId = Number(orderJson.order_id);
 
     await sleep(3000);
