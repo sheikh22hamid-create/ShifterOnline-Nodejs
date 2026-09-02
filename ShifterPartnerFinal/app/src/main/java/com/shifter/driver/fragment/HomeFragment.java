@@ -363,6 +363,11 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             e.printStackTrace();
         }
 
+        if (isOnline) {
+            com.shifter.driver.socket.NodeSocketManager.getInstance().connect(getActivity(), riderData.getId());
+        } else {
+            com.shifter.driver.socket.NodeSocketManager.getInstance().disconnect();
+        }
 
         RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
         Call<JsonObject> call = APIClient.getInterface().riderStatus(bodyRequest);
