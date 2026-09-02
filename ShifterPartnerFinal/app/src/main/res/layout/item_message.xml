@@ -1,0 +1,65 @@
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:id="@+id/sentMessagelayout"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/sent_message_bg"
+        android:layout_gravity="end"
+        android:visibility="gone"
+        android:padding="8dp"
+
+        android:gravity="end">
+
+        <TextView
+            android:id="@+id/sentMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="#000"
+
+          />
+
+        <TextView
+            android:id="@+id/sentTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#666"
+            />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/receivedMessagelayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/received_message_bg"
+        android:padding="8dp"
+        android:visibility="gone"
+        android:gravity="start">
+
+        <TextView
+            android:id="@+id/receivedMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="#000"
+
+            />
+
+        <TextView
+            android:id="@+id/receivedTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="#666"
+            />
+    </LinearLayout>
+</LinearLayout>

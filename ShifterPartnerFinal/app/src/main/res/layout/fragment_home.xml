@@ -1,0 +1,1096 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="250dp"
+            android:orientation="vertical">
+
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/lvl_tit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="10dp"
+            android:gravity="center_vertical|start"
+            android:orientation="horizontal"
+            android:paddingVertical="6dp">
+
+            <!-- Left spacing -->
+            <View
+                android:visibility="gone"
+                android:layout_width="12dp"
+                android:layout_height="0dp" />
+
+            <!-- App Logo -->
+            <ImageView
+                android:id="@+id/img_back"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/logo" />
+
+            <!-- App Name -->
+            <TextView
+                android:visibility="visible"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="2dp"
+                android:layout_weight="1"
+                android:text="@string/app_name2"
+                android:textColor="@color/black"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <!-- Volume Control Button -->
+            <ImageButton
+                android:id="@+id/btn_volume_control"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="5dp"
+                android:background="@drawable/rounded_button"
+                android:contentDescription="Volume Control"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_volume" />
+
+            <!-- Swipe Button: Swipe left→right to toggle Online/Offline -->
+            <FrameLayout
+                android:id="@+id/swipe_btn_container"
+                android:layout_width="185dp"
+                android:layout_height="54dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/swipe_btn_go_online_bg">
+
+                <!-- Label inside button -->
+                <TextView
+                    android:id="@+id/txt_stats"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:paddingStart="62dp"
+                    android:paddingEnd="8dp"
+                    android:text="GO ONLINE"
+                    android:textColor="@color/white"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <!-- Draggable Thumb Circle -->
+                <FrameLayout
+                    android:id="@+id/swipe_thumb"
+                    android:layout_width="50dp"
+                    android:layout_height="50dp"
+                    android:layout_gravity="start|center_vertical"
+                    android:layout_margin="2dp"
+                    android:background="@drawable/swipe_thumb_white_circle"
+                    android:elevation="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <!-- Double arrow ">>" text inside circle -->
+                    <TextView
+                        android:id="@+id/txt_thumb_arrows"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:text="»"
+                        android:textColor="#2ECC71"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                </FrameLayout>
+
+            </FrameLayout>
+        </LinearLayout>
+
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/refares"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_below="@+id/lvl_tit">
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_marginLeft="15dp"
+                            android:orientation="vertical">
+
+
+                            <TextView
+                                android:id="@+id/txt_title"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="5dp"
+                                android:paddingLeft="5dp"
+
+                                android:text="@string/welcome_partner"
+                                android:textColor="@color/black"
+                                android:textSize="18dp"
+
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:paddingLeft="5dp"
+                                android:text="@string/user_enjoy_msg"
+                                android:textColor="@color/gray2"
+                                android:textSize="12dp" />
+                        </LinearLayout>
+
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="10dp" />
+                    </LinearLayout>
+
+                    <!-- ===== How To Use Button ===== -->
+                    <LinearLayout
+                        android:id="@+id/btn_how_to_use"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginHorizontal="10dp"
+                        android:layout_marginTop="5dp"
+                        android:layout_marginBottom="10dp"
+                        android:background="@drawable/rounded_button_youtube"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:padding="14dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:visibility="gone">
+
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:src="@drawable/ic_youtube_play"
+                            android:layout_marginEnd="12dp" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Training video"
+                                android:textColor="@color/white"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Button will removed after first 3 rides"
+                                android:textColor="#FFEBEE"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/arow_right"
+                            app:tint="@color/white" />
+
+                    </LinearLayout>
+
+                    <!-- Delivery Type Selection Section -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="10dp"
+                        android:background="@drawable/box_boder2"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/select_delivery_types"
+                            android:textColor="@color/black"
+                            android:textSize="16dp"
+                            android:textStyle="bold"
+                            android:paddingBottom="10dp" />
+
+                        <LinearLayout
+                            android:id="@+id/delivery_types_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+
+                            <!-- Delivery type items will be added dynamically here -->
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <!-- ===== Custom Orders Button ===== -->
+                    <LinearLayout
+                        android:visibility="gone"
+                        android:id="@+id/btn_custom_orders"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="10dp"
+                        android:background="@drawable/rounded_button"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:padding="14dp"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <ImageView
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:src="@drawable/ic_dollar"
+                            android:tint="@color/white"
+                            android:layout_marginEnd="12dp" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Custom Orders"
+                                android:textColor="@color/white"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="View &amp; bid on custom delivery requests"
+                                android:textColor="#DDEEFF"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/arow_right"
+                            android:tint="@color/white" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:visibility="gone"
+                        android:id="@+id/crd_order"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="10dp"
+                        android:background="@drawable/box_boder2"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:padding="5dp">
+
+                            <TextView
+                                android:id="@+id/txt_lastorder"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:text="@string/latest_order"
+                                android:textColor="@color/black"
+                                android:textSize="18dp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"
+                                android:text="@string/accept_now"
+                                android:textColor="@color/gray1"
+                                android:textSize="16dp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_margin="5dp"
+                            android:orientation="vertical"
+                            android:padding="5dp">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/txt_orderid"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="OrderID : #123456"
+                                    android:textColor="@color/purple_500"
+                                    android:textSize="16dp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/txt_status"
+                                    android:layout_width="140dp"
+                                    android:layout_height="32dp"
+                                    android:background="@drawable/rounded_button_green"
+                                    android:backgroundTint="@color/green"
+                                    android:gravity="center"
+                                    android:padding="5dp"
+                                    android:text="@string/pickup_order"
+                                    android:textColor="@color/white"
+                                    android:textSize="14dp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:orientation="horizontal"
+                                android:padding="5dp">
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:gravity="center"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_current_location_pickup" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="2dp"
+                                        android:background="@color/white" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="2dp"
+                                        android:background="@color/white" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_current_location_drop" />
+                                </LinearLayout>
+
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:gravity="center"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:id="@+id/txt_toaddress"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginLeft="10dp"
+                                        android:padding="3dp"
+                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
+                                        android:textColor="@color/black" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="10dp"
+                                        android:background="@color/gray" />
+
+                                    <TextView
+                                        android:id="@+id/txt_fromaddress"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginLeft="10dp"
+                                        android:padding="3dp"
+                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
+                                        android:textColor="@color/black" />
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:padding="5dp">
+
+                                <TextView
+                                    android:id="@+id/txt_km"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:padding="2dp"
+                                    android:gravity="center_vertical"
+                                    android:drawablePadding="5dp"
+                                    android:drawableLeft="@drawable/ic_map_km"
+                                    android:text="29 KM" />
+
+                                <View
+                                    android:layout_width="10dp"
+                                    android:layout_height="1dp"
+                                    android:layout_marginLeft="5dp"
+                                    android:layout_marginRight="5dp"
+
+                                    android:background="@color/gray" />
+
+                                <TextView
+                                    android:id="@+id/txt_earningorder"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:padding="2dp"
+                                    android:gravity="center_vertical"
+                                    android:singleLine="true"
+                                    android:drawablePadding="5dp"
+                                    android:drawableLeft="@drawable/ic_earning"
+                                    android:text="250₹ " />
+
+                                <View
+                                    android:layout_width="10dp"
+                                    android:layout_height="1dp"
+                                    android:layout_marginLeft="5dp"
+                                    android:layout_marginRight="5dp"
+                                    android:background="@color/gray" />
+
+                                <TextView
+                                    android:id="@+id/txt_mit"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:padding="2dp"
+                                    android:gravity="center_vertical"
+                                    android:drawablePadding="5dp"
+                                    android:singleLine="true"
+                                    android:drawableLeft="@drawable/ic_min_deliver"
+                                    android:text=" 71 min deliver   " />
+                            </LinearLayout>
+
+
+                            <TextView
+                                android:id="@+id/txt_continue"
+                                android:layout_width="match_parent"
+                                android:layout_height="42dp"
+                                android:layout_marginStart="12dp"
+                                android:layout_marginEnd="12dp"
+                                android:background="@drawable/rounded_button"
+                                android:gravity="center"
+                                android:padding="5dp"
+                                android:text="@string/confirm_order"
+                                android:theme="@style/AppTheme.Button"
+                                android:visibility="gone" />
+
+
+                        </LinearLayout>
+
+
+                    </LinearLayout>
+
+
+                    <LinearLayout
+                        android:visibility="gone"
+                        android:id="@+id/crd_orderby"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="10dp"
+                        android:background="@drawable/box_boder2"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:padding="5dp">
+
+                            <TextView
+                                android:id="@+id/txt_lastorder1"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:text="@string/latest_order"
+                                android:textColor="@color/black"
+                                android:textSize="18dp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"
+                                android:text="@string/accept_now"
+                                android:textColor="@color/gray1"
+                                android:textSize="16dp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_margin="5dp"
+                            android:orientation="vertical"
+                            android:padding="5dp">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/txt_orderid1"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:text="OrderID : #123456"
+                                    android:textColor="@color/purple_500"
+                                    android:textSize="16dp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/txt_status1"
+                                    android:layout_width="140dp"
+                                    android:layout_height="32dp"
+                                    android:background="@drawable/rounded_button_green"
+                                    android:backgroundTint="@color/blue"
+                                    android:gravity="center"
+                                    android:padding="5dp"
+                                    android:text="@string/pickup_order"
+                                    android:textColor="@color/white"
+                                    android:textSize="14dp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:orientation="horizontal"
+                                android:padding="5dp">
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:gravity="center"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_current_location_pickup" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="2dp"
+                                        android:background="@color/white" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="2dp"
+                                        android:background="@color/white" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="3dp"
+                                        android:background="@color/gray" />
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_current_location_drop" />
+                                </LinearLayout>
+
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:gravity="center"
+                                    android:orientation="vertical">
+
+                                    <TextView
+                                        android:id="@+id/txt_toaddress1"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginLeft="10dp"
+                                        android:padding="3dp"
+                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
+                                        android:textColor="@color/black" />
+
+                                    <View
+                                        android:layout_width="1dp"
+                                        android:layout_height="10dp"
+                                        android:background="@color/gray" />
+
+                                    <TextView
+                                        android:id="@+id/txt_fromaddress1"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginLeft="10dp"
+                                        android:padding="3dp"
+                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
+                                        android:textColor="@color/black" />
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:padding="5dp">
+
+                                <TextView
+                                    android:id="@+id/txt_km1"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:gravity="center_vertical"
+                                    android:drawablePadding="5dp"
+                                    android:drawableLeft="@drawable/ic_map_km"
+                                    android:padding="2dp"
+                                    android:text="29 KM" />
+
+                                <View
+                                    android:layout_width="10dp"
+                                    android:layout_height="1dp"
+                                    android:layout_marginLeft="5dp"
+                                    android:layout_marginRight="5dp"
+                                    android:background="@color/gray" />
+
+                                <TextView
+                                    android:id="@+id/txt_earningorder1"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:padding="2dp"
+                                    android:gravity="center_vertical"
+                                    android:singleLine="true"
+                                    android:drawablePadding="5dp"
+                                    android:drawableLeft="@drawable/ic_earning"
+                                    android:text="250₹" />
+
+                                <View
+                                    android:layout_width="10dp"
+                                    android:layout_height="1dp"
+                                    android:layout_marginLeft="5dp"
+                                    android:layout_marginRight="5dp"
+
+                                    android:background="@color/gray" />
+
+                                <TextView
+                                    android:id="@+id/txt_mit1"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:padding="2dp"
+                                    android:singleLine="true"
+                                    android:gravity="center_vertical"
+                                    android:drawablePadding="5dp"
+                                    android:drawableLeft="@drawable/ic_min_deliver"
+                                    android:text=" 71 min deliver   " />
+                            </LinearLayout>
+
+
+                            <TextView
+                                android:id="@+id/txt_continue1"
+                                android:layout_width="match_parent"
+                                android:layout_height="42dp"
+                                android:layout_marginStart="12dp"
+                                android:layout_marginEnd="12dp"
+                                android:background="@drawable/rounded_button"
+                                android:gravity="center"
+                                android:padding="5dp"
+                                android:text="@string/confirm_order"
+                                android:theme="@style/AppTheme.Button"
+                                android:visibility="gone" />
+
+
+                        </LinearLayout>
+
+
+                    </LinearLayout>
+
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="10dp" />
+
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="10dp"
+                        android:background="@drawable/box_boder2"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:padding="5dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:text="@string/overview_of"
+                                android:textColor="@color/black"
+                                android:textSize="18dp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"
+                                android:text="@string/today"
+                                android:textColor="@color/gray1"
+                                android:textSize="16dp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <HorizontalScrollView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fillViewport="true">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:padding="10dp">
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="130dp"
+                                    android:background="@drawable/box"
+                                    android:gravity="center"
+                                    android:minWidth="110dp"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_dollar" />
+
+                                    <TextView
+                                        android:id="@+id/txt_earning"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="₹"
+                                        android:textColor="@color/black"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="@string/earning"
+                                        android:textSize="16dp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+
+                                <View
+                                    android:layout_width="20dp"
+                                    android:layout_height="1dp" />
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="130dp"
+                                    android:background="@drawable/box"
+                                    android:gravity="center"
+                                    android:minWidth="110dp"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_complete_count" />
+
+                                    <TextView
+                                        android:id="@+id/txt_complete"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text=""
+                                        android:textColor="@color/black"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="@string/completed"
+                                        android:textSize="16dp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+
+                                <View
+                                    android:visibility="gone"
+                                    android:layout_width="20dp"
+                                    android:layout_height="1dp" />
+
+                                <LinearLayout
+                                    android:visibility="gone"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="130dp"
+                                    android:background="@drawable/box"
+                                    android:gravity="center"
+                                    android:minWidth="110dp"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_starrating" />
+
+                                    <TextView
+                                        android:id="@+id/txt_rating"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text=""
+                                        android:textColor="@color/black"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="@string/rating"
+                                        android:textSize="16dp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </LinearLayout>
+
+                        </HorizontalScrollView>
+                    </LinearLayout>
+
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="10dp" />
+
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="10dp"
+                        android:background="@drawable/box_boder2"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:padding="5dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:text="@string/summary_for"
+                                android:textColor="@color/black"
+                                android:textSize="18dp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"
+                                android:text="@string/this_month"
+                                android:textColor="@color/gray1"
+                                android:textSize="16dp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <HorizontalScrollView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fillViewport="true">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:padding="10dp">
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="130dp"
+                                    android:background="@drawable/box"
+                                    android:gravity="center"
+                                    android:minWidth="110dp"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_dollar" />
+
+                                    <TextView
+                                        android:id="@+id/txt_earning2"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="₹ "
+                                        android:textColor="@color/black"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="@string/earning"
+                                        android:textSize="16dp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+
+                                <View
+                                    android:layout_width="20dp"
+                                    android:layout_height="1dp" />
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="130dp"
+                                    android:background="@drawable/box"
+                                    android:gravity="center"
+                                    android:minWidth="110dp"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_complete_count" />
+
+                                    <TextView
+                                        android:id="@+id/txt_complete2"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text=""
+                                        android:textColor="@color/black"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="@string/completed"
+                                        android:textSize="16dp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+
+                                <View
+                                    android:visibility="gone"
+                                    android:layout_width="20dp"
+                                    android:layout_height="1dp" />
+
+                                <LinearLayout
+                                    android:visibility="gone"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="130dp"
+                                    android:background="@drawable/box"
+                                    android:gravity="center"
+                                    android:minWidth="110dp"
+                                    android:orientation="vertical">
+
+                                    <ImageView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:src="@drawable/ic_starrating" />
+
+                                    <TextView
+                                        android:id="@+id/txt_rating2"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text=""
+                                        android:textColor="@color/black"
+                                        android:textStyle="bold" />
+
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:padding="5dp"
+                                        android:text="@string/rating"
+                                        android:textSize="16dp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </LinearLayout>
+
+                        </HorizontalScrollView>
+                    </LinearLayout>
+
+
+
+                </LinearLayout>
+            </ScrollView>
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+    </RelativeLayout>
+
+</LinearLayout>

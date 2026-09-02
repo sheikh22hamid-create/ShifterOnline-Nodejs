@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="5dp"
+    android:background="@drawable/box_boder2"
+
+    app:ignore="NamespaceTypo">
+
+    <LinearLayout
+        android:id="@+id/lvl_itemclick"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="5dp"
+        android:orientation="vertical"
+        android:padding="5dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/txt_orderid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="OrderID : #123456"
+                android:textColor="@color/purple_500"
+                android:textSize="16dp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_status"
+                android:layout_width="140dp"
+                android:layout_height="32dp"
+                android:background="@drawable/rounded_button_green"
+                android:backgroundTint="@color/green"
+                android:gravity="center"
+                android:padding="5dp"
+                android:text="Pickup Order"
+                android:textColor="@color/white"
+                android:textSize="14dp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:padding="5dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:src="@drawable/ic_current_location_pickup" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="3dp"
+                    android:background="@color/gray" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="2dp"
+                    android:background="@color/white" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="3dp"
+                    android:background="@color/gray" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="3dp"
+                    android:background="@color/gray" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="2dp"
+                    android:background="@color/white" />
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="3dp"
+                    android:background="@color/gray" />
+
+                <ImageView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tint="@color/purple_500"
+                    android:src="@drawable/ic_current_location_drop" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/txt_toaddress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="10dp"
+                    android:padding="3dp"
+                    android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
+                    android:textColor="@color/black"
+                    />
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="10dp"
+                    android:background="@color/gray" />
+                <TextView
+                    android:id="@+id/txt_fromaddress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="10dp"
+                    android:padding="3dp"
+                    android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
+                    android:textColor="@color/black"
+                     />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="5dp">
+
+            <TextView
+                android:id="@+id/txt_km"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="2dp"
+                android:text="29 KM" />
+
+            <View
+                android:layout_width="10dp"
+                android:layout_height="1dp"
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"
+                android:background="@color/gray" />
+
+            <TextView
+                android:id="@+id/txt_earning"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="2dp"
+                android:text="250₹ Earning" />
+
+            <View
+                android:layout_width="10dp"
+                android:layout_height="1dp"
+                android:layout_marginLeft="5dp"
+                android:layout_marginRight="5dp"
+                android:background="@color/gray" />
+
+            <TextView
+                android:id="@+id/txt_mit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="2dp"
+                android:text=" 71 min deliver   " />
+        </LinearLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="10dp"
+            android:background="@color/gray" />
+
+        <TextView
+            android:id="@+id/txt_continue"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/rounded_button"
+            android:gravity="center"
+            android:padding="5dp"
+            android:text="@string/confirm_order"
+            android:theme="@style/AppTheme.Button" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="10dp"
+            android:background="@color/gray" />
+    </LinearLayout>
+
+
+</LinearLayout>

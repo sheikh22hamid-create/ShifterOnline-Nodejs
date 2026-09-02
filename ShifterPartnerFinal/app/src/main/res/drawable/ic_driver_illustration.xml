@@ -1,0 +1,165 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="300dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- Background Circle -->
+    <path
+        android:fillColor="#FFF3E0"
+        android:pathData="M100,100 m-90,0 a90,90 0,1 1,180 0 a90,90 0,1 1,-180 0"/>
+
+    <!-- Road -->
+    <path
+        android:fillColor="#E0E0E0"
+        android:pathData="M30,150 L170,150 A4,4 0,0 1,174,154 L174,158 A4,4 0,0 1,170,162 L30,162 A4,4 0,0 1,26,158 L26,154 A4,4 0,0 1,30,150Z"/>
+
+    <!-- Road Lines -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,154 L80,154 L80,156 L60,156Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M100,154 L120,154 L120,156 L100,156Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M140,154 L160,154 L160,156 L140,156Z"/>
+
+    <!-- Car Body -->
+    <path
+        android:fillColor="#FF6B00"
+        android:pathData="M50,125 L55,105 L80,95 L120,95 L145,105 L150,125Z"/>
+
+    <!-- Car Top/Roof -->
+    <path
+        android:fillColor="#FF8C42"
+        android:pathData="M75,95 L85,78 L115,78 L125,95Z"/>
+
+    <!-- Windows -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M78,93 L86,80 L112,80 L120,93Z"/>
+
+    <!-- Car Front -->
+    <path
+        android:fillColor="#FF6B00"
+        android:pathData="M48,122 L152,122 A8,8 0,0 1,160,130 L160,136 A8,8 0,0 1,152,144 L48,144 A8,8 0,0 1,40,136 L40,130 A8,8 0,0 1,48,122Z"/>
+
+    <!-- Headlights Left -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M52,128 m-4,0 a4,6 0,1 0,8 0 a4,6 0,1 0,-8 0"/>
+
+    <!-- Headlights Right -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M148,128 m-4,0 a4,6 0,1 0,8 0 a4,6 0,1 0,-8 0"/>
+
+    <!-- Left Wheel Outer -->
+    <path
+        android:fillColor="#1A1A1A"
+        android:pathData="M65,142 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
+
+    <!-- Left Wheel Inner -->
+    <path
+        android:fillColor="#616161"
+        android:pathData="M65,142 m-6,0 a6,6 0,1 1,12 0 a6,6 0,1 1,-12 0"/>
+
+    <!-- Left Wheel Center -->
+    <path
+        android:fillColor="#BDBDBD"
+        android:pathData="M65,142 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0"/>
+
+    <!-- Right Wheel Outer -->
+    <path
+        android:fillColor="#1A1A1A"
+        android:pathData="M135,142 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
+
+    <!-- Right Wheel Inner -->
+    <path
+        android:fillColor="#616161"
+        android:pathData="M135,142 m-6,0 a6,6 0,1 1,12 0 a6,6 0,1 1,-12 0"/>
+
+    <!-- Right Wheel Center -->
+    <path
+        android:fillColor="#BDBDBD"
+        android:pathData="M135,142 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0"/>
+
+    <!-- Driver Head -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M100,72 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0"/>
+
+    <!-- Driver Body -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M92,80 Q100,75 108,80 L108,85 L92,85Z"/>
+
+    <!-- Steering Wheel -->
+    <path
+        android:strokeColor="#1E293B"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M95,88 Q100,85 105,88"/>
+
+    <!-- Location Pin -->
+    <path
+        android:fillColor="#00C853"
+        android:pathData="M100,35 Q85,35 85,50 Q85,62 100,75 Q115,62 115,50 Q115,35 100,35Z"/>
+
+    <!-- Location Pin Center -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M100,50 m-6,0 a6,6 0,1 1,12 0 a6,6 0,1 1,-12 0"/>
+
+    <!-- Decorative Dots -->
+    <path
+        android:fillColor="#FFB74D"
+        android:pathData="M40,50 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0"
+        android:fillAlpha="0.5"/>
+
+    <path
+        android:fillColor="#FFB74D"
+        android:pathData="M160,60 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0"
+        android:fillAlpha="0.5"/>
+
+    <path
+        android:fillColor="#FFB74D"
+        android:pathData="M155,40 m-5,0 a5,5 0,1 1,10 0 a5,5 0,1 1,-10 0"
+        android:fillAlpha="0.3"/>
+
+    <!-- Speed Lines Left -->
+    <path
+        android:strokeColor="#FF6B00"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M25,110 L15,110"
+        android:strokeAlpha="0.4"/>
+
+    <path
+        android:strokeColor="#FF6B00"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M22,118 L12,118"
+        android:strokeAlpha="0.4"/>
+
+    <!-- Speed Lines Right -->
+    <path
+        android:strokeColor="#FF6B00"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M175,110 L185,110"
+        android:strokeAlpha="0.4"/>
+
+    <path
+        android:strokeColor="#FF6B00"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M178,118 L188,118"
+        android:strokeAlpha="0.4"/>
+
+</vector>

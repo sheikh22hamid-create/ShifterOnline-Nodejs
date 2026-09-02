@@ -1,0 +1,59 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="375dp"
+    android:height="166dp"
+    android:viewportWidth="375"
+    android:viewportHeight="166">
+  <group>
+    <clip-path
+        android:pathData="M0,0h375v166h-375z"/>
+    <path
+        android:pathData="M0,-117H375V166H0V-117Z"
+        android:fillType="evenOdd">
+      <aapt:attr name="android:fillColor">
+        <gradient 
+            android:startX="-0"
+            android:startY="-122.4"
+            android:endX="270.79"
+            android:endY="243.19"
+            android:type="linear">
+          <item android:offset="0" android:color="#5C56F8"/>
+          <item android:offset="1" android:color="#4038FF"/>
+        </gradient>
+      </aapt:attr>
+    </path>
+    <path
+        android:pathData="M-66,-45.85l510.5,-124.15l44.02,180.99l-510.5,124.15z"
+        android:fillAlpha="0.1">
+      <aapt:attr name="android:fillColor">
+        <gradient 
+            android:startX="335.66"
+            android:startY="192.89"
+            android:endX="21.15"
+            android:endY="-304.82"
+            android:type="linear">
+          <item android:offset="0" android:color="#FFFFFFFF"/>
+          <item android:offset="0.41" android:color="#00FFFFFF"/>
+        </gradient>
+      </aapt:attr>
+    </path>
+    <path
+        android:pathData="M64.39,-319.4l556.43,298.84l-120.39,224.17l-556.43,-298.84z"
+        android:fillAlpha="0.1">
+      <aapt:attr name="android:fillColor">
+        <gradient 
+            android:startX="206.71"
+            android:startY="263.91"
+            android:endX="307.26"
+            android:endY="-522.28"
+            android:type="linear">
+          <item android:offset="0" android:color="#FFFFFFFF"/>
+          <item android:offset="0.41" android:color="#00FFFFFF"/>
+        </gradient>
+      </aapt:attr>
+    </path>
+    <path
+        android:pathData="M0,-117h375v117h-375z"
+        android:fillColor="#ffffff"/>
+  </group>
+</vector>

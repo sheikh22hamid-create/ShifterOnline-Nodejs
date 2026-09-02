@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/tools"
+    android:id="@+id/lvl_click"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center|left"
+    android:orientation="horizontal"
+    android:padding="1dp"
+    app:ignore="NamespaceTypo">
+
+
+    <CheckBox
+        android:id="@+id/ch_option4"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:checked="true"
+        android:clickable="false"
+        android:text="Option 1" />
+    <RadioGroup
+        android:id="@+id/radiobutton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:orientation="vertical"
+        android:text="Option 1" />
+</LinearLayout>

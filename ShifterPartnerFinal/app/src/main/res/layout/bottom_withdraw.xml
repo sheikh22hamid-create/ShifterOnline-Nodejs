@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/rounded_top">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="5dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5sp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:padding="3dp"
+                android:singleLine="true"
+                android:text="Payout Request"
+                android:textColor="@color/black"
+                android:textSize="18dp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="10dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:padding="1dp"
+                android:text="Enter your amount"
+
+                />
+
+            <EditText
+                android:id="@+id/ed_amount"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:inputType="number"
+                android:padding="10dp" />
+
+            <RadioGroup
+                android:id="@+id/radio"
+                android:layout_marginTop="5dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <RadioButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="upi" />
+
+                <RadioButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="bank transfer" />
+
+                <RadioButton
+                    android:visibility="gone"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="paypal" />
+
+            </RadioGroup>
+
+
+            <EditText
+                android:id="@+id/ed_bankname"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:hint="Bank Name"
+                android:padding="10dp"
+                android:textSize="14dp"
+                android:visibility="gone" />
+
+            <EditText
+                android:id="@+id/ed_accountno"
+                android:background="@drawable/edittext_box"
+
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:inputType="number"
+                android:hint="Account Number"
+                android:padding="10dp"
+                android:textSize="14dp"
+                android:visibility="gone" />
+
+
+            <EditText
+                android:id="@+id/ed_accountname"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:padding="10dp"
+                android:hint="Account Holder Name"
+                android:textSize="14dp"
+
+                android:visibility="gone" />
+
+
+            <EditText
+                android:id="@+id/ed_accountifsc"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:padding="10dp"
+                android:textSize="14dp"
+                android:hint="Account IFSC"
+
+                android:visibility="gone" />
+
+
+            <EditText
+                android:id="@+id/ed_accountupi"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:padding="10dp"
+                android:hint="UPI"
+                android:textSize="14dp"
+
+
+                android:visibility="gone" />
+
+
+            <EditText
+                android:id="@+id/ed_accountpaypal"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:hint="Paypal ID"
+                android:layout_marginEnd="10dp"
+                android:padding="10dp"
+                android:textSize="14dp"
+
+
+                android:visibility="gone" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="30dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:gravity="center"
+                android:padding="5dp">
+
+                <TextView
+                    android:id="@+id/txt_reject"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:background="@drawable/rounded_logout"
+                    android:text="Cancel"
+                    android:textStyle="bold"
+                    android:textColor="@color/applight"
+                    android:textSize="15dp" />
+
+                <TextView
+                    android:id="@+id/btn_submit"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/rounded_button"
+                    android:gravity="center"
+                    android:text="@string/proceed"
+                    android:textColor="@color/white"
+                    android:theme="@style/AppTheme.Button" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="50dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
+
+
+
+
+
+
+
