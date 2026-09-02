@@ -30,16 +30,8 @@ import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 
-import com.google.gson.JsonObject;
 import com.shifter.driver.R;
-import com.shifter.driver.retrofit.APIClient;
 import com.shifter.driver.utility.OrderDialogHelper;
-
-import okhttp3.MediaType;
-import okhttp3.RequestBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class OrderOverlayService extends Service {
 
@@ -345,125 +337,84 @@ public class OrderOverlayService extends Service {
     // ────────────────────────────────────────────────────────────────────────
 
     private void acceptOrder(String orderId, String riderId, Intent intent) {
-        try {
-            JsonObject jsonObject = new JsonObject();
-            jsonObject.addProperty("order_id", orderId);
-            jsonObject.addProperty("rider_id", riderId);
-            jsonObject.addProperty("lat", String.valueOf(com.shifter.driver.locationservice.LocationUpdateService.getLocation().getLatitude()));
-            jsonObject.addProperty("lng", String.valueOf(com.shifter.driver.locationservice.LocationUpdateService.getLocation().getLongitude()));
+        com.shifter.driver.socket.NodeSocketManager manager = com.shifter.driver.socket.NodeSocketManager.getInstance();
+        io.socket.client.Socket socket = manager.getSocket();
 
-            RequestBody bodyRequest = RequestBody.create(
-                    MediaType.parse("application/json; charset=utf-8"),
-                    jsonObject.toString());
-
-            Call<JsonObject> call = APIClient.getInterface().acceptOrder(bodyRequest);
-            call.enqueue(new Callback<JsonObject>() {
-                @Override
-                public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
-                    if (response.isSuccessful() && response.body() != null) {
-                        try {
-                            JsonObject jsonResponse = response.body();
-                            boolean isSuccess = false;
-                            String message = "Unknown error";
-
-                            if (jsonResponse.has("Result")) {
-                                isSuccess = jsonResponse.get("Result").getAsBoolean();
-                                message = jsonResponse.has("msg") ? jsonResponse.get("msg").getAsString() : "";
-                            } else {
-                                String status = jsonResponse.has("status") ? jsonResponse.get("status").getAsString() : "";
-                                isSuccess = "1".equals(status) || "success".equalsIgnoreCase(status);
-                                message = jsonResponse.has("message") ? jsonResponse.get("message").getAsString() : "";
-                            }
-
-                            if (isSuccess) {
-                                Log.d(TAG, "Order accepted successfully");
-                                Toast.makeText(getApplicationContext(), message.isEmpty() ? "Order accepted successfully" : message, Toast.LENGTH_SHORT).show();
-                                
-                                // Launch OrderDetailsActivity using the utility we just created
-                                java.util.Map<String, String> data = new java.util.HashMap<>();
-                                if (intent != null && intent.getExtras() != null) {
-                                    for (String key : intent.getExtras().keySet()) {
-                                        Object value = intent.getExtras().get(key);
-                                        if (value != null) data.put(key, String.valueOf(value));
-                                    }
-                                }
-                                com.shifter.driver.utility.OrderDialogHelper.startOrderDetailsActivity(getApplicationContext(), orderId, data);
-                            } else {
-                                Log.e(TAG, "Order accept failed: " + message);
-                                Toast.makeText(getApplicationContext(), message.isEmpty() ? "Failed to accept order" : message, Toast.LENGTH_LONG).show();
-                            }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error parsing accept order response", e);
-                        }
-                    } else {
-                        Log.e(TAG, "Accept order API failed: " + response.code());
-                    }
-                    stopSelf(); // Stop service after API is done
-                }
-
-                @Override
-                public void onFailure(Call<JsonObject> call, Throwable t) {
-                    Log.e(TAG, "Accept order API error", t);
-                    Toast.makeText(getApplicationContext(), "Network error. Please try again.", Toast.LENGTH_SHORT).show();
-                    stopSelf(); // Stop service on failure
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Error creating accept order request", e);
+        if (socket == null || !manager.isConnected()) {
+            Log.e(TAG, "acceptOrder: socket not connected");
+            Toast.makeText(getApplicationContext(), "Not connected. Please check your connection and try again.", Toast.LENGTH_SHORT).show();
+            stopSelf();
+            return;
         }
+
+        io.socket.emitter.Emitter.Listener ackListener = new io.socket.emitter.Emitter.Listener() {
+            @Override
+            public void call(Object... args) {
+                socket.off("order:accept:ack", this);
+                if (args.length == 0 || !(args[0] instanceof org.json.JSONObject)) {
+                    stopSelf();
+                    return;
+                }
+                org.json.JSONObject ack = (org.json.JSONObject) args[0];
+                boolean isSuccess = ack.optBoolean("Result", false);
+                String message = ack.optString("msg", "");
+
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    if (isSuccess) {
+                        Log.d(TAG, "Order accepted successfully");
+                        Toast.makeText(getApplicationContext(), message.isEmpty() ? "Order accepted successfully" : message, Toast.LENGTH_SHORT).show();
+
+                        java.util.Map<String, String> data = new java.util.HashMap<>();
+                        if (intent != null && intent.getExtras() != null) {
+                            for (String key : intent.getExtras().keySet()) {
+                                Object value = intent.getExtras().get(key);
+                                if (value != null) data.put(key, String.valueOf(value));
+                            }
+                        }
+                        com.shifter.driver.utility.OrderDialogHelper.startOrderDetailsActivity(getApplicationContext(), orderId, data);
+                    } else {
+                        Log.e(TAG, "Order accept failed: " + message);
+                        Toast.makeText(getApplicationContext(), message.isEmpty() ? "Failed to accept order" : message, Toast.LENGTH_LONG).show();
+                    }
+                    stopSelf();
+                });
+            }
+        };
+        socket.on("order:accept:ack", ackListener);
+
+        org.json.JSONObject payload = new org.json.JSONObject();
+        try {
+            payload.put("rider_id", riderId);
+            payload.put("order_id", orderId);
+        } catch (org.json.JSONException e) {
+            Log.e(TAG, "Error building order:accept payload", e);
+            stopSelf();
+            return;
+        }
+        socket.emit("order:accept", payload);
     }
 
     private void rejectOrder(String orderId, String riderId) {
-        try {
-            JsonObject jsonObject = new JsonObject();
-            jsonObject.addProperty("order_id", orderId);
-            jsonObject.addProperty("rider_id", riderId);
+        com.shifter.driver.socket.NodeSocketManager manager = com.shifter.driver.socket.NodeSocketManager.getInstance();
+        io.socket.client.Socket socket = manager.getSocket();
 
-            RequestBody bodyRequest = RequestBody.create(
-                    MediaType.parse("application/json; charset=utf-8"),
-                    jsonObject.toString());
-
-            Call<JsonObject> call = APIClient.getInterface().rejectOrder(bodyRequest);
-            call.enqueue(new Callback<JsonObject>() {
-                @Override
-                public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
-                    if (response.isSuccessful() && response.body() != null) {
-                        try {
-                            JsonObject jsonResponse = response.body();
-                            boolean isSuccess = false;
-                            String message = "Unknown error";
-
-                            if (jsonResponse.has("Result")) {
-                                isSuccess = jsonResponse.get("Result").getAsBoolean();
-                                message = jsonResponse.has("msg") ? jsonResponse.get("msg").getAsString() : "";
-                            } else {
-                                String status = jsonResponse.has("status") ? jsonResponse.get("status").getAsString() : "";
-                                isSuccess = "1".equals(status) || "success".equalsIgnoreCase(status);
-                                message = jsonResponse.has("message") ? jsonResponse.get("message").getAsString() : "";
-                            }
-
-                            if (isSuccess) {
-                                Log.d(TAG, "Order rejected successfully");
-                            } else {
-                                Log.e(TAG, "Order reject failed: " + message);
-                            }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error parsing reject order response", e);
-                        }
-                    } else {
-                        Log.e(TAG, "Reject order API failed: " + response.code());
-                    }
-                    stopSelf();
-                }
-
-                @Override
-                public void onFailure(Call<JsonObject> call, Throwable t) {
-                    Log.e(TAG, "Reject order API error", t);
-                    stopSelf();
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Error creating reject order request", e);
+        if (socket == null || !manager.isConnected()) {
+            Log.e(TAG, "rejectOrder: socket not connected");
+            stopSelf();
+            return;
         }
+
+        org.json.JSONObject payload = new org.json.JSONObject();
+        try {
+            payload.put("rider_id", riderId);
+            payload.put("order_id", orderId);
+        } catch (org.json.JSONException e) {
+            Log.e(TAG, "Error building order:reject payload", e);
+            stopSelf();
+            return;
+        }
+        socket.emit("order:reject", payload);
+        Log.d(TAG, "Order reject sent");
+        stopSelf();
     }
 }
