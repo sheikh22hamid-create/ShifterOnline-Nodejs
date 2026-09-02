@@ -25,6 +25,7 @@ public class BaseActivity extends AppCompatActivity {
     protected static final String EXTRA_ORDER_ID = "order_id";
     protected static final String EXTRA_SHOW_ORDER_DIALOG = "show_order_dialog";
     private BroadcastReceiver orderNotificationReceiver;
+    private BroadcastReceiver orderDismissReceiver;
 
     // Duplicate guard — same orderId ke liye ek hi baar dialog dikhao
     // (killed state mein startActivity + notification click dono trigger ho sakte hain)
@@ -47,6 +48,7 @@ public class BaseActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setupOrderNotificationReceiver();
+        setupOrderDismissReceiver();
     }
 
     private void setupOrderNotificationReceiver() {
@@ -64,6 +66,22 @@ public class BaseActivity extends AppCompatActivity {
         };
     }
 
+    private void setupOrderDismissReceiver() {
+        orderDismissReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (com.shifter.driver.socket.NodeSocketManager.ACTION_ORDER_DISMISS.equals(intent.getAction())) {
+                    String orderId = intent.getStringExtra(EXTRA_ORDER_ID);
+                    if (orderId != null && orderId.equals(lastShownOrderId)) {
+                        Log.d(TAG, "order:dismiss matched active popup for order_id: " + orderId);
+                        OrderDialogHelper.dismissIfShowing(orderId);
+                        lastShownOrderId = "";
+                    }
+                }
+            }
+        };
+    }
+
     @Override
     protected void onStart() {
         super.onStart();
@@ -73,6 +91,13 @@ public class BaseActivity extends AppCompatActivity {
                 this,
                 orderNotificationReceiver,
                 filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+
+        IntentFilter dismissFilter = new IntentFilter(com.shifter.driver.socket.NodeSocketManager.ACTION_ORDER_DISMISS);
+        ContextCompat.registerReceiver(
+                this,
+                orderDismissReceiver,
+                dismissFilter,
                 ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
@@ -84,6 +109,13 @@ public class BaseActivity extends AppCompatActivity {
                 unregisterReceiver(orderNotificationReceiver);
             } catch (Exception e) {
                 Log.e(TAG, "Error unregistering receiver", e);
+            }
+        }
+        if (orderDismissReceiver != null) {
+            try {
+                unregisterReceiver(orderDismissReceiver);
+            } catch (Exception e) {
+                Log.e(TAG, "Error unregistering dismiss receiver", e);
             }
         }
     }

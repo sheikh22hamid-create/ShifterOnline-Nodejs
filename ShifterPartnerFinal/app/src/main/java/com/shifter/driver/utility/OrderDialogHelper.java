@@ -27,6 +27,17 @@ public class OrderDialogHelper {
 
     private static final String TAG = "OrderDialogHelper";
 
+    private static AlertDialog activeDialog;
+    private static String activeDialogOrderId;
+
+    /** Called by BaseActivity when an order:dismiss socket event matches the currently-shown popup. */
+    public static void dismissIfShowing(String orderId) {
+        if (activeDialog != null && activeDialog.isShowing()
+                && orderId != null && orderId.equals(activeDialogOrderId)) {
+            activeDialog.dismiss();
+        }
+    }
+
     /**
      * Show Accept/Reject dialog for an order
      * 
@@ -59,6 +70,8 @@ public class OrderDialogHelper {
         builder.setCancelable(false);
 
         AlertDialog dialog = builder.create();
+        activeDialog = dialog;
+        activeDialogOrderId = orderId;
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(
                     new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
