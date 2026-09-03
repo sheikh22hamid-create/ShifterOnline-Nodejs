@@ -12,7 +12,7 @@ const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
 const dispatchManager = require("../../services/dispatchManager");
 const { getRoadDistanceKm } = require("../../utils/geoDistance");
-const { createOrderCore } = require("../orderController");
+const { createOrderCore, createOrder } = require("../orderController");
 
 describe("orderController.createOrderCore", () => {
   beforeEach(() => {
@@ -152,5 +152,38 @@ describe("orderController.createOrderCore", () => {
         expect.objectContaining({ data: expect.objectContaining({ radius_range: 8 }) })
       );
     });
+  });
+});
+
+describe("orderController.createOrder (HTTP handler) — photos pass-through", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 5 });
+    prisma.tbl_package.findMany.mockResolvedValue([{ id: 6, per_km_charge: 10, sort_order: 1 }]);
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 2 });
+    pricingEngine.priceForPackage.mockReturnValue({ fare: 50, driverEarning: 40, commission: 5 });
+    prisma.pkg_order.create.mockResolvedValue({ id: 777, booking_type: 1 });
+  });
+
+  it("passes req.body.photos through to the created order instead of discarding it", async () => {
+    const req = {
+      body: {
+        uid: 1, category: "Bike", delivery_type: [6], booking_type: 1,
+        plat: 28.7, plong: 77.1, paddress: "A", pick_name: "P", pmobile: "999", pick_type: "",
+        dlat: 28.8, dlong: 77.2, daddress: "B", drop_name: "D", dmobile: "888", drop_type: "",
+        package_weight: "2 Kg", package_cost: 100, description: "",
+        p_method_id: 1, transaction_id: "", extra_mile_charge: 0, cou_id: 0, cou_amt: 0,
+        radius_km: 10, city_id: 2,
+        photos: "images/order_photos/abc123.jpg",
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await createOrder(req, res);
+
+    expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ photos: "images/order_photos/abc123.jpg" }) })
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

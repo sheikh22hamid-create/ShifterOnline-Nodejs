@@ -211,7 +211,7 @@ async function createOrder(req, res) {
     const {
       uid, category, delivery_type, booking_type, plat, plong, paddress, pick_name, pmobile, pick_type,
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
-      p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id,
+      p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
     } = req.body;
 
     const result = await createOrderCore({
@@ -219,7 +219,7 @@ async function createOrder(req, res) {
       pickName: pick_name, pmobile, pickType: pick_type, dlat, dlong, daddress, dropName: drop_name,
       dmobile, dropType: drop_type, packageWeight: package_weight, packageCost: package_cost, description,
       pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
-      couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: null,
+      couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
