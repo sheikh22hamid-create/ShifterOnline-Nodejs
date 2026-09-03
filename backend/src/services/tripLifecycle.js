@@ -222,7 +222,7 @@ async function updateStatus(orderId, riderId, status) {
       });
     }
 
-    if (order.transaction_id === "cash_payment" && Number(order.commission) > 0) {
+    if (order.trans_id === "cash_payment" && Number(order.commission) > 0) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money.
