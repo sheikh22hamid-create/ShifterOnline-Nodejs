@@ -14,6 +14,7 @@ jest.mock("../lockManager", () => ({ releaseLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5 }),
   getPackageById: jest.fn(),
+  commissionAmount: jest.fn((dCharge, commissionPercent) => Math.round(((Number(dCharge) * Number(commissionPercent)) / 100) * 100) / 100),
 }));
 jest.mock("../pushNotifier", () => ({ notifyCustomerOrderAssigned: jest.fn().mockResolvedValue({ sent: true }) }));
 
@@ -138,5 +139,86 @@ describe("tripLifecycle.customerCancel", () => {
     const result = await tripLifecycle.customerCancel(7, 297, "too late");
 
     expect(result).toEqual({ success: false, msg: "Order cannot be cancelled" });
+  });
+});
+
+describe("tripLifecycle.updateStatus('complete') — commission deduction", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue(null);
+    prisma.pkg_order.update.mockResolvedValue({});
+  });
+
+  it("debits the driver's wallet for a cash order with commission > 0, reading the payment method from trans_id", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 5,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(297, 1, "complete");
+
+    expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
+    expect(pricingEngine.commissionAmount).toHaveBeenCalledWith(100, 5);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { decrement: 5 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          user_id: 1,
+          amount: 5,
+          type: "debit",
+          order_id: 297,
+        }),
+      })
+    );
+  });
+
+  it("does not touch the wallet for a non-cash order even when commission > 0", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 298,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 5,
+      trans_id: "razorpay_txn_123",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(298, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the wallet for a cash order with commission = 0", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 299,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 0,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(299, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
 });
