@@ -1084,26 +1084,64 @@ public class OrderDetailsActivity extends AppCompatActivity
         if ("pickup".equalsIgnoreCase(status)) {
             pausePickupWaitingTimer();
         }
-        custPrograssbar.prograssCreate(this);
 
-        JSONObject json = new JSONObject();
-        try {
-            json.put("oid", orderItem.getId());
-            json.put("status", status);
-            json.put("rid", riderData.getId());
-            json.put("comment", comment);
-        } catch (JSONException e) {
-            e.printStackTrace();
+        String nodeStatus;
+        if ("arrived".equalsIgnoreCase(status)) {
+            nodeStatus = "arrived";
+        } else if ("pickup".equalsIgnoreCase(status)) {
+            nodeStatus = "pickup";
+        } else if ("complete".equalsIgnoreCase(status)) {
+            nodeStatus = "complete";
+        } else {
+            // "arrived_drop" (and any other UI-only transition) has no Node-side
+            // status — nothing to send. See plan Global Constraints.
+            Log.d("OrderDetailsActivity", "orderstatus: '" + status + "' is local-UI-only, not sent to backend");
+            return;
         }
 
-        RequestBody body = RequestBody.create(
-                MediaType.parse("application/json"), json.toString());
+        com.shifter.driver.socket.NodeSocketManager manager = com.shifter.driver.socket.NodeSocketManager.getInstance();
+        io.socket.client.Socket socket = manager.getSocket();
+        if (socket == null || !manager.isConnected()) {
+            Log.e("OrderDetailsActivity", "orderstatus: socket not connected");
+            Toast.makeText(this, "Not connected. Please check your connection and try again.", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-        Call<JsonObject> call = APIClient.getInterface().orderStatusChange(body);
+        custPrograssbar.prograssCreate(this);
 
-        GetResult result = new GetResult();
-        result.setMyListener(this);
-        result.callForLogin(call, "1");
+        io.socket.emitter.Emitter.Listener ackListener = new io.socket.emitter.Emitter.Listener() {
+            @Override
+            public void call(Object... args) {
+                socket.off("order:status_update:ack", this);
+                runOnUiThread(() -> {
+                    custPrograssbar.closePrograssBar();
+                    if (args.length == 0 || !(args[0] instanceof org.json.JSONObject)) {
+                        return;
+                    }
+                    org.json.JSONObject ack = (org.json.JSONObject) args[0];
+                    boolean isSuccess = ack.optBoolean("Result", false);
+                    String message = ack.optString("msg", "");
+                    if (isSuccess) {
+                        Toast.makeText(OrderDetailsActivity.this, "Status updated successfully", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(OrderDetailsActivity.this, "Failed to update status: " + message, Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+        };
+        socket.on("order:status_update:ack", ackListener);
+
+        org.json.JSONObject payload = new org.json.JSONObject();
+        try {
+            payload.put("rider_id", riderData.getId());
+            payload.put("order_id", orderItem.getId());
+            payload.put("status", nodeStatus);
+        } catch (org.json.JSONException e) {
+            Log.e("OrderDetailsActivity", "Error building order:status_update payload", e);
+            custPrograssbar.closePrograssBar();
+            return;
+        }
+        socket.emit("order:status_update", payload);
     }
 
     private void orderCancel(String status, String comment) {
