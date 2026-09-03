@@ -1096,6 +1096,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             // "arrived_drop" (and any other UI-only transition) has no Node-side
             // status — nothing to send. See plan Global Constraints.
             Log.d("OrderDetailsActivity", "orderstatus: '" + status + "' is local-UI-only, not sent to backend");
+            advanceLocalOrderFlow();
             return;
         }
 
@@ -1123,6 +1124,12 @@ public class OrderDetailsActivity extends AppCompatActivity
                     String message = ack.optString("msg", "");
                     if (isSuccess) {
                         Toast.makeText(OrderDetailsActivity.this, "Status updated successfully", Toast.LENGTH_SHORT).show();
+                        if ("complete".equalsIgnoreCase(status)) {
+                            stopAndClearPickupWaitingTimer();
+                            fetchCompletedOrderAndShowDialog(orderItem != null ? orderItem.getId() : "");
+                        } else {
+                            advanceLocalOrderFlow();
+                        }
                     } else {
                         Toast.makeText(OrderDetailsActivity.this, "Failed to update status: " + message, Toast.LENGTH_SHORT).show();
                     }
@@ -1142,6 +1149,56 @@ public class OrderDetailsActivity extends AppCompatActivity
             return;
         }
         socket.emit("order:status_update", payload);
+    }
+
+    /**
+     * Advances the local orderItem to the next flow step and redraws the UI —
+     * the socket ack carries no equivalent of the legacy REST response's
+     * "Next_step" field, so this mirrors what callback(result,"1") used to do
+     * by deriving the next step from lastAction via mapNextStepToFlowId("").
+     */
+    private void advanceLocalOrderFlow() {
+        HomeFragment.isUpdateHome = true;
+        isUpdate = true;
+
+        String nextFlowId = mapNextStepToFlowId("");
+        orderItem = new PDOrderItem(
+                orderItem.getId(),
+                nextFlowId,
+                orderItem.getPickName(),
+                orderItem.getDropName(),
+                orderItem.getCustomerPaddress(),
+                orderItem.getCustomerDaddress(),
+                orderItem.getCustomerPmobile(),
+                orderItem.getCustomerDmobile(),
+                orderItem.getPickType(),
+                orderItem.getDropType(),
+                orderItem.getPlat(),
+                orderItem.getPlong(),
+                orderItem.getDlat(),
+                orderItem.getDlong(),
+                orderItem.getTotal(),
+                orderItem.getDistance(),
+                orderItem.getTimeDuration(),
+                orderItem.getOrderDate(),
+                orderItem.getDescription(),
+                orderItem.getStatus(),
+                orderItem.getOrderUserid(),
+                orderItem.getLoadingCharge(),
+                orderItem.getUnloadingCharge(),
+                orderItem.getServiceCharge(),
+                orderItem.getWatingCharge(),
+                orderItem.getFreeWaitingTime(),
+                orderItem.getRadiusRange(),
+                orderItem.getRadiusCharge(),
+                orderItem.getPaymentStatus()
+        );
+
+        new SessionManager(this).setActiveOrder(orderItem);
+
+        setupUI();
+        setupClicks();
+        setupMap();
     }
 
     private void orderCancel(String status, String comment) {
