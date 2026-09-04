@@ -15,7 +15,9 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.CountDownTimer;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 import android.view.Gravity;
@@ -394,12 +396,28 @@ public class OrderOverlayService extends Service {
         socket.emit("order:accept", payload);
     }
 
+    private static final int REJECT_RETRY_ATTEMPTS = 3;
+    private static final long REJECT_RETRY_DELAY_MS = 2500;
+
     private void rejectOrder(String orderId, String riderId) {
+        rejectOrder(orderId, riderId, 0);
+    }
+
+    // Socket reconnects automatically within ~2s (NodeSocketManager); retry instead of
+    // silently dropping the reject when the tap lands during a transient disconnect.
+    private void rejectOrder(String orderId, String riderId, int attempt) {
         com.shifter.driver.socket.NodeSocketManager manager = com.shifter.driver.socket.NodeSocketManager.getInstance();
         io.socket.client.Socket socket = manager.getSocket();
 
         if (socket == null || !manager.isConnected()) {
-            Log.e(TAG, "rejectOrder: socket not connected");
+            if (attempt < REJECT_RETRY_ATTEMPTS) {
+                Log.w(TAG, "rejectOrder: socket not connected, retrying (" + (attempt + 1) + "/" + REJECT_RETRY_ATTEMPTS + ")");
+                new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> rejectOrder(orderId, riderId, attempt + 1), REJECT_RETRY_DELAY_MS);
+                return;
+            }
+            Log.e(TAG, "rejectOrder: socket still not connected after retries, giving up");
+            Toast.makeText(getApplicationContext(), "Could not reach server to reject order. Please check your connection.", Toast.LENGTH_LONG).show();
             stopSelf();
             return;
         }
