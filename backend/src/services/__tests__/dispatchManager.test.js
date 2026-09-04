@@ -374,6 +374,27 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(tier1Request).toBeDefined();
   });
 
+  it("does not re-offer a rider whose reject lands mid-batch, after this batch's rejectedRiderIds snapshot was already taken", async () => {
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValueOnce([5].map(makeRiderRow)); // tier 0 (package 6) — only driver_5 in range
+
+    // First findMany call inside this runBatch is getRejectedRiderIds()'s own
+    // snapshot, taken before driver_5's reject has landed — empty. The
+    // second is this batch's own mid-batch re-check, by which point the
+    // reject has committed — finds driver_5.
+    prisma.tbl_order_requests.findMany
+      .mockImplementationOnce(async () => [])
+      .mockImplementationOnce(async () => [{ rider_id: 5 }]);
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(false);
+    expect(prisma.tbl_order_requests.create).not.toHaveBeenCalled();
+    expect(lockManager.isLocked(5)).toBe(false);
+  });
+
   it("zero eligible drivers in tier 0 does not block the cascade from reaching tier 1", async () => {
     prisma.$queryRaw.mockReset();
     prisma.$queryRaw.mockResolvedValue([]);

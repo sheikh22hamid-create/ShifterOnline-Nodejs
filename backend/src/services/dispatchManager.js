@@ -267,7 +267,7 @@ async function runBatch(orderId) {
 
     const eligibleBatch = candidates.slice(0, MAX_DRIVERS_PER_BATCH - lockedRiderIds.length);
     let lockedThisRound = 0;
-    const lockedThisRoundDrivers = [];
+    let lockedThisRoundDrivers = [];
 
     for (const driver of eligibleBatch) {
       if (lockedRiderIds.length >= MAX_DRIVERS_PER_BATCH) break;
@@ -279,6 +279,45 @@ async function runBatch(orderId) {
       lockedDrivers.push(driver);
       lockedThisRound++;
       lockedThisRoundDrivers.push(driver);
+    }
+
+    // Final guard against a reject that lands mid-batch: rejectedRiderIds was
+    // snapshotted once at the top of this runBatch call, but
+    // tripLifecycle.rejectOrder can commit its "10" write (and free the
+    // rider's lock) at any point during this round's own awaits above — a
+    // rider who rejected an earlier tier just seconds ago could otherwise
+    // slip through as a "fresh" candidate and get re-offered a later tier of
+    // the SAME order they already declined. Re-checked here, right before
+    // the offer is actually committed, since this is the narrowest point in
+    // the batch this can be verified at.
+    if (lockedThisRoundDrivers.length > 0) {
+      const rejectedNow = await prisma.tbl_order_requests.findMany({
+        where: {
+          order_id: orderId,
+          status: "10",
+          rider_id: { in: lockedThisRoundDrivers.map((d) => Number(d.rider_id)) },
+        },
+        select: { rider_id: true },
+      });
+      if (rejectedNow.length > 0) {
+        const rejectedNowSet = new Set(rejectedNow.map((r) => Number(r.rider_id)));
+        for (const riderId of rejectedNowSet) {
+          lockManager.releaseLock(riderId);
+        }
+        lockedThisRoundDrivers = lockedThisRoundDrivers.filter((d) => !rejectedNowSet.has(Number(d.rider_id)));
+        for (const riderId of rejectedNowSet) {
+          const idx = lockedRiderIds.indexOf(riderId);
+          if (idx !== -1) lockedRiderIds.splice(idx, 1);
+        }
+        for (const riderId of rejectedNowSet) {
+          const idx = lockedDrivers.findIndex((d) => Number(d.rider_id) === riderId);
+          if (idx !== -1) lockedDrivers.splice(idx, 1);
+        }
+        lockedThisRound -= rejectedNowSet.size;
+        logger.warn(
+          `dispatchManager: order=${orderId} tier=${tierIndex} skipped re-offering already-rejected rider(s) ${[...rejectedNowSet].join(",")} (rejected mid-batch)`
+        );
+      }
     }
 
     if (lockedThisRoundDrivers.length > 0) {
@@ -348,6 +387,10 @@ async function runBatch(orderId) {
     sameOrderLockBlocking = wouldBeCandidates.length > 0;
   }
 
+  logger.info(
+    `dispatchManager: order=${orderId} tier=${tierIndex} cursor_decision locked=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier} sameOrderLockBlocking=${sameOrderLockBlocking} willAdvance=${!sameOrderLockBlocking && (!hasMoreInCurrentTier || lockedRiderIds.length === 0)}`
+  );
+
   // Tier Exhaustion: Exhaust all eligible drivers of current model before moving to next model
   if (!sameOrderLockBlocking && (!hasMoreInCurrentTier || lockedRiderIds.length === 0)) {
     state.tierCursor++;
@@ -379,6 +422,7 @@ function scheduleExpiry(orderId, tierIndex, drivers) {
 
   state.activeExpiryTimers = (state.activeExpiryTimers || 0) + 1;
 
+  const armedAt = Date.now();
   const timer = setTimeout(async () => {
     state.timers.delete(timer);
     state.activeExpiryTimers = Math.max(0, (state.activeExpiryTimers || 1) - 1);
@@ -388,6 +432,10 @@ function scheduleExpiry(orderId, tierIndex, drivers) {
         const lock = lockManager.peekLock(Number(driver.rider_id));
         return lock && lock.orderId === orderId;
       });
+
+      logger.info(
+        `dispatchManager: expiry fired order=${orderId} tier=${tierIndex} armed_ms_ago=${Date.now() - armedAt} riders=${drivers.map((d) => d.rider_id).join(",")} still_pending=${stillPendingDrivers.map((d) => d.rider_id).join(",")}`
+      );
 
       // Runs every rider's release/DB-write/dismiss concurrently — sequential
       // awaits here previously queued each rider behind the last one's DB
