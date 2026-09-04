@@ -133,11 +133,18 @@ async function acceptOrder(orderId, riderId) {
 }
 
 async function rejectOrder(orderId, riderId) {
-  lockManager.releaseLock(riderId);
+  // DB write before lock release, not after: releasing the lock first makes
+  // this rider immediately eligible for the cascade's next tier, which can
+  // fire (and even complete) before this status write lands — the next
+  // tier's own eventual timeout/reject write then risks racing this one on
+  // the same rider, since neither is scoped to package_id. Writing "10"
+  // first guarantees it's durably recorded before the rider becomes
+  // available again.
   await prisma.tbl_order_requests.updateMany({
     where: { order_id: orderId, rider_id: riderId, status: "sent" },
     data: { status: "10" },
   });
+  lockManager.releaseLock(riderId);
   return { success: true };
 }
 
