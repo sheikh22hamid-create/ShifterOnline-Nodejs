@@ -1,7 +1,0 @@
-<resources>
-    <style name="OldSpinnerDatePickerDialog" parent="Theme.AppCompat.Light.Dialog.Alert">
-        <item name="android:datePickerMode">spinner</item>
-        <item name="android:calendarViewShown">false</item>
-        <item name="android:spinnersShown">true</item>
-    </style>
-</resources>

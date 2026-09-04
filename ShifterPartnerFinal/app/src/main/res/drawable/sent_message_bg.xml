@@ -1,7 +1,0 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="rectangle">
-
-    <corners android:radius="10dp"/>
-    <solid android:color="#C6E7F8"/>  <!-- Light Green Background like WhatsApp -->
-    <padding android:left="12dp" android:top="8dp" android:right="12dp" android:bottom="8dp"/>
-</shape>
