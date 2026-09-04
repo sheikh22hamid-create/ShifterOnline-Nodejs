@@ -150,11 +150,28 @@ async function checkCascadeTermination(orderId) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
 
-  // Exhausted once a full round-robin cycle (one turn per tier) has come
-  // back with zero new drivers locked in every tier, and nobody is still
-  // holding an active popup that could yet accept/reject.
-  const isExhausted = state.consecutiveEmptyTurns >= state.tiers.length && (state.activeExpiryTimers || 0) === 0;
+  // Exhausted once either (a) a full round-robin cycle has come back with
+  // zero new drivers locked in every tier, or (b) a full lap around every
+  // tier just finished without adding a single rider this cascade hasn't
+  // already tried before (staleLaps — see runBatch: without this, a lone
+  // rider who only ever lets their popup time out, never rejecting, stays
+  // "eligible again" after every timeout and would otherwise be re-offered
+  // the same order's tiers forever, since (a) alone can never fire for them)
+  // — and, either way, nobody is still holding an active popup that could
+  // yet accept/reject.
+  const isExhausted =
+    (state.consecutiveEmptyTurns >= state.tiers.length || (state.staleLaps || 0) >= 1) &&
+    (state.activeExpiryTimers || 0) === 0;
   if (!isExhausted) return;
+
+  // A single expiry can independently trigger this from two places at once
+  // — scheduleExpiry's own callback calls this directly, and also (without
+  // awaiting it) kicks off runBatch, which can reach this same exhausted
+  // state and call in again before the first call's own awaits below have
+  // finished. This check-and-set is synchronous (no await before it), so
+  // the second concurrent call always sees it set and bails out here.
+  if (state.terminating) return;
+  state.terminating = true;
 
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (order && order.rid === 0 && order.order_status === 0) {
@@ -207,6 +224,39 @@ async function runBatch(orderId) {
   const packageId = state.tiers[tierIndex];
   if (packageId === undefined) {
     await checkCascadeTermination(orderId);
+    return;
+  }
+
+  // consecutiveEmptyTurns (below) only measures "did this turn lock nobody" —
+  // it never accumulates when the SAME lone rider keeps timing out and
+  // becoming re-eligible again, since re-offering them still counts as
+  // "locked someone" each turn. Left unchecked, a single unresponsive rider
+  // who never explicitly rejects would cycle through every tier forever,
+  // re-offering the identical order indefinitely. staleLaps tracks real
+  // progress instead: whenever the cursor genuinely ADVANCES back around to
+  // tier 0 (not just retries there — sameOrderLockBlocking can pin tierIndex
+  // at 0 across many back-to-back retries while state.tierCursor itself
+  // stays unchanged, and each of those must NOT count as its own lap), a lap
+  // that added no rider this cascade hasn't already tried before is stale —
+  // see the termination check further down.
+  if (tierIndex === 0 && state.tierCursor !== state.lastTierCursorAtLapCheck) {
+    state.lastTierCursorAtLapCheck = state.tierCursor;
+    state.lapsStarted = (state.lapsStarted || 0) + 1;
+    if (state.lapsStarted > 1) {
+      state.staleLaps = state.everLockedRiderIds.size === state.lapStartRiderCount ? (state.staleLaps || 0) + 1 : 0;
+    }
+    state.lapStartRiderCount = state.everLockedRiderIds.size;
+  }
+
+  // A stale lap means every rider this cascade could ever reach has already
+  // been tried at least twice with no acceptance — stop making new offers.
+  // Any popup still open from the lap that just finished is left to resolve
+  // on its own via its own scheduleExpiry timer (which re-invokes runBatch
+  // when it does); this call only avoids starting a fresh one.
+  if ((state.staleLaps || 0) >= 1) {
+    if ((state.activeExpiryTimers || 0) === 0) {
+      await checkCascadeTermination(orderId);
+    }
     return;
   }
 
@@ -279,6 +329,7 @@ async function runBatch(orderId) {
       lockedDrivers.push(driver);
       lockedThisRound++;
       lockedThisRoundDrivers.push(driver);
+      state.everLockedRiderIds.add(riderId);
     }
 
     // Final guard against a reject that lands mid-batch: rejectedRiderIds was
@@ -398,6 +449,9 @@ async function runBatch(orderId) {
 
   if (state.consecutiveEmptyTurns >= state.tiers.length && (state.activeExpiryTimers || 0) === 0) {
     // A full cycle came back empty in every tier and no active popups remain
+    // (the staleLaps case — a lone rider cycling without ever being genuinely
+    // new — is caught earlier, at the top of this function, before any of
+    // this tier's own dispatching runs).
     await checkCascadeTermination(orderId);
     return;
   }
@@ -504,6 +558,13 @@ async function startDispatch(order, tier0Pricing) {
     tier0Precomputed: tier0Pricing ? { order, ...tier0Pricing } : null,
     hasRunTier0: false,
     activeExpiryTimers: 0,
+    // Every rider ever locked for this order, across every tier and every
+    // lap around the tier list — see the lap-progress check in runBatch.
+    everLockedRiderIds: new Set(),
+    lapsStarted: 0,
+    lapStartRiderCount: 0,
+    staleLaps: 0,
+    lastTierCursorAtLapCheck: null,
   };
   activeDispatches.set(order.id, state);
 

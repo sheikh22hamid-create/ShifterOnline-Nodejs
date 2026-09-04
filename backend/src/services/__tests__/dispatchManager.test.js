@@ -451,6 +451,50 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(pushNotifier.notifyCustomerNoDriverFound).toHaveBeenCalledWith("cust-tok", order.id);
   });
 
+  it("a lone rider who only ever lets the popup time out (never accepting or rejecting) eventually reaches no_driver_found instead of looping forever", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    prisma.$queryRaw.mockReset();
+    // driver_1 is the only ever candidate the SQL "finds" for every tier and
+    // every re-check — real exclusion still happens downstream via
+    // selectEligibleDrivers' own JS-level filter against lockManager, so
+    // this correctly comes back empty while he's locked and non-empty once
+    // his popup naturally times out and frees him again.
+    prisma.$queryRaw.mockResolvedValue([1].map(makeRiderRow));
+
+    // 5 tiers, matching the real Model 1-5 cascade — this is what actually
+    // exposed the infinite loop live (a 2-tier cascade happens to still
+    // reach consecutiveEmptyTurns' own threshold as a side effect, masking
+    // the bug this test exists to catch).
+    const orderF = { ...order, id: 506, allowed_delivery_types: JSON.stringify([6, 7, 21, 33, 34]) };
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...orderF });
+
+    await dispatchManager.startDispatch(orderF);
+    await flush();
+
+    // Well past a single lap (5 tiers) worth of natural timeouts, into a
+    // second lap re-offering the exact same rider with nothing new — this
+    // is exactly the shape that used to loop forever before staleLaps.
+    for (let i = 0; i < 20; i++) {
+      await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+      await flush();
+    }
+
+    const requestsToDriver1 = emitted.filter((e) => e.event === "order:request" && e.room === "driver_1");
+    // Proves the re-offer loop genuinely ran more than one full lap (5
+    // tiers) before the cascade gave up — this isn't just testing "never
+    // re-offers at all" — but stays bounded to (at most) two laps' worth of
+    // offers, which is what staleLaps guarantees; without it this drifts
+    // well past 10 over the same window.
+    expect(requestsToDriver1.length).toBeGreaterThan(5);
+    expect(requestsToDriver1.length).toBeLessThanOrEqual(10);
+
+    const noDriverEvents = emitted.filter((e) => e.event === "order:no_driver_found");
+    expect(noDriverEvents).toHaveLength(1);
+    expect(lockManager.isLocked(1)).toBe(false);
+
+    dispatchManager.stopDispatch(506, "test_cleanup");
+  });
+
   it("startDispatch is a no-op if a cascade is already active for the order (idempotency guard)", async () => {
     await dispatchManager.startDispatch(order);
     await flush();
