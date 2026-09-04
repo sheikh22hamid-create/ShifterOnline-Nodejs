@@ -84,6 +84,24 @@ function getAllLockedRiderIds() {
   return riderIds;
 }
 
+/**
+ * Riders locked by any order OTHER than orderId. Used by dispatchManager to
+ * tell "this tier is genuinely empty" apart from "the only real candidate is
+ * mid-popup on a different tier of this same order" — a rider locked by
+ * their own order's earlier tier is still a real candidate for this tier,
+ * just temporarily busy, and must not make the cascade think the tier is
+ * exhausted.
+ */
+function getLockedRiderIdsExcludingOrder(orderId) {
+  const riderIds = [];
+  for (const [riderId, lock] of activePopups.entries()) {
+    if (lock.expiresAt > Date.now() && lock.orderId !== orderId) {
+      riderIds.push(riderId);
+    }
+  }
+  return riderIds;
+}
+
 module.exports = {
   isLocked,
   acquireLock,
@@ -92,4 +110,5 @@ module.exports = {
   peekLock,
   getLockedRidersForOrder,
   getAllLockedRiderIds,
+  getLockedRiderIdsExcludingOrder,
 };

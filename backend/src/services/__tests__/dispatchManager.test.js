@@ -339,11 +339,50 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
+  it("a single driver eligible for every tier is not skipped past while locked on an earlier tier's popup", async () => {
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (package 6) — only driver_1 in range
+      .mockResolvedValueOnce([]) // tier 1 (package 7) send query — driver_1 excluded, currently locked on tier 0
+      .mockResolvedValueOnce([1].map(makeRiderRow)); // tier 1 genuinely-empty re-check, ignoring this order's own locks — finds driver_1
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    expect(emitted.filter((e) => e.event === "order:request").map((e) => e.room)).toEqual(["driver_1"]);
+
+    // Tier 1's only real candidate is driver_1, currently locked on tier 0's
+    // still-open popup — the cursor must NOT treat tier 1 as exhausted and
+    // skip past it just because of that.
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(1);
+
+    // Driver_1's tier 0 popup is dismissed (without waiting the full 15s) —
+    // the cascade must offer them tier 1 next, not some later tier it would
+    // have wrongly skipped ahead to.
+    lockManager.releaseLock(1);
+    prisma.$queryRaw.mockResolvedValueOnce([1].map(makeRiderRow)); // tier 1 send query, driver_1 now free
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const tier1Request = emitted.find(
+      (e) => e.event === "order:request" && e.room === "driver_1" && e.payload.package_id === "7"
+    );
+    expect(tier1Request).toBeDefined();
+  });
+
   it("zero eligible drivers in tier 0 does not block the cascade from reaching tier 1", async () => {
     prisma.$queryRaw.mockReset();
     prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
       .mockResolvedValueOnce([]) // tier 0 (package 6) — nobody eligible
+      // Genuinely-empty re-check (ignoring this order's own locks, of which
+      // there are none here) — confirms tier 0 isn't just blocked by a
+      // same-order lock, so the cursor is free to advance.
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([5, 6].map(makeRiderRow)); // tier 1 (package 7)
 
     await dispatchManager.startDispatch(order);

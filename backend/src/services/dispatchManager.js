@@ -331,8 +331,25 @@ async function runBatch(orderId) {
     }
   }
 
+  // A tier that found 0 candidates might not actually be empty — the only
+  // real candidate can be mid-popup on a different tier of this SAME order
+  // (e.g. a single driver eligible for every model, currently locked on the
+  // tier-0 popup). Re-check ignoring only this order's own locks: if that
+  // turns up someone, the tier is genuinely non-empty and just has to wait
+  // for that driver to free up, so the cursor must not skip past it.
+  let sameOrderLockBlocking = false;
+  if (lockedRiderIds.length === 0) {
+    const excludeIgnoringOwnOrderLocks = [...new Set([
+      ...lockManager.getLockedRiderIdsExcludingOrder(orderId),
+      ...rejectedRiderIds,
+      ...consideredThisBatch,
+    ])];
+    const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringOwnOrderLocks, 1);
+    sameOrderLockBlocking = wouldBeCandidates.length > 0;
+  }
+
   // Tier Exhaustion: Exhaust all eligible drivers of current model before moving to next model
-  if (!hasMoreInCurrentTier || lockedRiderIds.length === 0) {
+  if (!sameOrderLockBlocking && (!hasMoreInCurrentTier || lockedRiderIds.length === 0)) {
     state.tierCursor++;
   }
 
