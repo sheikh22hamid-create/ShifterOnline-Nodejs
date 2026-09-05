@@ -9,7 +9,7 @@ jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
 }));
 
-jest.mock("../dispatchManager", () => ({ stopDispatch: jest.fn() }));
+jest.mock("../dispatchManager", () => ({ stopDispatch: jest.fn(), recordModel1Outcome: jest.fn() }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5 }),
@@ -53,6 +53,16 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4);
     expect(lockManager.releaseLock).toHaveBeenCalledWith(1);
     expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "accepted_by_other");
+    expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 6, "accept");
+  });
+
+  it("does not record a Model 1 outcome when the accept fails (offer expired or order already taken)", async () => {
+    prisma.$executeRaw.mockResolvedValueOnce(0);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, status: "sent" });
+
+    await tripLifecycle.acceptOrder(297, 2);
+
+    expect(dispatchManager.recordModel1Outcome).not.toHaveBeenCalled();
   });
 
   it("uses the accepted offer's package_id, not pkg_order.delivery_type which a later tier may have already overwritten", async () => {
@@ -135,6 +145,16 @@ describe("tripLifecycle.rejectOrder", () => {
       data: { status: "10" },
     });
     expect(lockManager.releaseLock).toHaveBeenCalledWith(1);
+    expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+  });
+
+  it("does not record a Model 1 outcome when the reject's row was already resolved another way", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 6 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 0 });
+
+    await tripLifecycle.rejectOrder(297, 1);
+
+    expect(dispatchManager.recordModel1Outcome).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the rider's current lock no longer matches this order — a stale/delayed reject must not touch a newer tier's row", async () => {

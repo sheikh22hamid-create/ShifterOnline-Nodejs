@@ -99,6 +99,12 @@ async function acceptOrder(orderId, riderId) {
     throw err;
   }
 
+  // Only reached once the transaction above has actually committed — an
+  // accept that lost the race (OrderAlreadyTakenError) never reaches here,
+  // so this can't wrongly reset the streak for an attempt that didn't
+  // really succeed.
+  await dispatchManager.recordModel1Outcome(riderId, acceptedPackageId, "accept");
+
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   const { pkg, fare, driverEarning, commission } = await pricingEngine.priceForPackageId(
     acceptedPackageId,
@@ -156,10 +162,13 @@ async function rejectOrder(orderId, riderId) {
   // DB write before lock release, not after: releasing the lock first makes
   // this rider immediately eligible for the cascade's next tier, which can
   // fire (and even complete) before this status write lands.
-  await prisma.tbl_order_requests.updateMany({
+  const result = await prisma.tbl_order_requests.updateMany({
     where: { order_id: orderId, rider_id: riderId, package_id: Number(packageId), status: "sent" },
     data: { status: "10" },
   });
+  if (result.count > 0) {
+    await dispatchManager.recordModel1Outcome(riderId, packageId, "miss");
+  }
   lockManager.releaseLock(riderId);
   return { success: true };
 }

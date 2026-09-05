@@ -12,6 +12,9 @@ const {
   MAX_TOPUP_ROUNDS,
   SEARCH_RADIUS_KM,
   STARTUP_RECOVERY_BUFFER_SECONDS,
+  MODEL_1_PACKAGE_ID,
+  MODEL1_MISS_LIMIT,
+  MODEL1_SUSPENSION_HOURS,
 } = require("../config/constants");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
@@ -97,6 +100,11 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         WHERE order_status IN (1, 2, 3) AND rid > 0
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
+      AND (
+        ${Number(packageId)} != ${MODEL_1_PACKAGE_ID}
+        OR r.model1_suspended_until IS NULL
+        OR r.model1_suspended_until <= NOW()
+      )
     HAVING distance_km <= ${radiusKm}
     ORDER BY is_favorite DESC, distance_km ASC
     LIMIT ${limit}
@@ -106,6 +114,51 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   // but re-checking in JS means the exclusion is guaranteed by this
   // function's return value regardless of how the query was built.
   return rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
+}
+
+/**
+ * Model 1 reliability tracking: a rider who keeps Model 1 enabled but misses
+ * (rejects or times out on) MODEL1_MISS_LIMIT of its offers in a row is
+ * excluded from Model 1 offers for MODEL1_SUSPENSION_HOURS (see the
+ * suspension check in selectEligibleDrivers) — leaving it toggled on isn't
+ * free if it's never actually the one they take. No-op for every other
+ * package_id; only Model 1 itself is tracked. Called from both this file's
+ * own scheduleExpiry (timeout) and tripLifecycle's reject/accept handlers.
+ */
+async function recordModel1Outcome(riderId, packageId, outcome) {
+  if (Number(packageId) !== MODEL_1_PACKAGE_ID) return;
+
+  if (outcome === "accept") {
+    try {
+      await prisma.tbl_rider.update({
+        where: { id: riderId },
+        data: { model1_miss_streak: 0 },
+      });
+    } catch (err) {
+      logger.error(`dispatchManager: recordModel1Outcome accept-reset failed for rider ${riderId}:`, err);
+    }
+    return;
+  }
+
+  try {
+    const rider = await prisma.tbl_rider.update({
+      where: { id: riderId },
+      data: { model1_miss_streak: { increment: 1 } },
+      select: { model1_miss_streak: true },
+    });
+    if (rider.model1_miss_streak >= MODEL1_MISS_LIMIT) {
+      const suspendedUntil = new Date(Date.now() + MODEL1_SUSPENSION_HOURS * 60 * 60 * 1000);
+      await prisma.tbl_rider.update({
+        where: { id: riderId },
+        data: { model1_miss_streak: 0, model1_suspended_until: suspendedUntil },
+      });
+      logger.warn(
+        `dispatchManager: rider ${riderId} suspended from Model 1 until ${suspendedUntil.toISOString()} (${MODEL1_MISS_LIMIT} consecutive misses)`
+      );
+    }
+  } catch (err) {
+    logger.error(`dispatchManager: recordModel1Outcome miss-tracking failed for rider ${riderId}:`, err);
+  }
 }
 
 const STANDARD_MODEL_TITLES = {
@@ -597,6 +650,7 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId) {
             data: { status: "timeout" },
           });
           if (result.count === 0) return;
+          await recordModel1Outcome(riderId, packageId, "miss");
           requireIo().to(`driver_${riderId}`).emit("order:dismiss", {
             order_id: String(orderId),
             reason: "timeout",
@@ -756,6 +810,7 @@ module.exports = {
   startDispatch,
   stopDispatch,
   selectEligibleDrivers,
+  recordModel1Outcome,
   reconcileStaleOffersOnStartup,
   _resetForTests,
   // Test-only: lets a test invoke the guarded runBatch entry point directly,

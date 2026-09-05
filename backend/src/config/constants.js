@@ -24,6 +24,12 @@ module.exports = {
   ASSUMED_URBAN_SPEED_KMH: 30,
   RIDER_LOCATION_WRITE_THROTTLE_MS: 5000,
 
+  // Model 1 reliability suspension — see dispatchManager's
+  // recordModel1Outcome/isModel1Suspended.
+  MODEL_1_PACKAGE_ID: 6,
+  MODEL1_MISS_LIMIT: 5,
+  MODEL1_SUSPENSION_HOURS: 24,
+
   ADMIN_ROLES: ["superadmin", "admin", "executive"],
   BCRYPT_SALT_ROUNDS: 10,
 };

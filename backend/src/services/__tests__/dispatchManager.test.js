@@ -2,7 +2,7 @@ jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn() },
   tbl_order_requests: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
-  tbl_rider: { findMany: jest.fn() },
+  tbl_rider: { findMany: jest.fn(), update: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
 }));
 
@@ -77,6 +77,10 @@ describe("dispatchManager overlapping batch cascade", () => {
     // afterEach calls stopDispatch as cleanup, whether or not it cares about
     // the push side-effect).
     prisma.tbl_rider.findMany.mockResolvedValue([]);
+    // Default: every Model 1 miss looks like a low, unremarkable streak —
+    // tests that specifically exercise the Model 1 suspension threshold
+    // override this to walk the streak up to MODEL1_MISS_LIMIT.
+    prisma.tbl_rider.update.mockResolvedValue({ model1_miss_streak: 1 });
 
     // Minimal fake backing store so getRejectedRiderIds() sees what
     // create() has actually written — real reject-only exclusion behavior,
@@ -956,6 +960,107 @@ describe("dispatchManager overlapping batch cascade", () => {
 
       dispatchManager.stopDispatch(505, "test_cleanup");
       for (const id of bigPool) lockManager.releaseLock(id);
+    });
+  });
+
+  describe("recordModel1Outcome (Model 1 reliability suspension)", () => {
+    it("is a no-op for any package other than Model 1", async () => {
+      await dispatchManager.recordModel1Outcome(1, 7, "miss");
+      await dispatchManager.recordModel1Outcome(1, 21, "accept");
+      expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    });
+
+    it("increments the miss streak on a Model 1 miss, below the suspension limit", async () => {
+      prisma.tbl_rider.update.mockResolvedValue({ model1_miss_streak: 3 });
+
+      await dispatchManager.recordModel1Outcome(42, 6, "miss");
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+        where: { id: 42 },
+        data: { model1_miss_streak: { increment: 1 } },
+        select: { model1_miss_streak: true },
+      });
+    });
+
+    it("resets the streak to 0 on a Model 1 accept, without touching the suspension field", async () => {
+      await dispatchManager.recordModel1Outcome(42, 6, "accept");
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+        where: { id: 42 },
+        data: { model1_miss_streak: 0 },
+      });
+    });
+
+    it("suspends the rider from Model 1 for 24h once the miss streak reaches the limit, and resets the streak", async () => {
+      prisma.tbl_rider.update.mockResolvedValueOnce({ model1_miss_streak: 5 });
+
+      await dispatchManager.recordModel1Outcome(42, 6, "miss");
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(2);
+      const [, secondCallArgs] = prisma.tbl_rider.update.mock.calls;
+      expect(secondCallArgs[0].where).toEqual({ id: 42 });
+      expect(secondCallArgs[0].data.model1_miss_streak).toBe(0);
+      const suspendedUntil = secondCallArgs[0].data.model1_suspended_until;
+      expect(suspendedUntil).toBeInstanceOf(Date);
+      const hoursFromNow = (suspendedUntil.getTime() - Date.now()) / (60 * 60 * 1000);
+      expect(hoursFromNow).toBeGreaterThan(23.9);
+      expect(hoursFromNow).toBeLessThanOrEqual(24);
+    });
+
+    it("does not suspend while the miss streak is still below the limit", async () => {
+      prisma.tbl_rider.update.mockResolvedValueOnce({ model1_miss_streak: 4 });
+
+      await dispatchManager.recordModel1Outcome(42, 6, "miss");
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Model 1 suspension excludes the rider from Model 1 offers (order-level)", () => {
+    it("a Model 1 popup that times out records a miss for that rider", async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (package 6) primary
+        .mockResolvedValueOnce([]); // tier 0 sameOrderLockBlocking recheck
+
+      await dispatchManager.startDispatch(order); // order fixture: tiers [6, 7]
+      await flush();
+
+      expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_1")).toBe(true);
+
+      await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS); // tier 0 (Model 1) expires
+      await flush();
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { model1_miss_streak: { increment: 1 } },
+        select: { model1_miss_streak: true },
+      });
+
+      dispatchManager.stopDispatch(order.id, "test_cleanup");
+    });
+
+    it("a driver's excluded from the SQL's Model 1 candidate query with a suspension-aware WHERE clause, but not for other tiers", async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await dispatchManager.selectEligibleDrivers(order, 6, []);
+      const [tier0Call] = prisma.$queryRaw.mock.calls;
+      const tier0Sql = tier0Call[0].join(" ");
+      expect(tier0Sql).toContain("model1_suspended_until");
+
+      prisma.$queryRaw.mockClear();
+      await dispatchManager.selectEligibleDrivers(order, 7, []);
+      const [tier1Call] = prisma.$queryRaw.mock.calls;
+      // The same static query text is used for every tier (the suspension
+      // check itself is neutralized in SQL when packageId != 6, not omitted
+      // from the query string) — asserting the values passed in confirms
+      // package 7 doesn't match MODEL_1_PACKAGE_ID, so the OR short-circuits
+      // true and the suspension clause never actually excludes anyone.
+      expect(tier1Call.slice(1)).toContain(7);
     });
   });
 });

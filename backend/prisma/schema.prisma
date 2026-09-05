@@ -781,6 +781,13 @@ model tbl_rider {
   referred_by_type    String                         @default("") @db.VarChar(10)
   referral_points     Int                            @default(0)
   payment_complete    Int?
+  // Model 1 (cheapest tier) reliability tracking — see dispatchManager's
+  // recordModel1Outcome/isModel1Suspended: a rider with Model 1 enabled who
+  // misses (rejects or times out on) 5 Model-1 offers in a row is excluded
+  // from Model-1 offers for 24 hours, so keeping it toggled on isn't free if
+  // never actually taken.
+  model1_miss_streak     Int       @default(0)
+  model1_suspended_until DateTime? @db.DateTime(0)
 }
 
 model tbl_rider_delivery_type {
