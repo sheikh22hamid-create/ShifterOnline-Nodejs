@@ -547,6 +547,57 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(requests.every((r) => r.payload.trip_total === "24.78")).toBe(true);
   });
 
+  describe("tier cursor race regression (order #1481)", () => {
+    it("a second concurrent runBatch call for the same order is deferred, never run alongside the first", async () => {
+      // Reproduces a live bug: runBatch can be invoked for the same order
+      // from two independent triggers close enough together to run
+      // concurrently — the chained setTimeout from the previous turn, and
+      // scheduleExpiry's own un-awaited call when a popup expires. With a
+      // single lone driver, BATCH_GAP_MS (3s) evenly divides
+      // POPUP_TIMEOUT_MS (15s), so this collision recurs on a predictable
+      // schedule rather than being a rare fluke. Each invocation used to
+      // capture its own `tierIndex` snapshot before its awaits; when the
+      // tier at hand was genuinely empty (not just lock-blocked — the
+      // sameOrderLockBlocking recheck further down only guards the
+      // lock-blocked case), BOTH concurrent calls could independently
+      // decide to advance state.tierCursor, silently skipping the next tier
+      // — the live symptom on order #1481: Model 5 was never offered, and
+      // the cascade wrapped straight back to Model 1 instead.
+      const orderG = { ...order, id: 1481, allowed_delivery_types: JSON.stringify([6, 7, 21]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderG });
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (Model 1), driven by startDispatch
+        .mockResolvedValue([]); // every later call — tier 1 genuinely empty
+
+      await dispatchManager.startDispatch(orderG);
+      await flush();
+      // Tier 0 locked driver 1 and advanced the cursor to tier 1.
+      expect(lockManager.isLocked(1)).toBe(true);
+
+      prisma.pkg_order.findUnique.mockClear();
+
+      // Fire two concurrent turns for tier 1, without awaiting between
+      // them — the exact overlap that used to race.
+      const p1 = dispatchManager._runBatchForTests(1481);
+      const p2 = dispatchManager._runBatchForTests(1481);
+
+      // Synchronously, before either call's own first await has resolved:
+      // only the call that actually acquires the turn may read the order
+      // (the first statement inside a real turn, since tier 1 isn't
+      // precomputed). The second concurrent call must be deferred by the
+      // batchInFlight guard rather than entering the batch body alongside
+      // the first — that's what stops both from independently reading the
+      // same stale tierIndex and both advancing the cursor.
+      expect(prisma.pkg_order.findUnique).toHaveBeenCalledTimes(1);
+
+      await Promise.all([p1, p2]);
+      await flush();
+
+      dispatchManager.stopDispatch(1481, "test_cleanup");
+    });
+  });
+
   describe("concurrent driver selection (no global mutex)", () => {
     it("two independent orders with disjoint candidate pools both dispatch fully, concurrently", async () => {
       const orderA = { ...order, id: 501, category: "Bike" };

@@ -215,8 +215,11 @@ async function checkCascadeTermination(orderId) {
  *   exhaustion: it's a bounded retry against concurrent-order lock
  *   contention for this same tier's candidates within a single turn (see
  *   MAX_TOPUP_ROUNDS).
+ *
+ * Not safe to run twice concurrently for the same order — see runBatch,
+ * which is the only allowed entry point and serializes calls into this.
  */
-async function runBatch(orderId) {
+async function runBatchInner(orderId) {
   const state = activeDispatches.get(orderId);
   if (!state) return; // stopDispatch already ran (accepted/cancelled)
 
@@ -470,6 +473,51 @@ async function runBatch(orderId) {
   state.timers.add(timer);
 }
 
+/**
+ * Guarded entry point for runBatchInner — the only one any caller should
+ * use. Serializes turns for a given order so two invocations can never run
+ * runBatchInner concurrently.
+ *
+ * Without this, two independent triggers for the same order (the chained
+ * setTimeout from the previous turn, and scheduleExpiry's own direct,
+ * un-awaited call when a popup expires) could both start runBatchInner while
+ * state.tierCursor still held the same value — each captures its own
+ * `tierIndex` snapshot at the top of the function, does its own awaits, and
+ * then independently decides to advance the cursor, so both increments land
+ * and the cursor jumps by 2 in a single turn instead of 1 (silently skipping
+ * a tier — e.g. straight from the last tier back to tier 0, never offering
+ * the second-to-last one). This is not a rare edge case: BATCH_GAP_MS evenly
+ * divides POPUP_TIMEOUT_MS, so with a single lone driver blocking every tier
+ * behind their own popup, the retry cadence and the expiry land on the exact
+ * same tick on a predictable schedule.
+ *
+ * If a call arrives while another is still running, it doesn't get lost:
+ * it marks rerunRequested and the in-flight call fires one more turn as soon
+ * as it finishes, so a freshly-freed driver is never left unoffered.
+ */
+async function runBatch(orderId) {
+  const state = activeDispatches.get(orderId);
+  if (!state) return;
+
+  if (state.batchInFlight) {
+    state.rerunRequested = true;
+    return;
+  }
+
+  state.batchInFlight = true;
+  try {
+    await runBatchInner(orderId);
+  } finally {
+    state.batchInFlight = false;
+    if (state.rerunRequested && activeDispatches.has(orderId)) {
+      state.rerunRequested = false;
+      runBatch(orderId).catch((err) =>
+        logger.error(`dispatchManager: rerun batch failed for order ${orderId}:`, err)
+      );
+    }
+  }
+}
+
 function scheduleExpiry(orderId, tierIndex, drivers) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
@@ -565,6 +613,10 @@ async function startDispatch(order, tier0Pricing) {
     lapStartRiderCount: 0,
     staleLaps: 0,
     lastTierCursorAtLapCheck: null,
+    // Guards against two concurrent runBatchInner executions for this order
+    // racing each other — see the runBatch wrapper.
+    batchInFlight: false,
+    rerunRequested: false,
   };
   activeDispatches.set(order.id, state);
 
@@ -659,4 +711,8 @@ module.exports = {
   selectEligibleDrivers,
   reconcileStaleOffersOnStartup,
   _resetForTests,
+  // Test-only: lets a test invoke the guarded runBatch entry point directly,
+  // including concurrently, to exercise the batchInFlight/rerunRequested
+  // serialization without needing to fight fake-timer scheduling.
+  _runBatchForTests: runBatch,
 };
