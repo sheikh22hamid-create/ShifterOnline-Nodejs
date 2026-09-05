@@ -207,10 +207,17 @@ async function checkCascadeTermination(orderId) {
  * from this function's earlier round-robin design):
  * - Every turn queries exactly one tier — state.tierCursor mod tiers.length.
  * - The cursor only advances to the next tier once this tier has no more
- *   un-notified eligible candidates left (hasMoreInCurrentTier is false) or
- *   this turn locked nobody — so a tier with a large eligible pool keeps
- *   getting turns (5s apart) until it's genuinely exhausted before the next
- *   tier's drivers are ever offered anything.
+ *   un-notified eligible candidates left (hasMoreInCurrentTier is false) AND
+ *   nobody else eligible for this exact tier is just temporarily busy on a
+ *   different tier of this SAME order (sameOrderLockBlocking, further down)
+ *   — so a tier with a large eligible pool, or with an eligible rider who's
+ *   momentarily mid-popup on this order's own earlier tier, keeps getting
+ *   turns (BATCH_GAP_MS apart) until every one of its eligible riders has
+ *   actually been offered it, before the next tier's drivers are ever
+ *   offered anything. Two drivers eligible for overlapping tiers each get a
+ *   turn at every tier they're both eligible for, in lockstep, rather than
+ *   one of them skipping a tier just because they were locked on an earlier
+ *   one at the moment it was checked.
  * - The within-turn while-loop below is a separate concern from tier
  *   exhaustion: it's a bounded retry against concurrent-order lock
  *   contention for this same tier's candidates within a single turn (see
@@ -375,6 +382,21 @@ async function runBatchInner(orderId) {
     }
 
     if (lockedThisRoundDrivers.length > 0) {
+      // Tracked per (tier, rider), across every turn for this order's whole
+      // lifetime — not just this batch — so a later sameOrderLockBlocking
+      // recheck can tell "hasn't had a turn at this tier yet, just busy on
+      // another tier right now" apart from "already got this exact tier,
+      // just still mid-popup on it" (the latter must never be waited for
+      // again, or a rider holding their own long-lived popup would block
+      // this tier from ever advancing).
+      if (!state.offeredRiderIdsByTier.has(packageId)) {
+        state.offeredRiderIdsByTier.set(packageId, new Set());
+      }
+      const offeredThisTier = state.offeredRiderIdsByTier.get(packageId);
+      for (const driver of lockedThisRoundDrivers) {
+        offeredThisTier.add(Number(driver.rider_id));
+      }
+
       const payload = buildOrderRequestPayload(
         currentOrder,
         packageId,
@@ -424,18 +446,38 @@ async function runBatchInner(orderId) {
     }
   }
 
-  // A tier that found 0 candidates might not actually be empty — the only
-  // real candidate can be mid-popup on a different tier of this SAME order
-  // (e.g. a single driver eligible for every model, currently locked on the
-  // tier-0 popup). Re-check ignoring only this order's own locks: if that
-  // turns up someone, the tier is genuinely non-empty and just has to wait
-  // for that driver to free up, so the cursor must not skip past it.
+  // This tier might look done even though another rider eligible for this
+  // exact package_id is still a genuine candidate for it — just temporarily
+  // mid-popup on a different tier of this SAME order (e.g. two drivers, one
+  // enabled for models 2-5 and the other for all 5: whichever of them isn't
+  // busy right now gets locked for this tier first, but the other shouldn't
+  // be skipped past just because they happened to be offered an earlier
+  // tier's popup a moment before this one ran). Re-check ignoring only this
+  // order's own locks and whoever this batch already considered: if that
+  // turns up someone new, this tier isn't actually exhausted yet — wait for
+  // them to free up and get their own turn at it too, rather than advancing
+  // past them the instant anyone else here succeeds. Skipped when
+  // hasMoreInCurrentTier is already true (a real, not-busy-elsewhere
+  // candidate pool bigger than this batch already keeps the cursor put on
+  // its own), when this order only has one tier in the first place —
+  // "busy on a different tier of this same order" can't apply then, so the
+  // query would always come back empty — or when the cascade has already
+  // been torn down (accept/cancel landed mid-batch, e.g. inside one of the
+  // awaits above): nothing reads state.tierCursor again after this function
+  // returns in that case, so checking is pure wasted work.
+  //
+  // Also excludes offeredRiderIdsByTier for THIS packageId: a rider who
+  // already had their own turn at this exact tier (however that turn
+  // resolved) must never hold it open again just because they're currently
+  // mid-popup on some OTHER tier of this order — only riders who haven't
+  // been offered this tier yet are worth waiting for.
   let sameOrderLockBlocking = false;
-  if (lockedRiderIds.length === 0) {
+  if (!hasMoreInCurrentTier && state.tiers.length > 1 && activeDispatches.has(orderId)) {
     const excludeIgnoringOwnOrderLocks = [...new Set([
       ...lockManager.getLockedRiderIdsExcludingOrder(orderId),
       ...rejectedRiderIds,
       ...consideredThisBatch,
+      ...(state.offeredRiderIdsByTier.get(packageId) || []),
     ])];
     const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringOwnOrderLocks, 1);
     sameOrderLockBlocking = wouldBeCandidates.length > 0;
@@ -609,6 +651,10 @@ async function startDispatch(order, tier0Pricing) {
     // Every rider ever locked for this order, across every tier and every
     // lap around the tier list — see the lap-progress check in runBatch.
     everLockedRiderIds: new Set(),
+    // packageId -> Set of rider ids already offered that specific tier at
+    // some point — see the offeredThisTier tracking further down and the
+    // sameOrderLockBlocking recheck in runBatchInner.
+    offeredRiderIdsByTier: new Map(),
     lapsStarted: 0,
     lapStartRiderCount: 0,
     staleLaps: 0,

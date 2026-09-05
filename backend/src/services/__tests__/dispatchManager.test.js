@@ -107,8 +107,10 @@ describe("dispatchManager overlapping batch cascade", () => {
     // turn) — an empty pool, not a crash from an unconfigured mock call.
     prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
-      .mockResolvedValueOnce([1, 2, 3, 4].map(makeRiderRow)) // tier 0 (package 6)
-      .mockResolvedValueOnce([5, 6, 7, 8].map(makeRiderRow)); // tier 1 (package 7)
+      .mockResolvedValueOnce([1, 2, 3, 4].map(makeRiderRow)) // tier 0 (package 6) primary
+      .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck — nobody else pending
+      .mockResolvedValueOnce([5, 6, 7, 8].map(makeRiderRow)) // tier 1 (package 7) primary
+      .mockResolvedValueOnce([]); // tier 1 sameOrderLockBlocking recheck — nobody else pending
   });
 
   afterEach(() => {
@@ -241,7 +243,8 @@ describe("dispatchManager overlapping batch cascade", () => {
       prisma.$queryRaw.mockReset();
       prisma.$queryRaw.mockResolvedValue([]);
       prisma.$queryRaw
-        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6)
+        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6) primary
+        .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck
         .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7) — driver 1 is free again
 
       await dispatchManager.startDispatch(order);
@@ -260,7 +263,8 @@ describe("dispatchManager overlapping batch cascade", () => {
       prisma.$queryRaw.mockReset();
       prisma.$queryRaw.mockResolvedValue([]);
       prisma.$queryRaw
-        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6)
+        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 (package 6) primary
+        .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck
         .mockResolvedValueOnce([1, 3].map(makeRiderRow)); // tier 1 (package 7)
 
       await dispatchManager.startDispatch(order);
@@ -274,6 +278,56 @@ describe("dispatchManager overlapping batch cascade", () => {
     });
   });
 
+  describe("fair per-tier coverage across multiple eligible drivers (order #1491)", () => {
+    it("every driver gets a turn at every tier they're eligible for, instead of skipping tiers due to timing luck", async () => {
+      // Live report: 2 drivers online, driver A enabled for Models 2-5,
+      // driver B enabled for all 5. Whichever of them wasn't busy at the
+      // instant a given tier was checked got locked for it first, so the
+      // cascade advanced past that tier immediately — driver A ended up
+      // skipping Models 3 and 5 entirely, driver B skipping Models 2 and 4,
+      // purely because of which one happened to be free at that moment, even
+      // though both were genuinely eligible for those tiers. The fix (the
+      // broadened sameOrderLockBlocking check above) makes the cascade wait
+      // for a temporarily-busy-but-eligible driver instead of skipping past
+      // them, so both drivers here must receive every tier they qualify for.
+      const driverA = 10; // eligible for Models 2-5 (7, 21, 33, 34), not Model 1
+      const driverB = 20; // eligible for all 5 models
+
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockImplementation((_strings, ...values) => {
+        const packageIdStr = values.find((v) => typeof v === "string" && ["6", "7", "21", "33", "34"].includes(v));
+        const pool = packageIdStr === "6" ? [driverB] : [driverA, driverB];
+        return Promise.resolve(pool.map(makeRiderRow));
+      });
+
+      const orderI = { ...order, id: 1491, allowed_delivery_types: JSON.stringify([6, 7, 21, 33, 34]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderI });
+
+      await dispatchManager.startDispatch(orderI);
+      await flush();
+
+      // Generous — enough real turns for both drivers to cycle through
+      // every tier they're eligible for, including the waits each blocked
+      // retry needs for the other to free up from their own popup.
+      for (let i = 0; i < 12; i++) {
+        await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+        await flush();
+      }
+
+      const packageIdsOfferedTo = (riderId) =>
+        new Set(
+          emitted
+            .filter((e) => e.event === "order:request" && e.room === `driver_${riderId}`)
+            .map((e) => e.payload.package_id)
+        );
+
+      expect([...packageIdsOfferedTo(driverA)].sort()).toEqual(["21", "33", "34", "7"]);
+      expect([...packageIdsOfferedTo(driverB)].sort()).toEqual(["21", "33", "34", "6", "7"]);
+
+      dispatchManager.stopDispatch(1491, "test_cleanup");
+    });
+  });
+
   it("tier exhaustion: exhausts all eligible drivers in Model 1 before advancing to Model 2", async () => {
     // Model 1 (tier 0) has 5 eligible drivers — batch 1 selects 4, so
     // driver 5 is left over. Batch 2 in +5s offers driver 5 for Model 1,
@@ -283,6 +337,7 @@ describe("dispatchManager overlapping batch cascade", () => {
     prisma.$queryRaw
       .mockResolvedValueOnce([1, 2, 3, 4, 5].map(makeRiderRow)) // tier 0 turn 1
       .mockResolvedValueOnce([5].map(makeRiderRow)) // tier 0 turn 2 (leftover exhausted)
+      .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck, after turn 2
       .mockResolvedValueOnce([6, 7, 8].map(makeRiderRow)); // tier 1 turn 1 (Model 2)
 
     await dispatchManager.startDispatch(order);
@@ -312,6 +367,7 @@ describe("dispatchManager overlapping batch cascade", () => {
     prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
       .mockResolvedValueOnce([1, 2, 3, 4].map(makeRiderRow)) // tier 0 round 0
+      .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck
       .mockImplementationOnce(() => {
         // Tier 1 round 0: 5 and 6 are already locked elsewhere (contention),
         // so only 7 and 8 lock here — normally that shortfall would trigger
@@ -333,17 +389,19 @@ describe("dispatchManager overlapping batch cascade", () => {
       (e) => e.event === "order:request" && [5, 6, 7, 8].includes(Number(e.room.split("_")[1]))
     );
     expect(tier1Requests.map((e) => e.room).sort()).toEqual(["driver_7", "driver_8"]);
-    // Exactly one $queryRaw call per tier (tier 0 round 0, tier 1 round 0) —
+    // tier 0 round 0 + its sameOrderLockBlocking recheck + tier 1 round 0 —
     // no topup round despite the shortfall, because the guard broke the
-    // while loop before it could fire.
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    // while loop before it could fire, and no recheck after tier 1 either,
+    // since the accept mid-batch already tore the cascade down by then.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
   });
 
   it("a single driver eligible for every tier is not skipped past while locked on an earlier tier's popup", async () => {
     prisma.$queryRaw.mockReset();
     prisma.$queryRaw.mockResolvedValue([]);
     prisma.$queryRaw
-      .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (package 6) — only driver_1 in range
+      .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (package 6) primary — only driver_1 in range
+      .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck — nobody else for tier 0
       .mockResolvedValueOnce([]) // tier 1 (package 7) send query — driver_1 excluded, currently locked on tier 0
       .mockResolvedValueOnce([1].map(makeRiderRow)); // tier 1 genuinely-empty re-check, ignoring this order's own locks — finds driver_1
 
@@ -480,13 +538,13 @@ describe("dispatchManager overlapping batch cascade", () => {
     }
 
     const requestsToDriver1 = emitted.filter((e) => e.event === "order:request" && e.room === "driver_1");
-    // Proves the re-offer loop genuinely ran more than one full lap (5
-    // tiers) before the cascade gave up — this isn't just testing "never
-    // re-offers at all" — but stays bounded to (at most) two laps' worth of
-    // offers, which is what staleLaps guarantees; without it this drifts
-    // well past 10 over the same window.
-    expect(requestsToDriver1.length).toBeGreaterThan(5);
-    expect(requestsToDriver1.length).toBeLessThanOrEqual(10);
+    // Exactly one offer per tier for the one lap that actually runs (5
+    // tiers, 5 offers) — offeredRiderIdsByTier means the sameOrderLockBlocking
+    // recheck recognizes driver_1 already had their turn at every tier, so
+    // lap 2 is correctly recognized as stale (staleLaps) before it ever
+    // re-offers them anything, instead of drifting into extra redundant
+    // re-offers the way an earlier version of this logic did.
+    expect(requestsToDriver1.length).toBe(5);
 
     const noDriverEvents = emitted.filter((e) => e.event === "order:no_driver_found");
     expect(noDriverEvents).toHaveLength(1);
@@ -613,6 +671,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       prisma.$queryRaw.mockReset();
       prisma.$queryRaw
         .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0, driven by startDispatch
+        .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck
         .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 1 — the winning concurrent call finds driver 1 free
         .mockResolvedValue([]); // tier 2 onward — irrelevant to this test
 
