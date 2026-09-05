@@ -491,30 +491,30 @@ async function runBatchInner(orderId) {
  * behind their own popup, the retry cadence and the expiry land on the exact
  * same tick on a predictable schedule.
  *
- * If a call arrives while another is still running, it doesn't get lost:
- * it marks rerunRequested and the in-flight call fires one more turn as soon
- * as it finishes, so a freshly-freed driver is never left unoffered.
+ * A call that arrives while another is still in flight is simply dropped,
+ * not queued to run right after — nothing it would have read is lost by
+ * dropping it. Its only job would have been to re-examine the current tier
+ * with fresh state, and the in-flight call already does exactly that; once
+ * it finishes, its own runBatchInner schedules the next turn via the normal
+ * setTimeout(delayMs) path same as any other turn. An earlier version fired
+ * an immediate follow-up call here instead, which bypassed that setTimeout
+ * pacing entirely — each dropped-then-retried collision let the cascade
+ * advance a tier with ~0 delay instead of BATCH_GAP_MS, so tiers that should
+ * each hold their own popup for a few seconds apart instead fired back to
+ * back (confirmed live: Models 2-4 collapsed into under a second while
+ * Models 1 and 5 held their normal duration).
  */
 async function runBatch(orderId) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
 
-  if (state.batchInFlight) {
-    state.rerunRequested = true;
-    return;
-  }
+  if (state.batchInFlight) return;
 
   state.batchInFlight = true;
   try {
     await runBatchInner(orderId);
   } finally {
     state.batchInFlight = false;
-    if (state.rerunRequested && activeDispatches.has(orderId)) {
-      state.rerunRequested = false;
-      runBatch(orderId).catch((err) =>
-        logger.error(`dispatchManager: rerun batch failed for order ${orderId}:`, err)
-      );
-    }
   }
 }
 
@@ -616,7 +616,6 @@ async function startDispatch(order, tier0Pricing) {
     // Guards against two concurrent runBatchInner executions for this order
     // racing each other — see the runBatch wrapper.
     batchInFlight: false,
-    rerunRequested: false,
   };
   activeDispatches.set(order.id, state);
 

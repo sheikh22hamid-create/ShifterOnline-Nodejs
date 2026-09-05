@@ -596,6 +596,70 @@ describe("dispatchManager overlapping batch cascade", () => {
 
       dispatchManager.stopDispatch(1481, "test_cleanup");
     });
+
+    it("a deferred concurrent call does not bypass BATCH_GAP_MS pacing for the next tier (order #1489/#1491)", async () => {
+      // Reproduces a second live bug, introduced by the very fix for the
+      // first one: the mutex's initial version fired an immediate follow-up
+      // turn (no setTimeout) whenever a concurrent call got deferred, so
+      // every such collision let the cascade advance a tier with ~0 delay
+      // instead of the intended BATCH_GAP_MS gap. Confirmed live: Models 2-4
+      // collapsed into under a second of each other while Models 1 and 5
+      // (which didn't happen to follow a collision) held their normal
+      // duration. A deferred call must be dropped, not queued to re-fire —
+      // the winning call's own runBatchInner already schedules the next
+      // turn through the normal setTimeout(delayMs) path.
+      const orderH = { ...order, id: 1489, allowed_delivery_types: JSON.stringify([6, 7, 21]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderH });
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0, driven by startDispatch
+        .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 1 — the winning concurrent call finds driver 1 free
+        .mockResolvedValue([]); // tier 2 onward — irrelevant to this test
+
+      await dispatchManager.startDispatch(orderH);
+      await flush();
+      expect(lockManager.isLocked(1)).toBe(true);
+
+      // Tier 0's own completion already scheduled its own natural "run tier
+      // 1" timer (plus its scheduleExpiry timer) — clear both so the only
+      // triggers left for tier 1 are the two manual concurrent calls below,
+      // isolating the exact collision this test is about.
+      jest.clearAllTimers();
+
+      // Simulate driver 1 already being free for tier 1 (as if their tier 0
+      // popup had just been dismissed) without waiting out POPUP_TIMEOUT_MS.
+      lockManager.releaseLock(1);
+      prisma.pkg_order.findUnique.mockClear();
+
+      const p1 = dispatchManager._runBatchForTests(1489);
+      const p2 = dispatchManager._runBatchForTests(1489);
+      await Promise.all([p1, p2]);
+      await flush();
+
+      // Tier 1 (Model 2) succeeded exactly once — the deferred call did not
+      // also run.
+      const tier1Requests = emitted.filter(
+        (e) => e.event === "order:request" && e.room === "driver_1" && e.payload.package_id === "7"
+      );
+      expect(tier1Requests).toHaveLength(1);
+      expect(prisma.pkg_order.findUnique).toHaveBeenCalledTimes(1);
+
+      // Immediately after — no time advanced — tier 2 must NOT have started
+      // yet. An immediate catch-up rerun would have fired it right here.
+      const tier2RequestsBeforeDelay = emitted.filter(
+        (e) => e.event === "order:request" && e.payload.package_id === "21"
+      );
+      expect(tier2RequestsBeforeDelay).toHaveLength(0);
+      expect(prisma.pkg_order.findUnique).toHaveBeenCalledTimes(1);
+
+      // Only once the normal BATCH_GAP_MS gap has actually elapsed does the
+      // next turn (tier 2) run.
+      await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+      await flush();
+      expect(prisma.pkg_order.findUnique).toHaveBeenCalledTimes(2);
+
+      dispatchManager.stopDispatch(1489, "test_cleanup");
+    });
   });
 
   describe("concurrent driver selection (no global mutex)", () => {
