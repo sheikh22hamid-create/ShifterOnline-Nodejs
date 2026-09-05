@@ -151,14 +151,12 @@ async function checkCascadeTermination(orderId) {
   if (!state) return;
 
   // Exhausted once either (a) a full round-robin cycle has come back with
-  // zero new drivers locked in every tier, or (b) a full lap around every
-  // tier just finished without adding a single rider this cascade hasn't
-  // already tried before (staleLaps — see runBatch: without this, a lone
-  // rider who only ever lets their popup time out, never rejecting, stays
-  // "eligible again" after every timeout and would otherwise be re-offered
-  // the same order's tiers forever, since (a) alone can never fire for them)
-  // — and, either way, nobody is still holding an active popup that could
-  // yet accept/reject.
+  // zero new drivers locked in every tier, or (b) the tier cursor has
+  // started a second lap around the tiers (staleLaps — see runBatch: one
+  // full pass through the tiers per order is the product's intended limit,
+  // so this stops the cascade rather than looping back to Model 1 again) —
+  // and, either way, nobody is still holding an active popup that could yet
+  // accept/reject.
   const isExhausted =
     (state.consecutiveEmptyTurns >= state.tiers.length || (state.staleLaps || 0) >= 1) &&
     (state.activeExpiryTimers || 0) === 0;
@@ -237,45 +235,30 @@ async function runBatchInner(orderId) {
     return;
   }
 
-  // consecutiveEmptyTurns (below) only measures "did this turn lock nobody" —
-  // it never accumulates when the SAME lone rider keeps timing out and
-  // becoming re-eligible again, since re-offering them still counts as
-  // "locked someone" each turn. Left unchecked, a single unresponsive rider
-  // who never explicitly rejects would cycle through every tier forever,
-  // re-offering the identical order indefinitely. staleLaps tracks real
-  // progress instead: whenever the cursor genuinely ADVANCES back around to
-  // tier 0 (not just retries there — sameOrderLockBlocking can pin tierIndex
-  // at 0 across many back-to-back retries while state.tierCursor itself
-  // stays unchanged, and each of those must NOT count as its own lap), a lap
-  // that added no rider this cascade hasn't already tried before is stale —
-  // see the termination check further down.
+  // Product decision: exactly one pass through the tiers per order — once
+  // the cursor genuinely wraps back around to tier 0 a second time (not
+  // just retries there — sameOrderLockBlocking can pin tierIndex at 0 across
+  // many back-to-back retries while state.tierCursor itself stays unchanged,
+  // and each of those must NOT count as its own lap), every eligible driver
+  // has already had their turn at every tier they qualify for and the
+  // cascade stops instead of looping back to Model 1 again (staleLaps here
+  // just means "a second lap has started" — the field predates this
+  // decision, when it instead tracked consecutive laps that added no new
+  // rider, but a single flat cap needs none of that nuance).
   if (tierIndex === 0 && state.tierCursor !== state.lastTierCursorAtLapCheck) {
     state.lastTierCursorAtLapCheck = state.tierCursor;
     state.lapsStarted = (state.lapsStarted || 0) + 1;
     if (state.lapsStarted > 1) {
-      state.staleLaps = state.everLockedRiderIds.size === state.lapStartRiderCount ? (state.staleLaps || 0) + 1 : 0;
-      // A new lap starting means every tier gets offered again from scratch —
-      // "already offered this tier" only holds within the lap it happened in.
-      // Without this, a rider who's been offered every tier once (the common
-      // single-eligible-driver case) makes sameOrderLockBlocking see them as
-      // "already done with every tier" forever after, so every tier's cursor
-      // races ahead with ~0 wait instead of the normal BATCH_GAP_MS retries —
-      // it only actually reaches the rider again once their real, currently
-      // -active lock happens to expire mid-race, offering them whichever tier
-      // the cursor was already sitting on at that instant (effectively
-      // random) instead of the next one in sequence (confirmed live: orders
-      // #1517/#1518, a lone rider's whole second lap collapsed into a few
-      // seconds and re-offered an arbitrary tier instead of Model 1).
-      state.offeredRiderIdsByTier.clear();
+      state.staleLaps = (state.staleLaps || 0) + 1;
     }
     state.lapStartRiderCount = state.everLockedRiderIds.size;
   }
 
-  // A stale lap means every rider this cascade could ever reach has already
-  // been tried at least twice with no acceptance — stop making new offers.
-  // Any popup still open from the lap that just finished is left to resolve
-  // on its own via its own scheduleExpiry timer (which re-invokes runBatch
-  // when it does); this call only avoids starting a fresh one.
+  // A second lap has started — the cascade already made every offer it's
+  // going to make (one full pass through the tiers), so stop making new
+  // offers. Any popup still open from the lap that just finished is left to
+  // resolve on its own via its own scheduleExpiry timer (which re-invokes
+  // runBatch when it does); this call only avoids starting a fresh one.
   if ((state.staleLaps || 0) >= 1) {
     if ((state.activeExpiryTimers || 0) === 0) {
       await checkCascadeTermination(orderId);

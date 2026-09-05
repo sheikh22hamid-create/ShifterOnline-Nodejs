@@ -596,32 +596,70 @@ describe("dispatchManager overlapping batch cascade", () => {
     }
 
     const requestsToDriver1 = emitted.filter((e) => e.event === "order:request" && e.room === "driver_1");
-    // Two full laps of 5 tiers each (10 offers) before staleLaps correctly
-    // aborts lap 3: offeredRiderIdsByTier is cleared at the start of every
-    // new lap (order #1517/#1518 regression — see the lap-boundary check in
-    // runBatchInner), so lap 2's sameOrderLockBlocking recheck correctly
-    // treats driver_1 as still worth waiting for at each tier instead of
-    // wrongly concluding (from lap 1's now-stale "already offered" record)
-    // that nobody's left to wait for and racing the cursor through every
-    // tier — which used to let the cascade catch driver_1 on whichever
-    // arbitrary tier the cursor had already raced ahead to by the time his
-    // real lock cleared, instead of correctly offering tier 0 first.
-    expect(requestsToDriver1.length).toBe(10);
-    // And each lap's tiers must come back in strict escalating order, not
-    // scrambled — this is the direct regression check for the reported
-    // symptom (order #1517: "last me model 4 ka pop up wapas aa gya";
-    // #1518: "last me model 4 repeat hua" — an arbitrary tier re-offered
-    // instead of the cascade correctly starting lap 2 over at Model 1).
-    expect(requestsToDriver1.map((e) => e.payload.package_id)).toEqual([
-      "6", "7", "21", "33", "34",
-      "6", "7", "21", "33", "34",
-    ]);
+    // Exactly one offer per tier, one lap only (5 offers) — the cascade is
+    // capped at a single pass through the tiers per order (product
+    // decision): once the cursor would wrap back to Model 1 a second time,
+    // staleLaps stops it instead of looping again, regardless of whether
+    // driver_1 is still around to re-offer.
+    expect(requestsToDriver1.length).toBe(5);
+    expect(requestsToDriver1.map((e) => e.payload.package_id)).toEqual(["6", "7", "21", "33", "34"]);
 
     const noDriverEvents = emitted.filter((e) => e.event === "order:no_driver_found");
     expect(noDriverEvents).toHaveLength(1);
     expect(lockManager.isLocked(1)).toBe(false);
 
     dispatchManager.stopDispatch(506, "test_cleanup");
+  });
+
+  it("a genuinely eligible driver who only becomes free after the cascade's one lap already finished is still not offered (single-lap-only product decision)", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    prisma.$queryRaw.mockReset();
+    // Both driver_1 and driver_2 are in range for tier 0 (package 6) the
+    // whole time — real exclusion happens downstream via lockManager, same
+    // "belt and suspenders" pattern as the rest of this suite. Nobody is
+    // ever eligible for tier 1.
+    prisma.$queryRaw.mockImplementation((_strings, ...values) => {
+      const packageIdStr = values.find((v) => typeof v === "string" && ["6", "7"].includes(v));
+      return Promise.resolve(packageIdStr === "6" ? [1, 2].map(makeRiderRow) : []);
+    });
+
+    // driver_2 is busy on a completely unrelated order throughout lap 1 —
+    // not a candidate yet, through no fault of this cascade.
+    lockManager.acquireLock(2, 999, POPUP_TIMEOUT_MS);
+
+    await dispatchManager.startDispatch(order); // order fixture: 2 tiers [6, 7]
+    await flush();
+
+    // Lap 1 tier 0: only driver_1 is actually free right now.
+    expect(emitted.filter((e) => e.event === "order:request").map((e) => e.room)).toEqual(["driver_1"]);
+
+    // Tier 1 has no real candidates at all (regardless of driver_2's lock
+    // state, since the mock never returns anyone for package 7), so one
+    // BATCH_GAP_MS turn is enough for the cursor to reach lap 2's tier 0 —
+    // well before driver_1's own tier 0 popup naturally expires.
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    // driver_2 finishes their unrelated order right as lap 2 would begin —
+    // the exact "new driver shows up late" case the old rider-count-based
+    // staleLaps check would have let through into a second lap. The
+    // single-lap cap must not care: one lap per order, full stop, regardless
+    // of who becomes available afterward.
+    lockManager.releaseLock(2);
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS); // lap 2's tier 0 attempt
+    await flush();
+
+    for (let i = 0; i < 5; i++) {
+      await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+      await flush();
+    }
+
+    expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_2")).toBe(false);
+    expect(emitted.some((e) => e.event === "order:no_driver_found")).toBe(true);
+
+    lockManager.releaseLock(2);
+    dispatchManager.stopDispatch(order.id, "test_cleanup");
   });
 
   it("startDispatch is a no-op if a cascade is already active for the order (idempotency guard)", async () => {
