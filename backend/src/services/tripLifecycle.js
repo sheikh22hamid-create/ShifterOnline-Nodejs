@@ -133,15 +133,31 @@ async function acceptOrder(orderId, riderId) {
 }
 
 async function rejectOrder(orderId, riderId) {
+  // Scoped to the rider's CURRENT lock's own packageId, not just orderId: a
+  // rider can legitimately move on to a newer tier of this same order
+  // before an in-flight reject for an OLDER tier's popup gets processed
+  // here (client/network latency, a reconnect resend, an app that fires
+  // its own delayed dismiss). Matching only orderId — as an earlier version
+  // of this code did — let a stale reject wrongly flip the NEWER tier's
+  // still-legitimately-'sent' row to rejected, permanently excluding the
+  // rider from every later tier over an offer they never actually saw
+  // (confirmed live on order #1503: a rider's Model 1 reject landed after
+  // they'd already been offered Model 2, and both showed dispatchManager
+  // behavior consistent with the DB row for the wrong tier being touched).
+  const lock = lockManager.peekLock(riderId);
+  if (!lock || lock.orderId !== orderId) {
+    // Stale: this rider has already moved on — a newer tier, a different
+    // order, or nothing at all — by the time this reject arrived. There is
+    // nothing of theirs for THIS order left to touch.
+    return { success: true };
+  }
+  const packageId = lock.packageId;
+
   // DB write before lock release, not after: releasing the lock first makes
   // this rider immediately eligible for the cascade's next tier, which can
-  // fire (and even complete) before this status write lands — the next
-  // tier's own eventual timeout/reject write then risks racing this one on
-  // the same rider, since neither is scoped to package_id. Writing "10"
-  // first guarantees it's durably recorded before the rider becomes
-  // available again.
+  // fire (and even complete) before this status write lands.
   await prisma.tbl_order_requests.updateMany({
-    where: { order_id: orderId, rider_id: riderId, status: "sent" },
+    where: { order_id: orderId, rider_id: riderId, package_id: Number(packageId), status: "sent" },
     data: { status: "10" },
   });
   lockManager.releaseLock(riderId);

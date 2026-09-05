@@ -10,7 +10,7 @@ jest.mock("../../config/db", () => ({
 }));
 
 jest.mock("../dispatchManager", () => ({ stopDispatch: jest.fn() }));
-jest.mock("../lockManager", () => ({ releaseLock: jest.fn() }));
+jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5 }),
   getPackageById: jest.fn(),
@@ -116,6 +116,53 @@ describe("tripLifecycle.acceptOrder", () => {
   });
 });
 
+
+describe("tripLifecycle.rejectOrder", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("scopes the reject to the rider's currently-locked tier, not just the order", async () => {
+    // Rider is currently locked on Model 2 (package 7) of this order.
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await tripLifecycle.rejectOrder(297, 1);
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 297, rider_id: 1, package_id: 7, status: "sent" },
+      data: { status: "10" },
+    });
+    expect(lockManager.releaseLock).toHaveBeenCalledWith(1);
+  });
+
+  it("is a no-op when the rider's current lock no longer matches this order — a stale/delayed reject must not touch a newer tier's row", async () => {
+    // Live bug this guards against (order #1503): a reject for an OLDER
+    // tier arrived after the rider had already moved on to a NEWER tier of
+    // the same order (or a different order entirely). Matching only
+    // orderId would flip the newer tier's still-legitimately-'sent' row to
+    // rejected, permanently excluding the rider from every tier after that
+    // over an offer they never actually saw.
+    lockManager.peekLock.mockReturnValue({ orderId: 999, packageId: 21 }); // a different order now
+
+    const result = await tripLifecycle.rejectOrder(297, 1);
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.tbl_order_requests.updateMany).not.toHaveBeenCalled();
+    expect(lockManager.releaseLock).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the rider holds no lock at all", async () => {
+    lockManager.peekLock.mockReturnValue(undefined);
+
+    const result = await tripLifecycle.rejectOrder(297, 1);
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.tbl_order_requests.updateMany).not.toHaveBeenCalled();
+    expect(lockManager.releaseLock).not.toHaveBeenCalled();
+  });
+});
 
 describe("tripLifecycle.customerCancel", () => {
   beforeEach(() => {

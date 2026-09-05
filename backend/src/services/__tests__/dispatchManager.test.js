@@ -328,6 +328,64 @@ describe("dispatchManager overlapping batch cascade", () => {
     });
   });
 
+  describe("tier-scoped lock/expiry cleanup (order #1503)", () => {
+    it("a stale expiry for an OLDER tier does not touch a rider's genuinely-active NEWER tier lock or request row", async () => {
+      // Live bug: scheduleExpiry's cleanup matched a rider by orderId alone.
+      // A rider who moves on to a newer tier of the same order before an
+      // older tier's own 15s timer fires — a real, intended cross-tier
+      // re-entry — left that older timer still armed; when it eventually
+      // fired, it released the rider's CURRENT (newer) lock and flipped the
+      // newer tier's still-legitimately-'sent' row to 'timeout', using only
+      // (order_id, rider_id) in the WHERE clause. Confirmed against real
+      // production data for order #1503. The fix threads packageId through
+      // acquireLock/scheduleExpiry so a stale cleanup can tell its own tier
+      // apart from whatever the rider is currently actually holding.
+      const twoTierOrder = { ...order, id: 1503, allowed_delivery_types: JSON.stringify([6, 7]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...twoTierOrder });
+      prisma.$queryRaw.mockReset();
+      // Driver 1 is the only ever candidate the SQL "finds" — real exclusion
+      // happens downstream via lockManager, so tier 1's own primary query
+      // (while driver 1 is genuinely locked, whatever the package) still
+      // correctly filters down to nobody, while the sameOrderLockBlocking
+      // recheck (which ignores this order's own locks) correctly still
+      // finds driver 1, keeping tier 1 from prematurely wrapping the cursor.
+      prisma.$queryRaw.mockResolvedValue([1].map(makeRiderRow));
+
+      await dispatchManager.startDispatch(twoTierOrder);
+      await flush();
+      expect(lockManager.isLocked(1)).toBe(true);
+      expect(lockManager.peekLock(1)).toMatchObject({ packageId: 6 });
+
+      // Simulate driver 1 having legitimately moved on to tier 1 (Model 2)
+      // already — e.g. their tier 0 popup was dismissed by some other path
+      // and they were re-offered tier 1 — without waiting out tier 0's own
+      // still-armed 15s expiry timer.
+      lockManager.releaseLock(1);
+      lockManager.acquireLock(1, 1503, POPUP_TIMEOUT_MS, 7);
+      prisma.tbl_order_requests.updateMany.mockClear();
+
+      // Tier 0's own expiry timer, armed back when it first locked driver 1,
+      // fires on its original schedule.
+      await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+      await flush();
+
+      // Driver 1's CURRENT (tier 1) lock must survive untouched.
+      expect(lockManager.isLocked(1)).toBe(true);
+      expect(lockManager.peekLock(1)).toMatchObject({ orderId: 1503, packageId: 7 });
+
+      // Tier 0's stale cleanup must not have written anything for tier 1's
+      // (package_id 7) row, and must not have dismissed driver 1's current
+      // popup.
+      expect(prisma.tbl_order_requests.updateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ package_id: 7 }) })
+      );
+      expect(emitted.some((e) => e.event === "order:dismiss" && e.room === "driver_1")).toBe(false);
+
+      lockManager.releaseLock(1);
+      dispatchManager.stopDispatch(1503, "test_cleanup");
+    });
+  });
+
   it("tier exhaustion: exhausts all eligible drivers in Model 1 before advancing to Model 2", async () => {
     // Model 1 (tier 0) has 5 eligible drivers — batch 1 selects 4, so
     // driver 5 is left over. Batch 2 in +5s offers driver 5 for Model 1,

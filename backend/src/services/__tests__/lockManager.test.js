@@ -30,10 +30,21 @@ describe("lockManager driver popup lock", () => {
     jest.setSystemTime(new Date("2026-01-01T00:00:15.000Z"));
     // peekLock must be checked before isLocked: isLocked lazily deletes
     // expired entries as a side effect of reading them.
-    expect(lockManager.peekLock("r-exact")).toEqual({ orderId: 500, expiresAt: expect.any(Number) });
+    expect(lockManager.peekLock("r-exact")).toEqual({ orderId: 500, packageId: null, expiresAt: expect.any(Number) });
     expect(lockManager.isLocked("r-exact")).toBe(false);
 
     lockManager.releaseLock("r-exact");
+  });
+
+  it("acquireLock records the packageId a lock was taken for, so a later cleanup can verify it still applies", () => {
+    // dispatchManager relies on this to tell "this rider is still on the
+    // tier I armed an expiry for" apart from "this rider has since moved on
+    // to a newer tier of the same order" — comparing orderId alone can't
+    // make that distinction (see order #1503: a stale expiry/reject for an
+    // OLDER tier wrongly touched a rider's already-active NEWER tier).
+    lockManager.acquireLock("r-tier", 700, 15000, 21);
+    expect(lockManager.peekLock("r-tier")).toEqual({ orderId: 700, packageId: 21, expiresAt: expect.any(Number) });
+    lockManager.releaseLock("r-tier");
   });
 
   it("getLockedRidersForOrder returns only riders still locked to that order", () => {

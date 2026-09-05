@@ -1,7 +1,17 @@
 /**
  * In-memory global driver lock map: one driver can hold at most one active
  * popup at a time, across every concurrent dispatch search. See spec §4.1.
- * rider_id -> { orderId, expiresAt }
+ * rider_id -> { orderId, packageId, expiresAt }
+ *
+ * packageId records WHICH TIER this specific popup is for — callers that
+ * clean up a specific, previously-armed offer (scheduleExpiry's own timeout
+ * sweep, an explicit reject) must verify the rider's CURRENT lock still
+ * matches the exact (orderId, packageId) they originally armed for before
+ * touching it. A rider can legitimately move on to a newer tier of the same
+ * order before an older tier's own 15s timer fires (see the cross-tier
+ * re-entry rules in dispatchManager); comparing only orderId — as an
+ * earlier version of this code did — let that older, now-stale cleanup
+ * release or dismiss the rider's genuinely-still-active NEWER popup instead.
  *
  * acquireLock() below is the sole concurrency primitive for driver
  * reservation — a synchronous check-and-set with no `await` inside it, so
@@ -29,9 +39,9 @@ function isLocked(riderId) {
   return true;
 }
 
-function acquireLock(riderId, orderId, durationMs) {
+function acquireLock(riderId, orderId, durationMs, packageId = null) {
   if (isLocked(riderId)) return false;
-  activePopups.set(riderId, { orderId, expiresAt: Date.now() + durationMs });
+  activePopups.set(riderId, { orderId, packageId, expiresAt: Date.now() + durationMs });
   return true;
 }
 

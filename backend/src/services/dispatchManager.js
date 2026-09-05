@@ -333,7 +333,7 @@ async function runBatchInner(orderId) {
       if (lockedRiderIds.length >= MAX_DRIVERS_PER_BATCH) break;
       const riderId = Number(driver.rider_id);
       consideredThisBatch.add(riderId);
-      if (!lockManager.acquireLock(riderId, orderId, POPUP_TIMEOUT_MS)) continue; // lost the race to a concurrent order
+      if (!lockManager.acquireLock(riderId, orderId, POPUP_TIMEOUT_MS, packageId)) continue; // lost the race to a concurrent order
 
       lockedRiderIds.push(riderId);
       lockedDrivers.push(driver);
@@ -436,7 +436,7 @@ async function runBatchInner(orderId) {
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier}`);
 
   if (lockedDrivers.length > 0) {
-    scheduleExpiry(orderId, tierIndex, lockedDrivers);
+    scheduleExpiry(orderId, tierIndex, lockedDrivers, packageId);
     state.consecutiveEmptyTurns = 0;
   } else {
     // Only treat a turn as truly empty if nobody is holding an active popup.
@@ -560,7 +560,7 @@ async function runBatch(orderId) {
   }
 }
 
-function scheduleExpiry(orderId, tierIndex, drivers) {
+function scheduleExpiry(orderId, tierIndex, drivers, packageId) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
 
@@ -572,9 +572,15 @@ function scheduleExpiry(orderId, tierIndex, drivers) {
     state.activeExpiryTimers = Math.max(0, (state.activeExpiryTimers || 1) - 1);
 
     try {
+      // Scoped to packageId too, not just orderId: a rider can legitimately
+      // move on to a newer tier of this same order before this specific
+      // tier's own 15s timer fires (cross-tier re-entry). Comparing only
+      // orderId would let this now-stale timer release/dismiss the rider's
+      // genuinely-still-active NEWER popup instead of the one it was
+      // actually armed for.
       const stillPendingDrivers = drivers.filter((driver) => {
         const lock = lockManager.peekLock(Number(driver.rider_id));
-        return lock && lock.orderId === orderId;
+        return lock && lock.orderId === orderId && lock.packageId === packageId;
       });
 
       logger.info(
@@ -591,7 +597,7 @@ function scheduleExpiry(orderId, tierIndex, drivers) {
           const riderId = Number(driver.rider_id);
           lockManager.releaseLock(riderId);
           const result = await prisma.tbl_order_requests.updateMany({
-            where: { order_id: orderId, rider_id: riderId, status: "sent" },
+            where: { order_id: orderId, rider_id: riderId, package_id: Number(packageId), status: "sent" },
             data: { status: "timeout" },
           });
           if (result.count === 0) return;
