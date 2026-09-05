@@ -254,6 +254,19 @@ async function runBatchInner(orderId) {
     state.lapsStarted = (state.lapsStarted || 0) + 1;
     if (state.lapsStarted > 1) {
       state.staleLaps = state.everLockedRiderIds.size === state.lapStartRiderCount ? (state.staleLaps || 0) + 1 : 0;
+      // A new lap starting means every tier gets offered again from scratch —
+      // "already offered this tier" only holds within the lap it happened in.
+      // Without this, a rider who's been offered every tier once (the common
+      // single-eligible-driver case) makes sameOrderLockBlocking see them as
+      // "already done with every tier" forever after, so every tier's cursor
+      // races ahead with ~0 wait instead of the normal BATCH_GAP_MS retries —
+      // it only actually reaches the rider again once their real, currently
+      // -active lock happens to expire mid-race, offering them whichever tier
+      // the cursor was already sitting on at that instant (effectively
+      // random) instead of the next one in sequence (confirmed live: orders
+      // #1517/#1518, a lone rider's whole second lap collapsed into a few
+      // seconds and re-offered an arbitrary tier instead of Model 1).
+      state.offeredRiderIdsByTier.clear();
     }
     state.lapStartRiderCount = state.everLockedRiderIds.size;
   }

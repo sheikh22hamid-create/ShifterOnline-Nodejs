@@ -596,13 +596,26 @@ describe("dispatchManager overlapping batch cascade", () => {
     }
 
     const requestsToDriver1 = emitted.filter((e) => e.event === "order:request" && e.room === "driver_1");
-    // Exactly one offer per tier for the one lap that actually runs (5
-    // tiers, 5 offers) — offeredRiderIdsByTier means the sameOrderLockBlocking
-    // recheck recognizes driver_1 already had their turn at every tier, so
-    // lap 2 is correctly recognized as stale (staleLaps) before it ever
-    // re-offers them anything, instead of drifting into extra redundant
-    // re-offers the way an earlier version of this logic did.
-    expect(requestsToDriver1.length).toBe(5);
+    // Two full laps of 5 tiers each (10 offers) before staleLaps correctly
+    // aborts lap 3: offeredRiderIdsByTier is cleared at the start of every
+    // new lap (order #1517/#1518 regression — see the lap-boundary check in
+    // runBatchInner), so lap 2's sameOrderLockBlocking recheck correctly
+    // treats driver_1 as still worth waiting for at each tier instead of
+    // wrongly concluding (from lap 1's now-stale "already offered" record)
+    // that nobody's left to wait for and racing the cursor through every
+    // tier — which used to let the cascade catch driver_1 on whichever
+    // arbitrary tier the cursor had already raced ahead to by the time his
+    // real lock cleared, instead of correctly offering tier 0 first.
+    expect(requestsToDriver1.length).toBe(10);
+    // And each lap's tiers must come back in strict escalating order, not
+    // scrambled — this is the direct regression check for the reported
+    // symptom (order #1517: "last me model 4 ka pop up wapas aa gya";
+    // #1518: "last me model 4 repeat hua" — an arbitrary tier re-offered
+    // instead of the cascade correctly starting lap 2 over at Model 1).
+    expect(requestsToDriver1.map((e) => e.payload.package_id)).toEqual([
+      "6", "7", "21", "33", "34",
+      "6", "7", "21", "33", "34",
+    ]);
 
     const noDriverEvents = emitted.filter((e) => e.event === "order:no_driver_found");
     expect(noDriverEvents).toHaveLength(1);
