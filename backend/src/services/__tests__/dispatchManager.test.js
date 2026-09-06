@@ -1063,4 +1063,49 @@ describe("dispatchManager overlapping batch cascade", () => {
       expect(tier1Call.slice(1)).toContain(7);
     });
   });
+
+  describe("scheduleExpiry timing anchored to real lock time (orders #1550/#1552)", () => {
+    it("a slow DB write between locking and scheduleExpiry does not extend the popup's real duration", async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 primary
+        .mockResolvedValueOnce([]); // tier 0 sameOrderLockBlocking recheck
+
+      // Simulates a slow remote-DB write for the request row created right
+      // after the lock is acquired — real production latency (belt-and
+      // -suspenders reject recheck + this create + push notify) that lands
+      // between lockManager.acquireLock (which stamps the lock's real
+      // expiresAt) and scheduleExpiry actually being called.
+      const DB_LATENCY_MS = 5000;
+      prisma.tbl_order_requests.create.mockImplementationOnce(({ data }) => {
+        orderRequestsStore.push({ ...data });
+        jest.setSystemTime(new Date(Date.now() + DB_LATENCY_MS));
+        return Promise.resolve({ id: orderRequestsStore.length, ...data });
+      });
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      expect(lockManager.isLocked(1)).toBe(true);
+
+      // The lock's real expiresAt was stamped BEFORE the simulated 5s DB
+      // delay, so only POPUP_TIMEOUT_MS - DB_LATENCY_MS more should be
+      // needed to reach it — not a full fresh POPUP_TIMEOUT_MS counted from
+      // whenever scheduleExpiry actually got called (after the delay).
+      await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS - DB_LATENCY_MS);
+      await flush();
+
+      expect(lockManager.isLocked(1)).toBe(false);
+      expect(emitted.some((e) => e.event === "order:dismiss" && e.room === "driver_1")).toBe(true);
+      // The request row must actually get closed out to 'timeout' — the
+      // orphaned-at-'sent'-forever symptom this regression guards against
+      // (orders #1550/#1552) happens when the expiry fires too late to
+      // still recognize the rider as pending on this tier.
+      expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({
+        where: { order_id: order.id, rider_id: 1, package_id: 6, status: "sent" },
+        data: { status: "timeout" },
+      });
+    });
+  });
 });

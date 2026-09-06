@@ -357,6 +357,24 @@ async function runBatchInner(orderId) {
   const lockedRiderIds = [];
   const lockedDrivers = [];
   let round = 0;
+  // Captured fresh right after each round's own acquireLock loop (see
+  // below) — the moment a lock's real expiresAt is actually set, before any
+  // of this round's own DB awaits (mid-batch reject recheck, request-row
+  // create, push notify) start eating into its 15s. scheduleExpiry uses
+  // THIS as its anchor instead of calling Date.now() itself once the whole
+  // batch (every round's awaits included) has already finished — otherwise
+  // its own "armed at" is measurably later than the lock it's tracking,
+  // making the lock's real wall-clock expiry (lockManager.isLocked) fire
+  // before scheduleExpiry's own timer does. That gap let a later tier's
+  // batch see the rider as already free and grab them for a NEW tier while
+  // scheduleExpiry still believed the OLD tier's row was "still pending" —
+  // by the time its timer did fire, the tier-aware check correctly saw the
+  // rider had moved on and skipped writing 'timeout', but that also meant
+  // nothing ever closed out the row: it was orphaned at 'sent' forever
+  // (confirmed live: orders #1550 and #1552, e.g. request row 20013 for
+  // order 1552 stuck on 'sent' although the rider had already moved to a
+  // later tier).
+  let armedAt = 0;
 
   let hasMoreInCurrentTier = false;
   while (lockedRiderIds.length < MAX_DRIVERS_PER_BATCH && round <= MAX_TOPUP_ROUNDS) {
@@ -389,6 +407,9 @@ async function runBatchInner(orderId) {
       lockedThisRound++;
       lockedThisRoundDrivers.push(driver);
       state.everLockedRiderIds.add(riderId);
+    }
+    if (lockedThisRound > 0) {
+      armedAt = Date.now();
     }
 
     // Final guard against a reject that lands mid-batch: rejectedRiderIds was
@@ -485,7 +506,7 @@ async function runBatchInner(orderId) {
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier}`);
 
   if (lockedDrivers.length > 0) {
-    scheduleExpiry(orderId, tierIndex, lockedDrivers, packageId);
+    scheduleExpiry(orderId, tierIndex, lockedDrivers, packageId, armedAt);
     state.consecutiveEmptyTurns = 0;
   } else {
     // Only treat a turn as truly empty if nobody is holding an active popup.
@@ -609,13 +630,18 @@ async function runBatch(orderId) {
   }
 }
 
-function scheduleExpiry(orderId, tierIndex, drivers, packageId) {
+function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
 
   state.activeExpiryTimers = (state.activeExpiryTimers || 0) + 1;
 
-  const armedAt = Date.now();
+  // Anchored to when these drivers' locks were actually acquired (see the
+  // armedAt capture in runBatchInner), not to now — the DB/push awaits
+  // between acquiring the lock and this call landing already ate into the
+  // 15s, so scheduling a fresh full POPUP_TIMEOUT_MS from here would fire
+  // measurably later than the lock's own real expiresAt.
+  const delayMs = Math.max(0, armedAt + POPUP_TIMEOUT_MS - Date.now());
   const timer = setTimeout(async () => {
     state.timers.delete(timer);
     state.activeExpiryTimers = Math.max(0, (state.activeExpiryTimers || 1) - 1);
@@ -671,7 +697,7 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId) {
     } catch (err) {
       logger.error(`dispatchManager expiry handler failed for order ${orderId}, tier ${tierIndex}:`, err);
     }
-  }, POPUP_TIMEOUT_MS);
+  }, delayMs);
 
   state.timers.add(timer);
 }
