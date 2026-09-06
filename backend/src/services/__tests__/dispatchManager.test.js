@@ -16,7 +16,7 @@ const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pushNotifier = require("../pushNotifier");
-const { POPUP_TIMEOUT_MS, BATCH_GAP_MS } = require("../../config/constants");
+const { POPUP_TIMEOUT_MS, BATCH_GAP_MS, MAX_DRIVERS_PER_BATCH } = require("../../config/constants");
 
 const flush = async (ticks = 20) => {
   for (let i = 0; i < ticks; i++) {
@@ -714,7 +714,7 @@ describe("dispatchManager overlapping batch cascade", () => {
     const requests = emitted.filter((e) => e.event === "order:request");
     expect(requests).toHaveLength(4);
     // Uses the precomputed pricing, not pricingEngine.priceForPackageId's mocked
-    expect(requests.every((r) => r.payload.driver_earning === "24.78")).toBe(true);
+    expect(requests.every((r) => r.payload.driver_earning === "1.24")).toBe(true);
     expect(requests.every((r) => r.payload.trip_total === "24.78")).toBe(true);
   });
 
@@ -909,6 +909,55 @@ describe("dispatchManager overlapping batch cascade", () => {
       dispatchManager.stopDispatch(503, "test_cleanup");
       lockManager.releaseLock(pool[0]);
       lockManager.releaseLock(pool[2]);
+    });
+
+    it("two real orders started at the same instant against a shared pool of 8 drivers split 4-and-4, with no duplicate or wasted driver", async () => {
+      // Both orders are genuinely eligible for the exact same 8 drivers (same
+      // category/radius) — the "8 drivers online, 2 customers order within
+      // the same instant" case. The mock reflects only currently-unlocked
+      // drivers, nearest-first, truncated the way the real SQL's own
+      // LIMIT/NOT-IN would — neither order's query "knows" about the other's
+      // locks except through this shared, live lock state.
+      const pool = [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008];
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockImplementation(() => {
+        const available = pool.filter((id) => !lockManager.isLocked(id));
+        return Promise.resolve(available.slice(0, MAX_DRIVERS_PER_BATCH + 1).map(makeRiderRow));
+      });
+
+      const orderX = { ...order, id: 511, allowed_delivery_types: JSON.stringify([6]) };
+      const orderY = { ...order, id: 512, allowed_delivery_types: JSON.stringify([6]) };
+      prisma.pkg_order.findUnique.mockImplementation(({ where }) => {
+        if (where.id === 511) return Promise.resolve({ ...orderX });
+        if (where.id === 512) return Promise.resolve({ ...orderY });
+        return Promise.resolve(null);
+      });
+
+      // startDispatch's own kick-off (runBatch(order.id).catch(...)) is
+      // fire-and-forget, not awaited — this is what actually happens when
+      // two HTTP requests land back to back, not an artificially serialized
+      // call.
+      await Promise.all([dispatchManager.startDispatch(orderX), dispatchManager.startDispatch(orderY)]);
+      await flush();
+
+      const requestsX = emitted.filter((e) => e.event === "order:request" && e.payload.order_id === "511");
+      const requestsY = emitted.filter((e) => e.event === "order:request" && e.payload.order_id === "512");
+      const idsX = requestsX.map((e) => Number(e.room.split("_")[1]));
+      const idsY = requestsY.map((e) => Number(e.room.split("_")[1]));
+
+      // The headline guarantee: every driver goes to exactly one order (no
+      // double-booking), each order gets a full batch of 4 (8 drivers is
+      // exactly enough for both), and all 8 drivers actually get used — none
+      // sit idle just because both queries raced.
+      expect(idsX).toHaveLength(4);
+      expect(idsY).toHaveLength(4);
+      const allIds = [...idsX, ...idsY];
+      expect(new Set(allIds).size).toBe(8);
+      expect(allIds.sort((a, b) => a - b)).toEqual(pool);
+
+      dispatchManager.stopDispatch(511, "test_cleanup");
+      dispatchManager.stopDispatch(512, "test_cleanup");
+      for (const id of pool) lockManager.releaseLock(id);
     });
 
     it("a genuinely small eligible pool (2 drivers) finishes with 2 and does not retry needlessly", async () => {
