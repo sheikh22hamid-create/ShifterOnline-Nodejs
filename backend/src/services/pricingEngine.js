@@ -55,6 +55,13 @@ function calculateFare(pkg, distanceKm, isNight) {
  * driver_per_trip / driver_per_percent are legacy VarChar columns on the
  * live schema — never assume they parse cleanly. Flat per-trip amount wins
  * over percentage when both are present and > 0.
+ *
+ * driver_per_percent is admin's commission RATE (confirmed against the live
+ * rate cards: Model 1-5 store 5/6.5/8/9.5/11 there, increasing with model
+ * tier like a commission schedule, not a driver-share schedule) — so the
+ * driver keeps the fare MINUS that percentage, not that percentage of it.
+ * Getting this backwards was paying drivers only their commission (5-11%
+ * of the fare) instead of their actual ~89-95% cut.
  */
 function calculateDriverEarning(pkg, totalFare) {
   const flat = parseFloat(pkg.driver_per_trip);
@@ -62,8 +69,8 @@ function calculateDriverEarning(pkg, totalFare) {
     return round2(flat);
   }
 
-  const percent = parseFloat(pkg.driver_per_percent) || 0;
-  return round2((totalFare * percent) / 100);
+  const commissionPercent = parseFloat(pkg.driver_per_percent) || 0;
+  return round2((totalFare * (100 - commissionPercent)) / 100);
 }
 
 async function getPackagesForCategory(cat_id) {
@@ -78,15 +85,30 @@ async function getPackageById(packageId) {
 }
 
 /**
- * Admin's commission RATE (%), driven by tbl_package.service_charge_percent.
+ * Admin's actual commission RATE (%) on this specific fare, derived from
+ * fare and driverEarning rather than read off a static package field.
+ * tbl_package.service_charge_percent is always 0 on every live rate card —
+ * it's dead data, not where the real commission lives — so pkg_order.commission
+ * was being stored as 0 on every order, which silently zeroed out the admin
+ * revenue dashboard (analyticsController.js sums d_charge * commission / 100)
+ * and skipped the cash-order driver-wallet commission debit in
+ * tripLifecycle.js (guarded on `commission > 0`).
+ *
+ * Deriving it from fare/driverEarning instead gets both driver-earning paths
+ * right automatically: for percent-based packages this recovers exactly
+ * driver_per_percent (confirmed against live data as admin's real commission
+ * schedule — 5/6.5/8/9.5/11% across Model 1-5, increasing with tier); for
+ * flat driver_per_trip packages it yields the true effective % admin kept
+ * on that particular fare, which a static per-package field can't express.
+ *
  * This is what gets stored as-is on pkg_order.commission — matching the
- * legacy PHP convention (confirmed against live data: real values are small
- * integers like 5 or 0, not absolute ₹ amounts). Never store or read
- * pkg_order.commission as a rupee figure; convert via commissionAmount()
- * wherever real money is being moved or displayed.
+ * legacy PHP convention (small integers like 5, not absolute ₹ amounts).
+ * Never store or read pkg_order.commission as a rupee figure; convert via
+ * commissionAmount() wherever real money is being moved or displayed.
  */
-function calculateCommissionPercent(pkg) {
-  return parseFloat(pkg.service_charge_percent) || 0;
+function calculateCommissionPercent(fare, driverEarning) {
+  if (!fare || fare <= 0) return 0;
+  return round2(((fare - driverEarning) / fare) * 100);
 }
 
 /** Actual ₹ commission for an order, given its base fare and stored
@@ -105,7 +127,7 @@ function priceForPackage(pkg, distanceKm) {
   const isNight = isNightNow(pkg);
   const fare = calculateFare(pkg, distanceKm, isNight);
   const driverEarning = calculateDriverEarning(pkg, fare);
-  const commission = calculateCommissionPercent(pkg);
+  const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
   return { pkg, fare, driverEarning, commission, isNight, packageTitle };
 }
