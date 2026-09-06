@@ -190,7 +190,12 @@ async function assignRider(req, res) {
       return res.status(409).json({ success: false, message: "Order was just taken or cancelled — refresh and retry" });
     }
 
-    const { pkg, driverEarning, commission } = await pricingEngine.priceForPackageId(order.delivery_type, Number(order.distance) || 0);
+    const { pkg, driverEarning, commission } = await pricingEngine.priceForPackageId(
+      order.delivery_type,
+      Number(order.distance) || 0,
+      Number(order.radius_range) || 1,
+      Number(order.extra_mile_charge) || 0
+    );
     await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: driverEarning, commission } });
 
     dispatchManager.stopDispatch(orderId, "accepted_by_other");

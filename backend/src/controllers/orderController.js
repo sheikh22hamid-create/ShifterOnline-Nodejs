@@ -135,13 +135,22 @@ async function createOrderCore({
   const firstTierPackageId = orderedPackageIds[0];
   const firstPkg = packagesById.get(firstTierPackageId);
   const { distanceKm } = distanceResult;
-  const { fare, driverEarning, commission } = pricingEngine.priceForPackage(firstPkg, distanceKm);
 
   // Needs firstPkg.per_km_charge to detect the legacy app's field-swap
-  // quirk, so this must run after the package lookup above, not before.
+  // quirk, so this must run after the package lookup above — and before
+  // pricing, since the fare formula itself now bills the radius (matching
+  // pks_order.php: first 1km free, everything beyond billed at the
+  // package's per-km rate).
   const resolvedRadiusKm = Math.min(
     Math.max(resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, firstPkg?.per_km_charge, radiusKm), 1),
     100
+  );
+
+  const { fare, driverEarning, commission } = pricingEngine.priceForPackage(
+    firstPkg,
+    distanceKm,
+    resolvedRadiusKm,
+    Number(extraMileCharge) || 0
   );
 
   const clientTotal = Number(totalDcharge);

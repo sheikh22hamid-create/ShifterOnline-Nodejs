@@ -58,7 +58,7 @@ describe("orderController.createOrderCore", () => {
 
     expect(result.ok).toBe(true);
     expect(result.order.id).toBe(501);
-    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5);
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0);
     expect(dispatchManager.startDispatch).toHaveBeenCalledWith(
       result.order,
       { fare: 50, driverEarning: 40, commission: 5, packageTitle: null }
@@ -104,7 +104,7 @@ describe("orderController.createOrderCore", () => {
     const result = await createOrderCore({ ...baseInput, deliveryTypeIds: [34, 6, 7] });
 
     expect(result.ok).toBe(true);
-    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5);
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0);
     expect(prisma.pkg_order.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

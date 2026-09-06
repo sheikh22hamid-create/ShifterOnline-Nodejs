@@ -27,28 +27,44 @@ function isNightNow(pkg, now = new Date()) {
   return nowMinutes >= startMinutes || nowMinutes < endMinutes ? 1 : 0;
 }
 
+/** First 1km of the driver-search radius is free; radiusRangeKm beyond that
+ * is billed at the package's own per-km rate (pickup_per_km_charge if set,
+ * else per_km_charge) — matches the live PHP backend's pks_order.php exactly
+ * (chargeable_radius = max(0, radius_range - 1); radius_charge = chargeable_radius * rate). */
+function calculateRadiusCharge(pkg, radiusRangeKm) {
+  const perKmCharge = Number(pkg.per_km_charge) || 0;
+  const pickupPerKm = Number(pkg.pickup_per_km_charge) > 0 ? Number(pkg.pickup_per_km_charge) : perKmCharge;
+  const chargeableRadius = Math.max(0, (Number(radiusRangeKm) || 0) - 1);
+  return chargeableRadius * pickupPerKm;
+}
+
 /**
- * Fare = min_charge + (per_km_charge * distance), bumped by
- * night_charge_percent when applicable, then flat pickup_charge +
- * service_charge added on top (matches the live PHP backend's formula —
- * cancellation_charge_customer is deliberately excluded here since that's
- * only billed on cancellation, not on every fare).
+ * Fare = min_charge + (per_km_charge * distance) + radius_charge, then
+ * service_charge_percent applied as a % of THAT subtotal (not a flat
+ * service_charge — that DB column and pickup_charge are both dead here),
+ * then night_charge_percent added as a flat ₹ amount when the night window
+ * is active (the field name says "percent" but the live PHP backend
+ * (pks_order.php) adds it as-is, not as a multiplier), then extraMileCharge
+ * on top. This matches pks_order.php's d_charge/total_dcharge formula
+ * exactly — the same formula the customer app's own fare estimate already
+ * shows and the customer already agrees to pay, so driver dispatch/earning
+ * is priced off the identical number instead of a different, Node-only
+ * formula that used to diverge from what the customer saw.
  */
-function calculateFare(pkg, distanceKm, isNight) {
+function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0) {
   const minCharge = Number(pkg.min_charge) || 0;
   const perKmCharge = Number(pkg.per_km_charge) || 0;
-  let fare = minCharge + (perKmCharge * distanceKm);
+  const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
 
-  if (isNight) {
-    const nightPct = parseFloat(pkg.night_charge_percent) || 0;
-    fare *= 1 + nightPct / 100;
-  }
+  const dCharge = minCharge + (perKmCharge * distanceKm) + radiusCharge;
 
-  const pickupCharge = Number(pkg.pickup_charge) || 0;
-  const serviceCharge = Number(pkg.service_charge) || 0;
-  fare += pickupCharge + serviceCharge;
+  const servicePercent = parseFloat(pkg.service_charge_percent) || 0;
+  const serviceCharge = (dCharge * servicePercent) / 100;
 
-  return round2(fare);
+  const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
+
+  const total = dCharge + serviceCharge + nightCharge + (Number(extraMileCharge) || 0);
+  return round2(total);
 }
 
 /**
@@ -123,21 +139,21 @@ function commissionAmount(dCharge, commissionPercent) {
  * (e.g. from a validation query moments earlier) should use this directly
  * instead of priceForPackageId, to avoid re-fetching a row they already have.
  */
-function priceForPackage(pkg, distanceKm) {
+function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0) {
   const isNight = isNightNow(pkg);
-  const fare = calculateFare(pkg, distanceKm, isNight);
+  const fare = calculateFare(pkg, distanceKm, isNight, radiusRangeKm, extraMileCharge);
   const driverEarning = calculateDriverEarning(pkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
   return { pkg, fare, driverEarning, commission, isNight, packageTitle };
 }
 
-async function priceForPackageId(packageId, distanceKm) {
+async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extraMileCharge = 0) {
   const pkg = await getPackageById(packageId);
   if (!pkg) {
     throw new Error(`tbl_package not found for id ${packageId}`);
   }
-  return priceForPackage(pkg, distanceKm);
+  return priceForPackage(pkg, distanceKm, radiusRangeKm, extraMileCharge);
 }
 
 async function getFareEstimate({ cat_id, plat, plong, dlat, dlong }) {

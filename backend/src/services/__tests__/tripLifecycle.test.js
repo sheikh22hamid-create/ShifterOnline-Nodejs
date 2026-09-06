@@ -36,6 +36,8 @@ describe("tripLifecycle.acceptOrder", () => {
       id: 297,
       delivery_type: 6,
       distance: 15.4,
+      radius_range: 3,
+      extra_mile_charge: 12,
     });
     prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak" });
   });
@@ -50,7 +52,7 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(result.success).toBe(true);
     expect(result.order.driver_earning).toBe(42);
     expect(result.order.delivery_type).toBe(6);
-    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4);
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 3, 12);
     expect(lockManager.releaseLock).toHaveBeenCalledWith(1);
     expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "accepted_by_other");
     expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 6, "accept");
@@ -75,7 +77,7 @@ describe("tripLifecycle.acceptOrder", () => {
 
     const result = await tripLifecycle.acceptOrder(297, 1);
 
-    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4);
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 0);
     expect(result.order.delivery_type).toBe(6);
   });
 

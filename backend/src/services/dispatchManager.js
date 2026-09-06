@@ -338,7 +338,12 @@ async function runBatchInner(orderId) {
     // no need for a second DB round-trip to re-fetch what we just fetched.
     packageTitle = precomputed.packageTitle || `Model ${packageId}`;
   } else {
-    const priced = await pricingEngine.priceForPackageId(packageId, distanceKm);
+    const priced = await pricingEngine.priceForPackageId(
+      packageId,
+      distanceKm,
+      Number(currentOrder.radius_range) || 1,
+      Number(currentOrder.extra_mile_charge) || 0
+    );
     fare = priced.fare;
     driverEarning = priced.driverEarning;
     commission = priced.commission;
