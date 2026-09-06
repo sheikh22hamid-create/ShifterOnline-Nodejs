@@ -505,57 +505,79 @@ async function runBatchInner(orderId) {
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch complete offered=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier}`);
 
-  if (lockedDrivers.length > 0) {
-    scheduleExpiry(orderId, tierIndex, lockedDrivers, packageId, armedAt);
-    state.consecutiveEmptyTurns = 0;
-  } else {
-    // Only treat a turn as truly empty if nobody is holding an active popup.
-    // When drivers are holding active popups, they will free up when their timers expire.
-    if ((state.activeExpiryTimers || 0) === 0) {
-      state.consecutiveEmptyTurns = (state.consecutiveEmptyTurns || 0) + 1;
-    }
-  }
-
-  // This tier might look done even though another rider eligible for this
-  // exact package_id is still a genuine candidate for it — just temporarily
-  // mid-popup on a different tier of this SAME order (e.g. two drivers, one
-  // enabled for models 2-5 and the other for all 5: whichever of them isn't
-  // busy right now gets locked for this tier first, but the other shouldn't
-  // be skipped past just because they happened to be offered an earlier
-  // tier's popup a moment before this one ran). Re-check ignoring only this
-  // order's own locks and whoever this batch already considered: if that
-  // turns up someone new, this tier isn't actually exhausted yet — wait for
-  // them to free up and get their own turn at it too, rather than advancing
-  // past them the instant anyone else here succeeds. Skipped when
-  // hasMoreInCurrentTier is already true (a real, not-busy-elsewhere
-  // candidate pool bigger than this batch already keeps the cursor put on
-  // its own), when this order only has one tier in the first place —
-  // "busy on a different tier of this same order" can't apply then, so the
-  // query would always come back empty — or when the cascade has already
-  // been torn down (accept/cancel landed mid-batch, e.g. inside one of the
-  // awaits above): nothing reads state.tierCursor again after this function
-  // returns in that case, so checking is pure wasted work.
+  // This tier might look done even though a rider eligible for this exact
+  // package_id is still a genuine candidate for it — just temporarily
+  // mid-popup, either on a different tier of this SAME order (two drivers,
+  // one enabled for models 2-5 and the other for all 5: whichever isn't busy
+  // right now gets locked for this tier first, but the other shouldn't be
+  // skipped past just because they were offered an earlier tier a moment
+  // before) OR on a completely different, concurrent order's cascade — a
+  // driver locked by ANY order's popup is globally unavailable (see
+  // lockManager). Re-check ignoring every lock (not just this order's own)
+  // and whoever this batch already considered — also excluding
+  // offeredRiderIdsByTier for THIS packageId, since a rider who already had
+  // their own turn at this exact tier must never hold it open again just
+  // because they're currently mid-popup elsewhere.
   //
-  // Also excludes offeredRiderIdsByTier for THIS packageId: a rider who
-  // already had their own turn at this exact tier (however that turn
-  // resolved) must never hold it open again just because they're currently
-  // mid-popup on some OTHER tier of this order — only riders who haven't
-  // been offered this tier yet are worth waiting for.
+  // The single result (if any) is classified locally, with no extra query,
+  // into two independent signals:
+  //   - sameOrderLockBlocking: the candidate is locked by THIS SAME order's
+  //     own earlier tier — the tier cursor must not skip past them (existing
+  //     behavior, unchanged: waits for them, however long it takes, same as
+  //     before this rider-locked-elsewhere case was distinguished at all).
+  //   - lockBlocking: a real candidate exists at all, locked by anyone —
+  //     used below only to avoid the zero-delay/instant-empty-turn fast
+  //     path, never to hold up tier progression itself. Two customers
+  //     ordering within moments of each other, with an overlapping eligible
+  //     pool, must not let the second one's cascade race through every tier
+  //     at ~0ms and conclude "no driver found" before the first order's
+  //     popups have had any chance to resolve — but once a lap genuinely
+  //     completes (product decision: exactly one lap per order, see
+  //     checkCascadeTermination/staleLaps), a driver locked by a totally
+  //     unrelated order must still not be waited on indefinitely, which is
+  //     why this never blocks the cursor the way sameOrderLockBlocking does.
+  //
+  // Run whenever this tier has multiple tiers to fall back on (matches the
+  // pre-existing sameOrderLockBlocking gate exactly, so multi-tier orders
+  // never pay for a second query — this replaces that one, it doesn't add
+  // to it) OR — the new case — this order has nothing else locked and no
+  // real candidate at all this turn, regardless of tier count: exactly the
+  // condition under which the zero-delay fast path below would otherwise
+  // fire, single-tier orders included.
   let sameOrderLockBlocking = false;
-  if (!hasMoreInCurrentTier && state.tiers.length > 1 && activeDispatches.has(orderId)) {
-    const excludeIgnoringOwnOrderLocks = [...new Set([
-      ...lockManager.getLockedRiderIdsExcludingOrder(orderId),
+  let lockBlocking = false;
+  if (
+    !hasMoreInCurrentTier &&
+    activeDispatches.has(orderId) &&
+    (state.tiers.length > 1 || (lockedRiderIds.length === 0 && (state.activeExpiryTimers || 0) === 0))
+  ) {
+    const excludeIgnoringLocks = [...new Set([
       ...rejectedRiderIds,
       ...consideredThisBatch,
       ...(state.offeredRiderIdsByTier.get(packageId) || []),
     ])];
-    const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringOwnOrderLocks, 1);
-    sameOrderLockBlocking = wouldBeCandidates.length > 0;
+    const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringLocks, 1);
+    if (wouldBeCandidates.length > 0) {
+      lockBlocking = true;
+      const lock = lockManager.peekLock(Number(wouldBeCandidates[0].rider_id));
+      sameOrderLockBlocking = !!lock && lock.orderId === orderId;
+    }
   }
 
   logger.info(
-    `dispatchManager: order=${orderId} tier=${tierIndex} cursor_decision locked=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier} sameOrderLockBlocking=${sameOrderLockBlocking} willAdvance=${!sameOrderLockBlocking && (!hasMoreInCurrentTier || lockedRiderIds.length === 0)}`
+    `dispatchManager: order=${orderId} tier=${tierIndex} cursor_decision locked=${lockedRiderIds.length} hasMore=${hasMoreInCurrentTier} sameOrderLockBlocking=${sameOrderLockBlocking} lockBlocking=${lockBlocking} willAdvance=${!sameOrderLockBlocking && (!hasMoreInCurrentTier || lockedRiderIds.length === 0)}`
   );
+
+  if (lockedDrivers.length > 0) {
+    scheduleExpiry(orderId, tierIndex, lockedDrivers, packageId, armedAt);
+    state.consecutiveEmptyTurns = 0;
+  } else if ((state.activeExpiryTimers || 0) === 0 && !lockBlocking) {
+    // Only treat a turn as truly empty if nobody is holding an active popup
+    // (this order's own, checked via activeExpiryTimers) and nobody eligible
+    // is merely locked elsewhere (checked via lockBlocking, above) — both
+    // will free up on their own; neither means the pool is actually empty.
+    state.consecutiveEmptyTurns = (state.consecutiveEmptyTurns || 0) + 1;
+  }
 
   // Tier Exhaustion: Exhaust all eligible drivers of current model before moving to next model
   if (!sameOrderLockBlocking && (!hasMoreInCurrentTier || lockedRiderIds.length === 0)) {
@@ -572,9 +594,12 @@ async function runBatchInner(orderId) {
   }
 
   // Tier Progression:
-  // If drivers were locked or are currently holding popups, wait BATCH_GAP_MS.
-  // If genuinely nobody was found and no popups are active, advance immediately.
-  const delayMs = (lockedRiderIds.length === 0 && (state.activeExpiryTimers || 0) === 0) ? 0 : BATCH_GAP_MS;
+  // If drivers were locked, are currently holding popups, or this tier is
+  // lock-blocked (see above — a real candidate exists, just mid-popup on
+  // this or another order), wait BATCH_GAP_MS so those locks get a chance to
+  // clear before retrying. Only advance immediately with no delay when
+  // genuinely nobody is, or is about to imminently become, a candidate.
+  const delayMs = (lockedRiderIds.length === 0 && (state.activeExpiryTimers || 0) === 0 && !lockBlocking) ? 0 : BATCH_GAP_MS;
 
   const timer = setTimeout(() => {
     state.timers.delete(timer);

@@ -961,6 +961,52 @@ describe("dispatchManager overlapping batch cascade", () => {
       dispatchManager.stopDispatch(505, "test_cleanup");
       for (const id of bigPool) lockManager.releaseLock(id);
     });
+
+    it("a second order whose entire eligible pool is already locked by a first order's active popups does not instantly report no_driver_found, and still dispatches once those locks clear", async () => {
+      // Both drivers are eligible for every tier of orderG (packages 6 and 7
+      // alike) — the real-world "two customers order within moments of each
+      // other and only a couple of drivers are online nearby" case.
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([901, 902].map(makeRiderRow));
+
+      // Simulate order 9999 (some other customer's cascade, already in
+      // flight) having locked out the entire pool moments before orderG was
+      // even created.
+      lockManager.acquireLock(901, 9999, POPUP_TIMEOUT_MS);
+      lockManager.acquireLock(902, 9999, POPUP_TIMEOUT_MS);
+
+      const orderG = { ...order, id: 602, allowed_delivery_types: JSON.stringify([6, 7]) };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...orderG });
+
+      await dispatchManager.startDispatch(orderG);
+      await flush();
+
+      // Before this fix, a tier whose only candidates were locked by another
+      // order was treated identically to "nobody eligible at all" and
+      // advanced with zero delay — a multi-tier cascade could reach
+      // checkCascadeTermination and cancel the order within the same tick,
+      // long before the other order's 15s popups had any chance to resolve.
+      expect(emitted.some((e) => e.event === "order:no_driver_found")).toBe(false);
+      expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(0);
+
+      // The other order's popups resolve (reject/timeout) partway through
+      // orderG's own first tier's retry window — well within its single lap.
+      lockManager.releaseLock(901);
+      lockManager.releaseLock(902);
+
+      await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+      await flush();
+
+      // orderG must still be able to pick them up, on this same cascade —
+      // not have already given up before they ever had a chance to free up.
+      const requests = emitted.filter((e) => e.event === "order:request").map((e) => e.room);
+      expect(requests.sort()).toEqual(["driver_901", "driver_902"]);
+      expect(emitted.some((e) => e.event === "order:no_driver_found")).toBe(false);
+
+      dispatchManager.stopDispatch(602, "test_cleanup");
+      lockManager.releaseLock(901);
+      lockManager.releaseLock(902);
+    });
   });
 
   describe("recordModel1Outcome (Model 1 reliability suspension)", () => {
