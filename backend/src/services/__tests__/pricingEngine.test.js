@@ -64,10 +64,16 @@ describe("calculateFare", () => {
     expect(calculateFare(pkg, 10, false, 1, 15)).toBe(85); // 70 + 15
   });
 
-  it("combines radius charge, service %, night flat, and extra mile together", () => {
+  it("combines radius charge, service %, night flat, and extra mile together, rounded to a whole rupee", () => {
     const pkgFull = { ...pkg, service_charge_percent: 10, night_charge_percent: 20, pickup_per_km_charge: 8 };
-    // dCharge = 20 + 50 + (2*8) = 86; service = 8.6; night = 20; extraMile = 5 -> 119.6
-    expect(calculateFare(pkgFull, 10, true, 3, 5)).toBe(119.6);
+    // dCharge = 20 + 50 + (2*8) = 86; service = 8.6; night = 20; extraMile = 5 -> 119.6 -> 120
+    expect(calculateFare(pkgFull, 10, true, 3, 5)).toBe(120);
+  });
+
+  it("rounds the final total to the nearest whole rupee — the same number flows through the order, popup, and driver payout unchanged", () => {
+    const pkgFraction = { min_charge: 23.96, per_km_charge: 6.69 };
+    // 23.96 + 6.69*10.171 = 92.0043... -> 92
+    expect(calculateFare(pkgFraction, 10.171, false)).toBe(92);
   });
 });
 
@@ -85,6 +91,12 @@ describe("calculateDriverEarning", () => {
   it("returns the full fare when neither field parses to a usable number (0% commission)", () => {
     const pkg = { driver_per_trip: "", driver_per_percent: "" };
     expect(calculateDriverEarning(pkg, 100)).toBe(100);
+  });
+
+  it("rounds the result to a whole rupee — the driver's real payout is a round number, not fractional paise", () => {
+    const pkg = { driver_per_trip: "0", driver_per_percent: "5" };
+    // 92 * 95 / 100 = 87.4 -> 87
+    expect(calculateDriverEarning(pkg, 92)).toBe(87);
   });
 });
 

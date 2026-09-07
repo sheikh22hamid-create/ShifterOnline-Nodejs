@@ -197,6 +197,13 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     // upfront here. driverEarning (fare minus commission) is still computed
     // and passed in by every caller for that later settlement math — this
     // payload just no longer surfaces it as the popup's displayed number.
+    //
+    // Both are already whole-rupee amounts — pricingEngine.calculateFare/
+    // calculateDriverEarning round to the nearest rupee themselves now, so
+    // the same rounded number the customer was quoted is what flows through
+    // order creation, this popup, and the driver's real payout at
+    // settlement, instead of getting rounded differently (or not at all) at
+    // each of those separate points.
     estimated_earning: String(tripTotal || driverEarning),
     driver_earning: String(tripTotal || driverEarning),
     trip_total: String(tripTotal || driverEarning),

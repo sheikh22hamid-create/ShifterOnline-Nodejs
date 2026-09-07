@@ -814,7 +814,11 @@ describe("dispatchManager overlapping batch cascade", () => {
   it("uses precomputed tier-0 pricing/order and skips the redundant re-fetch/update for tier 0 only", async () => {
     // createOrder already validated+priced this exact package/distance
     // moments earlier — startDispatch is handed that result directly.
-    const tier0Pricing = { fare: 24.78, driverEarning: 1.24, commission: 0 };
+    // Whole-rupee values — pricingEngine.calculateFare/calculateDriverEarning
+    // round to the nearest rupee themselves now, so this precomputed result
+    // (already run through pricingEngine by createOrderCore before this) is
+    // realistically always whole numbers, not fractional.
+    const tier0Pricing = { fare: 25, driverEarning: 1, commission: 0 };
 
     await dispatchManager.startDispatch(order, tier0Pricing);
     await flush();
@@ -827,8 +831,8 @@ describe("dispatchManager overlapping batch cascade", () => {
     // Uses the precomputed pricing, not pricingEngine.priceForPackageId's mocked.
     // Popup shows the full fare (same as the customer's quote), not driverEarning
     // (fare minus commission) — commission is deducted later at settlement.
-    expect(requests.every((r) => r.payload.driver_earning === "24.78")).toBe(true);
-    expect(requests.every((r) => r.payload.trip_total === "24.78")).toBe(true);
+    expect(requests.every((r) => r.payload.driver_earning === "25")).toBe(true);
+    expect(requests.every((r) => r.payload.trip_total === "25")).toBe(true);
   });
 
   describe("tier cursor race regression (order #1481)", () => {

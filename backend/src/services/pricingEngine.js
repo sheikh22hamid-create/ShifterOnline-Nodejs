@@ -5,6 +5,20 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * Whole-rupee rounding for every actual money amount (fare, driver earning,
+ * ₹ commission) — not just the popup's display text. Business decision: the
+ * number the customer is quoted is the number that flows through the whole
+ * order lifecycle unchanged (order creation's d_charge/total_dcharge, the
+ * driver's popup, and their real payout at ride completion), rather than a
+ * decimal fare getting rounded differently (or not at all) at each of those
+ * separate points. Percentages (commission %) are NOT rounded this way —
+ * see calculateCommissionPercent — only money itself.
+ */
+function roundMoney(n) {
+  return Math.round(n);
+}
+
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -77,7 +91,7 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
   const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
 
   const total = dCharge + serviceCharge + nightCharge + (Number(extraMileCharge) || 0);
-  return round2(total);
+  return roundMoney(total);
 }
 
 /**
@@ -95,11 +109,11 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
 function calculateDriverEarning(pkg, totalFare) {
   const flat = parseFloat(pkg.driver_per_trip);
   if (Number.isFinite(flat) && flat > 0) {
-    return round2(flat);
+    return roundMoney(flat);
   }
 
   const commissionPercent = parseFloat(pkg.driver_per_percent) || 0;
-  return round2((totalFare * (100 - commissionPercent)) / 100);
+  return roundMoney((totalFare * (100 - commissionPercent)) / 100);
 }
 
 async function getPackagesForCategory(cat_id) {
@@ -144,7 +158,7 @@ function calculateCommissionPercent(fare, driverEarning) {
  * (percentage) commission — same formula analyticsController.js uses for
  * revenue reporting, so the two stay consistent. */
 function commissionAmount(dCharge, commissionPercent) {
-  return round2((Number(dCharge) * Number(commissionPercent)) / 100);
+  return roundMoney((Number(dCharge) * Number(commissionPercent)) / 100);
 }
 
 /**
