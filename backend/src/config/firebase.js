@@ -61,8 +61,21 @@ function initFirebase() {
  * Sends an FCM push notification. Resolves to a result object instead of
  * throwing so callers (e.g. dispatch fallback on disconnected sockets) never
  * need to wrap this in try/catch on the hot path.
+ *
+ * channelId defaults to "order_channel" — the customer app's (ShifterOnline,
+ * a separate Flutter codebase) own locally-defined channel, untouched by
+ * anything in the driver app — so every existing caller keeps working
+ * unchanged. Pass a different id for a driver-app notification: the driver
+ * app (ShifterDriver, native Java) only pre-creates specific channel ids
+ * itself (see MyApplication.createOrderNotificationChannels); a channelId
+ * that doesn't match one it actually created falls back to Android/FCM's
+ * own uncontrolled default channel behavior instead of what's configured
+ * here — confirmed live as the cause of a driver's "Order No Longer
+ * Available" dismiss notification ringing indefinitely after the driver
+ * app's channel was renamed but this hardcoded value wasn't updated to
+ * match.
  */
-async function sendPushNotification(fcmToken, title, body, data = {}) {
+async function sendPushNotification(fcmToken, title, body, data = {}, channelId = "order_channel") {
   if (!fcmToken) {
     return { sent: false, reason: "missing_fcm_token" };
   }
@@ -105,7 +118,7 @@ async function sendPushNotification(fcmToken, title, body, data = {}) {
         title,
         body,
         sound: "default",
-        channelId: "order_channel",
+        channelId,
         defaultSound: true,
         defaultVibrateTimings: true,
         visibility: "public",

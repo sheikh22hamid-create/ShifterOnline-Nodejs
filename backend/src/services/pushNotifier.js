@@ -27,12 +27,21 @@ async function notifyDriverDismiss(fcmToken, orderId, reason) {
   // opens a blank "Unknown Pickup Location" dialog for any data-only push.
   // A real notification is drawn by the OS directly and never reaches that
   // handler, so it can't retrigger that bug.
+  //
+  // Explicit driver-app channel id — NOT the default "order_channel" that
+  // sendPushNotification otherwise assumes (that one belongs to the
+  // customer app's own separate codebase). The driver app (ShifterDriver)
+  // only pre-creates its own specific channel ids; referencing one it never
+  // created falls back to Android/FCM's own uncontrolled default channel,
+  // confirmed live as the cause of this exact notification ringing
+  // indefinitely until manually cleared.
   const reasonText = reason === "timeout" ? "Your offer window has expired." : "This order is no longer available.";
   return sendPushNotification(
     fcmToken,
     "Order No Longer Available",
     reasonText,
-    { type: "order_dismiss", order_id: String(orderId), reason: String(reason) }
+    { type: "order_dismiss", order_id: String(orderId), reason: String(reason) },
+    "order_dismiss_channel_v1"
   );
 }
 

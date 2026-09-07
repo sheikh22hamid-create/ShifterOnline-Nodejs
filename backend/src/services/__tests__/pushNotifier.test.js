@@ -21,14 +21,21 @@ describe("pushNotifier", () => {
     );
   });
 
-  it("notifyDriverDismiss sends a real (non-data-only) dismiss notification", async () => {
+  it("notifyDriverDismiss sends a real (non-data-only) dismiss notification on the driver app's own channel", async () => {
     await pushNotifier.notifyDriverDismiss("tok-2", 42, "timeout");
 
+    // Explicit driver-app channel id, not the default "order_channel" —
+    // that one belongs to the customer app's separate codebase, and
+    // referencing a channel id the driver app never created makes Android
+    // fall back to its own uncontrolled default notification behavior
+    // (confirmed live as the cause of this exact notification ringing
+    // indefinitely until manually cleared).
     expect(sendPushNotification).toHaveBeenCalledWith(
       "tok-2",
       expect.any(String),
       expect.any(String),
-      expect.objectContaining({ type: "order_dismiss", order_id: "42", reason: "timeout" })
+      expect.objectContaining({ type: "order_dismiss", order_id: "42", reason: "timeout" }),
+      "order_dismiss_channel_v1"
     );
   });
 
