@@ -69,12 +69,26 @@ async function acceptOrder(orderId, riderId) {
       });
       acceptedPackageId = acceptedRequest.package_id;
 
+      // accept_time = NOW() + 5:30, not NOW() — the live PHP backend's
+      // advance_payment_helper.php reads this column via PHP's strtotime()
+      // after date_default_timezone_set('Asia/Kolkata'), so it treats
+      // whatever digits are stored as IST wall-clock (same DB convention
+      // already confirmed for tbl_package.start_time/end_time — see
+      // pricingEngine.isNightNow). MySQL's NOW() here returns true UTC
+      // (confirmed live: NOW() and UTC_TIMESTAMP() return the identical
+      // value on this DB), so storing it as-is put PHP's own "now" 5.5
+      // hours ahead of the real accept moment — every accepted order's
+      // 2-minute advance-payment window looked like it had already been
+      // exceeded by ~5.5 hours the instant the driver accepted, and got
+      // auto-cancelled within seconds (confirmed live: order #1673,
+      // cancel_reason "Advance payment timeout (2 minutes exceeded)"
+      // fired well within 2 real minutes of accept_time).
       const orderAffected = await tx.$executeRaw`
         UPDATE pkg_order
         SET rid = ${riderId},
             order_status = 1,
             o_status = 'Processing',
-            accept_time = NOW()
+            accept_time = DATE_ADD(NOW(), INTERVAL 330 MINUTE)
         WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
       `;
       if (orderAffected === 0) {
