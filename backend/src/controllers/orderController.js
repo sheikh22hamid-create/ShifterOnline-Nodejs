@@ -67,7 +67,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong, uid } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid, radius_km, extra_mile_charge } = req.body;
 
     if (
       !cat_id ||
@@ -76,7 +76,15 @@ async function fareEstimate(req, res) {
       return res.status(400).json({ Result: false, msg: "cat_id and valid plat/plong/dlat/dlong are required" });
     }
 
-    const estimate = await pricingEngine.getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid });
+    const estimate = await pricingEngine.getFareEstimate({
+      cat_id, plat, plong, dlat, dlong, uid,
+      // Both optional — omit them to get the old zero-radius-charge number
+      // (unchanged for callers that don't know the search radius yet), or
+      // pass the same radius_km/extra_mile_charge order/create will get to
+      // preview the exact fare that order will be priced/dispatched at.
+      radiusRangeKm: radius_km,
+      extraMileCharge: extra_mile_charge,
+    });
     return res.status(200).json(estimate);
   } catch (err) {
     logger.error("fareEstimate failed:", err);

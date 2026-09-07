@@ -2,8 +2,13 @@ jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   tbl_package: { findMany: jest.fn() },
 }));
+jest.mock("../../utils/geoDistance", () => ({
+  getRoadDistanceKm: jest.fn(),
+  haversineKm: jest.fn(),
+}));
 
 const prisma = require("../../config/db");
+const { getRoadDistanceKm } = require("../../utils/geoDistance");
 const {
   calculateFare,
   calculateDriverEarning,
@@ -13,6 +18,7 @@ const {
   getActivePlanDiscount,
   priceForPackage,
   getPackageListForCategory,
+  getFareEstimate,
 } = require("../pricingEngine");
 
 describe("isNightNow", () => {
@@ -246,5 +252,39 @@ describe("getPackageListForCategory", () => {
     expect(result.has_plan_discount).toBe(false);
     expect(result.PackageData[0].min_charge).toBe("23.96");
     expect(result.PackageData[0].per_km_charge).toBe("6.69");
+  });
+});
+
+describe("getFareEstimate", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const pkg = { id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 4 };
+
+  it("quotes zero radius charge when radius_km isn't known yet (unchanged default behavior)", async () => {
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 10, durationMin: 20 });
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    const result = await getFareEstimate({ cat_id: 1, plat: 1, plong: 1, dlat: 2, dlong: 2, uid: 1 });
+
+    expect(result.packages[0].estimated_fare).toBe(70); // 20 + 5*10, no radius/extra-mile charge
+  });
+
+  // Regression for order #1724: the estimate omitted the radius charge that
+  // order/create + the driver popup correctly included (radius_range=10 ->
+  // 9km chargeable * pickup_per_km_charge), so the customer's pre-booking
+  // quote was under the real dispatched fare by exactly that amount.
+  it("includes radius charge + extra-mile charge when the caller already knows them", async () => {
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 10, durationMin: 20 });
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    const result = await getFareEstimate({
+      cat_id: 1, plat: 1, plong: 1, dlat: 2, dlong: 2, uid: 1,
+      radiusRangeKm: 10, extraMileCharge: 5,
+    });
+
+    // dCharge = 20 + 5*10 + (10-1)*4 = 106; total = 106 + 5 extra-mile = 111
+    expect(result.packages[0].estimated_fare).toBe(111);
   });
 });

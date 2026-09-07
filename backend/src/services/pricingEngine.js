@@ -258,12 +258,28 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
   return priceForPackage(pkg, distanceKm, radiusRangeKm, extraMileCharge, discount);
 }
 
-async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid }) {
+/**
+ * radiusRangeKm/extraMileCharge are optional — callers that don't know the
+ * customer's search radius yet (the estimate screen runs before that's
+ * picked) get the same zero-radius-charge number this always returned.
+ * Callers that DO already know it (e.g. a caller previewing the exact order
+ * about to be created) can pass it through so estimated_fare matches what
+ * priceForPackage/priceForPackageId will actually charge at order creation
+ * and dispatch — see calculateRadiusCharge: chargeableRadius = radiusRangeKm
+ * - 1, so this was silently under-quoting by that amount on every model
+ * whenever the real order ends up with a search radius wider than 1km
+ * (confirmed live on order #1724: estimate omitted the radius charge that
+ * the driver popup / actual order correctly included).
+ */
+async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0 }) {
   const [{ distanceKm, durationMin }, packages, discount] = await Promise.all([
     getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
   ]);
+
+  const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
+  const resolvedExtraMileCharge = Number(extraMileCharge) || 0;
 
   return {
     Result: true,
@@ -282,7 +298,7 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid }) {
         per_km_charge: Number(discountedPkg.per_km_charge),
         original_min_charge: Number(pkg.min_charge),
         original_per_km_charge: Number(pkg.per_km_charge),
-        estimated_fare: calculateFare(discountedPkg, distanceKm, isNight),
+        estimated_fare: calculateFare(discountedPkg, distanceKm, isNight, resolvedRadiusKm, resolvedExtraMileCharge),
         is_night: isNight,
       };
     }),

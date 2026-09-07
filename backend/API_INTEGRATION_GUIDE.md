@@ -59,6 +59,10 @@ Given a category and pickup/drop coordinates, returns every available **package/
 ```json
 { "cat_id": 1, "plat": 22.74, "plong": 75.91, "dlat": 22.71, "dlong": 75.88 }
 ```
+`radius_km` and `extra_mile_charge` are optional. Omit them if the customer hasn't picked a search radius yet — `estimated_fare` will be quoted with zero radius charge, same as before. If you already know what `order/create` is about to be called with (e.g. previewing the final price after the radius slider changes), pass the same values here so this number matches what order creation, dispatch, and the driver's popup will actually charge:
+```json
+{ "cat_id": 1, "plat": 22.74, "plong": 75.91, "dlat": 22.71, "dlong": 75.88, "radius_km": 5, "extra_mile_charge": 0 }
+```
 
 **Response:**
 ```json

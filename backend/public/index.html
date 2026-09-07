@@ -1170,6 +1170,12 @@
         plong: Number($("pickLng").value),
         dlat: Number($("dropLat").value),
         dlong: Number($("dropLng").value),
+        // Same search radius the "Place order" button below will send — so
+        // this preview matches what order/create + the driver popup will
+        // actually charge, instead of always showing the zero-radius-charge
+        // number (see backend/API_INTEGRATION_GUIDE.md's fare-estimate note).
+        radius_km: Number($("searchRadiusKm").value),
+        extra_mile_charge: 0,
       };
       logEvent("customer", "out", "POST /api/order/fare-estimate", body);
       const { ok, json } = await api("POST", "/api/order/fare-estimate", body);
