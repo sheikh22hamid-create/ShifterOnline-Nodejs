@@ -173,38 +173,63 @@ async function acceptOrder(orderId, riderId) {
   };
 }
 
-async function rejectOrder(orderId, riderId) {
-  // Scoped to the rider's CURRENT lock's own packageId, not just orderId: a
-  // rider can legitimately move on to a newer tier of this same order
-  // before an in-flight reject for an OLDER tier's popup gets processed
-  // here (client/network latency, a reconnect resend, an app that fires
-  // its own delayed dismiss). Matching only orderId — as an earlier version
-  // of this code did — let a stale reject wrongly flip the NEWER tier's
-  // still-legitimately-'sent' row to rejected, permanently excluding the
-  // rider from every later tier over an offer they never actually saw
-  // (confirmed live on order #1503: a rider's Model 1 reject landed after
-  // they'd already been offered Model 2, and both showed dispatchManager
-  // behavior consistent with the DB row for the wrong tier being touched).
+/**
+ * packageId, when the client sends it (the exact tier they were shown —
+ * every popup payload already carries package_id), identifies which row to
+ * reject directly, instead of inferring it from the rider's current
+ * in-memory lock. order:reject is fire-and-forget with no ack (see
+ * NodeSocketManager.emitReject) — if the app's own socket connection blips
+ * right when the driver taps Reject, the event can arrive after this
+ * popup's own 15s timeout has already fired server-side and released the
+ * lock. The old lock-only lookup had nothing left to infer the tier from
+ * at that point and silently dropped the reject — recorded as a plain
+ * timeout instead — so the rider kept getting offered this order's later
+ * tiers despite having explicitly rejected it (confirmed live: three
+ * consecutive orders where every tier ended in 'timeout', never '10',
+ * despite the driver rejecting).
+ *
+ * packageId is still cross-checked against the rider's CURRENT lock before
+ * ever releasing it — a lock for a NEWER tier of this order (or a
+ * different order) must be left alone; it belongs to a popup this reject
+ * was never about (confirmed live on order #1503: matching only orderId,
+ * not tier, let a stale reject wrongly flip a NEWER tier's still-legitimately
+ * -'sent' row).
+ */
+async function rejectOrder(orderId, riderId, packageId = null) {
   const lock = lockManager.peekLock(riderId);
-  if (!lock || lock.orderId !== orderId) {
-    // Stale: this rider has already moved on — a newer tier, a different
-    // order, or nothing at all — by the time this reject arrived. There is
-    // nothing of theirs for THIS order left to touch.
-    return { success: true };
+  const lockMatchesThisOrder = !!lock && lock.orderId === orderId;
+
+  let resolvedPackageId = packageId != null ? Number(packageId) : null;
+  if (!Number.isFinite(resolvedPackageId)) {
+    if (!lockMatchesThisOrder) {
+      // No client-supplied packageId (older app) and no matching lock to
+      // infer it from — nothing of theirs for THIS order left to touch.
+      return { success: true };
+    }
+    resolvedPackageId = lock.packageId;
   }
-  const packageId = lock.packageId;
 
   // DB write before lock release, not after: releasing the lock first makes
   // this rider immediately eligible for the cascade's next tier, which can
   // fire (and even complete) before this status write lands.
+  //
+  // Matches 'timeout' too, not just 'sent': a reject that arrives after
+  // this popup's own expiry already wrote 'timeout' must still be able to
+  // upgrade that row to '10' — that's the whole point of trusting the
+  // client's own packageId instead of the (by then already-gone) lock.
   const result = await prisma.tbl_order_requests.updateMany({
-    where: { order_id: orderId, rider_id: riderId, package_id: Number(packageId), status: "sent" },
+    where: { order_id: orderId, rider_id: riderId, package_id: Number(resolvedPackageId), status: { in: ["sent", "timeout"] } },
     data: { status: "10" },
   });
   if (result.count > 0) {
-    await dispatchManager.recordModel1Outcome(riderId, packageId, "miss");
+    await dispatchManager.recordModel1Outcome(riderId, resolvedPackageId, "miss");
   }
-  lockManager.releaseLock(riderId);
+
+  // Only release the lock if it's actually the one for this exact tier.
+  if (lockMatchesThisOrder && Number(lock.packageId) === Number(resolvedPackageId)) {
+    lockManager.releaseLock(riderId);
+  }
+
   return { success: true };
 }
 

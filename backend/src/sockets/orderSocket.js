@@ -38,9 +38,9 @@ function registerOrderHandlers(io, socket) {
     }
   });
 
-  socket.on("order:reject", async ({ rider_id, order_id }) => {
+  socket.on("order:reject", async ({ rider_id, order_id, package_id }) => {
     try {
-      await tripLifecycle.rejectOrder(Number(order_id), Number(rider_id));
+      await tripLifecycle.rejectOrder(Number(order_id), Number(rider_id), package_id != null ? Number(package_id) : null);
     } catch (err) {
       logger.error("order:reject handler failed:", err);
     }

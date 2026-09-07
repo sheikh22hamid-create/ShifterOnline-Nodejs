@@ -188,11 +188,50 @@ describe("tripLifecycle.rejectOrder", () => {
 
     expect(result).toEqual({ success: true });
     expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({
-      where: { order_id: 297, rider_id: 1, package_id: 7, status: "sent" },
+      where: { order_id: 297, rider_id: 1, package_id: 7, status: { in: ["sent", "timeout"] } },
       data: { status: "10" },
     });
     expect(lockManager.releaseLock).toHaveBeenCalledWith(1);
     expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+  });
+
+  it("still records the reject using the client-supplied package_id even when the lock has already expired (order:reject has no ack)", async () => {
+    // Live bug: order:reject is fire-and-forget — if it arrives after this
+    // popup's own 15s timeout already fired and released the lock, the old
+    // lock-only lookup had nothing left to infer the tier from and silently
+    // dropped the reject (recorded as a plain 'timeout'), so the rider kept
+    // getting offered this order's later tiers despite explicitly rejecting.
+    lockManager.peekLock.mockReturnValue(undefined); // lock already gone
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await tripLifecycle.rejectOrder(297, 1, 7);
+
+    expect(result).toEqual({ success: true });
+    // Matches 'timeout' too, not just 'sent' — this row may have already
+    // been written 'timeout' by scheduleExpiry before this late reject landed.
+    expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 297, rider_id: 1, package_id: 7, status: { in: ["sent", "timeout"] } },
+      data: { status: "10" },
+    });
+    expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+    // No lock matched this order/tier, so there's nothing to release.
+    expect(lockManager.releaseLock).not.toHaveBeenCalled();
+  });
+
+  it("does not release a lock that belongs to a NEWER tier when a late reject for an OLDER tier arrives with its own package_id", async () => {
+    // Rider has already moved on to Model 3 (package 21) of this same
+    // order by the time a late reject for Model 1 (package 6) arrives.
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 21 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    await tripLifecycle.rejectOrder(297, 1, 6);
+
+    expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 297, rider_id: 1, package_id: 6, status: { in: ["sent", "timeout"] } },
+      data: { status: "10" },
+    });
+    // Must NOT release the lock — it's for package 21, not the package 6 this reject was about.
+    expect(lockManager.releaseLock).not.toHaveBeenCalled();
   });
 
   it("does not record a Model 1 outcome when the reject's row was already resolved another way", async () => {
