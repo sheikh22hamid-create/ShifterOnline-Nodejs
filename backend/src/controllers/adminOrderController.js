@@ -194,7 +194,8 @@ async function assignRider(req, res) {
       order.delivery_type,
       Number(order.distance) || 0,
       Number(order.radius_range) || 1,
-      Number(order.extra_mile_charge) || 0
+      Number(order.extra_mile_charge) || 0,
+      order.uid
     );
     await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: driverEarning, commission } });
 

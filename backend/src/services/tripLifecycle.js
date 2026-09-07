@@ -111,7 +111,8 @@ async function acceptOrder(orderId, riderId) {
     acceptedPackageId,
     Number(order.distance) || 0,
     Number(order.radius_range) || 1,
-    Number(order.extra_mile_charge) || 0
+    Number(order.extra_mile_charge) || 0,
+    order.uid
   );
 
   const priced = { d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: driverEarning, commission };

@@ -356,7 +356,8 @@ async function runBatchInner(orderId) {
       packageId,
       distanceKm,
       Number(currentOrder.radius_range) || 1,
-      Number(currentOrder.extra_mile_charge) || 0
+      Number(currentOrder.extra_mile_charge) || 0,
+      currentOrder.uid
     );
     fare = priced.fare;
     driverEarning = priced.driverEarning;

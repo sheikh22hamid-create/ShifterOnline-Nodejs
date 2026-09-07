@@ -52,6 +52,18 @@ async function getRoadDistanceKm(lat1, lon1, lat2, lon2) {
         origin: { location: { latLng: { latitude: lat1, longitude: lon1 } } },
         destination: { location: { latLng: { latitude: lat2, longitude: lon2 } } },
         travelMode: "DRIVE",
+        // Matches the live PHP backend's get_distance.php exactly — without
+        // this, Google can pick a different route (and a meaningfully
+        // different distanceMeters) for the identical coordinates than PHP
+        // gets, since the default routing preference isn't traffic-aware.
+        // Confirmed live on order #1670: PHP's customer-facing estimate
+        // implied ~225.75km for this route while Node's own call (real
+        // Google data, not the haversine fallback) came back with 251.249km
+        // for the same pickup/drop — an ~11% fare gap across every model,
+        // consistent with two different real routes rather than a formula
+        // bug (the fare formula matched exactly on both sides once each
+        // side's own distance was plugged in).
+        routingPreference: "TRAFFIC_AWARE",
       }),
     });
     if (!response.ok) {

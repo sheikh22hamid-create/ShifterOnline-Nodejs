@@ -6,6 +6,8 @@ const router = express.Router();
 
 router.get("/categories", orderController.getCategories);
 router.post("/fare-estimate", orderController.fareEstimate);
+router.post("/distance", orderController.distanceEstimate);
+router.post("/packagelist", orderController.packageListEstimate);
 router.post("/create", orderController.createOrder);
 router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);

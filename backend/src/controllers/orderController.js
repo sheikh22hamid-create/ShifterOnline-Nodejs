@@ -67,7 +67,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid } = req.body;
 
     if (
       !cat_id ||
@@ -76,11 +76,51 @@ async function fareEstimate(req, res) {
       return res.status(400).json({ Result: false, msg: "cat_id and valid plat/plong/dlat/dlong are required" });
     }
 
-    const estimate = await pricingEngine.getFareEstimate({ cat_id, plat, plong, dlat, dlong });
+    const estimate = await pricingEngine.getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid });
     return res.status(200).json(estimate);
   } catch (err) {
     logger.error("fareEstimate failed:", err);
     return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
+/** Node mirror of the legacy PHP backend's get_distance.php — see pricingEngine.getDistanceEstimate. */
+async function distanceEstimate(req, res) {
+  try {
+    const { pickup_lat, pickup_lng, drop_lat, drop_lng } = req.body;
+
+    if (![pickup_lat, pickup_lng, drop_lat, drop_lng].every(isFiniteNumber)) {
+      return res.status(200).json({
+        ResponseCode: "401",
+        Result: "false",
+        ResponseMsg: "pickup_lat, pickup_lng, drop_lat, drop_lng required (numeric)",
+      });
+    }
+
+    const estimate = await pricingEngine.getDistanceEstimate({
+      plat: pickup_lat, plong: pickup_lng, dlat: drop_lat, dlong: drop_lng,
+    });
+    return res.status(200).json(estimate);
+  } catch (err) {
+    logger.error("distanceEstimate failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+/** Node mirror of the legacy PHP backend's packagelist.php — see pricingEngine.getPackageListForCategory. */
+async function packageListEstimate(req, res) {
+  try {
+    const { uid, cat_id } = req.body;
+
+    if (!cat_id) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "cat_id required" });
+    }
+
+    const estimate = await pricingEngine.getPackageListForCategory({ uid, catId: cat_id });
+    return res.status(200).json(estimate);
+  } catch (err) {
+    logger.error("packageListEstimate failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
 
@@ -107,10 +147,11 @@ async function createOrderCore({
     ? Promise.resolve({ distanceKm: clientDistance, durationMin: Math.round(clientDistance * 2), source: "client" })
     : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
 
-  const [validPackages, customer, distanceResult] = await Promise.all([
+  const [validPackages, customer, distanceResult, planDiscount] = await Promise.all([
     prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
     cityId ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
     distancePromise,
+    pricingEngine.getActivePlanDiscount(uid),
   ]);
 
   const packagesById = new Map(validPackages.map((p) => [p.id, p]));
@@ -150,7 +191,8 @@ async function createOrderCore({
     firstPkg,
     distanceKm,
     resolvedRadiusKm,
-    Number(extraMileCharge) || 0
+    Number(extraMileCharge) || 0,
+    planDiscount
   );
 
   const clientTotal = Number(totalDcharge);
@@ -342,4 +384,14 @@ async function rateOrder(req, res) {
   }
 }
 
-module.exports = { getCategories, fareEstimate, createOrder, createOrderCore, getOrderDetails, customerCancel, rateOrder };
+module.exports = {
+  getCategories,
+  fareEstimate,
+  distanceEstimate,
+  packageListEstimate,
+  createOrder,
+  createOrderCore,
+  getOrderDetails,
+  customerCancel,
+  rateOrder,
+};

@@ -3,7 +3,10 @@ jest.mock("../../config/db", () => ({
   tbl_user: { findUnique: jest.fn() },
   pkg_order: { create: jest.fn() },
 }));
-jest.mock("../../services/pricingEngine", () => ({ priceForPackage: jest.fn() }));
+jest.mock("../../services/pricingEngine", () => ({
+  priceForPackage: jest.fn(),
+  getActivePlanDiscount: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("../../services/dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyNewOrder: jest.fn() }));
 jest.mock("../../utils/geoDistance", () => ({ getRoadDistanceKm: jest.fn() }));
@@ -58,7 +61,7 @@ describe("orderController.createOrderCore", () => {
 
     expect(result.ok).toBe(true);
     expect(result.order.id).toBe(501);
-    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0);
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0, null);
     expect(dispatchManager.startDispatch).toHaveBeenCalledWith(
       result.order,
       { fare: 50, driverEarning: 40, commission: 5, packageTitle: null }
@@ -104,7 +107,7 @@ describe("orderController.createOrderCore", () => {
     const result = await createOrderCore({ ...baseInput, deliveryTypeIds: [34, 6, 7] });
 
     expect(result.ok).toBe(true);
-    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0);
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0, null);
     expect(prisma.pkg_order.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

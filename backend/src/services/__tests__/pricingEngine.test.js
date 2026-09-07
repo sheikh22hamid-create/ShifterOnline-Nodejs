@@ -1,4 +1,19 @@
-const { calculateFare, calculateDriverEarning, calculateCommissionPercent, isNightNow } = require("../pricingEngine");
+jest.mock("../../config/db", () => ({
+  $queryRaw: jest.fn(),
+  tbl_package: { findMany: jest.fn() },
+}));
+
+const prisma = require("../../config/db");
+const {
+  calculateFare,
+  calculateDriverEarning,
+  calculateCommissionPercent,
+  isNightNow,
+  applyPlanDiscount,
+  getActivePlanDiscount,
+  priceForPackage,
+  getPackageListForCategory,
+} = require("../pricingEngine");
 
 describe("isNightNow", () => {
   // start_time/end_time digits are IST wall-clock (23:00 -> 06:00 IST), matching
@@ -113,5 +128,123 @@ describe("calculateCommissionPercent", () => {
 
   it("returns 0 for a non-positive fare instead of dividing by zero", () => {
     expect(calculateCommissionPercent(0, 0)).toBe(0);
+  });
+});
+
+describe("applyPlanDiscount", () => {
+  // Matches packagelist.php's own discount math exactly: min_charge and
+  // per_km_charge discounted and rounded INDEPENDENTLY (min_charge to a
+  // whole rupee, per_km_charge to 2 decimals) — not the final total.
+  const pkg = { min_charge: 23.96, per_km_charge: 6.69, driver_per_percent: "5", pickup_per_km_charge: 4 };
+
+  it("discounts min_charge (whole rupee) and per_km_charge (2 decimals) independently", () => {
+    const discounted = applyPlanDiscount(pkg, { percent: 10 });
+    // 23.96 * 0.9 = 21.564 -> round -> 22; 6.69 * 0.9 = 6.021 -> round2 -> 6.02
+    expect(discounted.min_charge).toBe(22);
+    expect(discounted.per_km_charge).toBe(6.02);
+  });
+
+  it("leaves every other field untouched, including pickup_per_km_charge — PHP's discount never touches it either", () => {
+    const discounted = applyPlanDiscount(pkg, { percent: 10 });
+    expect(discounted.pickup_per_km_charge).toBe(4);
+    expect(discounted.driver_per_percent).toBe("5");
+  });
+
+  it("returns pkg unchanged when there's no discount", () => {
+    expect(applyPlanDiscount(pkg, null)).toBe(pkg);
+    expect(applyPlanDiscount(pkg, { percent: 0 })).toBe(pkg);
+  });
+});
+
+describe("getActivePlanDiscount", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("returns null immediately for a falsy uid, without querying the DB", async () => {
+    const result = await getActivePlanDiscount(null);
+    expect(result).toBeNull();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("returns the discount when an active USER-plan row comes back", async () => {
+    prisma.$queryRaw.mockResolvedValue([{ discount_percent: "10", discount_max_cap: "0", plan_name: "10 percent less fare" }]);
+
+    const result = await getActivePlanDiscount(12);
+
+    expect(result).toEqual({ percent: 10, maxCap: 0, planName: "10 percent less fare" });
+  });
+
+  it("returns null when no active discount plan is found", async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    expect(await getActivePlanDiscount(12)).toBeNull();
+  });
+
+  it("returns null when the row's discount_percent is 0 or non-positive", async () => {
+    prisma.$queryRaw.mockResolvedValue([{ discount_percent: "0", discount_max_cap: "0", plan_name: "x" }]);
+    expect(await getActivePlanDiscount(12)).toBeNull();
+  });
+});
+
+describe("priceForPackage with an active plan discount", () => {
+  it("bases fare/driverEarning on the discounted min_charge/per_km_charge, not the original rate", () => {
+    // Live regression (order #1670): customer had an active "10 percent
+    // less fare" plan. The estimate correctly showed the discounted fare,
+    // but the driver's popup and the actual order/dispatch fare used the
+    // undiscounted rate — an ~10% gap across every model. Threading the
+    // discount into priceForPackage (which every caller — estimate, order
+    // creation, dispatch, accept, admin manual-assign — shares) fixes it
+    // at the source instead of only on the pre-booking screen.
+    const pkg = { id: 6, title: "Model 1", min_charge: 23.96, per_km_charge: 6.69, driver_per_percent: "5", driver_per_trip: "0" };
+
+    const withoutDiscount = priceForPackage(pkg, 251.249, 1, 0, null);
+    const withDiscount = priceForPackage(pkg, 251.249, 1, 0, { percent: 10 });
+
+    expect(withoutDiscount.fare).toBe(1705); // matches the live driver-popup figure for order #1670
+    expect(withDiscount.fare).toBeLessThan(withoutDiscount.fare);
+    expect(withDiscount.fare / withoutDiscount.fare).toBeCloseTo(0.9, 1);
+  });
+});
+
+describe("getPackageListForCategory", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const pkg = {
+    id: 6, title: "Model 1", type: "USER", min_charge: "23.96", per_km_charge: "6.69",
+    free_waiting_time: 5, waiting_charge: "2", pickup_charge: null,
+    service_charge_percent: "0", night_charge_percent: "30",
+    start_time: "1970-01-01T23:00:00.000Z", end_time: "1970-01-01T06:00:00.000Z",
+    status: 1, user_detail_image: "img.png", driver_detail_image: "img2.png",
+    loading_charge: "0", unloading_charge: "0", service_charge: null,
+    pickup_per_km_charge: "4", cancellation_charge_customer: "15", cat_id: 8,
+  };
+
+  it("mirrors packagelist.php's field names, with min_charge/per_km_charge discounted when an active plan applies", async () => {
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    prisma.$queryRaw.mockResolvedValue([{ discount_percent: "10", discount_max_cap: "0", plan_name: "10 percent less fare" }]);
+
+    const result = await getPackageListForCategory({ uid: 12, catId: 8 });
+
+    expect(result.has_plan_discount).toBe(true);
+    expect(result.plan_discount_percent).toBe(10);
+    expect(result.plan_name).toBe("10 percent less fare");
+
+    const [row] = result.PackageData;
+    expect(row.id).toBe(6);
+    expect(row.min_charge).toBe("22"); // 23.96 * 0.9 -> round -> 22
+    expect(row.per_km_charge).toBe("6.02"); // 6.69 * 0.9 -> round2 -> 6.02
+    expect(row.original_min_charge).toBe("23.96");
+    expect(row.original_per_km_charge).toBe("6.69");
+    expect(row.pickup_per_km_charge).toBe("4"); // untouched by the discount, same as PHP
+    expect(row.cancellation_charge).toBe("15");
+  });
+
+  it("leaves min_charge/per_km_charge at the original rate with no active discount", async () => {
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    prisma.$queryRaw.mockResolvedValue([]);
+
+    const result = await getPackageListForCategory({ uid: 12, catId: 8 });
+
+    expect(result.has_plan_discount).toBe(false);
+    expect(result.PackageData[0].min_charge).toBe("23.96");
+    expect(result.PackageData[0].per_km_charge).toBe("6.69");
   });
 });
