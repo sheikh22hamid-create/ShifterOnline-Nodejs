@@ -571,8 +571,29 @@ async function runBatchInner(orderId) {
     const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringLocks, 1);
     if (wouldBeCandidates.length > 0) {
       lockBlocking = true;
-      const lock = lockManager.peekLock(Number(wouldBeCandidates[0].rider_id));
+      const candidateRiderId = Number(wouldBeCandidates[0].rider_id);
+      const lock = lockManager.peekLock(candidateRiderId);
       sameOrderLockBlocking = !!lock && lock.orderId === orderId;
+
+      // Race, confirmed live (order #1655): this candidate's lock from an
+      // EARLIER tier of this same order can expire and release in the
+      // window between selectEligibleDrivers' own await above and this
+      // peekLock — its own scheduleExpiry timer runs independently and isn't
+      // blocked by this turn being in flight. peekLock then sees nothing,
+      // sameOrderLockBlocking comes back false, and the tier gets treated as
+      // genuinely unblocked and skipped — right as the rider became free to
+      // actually take it. everLockedRiderIds (this order's own history,
+      // unaffected by lock timing) plus "not yet offered this exact tier"
+      // identifies the same case without racing the lock's own clock: this
+      // candidate has been through this order's cascade before and simply
+      // hasn't had a genuine turn at this specific tier yet, whether they're
+      // still locked on the earlier one or (as here) just freed from it.
+      if (!sameOrderLockBlocking && state.everLockedRiderIds.has(candidateRiderId)) {
+        const offeredThisTierAlready = state.offeredRiderIdsByTier.get(packageId);
+        if (!offeredThisTierAlready || !offeredThisTierAlready.has(candidateRiderId)) {
+          sameOrderLockBlocking = true;
+        }
+      }
     }
   }
 

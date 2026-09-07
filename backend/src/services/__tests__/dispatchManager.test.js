@@ -494,6 +494,117 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(tier1Request).toBeDefined();
   });
 
+  it("a single driver eligible for every tier is not skipped past a SECOND time, at the next tier too (order #1655)", async () => {
+    // The prior test only proves the tier 0 -> tier 1 hop is guarded — live
+    // order #1655 showed a real driver correctly offered Model 1 then Model
+    // 2, but Model 3 was skipped entirely and the cascade jumped straight to
+    // Model 4. Repeats the exact same wait-then-release pattern one more hop
+    // (tier 1 -> tier 2) to prove sameOrderLockBlocking doesn't stop
+    // protecting a tier after the first successful hop.
+    const threeTierOrder = { ...order, allowed_delivery_types: JSON.stringify([6, 7, 21]) };
+
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (package 6) primary — only driver_1 in range
+      .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck — nobody else for tier 0
+      .mockResolvedValueOnce([]) // tier 1 (package 7) send query — driver_1 excluded, currently locked on tier 0
+      .mockResolvedValueOnce([1].map(makeRiderRow)); // tier 1 genuinely-empty re-check, ignoring locks — finds driver_1
+
+    await dispatchManager.startDispatch(threeTierOrder);
+    await flush();
+    expect(emitted.filter((e) => e.event === "order:request").map((e) => e.room)).toEqual(["driver_1"]);
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(1);
+
+    // Tier 0 -> tier 1 hop (as in the prior test)
+    lockManager.releaseLock(1);
+    prisma.$queryRaw.mockResolvedValueOnce([1].map(makeRiderRow)); // tier 1 send query, driver_1 now free
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const tier1Request = emitted.find(
+      (e) => e.event === "order:request" && e.room === "driver_1" && e.payload.package_id === "7"
+    );
+    expect(tier1Request).toBeDefined();
+
+    // Tier 1 -> tier 2 hop — driver_1 is now locked on tier 1's own popup.
+    // Tier 2 (package 21) must wait for it exactly the same way tier 1 waited
+    // for tier 0, not treat it as exhausted and skip to a later tier.
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // tier 2 (package 21) send query — driver_1 excluded, locked on tier 1
+      .mockResolvedValueOnce([1].map(makeRiderRow)); // tier 2 genuinely-empty re-check, ignoring locks — finds driver_1
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    expect(
+      emitted.filter((e) => e.event === "order:request" && e.payload.package_id === "21")
+    ).toHaveLength(0);
+
+    lockManager.releaseLock(1);
+    prisma.$queryRaw.mockResolvedValueOnce([1].map(makeRiderRow)); // tier 2 send query, driver_1 now free
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const tier2Request = emitted.find(
+      (e) => e.event === "order:request" && e.room === "driver_1" && e.payload.package_id === "21"
+    );
+    expect(tier2Request).toBeDefined();
+  });
+
+  it("a candidate's lock expiring WHILE the sameOrderLockBlocking recheck query is in flight still holds the tier, not skip it (order #1655 root cause)", async () => {
+    // The exact race: this tier's recheck query ("is anyone eligible here,
+    // ignoring locks?") is a real async DB round-trip. If the candidate's
+    // lock from an earlier tier of this SAME order happens to expire and
+    // release (via its own independent scheduleExpiry timer) while that
+    // query is still in flight, peekLock sees nothing by the time the query
+    // resolves — sameOrderLockBlocking used to come back false right as the
+    // driver became free to take this exact tier, and the cursor skipped it.
+    const twoTierOrder = { ...order, allowed_delivery_types: JSON.stringify([6, 7]) };
+
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$queryRaw
+      .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 (package 6) primary — only driver_1 in range
+      .mockResolvedValueOnce([]); // tier 0 sameOrderLockBlocking recheck — nobody else for tier 0
+
+    await dispatchManager.startDispatch(twoTierOrder);
+    await flush();
+    expect(emitted.filter((e) => e.event === "order:request").map((e) => e.room)).toEqual(["driver_1"]);
+
+    // Tier 1's turn: driver_1 is still locked when the main send query runs
+    // (so it excludes them), but its recheck query's own resolution is what
+    // releases the lock mid-flight — simulating the lock's independent
+    // scheduleExpiry timer firing during that exact await.
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // tier 1 (package 7) send query — driver_1 still locked
+      .mockImplementationOnce(async () => {
+        lockManager.releaseLock(1); // races the peekLock check right after this resolves
+        return [1].map(makeRiderRow);
+      });
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    // Must NOT have been silently skipped — no request for package_id "7" yet
+    // is fine (this turn may not have offered it either, if a fresh query is
+    // needed), but the cascade must not have moved past tier 1 without ever
+    // offering it to driver_1.
+    prisma.$queryRaw.mockResolvedValueOnce([1].map(makeRiderRow)); // tier 1 send query, driver_1 free
+
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+
+    const tier1Request = emitted.find(
+      (e) => e.event === "order:request" && e.room === "driver_1" && e.payload.package_id === "7"
+    );
+    expect(tier1Request).toBeDefined();
+  });
+
   it("does not re-offer a rider whose reject lands mid-batch, after this batch's rejectedRiderIds snapshot was already taken", async () => {
     prisma.$queryRaw.mockReset();
     prisma.$queryRaw.mockResolvedValue([]);
