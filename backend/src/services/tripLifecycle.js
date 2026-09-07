@@ -5,6 +5,7 @@ const pricingEngine = require("./pricingEngine");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const { haversineKm } = require("../utils/geoDistance");
 const { POPUP_TIMEOUT_MS } = require("../config/constants");
 
 function notifyAdminStatus(order) {
@@ -124,6 +125,37 @@ async function acceptOrder(orderId, riderId) {
   const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
   notifyAdminStatus(order);
 
+  // Advance payment: (driver's current distance to pickup * the accepted
+  // package's own pickup_per_km_charge) + admin's existing per-package
+  // cancellation charge (tbl_package.cancellation_charge_customer — already
+  // the field customerCancel() above charges on a post-accept cancel).
+  // Covers the driver's cost of travelling to pickup plus the cancellation
+  // risk, charged upfront right when the driver accepts (both apps show a
+  // "waiting for advance payment" screen at this exact moment).
+  //
+  // advance_payment isn't in Prisma's schema for pkg_order (confirmed via
+  // introspection — the live column exists but was never modeled), so this
+  // is a raw SQL write rather than a typed .update() call, same as the
+  // accept transaction's own writes above.
+  // `?? NaN` before Number(): a null/undefined rlats/rlongs (driver never
+  // sent a location fix) must fail the isFinite check below, not coerce to
+  // 0 — Number(null) is 0, not NaN, which would silently treat a
+  // location-less driver as sitting at (0,0) in the Atlantic and charge a
+  // huge bogus distance-based advance payment instead of falling back to
+  // just the cancellation charge.
+  const driverLat = Number(rider?.rlats ?? NaN);
+  const driverLng = Number(rider?.rlongs ?? NaN);
+  const pickupLat = Number(order.plat ?? NaN);
+  const pickupLng = Number(order.plong ?? NaN);
+  let advancePayment = Number(pkg?.cancellation_charge_customer) || 0;
+  if ([driverLat, driverLng, pickupLat, pickupLng].every(Number.isFinite)) {
+    const driverToPickupKm = haversineKm(driverLat, driverLng, pickupLat, pickupLng);
+    const pickupPerKm = Number(pkg?.pickup_per_km_charge) || 0;
+    advancePayment += driverToPickupKm * pickupPerKm;
+  }
+  advancePayment = Math.round(advancePayment);
+  await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)} WHERE id = ${orderId}`;
+
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
   await pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
     order_id: orderId,
@@ -135,7 +167,7 @@ async function acceptOrder(orderId, riderId) {
 
   return {
     success: true,
-    order: { ...order, ...priced, package: pkg },
+    order: { ...order, ...priced, advance_payment: String(advancePayment), package: pkg },
     rider,
   };
 }

@@ -23,6 +23,7 @@ const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pricingEngine = require("../pricingEngine");
 const tripLifecycle = require("../tripLifecycle");
+const { haversineKm } = require("../../utils/geoDistance");
 
 describe("tripLifecycle.acceptOrder", () => {
   beforeEach(() => {
@@ -125,6 +126,49 @@ describe("tripLifecycle.acceptOrder", () => {
       "cust-tok",
       expect.objectContaining({ order_id: 297, rider_name: "Deepak", otp: 4321 })
     );
+  });
+
+  it("sets advance_payment = (driver-to-pickup distance * the accepted package's pickup_per_km_charge) + its cancellation_charge_customer", async () => {
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12,
+      plat: "28.704059", plong: "77.102490",
+    });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak", rlats: "28.650000", rlongs: "77.080000" });
+    pricingEngine.priceForPackageId.mockResolvedValue({
+      pkg: { pickup_per_km_charge: "4", cancellation_charge_customer: "15" },
+      fare: 24.78,
+      driverEarning: 42,
+      commission: 5,
+    });
+
+    const expectedDistanceKm = haversineKm(28.65, 77.08, 28.704059, 77.10249);
+    const expectedAdvance = String(Math.round(expectedDistanceKm * 4 + 15));
+
+    const result = await tripLifecycle.acceptOrder(297, 1);
+
+    expect(result.order.advance_payment).toBe(expectedAdvance);
+  });
+
+  it("falls back to just cancellation_charge_customer (no distance term) when the rider has no known location", async () => {
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297, delivery_type: 6, distance: 15.4,
+      plat: "28.704059", plong: "77.102490",
+    });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak", rlats: null, rlongs: null });
+    pricingEngine.priceForPackageId.mockResolvedValue({
+      pkg: { pickup_per_km_charge: "4", cancellation_charge_customer: "15" },
+      fare: 24.78,
+      driverEarning: 42,
+      commission: 5,
+    });
+
+    const result = await tripLifecycle.acceptOrder(297, 1);
+
+    expect(result.order.advance_payment).toBe("15");
   });
 });
 
