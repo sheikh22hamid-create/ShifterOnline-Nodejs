@@ -5,14 +5,27 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+const MINUTES_PER_DAY = 24 * 60;
+
 /**
- * tbl_package.start_time / end_time define the night-charge window.
+ * tbl_package.start_time / end_time define the night-charge window as
+ * IST wall-clock digits (e.g. 23:00 -> 06:00 IST — same as the live PHP
+ * backend, which explicitly runs on Asia/Kolkata). They're read via
+ * getUTCHours()/getUTCMinutes() to take the stored digits as-is, ignoring
+ * whatever timezone Prisma/MySQL wrapped them in — so "now" must be
+ * converted to those same IST digits, not the server process's local time
+ * (Render runs UTC), or a daytime IST order gets flagged as night and
+ * vice versa (confirmed live: an order at 04:11 UTC == 09:41 IST — daytime
+ * — was wrongly charged the night fee because 04:11 falls inside the
+ * 23:00-06:00 window when compared as raw UTC clock digits).
  * The window may wrap past midnight (e.g. 22:00 -> 06:00).
  */
 function isNightNow(pkg, now = new Date()) {
   if (!pkg.start_time || !pkg.end_time) return 0;
 
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowUtcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const nowMinutes = (nowUtcMinutes + IST_OFFSET_MINUTES) % MINUTES_PER_DAY;
   const start = new Date(pkg.start_time);
   const end = new Date(pkg.end_time);
   const startMinutes = start.getUTCHours() * 60 + start.getUTCMinutes();

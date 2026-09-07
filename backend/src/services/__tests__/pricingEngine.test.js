@@ -1,4 +1,26 @@
-const { calculateFare, calculateDriverEarning, calculateCommissionPercent } = require("../pricingEngine");
+const { calculateFare, calculateDriverEarning, calculateCommissionPercent, isNightNow } = require("../pricingEngine");
+
+describe("isNightNow", () => {
+  // start_time/end_time digits are IST wall-clock (23:00 -> 06:00 IST), matching
+  // the live PHP backend which runs on Asia/Kolkata — so "now" must be converted
+  // to IST before comparing, not read as the server process's local/UTC time.
+  const pkg = { start_time: "1970-01-01T23:00:00.000Z", end_time: "1970-01-01T06:00:00.000Z" };
+
+  it("treats 04:11 UTC (09:41 IST, daytime) as NOT night", () => {
+    // Regression: an order at this exact instant was wrongly night-charged
+    // when isNightNow compared server-local (UTC) clock digits directly
+    // against the IST window bounds.
+    expect(isNightNow(pkg, new Date("2026-09-07T04:11:49.000Z"))).toBe(0);
+  });
+
+  it("treats 20:24 UTC (01:54 IST, genuinely nighttime) as night", () => {
+    expect(isNightNow(pkg, new Date("2026-09-06T20:24:38.000Z"))).toBe(1);
+  });
+
+  it("treats 12:00 UTC (17:30 IST, daytime) as not night", () => {
+    expect(isNightNow(pkg, new Date("2026-09-06T12:00:00.000Z"))).toBe(0);
+  });
+});
 
 describe("calculateFare", () => {
   // Matches the live PHP backend's pks_order.php formula exactly:
