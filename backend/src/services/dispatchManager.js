@@ -190,8 +190,15 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    estimated_earning: String(driverEarning || tripTotal),
-    driver_earning: String(driverEarning || tripTotal),
+    // Popup shows the SAME fare the customer was quoted — admin's
+    // commission is deducted later (at settlement/ride-completion, see
+    // tripLifecycle.js's wallet-debit-on-cash-completion and the fresh
+    // pricingEngine.priceForPackageId() call in acceptOrder()), not shown
+    // upfront here. driverEarning (fare minus commission) is still computed
+    // and passed in by every caller for that later settlement math — this
+    // payload just no longer surfaces it as the popup's displayed number.
+    estimated_earning: String(tripTotal || driverEarning),
+    driver_earning: String(tripTotal || driverEarning),
     trip_total: String(tripTotal || driverEarning),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,

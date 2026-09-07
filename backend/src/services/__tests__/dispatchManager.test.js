@@ -713,8 +713,10 @@ describe("dispatchManager overlapping batch cascade", () => {
 
     const requests = emitted.filter((e) => e.event === "order:request");
     expect(requests).toHaveLength(4);
-    // Uses the precomputed pricing, not pricingEngine.priceForPackageId's mocked
-    expect(requests.every((r) => r.payload.driver_earning === "1.24")).toBe(true);
+    // Uses the precomputed pricing, not pricingEngine.priceForPackageId's mocked.
+    // Popup shows the full fare (same as the customer's quote), not driverEarning
+    // (fare minus commission) — commission is deducted later at settlement.
+    expect(requests.every((r) => r.payload.driver_earning === "24.78")).toBe(true);
     expect(requests.every((r) => r.payload.trip_total === "24.78")).toBe(true);
   });
 
