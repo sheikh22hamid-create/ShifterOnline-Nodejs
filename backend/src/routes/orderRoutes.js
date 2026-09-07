@@ -11,6 +11,7 @@ router.post("/packagelist", orderController.packageListEstimate);
 router.post("/create", orderController.createOrder);
 router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);
+router.post("/driver-cancel", orderController.driverCancel);
 router.post("/rate", orderController.rateOrder);
 router.post("/upload-photo", uploadController.uploadOrderPhoto);
 

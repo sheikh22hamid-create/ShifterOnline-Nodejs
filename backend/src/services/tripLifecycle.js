@@ -401,6 +401,126 @@ async function customerCancel(uid, orderId, comment) {
   return { success: true };
 }
 
+/**
+ * Driver cancellation after acceptance.
+ *
+ * This is deliberately a single transaction.  The order row is locked before
+ * checking payment/refund state, so a duplicate cancel request (or two socket
+ * connections) can never credit the customer's wallet twice.
+ */
+async function driverCancel(orderId, riderId, reason) {
+  let cancelledOrder = null;
+  let refundAmount = 0;
+  let refundStatus = "not_required";
+
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw`
+      SELECT id, uid, rid, order_status, o_status, advance_payment,
+             payment_status, razorpay_payment_id
+      FROM pkg_order
+      WHERE id = ${orderId}
+      FOR UPDATE
+    `;
+    const order = rows[0];
+    if (!order) throw new Error("ORDER_NOT_FOUND");
+    if (Number(order.rid) !== Number(riderId)) throw new Error("NOT_ASSIGNED_DRIVER");
+    if (["Completed", "Cancelled"].includes(order.o_status) || Number(order.order_status) >= 5) {
+      throw new Error("ORDER_NOT_CANCELLABLE");
+    }
+
+    const affected = await tx.$executeRaw`
+      UPDATE pkg_order
+      SET rid = 0,
+          order_status = 0,
+          o_status = 'Pending',
+          accept_time = NULL,
+          cancel_reason = ${`Driver cancelled: ${reason || "No reason provided"}`}
+      WHERE id = ${orderId}
+        AND rid = ${riderId}
+        AND o_status NOT IN ('Completed', 'Cancelled')
+    `;
+    if (affected === 0) throw new Error("ORDER_NOT_CANCELLABLE");
+
+    const amount = Math.max(0, Math.round(Number(order.advance_payment) || 0));
+    // Legacy payment paths have historically persisted the gateway payment id
+    // before updating the numeric flag, so accept either marker as captured.
+    const paymentCaptured = Number(order.payment_status) === 1 || Boolean(order.razorpay_payment_id);
+    const refundKey = `advance_refund:${orderId}:${order.razorpay_payment_id || "advance"}`;
+
+    // `payment_status=1` is the existing project's captured/success state.
+    // Do not credit an un-captured payment; its gateway callback can safely
+    // settle against the now-cancelled order later.
+    if (paymentCaptured && amount > 0) {
+      const alreadyRefunded = await tx.tbl_wallet_history.findFirst({
+        where: { payment_id: refundKey, type: "credit", wallet_type: "user" },
+        select: { id: true, amount: true },
+      });
+
+      if (alreadyRefunded) {
+        refundAmount = Number(alreadyRefunded.amount) || amount;
+        refundStatus = "refunded_to_wallet";
+      } else {
+        await tx.tbl_user.update({
+          where: { id: Number(order.uid) },
+          data: { wallet: { increment: amount } },
+        });
+        await tx.tbl_wallet_history.create({
+          data: {
+            user_id: Number(order.uid),
+            amount,
+            type: "credit",
+            wallet_type: "user",
+            order_id: orderId,
+            payment_id: refundKey,
+            remark: `Advance payment refunded to wallet — driver cancelled order #${orderId}`,
+            created_at: new Date(),
+          },
+        });
+        refundAmount = amount;
+        refundStatus = "refunded_to_wallet";
+      }
+    } else if (amount > 0) {
+      refundStatus = "payment_not_captured";
+    }
+
+    await tx.tbl_order_requests.updateMany({
+      where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
+      data: { status: "driver_cancelled" },
+    });
+    await tx.order_status_history.create({
+      data: {
+        order_id: orderId,
+        rider_id: riderId,
+        status: "Driver Cancelled",
+        remark: reason || "No reason provided",
+        created_at: new Date(),
+      },
+    });
+
+    cancelledOrder = { ...order, rid: 0, order_status: 0, o_status: "Pending", uid: Number(order.uid) };
+  });
+
+  const freshOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  if (freshOrder) {
+    dispatchManager.emitCustomerEvent(freshOrder.uid, "order:driver_cancelled", {
+      order_id: orderId,
+      rider_id: riderId,
+      refund_amount: refundAmount,
+      refund_status: refundStatus,
+      reason: reason || "Driver cancelled the ride",
+      searching_for_new_driver: true,
+    });
+    dispatchManager.startDispatch(freshOrder);
+  }
+
+  return {
+    success: true,
+    order: cancelledOrder,
+    refund_amount: refundAmount,
+    refund_status: refundStatus,
+  };
+}
+
 async function rateOrder(uid, orderId, riderId, star, comment) {
   const result = await prisma.pkg_order.updateMany({
     where: { id: orderId, uid, rid: riderId },
@@ -419,5 +539,6 @@ module.exports = {
   rejectOrder,
   updateStatus,
   customerCancel,
+  driverCancel,
   rateOrder,
 };

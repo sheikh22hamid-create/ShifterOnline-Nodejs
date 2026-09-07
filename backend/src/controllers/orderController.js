@@ -361,6 +361,38 @@ async function customerCancel(req, res) {
   }
 }
 
+async function driverCancel(req, res) {
+  try {
+    const { rider_id, order_id, reason } = req.body;
+    if (!rider_id || !order_id) {
+      return res.status(400).json({ success: false, message: "rider_id and order_id are required" });
+    }
+
+    const result = await tripLifecycle.driverCancel(Number(order_id), Number(rider_id), reason);
+    return res.status(200).json({
+      success: true,
+      message: "Ride cancelled and sent for reassignment",
+      data: {
+        order_id: Number(order_id),
+        refund_amount: result.refund_amount,
+        refund_status: result.refund_status,
+      },
+    });
+  } catch (err) {
+    const messages = {
+      ORDER_NOT_FOUND: [404, "Order not found"],
+      NOT_ASSIGNED_DRIVER: [403, "You are not assigned to this order"],
+      ORDER_NOT_CANCELLABLE: [409, "Order can no longer be cancelled"],
+    };
+    if (messages[err.message]) {
+      const [status, message] = messages[err.message];
+      return res.status(status).json({ success: false, message });
+    }
+    logger.error("driverCancel failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
 async function rateOrder(req, res) {
   try {
     const { uid, order_id, rider_id, star, comment } = req.body;
@@ -393,5 +425,6 @@ module.exports = {
   createOrderCore,
   getOrderDetails,
   customerCancel,
+  driverCancel,
   rateOrder,
 };

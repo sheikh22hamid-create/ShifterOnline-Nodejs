@@ -2,14 +2,21 @@ jest.mock("../../config/db", () => ({
   $executeRaw: jest.fn(),
   $transaction: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
+  $queryRaw: jest.fn(),
   tbl_order_requests: { updateMany: jest.fn(), findFirst: jest.fn() },
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
-  tbl_user: { findUnique: jest.fn() },
-  tbl_wallet_history: { create: jest.fn() },
+  tbl_user: { findUnique: jest.fn(), update: jest.fn() },
+  tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn() },
+  order_status_history: { create: jest.fn() },
   pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
 }));
 
-jest.mock("../dispatchManager", () => ({ stopDispatch: jest.fn(), recordModel1Outcome: jest.fn() }));
+jest.mock("../dispatchManager", () => ({
+  stopDispatch: jest.fn(),
+  recordModel1Outcome: jest.fn(),
+  emitCustomerEvent: jest.fn(),
+  startDispatch: jest.fn(),
+}));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5 }),
@@ -292,6 +299,62 @@ describe("tripLifecycle.customerCancel", () => {
     const result = await tripLifecycle.customerCancel(7, 297, "too late");
 
     expect(result).toEqual({ success: false, msg: "Order cannot be cancelled" });
+  });
+});
+
+describe("tripLifecycle.driverCancel", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.$queryRaw.mockResolvedValue([{
+      id: 297,
+      uid: 7,
+      rid: 11,
+      order_status: 1,
+      o_status: "Processing",
+      advance_payment: "250",
+      payment_status: 1,
+      razorpay_payment_id: "pay_123",
+    }]);
+    prisma.$executeRaw.mockResolvedValue(1);
+    prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" });
+    prisma.tbl_user.update.mockResolvedValue({ id: 7, wallet: 250 });
+  });
+
+  it("credits a captured advance exactly once and starts reassignment", async () => {
+    const result = await tripLifecycle.driverCancel(297, 11, "vehicle breakdown");
+
+    expect(result).toMatchObject({ success: true, refund_amount: 250, refund_status: "refunded_to_wallet" });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 250 } } });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        order_id: 297,
+        amount: 250,
+        type: "credit",
+        wallet_type: "user",
+        payment_id: "advance_refund:297:pay_123",
+      }),
+    }));
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:driver_cancelled", expect.objectContaining({
+      order_id: 297,
+      refund_status: "refunded_to_wallet",
+      searching_for_new_driver: true,
+    }));
+    expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 297, o_status: "Pending" }));
+  });
+
+  it("does not credit an uncaptured advance", async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{
+      id: 297, uid: 7, rid: 11, order_status: 1, o_status: "Processing",
+      advance_payment: "250", payment_status: 0, razorpay_payment_id: null,
+    }]);
+
+    const result = await tripLifecycle.driverCancel(297, 11, "cancelled");
+
+    expect(result.refund_status).toBe("payment_not_captured");
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
 });
 

@@ -46,6 +46,21 @@ function registerOrderHandlers(io, socket) {
     }
   });
 
+  socket.on("order:driver_cancel", async ({ rider_id, order_id, reason }) => {
+    try {
+      const result = await tripLifecycle.driverCancel(Number(order_id), Number(rider_id), reason);
+      socket.emit("order:driver_cancel:ack", {
+        Result: result.success,
+        msg: result.success ? "Ride cancelled and reassignment started" : result.msg,
+        refund_amount: result.refund_amount,
+        refund_status: result.refund_status,
+      });
+    } catch (err) {
+      logger.error("order:driver_cancel handler failed:", err);
+      socket.emit("order:driver_cancel:ack", { Result: false, msg: "Could not cancel ride" });
+    }
+  });
+
   socket.on("order:status_update", async ({ rider_id, order_id, status }) => {
     try {
       const result = await tripLifecycle.updateStatus(Number(order_id), Number(rider_id), status);

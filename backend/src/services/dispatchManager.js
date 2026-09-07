@@ -34,6 +34,16 @@ function requireIo() {
 }
 
 /**
+ * Publishes a customer lifecycle event without making tripLifecycle depend on
+ * the Socket.IO server singleton (which would create a circular require).
+ */
+function emitCustomerEvent(userId, event, payload) {
+  if (!ioRef || !userId) return false;
+  ioRef.to(`customer_${userId}`).emit(event, payload);
+  return true;
+}
+
+/**
  * Riders who explicitly rejected this order (tbl_order_requests status
  * "10"), in any tier — excluded for the rest of this order's cascade
  * regardless of which model they reject. A rider whose offer merely timed
@@ -899,6 +909,7 @@ function _resetForTests() {
 
 module.exports = {
   init,
+  emitCustomerEvent,
   startDispatch,
   stopDispatch,
   selectEligibleDrivers,
