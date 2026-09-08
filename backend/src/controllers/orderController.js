@@ -334,6 +334,17 @@ async function getOrderDetails(req, res) {
       return res.status(404).json({ ResponseCode: "404", Result: "false", ResponseMsg: "Order not found" });
     }
 
+    // This column exists in the production table but is not part of the
+    // generated Prisma model yet. Returning it is essential for the mobile
+    // app's REST recovery path after an assignment socket event.
+    const advanceRows = await prisma.$queryRaw`
+      SELECT advance_payment
+      FROM pkg_order
+      WHERE id = ${Number(order_id)}
+      LIMIT 1
+    `;
+    const advancePayment = advanceRows[0]?.advance_payment;
+
     let rider = null;
     if (order.rid && order.rid !== 0) {
       rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid } });
@@ -357,6 +368,9 @@ async function getOrderDetails(req, res) {
           Order_flow_id: order.order_status,
           otp: order.otp,
           total_Delivery_charge: String(order.total_dcharge),
+          advance_payment: advancePayment == null ? "0" : String(advancePayment),
+          payment_status: order.payment_status ?? 0,
+          advance_payment_timer: 120,
         },
       ],
     });

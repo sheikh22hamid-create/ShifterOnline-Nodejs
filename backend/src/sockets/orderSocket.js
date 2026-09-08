@@ -31,6 +31,14 @@ function registerOrderHandlers(io, socket) {
         otp: order.otp,
         order_status: order.order_status,
         o_status: order.o_status,
+        // Let the customer open advance payment from this event immediately,
+        // without waiting for a second REST request to finish.
+        Order_Status: order.o_status,
+        Order_flow_id: order.order_status,
+        total_Delivery_charge: String(order.total_dcharge),
+        advance_payment: order.advance_payment,
+        payment_status: order.payment_status ?? 0,
+        advance_payment_timer: 120,
       });
     } catch (err) {
       logger.error("order:accept handler failed:", err);
