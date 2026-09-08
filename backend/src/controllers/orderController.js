@@ -427,6 +427,13 @@ async function getOrderDetails(req, res) {
           customer_daddress: order.daddress,
           customer_pmobile: order.pmobile,
           customer_dmobile: order.dmobile,
+          // Pickup/drop coordinates for the live tracking map — not
+          // previously returned since nothing on this screen used to render
+          // a map at all.
+          plat: order.plat,
+          plong: order.plong,
+          dlat: order.dlat,
+          dlong: order.dlong,
           drop_mobile: order.dmobile,
         },
       ],
