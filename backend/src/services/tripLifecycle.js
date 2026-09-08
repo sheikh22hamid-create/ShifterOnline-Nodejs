@@ -181,12 +181,18 @@ async function acceptOrder(orderId, riderId) {
   await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)} WHERE id = ${orderId}`;
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
-  await pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
+  // FCM is only a background/reconnect fallback.  It must not block the
+  // accept response: orderSocket emits the live `order:assigned` event and
+  // the driver accept ACK only after acceptOrder resolves.  Waiting for a
+  // slow FCM request here made both apps sit on their old screens for ~10s.
+  void pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
     order_id: orderId,
     rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
     rider_phone: rider.fmobile,
     vehicle_no: rider.vehicle_no,
     otp: order.otp,
+  }).catch((err) => {
+    logger.error(`notifyCustomerOrderAssigned failed for order ${orderId}:`, err);
   });
 
   return {
