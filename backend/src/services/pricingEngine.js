@@ -264,21 +264,24 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
 }
 
 /**
- * radiusRangeKm/extraMileCharge are optional and, for THIS estimate screen,
- * almost never known: radiusRangeKm must be the winning driver's actual
- * pickup distance (see calculateRadiusCharge), which by definition isn't
- * known until dispatch actually finds and assigns a driver — order creation
- * and dispatch/accept each reprice off that real per-driver distance
+ * radiusRangeKm/extraMileCharge are optional. For the customer-facing
+ * fare-estimate screen (orderController.fareEstimate), radiusRangeKm is
+ * deliberately the customer's own chosen SEARCH radius — a disclosed
+ * "cost to search this far" preview, product decision, NOT a prediction
+ * of which driver will actually be dispatched.
+ *
+ * This must stay confined to that one preview call site. The winning
+ * driver's actual pickup distance isn't known until dispatch actually
+ * finds and assigns one, so every real-money path reprices off that real
+ * per-driver distance instead: order creation, dispatch, and accept
  * (orderController.createOrderCore, dispatchManager.runBatchInner,
- * tripLifecycle.acceptOrder), not off the customer's chosen search radius.
- * Passing the customer's search-radius setting here (or at those other call
- * sites) instead of a real distance was the root cause of a live bug:
- * widening the search radius alone inflated the quoted/dispatched fare for
- * the SAME nearby driver, even though their actual pickup distance never
- * changed. Leaving radiusRangeKm at its default (1 -> zero radius charge)
- * quotes the best-case "starting from" fare; a caller that already knows a
- * specific distance to bill (e.g. an admin preview for a known driver) can
- * still pass it through.
+ * tripLifecycle.acceptOrder) — none of which call getFareEstimate, and
+ * none of which should ever be fed the customer's search radius. Doing so
+ * there was the root cause of a live bug: widening the search radius alone
+ * inflated the DISPATCHED/BILLED fare for the SAME nearby driver, even
+ * though their actual pickup distance never changed. Leaving radiusRangeKm
+ * at its default (1 -> zero radius charge) quotes the best-case "starting
+ * from" fare when no radius is supplied.
  */
 async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0 }) {
   const [{ distanceKm, durationMin }, packages, discount] = await Promise.all([
@@ -297,6 +300,7 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     has_plan_discount: !!discount,
     plan_discount_percent: discount ? discount.percent : 0,
     plan_name: discount ? discount.planName : "",
+    radius_km: resolvedRadiusKm,
     packages: packages.map((pkg) => {
       const discountedPkg = applyPlanDiscount(pkg, discount);
       const isNight = isNightNow(discountedPkg);
@@ -307,6 +311,11 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         per_km_charge: Number(discountedPkg.per_km_charge),
         original_min_charge: Number(pkg.min_charge),
         original_per_km_charge: Number(pkg.per_km_charge),
+        // Search-radius preview charge (see getFareEstimate's radiusRangeKm
+        // doc above) — surfaced separately so the customer-facing breakdown
+        // can itemize it instead of leaving it as an unexplained gap between
+        // min_charge + per_km_charge*distance and estimated_fare.
+        radius_charge: roundMoney(calculateRadiusCharge(discountedPkg, resolvedRadiusKm)),
         estimated_fare: calculateFare(discountedPkg, distanceKm, isNight, resolvedRadiusKm, resolvedExtraMileCharge),
         is_night: isNight,
       };

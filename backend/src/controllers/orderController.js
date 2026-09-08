@@ -67,7 +67,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km } = req.body;
 
     if (
       !cat_id ||
@@ -78,15 +78,17 @@ async function fareEstimate(req, res) {
 
     const estimate = await pricingEngine.getFareEstimate({
       cat_id, plat, plong, dlat, dlong, uid,
-      // radius_km is the customer's chosen SEARCH radius, not a driver's
-      // actual pickup distance — the real radius charge depends on whichever
-      // driver ends up dispatched/accepting (see orderController.js's
-      // resolvedRadiusKm comment and pricingEngine.getFareEstimate), which
-      // isn't known yet here. Passing it through used to inflate this
-      // pre-booking quote every time the customer widened their search
-      // radius, even for the exact same nearby driver. extraMileCharge is
-      // unrelated (an explicit customer add-on, not distance-dependent) and
-      // still passed through as-is.
+      // Product decision: this pre-booking quote intentionally scales with
+      // the customer's own chosen SEARCH radius, as a disclosed "cost to
+      // search this far" preview — NOT a prediction of which driver will
+      // actually be dispatched. Real billing never uses this value: order
+      // creation, dispatch, and accept each reprice off whichever driver
+      // actually gets assigned (their real pickup distance), via
+      // orderController.createOrderCore / dispatchManager.runBatchInner /
+      // tripLifecycle.acceptOrder — none of which call getFareEstimate — so
+      // a wide search radius here can never overcharge the customer if a
+      // nearby driver ends up accepting.
+      radiusRangeKm: radius_km,
       extraMileCharge: extra_mile_charge,
     });
     return res.status(200).json(estimate);
