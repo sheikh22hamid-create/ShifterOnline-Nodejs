@@ -200,24 +200,19 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    // Popup shows THIS driver's own fare (tripTotal — includes their real
-    // radius charge for their own pickup distance, see runBatchInner's
-    // per-driver pricingEngine.priceForPackage call), not driverEarning
-    // (fare minus commission, still passed in and used only as a fallback
-    // when tripTotal is falsy) — admin's commission is deducted later at
-    // settlement (tripLifecycle.js's wallet-debit-on-cash-completion and the
-    // fresh pricingEngine.priceForPackageId() call in acceptOrder(), which is
-    // also where the order's own d_charge/total_dcharge is finalized off the
-    // ACCEPTING driver's real distance). Different eligible drivers on the
-    // same tier can therefore legitimately see different numbers here.
+    // Driver-facing earning must be the net amount after admin commission.
+    // `tripTotal` is the customer's gross fare and must never be exposed as
+    // `estimated_earning`/`driver_earning`, otherwise the popup and order
+    // details show the commission-inclusive amount even though settlement
+    // stores the driver's net earning.
     //
     // Both are already whole-rupee amounts — pricingEngine.calculateFare/
     // calculateDriverEarning round to the nearest rupee themselves, so the
     // same rounded number flows through unchanged from popup to whichever
     // driver's real payout gets settled.
-    estimated_earning: String(tripTotal || driverEarning),
-    driver_earning: String(tripTotal || driverEarning),
-    trip_total: String(tripTotal || driverEarning),
+    estimated_earning: String(driverEarning),
+    driver_earning: String(driverEarning),
+    trip_total: String(driverEarning),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
