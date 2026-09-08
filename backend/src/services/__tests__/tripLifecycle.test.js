@@ -8,7 +8,7 @@ jest.mock("../../config/db", () => ({
   tbl_user: { findUnique: jest.fn(), update: jest.fn() },
   tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn() },
   order_status_history: { create: jest.fn() },
-  pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
+  pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
 }));
 
 jest.mock("../dispatchManager", () => ({
@@ -23,12 +23,17 @@ jest.mock("../pricingEngine", () => ({
   getPackageById: jest.fn(),
   commissionAmount: jest.fn((dCharge, commissionPercent) => Math.round(((Number(dCharge) * Number(commissionPercent)) / 100) * 100) / 100),
 }));
-jest.mock("../pushNotifier", () => ({ notifyCustomerOrderAssigned: jest.fn().mockResolvedValue({ sent: true }) }));
+jest.mock("../pushNotifier", () => ({
+  notifyCustomerOrderAssigned: jest.fn().mockResolvedValue({ sent: true }),
+  notifyCustomerPickupTimeoutCancel: jest.fn().mockResolvedValue({ sent: true }),
+  notifyDriverPickupTimeoutCancel: jest.fn().mockResolvedValue({ sent: true }),
+}));
 
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pricingEngine = require("../pricingEngine");
+const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
 const { haversineKm } = require("../../utils/geoDistance");
 
@@ -505,5 +510,90 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     expect(result.success).toBe(true);
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer no-show", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 400,
+      uid: 9,
+      rid: 3,
+      delivery_type: 6,
+      o_status: "Pickup",
+    });
+    prisma.$executeRaw.mockResolvedValue(1); // conditional UPDATE affected the row
+    pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_customer: 30 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "customer_tok" });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: "rider_tok" });
+  });
+
+  it("cancels the order, charges the customer's cancellation fee, and notifies both sides", async () => {
+    await tripLifecycle.cancelOverduePickup(400, 3);
+
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+    expect(prisma.pkg_order_wait_timer.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 400, rid: 3 },
+      data: { pickup_wait_end: expect.any(Date) },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ user_id: 9, amount: 30, type: "debit", wallet_type: "user", order_id: 400 }),
+    });
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(9, "order:status_changed", expect.objectContaining({
+      order_id: 400,
+      o_status: "Cancelled",
+    }));
+    expect(pushNotifier.notifyCustomerPickupTimeoutCancel).toHaveBeenCalledWith("customer_tok", 400, 30);
+    expect(pushNotifier.notifyDriverPickupTimeoutCancel).toHaveBeenCalledWith("rider_tok", 400);
+  });
+
+  it("does nothing when the order already moved past Pickup (OTP verified or cancelled first — race with the sweep)", async () => {
+    prisma.$executeRaw.mockResolvedValue(0); // conditional UPDATE matched no row
+
+    await tripLifecycle.cancelOverduePickup(400, 3);
+
+    expect(prisma.pkg_order_wait_timer.updateMany).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(dispatchManager.emitCustomerEvent).not.toHaveBeenCalled();
+  });
+
+  it("skips the wallet debit when the package has no cancellation charge configured", async () => {
+    pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_customer: 0 });
+
+    await tripLifecycle.cancelOverduePickup(400, 3);
+
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(pushNotifier.notifyCustomerPickupTimeoutCancel).toHaveBeenCalledWith("customer_tok", 400, 0);
+  });
+
+  it("sweepOverduePickups only queries pickup_wait_start rows still unresolved (pickup_wait_end null) and cancels each", async () => {
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3 },
+      { order_id: 401, rid: 5 },
+    ]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 401, uid: 10, rid: 5, delivery_type: 6, o_status: "Pickup" });
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(prisma.pkg_order_wait_timer.findMany).toHaveBeenCalledWith({
+      where: { pickup_wait_start: { lte: expect.any(Date) }, pickup_wait_end: null },
+    });
+    // Both rows attempted — one cancellation call per overdue order.
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("sweepOverduePickups doesn't let one failing cancellation stop the rest", async () => {
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3 },
+      { order_id: 401, rid: 5 },
+    ]);
+    prisma.pkg_order.findUnique
+      .mockRejectedValueOnce(new Error("db hiccup"))
+      .mockResolvedValueOnce({ id: 401, uid: 10, rid: 5, delivery_type: 6, o_status: "Pickup" });
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // only the second order's own cancel ran
   });
 });

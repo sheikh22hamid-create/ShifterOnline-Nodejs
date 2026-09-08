@@ -63,9 +63,33 @@ async function notifyCustomerNoDriverFound(fcmToken, orderId) {
   );
 }
 
+/** See tripLifecycle.sweepOverduePickups — customer never handed over the OTP within 10 minutes of driver arrival. */
+async function notifyCustomerPickupTimeoutCancel(fcmToken, orderId, cancellationCharge) {
+  const chargeText = cancellationCharge > 0 ? ` A cancellation charge of ₹${cancellationCharge} has been applied.` : "";
+  return sendPushNotification(
+    fcmToken,
+    "Trip Cancelled",
+    `Your driver waited 10 minutes at pickup but didn't receive the OTP, so this trip was cancelled.${chargeText}`,
+    { type: "order_cancelled", order_id: String(orderId), reason: "pickup_otp_timeout" }
+  );
+}
+
+/** Driver-side counterpart of notifyCustomerPickupTimeoutCancel — same event, told from the driver's side. */
+async function notifyDriverPickupTimeoutCancel(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Trip Cancelled",
+    "Customer did not provide the OTP within 10 minutes. This trip has been cancelled and you're free for new orders.",
+    { type: "order_cancelled", order_id: String(orderId), reason: "pickup_otp_timeout" },
+    "order_dismiss_channel_v1"
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
   notifyCustomerOrderAssigned,
   notifyCustomerNoDriverFound,
+  notifyCustomerPickupTimeoutCancel,
+  notifyDriverPickupTimeoutCancel,
 };

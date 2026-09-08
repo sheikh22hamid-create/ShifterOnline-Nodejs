@@ -32,4 +32,13 @@ module.exports = {
 
   ADMIN_ROLES: ["superadmin", "admin", "executive"],
   BCRYPT_SALT_ROUNDS: 10,
+
+  // How long a driver waits at pickup for the customer to hand over the OTP
+  // before the trip auto-cancels as a customer no-show (see
+  // tripLifecycle.sweepOverduePickups) — anchored to pkg_order_wait_timer's
+  // own pickup_wait_start, the same column the post-trip waiting-charge
+  // calculation already reads, so this and that stay consistent with each
+  // other about what "arrived" means.
+  PICKUP_OTP_TIMEOUT_MS: 10 * 60 * 1000,
+  PICKUP_TIMEOUT_SWEEP_INTERVAL_MS: 60 * 1000,
 };

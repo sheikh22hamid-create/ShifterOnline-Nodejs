@@ -6,7 +6,7 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
-const { POPUP_TIMEOUT_MS } = require("../config/constants");
+const { POPUP_TIMEOUT_MS, PICKUP_OTP_TIMEOUT_MS } = require("../config/constants");
 
 function notifyAdminStatus(order) {
   try {
@@ -556,6 +556,103 @@ async function rateOrder(uid, orderId, riderId, star, comment) {
   return { success: true };
 }
 
+/**
+ * Auto-cancels a single order whose driver has been waiting at pickup past
+ * PICKUP_OTP_TIMEOUT_MS with no OTP handed over — the customer's own
+ * no-show. Charges the same cancellation fee an ordinary customer-initiated
+ * cancel-after-accept already charges (see customerCancel) — same economic
+ * outcome, the customer just never showed up instead of tapping Cancel. The
+ * driver keeps nothing extra here (matches that existing convention
+ * exactly) but is immediately eligible for new dispatch again, since a
+ * Cancelled order doesn't count against a rider in selectEligibleDrivers.
+ *
+ * Guarded by a conditional UPDATE (o_status = 'Pickup' only), so a driver
+ * who gets the OTP right as the sweep runs, or a customer/driver cancel
+ * that lands first, can never be double-cancelled or overwritten here.
+ */
+async function cancelOverduePickup(orderId, riderId) {
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  if (!order) return;
+
+  const affected = await prisma.$executeRaw`
+    UPDATE pkg_order
+    SET o_status = 'Cancelled', order_status = 4,
+        cancel_reason = 'Customer did not provide OTP within 10 minutes of driver arrival'
+    WHERE id = ${orderId} AND o_status = 'Pickup'
+  `;
+  if (affected === 0) return; // already resolved another way between the sweep's read and this write
+
+  await prisma.pkg_order_wait_timer.updateMany({
+    where: { order_id: orderId, rid: riderId },
+    data: { pickup_wait_end: new Date() },
+  });
+
+  const pkg = await pricingEngine.getPackageById(order.delivery_type);
+  const cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
+  if (cancellationCharge > 0) {
+    await prisma.tbl_wallet_history.create({
+      data: {
+        user_id: order.uid,
+        amount: cancellationCharge,
+        type: "debit",
+        remark: `No-show penalty — OTP not provided within 10 minutes (order #${orderId})`,
+        wallet_type: "user",
+        order_id: orderId,
+        created_at: new Date(),
+      },
+    });
+  }
+
+  dispatchManager.emitCustomerEvent(order.uid, "order:status_changed", {
+    order_id: orderId,
+    order_status: 4,
+    o_status: "Cancelled",
+  });
+
+  const [customer, rider] = await Promise.all([
+    prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } }),
+    riderId ? prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { fcm_token: true } }) : Promise.resolve(null),
+  ]);
+  await pushNotifier.notifyCustomerPickupTimeoutCancel(customer?.fcm_token, orderId, cancellationCharge);
+  if (rider) await pushNotifier.notifyDriverPickupTimeoutCancel(rider.fcm_token, orderId);
+
+  notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
+
+  logger.warn(
+    `tripLifecycle: order ${orderId} auto-cancelled — customer did not provide OTP within ${PICKUP_OTP_TIMEOUT_MS / 60000} minutes of driver arrival (rider ${riderId})`
+  );
+}
+
+/**
+ * Periodic sweep (see server.js), not a per-order in-memory timer — an
+ * in-memory setTimeout armed at "arrived" would silently vanish on every
+ * Render restart/redeploy and never fire, the same class of bug
+ * dispatchManager's own reconcileStaleOffersOnStartup exists to guard
+ * against. Anchored to pkg_order_wait_timer.pickup_wait_start (a DB
+ * timestamp), so a sweep that runs late — or resumes after a restart —
+ * still finds and cancels every order that's actually overdue.
+ */
+async function sweepOverduePickups() {
+  const cutoff = new Date(Date.now() - PICKUP_OTP_TIMEOUT_MS);
+  let overdue;
+  try {
+    overdue = await prisma.pkg_order_wait_timer.findMany({
+      where: { pickup_wait_start: { lte: cutoff }, pickup_wait_end: null },
+    });
+  } catch (err) {
+    logger.error("sweepOverduePickups: failed to query overdue wait timers:", err);
+    return;
+  }
+
+  for (const waitRow of overdue) {
+    try {
+      await cancelOverduePickup(waitRow.order_id, waitRow.rid);
+    } catch (err) {
+      logger.error(`sweepOverduePickups: failed cancelling order ${waitRow.order_id}:`, err);
+    }
+  }
+}
+
 module.exports = {
   acceptOrder,
   rejectOrder,
@@ -563,4 +660,6 @@ module.exports = {
   customerCancel,
   driverCancel,
   rateOrder,
+  cancelOverduePickup,
+  sweepOverduePickups,
 };
