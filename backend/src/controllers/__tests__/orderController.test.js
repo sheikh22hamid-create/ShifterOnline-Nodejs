@@ -1,7 +1,9 @@
 jest.mock("../../config/db", () => ({
   tbl_package: { findMany: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
-  pkg_order: { create: jest.fn() },
+  tbl_rider: { findUnique: jest.fn() },
+  pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn() },
+  $queryRaw: jest.fn(),
 }));
 jest.mock("../../services/pricingEngine", () => ({
   priceForPackage: jest.fn(),
@@ -15,7 +17,7 @@ const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
 const dispatchManager = require("../../services/dispatchManager");
 const { getRoadDistanceKm } = require("../../utils/geoDistance");
-const { createOrderCore, createOrder } = require("../orderController");
+const { createOrderCore, createOrder, getOrderDetails } = require("../orderController");
 
 describe("orderController.createOrderCore", () => {
   beforeEach(() => {
@@ -194,5 +196,103 @@ describe("orderController.createOrder (HTTP handler) — photos pass-through", (
       expect.objectContaining({ data: expect.objectContaining({ photos: "images/order_photos/abc123.jpg" }) })
     );
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("orderController.getOrderDetails", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const baseOrder = {
+    id: 501, rid: 9, o_status: "Processing", order_status: 1, otp: 1234,
+    total_dcharge: 150, d_charge: 130, payment_status: 0, is_rate: 0,
+    distance: 5.2, extra_mile_charge: 0, cou_amt: 0, package_weight: 2,
+    category: "Bike", booking_type: 1, schedule_date_time: null,
+    description: "Fragile", photos: '["images/order/1.jpg","images/order/2.jpg"]',
+    odate: new Date("2026-09-08T10:00:00.000Z"), ddate: null,
+    pick_type: "Home", drop_type: "Office", pick_name: "Amit", drop_name: "Priya",
+    paddress: "Pickup St", daddress: "Drop St", pmobile: "9990001111", dmobile: "9990002222",
+  };
+  const baseRider = {
+    id: 9, first_name: "Rahul", last_name: "Sharma", fmobile: "8880001111",
+    profile_picture: "images/rider/9.jpg", vehicle_no: "MP09AB1234", rlats: "22.7", rlongs: "75.8",
+  };
+
+  it("returns the full field set the app's TrackingWay screen renders, not just the minimal recovery set", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue(baseOrder);
+    prisma.$queryRaw.mockResolvedValue([{ advance_payment: 20 }]);
+    prisma.tbl_rider.findUnique.mockResolvedValue(baseRider);
+    prisma.pkg_order.aggregate.mockResolvedValue({ _avg: { cust_rate: 4.5 } });
+
+    const req = { body: { uid: 1, order_id: 501 } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await getOrderDetails(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const item = res.json.mock.calls[0][0].OrderProductList[0];
+    expect(item).toMatchObject({
+      order_id: 501,
+      rider_name: "Rahul Sharma",
+      rider_img: "images/rider/9.jpg",
+      rider_star: "4.5",
+      Order_Status: "Processing",
+      distance: 5.2,
+      package_weight: 2,
+      category: "Bike",
+      description: "Fragile",
+      photos: ["images/order/1.jpg", "images/order/2.jpg"],
+      order_deliver_date: null,
+      pick_name: "Amit",
+      drop_name: "Priya",
+      customer_paddress: "Pickup St",
+      customer_daddress: "Drop St",
+      customer_pmobile: "9990001111",
+      customer_dmobile: "9990002222",
+      advance_payment: "20",
+    });
+  });
+
+  // Prisma's enum client value for this status is the schema member name
+  // (On_Route), not the "On Route" (space) string the app's status
+  // switch/comparisons check for — must be translated, not passed through.
+  it('maps the On_Route enum value to "On Route" for the app\'s status comparisons', async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ ...baseOrder, o_status: "On_Route" });
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.tbl_rider.findUnique.mockResolvedValue(baseRider);
+    prisma.pkg_order.aggregate.mockResolvedValue({ _avg: { cust_rate: null } });
+
+    const req = { body: { uid: 1, order_id: 501 } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await getOrderDetails(req, res);
+
+    expect(res.json.mock.calls[0][0].OrderProductList[0].Order_Status).toBe("On Route");
+  });
+
+  it("falls back to comma-split parsing when photos isn't a JSON array string", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ ...baseOrder, photos: "images/order/1.jpg, images/order/2.jpg" });
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.tbl_rider.findUnique.mockResolvedValue(baseRider);
+    prisma.pkg_order.aggregate.mockResolvedValue({ _avg: { cust_rate: null } });
+
+    const req = { body: { uid: 1, order_id: 501 } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await getOrderDetails(req, res);
+
+    expect(res.json.mock.calls[0][0].OrderProductList[0].photos).toEqual([
+      "images/order/1.jpg", "images/order/2.jpg",
+    ]);
+  });
+
+  it("returns 404 when the order doesn't belong to this uid", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue(null);
+
+    const req = { body: { uid: 1, order_id: 999 } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await getOrderDetails(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 });

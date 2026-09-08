@@ -352,7 +352,35 @@ async function getOrderDetails(req, res) {
       rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid } });
     }
 
-    const o_status_map = { 0: "Pending", 1: "Processing", 2: "Pickup", 3: "On Route", 5: "Completed", 4: "Cancelled" };
+    // Customer-facing average, not this one order's own cust_rate (that's
+    // this order's own not-yet-submitted rating, always 0 at this point).
+    let riderStar = null;
+    if (rider) {
+      const ratingAgg = await prisma.pkg_order.aggregate({
+        where: { rid: rider.id, cust_rate: { gt: 0 } },
+        _avg: { cust_rate: true },
+      });
+      riderStar = ratingAgg._avg.cust_rate;
+    }
+
+    // The Prisma enum's JS member name (On_Route) differs from the space
+    // that every string comparison in the app (TrackingWay's status switch,
+    // "Completed"/"Cancelled" checks, etc.) expects.
+    const orderStatusMap = { On_Route: "On Route" };
+    const orderStatus = orderStatusMap[order.o_status] || order.o_status;
+
+    // pkg_order.photos is a single TEXT column holding either a JSON array
+    // or a comma-separated list of relative image paths (legacy PHP wrote
+    // it, format not enforced by the schema) — handle both so the app's
+    // `Config.imageURLPath + photos[i]` keeps working either way.
+    const parsePhotos = (raw) => {
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+      } catch (_) {}
+      return String(raw).split(",").map((s) => s.trim()).filter(Boolean);
+    };
 
     return res.status(200).json({
       ResponseCode: "200",
@@ -363,16 +391,43 @@ async function getOrderDetails(req, res) {
           rider_id: order.rid,
           rider_name: rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : null,
           rider_mobile: rider ? rider.fmobile : null,
+          rider_img: rider ? rider.profile_picture : null,
+          rider_star: riderStar == null ? null : Number(riderStar).toFixed(1),
           vehicle_no: rider ? rider.vehicle_no : null,
           rider_lats: rider ? rider.rlats : null,
           rider_longs: rider ? rider.rlongs : null,
-          Order_Status: order.o_status,
+          Order_Status: orderStatus,
           Order_flow_id: order.order_status,
           otp: order.otp,
           total_Delivery_charge: String(order.total_dcharge),
+          grand_total: String(order.total_dcharge),
+          Delivery_charge: String(order.d_charge),
           advance_payment: advancePayment == null ? "0" : String(advancePayment),
           payment_status: order.payment_status ?? 0,
           advance_payment_timer: 120,
+          is_rate: order.is_rate,
+          distance: order.distance,
+          extra_mile_charge: order.extra_mile_charge,
+          cou_amt: order.cou_amt,
+          package_weight: order.package_weight,
+          category: order.category,
+          booking_type: order.booking_type,
+          schedule_date_time: order.schedule_date_time,
+          description: order.description,
+          photos: parsePhotos(order.photos),
+          order_date: order.odate,
+          order_deliver_date: order.ddate,
+          pick_type: order.pick_type,
+          drop_type: order.drop_type,
+          pick_name: order.pick_name,
+          drop_name: order.drop_name,
+          customer_pname: order.pick_name,
+          customer_dname: order.drop_name,
+          customer_paddress: order.paddress,
+          customer_daddress: order.daddress,
+          customer_pmobile: order.pmobile,
+          customer_dmobile: order.dmobile,
+          drop_mobile: order.dmobile,
         },
       ],
     });
