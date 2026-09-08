@@ -442,7 +442,16 @@ async function driverCancel(orderId, riderId, reason) {
     const order = rows[0];
     if (!order) throw new Error("ORDER_NOT_FOUND");
     if (Number(order.rid) !== Number(riderId)) throw new Error("NOT_ASSIGNED_DRIVER");
-    if (["Completed", "Cancelled"].includes(order.o_status) || Number(order.order_status) >= 5) {
+
+    // Refunds are exclusively for an accepted driver cancellation.  Keep the
+    // eligibility check strict: a completed order must never be treated as a
+    // cancellable order just because a legacy status field is stale/malformed.
+    const normalizedStatus = String(order.o_status || "").trim().toLowerCase();
+    const isCompleted = normalizedStatus === "completed" || Number(order.order_status) === 5;
+    const isCancelled = normalizedStatus === "cancelled" || Number(order.order_status) === 4;
+    const isActiveTrip = [1, 2, 3].includes(Number(order.order_status)) &&
+      ["processing", "pickup", "on_route", "on route"].includes(normalizedStatus);
+    if (isCompleted || isCancelled || !isActiveTrip) {
       throw new Error("ORDER_NOT_CANCELLABLE");
     }
 

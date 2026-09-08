@@ -381,6 +381,20 @@ describe("tripLifecycle.driverCancel", () => {
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
+
+  it("never refunds an advance when the order is already completed", async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{
+      id: 297, uid: 7, rid: 11, order_status: 5, o_status: "Completed",
+      advance_payment: "250", payment_status: 1, razorpay_payment_id: "pay_123",
+    }]);
+
+    await expect(tripLifecycle.driverCancel(297, 11, "late cancel"))
+      .rejects.toThrow("ORDER_NOT_CANCELLABLE");
+
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("tripLifecycle.updateStatus('complete') — commission deduction", () => {
