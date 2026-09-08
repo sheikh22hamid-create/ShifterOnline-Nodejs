@@ -199,6 +199,27 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect([5, 6, 7, 8].every((id) => lockManager.isLocked(id))).toBe(true);
   });
 
+  // Regression: the driver app used to start a fresh popup_duration-second
+  // countdown from whenever the push/socket event happened to reach the
+  // device, which double-counted delivery latency already eaten into the
+  // server's own 15s window — a driver could tap Accept while their local
+  // timer still read a few seconds left, after the server's real deadline
+  // had already passed (see the expires_at doc comment in
+  // buildOrderRequestPayload). expires_at must be an absolute deadline the
+  // client can diff against its own clock instead.
+  it("stamps order:request with expires_at = armed time + POPUP_TIMEOUT_MS, not just a relative popup_duration", async () => {
+    const armedAt = Date.now();
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    const batch1Requests = emitted.filter((e) => e.event === "order:request");
+    expect(batch1Requests.length).toBeGreaterThan(0);
+    for (const request of batch1Requests) {
+      expect(request.payload.popup_duration).toBe(String(POPUP_TIMEOUT_MS / 1000));
+      expect(Number(request.payload.expires_at)).toBe(armedAt + POPUP_TIMEOUT_MS);
+    }
+  });
+
   it("pushes an FCM notification to each driver locked in a batch, alongside the socket emit", async () => {
     await dispatchManager.startDispatch(order);
     await flush();

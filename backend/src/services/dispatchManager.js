@@ -179,7 +179,7 @@ const STANDARD_MODEL_TITLES = {
   34: "Model 5",
 };
 
-function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, tripTotal, packageTitle) {
+function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, tripTotal, packageTitle, expiresAt) {
   const modelName = STANDARD_MODEL_TITLES[Number(packageId)] || packageTitle || `Model ${packageId}`;
   return {
     type: "order",
@@ -221,6 +221,17 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
+    // Absolute deadline (server epoch ms), armed off the same `armedAt` the
+    // lock/scheduleExpiry/acceptOrder freshness check all share — NOT a
+    // relative "popup_duration seconds from whenever this happens to reach
+    // the device". Push/socket delivery plus the driver app's own overlay
+    // launch time already eats into the 15s before this is ever shown, so a
+    // fresh popup_duration-second countdown starting only then overstates
+    // how long the server will actually still honor an accept (confirmed
+    // live: driver tapped Accept with ~5s left on their local timer, server
+    // rejected it as already expired). The driver app computes its own
+    // remaining time as expires_at - now instead of restarting the clock.
+    expires_at: String(expiresAt),
   };
 }
 
@@ -531,7 +542,8 @@ async function runBatchInner(orderId) {
             discount
           );
           const payload = buildOrderRequestPayload(
-            currentOrder, packageId, distanceKm.toFixed(1), driverEarning, fare, packageTitle
+            currentOrder, packageId, distanceKm.toFixed(1), driverEarning, fare, packageTitle,
+            armedAt + POPUP_TIMEOUT_MS
           );
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
