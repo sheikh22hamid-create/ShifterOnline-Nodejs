@@ -337,7 +337,16 @@ async function updateStatus(orderId, riderId, status) {
       });
     }
 
-    if (order.trans_id === "cash_payment" && Number(order.commission) > 0) {
+    // The customer app's own order-create call (select_vehicle.dart) stamps
+    // trans_id as "cash_<timestamp>" (legacy pickupdrop.dart used
+    // "cash_payment_<timestamp>") — never the literal "cash_payment" this
+    // check used to require exactly, so it never matched a single real cash
+    // order and commission was never actually clawed back from the driver's
+    // wallet for any of them. A driver who collects the full fare in cash
+    // must still have admin's commission debited here; a wallet/online
+    // payment already routes through the platform, so the driver only ever
+    // receives their net driverEarning directly and needs no such debit.
+    if ((order.trans_id || "").toLowerCase().startsWith("cash") && Number(order.commission) > 0) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money.

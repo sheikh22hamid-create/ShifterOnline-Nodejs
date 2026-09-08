@@ -438,6 +438,55 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
 
+  // Regression: select_vehicle.dart (the customer app's real order-create
+  // call) stamps trans_id as "cash_<timestamp>", never the literal
+  // "cash_payment" the check above used to require exactly — every real
+  // cash order silently skipped commission deduction entirely.
+  it("debits the driver's wallet for the app's real cash trans_id format (cash_<timestamp>), not just the literal string", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 300,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 5,
+      trans_id: "cash_1736345678901",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(300, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { decrement: 5 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ user_id: 1, amount: 5, order_id: 300 }) })
+    );
+  });
+
+  it("does not touch the wallet for a wallet-paid order even when commission > 0", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 301,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 5,
+      trans_id: "wallet_1736345678901",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(301, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
   it("does not touch the wallet for a cash order with commission = 0", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 299,
