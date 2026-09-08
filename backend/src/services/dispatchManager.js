@@ -179,7 +179,7 @@ const STANDARD_MODEL_TITLES = {
   34: "Model 5",
 };
 
-function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, tripTotal, packageTitle, expiresAt) {
+function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt) {
   const modelName = STANDARD_MODEL_TITLES[Number(packageId)] || packageTitle || `Model ${packageId}`;
   return {
     type: "order",
@@ -200,19 +200,19 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    // Driver-facing earning must be the net amount after admin commission.
-    // `tripTotal` is the customer's gross fare and must never be exposed as
-    // `estimated_earning`/`driver_earning`, otherwise the popup and order
-    // details show the commission-inclusive amount even though settlement
-    // stores the driver's net earning.
+    // Driver popup shows the full gross fare — the same number the customer
+    // is quoted — not a commission-deducted net earning. Admin's commission
+    // is clawed back separately after ride completion instead (cash orders:
+    // tripLifecycle's wallet debit at completion, net of any advance_payment
+    // already collected; non-cash orders: the driver is simply credited the
+    // net amount directly since the fare never touches their hands).
     //
-    // Both are already whole-rupee amounts — pricingEngine.calculateFare/
-    // calculateDriverEarning round to the nearest rupee themselves, so the
-    // same rounded number flows through unchanged from popup to whichever
-    // driver's real payout gets settled.
-    estimated_earning: String(driverEarning),
-    driver_earning: String(driverEarning),
-    trip_total: String(driverEarning),
+    // Already a whole-rupee amount — pricingEngine.calculateFare rounds to
+    // the nearest rupee itself, so the same number flows through unchanged
+    // from popup to whatever the order's own d_charge/total_dcharge ends up.
+    estimated_earning: String(tripTotal),
+    driver_earning: String(tripTotal),
+    trip_total: String(tripTotal),
     pickup_time: new Date().toISOString(),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
@@ -529,7 +529,7 @@ async function runBatchInner(orderId) {
           // edge of the customer's search radius (see priceForPackage's
           // radiusRangeKm and calculateRadiusCharge).
           const driverDistanceKm = Number(driver.distance_km);
-          const { fare, driverEarning } = pricingEngine.priceForPackage(
+          const { fare } = pricingEngine.priceForPackage(
             pkg,
             distanceKm,
             Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
@@ -537,7 +537,7 @@ async function runBatchInner(orderId) {
             discount
           );
           const payload = buildOrderRequestPayload(
-            currentOrder, packageId, distanceKm.toFixed(1), driverEarning, fare, packageTitle,
+            currentOrder, packageId, distanceKm.toFixed(1), fare, packageTitle,
             armedAt + POPUP_TIMEOUT_MS
           );
 

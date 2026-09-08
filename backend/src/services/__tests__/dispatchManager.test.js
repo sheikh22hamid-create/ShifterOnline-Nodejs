@@ -875,7 +875,11 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(requests.every((r) => r.payload.driver_earning === "97")).toBe(true);
   });
 
-  it("sends net driver earning after admin commission, not the gross fare", async () => {
+  it("sends the full gross fare to the driver popup, not the net earning after commission", async () => {
+    // Product decision: the driver popup must show the same number the
+    // customer is quoted (the full fare). Admin's commission is clawed back
+    // separately after ride completion (see tripLifecycle's cash-order
+    // wallet debit), not hidden from the driver up front at offer time.
     const tier0Pricing = {
       fare: 100, driverEarning: 80, commission: 20,
       pkg: { id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10, driver_per_percent: 20 },
@@ -888,8 +892,8 @@ describe("dispatchManager overlapping batch cascade", () => {
     const requests = emitted.filter((r) => r.event === "order:request");
     expect(requests).toHaveLength(4);
     expect(requests.every((r) => r.payload.estimated_earning === r.payload.driver_earning)).toBe(true);
-    expect(requests.every((r) => r.payload.estimated_earning === "80")).toBe(true);
-    expect(requests.every((r) => r.payload.trip_total === "80")).toBe(true);
+    expect(requests.every((r) => r.payload.estimated_earning === "100")).toBe(true);
+    expect(requests.every((r) => r.payload.trip_total === "100")).toBe(true);
   });
 
   it("prices each driver's popup off their OWN pickup distance, not one shared per-tier fare", async () => {

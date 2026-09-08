@@ -142,7 +142,7 @@ async function acceptOrder(orderId, riderId) {
     ? haversineKm(driverLat, driverLng, pickupLat, pickupLng)
     : 1; // unknown location -> same "zero radius charge" default used everywhere else
 
-  const { pkg, fare, driverEarning, commission, radiusCharge } = await pricingEngine.priceForPackageId(
+  const { pkg, fare, commission, radiusCharge } = await pricingEngine.priceForPackageId(
     acceptedPackageId,
     Number(order.distance) || 0,
     driverToPickupKm,
@@ -150,7 +150,12 @@ async function acceptOrder(orderId, riderId) {
     order.uid
   );
 
-  const priced = { d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: driverEarning, commission };
+  // driver_earning stores the full gross fare (same number the popup and
+  // customer estimate already show), not the commission-deducted net
+  // amount — commission is instead clawed back separately at ride
+  // completion (see updateStatus's cash-order wallet debit below), net of
+  // any advance_payment already collected.
+  const priced = { d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission };
   await prisma.pkg_order.update({ where: { id: orderId }, data: priced });
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
@@ -355,23 +360,38 @@ async function updateStatus(orderId, riderId, status) {
     if ((order.trans_id || "").toLowerCase().startsWith("cash") && Number(order.commission) > 0) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
-      // touching real money.
-      const commission = pricingEngine.commissionAmount(order.d_charge, order.commission);
-      await prisma.tbl_rider.update({
-        where: { id: riderId },
-        data: { wallet_balance: { decrement: commission } },
-      });
-      await prisma.tbl_wallet_history.create({
-        data: {
-          user_id: riderId,
-          amount: commission,
-          type: "debit",
-          remark: `Admin commission for order #${orderId}`,
-          wallet_type: "driver",
-          order_id: orderId,
-          created_at: now,
-        },
-      });
+      // touching real money. Computed off finalTotal (includes waiting
+      // charge), not the pre-waiting-charge d_charge, since that's the
+      // actual final fare the customer/driver settle on.
+      const commission = pricingEngine.commissionAmount(finalTotal, order.commission);
+
+      // The driver popup shows (and the driver collects in cash) the FULL
+      // fare — but the customer already paid advance_payment online at
+      // accept time (tripLifecycle.acceptOrder), which is money admin
+      // already holds. Only the commission still outstanding after that
+      // advance is clawed back from the driver's wallet here; debiting the
+      // full commission again would double-charge the driver for the
+      // portion admin already collected upfront.
+      const advancePaymentCollected = Number(order.advance_payment) || 0;
+      const netCommissionDue = Math.max(0, commission - advancePaymentCollected);
+
+      if (netCommissionDue > 0) {
+        await prisma.tbl_rider.update({
+          where: { id: riderId },
+          data: { wallet_balance: { decrement: netCommissionDue } },
+        });
+        await prisma.tbl_wallet_history.create({
+          data: {
+            user_id: riderId,
+            amount: netCommissionDue,
+            type: "debit",
+            remark: `Admin commission for order #${orderId}`,
+            wallet_type: "driver",
+            order_id: orderId,
+            created_at: now,
+          },
+        });
+      }
     }
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });

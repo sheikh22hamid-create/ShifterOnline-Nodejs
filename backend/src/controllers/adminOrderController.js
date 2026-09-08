@@ -190,14 +190,18 @@ async function assignRider(req, res) {
       return res.status(409).json({ success: false, message: "Order was just taken or cancelled — refresh and retry" });
     }
 
-    const { pkg, driverEarning, commission } = await pricingEngine.priceForPackageId(
+    // driver_earning stores the full gross fare, same as the dispatch
+    // popup and pkg_order.driver_earning set at self-accept (see
+    // tripLifecycle.acceptOrder) — the driver sees one consistent number
+    // throughout, not a commission-deducted figure only here.
+    const { pkg, fare, commission } = await pricingEngine.priceForPackageId(
       order.delivery_type,
       Number(order.distance) || 0,
       Number(order.radius_range) || 1,
       Number(order.extra_mile_charge) || 0,
       order.uid
     );
-    await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: driverEarning, commission } });
+    await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: fare, commission } });
 
     dispatchManager.stopDispatch(orderId, "accepted_by_other");
 
@@ -213,7 +217,7 @@ async function assignRider(req, res) {
         order_id: updatedOrder.id,
         pickup_address: updatedOrder.paddress,
         delivery_address: updatedOrder.daddress,
-        driver_earning: String(driverEarning),
+        driver_earning: String(fare),
       });
       io.to(`customer_${updatedOrder.uid}`).emit("order:assigned", {
         order_id: updatedOrder.id,

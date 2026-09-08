@@ -64,7 +64,10 @@ describe("tripLifecycle.acceptOrder", () => {
     const result = await tripLifecycle.acceptOrder(297, 1);
 
     expect(result.success).toBe(true);
-    expect(result.order.driver_earning).toBe(42);
+    // driver_earning stores the full gross fare, not the commission-deducted
+    // net driverEarning (24.78 = the mocked `fare`, not the mocked
+    // `driverEarning: 42` — see tripLifecycle.acceptOrder).
+    expect(result.order.driver_earning).toBe(24.78);
     expect(result.order.delivery_type).toBe(6);
     // radiusRangeKm=1 (fallback), not order.radius_range (3) — neither the
     // order nor the rider fixture here carries lat/lng, so the accepting
@@ -524,6 +527,84 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     expect(result.success).toBe(true);
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
+  // Driver popup now shows the full gross fare (see dispatchManager). The
+  // driver collects that full amount in cash, but customer already paid
+  // advance_payment online at accept time — that money is already in
+  // admin's hands, so only the REMAINING commission (commission minus what
+  // advance_payment already covered) is clawed back from the driver's
+  // wallet here, not the full commission again.
+  it("subtracts the already-collected advance_payment from the cash-order wallet debit", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 302,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 20, // commissionAmount(100, 20) = 20
+      advance_payment: 12,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(302, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { decrement: 8 } }, // 20 - 12
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ user_id: 1, amount: 8, order_id: 302 }) })
+    );
+  });
+
+  it("does not touch the wallet when advance_payment already covers the full commission", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 303,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 5, // commissionAmount(100, 5) = 5
+      advance_payment: 15,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const result = await tripLifecycle.updateStatus(303, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
+  it("computes commission off the final total (including waiting charge), not the pre-waiting-charge d_charge", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 304,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 10,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "60", // ₹60/min waiting rate
+    });
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 60 }); // 1 min -> +60
+
+    const result = await tripLifecycle.updateStatus(304, 1, "complete");
+
+    expect(result.success).toBe(true);
+    // finalTotal = 100 + 60 = 160; commissionAmount(160, 10) = 16
+    expect(pricingEngine.commissionAmount).toHaveBeenCalledWith(160, 10);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { decrement: 16 } },
+    });
   });
 });
 
