@@ -4,6 +4,10 @@ backend/logs/
 # Mobile app source trees — kept local only, not uploaded to GitHub.
 ShifterOnlineFinal/
 ShifterPartnerFinal/
+ShifterOnline/
+ShifterDriver/
+ShifterOnline.zip
+ShifterDriver.zip
 
 # Contains real production DB credentials pasted into the spec — never push.
 ADMIN_PANEL_NODEJS_SPECIFICATION.md

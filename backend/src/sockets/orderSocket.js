@@ -51,7 +51,7 @@ function registerOrderHandlers(io, socket) {
       const result = await tripLifecycle.driverCancel(Number(order_id), Number(rider_id), reason);
       socket.emit("order:driver_cancel:ack", {
         Result: result.success,
-        msg: result.success ? "Ride cancelled and reassignment started" : result.msg,
+        msg: result.success ? "Ride cancelled and advance refunded" : result.msg,
         refund_amount: result.refund_amount,
         refund_status: result.refund_status,
       });

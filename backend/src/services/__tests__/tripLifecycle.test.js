@@ -19,7 +19,7 @@ jest.mock("../dispatchManager", () => ({
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
-  priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5 }),
+  priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 0 }),
   getPackageById: jest.fn(),
   commissionAmount: jest.fn((dCharge, commissionPercent) => Math.round(((Number(dCharge) * Number(commissionPercent)) / 100) * 100) / 100),
 }));
@@ -61,7 +61,12 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(result.success).toBe(true);
     expect(result.order.driver_earning).toBe(42);
     expect(result.order.delivery_type).toBe(6);
-    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 3, 12, 9);
+    // radiusRangeKm=1 (fallback), not order.radius_range (3) — neither the
+    // order nor the rider fixture here carries lat/lng, so the accepting
+    // driver's real pickup distance can't be computed and the standard
+    // "unknown -> zero radius charge" default applies (same convention as
+    // pricingEngine.getFareEstimate/orderController.createOrderCore).
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 12, 9);
     expect(lockManager.releaseLock).toHaveBeenCalledWith(1);
     expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "accepted_by_other");
     expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 6, "accept");
@@ -136,11 +141,17 @@ describe("tripLifecycle.acceptOrder", () => {
     );
   });
 
-  it("sets advance_payment = (driver-to-pickup distance * the accepted package's pickup_per_km_charge) + its cancellation_charge_customer", async () => {
+  it("prices off the driver's real pickup distance and sets advance_payment = pricingEngine's own radiusCharge + cancellation_charge_customer", async () => {
+    // Merged design: advance_payment is no longer its own separate
+    // distance*rate calc (which — unlike the fare itself — used to bill the
+    // full distance with no free first km, a second divergent formula for
+    // the same concept). It now reuses the exact radiusCharge pricingEngine
+    // already computed for d_charge/total_dcharge off this SAME driver
+    // distance, so the two can never drift apart again.
     prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1);
     prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
     prisma.pkg_order.findUnique.mockResolvedValue({
-      id: 297, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12,
+      id: 297, uid: 9, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12,
       plat: "28.704059", plong: "77.102490",
     });
     prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak", rlats: "28.650000", rlongs: "77.080000" });
@@ -149,17 +160,20 @@ describe("tripLifecycle.acceptOrder", () => {
       fare: 24.78,
       driverEarning: 42,
       commission: 5,
+      radiusCharge: 40,
     });
 
     const expectedDistanceKm = haversineKm(28.65, 77.08, 28.704059, 77.10249);
-    const expectedAdvance = String(Math.round(expectedDistanceKm * 4 + 15));
 
     const result = await tripLifecycle.acceptOrder(297, 1);
 
-    expect(result.order.advance_payment).toBe(expectedAdvance);
+    // radiusRangeKm passed in is the driver's real pickup distance, not
+    // order.radius_range (3, the customer's search-radius setting).
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, expectedDistanceKm, 12, 9);
+    expect(result.order.advance_payment).toBe("55"); // 40 (radiusCharge) + 15 (cancellation_charge_customer)
   });
 
-  it("falls back to just cancellation_charge_customer (no distance term) when the rider has no known location", async () => {
+  it("falls back to just cancellation_charge_customer (zero radius charge) when the rider has no known location", async () => {
     prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1);
     prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
     prisma.pkg_order.findUnique.mockResolvedValue({
@@ -172,10 +186,13 @@ describe("tripLifecycle.acceptOrder", () => {
       fare: 24.78,
       driverEarning: 42,
       commission: 5,
+      radiusCharge: 0,
     });
 
     const result = await tripLifecycle.acceptOrder(297, 1);
 
+    // No known driver location -> radiusRangeKm falls back to 1 (free).
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 0, undefined);
     expect(result.order.advance_payment).toBe("15");
   });
 });
@@ -322,7 +339,7 @@ describe("tripLifecycle.driverCancel", () => {
     prisma.tbl_user.update.mockResolvedValue({ id: 7, wallet: 250 });
   });
 
-  it("credits a captured advance exactly once and starts reassignment", async () => {
+  it("credits a captured advance exactly once and terminally cancels the order", async () => {
     const result = await tripLifecycle.driverCancel(297, 11, "vehicle breakdown");
 
     expect(result).toMatchObject({ success: true, refund_amount: 250, refund_status: "refunded_to_wallet" });
@@ -339,9 +356,12 @@ describe("tripLifecycle.driverCancel", () => {
     expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:driver_cancelled", expect.objectContaining({
       order_id: 297,
       refund_status: "refunded_to_wallet",
-      searching_for_new_driver: true,
+      order_status: 4,
+      o_status: "Cancelled",
+      searching_for_new_driver: false,
     }));
-    expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 297, o_status: "Pending" }));
+    expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "driver_cancelled");
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
   });
 
   it("does not credit an uncaptured advance", async () => {

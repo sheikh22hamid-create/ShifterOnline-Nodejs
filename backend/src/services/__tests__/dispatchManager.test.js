@@ -6,9 +6,17 @@ jest.mock("../../config/db", () => ({
   tbl_user: { findUnique: jest.fn() },
 }));
 
-jest.mock("../pricingEngine", () => ({
-  priceForPackageId: jest.fn().mockResolvedValue({ fare: 100, driverEarning: 50 }),
-}));
+jest.mock("../pricingEngine", () => {
+  const actual = jest.requireActual("../pricingEngine");
+  return {
+    ...actual,
+    // Only the DB-touching lookups are mocked — priceForPackage itself stays
+    // real so tests exercise the actual radius-charge formula (see
+    // calculateRadiusCharge) against realistic per-driver distances.
+    getPackageById: jest.fn().mockResolvedValue({ id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 }),
+    getActivePlanDiscount: jest.fn().mockResolvedValue(null),
+  };
+});
 
 jest.mock("../pushNotifier");
 
@@ -24,8 +32,17 @@ const flush = async (ticks = 20) => {
   }
 };
 
-function makeRiderRow(riderId) {
-  return { rider_id: riderId, rlats: "28.70", rlongs: "77.10", fcm_token: "tok" };
+// `{ distanceKm } = {}` (not a plain 2nd positional param) is deliberate:
+// every existing call site uses `.map(makeRiderRow)`, which invokes the
+// callback with (item, index, array) — a plain 2nd param would silently take
+// the array INDEX as the distance for every row past the first. Destructuring
+// out of that index instead just finds no .distanceKm property and falls
+// back to the default, same as the array's default.
+function makeRiderRow(riderId, { distanceKm = 0.5 } = {}) {
+  // distance_km mirrors selectEligibleDrivers' own SQL haversine column —
+  // defaults inside the free 1km so existing tests that don't care about the
+  // exact fare keep seeing one uniform (zero-radius-charge) number.
+  return { rider_id: riderId, rlats: "28.70", rlongs: "77.10", fcm_token: "tok", distance_km: distanceKm };
 }
 
 describe("dispatchManager overlapping batch cascade", () => {
@@ -811,14 +828,14 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(dismissedRiderIds).toEqual([2, 3, 4]); // rider 1 (already accepted) gets no false timeout dismiss
   });
 
-  it("uses precomputed tier-0 pricing/order and skips the redundant re-fetch/update for tier 0 only", async () => {
+  it("uses precomputed tier-0 order/pkg/discount and skips the redundant re-fetch/update for tier 0 only", async () => {
     // createOrder already validated+priced this exact package/distance
     // moments earlier — startDispatch is handed that result directly.
-    // Whole-rupee values — pricingEngine.calculateFare/calculateDriverEarning
-    // round to the nearest rupee themselves now, so this precomputed result
-    // (already run through pricingEngine by createOrderCore before this) is
-    // realistically always whole numbers, not fractional.
-    const tier0Pricing = { fare: 25, driverEarning: 1, commission: 0 };
+    const tier0Pricing = {
+      fare: 25, driverEarning: 1, commission: 0,
+      pkg: { id: 6, min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 },
+      discount: null,
+    };
 
     await dispatchManager.startDispatch(order, tier0Pricing);
     await flush();
@@ -828,11 +845,45 @@ describe("dispatchManager overlapping batch cascade", () => {
 
     const requests = emitted.filter((e) => e.event === "order:request");
     expect(requests).toHaveLength(4);
-    // Uses the precomputed pricing, not pricingEngine.priceForPackageId's mocked.
-    // Popup shows the full fare (same as the customer's quote), not driverEarning
-    // (fare minus commission) — commission is deducted later at settlement.
-    expect(requests.every((r) => r.payload.driver_earning === "25")).toBe(true);
-    expect(requests.every((r) => r.payload.trip_total === "25")).toBe(true);
+    // Every rider here is at the default makeRiderRow distance (0.5km, within
+    // the free 1km) — so they all land on the SAME real per-driver fare
+    // (min_charge + per_km_charge*tripDistance, zero radius charge), not the
+    // raw precomputed.fare/driverEarning placeholder itself.
+    // dCharge = 20 + 5*15.4 = 97; no radius charge (0.5km < 1km free).
+    expect(requests.every((r) => r.payload.trip_total === "97")).toBe(true);
+    expect(requests.every((r) => r.payload.driver_earning === "97")).toBe(true);
+  });
+
+  it("prices each driver's popup off their OWN pickup distance, not one shared per-tier fare", async () => {
+    // Regression: widening the customer's search radius used to inflate the
+    // fare shown to every eligible driver, even ones sitting right at the
+    // pickup — the radius charge must depend on each driver's real distance,
+    // not the customer's chosen search radius setting.
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw
+      .mockResolvedValueOnce([makeRiderRow(1, { distanceKm: 0.5 }), makeRiderRow(2, { distanceKm: 5 })]) // tier 0: one nearby, one far
+      .mockResolvedValueOnce([]) // tier 0 sameOrderLockBlocking recheck
+      .mockResolvedValue([]); // everything after
+
+    const tier0Pricing = {
+      fare: 20, driverEarning: 20, commission: 0,
+      pkg: { id: 6, min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 },
+      discount: null,
+    };
+
+    await dispatchManager.startDispatch(order, tier0Pricing);
+    await flush();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    const nearby = requests.find((r) => r.room === "driver_1").payload;
+    const far = requests.find((r) => r.room === "driver_2").payload;
+
+    // Both: dCharge base = 20 + 5*15.4 = 97.
+    // Rider 1 @ 0.5km: within the free 1km -> no radius charge -> 97.
+    expect(nearby.trip_total).toBe("97");
+    // Rider 2 @ 5km: chargeable 4km * pickup_per_km_charge(10) = 40 -> 137.
+    expect(far.trip_total).toBe("137");
+    expect(far.trip_total).not.toBe(nearby.trip_total);
   });
 
   describe("tier cursor race regression (order #1481)", () => {

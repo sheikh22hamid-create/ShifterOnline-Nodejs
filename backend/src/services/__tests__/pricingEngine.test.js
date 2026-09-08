@@ -190,6 +190,24 @@ describe("getActivePlanDiscount", () => {
   });
 });
 
+describe("priceForPackage radiusCharge", () => {
+  // Exposes the exact ₹ amount billed for distance beyond the free 1km, so
+  // callers that separately charge for pickup distance (tripLifecycle's
+  // advance_payment) reuse this single number instead of recomputing their
+  // own (previously divergent) distance*rate formula.
+  const pkg = { min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 4 };
+
+  it("is 0 when the driver's distance is within the free 1km", () => {
+    const result = priceForPackage(pkg, 10, 1, 0, null);
+    expect(result.radiusCharge).toBe(0);
+  });
+
+  it("bills only the distance beyond the free 1km, at pickup_per_km_charge", () => {
+    const result = priceForPackage(pkg, 10, 3, 0, null); // chargeable 2km * 4 = 8
+    expect(result.radiusCharge).toBe(8);
+  });
+});
+
 describe("priceForPackage with an active plan discount", () => {
   it("bases fare/driverEarning on the discounted min_charge/per_km_charge, not the original rate", () => {
     // Live regression (order #1670): customer had an active "10 percent

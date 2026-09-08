@@ -249,13 +249,15 @@ socket.on("order:accept:ack", ({ Result, msg }) => { ... });
 ```
 `Result: false` means someone else got it first, or the popup already expired — show "order no longer available" and remove the popup. **This is first-come-first-served**, so always be ready for a rejection here even if the popup was still showing.
 
-**`order:reject`** — driver taps "Reject"/"Ignore" (or the countdown timer runs out client-side — but see the note below).
+**`order:reject`** — driver explicitly taps "Reject"/"Ignore" on a popup.
 ```js
 socket.emit("order:reject", { rider_id: 8, order_id: 1234 });
 ```
 No ack for this one. ⚠️ **Important**: rejecting one model of an order removes the driver from **every** model of that same order — the driver won't be offered Model 2/3/4/5 of that order either, even if those are enabled for them. This is intentional (a driver who says no once shouldn't be pestered again for the same delivery).
 
-Also important: **send `order:reject` if the socket reconnects and the popup is still showing but you're not sure if the reject went through** — don't just let it silently disappear. A reject that never reaches the server means the driver stays "locked" on that popup until it naturally expires (up to 15s), which can make Model 2+ wait longer than it should.
+Also important: **send `order:reject` if the socket reconnects and the popup is still showing but you're not sure if the reject went through** (i.e. the driver already tapped Reject) — don't just let it silently disappear. A reject that never reaches the server means the driver stays "locked" on that popup until it naturally expires (up to 15s), which can make Model 2+ wait longer than it should.
+
+**Do NOT send `order:reject` when the client-side countdown simply runs out with no tap.** Not responding in time should only cost the driver *this* model, not the whole order — the server has its own `popup_duration`-second timer and will mark the offer `timeout` (not a reject) on its own, which still lets this same driver be re-offered a later model of this order. When the local countdown finishes, just close the popup UI and send nothing; let the server's own timeout drive what happens next.
 
 **`order:status_update`** — driver moves the trip forward (arrived at pickup, picked up & en route, completed).
 ```js

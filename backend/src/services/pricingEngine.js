@@ -54,10 +54,14 @@ function isNightNow(pkg, now = new Date()) {
   return nowMinutes >= startMinutes || nowMinutes < endMinutes ? 1 : 0;
 }
 
-/** First 1km of the driver-search radius is free; radiusRangeKm beyond that
- * is billed at the package's own per-km rate (pickup_per_km_charge if set,
- * else per_km_charge) — matches the live PHP backend's pks_order.php exactly
- * (chargeable_radius = max(0, radius_range - 1); radius_charge = chargeable_radius * rate). */
+/** First 1km of `radiusRangeKm` — the actual driver-to-pickup distance for
+ * whichever driver this is priced for, NOT the customer's chosen search
+ * radius (see priceForPackage/getFareEstimate) — is free; the rest is billed
+ * at the package's own per-km rate (pickup_per_km_charge if set, else
+ * per_km_charge). Mirrors the live PHP backend's pks_order.php formula shape
+ * (chargeable_radius = max(0, radius_range - 1); radius_charge =
+ * chargeable_radius * rate), but fed a real per-driver distance instead of
+ * PHP's own search-radius value. */
 function calculateRadiusCharge(pkg, radiusRangeKm) {
   const perKmCharge = Number(pkg.per_km_charge) || 0;
   const pickupPerKm = Number(pkg.pickup_per_km_charge) > 0 ? Number(pkg.pickup_per_km_charge) : perKmCharge;
@@ -239,11 +243,12 @@ function commissionAmount(dCharge, commissionPercent) {
 function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, discount = null) {
   const discountedPkg = applyPlanDiscount(pkg, discount);
   const isNight = isNightNow(discountedPkg);
+  const radiusCharge = roundMoney(calculateRadiusCharge(discountedPkg, radiusRangeKm));
   const fare = calculateFare(discountedPkg, distanceKm, isNight, radiusRangeKm, extraMileCharge);
   const driverEarning = calculateDriverEarning(discountedPkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
-  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle };
+  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, radiusCharge };
 }
 
 /** `uid`, when given, looks up that customer's active plan discount (if any) and applies it — see priceForPackage. */
@@ -259,17 +264,21 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
 }
 
 /**
- * radiusRangeKm/extraMileCharge are optional — callers that don't know the
- * customer's search radius yet (the estimate screen runs before that's
- * picked) get the same zero-radius-charge number this always returned.
- * Callers that DO already know it (e.g. a caller previewing the exact order
- * about to be created) can pass it through so estimated_fare matches what
- * priceForPackage/priceForPackageId will actually charge at order creation
- * and dispatch — see calculateRadiusCharge: chargeableRadius = radiusRangeKm
- * - 1, so this was silently under-quoting by that amount on every model
- * whenever the real order ends up with a search radius wider than 1km
- * (confirmed live on order #1724: estimate omitted the radius charge that
- * the driver popup / actual order correctly included).
+ * radiusRangeKm/extraMileCharge are optional and, for THIS estimate screen,
+ * almost never known: radiusRangeKm must be the winning driver's actual
+ * pickup distance (see calculateRadiusCharge), which by definition isn't
+ * known until dispatch actually finds and assigns a driver — order creation
+ * and dispatch/accept each reprice off that real per-driver distance
+ * (orderController.createOrderCore, dispatchManager.runBatchInner,
+ * tripLifecycle.acceptOrder), not off the customer's chosen search radius.
+ * Passing the customer's search-radius setting here (or at those other call
+ * sites) instead of a real distance was the root cause of a live bug:
+ * widening the search radius alone inflated the quoted/dispatched fare for
+ * the SAME nearby driver, even though their actual pickup distance never
+ * changed. Leaving radiusRangeKm at its default (1 -> zero radius charge)
+ * quotes the best-case "starting from" fare; a caller that already knows a
+ * specific distance to bill (e.g. an admin preview for a known driver) can
+ * still pass it through.
  */
 async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0 }) {
   const [{ distanceKm, durationMin }, packages, discount] = await Promise.all([

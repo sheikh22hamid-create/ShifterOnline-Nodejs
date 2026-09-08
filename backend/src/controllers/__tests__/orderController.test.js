@@ -56,15 +56,21 @@ describe("orderController.createOrderCore", () => {
     photos: null,
   };
 
-  it("creates the order, prices it from the first tier package, and starts dispatch", async () => {
+  it("creates the order, prices it (no driver known yet, so zero radius charge) from the first tier package, and starts dispatch", async () => {
     const result = await createOrderCore(baseInput);
 
     expect(result.ok).toBe(true);
     expect(result.order.id).toBe(501);
-    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0, null);
+    // radiusRangeKm=1 (not the customer's 10km search radius, baseInput.radiusKm)
+    // — the real radius charge depends on whichever driver actually gets
+    // dispatched/accepts, which isn't known yet at order-creation time.
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 1, 0, null);
     expect(dispatchManager.startDispatch).toHaveBeenCalledWith(
       result.order,
-      { fare: 50, driverEarning: 40, commission: 5, packageTitle: null }
+      {
+        fare: 50, driverEarning: 40, commission: 5, packageTitle: null,
+        pkg: expect.objectContaining({ id: 6 }), discount: null,
+      }
     );
   });
 
@@ -107,7 +113,7 @@ describe("orderController.createOrderCore", () => {
     const result = await createOrderCore({ ...baseInput, deliveryTypeIds: [34, 6, 7] });
 
     expect(result.ok).toBe(true);
-    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 10, 0, null);
+    expect(pricingEngine.priceForPackage).toHaveBeenCalledWith(expect.objectContaining({ id: 6 }), 5, 1, 0, null);
     expect(prisma.pkg_order.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

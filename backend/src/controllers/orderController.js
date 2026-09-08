@@ -67,7 +67,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong, uid, radius_km, extra_mile_charge } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge } = req.body;
 
     if (
       !cat_id ||
@@ -78,11 +78,15 @@ async function fareEstimate(req, res) {
 
     const estimate = await pricingEngine.getFareEstimate({
       cat_id, plat, plong, dlat, dlong, uid,
-      // Both optional — omit them to get the old zero-radius-charge number
-      // (unchanged for callers that don't know the search radius yet), or
-      // pass the same radius_km/extra_mile_charge order/create will get to
-      // preview the exact fare that order will be priced/dispatched at.
-      radiusRangeKm: radius_km,
+      // radius_km is the customer's chosen SEARCH radius, not a driver's
+      // actual pickup distance — the real radius charge depends on whichever
+      // driver ends up dispatched/accepting (see orderController.js's
+      // resolvedRadiusKm comment and pricingEngine.getFareEstimate), which
+      // isn't known yet here. Passing it through used to inflate this
+      // pre-booking quote every time the customer widened their search
+      // radius, even for the exact same nearby driver. extraMileCharge is
+      // unrelated (an explicit customer add-on, not distance-dependent) and
+      // still passed through as-is.
       extraMileCharge: extra_mile_charge,
     });
     return res.status(200).json(estimate);
@@ -195,10 +199,16 @@ async function createOrderCore({
     100
   );
 
+  // radiusRangeKm=1 (zero radius charge), not resolvedRadiusKm — no driver
+  // is known yet at order-creation time, so there's no real pickup distance
+  // to bill. resolvedRadiusKm remains the search-filter radius stored below
+  // as radius_range; the actual radius charge is billed per-driver once
+  // dispatch/accept knows who's actually being offered/assigned this order
+  // (see dispatchManager.runBatchInner and tripLifecycle.acceptOrder).
   const { fare, driverEarning, commission } = pricingEngine.priceForPackage(
     firstPkg,
     distanceKm,
-    resolvedRadiusKm,
+    1,
     Number(extraMileCharge) || 0,
     planDiscount
   );
@@ -252,7 +262,13 @@ async function createOrderCore({
     },
   });
 
-  dispatchManager.startDispatch(order, { fare, driverEarning, commission, packageTitle: firstPkg?.title || null }).catch((err) =>
+  dispatchManager.startDispatch(order, {
+    fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
+    // Handed through so dispatchManager can price each eligible driver's own
+    // popup off their real pickup distance without a redundant re-fetch of
+    // the package row/discount it already looked up for tier 0 above.
+    pkg: firstPkg, discount: planDiscount,
+  }).catch((err) =>
     logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
   );
 
@@ -379,7 +395,7 @@ async function driverCancel(req, res) {
     const result = await tripLifecycle.driverCancel(Number(order_id), Number(rider_id), reason);
     return res.status(200).json({
       success: true,
-      message: "Ride cancelled and sent for reassignment",
+      message: "Ride cancelled and advance refunded where applicable",
       data: {
         order_id: Number(order_id),
         refund_amount: result.refund_amount,

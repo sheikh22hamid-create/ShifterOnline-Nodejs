@@ -120,11 +120,32 @@ async function acceptOrder(orderId, riderId) {
   // really succeed.
   await dispatchManager.recordModel1Outcome(riderId, acceptedPackageId, "accept");
 
-  const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
-  const { pkg, fare, driverEarning, commission } = await pricingEngine.priceForPackageId(
+  const [order, rider] = await Promise.all([
+    prisma.pkg_order.findUnique({ where: { id: orderId } }),
+    prisma.tbl_rider.findUnique({ where: { id: riderId } }),
+  ]);
+
+  // The accepting driver's real distance to pickup — NOT order.radius_range
+  // (the customer's chosen search-radius setting) — is what the fare's own
+  // radius charge must bill (see pricingEngine.calculateRadiusCharge):
+  // widening the search radius must never change what THIS driver is
+  // charged for, only how far dispatch was willing to look for one.
+  // `?? NaN` before Number(): a null/undefined rlats/rlongs (driver never
+  // sent a location fix) must fail the isFinite check below, not coerce to
+  // 0 — Number(null) is 0, not NaN, which would silently treat a
+  // location-less driver as sitting at (0,0) in the Atlantic.
+  const driverLat = Number(rider?.rlats ?? NaN);
+  const driverLng = Number(rider?.rlongs ?? NaN);
+  const pickupLat = Number(order.plat ?? NaN);
+  const pickupLng = Number(order.plong ?? NaN);
+  const driverToPickupKm = [driverLat, driverLng, pickupLat, pickupLng].every(Number.isFinite)
+    ? haversineKm(driverLat, driverLng, pickupLat, pickupLng)
+    : 1; // unknown location -> same "zero radius charge" default used everywhere else
+
+  const { pkg, fare, driverEarning, commission, radiusCharge } = await pricingEngine.priceForPackageId(
     acceptedPackageId,
     Number(order.distance) || 0,
-    Number(order.radius_range) || 1,
+    driverToPickupKm,
     Number(order.extra_mile_charge) || 0,
     order.uid
   );
@@ -137,38 +158,26 @@ async function acceptOrder(orderId, riderId) {
   lockManager.releaseLock(riderId);
   dispatchManager.stopDispatch(orderId, "accepted_by_other");
 
-  const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
   notifyAdminStatus(order);
 
-  // Advance payment: (driver's current distance to pickup * the accepted
-  // package's own pickup_per_km_charge) + admin's existing per-package
+  // Advance payment: the same radiusCharge just billed into d_charge/
+  // total_dcharge above (driver's real pickup distance beyond the free 1km,
+  // at the package's pickup_per_km_charge) + admin's existing per-package
   // cancellation charge (tbl_package.cancellation_charge_customer — already
   // the field customerCancel() above charges on a post-accept cancel).
   // Covers the driver's cost of travelling to pickup plus the cancellation
   // risk, charged upfront right when the driver accepts (both apps show a
-  // "waiting for advance payment" screen at this exact moment).
+  // "waiting for advance payment" screen at this exact moment). Reusing
+  // pricingEngine's own radiusCharge — instead of this file separately
+  // recomputing driverToPickupKm * pickupPerKm with no free-1km allowance —
+  // keeps this upfront charge and the fare's own radius component from ever
+  // drifting apart again.
   //
   // advance_payment isn't in Prisma's schema for pkg_order (confirmed via
   // introspection — the live column exists but was never modeled), so this
   // is a raw SQL write rather than a typed .update() call, same as the
   // accept transaction's own writes above.
-  // `?? NaN` before Number(): a null/undefined rlats/rlongs (driver never
-  // sent a location fix) must fail the isFinite check below, not coerce to
-  // 0 — Number(null) is 0, not NaN, which would silently treat a
-  // location-less driver as sitting at (0,0) in the Atlantic and charge a
-  // huge bogus distance-based advance payment instead of falling back to
-  // just the cancellation charge.
-  const driverLat = Number(rider?.rlats ?? NaN);
-  const driverLng = Number(rider?.rlongs ?? NaN);
-  const pickupLat = Number(order.plat ?? NaN);
-  const pickupLng = Number(order.plong ?? NaN);
-  let advancePayment = Number(pkg?.cancellation_charge_customer) || 0;
-  if ([driverLat, driverLng, pickupLat, pickupLng].every(Number.isFinite)) {
-    const driverToPickupKm = haversineKm(driverLat, driverLng, pickupLat, pickupLng);
-    const pickupPerKm = Number(pkg?.pickup_per_km_charge) || 0;
-    advancePayment += driverToPickupKm * pickupPerKm;
-  }
-  advancePayment = Math.round(advancePayment);
+  const advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
   await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)} WHERE id = ${orderId}`;
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
@@ -431,8 +440,8 @@ async function driverCancel(orderId, riderId, reason) {
     const affected = await tx.$executeRaw`
       UPDATE pkg_order
       SET rid = 0,
-          order_status = 0,
-          o_status = 'Pending',
+          order_status = 4,
+          o_status = 'Cancelled',
           accept_time = NULL,
           cancel_reason = ${`Driver cancelled: ${reason || "No reason provided"}`}
       WHERE id = ${orderId}
@@ -502,15 +511,19 @@ async function driverCancel(orderId, riderId, reason) {
 
   const freshOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (freshOrder) {
+    // Driver cancellation is terminal for this booking. Do not silently put
+    // a paid order back into dispatch/reassignment after refunding it.
+    dispatchManager.stopDispatch(orderId, "driver_cancelled");
     dispatchManager.emitCustomerEvent(freshOrder.uid, "order:driver_cancelled", {
       order_id: orderId,
       rider_id: riderId,
       refund_amount: refundAmount,
       refund_status: refundStatus,
       reason: reason || "Driver cancelled the ride",
-      searching_for_new_driver: true,
+      order_status: 4,
+      o_status: "Cancelled",
+      searching_for_new_driver: false,
     });
-    dispatchManager.startDispatch(freshOrder);
   }
 
   return {

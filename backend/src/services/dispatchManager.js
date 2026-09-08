@@ -200,20 +200,21 @@ function buildOrderRequestPayload(order, packageId, distanceKm, driverEarning, t
     delivery_longitude: String(order.dlong),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
-    // Popup shows the SAME fare the customer was quoted — admin's
-    // commission is deducted later (at settlement/ride-completion, see
-    // tripLifecycle.js's wallet-debit-on-cash-completion and the fresh
-    // pricingEngine.priceForPackageId() call in acceptOrder()), not shown
-    // upfront here. driverEarning (fare minus commission) is still computed
-    // and passed in by every caller for that later settlement math — this
-    // payload just no longer surfaces it as the popup's displayed number.
+    // Popup shows THIS driver's own fare (tripTotal — includes their real
+    // radius charge for their own pickup distance, see runBatchInner's
+    // per-driver pricingEngine.priceForPackage call), not driverEarning
+    // (fare minus commission, still passed in and used only as a fallback
+    // when tripTotal is falsy) — admin's commission is deducted later at
+    // settlement (tripLifecycle.js's wallet-debit-on-cash-completion and the
+    // fresh pricingEngine.priceForPackageId() call in acceptOrder(), which is
+    // also where the order's own d_charge/total_dcharge is finalized off the
+    // ACCEPTING driver's real distance). Different eligible drivers on the
+    // same tier can therefore legitimately see different numbers here.
     //
     // Both are already whole-rupee amounts — pricingEngine.calculateFare/
-    // calculateDriverEarning round to the nearest rupee themselves now, so
-    // the same rounded number the customer was quoted is what flows through
-    // order creation, this popup, and the driver's real payout at
-    // settlement, instead of getting rounded differently (or not at all) at
-    // each of those separate points.
+    // calculateDriverEarning round to the nearest rupee themselves, so the
+    // same rounded number flows through unchanged from popup to whichever
+    // driver's real payout gets settled.
     estimated_earning: String(tripTotal || driverEarning),
     driver_earning: String(tripTotal || driverEarning),
     trip_total: String(tripTotal || driverEarning),
@@ -354,30 +355,34 @@ async function runBatchInner(orderId) {
   const rejectedRiderIds = await getRejectedRiderIds(orderId);
 
   const distanceKm = Number(currentOrder.distance) || 0;
-  let fare, driverEarning, commission, packageTitle;
-  if (precomputed) {
-    ({ fare, driverEarning, commission } = precomputed);
-    // orderController.createOrderCore already had the package row in hand
-    // when it priced tier 0, and passes its title straight through here —
-    // no need for a second DB round-trip to re-fetch what we just fetched.
-    packageTitle = precomputed.packageTitle || `Model ${packageId}`;
+  const extraMileCharge = Number(currentOrder.extra_mile_charge) || 0;
+  let pkg, discount, packageTitle;
+  if (precomputed && precomputed.pkg) {
+    // orderController.createOrderCore already had the package row/discount in
+    // hand when it priced tier 0's placeholder fare — reuse them instead of a
+    // second DB round-trip for the same data. Its title is passed straight
+    // through here too.
+    pkg = precomputed.pkg;
+    discount = precomputed.discount || null;
+    packageTitle = precomputed.packageTitle || pkg?.title || `Model ${packageId}`;
   } else {
-    const priced = await pricingEngine.priceForPackageId(
-      packageId,
-      distanceKm,
-      Number(currentOrder.radius_range) || 1,
-      Number(currentOrder.extra_mile_charge) || 0,
-      currentOrder.uid
-    );
-    fare = priced.fare;
-    driverEarning = priced.driverEarning;
-    commission = priced.commission;
-    packageTitle = priced.packageTitle || priced.pkg?.title || `Model ${packageId}`;
+    [pkg, discount] = await Promise.all([
+      pricingEngine.getPackageById(packageId),
+      pricingEngine.getActivePlanDiscount(currentOrder.uid),
+    ]);
+    packageTitle = pkg?.title || `Model ${packageId}`;
 
+    // Placeholder d_charge/total_dcharge (radiusRangeKm=1 -> zero radius
+    // charge) so the order row has SOME fare before any driver-specific
+    // price exists — each driver's own popup below is priced off their real
+    // pickup distance instead, and the order's fare is finalized for real at
+    // accept time off the accepting driver's actual distance (see
+    // tripLifecycle.acceptOrder).
+    const basePriced = pricingEngine.priceForPackage(pkg, distanceKm, 1, extraMileCharge, discount);
     // Asynchronous update so we don't block driver dispatch by 400-800ms of remote DB latency
     prisma.pkg_order.update({
       where: { id: orderId },
-      data: { d_charge: fare, total_dcharge: fare, commission, delivery_type: Number(packageId) },
+      data: { d_charge: basePriced.fare, total_dcharge: basePriced.fare, commission: basePriced.commission, delivery_type: Number(packageId) },
     }).catch((err) => logger.error("dispatchManager: async pkg_order update failed:", err));
   }
 
@@ -497,14 +502,6 @@ async function runBatchInner(orderId) {
         offeredThisTier.add(Number(driver.rider_id));
       }
 
-      const payload = buildOrderRequestPayload(
-        currentOrder,
-        packageId,
-        distanceKm.toFixed(1),
-        driverEarning,
-        fare,
-        packageTitle
-      );
       await Promise.all(
         lockedThisRoundDrivers.map(async (driver) => {
           const riderId = Number(driver.rider_id);
@@ -518,6 +515,24 @@ async function runBatchInner(orderId) {
               lng: driver.rlongs ? String(driver.rlongs) : null,
             },
           });
+
+          // Each driver's own popup is priced off THEIR real pickup distance
+          // (selectEligibleDrivers' own haversine distance_km) — not one
+          // fare shared across the whole tier — so a driver already at the
+          // pickup isn't billed the same radius charge as one at the far
+          // edge of the customer's search radius (see priceForPackage's
+          // radiusRangeKm and calculateRadiusCharge).
+          const driverDistanceKm = Number(driver.distance_km);
+          const { fare, driverEarning } = pricingEngine.priceForPackage(
+            pkg,
+            distanceKm,
+            Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
+            extraMileCharge,
+            discount
+          );
+          const payload = buildOrderRequestPayload(
+            currentOrder, packageId, distanceKm.toFixed(1), driverEarning, fare, packageTitle
+          );
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
           await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);
