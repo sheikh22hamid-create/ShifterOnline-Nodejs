@@ -86,6 +86,37 @@ describe("trainingController.saveProgress", () => {
     expect(call.update).not.toHaveProperty("is_completed");
     expect(res.status).toHaveBeenCalledWith(200);
   });
+
+  it("does not downgrade watch_progress/is_completed for an already-completed driver's rewatch", async () => {
+    prisma.driver_training_progress.findUnique.mockResolvedValue({
+      rider_id: 5,
+      is_completed: true,
+      watch_progress: 100,
+      current_position_seconds: 300,
+      total_duration_seconds: 300,
+      completed_at: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    prisma.driver_training_progress.upsert.mockResolvedValue({});
+    const req = {
+      body: {
+        rider_id: "5",
+        video_id: "training_v1",
+        video_url: "https://cdn.example.com/video.mp4",
+        watch_progress: 12,
+        current_position_seconds: 30,
+        total_duration_seconds: 300,
+      },
+    };
+    const res = makeRes();
+    await saveProgress(req, res);
+
+    const call = prisma.driver_training_progress.upsert.mock.calls[0][0];
+    expect(call.where).toEqual({ rider_id: 5 });
+    expect(call.update).not.toHaveProperty("watch_progress");
+    expect(call.update).not.toHaveProperty("current_position_seconds");
+    expect(call.update).not.toHaveProperty("total_duration_seconds");
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
 });
 
 describe("trainingController.complete", () => {
@@ -99,6 +130,26 @@ describe("trainingController.complete", () => {
 
     const call = prisma.driver_training_progress.upsert.mock.calls[0][0];
     expect(call.where).toEqual({ rider_id: 5 });
+    expect(call.update).toMatchObject({ is_completed: true, watch_progress: 100 });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("preserves the original completed_at on a repeat call for an already-completed driver", async () => {
+    const originalCompletedAt = new Date("2026-08-01T00:00:00.000Z");
+    prisma.driver_training_progress.findUnique.mockResolvedValue({
+      rider_id: 5,
+      is_completed: true,
+      watch_progress: 100,
+      completed_at: originalCompletedAt,
+    });
+    prisma.driver_training_progress.upsert.mockResolvedValue({});
+    const req = { body: { rider_id: "5", video_id: "training_v1", video_url: "https://cdn.example.com/video.mp4" } };
+    const res = makeRes();
+    await complete(req, res);
+
+    const call = prisma.driver_training_progress.upsert.mock.calls[0][0];
+    expect(call.where).toEqual({ rider_id: 5 });
+    expect(call.update).not.toHaveProperty("completed_at");
     expect(call.update).toMatchObject({ is_completed: true, watch_progress: 100 });
     expect(res.status).toHaveBeenCalledWith(200);
   });

@@ -54,7 +54,12 @@ async function getStatus(req, res) {
   }
 }
 
-/** Periodic in-video sync — never sets is_completed (only complete() does that). */
+/**
+ * Periodic in-video sync — never sets is_completed (only complete() does that).
+ * A rewatch (replay mode) syncs progress the same way a first watch does, so an
+ * already-completed driver's permanent completion record must not be dragged back
+ * down to the rewatch's in-progress numbers — only video_url is refreshed for them.
+ */
 async function saveProgress(req, res) {
   try {
     const riderId = Number(req.body.rider_id);
@@ -67,6 +72,9 @@ async function saveProgress(req, res) {
     const currentPositionSeconds = Math.max(0, Number(req.body.current_position_seconds) || 0);
     const totalDurationSeconds = Math.max(0, Number(req.body.total_duration_seconds) || 0);
 
+    const existing = await prisma.driver_training_progress.findUnique({ where: { rider_id: riderId } });
+    const alreadyCompleted = !!(existing && existing.is_completed);
+
     await prisma.driver_training_progress.upsert({
       where: { rider_id: riderId },
       create: {
@@ -76,12 +84,14 @@ async function saveProgress(req, res) {
         current_position_seconds: currentPositionSeconds,
         total_duration_seconds: totalDurationSeconds,
       },
-      update: {
-        video_url: videoUrl,
-        watch_progress: watchProgress,
-        current_position_seconds: currentPositionSeconds,
-        total_duration_seconds: totalDurationSeconds,
-      },
+      update: alreadyCompleted
+        ? { video_url: videoUrl }
+        : {
+            video_url: videoUrl,
+            watch_progress: watchProgress,
+            current_position_seconds: currentPositionSeconds,
+            total_duration_seconds: totalDurationSeconds,
+          },
     });
 
     return res.status(200).json({ ResponseCode: "1", Result: "true", ResponseMsg: "Progress saved" });
@@ -91,7 +101,11 @@ async function saveProgress(req, res) {
   }
 }
 
-/** Fires only when playback genuinely reaches the end (see TrainingVideoActivity.handleTrainingCompleted). */
+/**
+ * Fires only when playback genuinely reaches the end (see TrainingVideoActivity.handleTrainingCompleted).
+ * A repeat call (rewatch, retry, duplicate STATE_ENDED event) must not re-stamp completed_at —
+ * that would destroy the original compliance-completion timestamp.
+ */
 async function complete(req, res) {
   try {
     const riderId = Number(req.body.rider_id);
@@ -100,6 +114,8 @@ async function complete(req, res) {
     }
 
     const videoUrl = req.body.video_url || "";
+    const existing = await prisma.driver_training_progress.findUnique({ where: { rider_id: riderId } });
+    const alreadyCompleted = !!(existing && existing.is_completed);
 
     await prisma.driver_training_progress.upsert({
       where: { rider_id: riderId },
@@ -110,12 +126,9 @@ async function complete(req, res) {
         is_completed: true,
         completed_at: new Date(),
       },
-      update: {
-        video_url: videoUrl,
-        watch_progress: 100,
-        is_completed: true,
-        completed_at: new Date(),
-      },
+      update: alreadyCompleted
+        ? { video_url: videoUrl, watch_progress: 100, is_completed: true }
+        : { video_url: videoUrl, watch_progress: 100, is_completed: true, completed_at: new Date() },
     });
 
     return res.status(200).json({ ResponseCode: "1", Result: "true", ResponseMsg: "Training marked complete" });
