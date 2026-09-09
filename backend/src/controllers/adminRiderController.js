@@ -103,13 +103,14 @@ async function getOne(req, res) {
       return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
     }
 
-    const [cityName, personalDoc, vehicleDetails, bankAccounts, emergencyContact, kit] = await Promise.all([
+    const [cityName, personalDoc, vehicleDetails, bankAccounts, emergencyContact, kit, trainingProgress] = await Promise.all([
       rider.city_id ? prisma.tbl_city.findUnique({ where: { id: rider.city_id }, select: { title: true } }) : null,
       prisma.tbl_personal_doc.findFirst({ where: { rider_id: id } }),
       prisma.tbl_vehicle_details.findMany({ where: { rider_id: id } }),
       prisma.tbl_bank_account.findMany({ where: { rider_id: id } }),
       prisma.tbl_eme_contact.findFirst({ where: { rider_id: id } }),
       prisma.tbl_kit.findFirst({ where: { rider_id: id } }),
+      prisma.driver_training_progress.findUnique({ where: { rider_id: id } }),
     ]);
 
     return res.status(200).json({
@@ -143,6 +144,9 @@ async function getOne(req, res) {
         bank_accounts: bankAccounts,
         emergency_contact: emergencyContact,
         kit,
+        training: trainingProgress
+          ? { percent: trainingProgress.watch_progress, is_completed: trainingProgress.is_completed, completed_at: trainingProgress.completed_at }
+          : null,
       },
     });
   } catch (err) {
