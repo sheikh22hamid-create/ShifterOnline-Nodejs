@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { UserRound, Bike, MapPin, Receipt, Pencil, Ban, UserPlus } from 'lucide-react'
+import { UserRound, Bike, MapPin, Receipt, Pencil, Ban, UserPlus, FileText } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -10,6 +10,7 @@ import { orderStatusTone, orderStatusLabel } from '../../utils/orderStatus'
 import { formatCurrency, formatDateTime } from '../../utils/format'
 import AssignDriverModal from './AssignDriverModal'
 import CancelOrderModal from './CancelOrderModal'
+import InvoiceModal from './InvoiceModal'
 
 const EDIT_FIELDS = [
   { key: 'paddress', label: 'Pickup address' },
@@ -44,6 +45,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
   const [saving, setSaving] = useState(false)
   const [assignOpen, setAssignOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [invoiceOpen, setInvoiceOpen] = useState(false)
 
   const fetcher = useCallback(() => api.get(`/orders/${orderId}`).then((res) => res.data.data), [orderId])
   const { data: order, loading, refetch } = useApiQuery(fetcher)
@@ -88,6 +90,15 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setInvoiceOpen(true)}
+                className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium"
+                style={{ borderColor: 'var(--border)', color: 'var(--brand)' }}
+              >
+                <FileText size={13} /> Invoice / Receipt
+              </button>
+
               {isUnassigned && (
                 <button
                   type="button"
@@ -250,6 +261,11 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
           refetch()
           onChanged?.()
         }}
+      />
+      <InvoiceModal
+        open={invoiceOpen}
+        orderId={orderId}
+        onClose={() => setInvoiceOpen(false)}
       />
     </>
   )

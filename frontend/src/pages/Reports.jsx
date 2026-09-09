@@ -41,6 +41,11 @@ export default function Reports() {
   const rangeFetcher = useCallback(() => api.post('/analytics/sales-report', { start_date: startDate, end_date: endDate }).then((res) => res.data), [startDate, endDate])
   const { data: range, loading: rangeLoading, error: rangeError } = useApiQuery(rangeFetcher)
 
+  // --- Month-over-month comparison ---
+  const [compareYear, setCompareYear] = useState(() => new Date().getFullYear())
+  const monthFetcher = useCallback(() => api.get('/analytics/month-comparison', { params: { year: compareYear } }).then((res) => res.data), [compareYear])
+  const { data: monthData, loading: monthLoading } = useApiQuery(monthFetcher)
+
   // --- City comparison (superadmin bonus) ---
   const cityFetcher = useCallback(() => (isSuperadmin ? api.get('/analytics/city-comparison').then((res) => res.data) : Promise.resolve(null)), [isSuperadmin])
   const { data: cityData } = useApiQuery(cityFetcher)
@@ -180,6 +185,68 @@ export default function Reports() {
               </table>
             </div>
           </>
+        )}
+      </section>
+
+      <section className="surface-card mt-4 rounded-xl p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+            Month-over-Month Growth & Comparison
+          </h3>
+          <select
+            value={compareYear}
+            onChange={(e) => setCompareYear(Number(e.target.value))}
+            className="rounded-lg border px-2.5 py-1.5 text-[12.5px] outline-none"
+            style={FIELD_STYLE}
+          >
+            {[2024, 2025, 2026, 2027].map((y) => (
+              <option key={y} value={y}>
+                Year {y}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {monthLoading ? (
+          <div className="h-24 animate-pulse rounded-lg" style={{ background: 'var(--border)' }} />
+        ) : (
+          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+            <table className="w-full text-left text-[12.5px]">
+              <thead>
+                <tr style={{ background: 'var(--bg)' }}>
+                  {['Month', 'GMV / Revenue', 'Completed Trips', 'Cancel Rate', 'New Signups'].map((h) => (
+                    <th key={h} className="px-3 py-2 text-[10.5px] font-semibold uppercase" style={{ color: 'var(--ink-faint)' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {(monthData?.data ?? []).map((m) => {
+                  const monthName = new Date(compareYear, m.month - 1, 1).toLocaleString('default', { month: 'long' })
+                  return (
+                    <tr key={m.month} className="transition-colors hover:bg-black/[0.02]">
+                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--ink)' }}>
+                        {monthName}
+                      </td>
+                      <td className="font-mono-data px-3 py-2 font-semibold" style={{ color: 'var(--brand)' }}>
+                        {formatCurrency(m.gmv)}
+                      </td>
+                      <td className="font-mono-data px-3 py-2" style={{ color: 'var(--ink)' }}>
+                        {m.completed_trips}
+                      </td>
+                      <td className="font-mono-data px-3 py-2" style={{ color: m.cancellation_rate > 15 ? 'var(--danger)' : 'var(--ink-muted)' }}>
+                        {m.cancellation_rate}%
+                      </td>
+                      <td className="font-mono-data px-3 py-2" style={{ color: 'var(--ink-muted)' }}>
+                        {m.new_customers}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
