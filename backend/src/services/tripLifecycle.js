@@ -394,7 +394,20 @@ async function updateStatus(orderId, riderId, status) {
       // advance is clawed back from the driver's wallet here; debiting the
       // full commission again would double-charge the driver for the
       // portion admin already collected upfront.
-      const advancePaymentCollected = Number(order.advance_payment) || 0;
+      //
+      // order.advance_payment is always undefined here — advance_payment
+      // isn't in Prisma's schema for pkg_order (same unmapped-column gap
+      // documented in acceptOrder and driverCancel above), and
+      // prisma.pkg_order.findUnique() silently drops any column it has no
+      // model field for, instead of erroring. `Number(undefined) || 0`
+      // then quietly evaluated to 0 every single time, so this "net of
+      // advance" claw-back has never actually netted anything since it was
+      // written — every cash order got the FULL commission debited
+      // (confirmed live on orders #1754 and #1763: ₹33 and ₹24 debited,
+      // not the ₹18.02 / ₹9 the advance should have left outstanding).
+      // Fetch it the same raw-SQL way driverCancel already does.
+      const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
+      const advancePaymentCollected = Number(advanceRow?.advance_payment) || 0;
       const netCommissionDue = Math.max(0, commission - advancePaymentCollected);
 
       if (netCommissionDue > 0) {
