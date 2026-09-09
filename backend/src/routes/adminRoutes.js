@@ -11,6 +11,7 @@ const customOrderController = require("../controllers/customOrderController");
 const marketingController = require("../controllers/marketingController");
 const referralController = require("../controllers/referralController");
 const settingsController = require("../controllers/settingsController");
+const adminTrainingController = require("../controllers/adminTrainingController");
 const analyticsController = require("../controllers/analyticsController");
 const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
@@ -120,6 +121,10 @@ router.get("/settings", auth, authorize("superadmin"), settingsController.getSet
 router.put("/settings", auth, authorize("superadmin"), settingsController.updateSettings);
 router.get("/settings/payment-gateways", auth, authorize("superadmin"), settingsController.listPaymentGateways);
 router.put("/settings/payment-gateways/:id", auth, authorize("superadmin"), settingsController.updatePaymentGateway);
+
+// --- Driver Training Progress -------------------------------------------------
+router.get("/training/progress", auth, authorize(...RIDER_ROLES), scopeFilter, adminTrainingController.listProgress);
+router.post("/training/progress/:riderId/reset", auth, authorize("superadmin", "admin"), adminTrainingController.resetProgress);
 
 // --- Business Intelligence & Analytics ---------------------------------------
 router.get("/analytics/overview", auth, authorize("superadmin", "admin"), scopeFilter, analyticsController.overview);
