@@ -1,6 +1,43 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 
+let tableEnsured = false;
+
+async function ensureTrainingTable() {
+  if (tableEnsured) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS driver_training_progress (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rider_id INT NOT NULL UNIQUE,
+        video_url TEXT NOT NULL,
+        current_position_seconds INT NOT NULL DEFAULT 0,
+        total_duration_seconds INT NOT NULL DEFAULT 0,
+        watch_progress FLOAT NOT NULL DEFAULT 0,
+        is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+        completed_at DATETIME NULL,
+        last_reminded_at DATETIME NULL,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    tableEnsured = true;
+  } catch (err) {
+    logger.warn("ensureTrainingTable warning:", err.message);
+  }
+}
+
+function riderName(r) {
+  return r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || `Driver #${r.id}`;
+}
+
+async function attachCityNames(rows) {
+  const cityIds = [...new Set(rows.map((r) => r.city_id).filter(Boolean))];
+  if (cityIds.length === 0) return rows.map((r) => ({ ...r, city_name: null }));
+  const cities = await prisma.tbl_city.findMany({ where: { id: { in: cityIds } }, select: { id: true, title: true } });
+  const nameById = Object.fromEntries(cities.map((c) => [c.id, c.title]));
+  return rows.map((r) => ({ ...r, city_name: r.city_id ? nameById[r.city_id] || null : null }));
+}
+
 async function getConfig(req, res) {
   try {
     const rows = await prisma.app_settings.findMany({
@@ -67,30 +104,28 @@ async function updateConfig(req, res) {
 
 async function listProgress(req, res) {
   try {
+    await ensureTrainingTable();
+
     const statusFilter = req.query.status; // 'completed', 'in_progress', 'not_started'
     const search = req.query.search?.trim();
 
-    // Query all drivers
-    const riders = await prisma.tbl_rider.findMany({
-      select: {
-        id: true,
-        title: true,
-        fmobile: true,
-        email: true,
-        status: true,
-        a_status: true,
-        city_name: true,
-        vehicle: true,
-        rdate: true,
-      },
+    // Query all drivers correctly
+    const rows = await prisma.tbl_rider.findMany({
       orderBy: { id: "desc" },
     });
 
-    // Query all training progress rows
-    const progressRows = await prisma.driver_training_progress.findMany();
+    const withCity = await attachCityNames(rows);
+
+    // Query all training progress rows safely
+    let progressRows = [];
+    try {
+      progressRows = await prisma.driver_training_progress.findMany();
+    } catch (err) {
+      logger.warn("driver_training_progress findMany warning:", err.message);
+    }
     const progressMap = new Map(progressRows.map((p) => [p.rider_id, p]));
 
-    let list = riders.map((r) => {
+    let list = withCity.map((r) => {
       const p = progressMap.get(r.id);
       let status = "not_started";
       let watchProgress = 0;
@@ -111,7 +146,7 @@ async function listProgress(req, res) {
 
       return {
         rider_id: r.id,
-        driver_name: r.title || `Driver #${r.id}`,
+        driver_name: riderName(r),
         mobile: r.fmobile,
         email: r.email,
         city: r.city_name,
@@ -156,6 +191,7 @@ async function listProgress(req, res) {
 
 async function resetProgress(req, res) {
   try {
+    await ensureTrainingTable();
     const rawRiderId = req.params.riderId;
     const riderId = parseInt(rawRiderId, 10);
 

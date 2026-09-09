@@ -2,6 +2,30 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 
 const TRAINING_VIDEO_ID = "training_v1";
+let tableEnsured = false;
+
+async function ensureTrainingTable() {
+  if (tableEnsured) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS driver_training_progress (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rider_id INT NOT NULL UNIQUE,
+        video_url TEXT NOT NULL,
+        current_position_seconds INT NOT NULL DEFAULT 0,
+        total_duration_seconds INT NOT NULL DEFAULT 0,
+        watch_progress FLOAT NOT NULL DEFAULT 0,
+        is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+        completed_at DATETIME NULL,
+        last_reminded_at DATETIME NULL,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    tableEnsured = true;
+  } catch (err) {
+    logger.warn("ensureTrainingTable warning:", err.message);
+  }
+}
 
 async function getTrainingConfig() {
   const rows = await prisma.app_settings.findMany({
@@ -20,6 +44,7 @@ async function getTrainingConfig() {
 
 async function getStatus(req, res) {
   try {
+    await ensureTrainingTable();
     const rawRiderId = req.body?.rider_id;
     const riderId = parseInt(rawRiderId, 10);
 
@@ -119,6 +144,7 @@ async function getStatus(req, res) {
 
 async function saveProgress(req, res) {
   try {
+    await ensureTrainingTable();
     const rawRiderId = req.body?.rider_id;
     const riderId = parseInt(rawRiderId, 10);
     const videoUrl = req.body?.video_url || "";
@@ -168,6 +194,7 @@ async function saveProgress(req, res) {
 
 async function complete(req, res) {
   try {
+    await ensureTrainingTable();
     const rawRiderId = req.body?.rider_id;
     const riderId = parseInt(rawRiderId, 10);
     const videoUrl = req.body?.video_url || "";
