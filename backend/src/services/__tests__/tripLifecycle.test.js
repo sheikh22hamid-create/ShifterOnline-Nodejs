@@ -440,6 +440,33 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     );
   });
 
+  it("stamps the commission-debit wallet entry with the IST-shifted clock, not a bare new Date()", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 5,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+
+    const beforeUtc = Date.now();
+    await tripLifecycle.updateStatus(297, 1, "complete");
+    const afterUtc = Date.now();
+
+    const [[{ data }]] = prisma.tbl_wallet_history.create.mock.calls;
+    const storedMs = data.created_at.getTime();
+    // istNow() = Date.now() + 330 minutes — same +5:30 shift acceptOrder
+    // already applies to accept_time, so wallet_history.php (which echoes
+    // this DATETIME as IST wall-clock text with no conversion) shows the
+    // real IST moment instead of landing ~5.5h behind (order #1754).
+    expect(storedMs).toBeGreaterThanOrEqual(beforeUtc + 330 * 60 * 1000);
+    expect(storedMs).toBeLessThanOrEqual(afterUtc + 330 * 60 * 1000 + 1000);
+  });
+
   it("does not touch the wallet for a non-cash order even when commission > 0", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 298,

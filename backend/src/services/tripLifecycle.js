@@ -20,6 +20,21 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
+// This DB's datetime columns are read elsewhere (the PHP admin/customer/
+// driver APIs, e.g. cust_api/wallet_history.php) as IST wall-clock text —
+// same convention already established for acceptOrder's accept_time write
+// above and pricingEngine.isNightNow. A wallet_history row written with a
+// plain `new Date()` stores true UTC digits (confirmed live: MySQL's NOW()
+// and UTC_TIMESTAMP() are identical on this DB), which wallet_history.php
+// then echoes straight from the DB with no timezone conversion — every
+// entry showed ~5.5 hours behind the real IST time it was created at
+// (order #1754: the commission-debit entry stamped 06:45 for what was
+// actually a midday IST event). Mirrors acceptOrder's own
+// `DATE_ADD(NOW(), INTERVAL 330 MINUTE)` shift, just from the JS side.
+function istNow() {
+  return new Date(Date.now() + 330 * 60 * 1000);
+}
+
 /**
  * Thrown inside acceptOrder's transaction to trigger a rollback and select
  * which clean failure message to return. Never escapes acceptOrder itself.
@@ -331,8 +346,15 @@ async function updateStatus(orderId, riderId, status) {
       data: {
         order_status: 5,
         o_status: "Completed",
-        ddate: now,
-        drop_time: now,
+        // Both are display-only (invoice_date / order_deliver_date to the
+        // apps), never read back by Node for a calculation — safe to store
+        // IST-shifted like the wallet_history writes above. `now` itself
+        // stays true UTC for the wait-timer arithmetic just below, which
+        // only ever diffs against other `now`-based values and must not be
+        // shifted (order #1754 also showed this exact bug on ddate/drop_time:
+        // 06:45:03 stored for what was really a ~12:14pm IST completion).
+        ddate: istNow(),
+        drop_time: istNow(),
         total_dcharge: finalTotal,
       },
     });
@@ -388,7 +410,7 @@ async function updateStatus(orderId, riderId, status) {
             remark: `Admin commission for order #${orderId}`,
             wallet_type: "driver",
             order_id: orderId,
-            created_at: now,
+            created_at: istNow(),
           },
         });
       }
@@ -434,7 +456,7 @@ async function customerCancel(uid, orderId, comment) {
           remark: `Cancellation charge for order #${orderId}`,
           wallet_type: "user",
           order_id: orderId,
-          created_at: new Date(),
+          created_at: istNow(),
         },
       });
     }
@@ -526,7 +548,7 @@ async function driverCancel(orderId, riderId, reason) {
             order_id: orderId,
             payment_id: refundKey,
             remark: `Advance payment refunded to wallet — driver cancelled order #${orderId}`,
-            created_at: new Date(),
+            created_at: istNow(),
           },
         });
         refundAmount = amount;
@@ -633,7 +655,7 @@ async function cancelOverduePickup(orderId, riderId) {
         remark: `No-show penalty — OTP not provided within 10 minutes (order #${orderId})`,
         wallet_type: "user",
         order_id: orderId,
-        created_at: new Date(),
+        created_at: istNow(),
       },
     });
   }
