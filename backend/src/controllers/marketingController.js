@@ -213,6 +213,18 @@ const PLAN_FIELDS = [
   "status",
 ];
 
+const PLAN_INT_FIELDS = new Set([
+  "validity_days",
+  "guaranteed_rides_per_month",
+  "referral_points_per_referral",
+  "number_of_referrals",
+  "free_cancellations",
+  "cancellation_window_min",
+  "compunsation_charge",
+  "activity_min_online_hours",
+  "sort_order",
+]);
+
 async function listPremiumPlans(req, res) {
   try {
     const rows = await prisma.tbl_premium_plan.findMany({ orderBy: [{ sort_order: "asc" }, { id: "asc" }] });
@@ -235,7 +247,13 @@ async function createPremiumPlan(req, res) {
     const data = { plan_name: b.plan_name, plan_for: b.plan_for, price: b.price, city: b.city || "all", guarantee_driver: Boolean(b.guarantee_driver) };
     for (const field of PLAN_FIELDS) {
       if (field === "plan_name" || field === "plan_for" || field === "price" || field === "city") continue;
-      if (b[field] !== undefined) data[field] = field === "expire_date" && b[field] ? new Date(b[field]) : b[field];
+      if (b[field] !== undefined) {
+        data[field] = field === "expire_date" && b[field]
+          ? new Date(b[field])
+          : PLAN_INT_FIELDS.has(field)
+            ? Number(b[field]) || 0
+            : b[field];
+      }
     }
 
     const created = await prisma.tbl_premium_plan.create({ data });
@@ -260,7 +278,13 @@ async function updatePremiumPlan(req, res) {
 
     const data = {};
     for (const field of [...PLAN_FIELDS, "guarantee_driver"]) {
-      if (b[field] !== undefined) data[field] = field === "expire_date" && b[field] ? new Date(b[field]) : b[field];
+      if (b[field] !== undefined) {
+        data[field] = field === "expire_date" && b[field]
+          ? new Date(b[field])
+          : PLAN_INT_FIELDS.has(field)
+            ? Number(b[field]) || 0
+            : b[field];
+      }
     }
 
     const updated = await prisma.tbl_premium_plan.update({ where: { id }, data });
