@@ -405,6 +405,10 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     jest.clearAllMocks();
     prisma.pkg_order_wait_timer.findUnique.mockResolvedValue(null);
     prisma.pkg_order.update.mockResolvedValue({});
+    // advance_payment isn't in Prisma's schema for pkg_order, so
+    // findUnique() never returns it — updateStatus fetches it separately
+    // via $queryRaw (see tripLifecycle.js). Default: no advance collected.
+    prisma.$queryRaw.mockResolvedValue([{ advance_payment: 0 }]);
   });
 
   it("debits the driver's wallet for a cash order with commission > 0, reading the payment method from trans_id", async () => {
@@ -570,11 +574,13 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       d_charge: 100,
       total_dcharge: 100,
       commission: 20, // commissionAmount(100, 20) = 20
-      advance_payment: 12,
       trans_id: "cash_payment",
       free_waiting_time: "0",
       wating_charge: "0",
     });
+    // Real Prisma silently drops advance_payment from findUnique() (unmapped
+    // column) — this is the raw-SQL fetch updateStatus falls back to.
+    prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 12 }]);
 
     const result = await tripLifecycle.updateStatus(302, 1, "complete");
 
@@ -596,11 +602,11 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       d_charge: 100,
       total_dcharge: 100,
       commission: 5, // commissionAmount(100, 5) = 5
-      advance_payment: 15,
       trans_id: "cash_payment",
       free_waiting_time: "0",
       wating_charge: "0",
     });
+    prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 15 }]);
 
     const result = await tripLifecycle.updateStatus(303, 1, "complete");
 
