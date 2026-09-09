@@ -16,6 +16,7 @@ const ScheduledOrders = lazy(() => import('./pages/ScheduledOrders'))
 const Drivers = lazy(() => import('./pages/Drivers'))
 const KycApproval = lazy(() => import('./pages/KycApproval'))
 const Customers = lazy(() => import('./pages/Customers'))
+const DriverTraining = lazy(() => import('./pages/DriverTraining'))
 const Payouts = lazy(() => import('./pages/Payouts'))
 const RateCards = lazy(() => import('./pages/RateCards'))
 const Categories = lazy(() => import('./pages/Categories'))
@@ -67,6 +68,7 @@ function App() {
             <Route path="/drivers" element={<Drivers />} />
             <Route path="/kyc" element={<KycApproval />} />
             <Route path="/customers" element={<Customers />} />
+            <Route path="/driver-training" element={<DriverTraining />} />
 
             {/* Fleet & Pricing */}
             <Route path="/rate-cards" element={<RateCards />} />
