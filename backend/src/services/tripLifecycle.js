@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const dispatchManager = require("./dispatchManager");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const driverPlanService = require("./driverPlanService");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
@@ -341,6 +342,15 @@ async function updateStatus(orderId, riderId, status) {
 
     const finalTotal = round2(Number(order.total_dcharge) + waitingCharge);
 
+    // A driver may hold multiple subscriptions. Select the single plan that
+    // produces the lowest deduction for this specific fare; benefits never
+    // stack and a worse plan can never reduce the normal rate-card earning.
+    const baseCommissionPercent = Number(order.commission) || 0;
+    const driverBenefit = await driverPlanService.resolveBestBenefit(riderId, finalTotal, baseCommissionPercent);
+    const effectiveCommissionPercent = driverBenefit && driverBenefit.benefit > 0
+      ? driverBenefit.commissionPercent
+      : baseCommissionPercent;
+
     await prisma.pkg_order.update({
       where: { id: orderId },
       data: {
@@ -356,6 +366,7 @@ async function updateStatus(orderId, riderId, status) {
         ddate: istNow(),
         drop_time: istNow(),
         total_dcharge: finalTotal,
+        commission: effectiveCommissionPercent,
       },
     });
 
@@ -389,13 +400,14 @@ async function updateStatus(orderId, riderId, status) {
     // must still have admin's commission debited here; a wallet/online
     // payment already routes through the platform, so the driver only ever
     // receives their net driverEarning directly and needs no such debit.
-    if ((order.trans_id || "").toLowerCase().startsWith("cash") && Number(order.commission) > 0) {
+    if ((order.trans_id || "").toLowerCase().startsWith("cash") && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money. Computed off finalTotal (includes waiting
       // charge), not the pre-waiting-charge d_charge, since that's the
       // actual final fare the customer/driver settle on.
-      const commission = pricingEngine.commissionAmount(finalTotal, order.commission);
+      const commission = pricingEngine.commissionAmount(finalTotal, effectiveCommissionPercent);
+      const perTripCharge = driverBenefit?.benefit > 0 ? driverBenefit.perTripCharge : 0;
 
       // The driver popup shows (and the driver collects in cash) the FULL
       // fare — but the customer already paid advance_payment online at
@@ -404,7 +416,7 @@ async function updateStatus(orderId, riderId, status) {
       // advance is clawed back from the driver's wallet here; debiting the
       // full commission again would double-charge the driver for the
       // portion admin already collected upfront.
-      const netCommissionDue = Math.max(0, commission - advancePaymentCollected);
+      const netCommissionDue = Math.max(0, commission + perTripCharge - advancePaymentCollected);
 
       if (netCommissionDue > 0) {
         await prisma.tbl_rider.update({
@@ -416,7 +428,7 @@ async function updateStatus(orderId, riderId, status) {
             user_id: riderId,
             amount: netCommissionDue,
             type: "debit",
-            remark: `Admin commission for order #${orderId}`,
+            remark: `Admin deduction for order #${orderId}${driverBenefit?.benefit > 0 ? ` (${driverBenefit.plan.plan_name})` : ""}`,
             wallet_type: "driver",
             order_id: orderId,
             created_at: istNow(),
@@ -462,6 +474,16 @@ async function updateStatus(orderId, riderId, status) {
           },
         });
       }
+    }
+
+    if (driverBenefit?.benefit > 0) {
+      await driverPlanService.recordCompletedRide({
+        driverId: riderId,
+        orderId,
+        fare: finalTotal,
+        baseCommissionPercent,
+        chosenBenefit: driverBenefit,
+      });
     }
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });

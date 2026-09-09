@@ -169,18 +169,45 @@ async function deleteCoupon(req, res) {
 const PLAN_FIELDS = [
   "plan_name",
   "plan_for",
+  "plan_type",
   "validity_days",
+  "expire_date",
   "price",
   "description",
   "plan_image",
   "is_popular",
   "discount_enabled",
   "discount_percent",
+  "discount_max_cap",
   "incentive_enabled",
   "incentive_type",
   "incentive_value",
   "wallet_bonus_enabled",
   "wallet_bonus_amount",
+  "commission_percent",
+  "per_trip_charge",
+  "initial_price",
+  "subscription_price",
+  "guaranteed_enabled",
+  "guaranteed_rides_per_month",
+  "guaranteed_compensation",
+  "rides_carry_forward",
+  "priority_enabled",
+  "referral_enabled",
+  "referral_points_per_referral",
+  "referral_point_value",
+  "number_of_referrals",
+  "auto_activate_on_referrals",
+  "lifetime_enabled",
+  "activity_protection_enabled",
+  "activity_protection_3m",
+  "activity_protection_6m",
+  "activity_protection_12m",
+  "activity_min_online_hours",
+  "activity_require_model1",
+  "activity_require_zero_requests",
+  "activity_require_service_zone",
+  "activity_request_ends_day",
   "city",
   "sort_order",
   "status",
@@ -208,7 +235,7 @@ async function createPremiumPlan(req, res) {
     const data = { plan_name: b.plan_name, plan_for: b.plan_for, price: b.price, city: b.city || "all", guarantee_driver: Boolean(b.guarantee_driver) };
     for (const field of PLAN_FIELDS) {
       if (field === "plan_name" || field === "plan_for" || field === "price" || field === "city") continue;
-      if (b[field] !== undefined) data[field] = b[field];
+      if (b[field] !== undefined) data[field] = field === "expire_date" && b[field] ? new Date(b[field]) : b[field];
     }
 
     const created = await prisma.tbl_premium_plan.create({ data });
@@ -233,7 +260,7 @@ async function updatePremiumPlan(req, res) {
 
     const data = {};
     for (const field of [...PLAN_FIELDS, "guarantee_driver"]) {
-      if (b[field] !== undefined) data[field] = b[field];
+      if (b[field] !== undefined) data[field] = field === "expire_date" && b[field] ? new Date(b[field]) : b[field];
     }
 
     const updated = await prisma.tbl_premium_plan.update({ where: { id }, data });

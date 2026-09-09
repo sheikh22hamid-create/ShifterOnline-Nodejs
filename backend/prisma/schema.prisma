@@ -675,6 +675,16 @@ model tbl_premium_plan {
   priority_support             Boolean                                  @default(false)
   special_offers               Boolean                                  @default(false)
   compunsation_charge          Int?
+  lifetime_enabled             Boolean                                  @default(false)
+  activity_protection_enabled  Boolean                                  @default(false)
+  activity_protection_3m       Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  activity_protection_6m       Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  activity_protection_12m      Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  activity_min_online_hours    Int                                      @default(10)
+  activity_require_model1      Boolean                                  @default(false)
+  activity_require_zero_requests Boolean                                @default(false)
+  activity_require_service_zone Boolean                                 @default(false)
+  activity_request_ends_day    Boolean                                  @default(true)
 
   @@index([expire_date], map: "idx_expire_date")
   @@index([plan_for], map: "idx_plan_for")

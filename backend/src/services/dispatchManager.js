@@ -92,7 +92,17 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
           SIN(RADIANS(${Number(order.plat)})) * SIN(RADIANS(CAST(r.rlats AS DECIMAL(10,6))))
         ))
       )) AS distance_km,
-      CASE WHEN fav.id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite
+      CASE WHEN fav.id IS NOT NULL THEN 1 ELSE 0 END AS is_favorite,
+      CASE WHEN EXISTS (
+        SELECT 1
+        FROM tbl_user_plan_subscription ups
+        JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
+        WHERE ups.user_id = r.id
+          AND ups.plan_for = 'DRIVER'
+          AND ups.status = 'active'
+          AND CURDATE() BETWEEN ups.start_date AND ups.end_date
+          AND pp.priority_enabled = 1
+      ) THEN 1 ELSE 0 END AS has_priority_plan
     FROM tbl_rider r
     LEFT JOIN tbl_rider_delivery_type dt
       ON dt.rider_id = r.id AND dt.delivery_type = ${String(packageId)}
@@ -116,7 +126,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         OR r.model1_suspended_until <= NOW()
       )
     HAVING distance_km <= ${radiusKm}
-    ORDER BY is_favorite DESC, distance_km ASC
+    ORDER BY has_priority_plan DESC, is_favorite DESC, distance_km ASC
     LIMIT ${limit}
   `;
 
