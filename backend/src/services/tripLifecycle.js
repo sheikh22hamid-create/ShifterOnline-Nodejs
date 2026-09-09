@@ -370,6 +370,16 @@ async function updateStatus(orderId, riderId, status) {
       });
     }
 
+    // advance_payment isn't in Prisma's schema for pkg_order (same unmapped-
+    // column gap documented in acceptOrder/driverCancel) — prisma.pkg_order.
+    // findUnique() silently drops any column it has no model field for
+    // instead of erroring, so `order.advance_payment` is always undefined.
+    // Fetched once here via the same raw-SQL pattern driverCancel already
+    // uses, and reused below both to net the driver's commission claw-back
+    // and to clear the customer's advance-payment wallet credit.
+    const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
+    const advancePaymentCollected = Number(advanceRow?.advance_payment) || 0;
+
     // The customer app's own order-create call (select_vehicle.dart) stamps
     // trans_id as "cash_<timestamp>" (legacy pickupdrop.dart used
     // "cash_payment_<timestamp>") — never the literal "cash_payment" this
@@ -394,20 +404,6 @@ async function updateStatus(orderId, riderId, status) {
       // advance is clawed back from the driver's wallet here; debiting the
       // full commission again would double-charge the driver for the
       // portion admin already collected upfront.
-      //
-      // order.advance_payment is always undefined here — advance_payment
-      // isn't in Prisma's schema for pkg_order (same unmapped-column gap
-      // documented in acceptOrder and driverCancel above), and
-      // prisma.pkg_order.findUnique() silently drops any column it has no
-      // model field for, instead of erroring. `Number(undefined) || 0`
-      // then quietly evaluated to 0 every single time, so this "net of
-      // advance" claw-back has never actually netted anything since it was
-      // written — every cash order got the FULL commission debited
-      // (confirmed live on orders #1754 and #1763: ₹33 and ₹24 debited,
-      // not the ₹18.02 / ₹9 the advance should have left outstanding).
-      // Fetch it the same raw-SQL way driverCancel already does.
-      const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
-      const advancePaymentCollected = Number(advanceRow?.advance_payment) || 0;
       const netCommissionDue = Math.max(0, commission - advancePaymentCollected);
 
       if (netCommissionDue > 0) {
@@ -423,6 +419,45 @@ async function updateStatus(orderId, riderId, status) {
             remark: `Admin commission for order #${orderId}`,
             wallet_type: "driver",
             order_id: orderId,
+            created_at: istNow(),
+          },
+        });
+      }
+    }
+
+    // cust_api/advanced_payment.php credits this exact amount straight into
+    // the customer's wallet the moment they pay it (accept time) — a plain
+    // credit with nothing anywhere that ever spends it back down. The
+    // driver already collects less cash by the same amount (cash_to_collect
+    // = fare - advance_payment), so left alone this was a silent top-up:
+    // the customer kept the full advance as free wallet balance on every
+    // completed ride (confirmed live: a test customer's wallet grew ₹15 per
+    // trip, unspent, across dozens of orders). Debit it back out now that
+    // the trip — and the advance that went toward it — is actually done, so
+    // a completed ride's net wallet effect is zero. Applies to every
+    // completed order, not just cash ones — advance_payment is charged at
+    // accept time regardless of the final settlement method. Guarded by a
+    // unique payment_id key (same idempotency pattern as driverCancel's
+    // refund) so a retried 'complete' call can never double-debit.
+    if (advancePaymentCollected > 0 && Number(order.payment_status) === 1) {
+      const applyKey = `advance_apply:${orderId}`;
+      const alreadyApplied = await prisma.tbl_wallet_history.findFirst({
+        where: { payment_id: applyKey, type: "debit", wallet_type: "user" },
+      });
+      if (!alreadyApplied) {
+        await prisma.tbl_user.update({
+          where: { id: order.uid },
+          data: { wallet: { decrement: advancePaymentCollected } },
+        });
+        await prisma.tbl_wallet_history.create({
+          data: {
+            user_id: order.uid,
+            amount: advancePaymentCollected,
+            type: "debit",
+            remark: `Advance payment applied to completed order #${orderId}`,
+            wallet_type: "user",
+            order_id: orderId,
+            payment_id: applyKey,
             created_at: istNow(),
           },
         });
