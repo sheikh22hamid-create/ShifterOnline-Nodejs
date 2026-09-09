@@ -85,6 +85,16 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId) {
   );
 }
 
+/** See trainingReminder.sweepIncompleteTraining — nudges a driver who hasn't finished mandatory training. */
+async function notifyDriverTrainingIncomplete(fcmToken) {
+  return sendPushNotification(
+    fcmToken,
+    "Complete Your Training",
+    "Finish your mandatory training video to start accepting orders and earning.",
+    { type: "training_reminder" }
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
@@ -92,4 +102,5 @@ module.exports = {
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,
   notifyDriverPickupTimeoutCancel,
+  notifyDriverTrainingIncomplete,
 };

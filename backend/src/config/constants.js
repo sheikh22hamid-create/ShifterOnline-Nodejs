@@ -41,4 +41,10 @@ module.exports = {
   // other about what "arrived" means.
   PICKUP_OTP_TIMEOUT_MS: 10 * 60 * 1000,
   PICKUP_TIMEOUT_SWEEP_INTERVAL_MS: 60 * 1000,
+
+  // Training reminder sweep — how often the sweep runs vs. how long it
+  // waits before re-reminding the same driver. A 1h sweep interval with a
+  // 24h cooldown means each incomplete driver gets at most one push a day.
+  TRAINING_REMINDER_SWEEP_INTERVAL_MS: 60 * 60 * 1000,
+  TRAINING_REMINDER_COOLDOWN_MS: 24 * 60 * 60 * 1000,
 };
