@@ -1,5 +1,6 @@
 const express = require("express");
 const riderController = require("../controllers/riderController");
+const trainingController = require("../controllers/trainingController");
 
 const router = express.Router();
 
@@ -9,5 +10,9 @@ router.post("/delivery-type", riderController.setDeliveryType);
 router.post("/status", riderController.setStatus);
 router.post("/location", riderController.updateLocation);
 router.post("/isolate-test-drivers", riderController.isolateTestDrivers);
+
+router.post("/training/status", trainingController.getStatus);
+router.post("/training/progress", trainingController.saveProgress);
+router.post("/training/complete", trainingController.complete);
 
 module.exports = router;
