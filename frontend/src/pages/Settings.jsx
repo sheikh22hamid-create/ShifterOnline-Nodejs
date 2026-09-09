@@ -40,6 +40,10 @@ function Toggle({ label, checked, onChange }) {
 
 const SETTING_FIELDS = ['currency', 'd_title', 'd_s_title', 'timezone', 'service_charge', 'rider_commission', 'admin_earning', 'driver_pay', 'drive_cancellation', 'user_cancellation', 'reject_timer', 'refer_amount', 'refer_join_amount']
 
+// Flags with dedicated UI elsewhere on this page — excluded from the generic
+// "Feature flags" fallback below so they aren't rendered twice.
+const DEDICATED_FLAG_KEYS = ['training_video_url', 'training_video_title']
+
 function PaymentGateways() {
   const fetcher = useCallback(() => api.get('/settings/payment-gateways').then((res) => res.data.data), [])
   const { data: gateways, loading } = useApiQuery(fetcher)
@@ -210,18 +214,20 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
-        {Object.keys(flags).length > 0 && (
+        {Object.entries(flags).filter(([key]) => !DEDICATED_FLAG_KEYS.includes(key)).length > 0 && (
           <section className="surface-card rounded-xl p-4">
             <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
               Feature flags
             </h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {Object.entries(flags).map(([key, value]) => (
-                <div key={key}>
-                  <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
-                  <Input id={`flag-${key}`} value={value} onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))} />
-                </div>
-              ))}
+              {Object.entries(flags)
+                .filter(([key]) => !DEDICATED_FLAG_KEYS.includes(key))
+                .map(([key, value]) => (
+                  <div key={key}>
+                    <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
+                    <Input id={`flag-${key}`} value={value} onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))} />
+                  </div>
+                ))}
             </div>
           </section>
         )}
