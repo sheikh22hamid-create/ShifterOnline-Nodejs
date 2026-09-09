@@ -8,6 +8,8 @@ ShifterOnline/
 ShifterDriver/
 ShifterOnline.zip
 ShifterDriver.zip
+*.apk
+*.aab
 
 # Contains real production DB credentials pasted into the spec — never push.
 ADMIN_PANEL_NODEJS_SPECIFICATION.md

@@ -23,6 +23,7 @@ import {
   CreditCard,
   UserCog,
   Settings,
+  GraduationCap,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -44,6 +45,7 @@ export const NAV_GROUPS = [
       { to: '/orders', label: 'Live Orders', icon: Package, roles: ALL_STAFF, built: true },
       { to: '/orders/scheduled', label: 'Scheduled Orders', icon: CalendarClock, roles: ALL_STAFF, built: true },
       { to: '/drivers', label: 'Drivers Fleet', icon: Users, roles: ALL_STAFF, built: true },
+      { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },
       { to: '/kyc', label: 'KYC Approval Dock', icon: ShieldCheck, roles: ALL_STAFF, built: true },
       { to: '/customers', label: 'Customers', icon: UserCircle, roles: ALL_STAFF, built: true },
     ],

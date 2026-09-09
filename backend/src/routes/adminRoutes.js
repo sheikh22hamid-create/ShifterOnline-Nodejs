@@ -15,6 +15,7 @@ const analyticsController = require("../controllers/analyticsController");
 const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
 const questionController = require("../controllers/questionController");
+const adminTrainingController = require("../controllers/adminTrainingController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -62,6 +63,12 @@ router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRid
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);
 router.patch("/riders/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleStatus);
 router.delete("/riders/:id", auth, authorize("superadmin"), adminRiderController.remove);
+
+// --- Driver Training Video & Progress ---------------------------------------
+router.get("/training/config", auth, adminTrainingController.getConfig);
+router.put("/training/config", auth, authorize("superadmin", "admin"), adminTrainingController.updateConfig);
+router.get("/training/progress", auth, authorize(...RIDER_ROLES), adminTrainingController.listProgress);
+router.post("/training/progress/:riderId/reset", auth, authorize("superadmin", "admin"), adminTrainingController.resetProgress);
 
 // --- Orders & Live Dispatch Intervention ------------------------------------
 // NOTE: /orders/scheduled must be registered before /orders/:id, or Express

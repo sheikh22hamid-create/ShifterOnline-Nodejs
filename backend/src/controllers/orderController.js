@@ -142,7 +142,7 @@ async function createOrderCore({
   uid, category, deliveryTypeIds, bookingType, plat, plong, paddress, pickName, pmobile, pickType,
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
-  cityId, photos, distance, totalDcharge, dCharge,
+  cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
 }) {
   if (
     !uid ||
@@ -221,6 +221,7 @@ async function createOrderCore({
   const finalDCharge = (Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare;
 
   const parsedWeight = parseFloat(String(packageWeight));
+  const finalScheduleDateTime = (scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null;
 
   const order = await prisma.pkg_order.create({
     data: {
@@ -255,6 +256,7 @@ async function createOrderCore({
       radius_range: Math.round(resolvedRadiusKm),
       radius_charge: 0,
       booking_type: Number(bookingType) || 1,
+      schedule_date_time: finalScheduleDateTime,
       city_id: resolvedCityId,
       delivery_type: firstTierPackageId,
       allowed_delivery_types: JSON.stringify(orderedPackageIds),
@@ -289,6 +291,7 @@ async function createOrder(req, res) {
       uid, category, delivery_type, booking_type, plat, plong, paddress, pick_name, pmobile, pick_type,
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
+      schedule_date_time, scheduleDateTime,
     } = req.body;
 
     const result = await createOrderCore({
@@ -297,6 +300,7 @@ async function createOrder(req, res) {
       dmobile, dropType: drop_type, packageWeight: package_weight, packageCost: package_cost, description,
       pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
       couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
+      scheduleDateTime: schedule_date_time || scheduleDateTime || null,
     });
 
     if (!result.ok && result.code === "VALIDATION") {

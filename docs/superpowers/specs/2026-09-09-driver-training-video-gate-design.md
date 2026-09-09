@@ -124,13 +124,19 @@ cron tick).
   `app_settings` for the video link/title and the driver's
   `driver_training_progress` row (creates none if missing — absence
   means 0%, not completed). Response shape matches
-  `TrainingData.java`'s existing `@SerializedName`s exactly:
-  `Result`, `ResponseMsg`, `training_required` (0 if no video URL
-  configured, else 1), `video_id` (constant `"training_v1"`, matching
-  the app's default), `video_title`, `video_url`, `watch_progress`,
-  `current_position_seconds`, `total_duration_seconds`, `is_completed`,
-  `completed_at`. Matching this shape means **zero changes** to
-  `TrainingVideoActivity`'s JSON handling.
+  `TrainingData.java`'s existing `@SerializedName`s **exactly** (this
+  client model is PHP-CI-era: `Result`/`ResponseMsg` are JSON
+  *strings*, not booleans, and completion is read from a
+  `training_status` *string* field, not a boolean — `isCompleted()`
+  literally does `"COMPLETED".equalsIgnoreCase(trainingStatus)`):
+  `Result` (`"true"`/`"false"` as a string), `ResponseMsg`,
+  `training_required` (0 if no video URL configured, else 1),
+  `training_status` (`"NOT_STARTED"` | `"IN_PROGRESS"` | `"COMPLETED"`),
+  `video_id` (constant `"training_v1"`, matching the app's default),
+  `video_title`, `video_url`, `watch_progress`,
+  `current_position_seconds`, `total_duration_seconds`, `completed_at`.
+  Matching this shape means **zero changes** to `TrainingVideoActivity`'s
+  JSON handling.
 - `POST /api/rider/training/progress` — body `{ rider_id, video_id,
   video_url, watch_progress, current_position_seconds,
   total_duration_seconds }`. Upserts `driver_training_progress`. Never

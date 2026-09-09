@@ -106,6 +106,19 @@ model driver_activity {
   @@ignore
 }
 
+model driver_training_progress {
+  id                        Int       @id @default(autoincrement())
+  rider_id                  Int       @unique
+  video_url                 String    @db.Text
+  current_position_seconds  Int       @default(0)
+  total_duration_seconds    Int       @default(0)
+  watch_progress            Float     @default(0)
+  is_completed              Boolean   @default(false)
+  completed_at              DateTime? @db.DateTime(0)
+  last_reminded_at          DateTime? @db.DateTime(0)
+  updated_at                DateTime  @default(now()) @updatedAt
+}
+
 model driver_withdraw_requests {
   id         Int                              @id @default(autoincrement())
   rider_id   Int?

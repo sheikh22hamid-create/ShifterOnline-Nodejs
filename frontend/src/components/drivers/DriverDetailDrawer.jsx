@@ -148,6 +148,64 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
             </section>
 
             <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                  Training Video Status
+                </h3>
+                {rider.training?.is_completed ? (
+                  <Badge tone="success">Completed (100%)</Badge>
+                ) : rider.training?.watch_progress > 0 ? (
+                  <Badge tone="warning">In Progress ({Math.round(rider.training.watch_progress)}%)</Badge>
+                ) : (
+                  <Badge tone="neutral">Not Started (0%)</Badge>
+                )}
+              </div>
+              <div className="surface-card space-y-2 rounded-xl p-3.5 text-[12.5px]">
+                <div className="flex justify-between">
+                  <span style={{ color: 'var(--ink-muted)' }}>Watch progress</span>
+                  <span className="font-mono-data">{Math.round(rider.training?.watch_progress || 0)}%</span>
+                </div>
+                {rider.training?.completed_at && (
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--ink-muted)' }}>Completed at</span>
+                    <span>{formatDateTime(rider.training.completed_at)}</span>
+                  </div>
+                )}
+                {rider.training?.updated_at && (
+                  <div className="flex justify-between">
+                    <span style={{ color: 'var(--ink-muted)' }}>Last synced</span>
+                    <span>{formatDateTime(rider.training.updated_at)}</span>
+                  </div>
+                )}
+                {canModerate && (rider.training?.watch_progress > 0 || rider.training?.is_completed) && (
+                  <div className="pt-1.5 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true)
+                        try {
+                          await api.post(`/training/progress/${riderId}/reset`)
+                          toast.success('Training progress reset. Driver must rewatch the video.')
+                          refetch()
+                          onChanged?.()
+                        } catch (err) {
+                          toast.error(err.response?.data?.message || 'Could not reset training.')
+                        } finally {
+                          setBusy(false)
+                        }
+                      }}
+                      className="w-full rounded-lg border py-1.5 text-center text-[12px] font-medium transition-colors hover:bg-white/5"
+                      style={{ borderColor: 'var(--border)', color: 'var(--warning)' }}
+                    >
+                      Reset Training Progress
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
               <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                 KYC document status
               </h3>

@@ -75,6 +75,8 @@ async function list(req, res) {
         total_dcharge: String(o.total_dcharge),
         paddress: o.paddress,
         daddress: o.daddress,
+        booking_type: o.booking_type,
+        schedule_date_time: o.schedule_date_time,
         odate: o.odate,
         city_id: o.city_id,
       };

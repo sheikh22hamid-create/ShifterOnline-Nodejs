@@ -1,6 +1,7 @@
 const express = require("express");
 const riderController = require("../controllers/riderController");
 const driverPlanController = require("../controllers/driverPlanController");
+const trainingController = require("../controllers/trainingController");
 
 const router = express.Router();
 
@@ -12,5 +13,10 @@ router.post("/location", riderController.updateLocation);
 router.post("/isolate-test-drivers", riderController.isolateTestDrivers);
 router.post("/premium-plans", driverPlanController.list);
 router.post("/premium-plans/purchase", driverPlanController.purchase);
+
+// Driver mandatory training video gate endpoints
+router.post("/training/status", trainingController.getStatus);
+router.post("/training/progress", trainingController.saveProgress);
+router.post("/training/complete", trainingController.complete);
 
 module.exports = router;

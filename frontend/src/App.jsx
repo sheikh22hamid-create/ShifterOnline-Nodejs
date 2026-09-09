@@ -14,6 +14,7 @@ const LiveTracking = lazy(() => import('./pages/LiveTracking'))
 const Orders = lazy(() => import('./pages/Orders'))
 const ScheduledOrders = lazy(() => import('./pages/ScheduledOrders'))
 const Drivers = lazy(() => import('./pages/Drivers'))
+const DriverTraining = lazy(() => import('./pages/DriverTraining'))
 const KycApproval = lazy(() => import('./pages/KycApproval'))
 const Customers = lazy(() => import('./pages/Customers'))
 const Payouts = lazy(() => import('./pages/Payouts'))
@@ -65,6 +66,7 @@ function App() {
             <Route path="/orders" element={<Orders />} />
             <Route path="/orders/scheduled" element={<ScheduledOrders />} />
             <Route path="/drivers" element={<Drivers />} />
+            <Route path="/driver-training" element={<DriverTraining />} />
             <Route path="/kyc" element={<KycApproval />} />
             <Route path="/customers" element={<Customers />} />
 

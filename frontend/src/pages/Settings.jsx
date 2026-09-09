@@ -189,18 +189,125 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
-        {Object.keys(flags).length > 0 && (
+        <section className="surface-card rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                Driver Training Video (Mandatory Onboarding Gate)
+              </h3>
+              <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                Configure the mandatory orientation video that drivers must watch in the Driver App before accessing the Home screen.
+              </p>
+            </div>
+            {flags.training_video_url?.trim() ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
+                ● Gate Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium" style={{ background: 'var(--surface-muted)', color: 'var(--ink-faint)' }}>
+                ○ Gate Disabled (Optional)
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="training_video_title">Video Title</Label>
+                <Input
+                  id="training_video_title"
+                  placeholder="e.g. Shifter Partner Onboarding & Safety Training"
+                  value={flags.training_video_title ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, training_video_title: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="training_video_url">Direct Video URL (MP4 / WebM / CDN Stream)</Label>
+                <Input
+                  id="training_video_url"
+                  placeholder="https://example.com/videos/driver_training.mp4"
+                  value={flags.training_video_url ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, training_video_url: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Leave blank to disable mandatory training and allow drivers to enter the app directly.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFlags((f) => ({
+                      ...f,
+                      training_video_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+                      training_video_title: 'Shifter Partner Training Video (Sample Demo)',
+                    }))
+                  }
+                  className="rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:bg-white/5"
+                  style={{ borderColor: 'var(--border)', color: 'var(--brand)' }}
+                >
+                  Load Sample Video Link
+                </button>
+                {flags.training_video_url && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFlags((f) => ({
+                        ...f,
+                        training_video_url: '',
+                      }))
+                    }
+                    className="rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:bg-white/5"
+                    style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
+                  >
+                    Clear URL (Disable Gate)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col justify-center rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <div className="text-[11.5px] font-medium mb-2" style={{ color: 'var(--ink-muted)' }}>
+                Live Video Preview
+              </div>
+              {flags.training_video_url?.trim() ? (
+                <div className="overflow-hidden rounded-md border" style={{ borderColor: 'var(--border)', maxHeight: '200px' }}>
+                  <video
+                    key={flags.training_video_url}
+                    src={flags.training_video_url}
+                    controls
+                    preload="metadata"
+                    className="w-full h-auto max-h-[190px] object-contain bg-black"
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+              ) : (
+                <div className="flex h-32 flex-col items-center justify-center rounded border border-dashed p-4 text-center text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-faint)' }}>
+                  <span>No video URL configured.</span>
+                  <span className="text-[11px] mt-0.5">Enter a valid direct video link above to preview.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {Object.keys(flags).filter((k) => k !== 'training_video_url' && k !== 'training_video_title').length > 0 && (
           <section className="surface-card rounded-xl p-4">
             <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-              Feature flags
+              Other Feature Flags
             </h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {Object.entries(flags).map(([key, value]) => (
-                <div key={key}>
-                  <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
-                  <Input id={`flag-${key}`} value={value} onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))} />
-                </div>
-              ))}
+              {Object.entries(flags)
+                .filter(([key]) => key !== 'training_video_url' && key !== 'training_video_title')
+                .map(([key, value]) => (
+                  <div key={key}>
+                    <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
+                    <Input id={`flag-${key}`} value={value} onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))} />
+                  </div>
+                ))}
             </div>
           </section>
         )}
