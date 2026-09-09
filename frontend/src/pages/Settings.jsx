@@ -178,6 +178,27 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </Section>
 
+        <Section title="Driver Training">
+          <div>
+            <Label htmlFor="training_video_url">Training video URL</Label>
+            <Input
+              id="training_video_url"
+              placeholder="https://cdn.example.com/driver-training.mp4"
+              value={flags.training_video_url ?? ''}
+              onChange={(e) => setFlags((f) => ({ ...f, training_video_url: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="training_video_title">Training video title</Label>
+            <Input
+              id="training_video_title"
+              placeholder="Driver Training"
+              value={flags.training_video_title ?? ''}
+              onChange={(e) => setFlags((f) => ({ ...f, training_video_title: e.target.value }))}
+            />
+          </div>
+        </Section>
+
         <section className="surface-card rounded-xl p-4">
           <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
             Payment methods
