@@ -3,7 +3,15 @@ import api from '../../services/api'
 import Modal from '../common/Modal'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
-const EMPTY_FORM = { plan_name: '', plan_for: 'USER', price: '', validity_days: '30', description: '', is_popular: false, status: true }
+const EMPTY_FORM = {
+  plan_name: '', plan_for: 'USER', plan_type: 'CUSTOMER_PREMIUM', price: '', validity_days: '30', description: '',
+  commission_percent: '0', per_trip_charge: '0', initial_price: '0', subscription_price: '0', guaranteed_enabled: false,
+  guaranteed_rides_per_month: '0', priority_enabled: false, incentive_enabled: false, incentive_type: 'flat', incentive_value: '0',
+  wallet_bonus_enabled: false, wallet_bonus_amount: '0', lifetime_enabled: false, activity_protection_enabled: false,
+  activity_protection_3m: '0', activity_protection_6m: '0', activity_protection_12m: '0', activity_min_online_hours: '10',
+  activity_require_model1: false, activity_require_zero_requests: false, activity_require_service_zone: false, activity_request_ends_day: true,
+  is_popular: false, status: true,
+}
 
 export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
   const isEdit = Boolean(plan)
@@ -20,7 +28,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
     setError('')
     setForm(
       plan
-        ? { plan_name: plan.plan_name, plan_for: plan.plan_for, price: String(plan.price), validity_days: String(plan.validity_days), description: plan.description || '', is_popular: plan.is_popular, status: plan.status }
+        ? { ...EMPTY_FORM, ...plan, price: String(plan.price), validity_days: String(plan.validity_days), commission_percent: String(plan.commission_percent ?? 0), per_trip_charge: String(plan.per_trip_charge ?? 0), initial_price: String(plan.initial_price ?? 0), subscription_price: String(plan.subscription_price ?? 0), guaranteed_rides_per_month: String(plan.guaranteed_rides_per_month ?? 0), activity_protection_3m: String(plan.activity_protection_3m ?? 0), activity_protection_6m: String(plan.activity_protection_6m ?? 0), activity_protection_12m: String(plan.activity_protection_12m ?? 0), activity_min_online_hours: String(plan.activity_min_online_hours ?? 10) }
         : EMPTY_FORM
     )
   }, [open, plan])
@@ -44,7 +52,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
       open={open}
       onClose={onClose}
       title={isEdit ? `Edit ${plan.plan_name}` : 'New premium plan'}
-      width={420}
+      width={620}
       footer={
         <>
           <button type="button" onClick={onClose} className="rounded-lg border px-3 py-1.5 text-[13px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
@@ -78,7 +86,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
           <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="plan-for">
             Audience
           </label>
-          <select id="plan-for" value={form.plan_for} onChange={(e) => setForm((f) => ({ ...f, plan_for: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE}>
+          <select id="plan-for" value={form.plan_for} onChange={(e) => setForm((f) => ({ ...f, plan_for: e.target.value, plan_type: e.target.value === 'DRIVER' ? 'DRIVER_PREMIUM' : 'CUSTOMER_PREMIUM' }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE}>
             <option value="USER">Customer</option>
             <option value="DRIVER">Driver</option>
           </select>
@@ -93,9 +101,58 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
           <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="plan-validity">
             Validity (days)
           </label>
-          <input id="plan-validity" type="number" value={form.validity_days} onChange={(e) => setForm((f) => ({ ...f, validity_days: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} />
+          <input id="plan-validity" type="number" disabled={form.lifetime_enabled} value={form.lifetime_enabled ? 'Lifetime' : form.validity_days} onChange={(e) => setForm((f) => ({ ...f, validity_days: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none disabled:opacity-50" style={FIELD_STYLE} />
         </div>
       </div>
+
+      {form.plan_for === 'DRIVER' && (
+        <div className="mb-3 space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Driver plan type
+              <select value={form.plan_type} onChange={(e) => setForm((f) => ({ ...f, plan_type: e.target.value, guaranteed_enabled: e.target.value === 'DRIVER_SECOND' }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE}>
+                <option value="DRIVER_PREMIUM">Driver premium</option>
+                <option value="DRIVER_SECOND">Guaranteed rides</option>
+              </select>
+            </label>
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Commission (%)
+              <input type="number" min="0" value={form.commission_percent} onChange={(e) => setForm((f) => ({ ...f, commission_percent: e.target.value }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} />
+            </label>
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Per-trip charge (₹)
+              <input type="number" min="0" value={form.per_trip_charge} onChange={(e) => setForm((f) => ({ ...f, per_trip_charge: e.target.value }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} />
+            </label>
+            <label className="flex items-end gap-2 pb-2 text-[12px]" style={{ color: 'var(--ink-muted)' }}><input type="checkbox" checked={form.priority_enabled} onChange={(e) => setForm((f) => ({ ...f, priority_enabled: e.target.checked }))} /> Priority ride assignment</label>
+          </div>
+          {form.plan_type === 'DRIVER_SECOND' && <div className="grid grid-cols-3 gap-3">
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Initial price (₹)<input type="number" min="0" value={form.initial_price} onChange={(e) => setForm((f) => ({ ...f, initial_price: e.target.value }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Renewal (₹)<input type="number" min="0" value={form.subscription_price} onChange={(e) => setForm((f) => ({ ...f, subscription_price: e.target.value }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Guaranteed rides<input type="number" min="0" value={form.guaranteed_rides_per_month} onChange={(e) => setForm((f) => ({ ...f, guaranteed_rides_per_month: e.target.value }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+          </div>}
+          {form.plan_type === 'DRIVER_PREMIUM' && <div className="grid grid-cols-3 gap-3">
+            <label className="flex items-end gap-2 pb-2 text-[12px]" style={{ color: 'var(--ink-muted)' }}><input type="checkbox" checked={form.incentive_enabled} onChange={(e) => setForm((f) => ({ ...f, incentive_enabled: e.target.checked }))} /> Per-trip incentive</label>
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Incentive value<input type="number" min="0" value={form.incentive_value} onChange={(e) => setForm((f) => ({ ...f, incentive_value: e.target.value }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+            <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Wallet bonus (₹)<input type="number" min="0" value={form.wallet_bonus_amount} onChange={(e) => setForm((f) => ({ ...f, wallet_bonus_amount: e.target.value, wallet_bonus_enabled: Number(e.target.value) > 0 }))} className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+          </div>}
+          <div className="flex flex-wrap gap-x-4 gap-y-2 border-t pt-3 text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.lifetime_enabled} onChange={(e) => setForm((f) => ({ ...f, lifetime_enabled: e.target.checked, validity_days: e.target.checked ? '36500' : '30' }))} /> One-time lifetime plan</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.activity_protection_enabled} onChange={(e) => setForm((f) => ({ ...f, activity_protection_enabled: e.target.checked }))} /> Activity protection</label>
+          </div>
+          {form.activity_protection_enabled && <div className="space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)' }}>
+            <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>Activity protection configuration</p>
+            <div className="grid grid-cols-4 gap-3">
+              <label className="block text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>After 3 months (₹/day)<input type="number" min="0" value={form.activity_protection_3m} onChange={(e) => setForm((f) => ({ ...f, activity_protection_3m: e.target.value }))} className="mt-1 w-full rounded-lg border px-2 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+              <label className="block text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>After 6 months (₹/day)<input type="number" min="0" value={form.activity_protection_6m} onChange={(e) => setForm((f) => ({ ...f, activity_protection_6m: e.target.value }))} className="mt-1 w-full rounded-lg border px-2 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+              <label className="block text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>After 12 months (₹/day)<input type="number" min="0" value={form.activity_protection_12m} onChange={(e) => setForm((f) => ({ ...f, activity_protection_12m: e.target.value }))} className="mt-1 w-full rounded-lg border px-2 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+              <label className="block text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>Minimum online hours<input type="number" min="0" value={form.activity_min_online_hours} onChange={(e) => setForm((f) => ({ ...f, activity_min_online_hours: e.target.value }))} className="mt-1 w-full rounded-lg border px-2 py-2 text-[13px] outline-none" style={FIELD_STYLE} /></label>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.activity_require_model1} onChange={(e) => setForm((f) => ({ ...f, activity_require_model1: e.target.checked }))} /> Model 1 must stay ON</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.activity_require_zero_requests} onChange={(e) => setForm((f) => ({ ...f, activity_require_zero_requests: e.target.checked }))} /> Zero eligible requests</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.activity_request_ends_day} onChange={(e) => setForm((f) => ({ ...f, activity_request_ends_day: e.target.checked }))} /> Request ends protection for the day</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.activity_require_service_zone} onChange={(e) => setForm((f) => ({ ...f, activity_require_service_zone: e.target.checked }))} /> Must remain in service zone</label>
+            </div>
+          </div>}
+        </div>
+      )}
 
       <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="plan-desc">
         Benefits / description
