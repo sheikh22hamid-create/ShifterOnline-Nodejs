@@ -346,8 +346,15 @@ async function updateStatus(orderId, riderId, status) {
       data: {
         order_status: 5,
         o_status: "Completed",
-        ddate: now,
-        drop_time: now,
+        // Both are display-only (invoice_date / order_deliver_date to the
+        // apps), never read back by Node for a calculation — safe to store
+        // IST-shifted like the wallet_history writes above. `now` itself
+        // stays true UTC for the wait-timer arithmetic just below, which
+        // only ever diffs against other `now`-based values and must not be
+        // shifted (order #1754 also showed this exact bug on ddate/drop_time:
+        // 06:45:03 stored for what was really a ~12:14pm IST completion).
+        ddate: istNow(),
+        drop_time: istNow(),
         total_dcharge: finalTotal,
       },
     });
