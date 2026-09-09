@@ -144,6 +144,16 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                 <Field label="Plate no." value={<span className="font-mono-data">{rider.vehicle_no}</span>} />
                 <Field label="Wallet" value={<span className="font-mono-data">{formatCurrency(rider.wallet_balance)}</span>} />
                 <Field label="Joined" value={formatDateTime(rider.rdate)} />
+                <Field
+                  label="Training"
+                  value={
+                    !rider.training
+                      ? 'Not started'
+                      : rider.training.is_completed
+                        ? `Completed — ${formatDateTime(rider.training.completed_at)}`
+                        : `${Math.round(rider.training.percent)}% in progress`
+                  }
+                />
               </div>
             </section>
 
