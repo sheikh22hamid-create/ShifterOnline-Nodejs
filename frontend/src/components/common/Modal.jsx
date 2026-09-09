@@ -17,10 +17,10 @@ export default function Modal({ open, onClose, title, children, footer, width = 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" aria-label="Close" className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
-        className="relative w-full rounded-2xl border p-5"
+        className="relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-2xl border p-5"
         style={{ maxWidth: width, background: 'var(--surface)', borderColor: 'var(--border)', boxShadow: 'var(--shadow-md)' }}
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <h2 className="text-[15px] font-semibold" style={{ color: 'var(--ink)' }}>
             {title}
           </h2>
@@ -28,8 +28,8 @@ export default function Modal({ open, onClose, title, children, footer, width = 
             <X size={16} />
           </button>
         </div>
-        {children}
-        {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">{children}</div>
+        {footer && <div className="mt-5 flex shrink-0 justify-end gap-2">{footer}</div>}
       </div>
     </div>
   )
