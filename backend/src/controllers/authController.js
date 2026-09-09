@@ -1,10 +1,17 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { BCRYPT_SALT_ROUNDS } = require("../config/constants");
 
 const BCRYPT_HASH_RE = /^\$2[aby]\$/;
+
+function legacyPasswordMatches(providedPassword, storedPassword) {
+  const provided = Buffer.from(String(providedPassword));
+  const stored = Buffer.from(String(storedPassword || ""));
+  return provided.length === stored.length && crypto.timingSafeEqual(provided, stored);
+}
 
 async function getCityName(cityId) {
   if (!cityId) return null;
@@ -47,7 +54,12 @@ async function login(req, res) {
     // Legacy PHP-panel passwords are not bcrypt hashes — fail with a
     // distinct message instead of letting bcrypt.compare throw on them.
     const hasBcryptPassword = BCRYPT_HASH_RE.test(admin.password || "");
-    const passwordMatches = hasBcryptPassword && (await bcrypt.compare(password, admin.password));
+    let passwordMatches = hasBcryptPassword && (await bcrypt.compare(password, admin.password));
+    if (!hasBcryptPassword && legacyPasswordMatches(password, admin.password)) {
+      const hash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+      await prisma.admin.update({ where: { id: admin.id }, data: { password: hash } });
+      passwordMatches = true;
+    }
     if (!passwordMatches) {
       return res.status(401).json({
         success: false,
