@@ -639,6 +639,94 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       data: { wallet_balance: { decrement: 16 } },
     });
   });
+
+  // cust_api/advanced_payment.php credits advance_payment straight into the
+  // customer's wallet the moment they pay it — with nothing anywhere that
+  // ever spent it back down, it sat there as a silent top-up on every
+  // completed ride, on top of the driver already collecting less cash by
+  // that same amount.
+  it("debits the customer's wallet for the advance_payment applied to a completed order", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 305,
+      uid: 12,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 0,
+      trans_id: "cash_payment",
+      payment_status: 1,
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+    prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 15 }]);
+    prisma.tbl_wallet_history.findFirst.mockResolvedValueOnce(null);
+
+    const result = await tripLifecycle.updateStatus(305, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { wallet: { decrement: 15 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          user_id: 12,
+          amount: 15,
+          type: "debit",
+          wallet_type: "user",
+          order_id: 305,
+          payment_id: "advance_apply:305",
+        }),
+      })
+    );
+  });
+
+  it("does not double-debit the customer's wallet if the advance was already applied", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 306,
+      uid: 12,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 0,
+      trans_id: "cash_payment",
+      payment_status: 1,
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+    prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 15 }]);
+    prisma.tbl_wallet_history.findFirst.mockResolvedValueOnce({ id: 999 });
+
+    const result = await tripLifecycle.updateStatus(306, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the customer's wallet when the advance was never actually captured", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 307,
+      uid: 12,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 0,
+      trans_id: "cash_payment",
+      payment_status: 0,
+      free_waiting_time: "0",
+      wating_charge: "0",
+    });
+    prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 15 }]);
+
+    const result = await tripLifecycle.updateStatus(307, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer no-show", () => {
