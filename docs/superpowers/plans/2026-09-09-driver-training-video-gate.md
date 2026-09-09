@@ -394,7 +394,7 @@ Create `backend/src/controllers/__tests__/adminTrainingController.test.js`:
 
 ```js
 jest.mock("../../config/db", () => ({
-  tbl_rider: { findMany: jest.fn() },
+  tbl_rider: { findMany: jest.fn(), findUnique: jest.fn() },
   driver_training_progress: { findMany: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
 }));
 
@@ -443,10 +443,11 @@ describe("adminTrainingController.resetProgress", () => {
   beforeEach(() => jest.clearAllMocks());
 
   it("deletes the driver's progress row", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ city_id: 1 });
     prisma.driver_training_progress.findUnique.mockResolvedValue({ rider_id: 7 });
     prisma.driver_training_progress.delete.mockResolvedValue({});
 
-    const req = { params: { riderId: "7" } };
+    const req = { params: { riderId: "7" }, user: { role: "superadmin", city_id: 1 } };
     const res = makeRes();
     await resetProgress(req, res);
 
@@ -455,13 +456,25 @@ describe("adminTrainingController.resetProgress", () => {
   });
 
   it("404s when the driver has no progress to reset", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ city_id: 1 });
     prisma.driver_training_progress.findUnique.mockResolvedValue(null);
 
-    const req = { params: { riderId: "7" } };
+    const req = { params: { riderId: "7" }, user: { role: "superadmin", city_id: 1 } };
     const res = makeRes();
     await resetProgress(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
+    expect(prisma.driver_training_progress.delete).not.toHaveBeenCalled();
+  });
+
+  it("403s when a city-scoped admin targets a driver outside their city", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ city_id: 2 });
+
+    const req = { params: { riderId: "7" }, user: { role: "admin", city_id: 1 } };
+    const res = makeRes();
+    await resetProgress(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
     expect(prisma.driver_training_progress.delete).not.toHaveBeenCalled();
   });
 });
@@ -530,9 +543,22 @@ async function listProgress(req, res) {
 }
 
 /** Deletes the driver's progress row — their next status check comes back NOT_STARTED / 0%. */
+/** Same rule adminRiderController.toggleStatus applies to any single-rider mutation: an admin/executive can only act within their own city. */
+function isScopedOut(req, riderCityId) {
+  return req.user.role !== "superadmin" && riderCityId !== parseInt(req.user.city_id, 10);
+}
+
 async function resetProgress(req, res) {
   try {
     const riderId = parseInt(req.params.riderId, 10);
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { city_id: true } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+
     const existing = await prisma.driver_training_progress.findUnique({ where: { rider_id: riderId } });
     if (!existing) {
       return res.status(404).json({ success: false, message: "No training progress recorded for this driver" });
