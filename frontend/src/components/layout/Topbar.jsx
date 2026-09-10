@@ -8,7 +8,7 @@ import { ROLE_LABELS } from '../../config/navigation'
 export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const { connected } = useSocket()
+  const { connected, reconnect } = useSocket()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
@@ -53,20 +53,32 @@ export default function Topbar({ onMenuClick }) {
       </button>
 
       <div className="ml-auto flex items-center gap-2">
-        <div
-          className="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] sm:flex"
-          style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
-          title={connected ? 'Live updates connected' : 'Live updates disconnected'}
+        <button
+          type="button"
+          onClick={() => {
+            if (!connected && typeof reconnect === 'function') {
+              reconnect()
+            }
+          }}
+          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
+            !connected ? 'cursor-pointer hover:border-[var(--brand)] hover:text-[var(--brand)]' : ''
+          }`}
+          style={{
+            borderColor: connected ? 'var(--success-soft)' : 'var(--border)',
+            background: connected ? 'var(--success-soft)' : 'transparent',
+            color: connected ? 'var(--success)' : 'var(--ink-muted)',
+          }}
+          title={connected ? 'Live real-time streaming active' : 'Disconnected from server — click to reconnect'}
         >
           <span
-            className="h-1.5 w-1.5 rounded-full"
+            className={`h-2 w-2 rounded-full ${connected ? 'animate-pulse' : ''}`}
             style={{
-              background: connected ? 'var(--success)' : 'var(--ink-faint)',
-              boxShadow: connected ? '0 0 0 3px var(--success-soft)' : 'none',
+              background: connected ? 'var(--success)' : 'var(--danger)',
+              boxShadow: connected ? '0 0 6px var(--success)' : 'none',
             }}
           />
-          {connected ? 'Live' : 'Offline'}
-        </div>
+          {connected ? 'Live' : 'Offline (Click to reconnect)'}
+        </button>
 
         <button
           type="button"

@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 
 // Legacy convention shared by every doc-status column touched here
@@ -230,6 +231,12 @@ async function kycDecision(req, res) {
       },
     });
 
+    adminSocket.notifyDriverKycUpdate(riderId, rider.city_id, {
+      document_type,
+      status: newStatus,
+      is_approved: is_approve,
+    });
+
     return res.status(200).json({
       success: true,
       message: is_approve ? "Document approved" : "Document rejected",
@@ -271,6 +278,13 @@ async function toggleStatus(req, res) {
       },
     });
 
+    adminSocket.notifyDriverStatusUpdate(id, rider.city_id, {
+      status: updated.status,
+      a_status: updated.a_status,
+      online: updated.a_status === 1,
+      active: updated.status === 1,
+    });
+
     return res.status(200).json({ success: true, message: "Driver status updated", data: { id: updated.id, status: updated.status, a_status: updated.a_status } });
   } catch (err) {
     return internalError(res, err, "riders.toggleStatus");
@@ -303,6 +317,12 @@ async function remove(req, res) {
       prisma.tbl_kit.deleteMany({ where: { rider_id: id } }),
       prisma.tbl_rider.delete({ where: { id } }),
     ]);
+
+    adminSocket.notifyDriverStatusUpdate(id, rider.city_id, {
+      deleted: true,
+      status: 0,
+      a_status: 0,
+    });
 
     return res.status(200).json({ success: true, message: "Driver deleted" });
   } catch (err) {

@@ -1,43 +1,104 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
 
 const SocketContext = createContext(null)
 
+function resolveSocketUrl() {
+  if (import.meta.env.VITE_SOCKET_URL) {
+    return import.meta.env.VITE_SOCKET_URL
+  }
+  // In local browser dev, connect to backend port 5000 if running on Vite (5173)
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '5000') {
+    return 'http://localhost:5000'
+  }
+  return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000'
+}
+
 export function SocketProvider({ children }) {
   const { isAuthenticated } = useAuth()
   const [socket, setSocket] = useState(null)
   const [connected, setConnected] = useState(false)
+  const [lastActivity, setLastActivity] = useState(null)
+  const socketRef = useRef(null)
+
+  const joinAdminRoom = useCallback((sock) => {
+    const targetSocket = sock || socketRef.current
+    if (!targetSocket || !targetSocket.connected) return
+    const token = localStorage.getItem('shifter_admin_token')
+    if (token) {
+      targetSocket.emit('admin:join', { token })
+    }
+  }, [])
 
   useEffect(() => {
     if (!isAuthenticated) {
-      // A real transition (e.g. logout while connected), not just mirroring
-      // initial state — the socket this effect owns needs tearing down and
-      // its connection status reflected, which an effect is exactly for
-      // (this *is* syncing React state with an external system, per the
-      // rule's own guidance — the heuristic just can't see that here).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
       setSocket(null)
       setConnected(false)
       return
     }
 
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin
-    const nextSocket = io(socketUrl, { transports: ['websocket'] })
-    nextSocket.on('connect', () => {
-      const token = localStorage.getItem('shifter_admin_token')
-      nextSocket.emit('admin:join', { token })
+    const socketUrl = resolveSocketUrl()
+    const nextSocket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 15000,
     })
-    nextSocket.on('admin:join:ack', (ack) => setConnected(Boolean(ack?.Result)))
-    nextSocket.on('disconnect', () => setConnected(false))
+
+    socketRef.current = nextSocket
+
+    nextSocket.on('connect', () => {
+      joinAdminRoom(nextSocket)
+      setLastActivity(Date.now())
+    })
+
+    nextSocket.on('admin:join:ack', (ack) => {
+      setConnected(Boolean(ack?.Result))
+      setLastActivity(Date.now())
+    })
+
+    nextSocket.on('disconnect', () => {
+      setConnected(false)
+    })
+
+    nextSocket.on('connect_error', () => {
+      setConnected(false)
+    })
+
+    // Track any incoming socket traffic as activity
+    nextSocket.onAny(() => {
+      setLastActivity(Date.now())
+    })
+
     setSocket(nextSocket)
 
     return () => {
-      nextSocket.close()
+      if (nextSocket) {
+        nextSocket.disconnect()
+      }
+      socketRef.current = null
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, joinAdminRoom])
 
-  return <SocketContext.Provider value={{ socket, connected }}>{children}</SocketContext.Provider>
+  const reconnect = useCallback(() => {
+    if (socketRef.current) {
+      socketRef.current.connect()
+      joinAdminRoom(socketRef.current)
+    }
+  }, [joinAdminRoom])
+
+  return (
+    <SocketContext.Provider value={{ socket, connected, lastActivity, reconnect }}>
+      {children}
+    </SocketContext.Provider>
+  )
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- standard Provider+hook co-location
@@ -46,3 +107,4 @@ export function useSocket() {
   if (!ctx) throw new Error('useSocket must be used within SocketProvider')
   return ctx
 }
+

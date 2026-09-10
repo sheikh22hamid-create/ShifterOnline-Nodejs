@@ -269,6 +269,11 @@ async function update(req, res) {
     if (data.total_dcharge !== undefined) data.total_dcharge = Number(data.total_dcharge);
 
     const updated = await prisma.pkg_order.update({ where: { id }, data });
+    try {
+      adminSocket.notifyOrderStatusUpdate(updated);
+    } catch (adminErr) {
+      logger.error(`update: admin socket notify failed for order ${id}:`, adminErr);
+    }
     return res.status(200).json({ success: true, message: "Order updated", data: updated });
   } catch (err) {
     return internalError(res, err, "orders.update");

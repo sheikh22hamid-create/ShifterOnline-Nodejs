@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { Wallet, Clock, Truck, Package } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import { useSocket } from '../context/SocketContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import KpiCard from '../components/common/KpiCard'
 import RecentOrdersTicker from '../components/dashboard/RecentOrdersTicker'
 import { ROLE_LABELS } from '../config/navigation'
@@ -30,7 +30,6 @@ function computeTrend(today, yesterday) {
 
 export default function Dashboard() {
   const { user, hasRole } = useAuth()
-  const { socket } = useSocket()
   const canSeeKpis = hasRole('superadmin', 'admin')
 
   const kpiFetcher = useCallback(() => (canSeeKpis ? api.get('/analytics/overview').then((res) => res.data.kpis) : Promise.resolve(null)), [canSeeKpis])
@@ -38,17 +37,21 @@ export default function Dashboard() {
 
   const [dayTrends, setDayTrends] = useState(null)
 
-  // Live-refresh on the same events the admin socket layer already emits
-  // (Phase 5) — no polling.
-  useEffect(() => {
-    if (!socket || !canSeeKpis) return
-    socket.on('admin:new_order', refetch)
-    socket.on('admin:order_status_update', refetch)
-    return () => {
-      socket.off('admin:new_order', refetch)
-      socket.off('admin:order_status_update', refetch)
-    }
-  }, [socket, canSeeKpis, refetch])
+  // Real-time synchronization on all operational events + tab focus
+  useRealtimeSync(
+    [
+      'admin:new_order',
+      'admin:order_status_update',
+      'admin:custom_order_update',
+      'admin:driver_status_update',
+      'admin:driver_kyc_update',
+      'admin:driver_kyc_submitted',
+      'admin:payout_update',
+      'admin:payout_request',
+      'admin:dashboard_refresh',
+    ],
+    refetch
+  )
 
   // A lightweight two-day pull (today + yesterday) just for real trend deltas
   // on the revenue/orders cards — the 7-day chart below fetches its own

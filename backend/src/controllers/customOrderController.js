@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 
 // Real enum values differ from the spec doc's open|bidded|converted|cancelled
@@ -110,6 +111,8 @@ async function convert(req, res) {
       ...bids.filter((b) => b.rider_id !== riderId).map((b) => prisma.tbl_custom_order_bid.update({ where: { id: b.id }, data: { status: "rejected" } })),
     ]);
 
+    adminSocket.notifyCustomOrderUpdate(updatedOrder);
+
     return res.status(200).json({
       success: true,
       message: "Custom order accepted for this driver at the agreed price. Full trip creation still requires pickup/drop coordinates from the customer app.",
@@ -121,3 +124,4 @@ async function convert(req, res) {
 }
 
 module.exports = { list, getBids, convert };
+

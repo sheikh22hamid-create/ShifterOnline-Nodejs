@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Eye } from 'lucide-react'
 import api from '../services/api'
-import { useSocket } from '../context/SocketContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import Pagination from '../components/common/Pagination'
 import OrderDetailDrawer from '../components/orders/OrderDetailDrawer'
@@ -12,7 +12,6 @@ import { formatCurrency, formatDateTime, truncate } from '../utils/format'
 const LIMIT = 20
 
 export default function Orders() {
-  const { socket } = useSocket()
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState(null)
@@ -25,17 +24,11 @@ export default function Orders() {
   const orders = data?.data ?? []
   const total = data?.total ?? 0
 
-  // Real-time refresh off the Phase 5 admin socket events — no polling.
-  useEffect(() => {
-    if (!socket) return
-    socket.on('admin:new_order', refetch)
-    socket.on('admin:order_status_update', refetch)
-    return () => {
-      socket.off('admin:new_order', refetch)
-      socket.off('admin:order_status_update', refetch)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket])
+  // Real-time synchronization for orders list
+  useRealtimeSync(
+    ['admin:new_order', 'admin:order_status_update', 'admin:dispatch_alert'],
+    refetch
+  )
 
   return (
     <div>
