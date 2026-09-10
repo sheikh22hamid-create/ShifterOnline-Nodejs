@@ -71,10 +71,14 @@ router.get("/training/progress", auth, authorize(...RIDER_ROLES), adminTrainingC
 router.post("/training/progress/:riderId/reset", auth, authorize("superadmin", "admin"), adminTrainingController.resetProgress);
 
 // --- Orders & Live Dispatch Intervention ------------------------------------
-// NOTE: /orders/scheduled must be registered before /orders/:id, or Express
-// would match "scheduled" as the :id param.
+// NOTE: /orders/scheduled and /orders/next-day must be registered before
+// /orders/:id, or Express would match "scheduled"/"next-day" as the :id param.
 router.get("/orders/scheduled", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.listScheduled);
 router.post("/orders/scheduled/:id/assign-driver", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignScheduledDriver);
+
+router.get("/orders/next-day", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.listNextDay);
+router.post("/orders/next-day/suggest-sequence", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.suggestNextDaySequence);
+router.post("/orders/next-day/assign-batch", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignNextDayBatch);
 
 router.get("/orders", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.list);
 router.get("/orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.getOne);

@@ -4,6 +4,7 @@ const dispatchManager = require("../services/dispatchManager");
 const pricingEngine = require("../services/pricingEngine");
 const adminSocket = require("../sockets/adminSocket");
 const { getIO } = require("../sockets/socketServer");
+const { buildNextDaySequence } = require("../utils/geoDistance");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -485,4 +486,130 @@ async function assignScheduledDriver(req, res) {
   }
 }
 
-module.exports = { list, getOne, assignRider, update, cancel, invoice, listScheduled, assignScheduledDriver };
+// --- Next-day bookings (booking_type=3) — manual-only, never auto-dispatched.
+// Deliberately separate from listScheduled/assignScheduledDriver above
+// (booking_type=2) even though the shape is similar: see
+// docs/superpowers/specs/2026-09-10-next-day-booking-design.md §7 for why
+// these stay independent functions instead of parameterizing the existing
+// pair over booking_type.
+
+async function listNextDay(req, res) {
+  try {
+    const where = { booking_type: 3 };
+    if (req.scopedCityId) where.city_id = req.scopedCityId;
+    if (req.query.date) where.schedule_date_time = { contains: req.query.date };
+    if (req.query.status === "unassigned") where.rid = 0;
+    if (req.query.status === "assigned") where.rid = { not: 0 };
+
+    const rows = await prisma.pkg_order.findMany({ where, orderBy: [{ schedule_date_time: "asc" }, { id: "asc" }] });
+    return res.status(200).json({ success: true, total: rows.length, data: rows });
+  } catch (err) {
+    return internalError(res, err, "orders.listNextDay");
+  }
+}
+
+async function suggestNextDaySequence(req, res) {
+  try {
+    const riderId = parseInt(req.body.rider_id, 10);
+    const orderIds = Array.isArray(req.body.order_ids) ? req.body.order_ids.map(Number) : [];
+    if (!riderId || orderIds.length === 0) {
+      return res.status(400).json({ success: false, message: "rider_id and a non-empty order_ids array are required" });
+    }
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+
+    const orders = await prisma.pkg_order.findMany({ where: { id: { in: orderIds }, booking_type: 3 } });
+    if (orders.length !== orderIds.length) {
+      return res.status(400).json({ success: false, message: "One or more order ids are not valid next-day orders" });
+    }
+
+    const driverLat = Number(rider.rlats);
+    const driverLng = Number(rider.rlongs);
+    if (!Number.isFinite(driverLat) || !Number.isFinite(driverLng)) {
+      return res.status(400).json({ success: false, message: "Driver has no known location yet" });
+    }
+
+    const sequence = buildNextDaySequence(driverLat, driverLng, orders);
+    return res.status(200).json({ success: true, data: sequence });
+  } catch (err) {
+    return internalError(res, err, "orders.suggestNextDaySequence");
+  }
+}
+
+async function assignNextDayBatch(req, res) {
+  try {
+    const riderId = parseInt(req.body.rider_id, 10);
+    const sequence = Array.isArray(req.body.sequence) ? req.body.sequence : [];
+    if (!riderId || sequence.length === 0) {
+      return res.status(400).json({ success: false, message: "rider_id and a non-empty sequence array are required" });
+    }
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+
+    const orderIds = sequence.map((s) => Number(s.order_id));
+    const orders = await prisma.pkg_order.findMany({ where: { id: { in: orderIds } } });
+    if (orders.length !== orderIds.length || orders.some((o) => o.booking_type !== 3)) {
+      return res.status(400).json({ success: false, message: "One or more order ids are not valid next-day orders" });
+    }
+    if (orders.some((o) => isScopedOut(req, o.city_id))) {
+      return res.status(403).json({ success: false, message: "Forbidden: an order is outside your assigned city" });
+    }
+
+    await prisma.$transaction(
+      sequence.map((s) =>
+        prisma.pkg_order.update({
+          where: { id: Number(s.order_id) },
+          data: { rid: riderId, next_day_sequence: Number(s.position) },
+        })
+      )
+    );
+
+    if (req.body.notify_driver_now) {
+      await prisma.tbl_rnoti.create({
+        data: {
+          rid: riderId,
+          title: "Next-day orders assigned",
+          msg: `You've been assigned ${sequence.length} order(s) for tomorrow's pickup run.`,
+          type: "next_day_order",
+          date: new Date(),
+        },
+      });
+      try {
+        const orderedForDriver = orders
+          .slice()
+          .sort((a, b) => {
+            const posA = sequence.find((s) => Number(s.order_id) === a.id)?.position ?? 0;
+            const posB = sequence.find((s) => Number(s.order_id) === b.id)?.position ?? 0;
+            return posA - posB;
+          })
+          .map((o) => ({
+            order_id: o.id,
+            pickup_address: o.paddress,
+            drop_address: o.daddress,
+            sequence: sequence.find((s) => Number(s.order_id) === o.id)?.position ?? 0,
+          }));
+        getIO().to(`driver_${riderId}`).emit("order:next_day_assigned", { orders: orderedForDriver });
+      } catch (socketErr) {
+        logger.error(`assignNextDayBatch: socket notify failed for rider ${riderId}:`, socketErr);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: "Next-day orders assigned", assigned_count: sequence.length });
+  } catch (err) {
+    return internalError(res, err, "orders.assignNextDayBatch");
+  }
+}
+
+module.exports = {
+  list, getOne, assignRider, update, cancel, invoice, listScheduled, assignScheduledDriver,
+  listNextDay, suggestNextDaySequence, assignNextDayBatch,
+};
