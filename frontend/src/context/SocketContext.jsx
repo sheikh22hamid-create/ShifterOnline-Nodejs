@@ -4,15 +4,17 @@ import { useAuth } from './AuthContext'
 
 const SocketContext = createContext(null)
 
+const PROD_SOCKET_URL = 'https://shifteronline-nodejs.onrender.com'
+
 function resolveSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) {
     return import.meta.env.VITE_SOCKET_URL
   }
   // In local browser dev, connect to backend port 5000 if running on Vite (5173)
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost' && window.location.port !== '5000') {
-    return 'http://localhost:5000'
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return window.location.port !== '5000' ? 'http://localhost:5000' : window.location.origin
   }
-  return typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000'
+  return PROD_SOCKET_URL
 }
 
 export function SocketProvider({ children }) {
@@ -43,7 +45,10 @@ export function SocketProvider({ children }) {
     }
 
     const socketUrl = resolveSocketUrl()
+    const token = localStorage.getItem('shifter_admin_token')
     const nextSocket = io(socketUrl, {
+      auth: { token },
+      query: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -55,6 +60,7 @@ export function SocketProvider({ children }) {
     socketRef.current = nextSocket
 
     nextSocket.on('connect', () => {
+      setConnected(true)
       joinAdminRoom(nextSocket)
       setLastActivity(Date.now())
     })
