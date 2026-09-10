@@ -13,6 +13,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const LiveTracking = lazy(() => import('./pages/LiveTracking'))
 const Orders = lazy(() => import('./pages/Orders'))
 const ScheduledOrders = lazy(() => import('./pages/ScheduledOrders'))
+const NextDayOrders = lazy(() => import('./pages/NextDayOrders'))
 const Drivers = lazy(() => import('./pages/Drivers'))
 const DriverActivity = lazy(() => import('./pages/DriverActivity'))
 const DriverTraining = lazy(() => import('./pages/DriverTraining'))
@@ -67,6 +68,7 @@ function App() {
             <Route path="/fleet/live-tracking" element={<LiveTracking />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/orders/scheduled" element={<ScheduledOrders />} />
+            <Route path="/orders/next-day" element={<NextDayOrders />} />
             <Route path="/custom-orders" element={<CustomOrders />} />
             <Route path="/drivers" element={<Drivers />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />

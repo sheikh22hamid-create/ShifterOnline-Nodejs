@@ -26,6 +26,7 @@ import {
   GraduationCap,
   ShoppingBag,
   Activity,
+  Sunrise,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -46,6 +47,7 @@ export const NAV_GROUPS = [
       { to: '/fleet/live-tracking', label: 'Live Mission Control', icon: Radar, roles: ALL_STAFF, built: true },
       { to: '/orders', label: 'Live Orders', icon: Package, roles: ALL_STAFF, built: true },
       { to: '/orders/scheduled', label: 'Scheduled Orders', icon: CalendarClock, roles: ALL_STAFF, built: true },
+      { to: '/orders/next-day', label: 'Next Day Orders', icon: Sunrise, roles: ALL_STAFF, built: true },
       { to: '/custom-orders', label: 'Custom Orders (Bidding)', icon: ShoppingBag, roles: ALL_STAFF, built: true },
       { to: '/drivers', label: 'Drivers Fleet', icon: Users, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
