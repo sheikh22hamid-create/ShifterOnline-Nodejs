@@ -18,7 +18,8 @@ function registerAdminHandlers(io, socket) {
         socket.emit("admin:join:ack", { Result: false, msg: "Token missing" });
         return;
       }
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      const rawToken = String(token).replace(/^Bearer\s+/i, "").trim();
+      const payload = jwt.verify(rawToken, process.env.JWT_SECRET);
       socket.data.adminId = payload.id;
       socket.data.adminRole = payload.role;
       socket.data.adminCityId = payload.city_id;
@@ -58,6 +59,8 @@ function broadcastToScope(cityId, event, payload) {
     if (cityId) {
       ioRef.to(`admin_city_${cityId}`).emit(event, payload);
     }
+    // Universal broadcast to all active connections
+    ioRef.emit(event, payload);
   } catch (err) {
     logger.error(`broadcastToScope error for event ${event}:`, err);
   }

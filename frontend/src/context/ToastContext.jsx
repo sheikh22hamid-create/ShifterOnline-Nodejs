@@ -30,7 +30,7 @@ export function ToastProvider({ children }) {
       }}
     >
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+      <div className="fixed top-5 right-5 z-[999999] flex flex-col gap-2.5 max-w-sm pointer-events-none">
         {toasts.map((t) => {
           let bg = 'var(--success-soft)'
           let border = 'var(--success-soft-border)'
@@ -57,16 +57,24 @@ export function ToastProvider({ children }) {
           return (
             <div
               key={t.id}
-              className="flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[13px] font-medium shadow-lg transition-all"
+              className="pointer-events-auto flex items-center gap-2.5 rounded-xl border px-4 py-3 text-[13px] font-medium shadow-xl transition-all animate-in fade-in slide-in-from-top-2 duration-200"
               style={{
                 background: bg,
                 borderColor: border,
                 color: color,
-                boxShadow: 'var(--shadow-md)',
+                boxShadow: 'var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))',
               }}
             >
-              <Icon size={16} className="shrink-0" />
-              <div className="flex-1">{t.message}</div>
+              <Icon size={18} className="shrink-0" />
+              <div className="flex-1 leading-snug">{t.message}</div>
+              <button
+                type="button"
+                onClick={() => dismiss(t.id)}
+                className="opacity-70 hover:opacity-100 p-0.5"
+                aria-label="Dismiss"
+              >
+                <XCircle size={14} />
+              </button>
             </div>
           )
         })}

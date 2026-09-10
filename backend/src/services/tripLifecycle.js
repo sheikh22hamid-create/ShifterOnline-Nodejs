@@ -437,7 +437,7 @@ async function updateStatus(orderId, riderId, status) {
     // must still have admin's commission debited here; a wallet/online
     // payment already routes through the platform, so the driver only ever
     // receives their net driverEarning directly and needs no such debit.
-    if ((order.trans_id || "").toLowerCase().startsWith("cash") && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0)) {
+    if ((order.trans_id || "").toLowerCase().startsWith("cash") && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || advancePaymentCollected > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money. Computed off finalTotal (includes waiting
@@ -479,6 +479,42 @@ async function updateStatus(orderId, riderId, status) {
               wallet_type: "driver",
               order_id: orderId,
               payment_id: commissionKey,
+              created_at: istNow(),
+            },
+          });
+        }
+      }
+
+      // The reverse case (order #1832): a small/low-fare cash trip where the
+      // flat advance_payment collected online is bigger than what admin is
+      // actually owed (commission + perTripCharge). The driver then only
+      // collects a reduced cash-in-hand (fare - advance) that's LESS than
+      // their real net earning (fare - commission - perTripCharge) — the
+      // leftover advance is sitting with admin and belongs to the driver.
+      // pkg_history.php's own "wallet_adjustment" display already computes
+      // this exact shortfall and shows "₹X added to wallet" on the driver's
+      // trip-detail screen, but nothing here ever actually paid it — the
+      // driver's real wallet never received a matching credit for it.
+      const advanceRefundDue = Math.max(0, advancePaymentCollected - (commission + perTripCharge));
+      if (advanceRefundDue > 0) {
+        const refundKey = `advance_refund:${orderId}`;
+        const alreadyRefunded = await prisma.tbl_wallet_history.findFirst({
+          where: { payment_id: refundKey, type: "credit", wallet_type: "driver" },
+        });
+        if (!alreadyRefunded) {
+          await prisma.tbl_rider.update({
+            where: { id: riderId },
+            data: { wallet_balance: { increment: advanceRefundDue } },
+          });
+          await prisma.tbl_wallet_history.create({
+            data: {
+              user_id: riderId,
+              amount: advanceRefundDue,
+              type: "credit",
+              remark: `Advance payment balance for order #${orderId} (cash collected was less than net earning)`,
+              wallet_type: "driver",
+              order_id: orderId,
+              payment_id: refundKey,
               created_at: istNow(),
             },
           });

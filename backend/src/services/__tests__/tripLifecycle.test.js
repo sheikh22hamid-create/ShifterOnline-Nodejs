@@ -594,7 +594,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     );
   });
 
-  it("does not touch the wallet when advance_payment already covers the full commission", async () => {
+  it("credits the driver the advance_payment left over once it covers the full commission", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 303,
       rid: 1,
@@ -611,8 +611,25 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     const result = await tripLifecycle.updateStatus(303, 1, "complete");
 
     expect(result.success).toBe(true);
-    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
-    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    // Advance (15) exceeds commission (5) — the driver collected less cash
+    // than their real net earning, so the leftover 10 admin is holding
+    // belongs to them and must land back in their wallet as a credit.
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { increment: 10 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          user_id: 1,
+          amount: 10,
+          type: "credit",
+          wallet_type: "driver",
+          order_id: 303,
+          payment_id: "advance_refund:303",
+        }),
+      })
+    );
   });
 
   it("computes commission off the final total (including waiting charge), not the pre-waiting-charge d_charge", async () => {
@@ -698,11 +715,18 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       wating_charge: "0",
     });
     prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 15 }]);
-    prisma.tbl_wallet_history.findFirst.mockResolvedValueOnce({ id: 999 });
+    // Two idempotency checks fire in order for this order (commission 0,
+    // advance 15): the driver's advance-refund credit first, then the
+    // customer's advance-apply debit — both already recorded, so neither
+    // should re-fire.
+    prisma.tbl_wallet_history.findFirst
+      .mockResolvedValueOnce({ id: 998 })
+      .mockResolvedValueOnce({ id: 999 });
 
     const result = await tripLifecycle.updateStatus(306, 1, "complete");
 
     expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
   });
 
