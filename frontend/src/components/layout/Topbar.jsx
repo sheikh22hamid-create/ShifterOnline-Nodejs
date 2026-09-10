@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
-import { Menu, Search, Sun, Moon, ChevronDown, LogOut } from 'lucide-react'
+import { Menu, Search, Sun, Moon, ChevronDown, LogOut, Volume2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useSocket } from '../../context/SocketContext'
+import { useToast } from '../../context/ToastContext'
+import { playOrderChime } from '../../utils/sound'
 import { ROLE_LABELS } from '../../config/navigation'
 
 export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const { connected, reconnect } = useSocket()
+  const toast = useToast()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
@@ -53,6 +56,20 @@ export default function Topbar({ onMenuClick }) {
       </button>
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            playOrderChime()
+            toast.info('🔔 Order chime sound tested successfully!')
+          }}
+          className="hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all hover:border-[var(--brand)] hover:text-[var(--brand)]"
+          style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+          title="Click to test new order sound"
+        >
+          <Volume2 size={13} style={{ color: 'var(--brand)' }} />
+          <span>Test Sound</span>
+        </button>
+
         <button
           type="button"
           onClick={() => {
