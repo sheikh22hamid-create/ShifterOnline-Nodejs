@@ -12,6 +12,19 @@ function isFiniteNumber(value) {
   return typeof value === "number" ? Number.isFinite(value) : Number.isFinite(Number(value));
 }
 
+// Next-day orders have no fixed pickup time (admin assigns a window
+// separately) — only the calendar DATE matters, and it must be "tomorrow"
+// on India's calendar, not the server's. Render runs UTC (see
+// pricingEngine.isNightNow's comment for the same class of bug already
+// hit once), so the IST offset is applied explicitly rather than trusting
+// server-local time.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function nextDayScheduleDateIST(now = new Date()) {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  ist.setUTCDate(ist.getUTCDate() + 1);
+  return ist.toISOString().slice(0, 10);
+}
+
 /**
  * The legacy mobile app has a confirmed field-swap quirk: it sends the
  * package's per-km RATE in radius_range and the customer's actually
@@ -221,7 +234,9 @@ async function createOrderCore({
   const finalDCharge = (Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare;
 
   const parsedWeight = parseFloat(String(packageWeight));
-  const finalScheduleDateTime = (scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null;
+  const finalScheduleDateTime = Number(bookingType) === 3
+    ? nextDayScheduleDateIST()
+    : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
   const order = await prisma.pkg_order.create({
     data: {
@@ -266,15 +281,20 @@ async function createOrderCore({
     },
   });
 
-  dispatchManager.startDispatch(order, {
-    fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
-    // Handed through so dispatchManager can price each eligible driver's own
-    // popup off their real pickup distance without a redundant re-fetch of
-    // the package row/discount it already looked up for tier 0 above.
-    pkg: firstPkg, discount: planDiscount,
-  }).catch((err) =>
-    logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
-  );
+  // Next-day orders (booking_type 3) are never auto-dispatched — admin
+  // assigns them manually, individually or as a sequenced batch, from the
+  // Next Day Orders admin panel. See docs/superpowers/specs/2026-09-10-next-day-booking-design.md §5.
+  if (Number(bookingType) !== 3) {
+    dispatchManager.startDispatch(order, {
+      fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
+      // Handed through so dispatchManager can price each eligible driver's own
+      // popup off their real pickup distance without a redundant re-fetch of
+      // the package row/discount it already looked up for tier 0 above.
+      pkg: firstPkg, discount: planDiscount,
+    }).catch((err) =>
+      logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
+    );
+  }
 
   try {
     adminSocket.notifyNewOrder(order);

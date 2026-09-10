@@ -164,6 +164,33 @@ describe("orderController.createOrderCore", () => {
       );
     });
   });
+
+  it("does not start automatic dispatch for a next-day booking (booking_type 3)", async () => {
+    const result = await createOrderCore({ ...baseInput, bookingType: 3 });
+
+    expect(result.ok).toBe(true);
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+  });
+
+  it("still starts automatic dispatch for a normal booking (booking_type 1)", async () => {
+    const result = await createOrderCore({ ...baseInput, bookingType: 1 });
+
+    expect(result.ok).toBe(true);
+    expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-computes tomorrow's date (IST) as schedule_date_time for a next-day booking, ignoring any client-sent value", async () => {
+    await createOrderCore({ ...baseInput, bookingType: 3, scheduleDateTime: "should be ignored" });
+
+    expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          booking_type: 3,
+          schedule_date_time: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      })
+    );
+  });
 });
 
 describe("orderController.createOrder (HTTP handler) — photos pass-through", () => {
