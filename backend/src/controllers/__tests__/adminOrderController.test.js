@@ -97,6 +97,30 @@ describe("adminOrderController next-day orders", () => {
 
       expect(res.status).toHaveBeenCalledWith(404);
     });
+
+    it("403s when the driver is outside a city-scoped admin's assigned city", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 2, rlats: "0", rlongs: "0" });
+      const req = { body: { rider_id: "2", order_ids: [100] }, user: { role: "admin", city_id: 1 } };
+      const res = makeRes();
+
+      await suggestNextDaySequence(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(prisma.pkg_order.findMany).not.toHaveBeenCalled();
+    });
+
+    it("403s when an order in the batch is outside a city-scoped admin's assigned city", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1, rlats: "0", rlongs: "0" });
+      prisma.pkg_order.findMany.mockResolvedValue([
+        { id: 100, booking_type: 3, city_id: 2, plat: 0, plong: 5, dlat: 0, dlong: 6 },
+      ]);
+      const req = { body: { rider_id: "2", order_ids: [100] }, user: { role: "admin", city_id: 1 } };
+      const res = makeRes();
+
+      await suggestNextDaySequence(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
   });
 
   describe("assignNextDayBatch", () => {
@@ -150,6 +174,35 @@ describe("adminOrderController next-day orders", () => {
       await assignNextDayBatch(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("403s when the driver is outside a city-scoped admin's assigned city", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 2 });
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: 1 }] },
+        user: { role: "admin", city_id: 1 },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("403s when an order in the batch is outside a city-scoped admin's assigned city", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
+      prisma.pkg_order.findMany.mockResolvedValue([{ id: 200, booking_type: 3, city_id: 2 }]);
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: 1 }] },
+        user: { role: "admin", city_id: 1 },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });

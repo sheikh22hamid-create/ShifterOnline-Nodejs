@@ -520,10 +520,16 @@ async function suggestNextDaySequence(req, res) {
     if (!rider) {
       return res.status(404).json({ success: false, message: "Driver not found" });
     }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
 
     const orders = await prisma.pkg_order.findMany({ where: { id: { in: orderIds }, booking_type: 3 } });
     if (orders.length !== orderIds.length) {
       return res.status(400).json({ success: false, message: "One or more order ids are not valid next-day orders" });
+    }
+    if (orders.some((o) => isScopedOut(req, o.city_id))) {
+      return res.status(403).json({ success: false, message: "Forbidden: an order is outside your assigned city" });
     }
 
     const driverLat = Number(rider.rlats);
