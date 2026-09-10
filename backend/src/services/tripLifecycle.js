@@ -418,22 +418,34 @@ async function updateStatus(orderId, riderId, status) {
       // portion admin already collected upfront.
       const netCommissionDue = Math.max(0, commission + perTripCharge - advancePaymentCollected);
 
+      // Guarded the same way the advance-payment debit below is: a retried or
+      // duplicate 'complete' call (order #1790 showed this live — two
+      // "Admin deduction" debits nine seconds apart, ₹93 taken instead of
+      // ₹93 once) must not claw back commission from the driver's wallet
+      // twice for the same order.
       if (netCommissionDue > 0) {
-        await prisma.tbl_rider.update({
-          where: { id: riderId },
-          data: { wallet_balance: { decrement: netCommissionDue } },
+        const commissionKey = `commission_debit:${orderId}`;
+        const alreadyDebited = await prisma.tbl_wallet_history.findFirst({
+          where: { payment_id: commissionKey, type: "debit", wallet_type: "driver" },
         });
-        await prisma.tbl_wallet_history.create({
-          data: {
-            user_id: riderId,
-            amount: netCommissionDue,
-            type: "debit",
-            remark: `Admin deduction for order #${orderId}${driverBenefit?.benefit > 0 ? ` (${driverBenefit.plan.plan_name})` : ""}`,
-            wallet_type: "driver",
-            order_id: orderId,
-            created_at: istNow(),
-          },
-        });
+        if (!alreadyDebited) {
+          await prisma.tbl_rider.update({
+            where: { id: riderId },
+            data: { wallet_balance: { decrement: netCommissionDue } },
+          });
+          await prisma.tbl_wallet_history.create({
+            data: {
+              user_id: riderId,
+              amount: netCommissionDue,
+              type: "debit",
+              remark: `Admin deduction for order #${orderId}${driverBenefit?.benefit > 0 ? ` (${driverBenefit.plan.plan_name})` : ""}`,
+              wallet_type: "driver",
+              order_id: orderId,
+              payment_id: commissionKey,
+              created_at: istNow(),
+            },
+          });
+        }
       }
     }
 
