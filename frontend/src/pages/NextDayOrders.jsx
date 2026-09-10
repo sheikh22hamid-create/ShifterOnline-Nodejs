@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Sunrise, Users } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
@@ -21,6 +21,15 @@ export default function NextDayOrders() {
   const selectedOrders = unassigned.filter((o) => selectedIds.includes(o.id))
 
   useRealtimeSync(['admin:new_order', 'admin:order_status_update'], refetch)
+
+  // `orders` can change underneath the user via the realtime refetch above —
+  // if a selected order drops out of the unassigned list (assigned/cancelled
+  // elsewhere), prune it from selectedIds so the "N selected" banner and the
+  // batch posted to the assign modal never reference a stale/vanished order.
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => unassigned.some((o) => o.id === id)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders])
 
   function toggleSelect(id) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))

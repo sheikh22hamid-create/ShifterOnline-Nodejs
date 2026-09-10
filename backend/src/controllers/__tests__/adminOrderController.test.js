@@ -124,11 +124,11 @@ describe("adminOrderController next-day orders", () => {
   });
 
   describe("assignNextDayBatch", () => {
-    it("sets rid and next_day_sequence on every order in the batch, and notifies the driver once", async () => {
+    it("sets rid, next_day_sequence and driver_earning on every order in the batch, and notifies the driver once", async () => {
       prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
       prisma.pkg_order.findMany.mockResolvedValue([
-        { id: 200, booking_type: 3, city_id: 1, paddress: "A", daddress: "B" },
-        { id: 100, booking_type: 3, city_id: 1, paddress: "C", daddress: "D" },
+        { id: 200, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "A", daddress: "B", total_dcharge: 250 },
+        { id: 100, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "C", daddress: "D", total_dcharge: 300 },
       ]);
       prisma.pkg_order.update.mockResolvedValue({});
       prisma.$transaction.mockResolvedValue([{}, {}]);
@@ -151,18 +151,81 @@ describe("adminOrderController next-day orders", () => {
       ]);
       expect(prisma.pkg_order.update).toHaveBeenNthCalledWith(1, {
         where: { id: 200 },
-        data: { rid: 2, next_day_sequence: 1 },
+        data: { rid: 2, next_day_sequence: 1, driver_earning: 250 },
       });
       expect(prisma.pkg_order.update).toHaveBeenNthCalledWith(2, {
         where: { id: 100 },
-        data: { rid: 2, next_day_sequence: 2 },
+        data: { rid: 2, next_day_sequence: 2, driver_earning: 300 },
       });
       expect(prisma.tbl_rnoti.create).toHaveBeenCalledTimes(1);
       const io = getIO.mock.results[0].value;
       expect(io.emit).toHaveBeenCalledWith("order:next_day_assigned", expect.objectContaining({
-        orders: expect.arrayContaining([expect.objectContaining({ order_id: 200, sequence: 1 })]),
+        orders: expect.arrayContaining([expect.objectContaining({ order_id: 200, sequence: 1, fare: 250 })]),
       }));
       expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("rejects a batch entry with a non-finite/non-positive position", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: "abc" }] },
+        user: { role: "superadmin" },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.pkg_order.findMany).not.toHaveBeenCalled();
+    });
+
+    it("rejects a batch entry with a negative position", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: -1 }] },
+        user: { role: "superadmin" },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a batch containing an order that is already assigned to another driver", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
+      prisma.pkg_order.findMany.mockResolvedValue([
+        { id: 200, booking_type: 3, city_id: 1, rid: 5, o_status: "Processing", total_dcharge: 250 },
+      ]);
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: 1 }] },
+        user: { role: "superadmin" },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects a batch containing a cancelled order", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
+      prisma.pkg_order.findMany.mockResolvedValue([
+        { id: 200, booking_type: 3, city_id: 1, rid: 0, o_status: "Cancelled", total_dcharge: 250 },
+      ]);
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: 1 }] },
+        user: { role: "superadmin" },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
     it("rejects a batch containing a non-next-day order", async () => {

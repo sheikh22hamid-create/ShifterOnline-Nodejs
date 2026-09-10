@@ -7,22 +7,27 @@ import { formatCurrency } from '../../utils/format'
 export default function NextDaySequenceModal({ open, orders, onClose, onAssigned }) {
   const [selectedRiderId, setSelectedRiderId] = useState('')
   const [sequence, setSequence] = useState(null) // [{ order_id, pickup_distance_km }]
+  const [reordered, setReordered] = useState(false)
   const [notifyNow, setNotifyNow] = useState(true)
   const [suggesting, setSuggesting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  // The modal stays mounted (Modal.jsx doesn't unmount children when
-  // `open` is false), so without this, state from a previous open/close
-  // cycle — e.g. a suggested sequence for a different order selection —
-  // would leak into the next time the modal is opened. Reset everything
-  // whenever it transitions to open so every fresh open starts clean.
+  // NextDaySequenceModal itself stays mounted across open/close cycles —
+  // only its `open` prop toggles (Modal.jsx returns null internally when
+  // closed, but that only hides Modal's own rendered output; it doesn't
+  // unmount this parent component or its hooks). So without this, state
+  // from a previous open/close cycle — e.g. a suggested sequence for a
+  // different order selection — would leak into the next time the modal
+  // is opened. Reset everything whenever it transitions to open so every
+  // fresh open starts clean.
   useEffect(() => {
     if (open) {
       setSelectedRiderId('')
       setSequence(null)
       setNotifyNow(true)
       setError('')
+      setReordered(false)
     }
   }, [open])
 
@@ -45,6 +50,7 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
         order_ids: (orders || []).map((o) => o.id),
       })
       setSequence(res.data.data)
+      setReordered(false)
     } catch (err) {
       setError(err.response?.data?.message || 'Could not suggest a sequence.')
     } finally {
@@ -54,6 +60,7 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
 
   function moveUp(index) {
     if (index === 0) return
+    setReordered(true)
     setSequence((prev) => {
       const next = [...prev]
       ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
@@ -62,6 +69,7 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
   }
 
   function moveDown(index) {
+    setReordered(true)
     setSequence((prev) => {
       if (index === prev.length - 1) return prev
       const next = [...prev]
@@ -153,7 +161,7 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
               <div key={s.order_id} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-[12.5px]" style={{ borderColor: 'var(--border)' }}>
                 <span className="font-mono-data font-semibold" style={{ color: 'var(--ink)' }}>#{i + 1}</span>
                 <span className="flex-1 truncate" style={{ color: 'var(--ink-muted)' }}>
-                  Order #{s.order_id} — {order?.paddress || 'pickup'} ({s.pickup_distance_km} km away) — {formatCurrency(order?.total_dcharge)}
+                  Order #{s.order_id} — {order?.paddress || 'pickup'}{!reordered ? ` (${s.pickup_distance_km} km away)` : ''} — {formatCurrency(order?.total_dcharge)}
                 </span>
                 <button type="button" onClick={() => moveUp(i)} disabled={i === 0} className="disabled:opacity-30" style={{ color: 'var(--ink-faint)' }}>↑</button>
                 <button type="button" onClick={() => moveDown(i)} disabled={i === sequence.length - 1} className="disabled:opacity-30" style={{ color: 'var(--ink-faint)' }}>↓</button>

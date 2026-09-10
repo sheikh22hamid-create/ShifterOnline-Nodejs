@@ -552,6 +552,9 @@ async function assignNextDayBatch(req, res) {
     if (!riderId || sequence.length === 0) {
       return res.status(400).json({ success: false, message: "rider_id and a non-empty sequence array are required" });
     }
+    if (sequence.some((s) => !Number.isInteger(Number(s.position)) || Number(s.position) <= 0)) {
+      return res.status(400).json({ success: false, message: "Each sequence entry must have a finite positive integer position" });
+    }
 
     const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
     if (!rider) {
@@ -569,26 +572,34 @@ async function assignNextDayBatch(req, res) {
     if (orders.some((o) => isScopedOut(req, o.city_id))) {
       return res.status(403).json({ success: false, message: "Forbidden: an order is outside your assigned city" });
     }
+    if (orders.some((o) => o.rid !== 0 || ["Cancelled", "Completed"].includes(o.o_status))) {
+      return res.status(409).json({ success: false, message: "One or more orders are already assigned, completed, or cancelled" });
+    }
 
     await prisma.$transaction(
-      sequence.map((s) =>
-        prisma.pkg_order.update({
+      sequence.map((s) => {
+        const order = orders.find((o) => o.id === Number(s.order_id));
+        return prisma.pkg_order.update({
           where: { id: Number(s.order_id) },
-          data: { rid: riderId, next_day_sequence: Number(s.position) },
-        })
-      )
+          data: { rid: riderId, next_day_sequence: Number(s.position), driver_earning: order?.total_dcharge },
+        });
+      })
     );
 
     if (req.body.notify_driver_now) {
-      await prisma.tbl_rnoti.create({
-        data: {
-          rid: riderId,
-          title: "Next-day orders assigned",
-          msg: `You've been assigned ${sequence.length} order(s) for tomorrow's pickup run.`,
-          type: "next_day_order",
-          date: new Date(),
-        },
-      });
+      try {
+        await prisma.tbl_rnoti.create({
+          data: {
+            rid: riderId,
+            title: "Next-day orders assigned",
+            msg: `You've been assigned ${sequence.length} order(s) for tomorrow's pickup run.`,
+            type: "next_day_order",
+            date: new Date(),
+          },
+        });
+      } catch (notiErr) {
+        logger.error(`assignNextDayBatch: notification insert failed for rider ${riderId}:`, notiErr);
+      }
       try {
         const orderedForDriver = orders
           .slice()
@@ -602,6 +613,7 @@ async function assignNextDayBatch(req, res) {
             pickup_address: o.paddress,
             drop_address: o.daddress,
             sequence: sequence.find((s) => Number(s.order_id) === o.id)?.position ?? 0,
+            fare: o.total_dcharge,
           }));
         getIO().to(`driver_${riderId}`).emit("order:next_day_assigned", { orders: orderedForDriver });
       } catch (socketErr) {
