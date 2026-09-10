@@ -50,14 +50,13 @@ function requireIo() {
   return ioRef;
 }
 
-/** Broadcasts to all admins and city-specific room if scoped */
 function broadcastToScope(cityId, event, payload) {
   try {
-    const io = requireIo();
-    io.to("admins_all").emit(event, payload);
-    io.to("admin_super").emit(event, payload);
+    if (!ioRef) return;
+    ioRef.to("admins_all").emit(event, payload);
+    ioRef.to("admin_super").emit(event, payload);
     if (cityId) {
-      io.to(`admin_city_${cityId}`).emit(event, payload);
+      ioRef.to(`admin_city_${cityId}`).emit(event, payload);
     }
   } catch (err) {
     logger.error(`broadcastToScope error for event ${event}:`, err);

@@ -20,7 +20,10 @@ function internalError(res, err, label) {
 }
 
 function isScopedOut(req, orderCityId) {
-  return req.user.role !== "superadmin" && orderCityId !== parseInt(req.user.city_id, 10);
+  const roleLower = String(req.user?.role || "").toLowerCase();
+  if (roleLower === "superadmin" || roleLower === "super_admin") return false;
+  if (!orderCityId || !req.user?.city_id) return false;
+  return Number(orderCityId) !== parseInt(req.user.city_id, 10);
 }
 
 async function list(req, res) {

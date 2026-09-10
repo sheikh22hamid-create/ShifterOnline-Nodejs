@@ -137,6 +137,7 @@ router.get("/analytics/city-comparison", auth, authorize("superadmin"), analytic
 // --- Live Fleet Tracking & Driver Activity -----------------------------------
 router.get("/fleet/live-tracking", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.liveTracking);
 router.get("/fleet/driver-activity", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.driverActivity);
+router.get("/fleet/active-trips", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.activeTrips);
 
 // --- CMS: Cancellation Reasons, Legal Pages, FAQs ----------------------------
 router.get("/cancel-reasons", auth, cmsController.listCancelReasons);
