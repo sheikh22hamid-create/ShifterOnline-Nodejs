@@ -58,7 +58,21 @@ class OrderAlreadyTakenError extends Error {}
  * request row is what makes "accept vs. expiry at the same instant"
  * deterministic, with no extra app-level locking needed.
  */
-async function acceptOrder(orderId, riderId) {
+/**
+ * Fast path: just the atomic first-come-first-served claim (spec §4.5) —
+ * the two conditional UPDATEs below, inside one transaction. Returns the
+ * instant the claim itself is decided, without waiting on anything
+ * finalizeAcceptedOrder does afterward (streak tracking, pricing off the
+ * driver's real distance, advance_payment, admin/customer notifications) —
+ * several sequential DB round-trips that have no bearing on whether THIS
+ * accept won. orderSocket's order:accept handler acks the driver right off
+ * this, then calls finalizeAcceptedOrder in the background: measured live,
+ * the combined wait was costing the driver's own accept ack ~8s — almost
+ * entirely finalize work — before "waiting for advance payment" could even
+ * open (see ShifterDriver's OrderDetailsActivity). acceptOrder() below
+ * still runs both in sequence for callers that want the one-shot result.
+ */
+async function claimOrderForRider(orderId, riderId) {
   const popupSeconds = POPUP_TIMEOUT_MS / 1000;
   let acceptedPackageId = null;
 
@@ -130,10 +144,19 @@ async function acceptOrder(orderId, riderId) {
     throw err;
   }
 
-  // Only reached once the transaction above has actually committed — an
-  // accept that lost the race (OrderAlreadyTakenError) never reaches here,
-  // so this can't wrongly reset the streak for an attempt that didn't
-  // really succeed.
+  return { success: true, acceptedPackageId };
+}
+
+/**
+ * Everything after a successful claim: streak tracking, pricing off the
+ * accepting driver's real distance, advance_payment, admin/customer
+ * notifications. Split out from claimOrderForRider so the driver's own
+ * accept ack doesn't wait on any of it — see that function's comment.
+ */
+async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
+  // An accept that lost the race (claimOrderForRider returned success:
+  // false) never reaches here, so this can't wrongly reset the streak for
+  // an attempt that didn't really succeed.
   await dispatchManager.recordModel1Outcome(riderId, acceptedPackageId, "accept");
 
   const [order, rider] = await Promise.all([
@@ -203,9 +226,9 @@ async function acceptOrder(orderId, riderId) {
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
   // FCM is only a background/reconnect fallback.  It must not block the
-  // accept response: orderSocket emits the live `order:assigned` event and
-  // the driver accept ACK only after acceptOrder resolves.  Waiting for a
-  // slow FCM request here made both apps sit on their old screens for ~10s.
+  // customer's order:assigned event (see orderSocket, which emits that
+  // once this whole finalize step resolves).  Waiting for a slow FCM
+  // request here made the customer app sit on its old screen for ~10s.
   void pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
     order_id: orderId,
     rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
@@ -217,10 +240,24 @@ async function acceptOrder(orderId, riderId) {
   });
 
   return {
-    success: true,
     order: { ...order, ...priced, advance_payment: String(advancePayment), package: pkg },
     rider,
   };
+}
+
+/**
+ * Convenience wrapper preserving the old one-call accept contract (claim +
+ * finalize, run in sequence, single combined result) for callers that want
+ * the whole thing done before they get anything back — this file's own
+ * test suite included. orderSocket's order:accept handler calls
+ * claimOrderForRider/finalizeAcceptedOrder directly instead, specifically
+ * so the driver's accept ack doesn't wait on finalize (see its comment).
+ */
+async function acceptOrder(orderId, riderId) {
+  const claim = await claimOrderForRider(orderId, riderId);
+  if (!claim.success) return claim;
+  const finalized = await finalizeAcceptedOrder(orderId, riderId, claim.acceptedPackageId);
+  return { success: true, ...finalized };
 }
 
 /**
@@ -794,6 +831,8 @@ async function sweepOverduePickups() {
 
 module.exports = {
   acceptOrder,
+  claimOrderForRider,
+  finalizeAcceptedOrder,
   rejectOrder,
   updateStatus,
   customerCancel,
