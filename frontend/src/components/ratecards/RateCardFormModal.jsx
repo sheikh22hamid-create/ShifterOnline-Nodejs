@@ -93,11 +93,13 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
     }
   }
 
+  const vehicleLabel = rateCard?.vehicle_type || rateCard?.category_name
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? `Edit ${rateCard.title}` : 'New rate card'}
+      title={isEdit ? `Edit ${vehicleLabel ? `${vehicleLabel} - ` : ''}${rateCard.title}` : 'New rate card'}
       width={480}
       footer={
         <>
@@ -125,19 +127,19 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="title">Title</Label>
-            <Input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Model 1" />
-          </div>
-          <div>
-            <Label htmlFor="cat_id">Category</Label>
+            <Label htmlFor="cat_id">Vehicle Category</Label>
             <select id="cat_id" value={form.cat_id} onChange={(e) => set('cat_id', e.target.value)} className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none" style={FIELD_STYLE}>
-              <option value="">Select category</option>
+              <option value="">Select Vehicle (Bike, 3 Wheeler...)</option>
               {categories?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.cat_name}
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label htmlFor="title">Pricing Model / Title</Label>
+            <Input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Model 1" />
           </div>
         </div>
 

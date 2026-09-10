@@ -25,8 +25,15 @@ function formatTime(date) {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-function serializePackage(pkg) {
-  return { ...pkg, start_time: formatTime(pkg.start_time), end_time: formatTime(pkg.end_time) };
+function serializePackage(pkg, category) {
+  return {
+    ...pkg,
+    start_time: formatTime(pkg.start_time),
+    end_time: formatTime(pkg.end_time),
+    category_name: category?.cat_name || null,
+    category_img: category?.cat_img || null,
+    vehicle_type: category?.cat_name || null,
+  };
 }
 
 async function list(req, res) {
@@ -35,16 +42,24 @@ async function list(req, res) {
     if (req.query.cat_id) where.cat_id = parseInt(req.query.cat_id, 10);
     if (req.query.status !== undefined) where.status = parseInt(req.query.status, 10);
 
-    let rows = await prisma.tbl_package.findMany({ where, orderBy: [{ cat_id: "asc" }, { sort_order: "asc" }] });
+    const [rows, categories] = await Promise.all([
+      prisma.tbl_package.findMany({ where, orderBy: [{ cat_id: "asc" }, { sort_order: "asc" }] }),
+      prisma.pkg_category.findMany(),
+    ]);
 
+    const catMap = new Map(categories.map((c) => [c.id, c]));
+
+    let filteredRows = rows;
     if (req.query.city_id) {
       // city_id is a legacy comma-separated VarChar column, not a real FK —
       // substring match would false-positive ("1" inside "21"), so split first.
       const target = String(parseInt(req.query.city_id, 10));
-      rows = rows.filter((p) => (p.city_id || "").split(",").map((s) => s.trim()).includes(target));
+      filteredRows = filteredRows.filter((p) => (p.city_id || "").split(",").map((s) => s.trim()).includes(target));
     }
 
-    return res.status(200).json({ success: true, total: rows.length, data: rows.map(serializePackage) });
+    const data = filteredRows.map((pkg) => serializePackage(pkg, catMap.get(pkg.cat_id)));
+
+    return res.status(200).json({ success: true, total: data.length, data });
   } catch (err) {
     return internalError(res, err, "rateCards.list");
   }
@@ -57,7 +72,8 @@ async function getOne(req, res) {
     if (!pkg) {
       return res.status(404).json({ success: false, message: "Rate card not found" });
     }
-    return res.status(200).json({ success: true, data: serializePackage(pkg) });
+    const category = pkg.cat_id ? await prisma.pkg_category.findUnique({ where: { id: pkg.cat_id } }) : null;
+    return res.status(200).json({ success: true, data: serializePackage(pkg, category) });
   } catch (err) {
     return internalError(res, err, "rateCards.getOne");
   }
@@ -122,7 +138,7 @@ async function create(req, res) {
       },
     });
 
-    return res.status(201).json({ success: true, message: "Rate card created", data: serializePackage(created) });
+    return res.status(201).json({ success: true, message: "Rate card created", data: serializePackage(created, category) });
   } catch (err) {
     return internalError(res, err, "rateCards.create");
   }
@@ -182,7 +198,8 @@ async function update(req, res) {
     if (b.status !== undefined) data.status = parseInt(b.status, 10);
 
     const updated = await prisma.tbl_package.update({ where: { id }, data });
-    return res.status(200).json({ success: true, message: "Rate card updated", data: serializePackage(updated) });
+    const category = updated.cat_id ? await prisma.pkg_category.findUnique({ where: { id: updated.cat_id } }) : null;
+    return res.status(200).json({ success: true, message: "Rate card updated", data: serializePackage(updated, category) });
   } catch (err) {
     return internalError(res, err, "rateCards.update");
   }
