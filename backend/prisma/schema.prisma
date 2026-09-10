@@ -218,6 +218,7 @@ model pkg_order {
   current_package_step   Int?               @default(0)
   driver_earning         Decimal?           @db.Decimal(10, 2)
   booking_type           Int?
+  next_day_sequence      Int?
   city_id                Int?
   schedule_date_time     String?            @db.VarChar(255)
   allowed_delivery_types String?            @db.Text
