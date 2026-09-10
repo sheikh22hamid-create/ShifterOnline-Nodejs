@@ -125,6 +125,28 @@ async function sendPushNotification(fcmToken, title, body, data = {}, channelId 
       };
     }
 
+    // A driver order-request offer is only valid for as long as its own
+    // server-side dispatch lock (POPUP_TIMEOUT_MS, stamped as expires_at —
+    // see dispatchManager.buildOrderRequestPayload). Without an explicit
+    // ttl, FCM defaults to holding an undeliverable message for up to 4
+    // weeks and delivering it whenever the device next reconnects — for a
+    // driver who was briefly offline/Doze'd, that can be long after this
+    // exact offer (and sometimes the whole order) is already resolved.
+    // The app has no freshness check of its own at render time, so a late
+    // delivery like that showed Accept/Reject for an order already "taken
+    // or cancelled", stuck on screen with nothing left to ever dismiss it
+    // (confirmed live). Bound this message's own life to that same
+    // deadline, and collapse same-type offers so only the newest one for
+    // this device is ever queued.
+    if (data.type === "order" && data.expires_at) {
+      const ttlMs = Number(data.expires_at) - Date.now();
+      if (!(ttlMs > 0)) {
+        return { sent: false, reason: "offer_already_expired" };
+      }
+      message.android.ttl = ttlMs;
+      message.android.collapseKey = "order_request";
+    }
+
     await client.send(message);
     return { sent: true };
   } catch (err) {
