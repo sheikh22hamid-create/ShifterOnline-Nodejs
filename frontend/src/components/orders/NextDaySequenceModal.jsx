@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import api from '../../services/api'
 import Modal from '../common/Modal'
 import useApiQuery from '../../hooks/useApiQuery'
@@ -11,6 +11,20 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
   const [suggesting, setSuggesting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // The modal stays mounted (Modal.jsx doesn't unmount children when
+  // `open` is false), so without this, state from a previous open/close
+  // cycle — e.g. a suggested sequence for a different order selection —
+  // would leak into the next time the modal is opened. Reset everything
+  // whenever it transitions to open so every fresh open starts clean.
+  useEffect(() => {
+    if (open) {
+      setSelectedRiderId('')
+      setSequence(null)
+      setNotifyNow(true)
+      setError('')
+    }
+  }, [open])
 
   const fetcher = useCallback(() => {
     if (!open) return Promise.resolve([])
