@@ -3514,6 +3514,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   }
 
   showAdvancePaymentDialog() {
+    // The booking response may omit currency for some orders. Interpolating
+    // the nullable global directly would render the literal string "null"
+    // before every amount (for example, "null15"). Keep the payment dialog
+    // usable even when that optional response field is missing.
+    final String paymentCurrency = (currency == null ||
+            currency!.trim().isEmpty ||
+            currency!.trim().toLowerCase() == 'null')
+        ? '₹'
+        : currency!.trim();
+
     String advanceAmount = (orderProduc?["advance_payment "] ??
             orderProduc?["advance_payment"] ??
             buyMapinfo?["advance_payment "] ??
@@ -3685,7 +3695,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                 ),
                               ),
                               Text(
-                                "$currency$advanceAmount",
+                                "$paymentCurrency$advanceAmount",
                                 style: TextStyle(
                                   color: linercolor,
                                   fontFamily: 'Gilroy_Bold',
@@ -3711,7 +3721,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                 ),
                               ),
                               Text(
-                                "$currency$actualAmountStr",
+                                "$paymentCurrency$actualAmountStr",
                                 style: TextStyle(
                                   color: notifier.text,
                                   fontFamily: 'Gilroy_Bold',
@@ -3755,7 +3765,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                "$currency$remainingAmountStr",
+                                "$paymentCurrency$remainingAmountStr",
                                 style: TextStyle(
                                   color: notifier.text,
                                   fontFamily: 'Gilroy_Bold',
