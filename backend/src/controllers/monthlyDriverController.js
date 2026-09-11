@@ -188,7 +188,7 @@ async function getDutyStatus(req, res) {
     return res.json({ success: true, data: status });
   } catch (err) {
     logger.error("Error getting driver duty status:", err);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({ success: false, message: err.message || "Internal server error" });
   }
 }
 

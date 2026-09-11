@@ -55,7 +55,7 @@ public class MonthlyDriverApiClient {
 
     public static void getDutyStatus(int riderId, DutyStatusCallback callback) {
         Request request = new Request.Builder()
-                .url(BASE_URL + "/rider/duty/status/" + riderId)
+                .url(BASE_URL + "/api/rider/duty/status/" + riderId)
                 .get()
                 .build();
 
@@ -96,7 +96,7 @@ public class MonthlyDriverApiClient {
 
             RequestBody body = RequestBody.create(JSON_MEDIA, payload.toString());
             Request request = new Request.Builder()
-                    .url(BASE_URL + "/rider/duty/punch-in")
+                    .url(BASE_URL + "/api/rider/duty/punch-in")
                     .post(body)
                     .build();
 
@@ -138,7 +138,7 @@ public class MonthlyDriverApiClient {
 
             RequestBody body = RequestBody.create(JSON_MEDIA, payload.toString());
             Request request = new Request.Builder()
-                    .url(BASE_URL + "/rider/duty/punch-out")
+                    .url(BASE_URL + "/api/rider/duty/punch-out")
                     .post(body)
                     .build();
 
@@ -174,7 +174,7 @@ public class MonthlyDriverApiClient {
 
     public static void getDriverQueue(int riderId, QueueCallback callback) {
         Request request = new Request.Builder()
-                .url(BASE_URL + "/rider/queue/" + riderId)
+                .url(BASE_URL + "/api/rider/queue/" + riderId)
                 .get()
                 .build();
 
