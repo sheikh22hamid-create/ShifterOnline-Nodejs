@@ -360,7 +360,10 @@ export default function ZoneMapDrawer({
   return (
     <div className="flex flex-col h-full space-y-3">
       {/* SHAPE SELECTOR & TOOLS BAR */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100 dark:bg-slate-800/80 p-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-xl border text-xs"
+        style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+      >
         {/* Shape Mode Buttons */}
         <div className="flex items-center gap-1.5">
           <button
@@ -374,11 +377,16 @@ export default function ZoneMapDrawer({
                 polygon_geojson: '',
               })
             }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold border transition ${
               shapeMode === 'circle'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                : 'border-transparent hover:border-slate-300'
             }`}
+            style={{
+              background: shapeMode === 'circle' ? '#2563eb' : 'var(--surface)',
+              color: shapeMode === 'circle' ? '#ffffff' : 'var(--ink)',
+              borderColor: shapeMode === 'circle' ? '#2563eb' : 'var(--border)',
+            }}
           >
             <Circle size={14} />
             Circle Geofence
@@ -390,11 +398,16 @@ export default function ZoneMapDrawer({
               onShapeModeChange('square')
               updateSquareGeofence(latNum, lngNum, squareSizeKm)
             }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold border transition ${
               shapeMode === 'square'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                : 'border-transparent hover:border-slate-300'
             }`}
+            style={{
+              background: shapeMode === 'square' ? '#059669' : 'var(--surface)',
+              color: shapeMode === 'square' ? '#ffffff' : 'var(--ink)',
+              borderColor: shapeMode === 'square' ? '#059669' : 'var(--border)',
+            }}
           >
             <Square size={14} />
             Square / Box
@@ -419,11 +432,16 @@ export default function ZoneMapDrawer({
                 ])
               }
             }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold border transition ${
               shapeMode === 'polygon'
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                : 'border-transparent hover:border-slate-300'
             }`}
+            style={{
+              background: shapeMode === 'polygon' ? '#7c3aed' : 'var(--surface)',
+              color: shapeMode === 'polygon' ? '#ffffff' : 'var(--ink)',
+              borderColor: shapeMode === 'polygon' ? '#7c3aed' : 'var(--border)',
+            }}
           >
             <Hexagon size={14} />
             Custom Polygon
@@ -433,19 +451,28 @@ export default function ZoneMapDrawer({
         {/* Location Search Bar */}
         <form onSubmit={handleSearch} className="flex items-center gap-1.5 flex-1 max-w-xs">
           <div className="relative flex-1">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-faint)' }} />
             <input
               type="text"
               placeholder="Search area (e.g. Kota, Jaipur)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full pl-8 pr-2.5 py-1 text-xs rounded-lg border outline-none focus:ring-1 focus:ring-blue-500"
+              style={{
+                background: 'var(--surface)',
+                borderColor: 'var(--border)',
+                color: 'var(--ink)',
+              }}
             />
           </div>
           <button
             type="submit"
             disabled={searching}
-            className="px-2.5 py-1 bg-slate-800 dark:bg-slate-700 text-white rounded-lg text-xs font-semibold hover:bg-slate-900 transition disabled:opacity-50"
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold transition disabled:opacity-50"
+            style={{
+              background: 'var(--ink)',
+              color: 'var(--bg)',
+            }}
           >
             {searching ? '...' : 'Go'}
           </button>
@@ -454,7 +481,10 @@ export default function ZoneMapDrawer({
 
       {/* SHAPE CONTROLS & HINT BANNER */}
       {shapeMode === 'circle' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-blue-50/70 dark:bg-blue-950/30 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-xl border text-xs"
+          style={{ background: 'var(--info-soft, #eff4ff)', borderColor: 'var(--info-soft-border, #c3d4f7)', color: 'var(--ink)' }}
+        >
           <div className="flex items-center gap-2">
             <MapPin size={15} className="text-blue-600" />
             <span>
@@ -487,7 +517,10 @@ export default function ZoneMapDrawer({
       )}
 
       {shapeMode === 'square' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-50/70 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-900/50 text-xs text-emerald-900 dark:text-emerald-200">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-xl border text-xs"
+          style={{ background: 'var(--success-soft, #ecfdf3)', borderColor: 'var(--success-soft-border, #b7e4c7)', color: 'var(--ink)' }}
+        >
           <div className="flex items-center gap-2">
             <Square size={15} className="text-emerald-600" />
             <span>
@@ -516,7 +549,10 @@ export default function ZoneMapDrawer({
       )}
 
       {shapeMode === 'polygon' && (
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-purple-50/70 dark:bg-purple-950/30 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/50 text-xs text-purple-900 dark:text-purple-200">
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl border text-xs"
+          style={{ background: 'var(--brand-soft, #fdf1e8)', borderColor: 'var(--brand-soft-border, #f3d6b8)', color: 'var(--ink)' }}
+        >
           <div className="flex items-center gap-2">
             <Hexagon size={15} className="text-purple-600" />
             <span>
@@ -529,7 +565,8 @@ export default function ZoneMapDrawer({
               type="button"
               onClick={handleUndoPolygonPoint}
               disabled={polygonPoints.length === 0}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 rounded-lg border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition disabled:opacity-40"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border hover:opacity-80 transition disabled:opacity-40 text-xs font-semibold"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
             >
               <Undo size={12} />
               Undo
@@ -537,7 +574,8 @@ export default function ZoneMapDrawer({
             <button
               type="button"
               onClick={handleClearPolygon}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg border border-rose-200 hover:bg-rose-100 transition"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition"
+              style={{ background: 'var(--danger-soft, #fef2f2)', borderColor: 'var(--danger-soft-border, #f2c2c2)', color: 'var(--danger, #b91c1c)' }}
             >
               <Trash2 size={12} />
               Clear
@@ -547,7 +585,10 @@ export default function ZoneMapDrawer({
       )}
 
       {/* LEAFLET MAP CONTAINER */}
-      <div className="relative flex-1 min-h-[360px] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-inner">
+      <div
+        className="relative flex-1 min-h-[360px] rounded-xl overflow-hidden border shadow-inner"
+        style={{ borderColor: 'var(--border)' }}
+      >
         <div ref={mapContainerRef} className="w-full h-full min-h-[360px]" />
 
         {/* Floating Controls */}
@@ -560,7 +601,8 @@ export default function ZoneMapDrawer({
                 mapRef.current.setView([latNum, lngNum], 13)
               }
             }}
-            className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition"
+            className="p-2 rounded-lg shadow-md border hover:opacity-90 transition"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
           >
             <Navigation size={16} />
           </button>

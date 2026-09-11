@@ -12,10 +12,6 @@ import {
   Trash2,
   BookOpen,
   TrendingUp,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Calendar,
-  CheckCircle2,
 } from 'lucide-react'
 import api from '../services/api'
 
@@ -200,11 +196,11 @@ export default function MonthlyDrivers() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-            <UserCheck className="text-emerald-600 dark:text-emerald-400" />
+          <h1 className="text-[19px] font-semibold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+            <UserCheck className="text-emerald-600" />
             Monthly Dedicated Drivers
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
             Manage salaried drivers, shift overtime rates, cash collections, ledger balances, and order queues.
           </p>
         </div>
@@ -230,14 +226,18 @@ export default function MonthlyDrivers() {
         </button>
       </div>
 
-      <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <Search size={18} className="text-slate-400 ml-2" />
+      <div
+        className="flex items-center gap-3 p-3 rounded-2xl border shadow-sm"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
+        <Search size={18} style={{ color: 'var(--ink-faint)' }} className="ml-2" />
         <input
           type="text"
           placeholder="Search monthly driver by name or phone..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-transparent text-sm text-slate-900 dark:text-white outline-none"
+          className="w-full bg-transparent text-sm outline-none"
+          style={{ color: 'var(--ink)' }}
         />
       </div>
 
@@ -246,70 +246,86 @@ export default function MonthlyDrivers() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500">
-          <UserCheck size={40} className="mx-auto text-slate-400 mb-3" />
-          <h3 className="font-semibold text-slate-700 dark:text-slate-300">No Monthly Drivers Configured</h3>
-          <p className="text-sm mt-1">Click "Promote Driver to Monthly" to assign fixed shifts and guaranteed salaries.</p>
+        <div
+          className="rounded-2xl border p-12 text-center shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+        >
+          <UserCheck size={40} className="mx-auto mb-3" style={{ color: 'var(--ink-faint)' }} />
+          <h3 className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>No Monthly Drivers Configured</h3>
+          <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>Click "Promote Driver to Monthly" to assign fixed shifts and guaranteed salaries.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((d) => (
             <div
               key={d.id}
-              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+              className="rounded-2xl border p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
             >
               <div>
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    <h3 className="text-base font-bold" style={{ color: 'var(--ink)' }}>
                       {d.rider?.full_name || d.rider?.title || `Driver #${d.rider_id}`}
                     </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    <p className="text-xs font-medium mt-0.5" style={{ color: 'var(--ink-muted)' }}>
                       📱 {d.rider?.fmobile || d.rider?.mobile || 'No Phone'} • {d.rider?.vehicle || 'Bike'}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: 'var(--success-soft, #ecfdf3)', color: 'var(--success, #15803d)' }}
+                  >
                     <ShieldCheck size={12} />
                     Monthly Active
                   </span>
                 </div>
 
-                <div className="mt-4 space-y-2 text-xs bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                <div
+                  className="mt-4 space-y-2 text-xs p-3.5 rounded-xl border"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                >
+                  <div className="flex items-center justify-between" style={{ color: 'var(--ink-muted)' }}>
                     <span className="flex items-center gap-1.5 font-medium">
                       <Clock size={14} className="text-blue-500" /> Duty Shift:
                     </span>
-                    <span className="font-semibold">{d.shift_start_time.slice(0, 5)} - {d.shift_end_time.slice(0, 5)} ({d.target_shift_hours}h)</span>
+                    <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                      {d.shift_start_time.slice(0, 5)} - {d.shift_end_time.slice(0, 5)} ({d.target_shift_hours}h)
+                    </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                  <div className="flex items-center justify-between" style={{ color: 'var(--ink-muted)' }}>
                     <span className="flex items-center gap-1.5 font-medium">
                       <DollarSign size={14} className="text-emerald-500" /> Base Salary:
                     </span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{d.monthly_base_salary.toLocaleString()} / mo</span>
+                    <span className="font-bold text-emerald-600">₹{d.monthly_base_salary.toLocaleString()} / mo</span>
                   </div>
 
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                  <div className="flex items-center justify-between" style={{ color: 'var(--ink-muted)' }}>
                     <span className="flex items-center gap-1.5 font-medium">
                       <TrendingUp size={14} className="text-amber-500" /> Overtime Rate:
                     </span>
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">₹{d.overtime_hourly_rate || 50} / hr</span>
+                    <span className="font-semibold text-amber-600">₹{d.overtime_hourly_rate || 50} / hr</span>
                   </div>
 
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                  <div className="flex items-center justify-between" style={{ color: 'var(--ink-muted)' }}>
                     <span className="flex items-center gap-1.5 font-medium">
                       <MapPin size={14} className="text-orange-500" /> Service Zone:
                     </span>
-                    <span className="font-medium text-slate-800 dark:text-slate-200">{d.zone?.name || 'All City'}</span>
+                    <span className="font-medium" style={{ color: 'var(--ink)' }}>{d.zone?.name || 'All City'}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+              <div
+                className="mt-5 pt-4 border-t flex items-center justify-between gap-2"
+                style={{ borderColor: 'var(--border)' }}
+              >
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => openLedgerModal(d)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 text-xs font-semibold hover:bg-emerald-100 transition"
+                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition"
+                    style={{ background: 'var(--success-soft, #ecfdf3)', color: 'var(--success, #15803d)' }}
                   >
                     <BookOpen size={14} />
                     Ledger & Cash
@@ -317,7 +333,8 @@ export default function MonthlyDrivers() {
 
                   <button
                     onClick={() => openQueueModal(d)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 px-3 py-1.5 text-xs font-semibold hover:bg-blue-100 transition"
+                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition"
+                    style={{ background: 'var(--info-soft, #eff4ff)', color: 'var(--info, #1d4ed8)' }}
                   >
                     <ListOrdered size={14} />
                     Queue
@@ -338,19 +355,23 @@ export default function MonthlyDrivers() {
 
       {/* PROMOTION MODAL */}
       {promoteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="rounded-2xl max-w-lg w-full p-6 shadow-xl border"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          >
+            <h2 className="text-lg font-bold mb-4" style={{ color: 'var(--ink)' }}>
               Promote Driver to Monthly Dedicated
             </h2>
 
             <form onSubmit={handlePromote} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Select Driver</label>
+                <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Select Driver</label>
                 <select
                   value={promoteForm.rider_id}
                   onChange={(e) => setPromoteForm({ ...promoteForm, rider_id: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="mt-1 w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                 >
                   <option value="">-- Select Driver --</option>
                   {allRiders.map((r) => {
@@ -367,67 +388,73 @@ export default function MonthlyDrivers() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Shift Start (24hr)</label>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Shift Start (24hr)</label>
                   <input
                     type="time"
                     required
                     value={promoteForm.shift_start_time.slice(0, 5)}
                     onChange={(e) => setPromoteForm({ ...promoteForm, shift_start_time: e.target.value + ':00' })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Shift End (24hr)</label>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Shift End (24hr)</label>
                   <input
                     type="time"
                     required
                     value={promoteForm.shift_end_time.slice(0, 5)}
                     onChange={(e) => setPromoteForm({ ...promoteForm, shift_end_time: e.target.value + ':00' })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Target Shift (Hrs)</label>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Target Shift (Hrs)</label>
                   <input
                     type="number"
                     step="0.5"
                     required
                     value={promoteForm.target_shift_hours}
                     onChange={(e) => setPromoteForm({ ...promoteForm, target_shift_hours: e.target.value })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Salary (₹/mo)</label>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Salary (₹/mo)</label>
                   <input
                     type="number"
                     required
                     value={promoteForm.monthly_base_salary}
                     onChange={(e) => setPromoteForm({ ...promoteForm, monthly_base_salary: e.target.value })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Overtime (₹/hr)</label>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Overtime (₹/hr)</label>
                   <input
                     type="number"
                     required
                     value={promoteForm.overtime_hourly_rate}
                     onChange={(e) => setPromoteForm({ ...promoteForm, overtime_hourly_rate: e.target.value })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Assigned Service Zone</label>
+                <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>Assigned Service Zone</label>
                 <select
                   value={promoteForm.assigned_zone_id}
                   onChange={(e) => setPromoteForm({ ...promoteForm, assigned_zone_id: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="mt-1 w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                 >
                   <option value="">-- City Wide (No Specific Geofence) --</option>
                   {zones.map((z) => (
@@ -442,7 +469,8 @@ export default function MonthlyDrivers() {
                 <button
                   type="button"
                   onClick={() => setPromoteModalOpen(false)}
-                  className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  className="rounded-xl px-4 py-2.5 text-sm font-medium transition hover:opacity-80"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}
                 >
                   Cancel
                 </button>
@@ -460,19 +488,22 @@ export default function MonthlyDrivers() {
 
       {/* QUEUE MODAL */}
       {queueModalOpen && selectedDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 max-h-[90vh] flex flex-col justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="rounded-2xl max-w-2xl w-full p-6 shadow-xl border max-h-[90vh] flex flex-col justify-between"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          >
             <div>
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div className="flex items-center justify-between border-b pb-3 mb-4" style={{ borderColor: 'var(--border)' }}>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  <h2 className="text-lg font-bold" style={{ color: 'var(--ink)' }}>
                     Order Queue: {selectedDriver.rider?.full_name || selectedDriver.rider?.title || `Driver #${selectedDriver.rider_id}`}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
                     📱 {selectedDriver.rider?.fmobile || selectedDriver.rider?.mobile || 'No Phone'} • Stacked orders automatically cascade to driver upon completing the active trip.
                   </p>
                 </div>
-                <button onClick={() => setQueueModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setQueueModalOpen(false)} style={{ color: 'var(--ink-muted)' }} className="hover:opacity-80">
                   <X size={20} />
                 </button>
               </div>
@@ -482,7 +513,8 @@ export default function MonthlyDrivers() {
                 <select
                   value={assignOrderId}
                   onChange={(e) => setAssignOrderId(e.target.value)}
-                  className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 rounded-xl border px-3.5 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                 >
                   <option value="">-- Select Order to Add to Queue --</option>
                   {availableOrders.map((o) => (
@@ -503,25 +535,25 @@ export default function MonthlyDrivers() {
               {/* Current Queue List */}
               <div className="space-y-2.5 overflow-y-auto max-h-[50vh] pr-1">
                 {driverQueue.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 py-8">No orders currently queued for this driver.</p>
+                  <p className="text-center text-xs py-8" style={{ color: 'var(--ink-muted)' }}>No orders currently queued for this driver.</p>
                 ) : (
                   driverQueue.map((item, idx) => (
                     <div
                       key={item.id}
-                      className={`p-3.5 rounded-xl border text-xs flex items-center justify-between ${
-                        item.status === 'active'
-                          ? 'bg-emerald-50/60 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800/40'
-                          : 'bg-slate-50 border-slate-200 dark:bg-slate-800/60 dark:border-slate-700'
-                      }`}
+                      className="p-3.5 rounded-xl border text-xs flex items-center justify-between"
+                      style={{
+                        background: item.status === 'active' ? 'var(--success-soft, #ecfdf3)' : 'var(--bg)',
+                        borderColor: item.status === 'active' ? 'var(--success-soft-border, #b7e4c7)' : 'var(--border)',
+                      }}
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 dark:text-white">
+                          <span className="font-bold" style={{ color: 'var(--ink)' }}>
                             #{item.order_id} ({item.status === 'active' ? '🟢 Active Trip' : `Queue Position #${idx + 1}`})
                           </span>
-                          <span className="text-slate-500">₹{item.order?.total_dcharge || 0}</span>
+                          <span style={{ color: 'var(--ink-muted)' }}>₹{item.order?.total_dcharge || 0}</span>
                         </div>
-                        <p className="text-slate-600 dark:text-slate-300">
+                        <p style={{ color: 'var(--ink-muted)' }}>
                           📍 {item.order?.pick_address} ➔ 🏁 {item.order?.drop_address}
                         </p>
                       </div>
@@ -529,7 +561,7 @@ export default function MonthlyDrivers() {
                       {item.status !== 'active' && (
                         <button
                           onClick={() => handleRemoveFromQueue(item.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition"
+                          className="p-1.5 text-rose-500 hover:text-rose-700 rounded-lg transition"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -540,10 +572,11 @@ export default function MonthlyDrivers() {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <div className="pt-4 border-t flex justify-end" style={{ borderColor: 'var(--border)' }}>
               <button
                 onClick={() => setQueueModalOpen(false)}
-                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="rounded-xl px-4 py-2 text-xs font-semibold transition hover:opacity-80"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}
               >
                 Close
               </button>
@@ -554,21 +587,24 @@ export default function MonthlyDrivers() {
 
       {/* LEDGER & CASH SETTLEMENT MODAL */}
       {ledgerModalOpen && selectedLedgerDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[92vh] flex flex-col justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="rounded-2xl max-w-4xl w-full p-6 shadow-2xl border max-h-[92vh] flex flex-col justify-between"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          >
             <div className="overflow-y-auto pr-1 space-y-4">
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--border)' }}>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--ink)' }}>
                     <BookOpen className="text-emerald-600" />
                     Ledger & Cash Settlement: {selectedLedgerDriver.rider?.full_name || `Driver #${selectedLedgerDriver.rider_id}`}
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
                     📱 {selectedLedgerDriver.rider?.fmobile || 'No Phone'} • Overtime: ₹{selectedLedgerDriver.overtime_hourly_rate || 50}/hr • Base Salary: ₹{selectedLedgerDriver.monthly_base_salary?.toLocaleString()}/mo
                   </p>
                 </div>
-                <button onClick={() => setLedgerModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setLedgerModalOpen(false)} style={{ color: 'var(--ink-muted)' }} className="hover:opacity-80">
                   <X size={20} />
                 </button>
               </div>
@@ -576,36 +612,47 @@ export default function MonthlyDrivers() {
               {/* Financial Metrics Summary */}
               {ledgerData?.summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-blue-50 dark:bg-blue-950/30 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/50">
-                    <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400">Total Salary (Credit)</span>
-                    <p className="text-lg font-bold text-blue-900 dark:text-blue-200 mt-0.5">
+                  <div
+                    className="p-3.5 rounded-xl border"
+                    style={{ background: 'var(--info-soft, #eff4ff)', borderColor: 'var(--info-soft-border, #c3d4f7)' }}
+                  >
+                    <span className="text-[11px] font-semibold text-blue-700">Total Salary (Credit)</span>
+                    <p className="text-lg font-bold text-blue-900 mt-0.5">
                       +₹{ledgerData.summary.total_base_salary.toLocaleString()}
                     </p>
                   </div>
 
-                  <div className="bg-amber-50 dark:bg-amber-950/30 p-3.5 rounded-xl border border-amber-100 dark:border-amber-900/50">
-                    <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">Overtime Pay (Credit)</span>
-                    <p className="text-lg font-bold text-amber-900 dark:text-amber-200 mt-0.5">
+                  <div
+                    className="p-3.5 rounded-xl border"
+                    style={{ background: 'var(--warning-soft, #fef9e7)', borderColor: 'var(--warning-soft-border, #f0dc9e)' }}
+                  >
+                    <span className="text-[11px] font-semibold text-amber-700">Overtime Pay (Credit)</span>
+                    <p className="text-lg font-bold text-amber-900 mt-0.5">
                       +₹{ledgerData.summary.total_overtime_pay.toLocaleString()}
                     </p>
                   </div>
 
-                  <div className="bg-rose-50 dark:bg-rose-950/30 p-3.5 rounded-xl border border-rose-100 dark:border-rose-900/50">
-                    <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400">Cash Collected (Debit)</span>
-                    <p className="text-lg font-bold text-rose-900 dark:text-rose-200 mt-0.5">
+                  <div
+                    className="p-3.5 rounded-xl border"
+                    style={{ background: 'var(--danger-soft, #fef2f2)', borderColor: 'var(--danger-soft-border, #f2c2c2)' }}
+                  >
+                    <span className="text-[11px] font-semibold text-rose-700">Cash Collected (Debit)</span>
+                    <p className="text-lg font-bold text-rose-900 mt-0.5">
                       -₹{ledgerData.summary.total_cash_collected.toLocaleString()}
                     </p>
                   </div>
 
-                  <div className={`p-3.5 rounded-xl border ${
-                    ledgerData.summary.net_settlement_balance >= 0
-                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-900 dark:text-emerald-200'
-                      : 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50 text-red-900 dark:text-red-200'
-                  }`}>
-                    <span className="text-[11px] font-semibold">
+                  <div
+                    className="p-3.5 rounded-xl border"
+                    style={{
+                      background: ledgerData.summary.net_settlement_balance >= 0 ? 'var(--success-soft, #ecfdf3)' : 'var(--danger-soft, #fef2f2)',
+                      borderColor: ledgerData.summary.net_settlement_balance >= 0 ? 'var(--success-soft-border, #b7e4c7)' : 'var(--danger-soft-border, #f2c2c2)',
+                    }}
+                  >
+                    <span className="text-[11px] font-semibold" style={{ color: ledgerData.summary.net_settlement_balance >= 0 ? '#15803d' : '#b91c1c' }}>
                       {ledgerData.summary.net_settlement_balance >= 0 ? 'Net Payable to Driver' : 'Excess Cash with Driver'}
                     </span>
-                    <p className="text-lg font-bold mt-0.5">
+                    <p className="text-lg font-bold mt-0.5" style={{ color: ledgerData.summary.net_settlement_balance >= 0 ? '#15803d' : '#b91c1c' }}>
                       {ledgerData.summary.net_settlement_balance >= 0 ? '+' : ''}₹{ledgerData.summary.net_settlement_balance.toLocaleString()}
                     </p>
                   </div>
@@ -619,18 +666,21 @@ export default function MonthlyDrivers() {
                     type="date"
                     value={ledgerStartDate}
                     onChange={(e) => setLedgerStartDate(e.target.value)}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                    className="rounded-xl border px-3 py-1.5 text-xs outline-none"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
-                  <span className="text-xs text-slate-400">to</span>
+                  <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>to</span>
                   <input
                     type="date"
                     value={ledgerEndDate}
                     onChange={(e) => setLedgerEndDate(e.target.value)}
-                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                    className="rounded-xl border px-3 py-1.5 text-xs outline-none"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                   />
                   <button
                     onClick={() => fetchLedger(selectedLedgerDriver.rider_id)}
-                    className="rounded-xl bg-slate-800 text-white dark:bg-slate-700 px-3 py-1.5 text-xs font-semibold hover:bg-slate-900 transition"
+                    className="rounded-xl px-3 py-1.5 text-xs font-semibold transition"
+                    style={{ background: 'var(--ink)', color: 'var(--bg)' }}
                   >
                     Filter
                   </button>
@@ -647,13 +697,17 @@ export default function MonthlyDrivers() {
 
               {/* Add Adjustment Entry Form */}
               {showAdjForm && (
-                <form onSubmit={handleAddAdjustment} className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <form
+                  onSubmit={handleAddAdjustment}
+                  className="p-4 rounded-xl border space-y-3"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+                >
+                  <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--ink)' }}>
                     Record Settlement / Deposit Transaction
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div>
-                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Entry Type</label>
+                      <label className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>Entry Type</label>
                       <select
                         value={adjForm.entry_type}
                         onChange={(e) => {
@@ -661,7 +715,8 @@ export default function MonthlyDrivers() {
                           const effect = (val === 'CASH_DEPOSIT' || val === 'SETTLEMENT_PAYOUT') ? 'CREDIT' : 'DEBIT'
                           setAdjForm({ ...adjForm, entry_type: val, balance_effect: effect })
                         }}
-                        className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                        className="mt-1 w-full rounded-xl border px-3 py-1.5 text-xs outline-none"
+                        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                       >
                         <option value="CASH_DEPOSIT">Cash Deposit (Driver handed over cash)</option>
                         <option value="SETTLEMENT_PAYOUT">Settlement Payout (Admin paid driver salary)</option>
@@ -671,25 +726,27 @@ export default function MonthlyDrivers() {
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Amount (₹)</label>
+                      <label className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>Amount (₹)</label>
                       <input
                         type="number"
                         required
                         placeholder="e.g. 500"
                         value={adjForm.amount}
                         onChange={(e) => setAdjForm({ ...adjForm, amount: e.target.value })}
-                        className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                        className="mt-1 w-full rounded-xl border px-3 py-1.5 text-xs outline-none"
+                        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                       />
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Notes / Reference</label>
+                      <label className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>Notes / Reference</label>
                       <input
                         type="text"
                         placeholder="e.g. UPI transfer / Cash in office"
                         value={adjForm.notes}
                         onChange={(e) => setAdjForm({ ...adjForm, notes: e.target.value })}
-                        className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                        className="mt-1 w-full rounded-xl border px-3 py-1.5 text-xs outline-none"
+                        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                       />
                     </div>
                   </div>
@@ -711,48 +768,46 @@ export default function MonthlyDrivers() {
                   <div className="h-7 w-7 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
                 </div>
               ) : !ledgerData?.entries || ledgerData.entries.length === 0 ? (
-                <p className="text-center text-xs text-slate-400 py-10">No ledger entries found for this driver.</p>
+                <p className="text-center text-xs py-10" style={{ color: 'var(--ink-muted)' }}>No ledger entries found for this driver.</p>
               ) : (
-                <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
-                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                      <tr>
-                        <th className="px-3.5 py-2.5">Date & Time</th>
-                        <th className="px-3.5 py-2.5">Type</th>
-                        <th className="px-3.5 py-2.5">Order</th>
-                        <th className="px-3.5 py-2.5">Amount</th>
-                        <th className="px-3.5 py-2.5">Notes</th>
+                <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                        <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Date & Time</th>
+                        <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Type</th>
+                        <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Order</th>
+                        <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Amount</th>
+                        <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Notes</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
                       {ledgerData.entries.map((entry) => {
                         const isCredit = entry.balance_effect === 'CREDIT'
                         const dateStr = entry.created_at ? new Date(entry.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-'
                         return (
-                          <tr key={entry.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
-                            <td className="px-3.5 py-2.5 font-mono text-slate-500">{dateStr}</td>
+                          <tr key={entry.id} className="hover:opacity-90 transition">
+                            <td className="px-3.5 py-2.5 font-mono" style={{ color: 'var(--ink-muted)' }}>{dateStr}</td>
                             <td className="px-3.5 py-2.5">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                entry.entry_type === 'BASE_SALARY'
-                                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
-                                  : entry.entry_type === 'OVERTIME_PAY'
-                                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
-                                  : entry.entry_type === 'CASH_COLLECTED'
-                                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
-                                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
-                              }`}>
+                              <span
+                                className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                style={{
+                                  background: entry.entry_type === 'BASE_SALARY' ? 'var(--info-soft, #eff4ff)' : entry.entry_type === 'OVERTIME_PAY' ? 'var(--warning-soft, #fef9e7)' : entry.entry_type === 'CASH_COLLECTED' ? 'var(--danger-soft, #fef2f2)' : 'var(--success-soft, #ecfdf3)',
+                                  color: entry.entry_type === 'BASE_SALARY' ? '#1d4ed8' : entry.entry_type === 'OVERTIME_PAY' ? '#a16207' : entry.entry_type === 'CASH_COLLECTED' ? '#b91c1c' : '#15803d',
+                                }}
+                              >
                                 {entry.entry_type}
                               </span>
                             </td>
-                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">
+                            <td className="px-3.5 py-2.5" style={{ color: 'var(--ink)' }}>
                               {entry.order_id ? `#${entry.order_id}` : '-'}
                             </td>
                             <td className={`px-3.5 py-2.5 font-bold ${
-                              isCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                              isCredit ? 'text-emerald-600' : 'text-rose-600'
                             }`}>
                               {isCredit ? '+₹' : '-₹'}{Number(entry.amount).toLocaleString()}
                             </td>
-                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400 text-[11px]">
+                            <td className="px-3.5 py-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                               {entry.notes || '-'}
                             </td>
                           </tr>
@@ -764,10 +819,11 @@ export default function MonthlyDrivers() {
               )}
             </div>
 
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <div className="pt-4 border-t flex justify-end" style={{ borderColor: 'var(--border)' }}>
               <button
                 onClick={() => setLedgerModalOpen(false)}
-                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="rounded-xl px-4 py-2 text-xs font-semibold transition hover:opacity-80"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}
               >
                 Close
               </button>

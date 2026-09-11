@@ -153,7 +153,10 @@ export default function AllZonesOverviewMap({ zones = [], onEditZone }) {
   }, [zones, onEditZone])
 
   return (
-    <div className="relative w-full h-[550px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div
+      className="relative w-full h-[550px] rounded-2xl overflow-hidden border shadow-sm"
+      style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+    >
       <div ref={containerRef} className="w-full h-full" />
     </div>
   )

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CalendarCheck, Search, Filter, Download, Clock, DollarSign, CheckCircle2, TrendingUp } from 'lucide-react'
+import { CalendarCheck, Clock, DollarSign, CheckCircle2, TrendingUp } from 'lucide-react'
 import api from '../services/api'
 
 export default function MonthlyAttendanceReports() {
@@ -39,17 +39,16 @@ export default function MonthlyAttendanceReports() {
   const totalCalculatedSalary = logs.reduce((acc, l) => acc + (Number(l.calculated_daily_salary) || 0), 0)
   const totalOvertimePay = logs.reduce((acc, l) => acc + (Number(l.overtime_pay) || 0), 0)
   const totalCashCollected = logs.reduce((acc, l) => acc + (Number(l.cash_collected) || 0), 0)
-  const totalOrders = logs.reduce((acc, l) => acc + (l.orders_completed || 0), 0)
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-            <CalendarCheck className="text-blue-600 dark:text-blue-400" />
+          <h1 className="text-[19px] font-semibold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+            <CalendarCheck className="text-blue-600" />
             Monthly Driver Duty & Salary Reports
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
             Track live working hours inside geofenced zones, attendance compliance, overtime pay, and cash collections.
           </p>
         </div>
@@ -57,62 +56,81 @@ export default function MonthlyAttendanceReports() {
 
       {/* STATS OVERVIEW */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div
+          className="p-5 rounded-2xl border shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Duty Shifts Logged</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Duty Shifts Logged</span>
             <CheckCircle2 size={18} className="text-blue-500" />
           </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-2">{totalDutyDays} Days</p>
+          <p className="text-2xl font-bold mt-2" style={{ color: 'var(--ink)' }}>{totalDutyDays} Days</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div
+          className="p-5 rounded-2xl border shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Total Live In-Zone</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Total Live In-Zone</span>
             <Clock size={18} className="text-emerald-500" />
           </div>
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+          <p className="text-2xl font-bold mt-2 text-emerald-600">
             {(totalInZoneMins / 60).toFixed(1)} hrs
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div
+          className="p-5 rounded-2xl border shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Total Base Salary</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Total Base Salary</span>
             <DollarSign size={18} className="text-blue-500" />
           </div>
-          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-2">
+          <p className="text-2xl font-bold mt-2 text-blue-600">
             ₹{totalCalculatedSalary.toLocaleString()}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div
+          className="p-5 rounded-2xl border shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Overtime Pay Earned</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Overtime Pay Earned</span>
             <TrendingUp size={18} className="text-amber-500" />
           </div>
-          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-2">
+          <p className="text-2xl font-bold mt-2 text-amber-600">
             ₹{totalOvertimePay.toLocaleString()}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div
+          className="p-5 rounded-2xl border shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Cash Collected</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--ink-muted)' }}>Cash Collected</span>
             <DollarSign size={18} className="text-rose-500" />
           </div>
-          <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-2">
+          <p className="text-2xl font-bold mt-2 text-rose-600">
             ₹{totalCashCollected.toLocaleString()}
           </p>
         </div>
       </div>
 
       {/* FILTER BAR */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap gap-3 items-center">
+      <div
+        className="p-4 rounded-2xl border shadow-sm flex flex-wrap gap-3 items-center"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
         <div className="flex-1 min-w-[200px]">
           <select
             value={selectedDriver}
             onChange={(e) => setSelectedDriver(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white outline-none"
+            className="w-full rounded-xl border px-3.5 py-2 text-xs outline-none"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
           >
             <option value="">-- All Monthly Drivers --</option>
             {drivers.map((d) => {
@@ -132,14 +150,16 @@ export default function MonthlyAttendanceReports() {
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white outline-none"
+            className="rounded-xl border px-3 py-2 text-xs outline-none"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
           />
-          <span className="text-xs text-slate-400">to</span>
+          <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>to</span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white outline-none"
+            className="rounded-xl border px-3 py-2 text-xs outline-none"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
           />
         </div>
 
@@ -157,14 +177,23 @@ export default function MonthlyAttendanceReports() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
         </div>
       ) : logs.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500">
+        <div
+          className="rounded-2xl border p-12 text-center shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+        >
           <p>No duty logs found for the selected criteria.</p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div
+          className="rounded-2xl border overflow-hidden shadow-sm"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+            <table className="w-full text-left text-xs" style={{ color: 'var(--ink)' }}>
+              <thead
+                className="text-[11px] font-semibold uppercase tracking-wider border-b"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-faint)' }}
+              >
                 <tr>
                   <th className="px-4 py-3.5">Duty Date</th>
                   <th className="px-4 py-3.5">Driver</th>
@@ -178,7 +207,7 @@ export default function MonthlyAttendanceReports() {
                   <th className="px-4 py-3.5">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
                 {logs.map((log) => {
                   const inZoneHours = (log.total_in_zone_minutes / 60).toFixed(1)
                   const outZoneHours = (log.total_out_zone_minutes / 60).toFixed(1)
@@ -190,40 +219,40 @@ export default function MonthlyAttendanceReports() {
                   const driverPhone = log.rider?.fmobile || log.rider?.mobile || ''
 
                   return (
-                    <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
-                      <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">{dateStr}</td>
-                      <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
+                    <tr key={log.id} className="hover:opacity-90 transition">
+                      <td className="px-4 py-3.5 font-medium" style={{ color: 'var(--ink)' }}>{dateStr}</td>
+                      <td className="px-4 py-3.5 font-semibold" style={{ color: 'var(--ink)' }}>
                         {driverName}
                         {driverPhone ? (
-                          <span className="block text-[10px] font-normal text-slate-400 font-mono">📱 {driverPhone}</span>
+                          <span className="block text-[10px] font-normal font-mono" style={{ color: 'var(--ink-muted)' }}>📱 {driverPhone}</span>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3.5 text-slate-500">
+                      <td className="px-4 py-3.5" style={{ color: 'var(--ink-muted)' }}>
                         {punchInStr} ➔ {punchOutStr}
                       </td>
-                      <td className="px-4 py-3.5 font-bold text-emerald-600 dark:text-emerald-400">
+                      <td className="px-4 py-3.5 font-bold text-emerald-600">
                         {inZoneHours} hrs
                       </td>
                       <td className="px-4 py-3.5 text-rose-500 font-medium">
                         {outZoneHours} hrs
                       </td>
                       <td className="px-4 py-3.5">{log.orders_completed || 0}</td>
-                      <td className="px-4 py-3.5 font-bold text-slate-900 dark:text-white">
+                      <td className="px-4 py-3.5 font-bold" style={{ color: 'var(--ink)' }}>
                         ₹{log.calculated_daily_salary?.toLocaleString() || '0'}
                       </td>
-                      <td className="px-4 py-3.5 font-bold text-amber-600 dark:text-amber-400">
+                      <td className="px-4 py-3.5 font-bold text-amber-600">
                         {Number(log.overtime_pay) > 0 ? `₹${log.overtime_pay} (${overtimeHours}h)` : '₹0'}
                       </td>
-                      <td className="px-4 py-3.5 font-bold text-rose-600 dark:text-rose-400">
+                      <td className="px-4 py-3.5 font-bold text-rose-600">
                         ₹{Number(log.cash_collected || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-3.5">
                         <span
-                          className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            log.status === 'in_progress'
-                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
-                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
-                          }`}
+                          className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                          style={{
+                            background: log.status === 'in_progress' ? 'var(--warning-soft, #fef9e7)' : 'var(--success-soft, #ecfdf3)',
+                            color: log.status === 'in_progress' ? '#a16207' : '#15803d',
+                          }}
                         >
                           {log.status === 'in_progress' ? '🟢 In Progress' : '✅ Completed'}
                         </span>
