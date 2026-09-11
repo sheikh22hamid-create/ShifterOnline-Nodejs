@@ -913,7 +913,7 @@ class _HomeState extends State<Home> {
               subtitle: 'Additional stop',
               address: _extraStops[index]['address']?.toString() ??
                   'Selected location',
-              onTap: () => setState(() => _extraStops.removeAt(index)),
+              onDelete: () => setState(() => _extraStops.removeAt(index)),
             ),
             connector(),
           ],
@@ -1032,6 +1032,7 @@ class _HomeState extends State<Home> {
     required String address,
     double addressFontSize = 11,
     VoidCallback? onTap,
+    VoidCallback? onDelete,
   }) {
     return InkWell(
       onTap: onTap,
@@ -1087,8 +1088,22 @@ class _HomeState extends State<Home> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                color: Color(0xff8b949e), size: 22),
+            if (onDelete != null)
+              IconButton(
+                onPressed: onDelete,
+                tooltip: 'Remove stop',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                splashRadius: 16,
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Color(0xffe55353),
+                  size: 19,
+                ),
+              )
+            else
+              const Icon(Icons.chevron_right_rounded,
+                  color: Color(0xff8b949e), size: 22),
           ],
         ),
       ),
