@@ -492,6 +492,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final category = _categoryOf(selected);
     await Get.to(() => ConfirmOrderMap(
       startLat: _pickup.latitude, startLng: _pickup.longitude, endLat: _drop.latitude, endLng: _drop.longitude,
+      stops: widget.stops,
       deliveryFees: fee, walletBalance: walletBalance, currency: _text(model['currency'], '₹'),
       deliveryType: _text(model['package_id'] ?? model['id']),
       onConfirmPayment: (payValue, _) => _submitOrder(payValue, category, model, fee),
