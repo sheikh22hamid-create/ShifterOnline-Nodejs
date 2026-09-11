@@ -656,8 +656,7 @@ public class OrderDetailsActivity extends AppCompatActivity
         dotBackground.setShape(GradientDrawable.OVAL);
         dotBackground.setColor(color);
         dot.setBackground(dotBackground);
-        int dotSize = title.startsWith("Pickup") ? 18 : 14;
-        rail.addView(dot, new LinearLayout.LayoutParams(dotSize, dotSize));
+        rail.addView(dot, new LinearLayout.LayoutParams(18, 18));
 
         if (!last) {
             View connector = new View(this);
@@ -678,17 +677,10 @@ public class OrderDetailsActivity extends AppCompatActivity
         TextView titleView = new TextView(this);
         titleView.setText(title);
         titleView.setTextColor(color);
-        titleView.setTextSize("Pickup location".equalsIgnoreCase(title) ? 16 : 14);
+        titleView.setTextSize(16);
         titleView.setTypeface(null, android.graphics.Typeface.BOLD);
         titleRow.addView(titleView, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView chevron = new TextView(this);
-        chevron.setText("›");
-        chevron.setTextColor(Color.rgb(51, 65, 85));
-        chevron.setTextSize(24);
-        titleRow.addView(chevron, new LinearLayout.LayoutParams(24,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
         content.addView(titleRow);
 
         TextView addressView = new TextView(this);
