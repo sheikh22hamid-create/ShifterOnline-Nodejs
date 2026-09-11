@@ -235,20 +235,28 @@ async function remove(req, res) {
       return res.status(404).json({ success: false, message: "Rate card not found" });
     }
 
-    // tbl_rider_delivery_type.delivery_type stores this id as a string —
-    // deleting out from under an enabled driver would silently orphan it.
-    const enabledDriverCount = await prisma.tbl_rider_delivery_type.count({
-      where: { delivery_type: String(id), status: 1 },
+    // Check if there are active in-progress orders using this rate card
+    const activeOrderCount = await prisma.pkg_order.count({
+      where: {
+        delivery_type: id,
+        order_status: { in: [1, 2, 3] },
+        o_status: { notIn: ["Completed", "Cancelled"] },
+      },
     });
-    if (enabledDriverCount) {
+    if (activeOrderCount > 0) {
       return res.status(409).json({
         success: false,
-        message: "Cannot delete a rate card that drivers are currently enabled for — deactivate it instead (PUT status: 0).",
+        message: "Cannot delete rate card while active orders are in progress for it. Deactivate it instead.",
       });
     }
 
+    // Clean up any rider delivery type links
+    await prisma.tbl_rider_delivery_type.deleteMany({
+      where: { delivery_type: String(id) },
+    });
+
     await prisma.tbl_package.delete({ where: { id } });
-    return res.status(200).json({ success: true, message: "Rate card deleted" });
+    return res.status(200).json({ success: true, message: "Rate card deleted successfully" });
   } catch (err) {
     return internalError(res, err, "rateCards.remove");
   }
