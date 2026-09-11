@@ -217,32 +217,34 @@ async function recordDutyLocationPing(riderId, lat, lng) {
     select: { id: true },
   });
 
-  // If driver has active order, duty counts even if out of zone delivering
   const countAsInZone = insideZone || (activeOrder != null);
 
-  const incrementInZone = countAsInZone ? 1 : 0;
-  const incrementOutZone = countAsInZone ? 0 : 1;
+  // Time delta since last update or punch in
+  const lastTime = log.updated_at ? new Date(log.updated_at).getTime() : new Date(log.punch_in_at).getTime();
+  const now = Date.now();
+  const deltaSeconds = Math.min(300, Math.max(0, Math.floor((now - lastTime) / 1000)));
+  const deltaMinutes = deltaSeconds / 60;
+
+  const newInZoneMins = Math.round((log.total_in_zone_minutes + (countAsInZone ? deltaMinutes : 0)) * 10) / 10;
+  const newOutZoneMins = Math.round((log.total_out_zone_minutes + (countAsInZone ? 0 : deltaMinutes)) * 10) / 10;
+  const newOnlineMins = Math.round((log.total_online_minutes + deltaMinutes) * 10) / 10;
 
   const targetMinutes = Number(contract.target_shift_hours) * 60 || 600;
   const baseDaily = (Number(contract.monthly_base_salary) || 15000) / 30;
   const overtimeHourlyRate = Number(contract.overtime_hourly_rate) || 0;
 
-  const newInZoneMins = log.total_in_zone_minutes + incrementInZone;
-  const newOutZoneMins = log.total_out_zone_minutes + incrementOutZone;
-  const newOnlineMins = log.total_online_minutes + 1;
-
-  const validMinutes = Math.min(targetMinutes, newInZoneMins);
-  const overtimeMins = Math.max(0, newInZoneMins - targetMinutes);
-  const baseSalaryEarned = (validMinutes / targetMinutes) * baseDaily;
+  const validMinutes = Math.min(targetMinutes, Math.floor(newInZoneMins));
+  const overtimeMins = Math.max(0, Math.floor(newInZoneMins - targetMinutes));
+  const baseSalaryEarned = Math.round(((validMinutes / targetMinutes) * baseDaily) * 100) / 100;
   const overtimePay = Math.round(((overtimeMins / 60) * overtimeHourlyRate) * 100) / 100;
   const dailySalary = Math.round((baseSalaryEarned + overtimePay) * 100) / 100;
 
-  const updated = await prisma.driver_duty_log.update({
+  await prisma.driver_duty_log.update({
     where: { id: log.id },
     data: {
-      total_online_minutes: newOnlineMins,
-      total_in_zone_minutes: newInZoneMins,
-      total_out_zone_minutes: newOutZoneMins,
+      total_online_minutes: Math.round(newOnlineMins),
+      total_in_zone_minutes: Math.round(newInZoneMins),
+      total_out_zone_minutes: Math.round(newOutZoneMins),
       overtime_minutes: overtimeMins,
       overtime_pay: overtimePay,
       calculated_daily_salary: dailySalary,
@@ -253,8 +255,8 @@ async function recordDutyLocationPing(riderId, lat, lng) {
     active: true,
     insideZone,
     inDelivery: activeOrder != null,
-    totalInZoneMinutes: newInZoneMins,
-    totalOutZoneMinutes: newOutZoneMins,
+    totalInZoneMinutes: Math.round(newInZoneMins),
+    totalOutZoneMinutes: Math.round(newOutZoneMins),
     overtimeMinutes: overtimeMins,
     overtimePay,
     dailySalary,
@@ -280,13 +282,28 @@ async function getDriverDutyStatus(riderId) {
   const log = await getTodayDutyLog(riderId);
   const isPunchedIn = log != null && log.status === "in_progress";
 
-  const targetMinutes = Number(contract.target_shift_hours) * 60;
-  const inZoneMinutes = log ? log.total_in_zone_minutes : 0;
-  const outZoneMinutes = log ? log.total_out_zone_minutes : 0;
-  const overtimeMinutes = log ? log.overtime_minutes : 0;
-  const overtimePay = log ? Number(log.overtime_pay) : 0;
-  const cashCollected = log ? Number(log.cash_collected) : 0;
-  const dailySalary = log ? Number(log.calculated_daily_salary) : 0;
+  const targetMinutes = Number(contract.target_shift_hours) * 60 || 600;
+  const baseSalary = Number(contract.monthly_base_salary) || 15000;
+  const baseDaily = baseSalary / 30;
+  const overtimeHourlyRate = Number(contract.overtime_hourly_rate) || 0;
+
+  // Calculate live elapsed minutes if currently in progress
+  let inZoneMinutes = log ? (log.total_in_zone_minutes || 0) : 0;
+  let outZoneMinutes = log ? (log.total_out_zone_minutes || 0) : 0;
+  let totalOnlineMinutes = log ? (log.total_online_minutes || 0) : 0;
+
+  if (isPunchedIn && log.punch_in_at) {
+    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(log.punch_in_at).getTime()) / 60000));
+    inZoneMinutes = Math.max(inZoneMinutes, Math.max(0, elapsedMinutes - outZoneMinutes));
+    totalOnlineMinutes = Math.max(totalOnlineMinutes, elapsedMinutes);
+  }
+
+  const validMinutes = Math.min(targetMinutes, inZoneMinutes);
+  const overtimeMinutes = Math.max(0, inZoneMinutes - targetMinutes);
+  const baseSalaryEarned = Math.round(((validMinutes / targetMinutes) * baseDaily) * 100) / 100;
+  const overtimePay = Math.round(((overtimeMinutes / 60) * overtimeHourlyRate) * 100) / 100;
+  const dailySalary = Math.round((baseSalaryEarned + overtimePay) * 100) / 100;
+  const cashCollected = log ? Number(log.cash_collected || 0) : 0;
 
   return {
     isMonthlyDriver: true,
@@ -317,9 +334,10 @@ async function getDriverDutyStatus(riderId) {
       overtimeMinutes,
       overtimePay,
       cashCollected,
-      totalOnlineMinutes: log ? log.total_online_minutes : 0,
+      totalOnlineMinutes,
       targetMinutes,
       dailySalary,
+      baseSalaryEarned,
       ordersCompleted: log ? log.orders_completed : 0,
     },
   };
