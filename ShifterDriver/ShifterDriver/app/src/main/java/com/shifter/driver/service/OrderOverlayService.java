@@ -215,7 +215,7 @@ public class OrderOverlayService extends Service {
         String pickupAddress = intent.getStringExtra("pickup_address");
         String finalDropAddress = intent.getStringExtra("delivery_address");
         String rawStops = intent.getStringExtra("stops");
-        String deliveryAddress = formatStops(finalDropAddress, rawStops);
+        String deliveryAddress = finalDropAddress;
         String tripDistanceKm = intent.getStringExtra("distance");
         Double pickupLat = parseNullableDouble(intent.getStringExtra("pickup_latitude"));
         Double pickupLng = parseNullableDouble(intent.getStringExtra("pickup_longitude"));
@@ -225,8 +225,9 @@ public class OrderOverlayService extends Service {
         txtPickup.setText(pickupAddress != null
                 ? com.shifter.driver.utility.OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
                 : "Unknown Pickup Location");
+        configureRouteTimeline(view, rawStops, finalDropAddress);
         txtDrop.setText(hasStops(rawStops)
-                ? appendTripDistance(deliveryAddress, tripDistanceKm)
+                ? deliveryAddress
                 : (finalDropAddress != null
                     ? com.shifter.driver.utility.OrderVoiceAnnouncer.dropLabel(finalDropAddress, tripDistanceKm)
                     : "Unknown Drop Location"));
@@ -337,6 +338,42 @@ public class OrderOverlayService extends Service {
 
     private boolean hasStops(String rawStops) {
         return rawStops != null && !rawStops.trim().isEmpty() && !"[]".equals(rawStops.trim());
+    }
+
+    private void configureRouteTimeline(View root, String rawStops, String finalDrop) {
+        View stop1 = root.findViewById(R.id.route_stop1_block);
+        View stop2 = root.findViewById(R.id.route_stop2_block);
+        View line1 = root.findViewById(R.id.route_line_stop1_stop2);
+        View line2 = root.findViewById(R.id.route_line_stop2_drop);
+        TextView drop = root.findViewById(R.id.txt_drop_address);
+        if (stop1 == null || stop2 == null || line1 == null || line2 == null) return;
+
+        stop1.setVisibility(View.GONE);
+        stop2.setVisibility(View.GONE);
+        line1.setVisibility(View.GONE);
+        line2.setVisibility(View.GONE);
+        if (drop != null) drop.setText(finalDrop == null ? "Address unavailable" : finalDrop);
+        if (!hasStops(rawStops)) return;
+
+        try {
+            org.json.JSONArray stops = new org.json.JSONArray(rawStops);
+            int count = Math.min(stops.length(), 2);
+            for (int i = 0; i < count; i++) {
+                org.json.JSONObject stop = stops.optJSONObject(i);
+                if (stop == null) continue;
+                int number = i + 1;
+                int blockId = number == 1 ? R.id.route_stop1_block : R.id.route_stop2_block;
+                int titleId = number == 1 ? R.id.txt_stop1_title : R.id.txt_stop2_title;
+                int addressId = number == 1 ? R.id.txt_stop1_address : R.id.txt_stop2_address;
+                root.findViewById(blockId).setVisibility(View.VISIBLE);
+                ((TextView) root.findViewById(titleId)).setText("Stop " + number);
+                ((TextView) root.findViewById(addressId)).setText(stop.optString("address", "Address unavailable"));
+            }
+            line1.setVisibility(count >= 1 ? View.VISIBLE : View.GONE);
+            line2.setVisibility(count >= 2 ? View.VISIBLE : View.GONE);
+        } catch (Exception ignored) {
+            // Keep the normal pickup/drop layout if the socket payload is malformed.
+        }
     }
 
     private String appendTripDistance(String routeText, String tripDistanceKm) {

@@ -116,7 +116,6 @@ public class OrderDialogHelper {
         String pickupAddress = getMapValue(orderData, "pickup_address", null);
         String deliveryAddress = getMapValue(orderData, "delivery_address", null);
         String rawStops = getMapValue(orderData, "stops", null);
-        String routeText = formatStops(deliveryAddress, rawStops);
         String tripDistanceKm = getMapValue(orderData, "distance", null);
         Double pickupLat = parseNullableDouble(getMapValue(orderData, "pickup_latitude", null));
         Double pickupLng = parseNullableDouble(getMapValue(orderData, "pickup_longitude", null));
@@ -128,8 +127,9 @@ public class OrderDialogHelper {
             txtPickup.setText(pickupAddress != null
                     ? OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
                     : "Unknown Pickup Location");
+            configureRouteTimeline(view, rawStops, deliveryAddress);
             txtDrop.setText(hasStops(rawStops)
-                    ? appendTripDistance(routeText, tripDistanceKm)
+                    ? deliveryAddress
                     : (deliveryAddress != null
                         ? OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
                         : "Unknown Drop Location"));
@@ -293,6 +293,42 @@ public class OrderDialogHelper {
 
     private static boolean hasStops(String rawStops) {
         return rawStops != null && !rawStops.trim().isEmpty() && !"[]".equals(rawStops.trim());
+    }
+
+    private static void configureRouteTimeline(android.view.View root, String rawStops, String finalDrop) {
+        android.view.View stop1 = root.findViewById(com.shifter.driver.R.id.route_stop1_block);
+        android.view.View stop2 = root.findViewById(com.shifter.driver.R.id.route_stop2_block);
+        android.view.View line1 = root.findViewById(com.shifter.driver.R.id.route_line_stop1_stop2);
+        android.view.View line2 = root.findViewById(com.shifter.driver.R.id.route_line_stop2_drop);
+        android.widget.TextView drop = root.findViewById(com.shifter.driver.R.id.txt_drop_address);
+        if (stop1 == null || stop2 == null || line1 == null || line2 == null) return;
+
+        stop1.setVisibility(android.view.View.GONE);
+        stop2.setVisibility(android.view.View.GONE);
+        line1.setVisibility(android.view.View.GONE);
+        line2.setVisibility(android.view.View.GONE);
+        if (drop != null) drop.setText(finalDrop == null ? "Address unavailable" : finalDrop);
+        if (!hasStops(rawStops)) return;
+
+        try {
+            JSONArray stops = new JSONArray(rawStops);
+            int count = Math.min(stops.length(), 2);
+            for (int i = 0; i < count; i++) {
+                JSONObject stop = stops.optJSONObject(i);
+                if (stop == null) continue;
+                int number = i + 1;
+                int blockId = number == 1 ? com.shifter.driver.R.id.route_stop1_block : com.shifter.driver.R.id.route_stop2_block;
+                int titleId = number == 1 ? com.shifter.driver.R.id.txt_stop1_title : com.shifter.driver.R.id.txt_stop2_title;
+                int addressId = number == 1 ? com.shifter.driver.R.id.txt_stop1_address : com.shifter.driver.R.id.txt_stop2_address;
+                root.findViewById(blockId).setVisibility(android.view.View.VISIBLE);
+                ((android.widget.TextView) root.findViewById(titleId)).setText("Stop " + number);
+                ((android.widget.TextView) root.findViewById(addressId)).setText(stop.optString("address", "Address unavailable"));
+            }
+            line1.setVisibility(count >= 1 ? android.view.View.VISIBLE : android.view.View.GONE);
+            line2.setVisibility(count >= 2 ? android.view.View.VISIBLE : android.view.View.GONE);
+        } catch (Exception ignored) {
+            // Keep the normal pickup/drop layout if the socket payload is malformed.
+        }
     }
 
     private static String appendTripDistance(String routeText, String tripDistanceKm) {

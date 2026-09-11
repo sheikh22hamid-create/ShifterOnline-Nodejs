@@ -16,6 +16,7 @@
 
         <!-- Header -->
         <LinearLayout
+            android:id="@+id/route_pickup_block"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
@@ -94,13 +95,113 @@
 
         <!-- Use a vertical line to connect dots if possible, or just spacer -->
         <View
+            android:id="@+id/route_line_pickup_stop1"
             android:layout_width="1dp"
             android:layout_height="20dp"
             android:layout_marginStart="11dp"
             android:background="@color/gray2" />
 
+        <!-- Stop 1 -->
+        <LinearLayout
+            android:id="@+id/route_stop1_block"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_current_location_drop"
+                app:tint="#FF8A2A" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/txt_stop1_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Stop 1"
+                    android:textColor="#FF8A2A"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txt_stop1_address"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:textColor="@color/black"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:id="@+id/route_line_stop1_stop2"
+            android:layout_width="1dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="11dp"
+            android:background="@color/gray2"
+            android:visibility="gone" />
+
+        <!-- Stop 2 -->
+        <LinearLayout
+            android:id="@+id/route_stop2_block"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_current_location_drop"
+                app:tint="@color/purple_500" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/txt_stop2_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Stop 2"
+                    android:textColor="@color/purple_500"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txt_stop2_address"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:textColor="@color/black"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:id="@+id/route_line_stop2_drop"
+            android:layout_width="1dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="11dp"
+            android:background="@color/gray2"
+            android:visibility="gone" />
+
         <!-- Drop Location -->
         <LinearLayout
+            android:id="@+id/route_drop_block"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal">
