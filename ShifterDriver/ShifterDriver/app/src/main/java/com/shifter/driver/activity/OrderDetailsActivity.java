@@ -49,6 +49,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
 
 import okhttp3.MediaType;
 import okhttp3.RequestBody;
@@ -994,6 +996,24 @@ public class OrderDetailsActivity extends AppCompatActivity
 
         LatLng pickupLoc = new LatLng(orderItem.getPlat(), orderItem.getPlong());
         LatLng dropLoc = new LatLng(orderItem.getDlat(), orderItem.getDlong());
+        List<LatLng> routePoints = new ArrayList<>();
+        routePoints.add(pickupLoc);
+
+        // Stops are part of the order route. Keep their sequence from the API
+        // and include them in both the map markers and Directions waypoints.
+        List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
+        for (com.shifter.driver.model.OrderStop stop : stops) {
+            try {
+                double lat = Double.parseDouble(stop.getLat());
+                double lng = Double.parseDouble(stop.getLng());
+                if (lat != 0.0 && lng != 0.0) {
+                    routePoints.add(new LatLng(lat, lng));
+                }
+            } catch (Exception ignored) {
+                // Ignore malformed stop coordinates and keep the base route usable.
+            }
+        }
+        routePoints.add(dropLoc);
 
         switch (orderItem.getOrderFlowId()) {
             case "0":
@@ -1051,6 +1071,27 @@ public class OrderDetailsActivity extends AppCompatActivity
             mMap.addMarker(p2);
         }
 
+        // Show every customer-added stop between pickup and final drop.
+        int stopNumber = 0;
+        for (com.shifter.driver.model.OrderStop stop : stops) {
+            try {
+                double lat = Double.parseDouble(stop.getLat());
+                double lng = Double.parseDouble(stop.getLng());
+                if (lat == 0.0 || lng == 0.0) continue;
+                stopNumber++;
+                MarkerOptions stopMarker = new MarkerOptions()
+                        .position(new LatLng(lat, lng))
+                        .title("Stop " + stopNumber + ": " + stop.displayAddress())
+                        .icon(BitmapDescriptorFactory.defaultMarker(
+                                stopNumber % 2 == 1
+                                        ? BitmapDescriptorFactory.HUE_ORANGE
+                                        : BitmapDescriptorFactory.HUE_AZURE));
+                mMap.addMarker(stopMarker);
+            } catch (Exception ignored) {
+                // Marker is optional; the pickup/drop route should still render.
+            }
+        }
+
         // 3. Add Driver Live Location Marker (Blue) if available
         if (driverLat != 0.0 && driverLng != 0.0) {
             LatLng driverLoc = new LatLng(driverLat, driverLng);
@@ -1061,11 +1102,9 @@ public class OrderDetailsActivity extends AppCompatActivity
             mMap.addMarker(driverMarker);
         }
 
-        // 4. Draw Polyline between Pickup & Drop
-        if (pickupLoc.latitude != 0.0 && pickupLoc.longitude != 0.0 && dropLoc.latitude != 0.0 && dropLoc.longitude != 0.0) {
-            if (Math.abs(pickupLoc.latitude - dropLoc.latitude) > 0.0001 || Math.abs(pickupLoc.longitude - dropLoc.longitude) > 0.0001) {
-                new FetchURL(this).execute(getUrl(pickupLoc, dropLoc, "driving"), "driving");
-            }
+        // 4. Draw the complete Pickup -> Stop(s) -> Drop route.
+        if (routePoints.size() >= 2 && hasDifferentRoutePoints(routePoints)) {
+            new FetchURL(this).execute(getRouteUrl(routePoints, "driving"), "driving");
         }
 
         // 5. Adjust Camera to show both Pickup and Drop (and Driver if available)
@@ -1079,6 +1118,11 @@ public class OrderDetailsActivity extends AppCompatActivity
             }
             if (dropLoc.latitude != 0.0 && dropLoc.longitude != 0.0) {
                 builder.include(dropLoc);
+                hasPoints = true;
+            }
+            for (int i = 1; i < routePoints.size() - 1; i++) {
+                LatLng stopLoc = routePoints.get(i);
+                builder.include(stopLoc);
                 hasPoints = true;
             }
             if (driverLat != 0.0 && driverLng != 0.0) {
@@ -1103,6 +1147,31 @@ public class OrderDetailsActivity extends AppCompatActivity
                 + "&destination=" + d.latitude + "," + d.longitude
                 + "&mode=" + mode
                 + "&key=" + getString(R.string.google_maps_key);
+    }
+
+    private String getRouteUrl(List<LatLng> points, String mode) {
+        LatLng origin = points.get(0);
+        LatLng destination = points.get(points.size() - 1);
+        StringBuilder url = new StringBuilder("https://maps.googleapis.com/maps/api/directions/json?")
+                .append("origin=").append(origin.latitude).append(",").append(origin.longitude)
+                .append("&destination=").append(destination.latitude).append(",").append(destination.longitude)
+                .append("&mode=").append(mode);
+        if (points.size() > 2) {
+            url.append("&waypoints=");
+            for (int i = 1; i < points.size() - 1; i++) {
+                if (i > 1) url.append('|');
+                LatLng waypoint = points.get(i);
+                url.append(waypoint.latitude).append(',').append(waypoint.longitude);
+            }
+        }
+        return url.append("&key=").append(getString(R.string.google_maps_key)).toString();
+    }
+
+    private boolean hasDifferentRoutePoints(List<LatLng> points) {
+        LatLng first = points.get(0);
+        LatLng last = points.get(points.size() - 1);
+        return Math.abs(first.latitude - last.latitude) > 0.0001
+                || Math.abs(first.longitude - last.longitude) > 0.0001;
     }
 
     // ------------------------------------------------ API
