@@ -103,6 +103,15 @@ public class OrderOverlayService extends Service {
                     Log.e(TAG, "Error fetching riderId from SessionManager", e);
                 }
             }
+
+            if (riderId != null && !riderId.isEmpty()) {
+                try {
+                    int rId = Integer.parseInt(riderId);
+                    if (rId > 0) {
+                        com.shifter.driver.socket.NodeSocketManager.getInstance().connectDriver(rId);
+                    }
+                } catch (Exception ignored) {}
+            }
             
             showOverlayDialog(intent);
         } else {
@@ -197,56 +206,73 @@ public class OrderOverlayService extends Service {
         }
 
         // Find Views
-        TextView txtPrice = view.findViewById(R.id.txt_estimated_price);
-        TextView txtPickupTitle = view.findViewById(R.id.txt_pickup_name_title);
-        TextView txtDropTitle = view.findViewById(R.id.txt_drop_name_title);
-        TextView txtPickup = view.findViewById(R.id.txt_pickup_address);
-        TextView txtDrop = view.findViewById(R.id.txt_drop_address);
-        TextView txtName = view.findViewById(R.id.txt_customer_name);
-        TextView txtDist = view.findViewById(R.id.txt_distance);
         TextView txtDetails = view.findViewById(R.id.txt_order_details);
         Button btnAccept = view.findViewById(R.id.btn_accept);
         Button btnReject = view.findViewById(R.id.btn_reject);
 
-        // Populate Data
-        // "Khajrana (4.2 km away)" / "Rajwada (10.2 km trip)" — driver's own
-        // distance to pickup, and the pickup->drop trip distance, shown on
-        // the location line (matches OrderDialogHelper's foreground popup).
         String pickupAddress = intent.getStringExtra("pickup_address");
         String finalDropAddress = intent.getStringExtra("delivery_address");
         String rawStops = intent.getStringExtra("stops");
         String deliveryAddress = finalDropAddress;
         String tripDistanceKm = intent.getStringExtra("distance");
+        String packageId = intent.getStringExtra("package_id");
+        String modelName = intent.getStringExtra("model_name") != null ? intent.getStringExtra("model_name")
+                : (intent.getStringExtra("driver_title") != null ? intent.getStringExtra("driver_title") : intent.getStringExtra("package_name"));
+        String packageTitle = intent.getStringExtra("package_title") != null ? intent.getStringExtra("package_title") : intent.getStringExtra("title");
+        String category = intent.getStringExtra("category") != null ? intent.getStringExtra("category") : intent.getStringExtra("vehicle_type");
+        String customerName = intent.getStringExtra("customer_name");
         Double pickupLat = parseNullableDouble(intent.getStringExtra("pickup_latitude"));
         Double pickupLng = parseNullableDouble(intent.getStringExtra("pickup_longitude"));
         android.location.Location driverLocation = com.shifter.driver.locationservice.LocationUpdateService.getLocation();
 
-        txtPrice.setText(intent.getStringExtra("estimated_earning") != null ? intent.getStringExtra("estimated_earning") : "₹0");
-        txtPickup.setText(pickupAddress != null
-                ? com.shifter.driver.utility.OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
-                : "Unknown Pickup Location");
-        configureRouteTimeline(view, rawStops, finalDropAddress);
-        txtDrop.setText(hasStops(rawStops)
-                ? deliveryAddress
-                : (finalDropAddress != null
-                    ? com.shifter.driver.utility.OrderVoiceAnnouncer.dropLabel(finalDropAddress, tripDistanceKm)
-                    : "Unknown Drop Location"));
-        txtName.setText(intent.getStringExtra("customer_name") != null ? intent.getStringExtra("customer_name") : "Customer");
-        txtDist.setText(intent.getStringExtra("distance") != null ? intent.getStringExtra("distance") : "0 km");
-        txtDetails.setText(intent.getStringExtra("order_details") != null ? intent.getStringExtra("order_details") : "No additional details");
+        // 1. Apply Tier Visual Theme & Bind Order Data
+        com.shifter.driver.utility.TierTheme.applyThemeToView(
+                view,
+                this,
+                orderId,
+                packageId,
+                modelName,
+                packageTitle,
+                pickupAddress != null
+                        ? com.shifter.driver.utility.OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
+                        : "Unknown Pickup Location",
+                hasStops(rawStops)
+                        ? deliveryAddress
+                        : (finalDropAddress != null
+                            ? com.shifter.driver.utility.OrderVoiceAnnouncer.dropLabel(finalDropAddress, tripDistanceKm)
+                            : "Unknown Drop Location"),
+                tripDistanceKm,
+                category,
+                customerName,
+                driverLocation
+        );
 
-        if (txtPickupTitle != null) {
-            String pName = intent.getStringExtra("pickup_name");
-            txtPickupTitle.setText(pName != null && !pName.isEmpty() ? pName : "PICKUP");
+        // 2. Configure Multi-stop timeline
+        configureRouteTimeline(view, rawStops, finalDropAddress);
+
+        if (txtDetails != null) {
+            String details = intent.getStringExtra("order_details");
+            if (details != null && !details.isEmpty() && !"No additional details".equalsIgnoreCase(details)) {
+                txtDetails.setText(details);
+                txtDetails.setVisibility(View.VISIBLE);
+            }
         }
-        if (txtDropTitle != null) {
-            String dName = intent.getStringExtra("drop_name");
-            txtDropTitle.setText(dName != null && !dName.isEmpty() ? dName : "DROP OFF");
+
+        boolean isDirectAssign = "true".equalsIgnoreCase(intent.getStringExtra("is_direct_assign"))
+                || "true".equalsIgnoreCase(intent.getStringExtra("is_monthly_order"));
+
+        if (isDirectAssign) {
+            btnReject.setVisibility(View.GONE);
+            btnAccept.setText("START TRIP / ACCEPT");
+            TextView txtSubtitle = view.findViewById(R.id.txt_header_subtitle);
+            if (txtSubtitle != null) {
+                txtSubtitle.setText("Mandatory Trip • Monthly Driver");
+            }
         }
 
         playVoiceAnnouncement(intent);
 
-        int timerSeconds = 10;
+        int timerSeconds = isDirectAssign ? 60 : 10;
         try {
             String popupDurationStr = intent.getStringExtra("popup_duration");
             if (popupDurationStr != null && !popupDurationStr.isEmpty()) {
@@ -264,13 +290,7 @@ public class OrderOverlayService extends Service {
 
         // expires_at (server epoch-ms deadline, armed the moment the offer's
         // lock was acquired server-side) is the source of truth for how much
-        // time is ACTUALLY left — a fresh popup_duration-second countdown
-        // starting only now double-counts however long push/socket delivery
-        // and this overlay's own launch already took, so it shows more time
-        // than the server will actually still honor an accept for (confirmed
-        // live: driver tapped Accept with ~5s still showing, server rejected
-        // it as already expired). Falls back to the old relative countdown
-        // if expires_at is missing (older payload shape).
+        // time is ACTUALLY left.
         long timerMillis = timerSeconds * 1000L;
         try {
             String expiresAtStr = intent.getStringExtra("expires_at");
@@ -288,21 +308,16 @@ public class OrderOverlayService extends Service {
             wakeLock.acquire(timerMillis + 5000); // Max timer + 5s buffer
         }
 
+        btnReject.setText("REJECT (" + (timerMillis / 1000) + "S)");
+
         countDownTimer = new CountDownTimer(timerMillis, 1000) {
             @Override
             public void onTick(long millisUntilFinished) {
-                btnReject.setText("Reject (" + (millisUntilFinished / 1000) + "s)");
+                btnReject.setText("REJECT (" + (millisUntilFinished / 1000) + "S)");
             }
 
             @Override
             public void onFinish() {
-                // Local countdown running out is NOT the same as tapping Reject:
-                // rejecting excludes this rider from every model of this order
-                // (see API_INTEGRATION_GUIDE.md §6.1), but simply not responding
-                // in time should only cost them this one model — the server's
-                // own popup timer (order:dismiss) still lets them be re-offered
-                // a later model. So this just closes the overlay and sends
-                // nothing; the backend's own timeout handles the rest.
                 removeOverlay();
             }
         };
@@ -346,6 +361,7 @@ public class OrderOverlayService extends Service {
         View line1 = root.findViewById(R.id.route_line_stop1_stop2);
         View line2 = root.findViewById(R.id.route_line_stop2_drop);
         TextView drop = root.findViewById(R.id.txt_drop_address);
+        TextView dropTitle = root.findViewById(R.id.txt_drop_name_title);
         if (stop1 == null || stop2 == null || line1 == null || line2 == null) return;
 
         stop1.setVisibility(View.GONE);
@@ -353,6 +369,7 @@ public class OrderOverlayService extends Service {
         line1.setVisibility(View.GONE);
         line2.setVisibility(View.GONE);
         if (drop != null) drop.setText(finalDrop == null ? "Address unavailable" : finalDrop);
+        if (dropTitle != null) dropTitle.setText("Drop (Stop 1)");
         if (!hasStops(rawStops)) return;
 
         try {
@@ -371,6 +388,9 @@ public class OrderOverlayService extends Service {
             }
             line1.setVisibility(count >= 1 ? View.VISIBLE : View.GONE);
             line2.setVisibility(count >= 2 ? View.VISIBLE : View.GONE);
+            if (dropTitle != null) {
+                dropTitle.setText("Drop (Stop " + (count + 1) + ")");
+            }
         } catch (Exception ignored) {
             // Keep the normal pickup/drop layout if the socket payload is malformed.
         }

@@ -16,6 +16,9 @@ const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
 const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
+const serviceZoneController = require("../controllers/serviceZoneController");
+const monthlyDriverController = require("../controllers/monthlyDriverController");
+const orderQueueController = require("../controllers/orderQueueController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -26,6 +29,25 @@ const router = express.Router();
 router.post("/auth/login", authController.login);
 router.get("/auth/me", auth, authController.me);
 router.put("/auth/profile", auth, authController.updateProfile);
+
+// --- Service Zones & Geofencing --------------------------------------------
+router.get("/service-zones", auth, authorize(...RIDER_ROLES), serviceZoneController.listZones);
+router.post("/service-zones", auth, authorize("superadmin", "admin"), serviceZoneController.createZone);
+router.put("/service-zones/:id", auth, authorize("superadmin", "admin"), serviceZoneController.updateZone);
+router.delete("/service-zones/:id", auth, authorize("superadmin"), serviceZoneController.deleteZone);
+
+// --- Monthly Dedicated Drivers & Duty Tracking ------------------------------
+router.get("/monthly-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.listMonthlyDrivers);
+router.post("/monthly-drivers/promote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.promoteDriver);
+router.post("/monthly-drivers/demote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.demoteDriver);
+router.get("/monthly-drivers/attendance", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.getAttendanceReport);
+router.get("/monthly-drivers/:riderId/duty", auth, authorize(...RIDER_ROLES), monthlyDriverController.getDutyStatus);
+
+// --- Monthly Driver Advance Order Queue --------------------------------------
+router.get("/monthly-drivers/:riderId/queue", auth, authorize(...RIDER_ROLES), orderQueueController.getDriverQueue);
+router.post("/monthly-drivers/queue/assign", auth, authorize("superadmin", "admin"), scopeFilter, orderQueueController.assignOrderToQueue);
+router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", "admin"), scopeFilter, orderQueueController.removeOrderFromQueue);
+
 
 // --- Staff & Executive Management -----------------------------------------
 router.get("/staff", auth, authorize("superadmin", "admin"), staffController.list);

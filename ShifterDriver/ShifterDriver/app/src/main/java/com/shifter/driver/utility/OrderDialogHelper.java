@@ -9,6 +9,14 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.shifter.driver.model.OrderStop;
+
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Helper class to show Accept/Reject Order dialog
  * Handles API calls for accepting/rejecting orders
@@ -44,15 +52,7 @@ public class OrderDialogHelper {
     }
 
     /**
-     * Show Accept/Reject dialog for an order
-     * 
-     * @param context  Activity context
-     * @param orderId  Order ID to accept/reject
-     * @param riderId  Rider ID (from session)
-     * @param listener Callback for dialog actions
-     */
-    /**
-     * Show Accept/Reject dialog for an order with custom UI
+     * Show Accept/Reject dialog for an order with custom themed UI
      * 
      * @param context   Activity context
      * @param orderId   Order ID to accept/reject
@@ -70,16 +70,7 @@ public class OrderDialogHelper {
 
         // Close out any dialog still open from an earlier tier of this (or
         // any other) order before showing the new one — mirrors
-        // OrderOverlayService's own "clean up previous view" step, and is
-        // now the ONLY thing gating a new tier's popup: a separate
-        // order-id-based guard in BaseActivity used to also do this, but it
-        // could only ever be reset by an async broadcast or the local
-        // countdown, both of which race against the very next tier's
-        // order:request arriving first — confirmed live via logcat on
-        // order #1565: the dismiss for Model 1 was logged 58ms AFTER
-        // Model 2's request had already been evaluated and silently
-        // dropped as "already shown". Dismissing synchronously, right here,
-        // has no such window.
+        // OrderOverlayService's own "clean up previous view" step.
         if (currentDialog != null && currentDialog.isShowing()) {
             currentDialog.dismiss();
         }
@@ -97,59 +88,70 @@ public class OrderDialogHelper {
         }
 
         // Find Views
-        android.widget.TextView txtPrice = view.findViewById(com.shifter.driver.R.id.txt_estimated_price);
-        android.widget.TextView txtPickupTitle = view.findViewById(com.shifter.driver.R.id.txt_pickup_name_title);
-        android.widget.TextView txtDropTitle = view.findViewById(com.shifter.driver.R.id.txt_drop_name_title);
-        android.widget.TextView txtPickup = view.findViewById(com.shifter.driver.R.id.txt_pickup_address);
-        android.widget.TextView txtDrop = view.findViewById(com.shifter.driver.R.id.txt_drop_address);
-        android.widget.TextView txtName = view.findViewById(com.shifter.driver.R.id.txt_customer_name);
-        android.widget.TextView txtDist = view.findViewById(com.shifter.driver.R.id.txt_distance);
         android.widget.TextView txtDetails = view.findViewById(com.shifter.driver.R.id.txt_order_details);
         android.widget.Button btnAccept = view.findViewById(com.shifter.driver.R.id.btn_accept);
         android.widget.Button btnReject = view.findViewById(com.shifter.driver.R.id.btn_reject);
 
-        // "Khajrana (4.2 km away)" / "Rajwada (10.2 km trip)" — driver's own
-        // distance to pickup, and the pickup->drop trip distance, shown on
-        // the location line AND spoken in the voice announcement below, so
-        // both read off the same computed values instead of each deriving
-        // their own.
         String pickupAddress = getMapValue(orderData, "pickup_address", null);
         String deliveryAddress = getMapValue(orderData, "delivery_address", null);
         String rawStops = getMapValue(orderData, "stops", null);
         String tripDistanceKm = getMapValue(orderData, "distance", null);
+        String packageId = getMapValue(orderData, "package_id", null);
+        String modelName = getMapValue(orderData, "model_name", getMapValue(orderData, "driver_title", getMapValue(orderData, "package_name", null)));
+        String packageTitle = getMapValue(orderData, "package_title", getMapValue(orderData, "title", null));
+        String category = getMapValue(orderData, "category", getMapValue(orderData, "vehicle_type", "Bike"));
+        String customerName = getMapValue(orderData, "customer_name", null);
         Double pickupLat = parseNullableDouble(getMapValue(orderData, "pickup_latitude", null));
         Double pickupLng = parseNullableDouble(getMapValue(orderData, "pickup_longitude", null));
         android.location.Location driverLocation = com.shifter.driver.locationservice.LocationUpdateService.getLocation();
 
-        // Populate Data
-        if (orderData != null) {
-            txtPrice.setText(getMapValue(orderData, "estimated_earning", "₹0"));
-            txtPickup.setText(pickupAddress != null
-                    ? OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
-                    : "Unknown Pickup Location");
-            configureRouteTimeline(view, rawStops, deliveryAddress);
-            txtDrop.setText(hasStops(rawStops)
-                    ? deliveryAddress
-                    : (deliveryAddress != null
-                        ? OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
-                        : "Unknown Drop Location"));
-            txtName.setText(getMapValue(orderData, "customer_name", "Customer"));
-            txtDist.setText(getMapValue(orderData, "distance", "0 km"));
-            txtDetails.setText(getMapValue(orderData, "order_details", "No additional details"));
+        // 1. Apply Tier Visual Theme & Bind Order Data to View
+        TierTheme.applyThemeToView(
+                view,
+                context,
+                orderId,
+                packageId,
+                modelName,
+                packageTitle,
+                pickupAddress != null
+                        ? OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
+                        : "Unknown Pickup Location",
+                hasStops(rawStops)
+                        ? deliveryAddress
+                        : (deliveryAddress != null
+                            ? OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
+                            : "Unknown Drop Location"),
+                tripDistanceKm,
+                category,
+                customerName,
+                driverLocation
+        );
 
-            if (txtPickupTitle != null) {
-                txtPickupTitle.setText(getMapValue(orderData, "pickup_name", "PICKUP"));
+        // 2. Configure Multi-stop timeline
+        configureRouteTimeline(view, rawStops, deliveryAddress);
+
+        if (txtDetails != null && orderData != null) {
+            String details = getMapValue(orderData, "order_details", null);
+            if (details != null && !details.isEmpty() && !"No additional details".equalsIgnoreCase(details)) {
+                txtDetails.setText(details);
+                txtDetails.setVisibility(android.view.View.VISIBLE);
             }
-            if (txtDropTitle != null) {
-                txtDropTitle.setText(getMapValue(orderData, "drop_name", "DROP OFF"));
+        }
+
+        boolean isDirectAssign = "true".equalsIgnoreCase(getMapValue(orderData, "is_direct_assign", "false"))
+                || "true".equalsIgnoreCase(getMapValue(orderData, "is_monthly_order", "false"));
+
+        if (isDirectAssign) {
+            btnReject.setVisibility(android.view.View.GONE);
+            btnAccept.setText("START TRIP / ACCEPT");
+            android.widget.TextView txtSubtitle = view.findViewById(com.shifter.driver.R.id.txt_header_subtitle);
+            if (txtSubtitle != null) {
+                txtSubtitle.setText("Mandatory Trip • Monthly Driver");
             }
-        } else {
-            txtPickup.setText("New Order Request");
-            txtDrop.setText("Check details in app");
         }
 
         // Auto-reject timer (Dynamic from popup_duration in notification, fallback to home_data.php, default 10s)
-        int timerSeconds = 10;
+        int timerSeconds = isDirectAssign ? 60 : 10;
         try {
             String popupDurationStr = getMapValue(orderData, "popup_duration", null);
             if (popupDurationStr != null && !popupDurationStr.isEmpty()) {
@@ -167,13 +169,7 @@ public class OrderDialogHelper {
         
         // expires_at (server epoch-ms deadline, armed the moment the offer's
         // lock was acquired server-side) is the source of truth for how much
-        // time is ACTUALLY left — a fresh popup_duration-second countdown
-        // starting only now double-counts however long push/socket delivery
-        // already took before this dialog was shown, so it shows more time
-        // than the server will actually still honor an accept for (see
-        // OrderOverlayService's identical fix — same bug, foreground path).
-        // Falls back to the old relative countdown if expires_at is missing
-        // (older payload shape).
+        // time is ACTUALLY left.
         long timerMillis = timerSeconds * 1000L;
         try {
             String expiresAtStr = getMapValue(orderData, "expires_at", null);
@@ -185,33 +181,19 @@ public class OrderDialogHelper {
             Log.e(TAG, "Error parsing expires_at, falling back to popup_duration", e);
         }
 
+        btnReject.setText("REJECT (" + (timerMillis / 1000) + "S)");
+
         android.os.CountDownTimer countDownTimer = new android.os.CountDownTimer(timerMillis, 1000) {
             @Override
             public void onTick(long millisUntilFinished) {
-                btnReject.setText("Reject (" + (millisUntilFinished / 1000) + "s)");
+                btnReject.setText("REJECT (" + (millisUntilFinished / 1000) + "S)");
             }
 
             @Override
             public void onFinish() {
-                // Local countdown running out is NOT the same as tapping Reject:
-                // rejecting excludes this rider from every model of this order
-                // (see API_INTEGRATION_GUIDE.md §6.1), but simply not responding
-                // in time should only cost them this one model — the server's
-                // own popup timer (order:dismiss) still lets them be re-offered
-                // a later model. So this just closes the dialog locally and
-                // sends nothing; the backend's own timeout handles the rest.
                 if (dialog.isShowing()) {
                     dialog.dismiss();
                 }
-                // Unlike Accept/Reject/failure, a natural timeout never
-                // called back into `listener` before — BaseActivity's own
-                // duplicate-popup guard (lastShownOrderId) was only ever
-                // reset from those three paths, so once a popup for this
-                // order_id timed out on its own, every LATER tier's dialog
-                // for the same order_id silently never showed again for
-                // the rest of the app's process lifetime (confirmed live:
-                // order #1555 — a driver only ever saw Model 2's popup,
-                // despite the server correctly cascading through 3/4/5).
                 if (listener != null) {
                     listener.onOrderTimedOut(orderId);
                 }
@@ -237,10 +219,7 @@ public class OrderDialogHelper {
         dialog.show();
         Log.d(TAG, "dialog.show() returned at t=" + System.currentTimeMillis() + " orderId=" + orderId);
 
-        // ── Speak the order out loud instead of a generic ringtone (volume
-        // controlled by showVolumeControlDialog) — "Aapse 4.2 km door
-        // Khajrana mein order hai, kamai 250 rupaye" — so the driver gets
-        // pickup/drop/earning without reading the screen. ──
+        // Voice announcement
         try {
             AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null && audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
@@ -257,12 +236,6 @@ public class OrderDialogHelper {
             Log.e(TAG, "Error playing voice announcement", e);
         }
 
-        // Single dismiss listener for every cleanup this dialog needs —
-        // setOnDismissListener only keeps the LAST one registered, so an
-        // earlier separate call here to just cancel the timer would have
-        // been silently replaced by this one, leaving countDownTimer
-        // running (harmlessly, since onFinish() checks isShowing, but
-        // pointlessly) for up to its full duration after the dialog closed.
         dialog.setOnDismissListener(d -> {
             countDownTimer.cancel();
             OrderVoiceAnnouncer.stop();
@@ -301,6 +274,7 @@ public class OrderDialogHelper {
         android.view.View line1 = root.findViewById(com.shifter.driver.R.id.route_line_stop1_stop2);
         android.view.View line2 = root.findViewById(com.shifter.driver.R.id.route_line_stop2_drop);
         android.widget.TextView drop = root.findViewById(com.shifter.driver.R.id.txt_drop_address);
+        android.widget.TextView dropTitle = root.findViewById(com.shifter.driver.R.id.txt_drop_name_title);
         if (stop1 == null || stop2 == null || line1 == null || line2 == null) return;
 
         stop1.setVisibility(android.view.View.GONE);
@@ -308,6 +282,7 @@ public class OrderDialogHelper {
         line1.setVisibility(android.view.View.GONE);
         line2.setVisibility(android.view.View.GONE);
         if (drop != null) drop.setText(finalDrop == null ? "Address unavailable" : finalDrop);
+        if (dropTitle != null) dropTitle.setText("Drop (Stop 1)");
         if (!hasStops(rawStops)) return;
 
         try {
@@ -326,6 +301,9 @@ public class OrderDialogHelper {
             }
             line1.setVisibility(count >= 1 ? android.view.View.VISIBLE : android.view.View.GONE);
             line2.setVisibility(count >= 2 ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (dropTitle != null) {
+                dropTitle.setText("Drop (Stop " + (count + 1) + ")");
+            }
         } catch (Exception ignored) {
             // Keep the normal pickup/drop layout if the socket payload is malformed.
         }
@@ -344,6 +322,15 @@ public class OrderDialogHelper {
     private static void acceptOrder(Context context, String orderId, String riderId,
             java.util.Map<String, String> orderData, OrderActionListener listener) {
         try {
+            if (riderId != null && !riderId.isEmpty()) {
+                try {
+                    int rId = Integer.parseInt(riderId);
+                    if (rId > 0) {
+                        com.shifter.driver.socket.NodeSocketManager.getInstance().connectDriver(rId);
+                    }
+                } catch (Exception ignored) {}
+            }
+
             org.json.JSONObject payload = new org.json.JSONObject();
             payload.put("order_id", orderId);
             payload.put("rider_id", riderId);
@@ -390,14 +377,6 @@ public class OrderDialogHelper {
             org.json.JSONObject payload = new org.json.JSONObject();
             payload.put("order_id", orderId);
             payload.put("rider_id", riderId);
-            // The exact tier the driver was shown — order:reject has no ack
-            // (fire and forget), so if this event is delayed past the
-            // popup's own 15s timeout, the server's in-memory lock for it is
-            // already gone by the time it arrives; sending package_id lets
-            // the server still record the reject correctly instead of
-            // silently dropping it (confirmed live: a driver's reject
-            // recorded as a plain timeout, so the cascade kept offering
-            // them this order's later tiers).
             if (packageId != null) payload.put("package_id", packageId);
             com.shifter.driver.socket.NodeSocketManager.getInstance().emitReject(payload);
             Log.d(TAG, "order:reject emitted for order " + orderId + " package_id=" + packageId);
@@ -409,9 +388,6 @@ public class OrderDialogHelper {
         }
     }
 
-    /**
-     * Interface for order action callbacks
-     */
     public interface OrderActionListener {
         void onOrderAccepted(String orderId);
 
@@ -454,6 +430,8 @@ public class OrderDialogHelper {
                 "0.00", "0.00", "0.00", "0.00", "0.00", "0", "0.00",
                 getMapValue(data, "payment_status", "1")
         );
+        // The socket dispatch payload carries stops as a JSON string.
+        orderItem.setStops(parseStops(getMapValue(data, "stops", "[]")));
         // Save active order locally so app always remembers and re-opens it
         try {
             new com.shifter.driver.utility.SessionManager(context).setActiveOrder(orderItem);
@@ -466,9 +444,6 @@ public class OrderDialogHelper {
         
         android.content.Intent intent = new android.content.Intent(context, com.shifter.driver.activity.OrderDetailsActivity.class);
         intent.putExtra("myclass", orderItem);
-        // Tells OrderDetailsActivity this is a fresh Accept, not a resumed/
-        // reopened order — see its EXTRA_JUST_ACCEPTED for why that matters
-        // (skips blocking the first frame on a network round-trip).
         intent.putExtra("just_accepted", true);
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
@@ -503,6 +478,20 @@ public class OrderDialogHelper {
             return value != null ? value : defaultValue;
         }
         return defaultValue;
+    }
+
+    private static List<OrderStop> parseStops(String rawStops) {
+        if (rawStops == null || rawStops.trim().isEmpty() || "[]".equals(rawStops.trim())) {
+            return new ArrayList<>();
+        }
+        try {
+            Type type = new TypeToken<List<OrderStop>>() {}.getType();
+            List<OrderStop> parsed = new Gson().fromJson(rawStops, type);
+            return parsed == null ? new ArrayList<>() : parsed;
+        } catch (Exception e) {
+            Log.w(TAG, "Unable to parse order stops", e);
+            return new ArrayList<>();
+        }
     }
 
     private static Double parseNullableDouble(String value) {

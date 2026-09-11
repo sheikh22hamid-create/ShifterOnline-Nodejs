@@ -31,6 +31,17 @@ public class OrderStop implements Parcelable {
     public String getLandmark() { return landmark; }
     public String getLat() { return lat; }
     public String getLng() { return lng; }
+    public String getContactName() { return contactName; }
+    public String getContactNumber() { return contactNumber; }
+
+    public void setSequence(int sequence) { this.sequence = sequence; }
+    public void setAddress(String address) { this.address = address; }
+    public void setHno(String hno) { this.hno = hno; }
+    public void setLandmark(String landmark) { this.landmark = landmark; }
+    public void setLat(String lat) { this.lat = lat; }
+    public void setLng(String lng) { this.lng = lng; }
+    public void setContactName(String contactName) { this.contactName = contactName; }
+    public void setContactNumber(String contactNumber) { this.contactNumber = contactNumber; }
 
     public String displayAddress() {
         StringBuilder value = new StringBuilder();

@@ -289,6 +289,10 @@ public class PDOrderItem implements Parcelable {
 		return stops == null ? new ArrayList<>() : stops;
 	}
 
+	public void setStops(List<OrderStop> stops) {
+		this.stops = stops == null ? new ArrayList<>() : stops;
+	}
+
 	public String getCustomerPmobile(){
 		return customerPmobile;
 	}

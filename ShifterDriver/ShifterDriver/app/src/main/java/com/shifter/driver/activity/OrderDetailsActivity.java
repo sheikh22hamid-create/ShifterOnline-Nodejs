@@ -132,6 +132,13 @@ public class OrderDetailsActivity extends AppCompatActivity
         sessionManager = new SessionManager(this);
         riderData = sessionManager.getUserDetails();
 
+        // This screen can be opened directly from the order popup/notification,
+        // so HomeFragment is not guaranteed to have initialized the Node socket.
+        // Ensure the driver's session is connected before OTP/status actions.
+        if (riderData != null) {
+            com.shifter.driver.socket.NodeSocketManager.getInstance().connectDriver(riderData.getId());
+        }
+
         if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
             showWaitingForPaymentScreen(null, null);
             pollPaymentStatusFromApi();
@@ -204,6 +211,9 @@ public class OrderDetailsActivity extends AppCompatActivity
     private void navigateToHomeAndFinish(String message) {
         try {
             new SessionManager(this).clearActiveOrder();
+            if (orderItem != null && orderItem.getId() != null) {
+                new SessionManager(this).clearOrderStopStep(orderItem.getId());
+            }
         } catch (Exception ignored) {}
         if (waitingHandler != null) {
             waitingHandler.removeCallbacksAndMessages(null);
@@ -555,7 +565,16 @@ public class OrderDetailsActivity extends AppCompatActivity
         } else if (orderItem.getOrderFlowId().equals("3")
                 || orderItem.getOrderFlowId().equals("4")
                 || orderItem.getOrderFlowId().equals("5")) {
-            dialPhone = orderItem.getCustomerDmobile();
+            int stopStep = getActiveStopStep();
+            List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
+            int numStops = (stops != null) ? stops.size() : 0;
+            if (numStops > 0 && stopStep < numStops * 2) {
+                int stopIndex = stopStep / 2;
+                String stopPhone = stops.get(stopIndex).getContactNumber();
+                dialPhone = (stopPhone != null && !stopPhone.trim().isEmpty()) ? stopPhone : orderItem.getCustomerDmobile();
+            } else {
+                dialPhone = orderItem.getCustomerDmobile();
+            }
             binding.imgCall.setVisibility(View.VISIBLE);
         } else {
             binding.imgCall.setVisibility(View.GONE);
@@ -564,82 +583,120 @@ public class OrderDetailsActivity extends AppCompatActivity
         checkAndManagePickupTimer();
     }
 
-    private void populateStopBoxes(List<com.shifter.driver.model.OrderStop> stops) {
-        LinearLayout container = binding.layoutStopRoutes;
-        container.removeAllViews();
-        if (stops == null || stops.isEmpty()) {
-            container.setVisibility(View.GONE);
+    private int getActiveStopStep() {
+        if (orderItem == null || orderItem.getId() == null) return 0;
+        return sessionManager.getOrderStopStep(orderItem.getId());
+    }
+
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void launchNavigation(double destLat, double destLng) {
+        if (destLat == 0.0 || destLng == 0.0) {
+            Toast.makeText(this, "Location coordinates unavailable", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        container.setVisibility(View.VISIBLE);
-        for (com.shifter.driver.model.OrderStop stop : stops) {
-            LinearLayout box = new LinearLayout(this);
-            box.setOrientation(LinearLayout.VERTICAL);
-            box.setPadding(12, 9, 12, 9);
-            box.setBackgroundResource(R.drawable.box_boder);
-            box.setBackgroundTintList(ColorStateList.valueOf(Color.WHITE));
-
-            TextView title = new TextView(this);
-            title.setText("Stop " + stop.getSequence());
-            title.setTextColor(Color.rgb(239, 108, 0));
-            title.setTextSize(12);
-            title.setTypeface(null, android.graphics.Typeface.BOLD);
-
-            TextView address = new TextView(this);
-            address.setText(stop.displayAddress());
-            address.setTextColor(Color.rgb(51, 65, 85));
-            address.setTextSize(13);
-            address.setPadding(0, 4, 0, 0);
-
-            box.addView(title, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-            box.addView(address, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
-
-            LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT);
-            boxParams.bottomMargin = 6;
-            container.addView(box, boxParams);
+        Uri gmmIntentUri = Uri.parse("google.navigation:q=" + destLat + "," + destLng);
+        Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
+        mapIntent.setPackage("com.google.android.apps.maps");
+        try {
+            startActivity(mapIntent);
+        } catch (Exception e) {
+            Uri fallbackUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + destLat + "," + destLng);
+            startActivity(new Intent(Intent.ACTION_VIEW, fallbackUri));
         }
     }
 
-    /** Builds the compact route timeline shown in the order details card. */
+    private void dialPhoneNumber(String phone) {
+        if (phone == null || phone.trim().isEmpty()) {
+            Toast.makeText(this, "Phone number unavailable", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_DIAL);
+            intent.setData(Uri.parse("tel:" + phone.trim()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Unable to open dialer", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Builds the comprehensive route timeline shown in the order details card with stop actions and active progress. */
     private void buildDeliveryTimeline(String pickupAddress, String dropAddress,
                                        List<com.shifter.driver.model.OrderStop> stops,
                                        String packageDescription) {
         LinearLayout route = binding.routeContainer;
         route.removeAllViews();
 
-        List<String[]> items = new ArrayList<>();
-        items.add(new String[]{"Pickup location", safeRouteAddress(pickupAddress), "pickup"});
+        int totalPoints = (stops != null ? stops.size() : 0) + 2;
+        int currentPoint = 0;
+        int stopStep = getActiveStopStep();
+        int flow = 0;
+        try {
+            flow = Integer.parseInt(orderItem.getOrderFlowId());
+        } catch (Exception ignored) {}
+
+        // 1. Pickup Point
+        String pName = orderItem != null ? orderItem.getPickName() : null;
+        String pPhone = orderItem != null ? orderItem.getCustomerPmobile() : null;
+        double plat = orderItem != null ? orderItem.getPlat() : 0.0;
+        double plong = orderItem != null ? orderItem.getPlong() : 0.0;
+        boolean pickupCompleted = flow >= 3;
+        String pickupStatus = pickupCompleted ? "✓ Completed" : (flow == 1 || flow == 2 ? "• Active Pickup" : "Pending");
+        int pickupColor = pickupCompleted ? Color.rgb(22, 163, 74) : Color.rgb(25, 118, 210);
+
+        addTimelineItem(route, "Pickup location", pickupStatus, safeRouteAddress(pickupAddress),
+                pName, pPhone, plat, plong,
+                pickupColor, currentPoint == totalPoints - 1, packageDescription);
+        currentPoint++;
+
+        // 2. Intermediate Stops
         if (stops != null) {
-            for (com.shifter.driver.model.OrderStop stop : stops) {
-                items.add(new String[]{"Stop " + stop.getSequence(), stop.displayAddress(), "stop"});
+            for (int i = 0; i < stops.size(); i++) {
+                com.shifter.driver.model.OrderStop stop = stops.get(i);
+                double stopLat = 0.0;
+                double stopLng = 0.0;
+                try {
+                    stopLat = Double.parseDouble(stop.getLat());
+                    stopLng = Double.parseDouble(stop.getLng());
+                } catch (Exception ignored) {}
+
+                boolean isCompleted = (flow >= 3 && stopStep > i * 2 + 1) || flow >= 5;
+                boolean isActive = (flow >= 3 && (stopStep == i * 2 || stopStep == i * 2 + 1));
+                String stopStatus = isCompleted ? "✓ Delivered" : (isActive ? (stopStep % 2 == 0 ? "• Heading to Stop" : "• At Stop") : "Upcoming");
+                int stopColor = isCompleted ? Color.rgb(22, 163, 74) : (isActive ? Color.rgb(239, 108, 0) : Color.rgb(100, 116, 139));
+
+                addTimelineItem(route, "Stop " + stop.getSequence(), stopStatus, stop.displayAddress(),
+                        stop.getContactName(), stop.getContactNumber(), stopLat, stopLng,
+                        stopColor, currentPoint == totalPoints - 1, null);
+                currentPoint++;
             }
         }
-        items.add(new String[]{"Drop location", safeRouteAddress(dropAddress), "drop"});
 
-        for (int index = 0; index < items.size(); index++) {
-            String[] item = items.get(index);
-            boolean last = index == items.size() - 1;
-            int color = "current".equals(item[2]) ? Color.rgb(0, 190, 105)
-                    : "pickup".equals(item[2]) ? Color.rgb(25, 118, 210)
-                    : "stop".equals(item[2]) ? Color.rgb(124, 77, 196)
-                    : Color.rgb(239, 68, 68);
-            addTimelineItem(route, item[0], item[1], color, last,
-                    "pickup".equals(item[2]) ? packageDescription : null);
-        }
+        // 3. Final Drop Point
+        String dName = orderItem != null ? orderItem.getDropName() : null;
+        String dPhone = orderItem != null ? orderItem.getCustomerDmobile() : null;
+        double dlat = orderItem != null ? orderItem.getDlat() : 0.0;
+        double dlong = orderItem != null ? orderItem.getDlong() : 0.0;
+        int numStops = (stops != null) ? stops.size() : 0;
+        boolean dropCompleted = flow >= 5;
+        boolean dropActive = flow >= 3 && stopStep >= numStops * 2;
+        String dropStatus = dropCompleted ? "✓ Completed" : (dropActive ? "• Heading to Drop" : "Upcoming");
+        int dropColor = dropCompleted ? Color.rgb(22, 163, 74) : (dropActive ? Color.rgb(239, 68, 68) : Color.rgb(100, 116, 139));
+
+        addTimelineItem(route, "Drop location", dropStatus, safeRouteAddress(dropAddress),
+                dName, dPhone, dlat, dlong,
+                dropColor, true, null);
     }
 
     private String safeRouteAddress(String address) {
         return TextUtils.isEmpty(address) ? "Address unavailable" : address;
     }
 
-    private void addTimelineItem(LinearLayout parent, String title, String address,
+    private void addTimelineItem(LinearLayout parent, String title, String statusBadge, String address,
+                                 String contactName, String contactPhone,
+                                 double lat, double lng,
                                  int color, boolean last, String packageDescription) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -648,7 +705,7 @@ public class OrderDetailsActivity extends AppCompatActivity
         LinearLayout rail = new LinearLayout(this);
         rail.setOrientation(LinearLayout.VERTICAL);
         rail.setGravity(Gravity.CENTER_HORIZONTAL);
-        LinearLayout.LayoutParams railParams = new LinearLayout.LayoutParams(28,
+        LinearLayout.LayoutParams railParams = new LinearLayout.LayoutParams(dpToPx(24),
                 LinearLayout.LayoutParams.MATCH_PARENT);
 
         View dot = new View(this);
@@ -656,57 +713,150 @@ public class OrderDetailsActivity extends AppCompatActivity
         dotBackground.setShape(GradientDrawable.OVAL);
         dotBackground.setColor(color);
         dot.setBackground(dotBackground);
-        rail.addView(dot, new LinearLayout.LayoutParams(18, 18));
+        rail.addView(dot, new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14)));
 
         if (!last) {
             View connector = new View(this);
             connector.setBackgroundColor(Color.rgb(203, 213, 225));
-            LinearLayout.LayoutParams connectorParams = new LinearLayout.LayoutParams(2, 0, 1f);
+            LinearLayout.LayoutParams connectorParams = new LinearLayout.LayoutParams(dpToPx(2), 0, 1f);
             connectorParams.gravity = Gravity.CENTER_HORIZONTAL;
             rail.addView(connector, connectorParams);
         }
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(2, 0, 0, 8);
+        content.setPadding(dpToPx(2), 0, 0, dpToPx(10));
         LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
 
-        LinearLayout titleRow = new LinearLayout(this);
-        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        // Header: Title + Status Badge + Action buttons (Call & Navigate)
+        LinearLayout headerRow = new LinearLayout(this);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+
         TextView titleView = new TextView(this);
         titleView.setText(title);
         titleView.setTextColor(color);
         titleView.setTextSize(14);
         titleView.setTypeface(null, android.graphics.Typeface.BOLD);
-        titleRow.addView(titleView, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        content.addView(titleRow);
+        headerRow.addView(titleView);
 
+        if (statusBadge != null && !statusBadge.isEmpty()) {
+            TextView badgeView = new TextView(this);
+            badgeView.setText(statusBadge);
+            badgeView.setTextColor(color);
+            badgeView.setTextSize(11);
+            badgeView.setTypeface(null, android.graphics.Typeface.BOLD);
+            badgeView.setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2));
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setCornerRadius(dpToPx(6));
+            if (statusBadge.startsWith("✓")) {
+                badgeBg.setColor(Color.rgb(220, 252, 231)); // Light green
+            } else if (statusBadge.startsWith("•")) {
+                badgeBg.setColor(Color.rgb(254, 243, 199)); // Light amber
+            } else {
+                badgeBg.setColor(Color.rgb(241, 245, 249)); // Light gray
+            }
+            badgeView.setBackground(badgeBg);
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            badgeParams.leftMargin = dpToPx(8);
+            headerRow.addView(badgeView, badgeParams);
+        }
+
+        View spacer = new View(this);
+        headerRow.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+
+        // Action buttons container
+        LinearLayout actionsLayout = new LinearLayout(this);
+        actionsLayout.setOrientation(LinearLayout.HORIZONTAL);
+        actionsLayout.setGravity(Gravity.CENTER_VERTICAL);
+
+        // 1. Call button (if phone available)
+        if (contactPhone != null && !contactPhone.trim().isEmpty()) {
+            android.widget.ImageView btnCall = new android.widget.ImageView(this);
+            btnCall.setImageResource(R.drawable.ic_phone);
+            btnCall.setColorFilter(Color.rgb(22, 163, 74)); // Green
+            GradientDrawable callBg = new GradientDrawable();
+            callBg.setShape(GradientDrawable.OVAL);
+            callBg.setColor(Color.rgb(220, 252, 231)); // Light green
+            btnCall.setBackground(callBg);
+            int pad = dpToPx(6);
+            btnCall.setPadding(pad, pad, pad, pad);
+            int size = dpToPx(28);
+            LinearLayout.LayoutParams callParams = new LinearLayout.LayoutParams(size, size);
+            btnCall.setOnClickListener(v -> dialPhoneNumber(contactPhone));
+            actionsLayout.addView(btnCall, callParams);
+        }
+
+        // 2. Navigation button (if coordinates available)
+        if (lat != 0.0 && lng != 0.0) {
+            android.widget.ImageView btnNav = new android.widget.ImageView(this);
+            btnNav.setImageResource(R.drawable.ic_nav_turn);
+            btnNav.setColorFilter(Color.rgb(37, 99, 235)); // Primary blue
+            GradientDrawable navBg = new GradientDrawable();
+            navBg.setShape(GradientDrawable.OVAL);
+            navBg.setColor(Color.rgb(224, 231, 255)); // Light blue
+            btnNav.setBackground(navBg);
+            int pad = dpToPx(6);
+            btnNav.setPadding(pad, pad, pad, pad);
+            int size = dpToPx(28);
+            LinearLayout.LayoutParams navParams = new LinearLayout.LayoutParams(size, size);
+            navParams.leftMargin = dpToPx(8);
+            btnNav.setOnClickListener(v -> launchNavigation(lat, lng));
+            actionsLayout.addView(btnNav, navParams);
+        }
+
+        headerRow.addView(actionsLayout, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        content.addView(headerRow);
+
+        // Contact info line (if contact name or phone is present)
+        StringBuilder contactInfo = new StringBuilder();
+        if (contactName != null && !contactName.trim().isEmpty()) {
+            contactInfo.append("👤 ").append(contactName.trim());
+        }
+        if (contactPhone != null && !contactPhone.trim().isEmpty()) {
+            if (contactInfo.length() > 0) contactInfo.append(" • ");
+            contactInfo.append("📞 ").append(contactPhone.trim());
+        }
+        if (contactInfo.length() > 0) {
+            TextView contactView = new TextView(this);
+            contactView.setText(contactInfo.toString());
+            contactView.setTextColor(Color.rgb(71, 85, 105));
+            contactView.setTextSize(12);
+            contactView.setPadding(0, dpToPx(2), 0, 0);
+            content.addView(contactView, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+
+        // Address Line
         TextView addressView = new TextView(this);
         addressView.setText(address);
-        addressView.setTextColor(Color.rgb(71, 85, 105));
-        addressView.setTextSize(14);
+        addressView.setTextColor(Color.rgb(30, 41, 59));
+        addressView.setTextSize(13);
         addressView.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        addressView.setMaxLines(2);
+        addressView.setMaxLines(3);
         addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        addressView.setPadding(0, dpToPx(3), 0, 0);
         content.addView(addressView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        // Package Description (if present)
         if (!TextUtils.isEmpty(packageDescription)
                 && !"no description provided".equalsIgnoreCase(packageDescription.trim())) {
             TextView packageView = new TextView(this);
             packageView.setText("▣  " + packageDescription);
             packageView.setTextColor(Color.rgb(51, 65, 85));
             packageView.setTextSize(11);
-            packageView.setPadding(10, 8, 10, 8);
+            packageView.setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8));
             GradientDrawable packageBackground = new GradientDrawable();
             packageBackground.setColor(Color.rgb(239, 246, 255));
-            packageBackground.setCornerRadius(10);
+            packageBackground.setCornerRadius(dpToPx(8));
             packageView.setBackground(packageBackground);
             LinearLayout.LayoutParams packageParams = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            packageParams.topMargin = 6;
+            packageParams.topMargin = dpToPx(6);
             content.addView(packageView, packageParams);
         }
 
@@ -911,8 +1061,31 @@ public class OrderDetailsActivity extends AppCompatActivity
                 showOtpDialog();
             } else if ("pickup".equalsIgnoreCase(status)) {
                 orderstatus(status, "");
+            } else if (status != null && status.startsWith("arrived_stop_")) {
+                int currentStep = getActiveStopStep();
+                sessionManager.setOrderStopStep(orderItem.getId(), currentStep + 1);
+                String stopNum = status.substring("arrived_stop_".length());
+                Toast.makeText(this, "Arrived at Stop " + stopNum, Toast.LENGTH_SHORT).show();
+                setupUI();
+                setupClicks();
+                setupMap();
+            } else if (status != null && status.startsWith("complete_stop_")) {
+                int currentStep = getActiveStopStep();
+                sessionManager.setOrderStopStep(orderItem.getId(), currentStep + 1);
+                String stopNum = status.substring("complete_stop_".length());
+                Toast.makeText(this, "Stop " + stopNum + " Completed!", Toast.LENGTH_SHORT).show();
+                setupUI();
+                setupClicks();
+                setupMap();
             } else if ("arrived_drop".equalsIgnoreCase(status)) {
-                orderstatus(status, "");
+                int currentStep = getActiveStopStep();
+                sessionManager.setOrderStopStep(orderItem.getId(), currentStep + 1);
+                Toast.makeText(this, "Arrived at Drop Location", Toast.LENGTH_SHORT).show();
+                setupUI();
+                setupClicks();
+                setupMap();
+            } else if ("complete".equalsIgnoreCase(status)) {
+                orderstatus("complete", "");
             } else {
                 orderstatus(status, "");
             }
@@ -922,27 +1095,30 @@ public class OrderDetailsActivity extends AppCompatActivity
             if (orderItem != null) {
                 double destLat = 0.0;
                 double destLng = 0.0;
-                
+
                 if ("0".equals(orderItem.getOrderFlowId()) || "1".equals(orderItem.getOrderFlowId()) || "2".equals(orderItem.getOrderFlowId())) {
                     destLat = orderItem.getPlat();
                     destLng = orderItem.getPlong();
                 } else {
-                    destLat = orderItem.getDlat();
-                    destLng = orderItem.getDlong();
-                }
-                
-                if (destLat != 0.0 && destLng != 0.0) {
-                    Uri gmmIntentUri = Uri.parse("google.navigation:q=" + destLat + "," + destLng);
-                    Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
-                    mapIntent.setPackage("com.google.android.apps.maps");
-                    try {
-                        startActivity(mapIntent);
-                    } catch (Exception e) {
-                        Toast.makeText(OrderDetailsActivity.this, "Google Maps is not installed", Toast.LENGTH_SHORT).show();
-                        Uri fallbackUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + destLat + "," + destLng);
-                        startActivity(new Intent(Intent.ACTION_VIEW, fallbackUri));
+                    // Delivery phase: navigate to active intermediate stop or final drop
+                    List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
+                    int numStops = (stops != null) ? stops.size() : 0;
+                    int stopStep = getActiveStopStep();
+
+                    if (numStops > 0 && stopStep < numStops * 2) {
+                        int stopIndex = stopStep / 2;
+                        try {
+                            destLat = Double.parseDouble(stops.get(stopIndex).getLat());
+                            destLng = Double.parseDouble(stops.get(stopIndex).getLng());
+                        } catch (Exception ignored) {}
+                    }
+                    if (destLat == 0.0 || destLng == 0.0) {
+                        destLat = orderItem.getDlat();
+                        destLng = orderItem.getDlong();
                     }
                 }
+
+                launchNavigation(destLat, destLng);
             }
         });
     }
@@ -1205,15 +1381,29 @@ public class OrderDetailsActivity extends AppCompatActivity
                 break;
 
             case "3":
-                status = "arrived_drop";
-                binding.txtConfirm.setText("ARRIVED DROP");
-                binding.txtReject.setVisibility(View.GONE);
-                break;
-
             case "4":
-                status = "complete";
-                binding.txtConfirm.setText("DROP COMPLETE");
                 binding.txtReject.setVisibility(View.GONE);
+                int numStops = (stops != null) ? stops.size() : 0;
+                int stopStep = getActiveStopStep();
+                if (numStops > 0 && stopStep < numStops * 2) {
+                    int stopIndex = stopStep / 2;
+                    int stopNumber = stopIndex + 1;
+                    if (stopStep % 2 == 0) {
+                        status = "arrived_stop_" + stopNumber;
+                        binding.txtConfirm.setText("ARRIVED STOP " + stopNumber);
+                    } else {
+                        status = "complete_stop_" + stopNumber;
+                        binding.txtConfirm.setText("COMPLETE STOP " + stopNumber);
+                    }
+                } else {
+                    if (stopStep <= numStops * 2) {
+                        status = "arrived_drop";
+                        binding.txtConfirm.setText("ARRIVED DROP");
+                    } else {
+                        status = "complete";
+                        binding.txtConfirm.setText("DROP COMPLETE");
+                    }
+                }
                 break;
 
             default:
@@ -1442,6 +1632,9 @@ public class OrderDetailsActivity extends AppCompatActivity
 
                     if ("CANCEL".equalsIgnoreCase(orderStatus)) {
                         new SessionManager(this).clearActiveOrder();
+                        if (orderItem != null && orderItem.getId() != null) {
+                            new SessionManager(this).clearOrderStopStep(orderItem.getId());
+                        }
                         new android.app.AlertDialog.Builder(this)
                             .setTitle("Order Canceled")
                             .setMessage("Your order is canceled")
@@ -1459,6 +1652,9 @@ public class OrderDetailsActivity extends AppCompatActivity
 
                     if ("complete".equalsIgnoreCase(lastAction)) {
                         stopAndClearPickupWaitingTimer();
+                        if (orderItem != null && orderItem.getId() != null) {
+                            new SessionManager(this).clearOrderStopStep(orderItem.getId());
+                        }
                         fetchCompletedOrderAndShowDialog(orderItem != null ? orderItem.getId() : "");
                     } else if ("cancel".equalsIgnoreCase(lastAction) || "reject".equalsIgnoreCase(lastAction)) {
                         navigateToHomeAndFinish("");
@@ -1475,7 +1671,10 @@ public class OrderDetailsActivity extends AppCompatActivity
                         String nextFlowId = mapNextStepToFlowId(nextStep);
                         Log.d("OrderDetails", "Next_step=" + nextStep + " → orderFlowId=" + nextFlowId);
 
-                        // Existing orderItem ke saare data ke saath naya item banao — sirf flowId change
+                        // Existing orderItem ke saare data ke saath naya item banao — sirf flowId change.
+                        // Stops are not constructor parameters, so preserve them explicitly;
+                        // otherwise pickup-complete would rebuild the item as pickup -> drop.
+                        List<com.shifter.driver.model.OrderStop> existingStops = orderItem.getStops();
                         orderItem = new PDOrderItem(
                                 orderItem.getId(),
                                 nextFlowId,
@@ -1507,6 +1706,7 @@ public class OrderDetailsActivity extends AppCompatActivity
                                 orderItem.getRadiusCharge(),
                                 orderItem.getPaymentStatus()
                         );
+                        orderItem.setStops(existingStops);
 
                         // Save updated order with next flow step
                         new SessionManager(this).setActiveOrder(orderItem);
@@ -1517,8 +1717,12 @@ public class OrderDetailsActivity extends AppCompatActivity
                         setupMap();
                     }
                 } else {
-                    String failMsg = msg.isEmpty() ? "Order action failed. Please try again." : msg;
-                    Toast.makeText(this, failMsg, Toast.LENGTH_SHORT).show();
+                    if ("complete".equalsIgnoreCase(lastAction)) {
+                        checkAndShowIfCompleted(orderItem != null ? orderItem.getId() : "", msg);
+                    } else {
+                        String failMsg = msg.isEmpty() ? "Order action failed. Please try again." : msg;
+                        Toast.makeText(this, failMsg, Toast.LENGTH_SHORT).show();
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -1714,6 +1918,60 @@ public class OrderDetailsActivity extends AppCompatActivity
         } catch (Exception e) {
             return 0.0;
         }
+    }
+
+    private void checkAndShowIfCompleted(String orderId, String fallbackMsg) {
+        if (orderId == null || orderId.isEmpty()) {
+            String failMsg = (fallbackMsg != null && !fallbackMsg.isEmpty()) ? fallbackMsg : "Order action failed. Please try again.";
+            Toast.makeText(this, failMsg, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        custPrograssbar.prograssCreate(this);
+        JSONObject jsonObject = new JSONObject();
+        try {
+            jsonObject.put("type", "past");
+            jsonObject.put("rid", riderData.getId());
+        } catch (JSONException ignored) {}
+        RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
+        Call<JsonObject> call = APIClient.getInterface().pkgHistory(bodyRequest);
+        call.enqueue(new retrofit2.Callback<JsonObject>() {
+            @Override
+            public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                custPrograssbar.closePrograssBar();
+                PDOrderItem completedItem = null;
+                try {
+                    if (response.isSuccessful() && response.body() != null) {
+                        PDOrder pdOrder = new Gson().fromJson(response.body(), PDOrder.class);
+                        if (pdOrder != null && pdOrder.getOrderHistory() != null) {
+                            for (PDOrderItem item : pdOrder.getOrderHistory()) {
+                                if (item.getId() != null && item.getId().equals(orderId)) {
+                                    completedItem = item;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                if (completedItem != null) {
+                    stopAndClearPickupWaitingTimer();
+                    if (orderItem != null && orderItem.getId() != null) {
+                        new SessionManager(OrderDetailsActivity.this).clearOrderStopStep(orderItem.getId());
+                    }
+                    showCompletedOrderDialog(completedItem);
+                } else {
+                    String failMsg = (fallbackMsg != null && !fallbackMsg.isEmpty()) ? fallbackMsg : "Order action failed. Please try again.";
+                    Toast.makeText(OrderDetailsActivity.this, failMsg, Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<JsonObject> call, Throwable t) {
+                custPrograssbar.closePrograssBar();
+                String failMsg = (fallbackMsg != null && !fallbackMsg.isEmpty()) ? fallbackMsg : "Order action failed. Please try again.";
+                Toast.makeText(OrderDetailsActivity.this, failMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void fetchCompletedOrderAndShowDialog(String orderId) {

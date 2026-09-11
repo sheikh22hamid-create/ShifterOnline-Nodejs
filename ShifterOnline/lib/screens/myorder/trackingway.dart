@@ -74,6 +74,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   bool isInvoiceLoading = false;
   bool isAdvanceDialogOpened = false;
   bool isAdvancePaymentFlow = false;
+  bool _advancePaymentCompleted = false;
+  NodeSocketSubscription? _socketSubscription;
   String? razorpayOrderId;
   Timer? _advanceTimer;
   int _remainingSeconds = 0;
@@ -100,18 +102,20 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     _driverAnimController?.dispose();
     commit.dispose();
     numController.dispose();
-    NodeSocketManager.instance.onOrderAssigned = null;
-    NodeSocketManager.instance.onDriverLocation = null;
-    NodeSocketManager.instance.onStatusChanged = null;
-    NodeSocketManager.instance.onOrderCompleted = null;
-    NodeSocketManager.instance.onDriverCancelled = null;
+    _socketSubscription?.dispose();
+    NodeSocketManager.instance.connectionState.removeListener(_refreshAfterReconnect);
     super.dispose();
+  }
+
+  void _refreshAfterReconnect() {
+    if (!mounted || NodeSocketManager.instance.connectionState.value != SocketConnectionState.connected) return;
+    pageRefresh();
   }
 
   void _listenForLiveUpdates() {
     NodeSocketManager.instance.joinOrder(orderid);
 
-    NodeSocketManager.instance.onOrderAssigned = (data) {
+    _socketSubscription = NodeSocketManager.instance.addListeners(onOrderAssigned: (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint("🔔 order:assigned (tracking screen refresh): $data");
       final assignedLat = double.tryParse(data['rider_lat']?.toString() ?? '');
@@ -122,21 +126,18 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         _animateDriverTo(LatLng(assignedLat, assignedLng));
       }
       pageRefresh();
-    };
+    }, onStatusChanged: (data) {
 
-    NodeSocketManager.instance.onStatusChanged = (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint("🔔 order:status_changed: $data");
       pageRefresh();
-    };
+    }, onOrderCompleted: (data) {
 
-    NodeSocketManager.instance.onOrderCompleted = (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint("🔔 order:completed: $data");
       pageRefresh();
-    };
+    }, onDriverCancelled: (data) {
 
-    NodeSocketManager.instance.onDriverCancelled = (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint('[TrackingWay] order:driver_cancelled: $data');
 
@@ -159,7 +160,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           'Driver cancelled. Finding another driver for your order.',
         );
       }
-    };
+    });
   }
 
   String _formatTimerText(int seconds) {
@@ -379,6 +380,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    NodeSocketManager.instance.connectionState.addListener(_refreshAfterReconnect);
     uid = widget.uid0 ?? getdata.read("Uid") ?? "";
     orderid = (getdata.read("OrderID") ?? "0").toString();
     if (widget.initialOrderData != null) {
@@ -469,6 +471,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           centerTitle: true,
           elevation: 0,
           backgroundColor: linercolor,
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(32),
+            child: SocketStatusBanner(),
+          ),
           title: Text(
             "Order Details".tr,
             style: TextStyle(
@@ -928,7 +934,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                   Text(
                                     orderProduc["pick_type"] == "Store"
                                         ? "${orderProduc["pick_name"]} - ${orderProduc["pick_type"]}"
-                                        : orderProduc["pick_type"],
+                                        : (orderProduc["pick_type"] ?? "").toString(),
                                     style: TextStyle(
                                       color: whitecolor,
                                       fontFamily: 'Gilroy_Bold',
@@ -936,7 +942,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                     ),
                                   ),
                                   Text(
-                                    orderProduc["customer_paddress"] ?? orderProduc["store_paddress"],
+                                    (orderProduc["customer_paddress"] ?? orderProduc["store_paddress"] ?? "").toString(),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -956,7 +962,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                       textColor: whitecolor),
                                   SizedBox(height: 15),
                                   Text(
-                                    orderProduc["drop_type"],
+                                    (orderProduc["drop_type"] ?? "").toString(),
                                     style: TextStyle(
                                       color: whitecolor,
                                       fontFamily: 'Gilroy_Bold',
@@ -3459,6 +3465,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   void checkAdvancePaymentStatus() {
     if (orderProduc == null && buyMapinfo == null) return;
+
+    // Keep a confirmed payment from reopening the modal if the subsequent
+    // order refresh briefly returns the old payment_status value.
+    if (_advancePaymentCompleted) {
+      _closeStuckAdvanceDialogIfOpen();
+      return;
+    }
+
     var dataObj = orderProduc ?? buyMapinfo;
 
     // Advance payment exists only for an accepted package order. This avoids
@@ -3979,15 +3993,21 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     debugPrint("======== Calling Advance Payment API ========");
     debugPrint("Body: $body");
 
-    ApiWrapper.dataPost(Config.advancedPayment, body)!.then((val) {
+    ApiWrapper.dataPost(Config.advancedPayment, body)!.then((val) async {
       if ((val != null) && (val.isNotEmpty)) {
         debugPrint("======== Advance Payment Response ======== $val");
         if ((val['ResponseCode'] == "200") &&
             (val['Result'] == true || val['Result'] == "true")) {
           ApiWrapper.showToastMessage(val["ResponseMsg"] ?? "Advance Payment Success".tr);
+
+          // The advance-payment dialog is non-dismissible, so changing the
+          // flag alone leaves its route visible after Razorpay succeeds.
+          // Cancel its countdown and pop the dialog before refreshing the
+          // order snapshot.
+          _closeStuckAdvanceDialogIfOpen();
           isAdvancePaymentFlow = false;
-          isAdvanceDialogOpened = false;
-          pageRefresh();
+          _advancePaymentCompleted = true;
+          await pageRefresh();
         } else {
           ApiWrapper.showToastMessage(val["ResponseMsg"] ?? "Advance Payment Failed".tr);
         }

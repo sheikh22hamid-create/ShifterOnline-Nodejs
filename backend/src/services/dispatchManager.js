@@ -949,6 +949,59 @@ async function reconcileStaleOffersOnStartup() {
   }
 }
 
+/**
+ * Directly dispatches an order to a Monthly Driver (non-rejectable auto-assigned).
+ */
+async function emitDirectAssign(riderId, order) {
+  if (!ioRef || !riderId || !order) return;
+
+  const payload = {
+    order_id: String(order.id),
+    rider_id: String(riderId),
+    pickup_address: order.pick_address || "",
+    delivery_address: order.drop_address || "",
+    pickup_name: order.pickup_name || "Pickup",
+    drop_name: order.drop_name || "Drop Off",
+    customer_name: order.customer_name || "Customer",
+    customer_phone: order.customer_pmobile || "",
+    pickup_latitude: String(order.pick_lat || "0"),
+    pickup_longitude: String(order.pick_long || "0"),
+    delivery_latitude: String(order.drop_lat || "0"),
+    delivery_longitude: String(order.drop_long || "0"),
+    distance: String(order.distance || "0"),
+    estimated_earning: String(order.total_dcharge || "0"),
+    stops: order.stops || "[]",
+    is_direct_assign: "true",
+    is_monthly_order: "true",
+    order_flow_id: String(order.flow_id || "1"),
+  };
+
+  // 1. Emit via socket
+  ioRef.to(`driver_${riderId}`).emit("order:direct_assign", payload);
+  ioRef.to(`driver_${riderId}`).emit("order:request", payload);
+
+  // 2. Send Push notification
+  try {
+    const rider = await prisma.tbl_rider.findUnique({
+      where: { id: Number(riderId) },
+      select: { fcm_token: true },
+    });
+    if (rider && rider.fcm_token) {
+      pushNotifier.sendPush(rider.fcm_token, "Direct Order Assigned", "You have a new mandatory delivery assigned.", payload);
+    }
+  } catch (err) {
+    logger.error("Error sending push for direct assign:", err);
+  }
+}
+
+/**
+ * Emits queue update to monthly driver.
+ */
+function emitQueueUpdate(riderId) {
+  if (!ioRef || !riderId) return;
+  ioRef.to(`driver_${riderId}`).emit("queue:update", { rider_id: Number(riderId) });
+}
+
 function _resetForTests() {
   for (const [id, state] of activeDispatches.entries()) {
     for (const t of state.timers) clearTimeout(t);
@@ -959,6 +1012,8 @@ function _resetForTests() {
 module.exports = {
   init,
   emitCustomerEvent,
+  emitDirectAssign,
+  emitQueueUpdate,
   startDispatch,
   stopDispatch,
   selectEligibleDrivers,
@@ -970,3 +1025,4 @@ module.exports = {
   // serialization without needing to fight fake-timer scheduling.
   _runBatchForTests: runBatch,
 };
+

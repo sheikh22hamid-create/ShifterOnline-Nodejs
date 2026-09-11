@@ -571,11 +571,71 @@ async function updateStatus(orderId, riderId, status) {
       });
     }
 
+    // Check & cascade next queued order if rider is a Monthly Driver
+    processNextQueuedOrder(riderId, orderId).catch((err) => {
+      logger.error(`processNextQueuedOrder error for rider ${riderId}:`, err);
+    });
+
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     return { success: true, order_status: 5, o_status: "Completed" };
   }
 
   return { success: false, msg: `Unknown status transition: ${status}` };
+}
+
+/**
+ * Automatically checks and activates the next pending order for a Monthly Driver upon trip completion.
+ */
+async function processNextQueuedOrder(riderId, completedOrderId) {
+  try {
+    // 1. Mark completed queue item
+    await prisma.driver_order_queue.updateMany({
+      where: { rider_id: Number(riderId), order_id: Number(completedOrderId), status: "active" },
+      data: { status: "completed", completed_at: new Date() },
+    });
+
+    // 2. Increment today's completed order counter
+    const todayStr = new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0];
+    await prisma.driver_duty_log.updateMany({
+      where: { rider_id: Number(riderId), duty_date: new Date(todayStr), status: "in_progress" },
+      data: { orders_completed: { increment: 1 } },
+    });
+
+    // 3. Find next pending order in queue
+    const nextItem = await prisma.driver_order_queue.findFirst({
+      where: { rider_id: Number(riderId), status: "pending" },
+      orderBy: { queue_order: "asc" },
+    });
+
+    if (!nextItem) return;
+
+    // 4. Activate next order
+    await prisma.pkg_order.update({
+      where: { id: nextItem.order_id },
+      data: {
+        rid: Number(riderId),
+        o_status: "Processing",
+        flow_id: 1,
+      },
+    });
+
+    await prisma.driver_order_queue.update({
+      where: { id: nextItem.id },
+      data: { status: "active" },
+    });
+
+    // 5. Emit direct assign & notify driver
+    const nextOrder = await prisma.pkg_order.findUnique({
+      where: { id: nextItem.order_id },
+    });
+    if (nextOrder) {
+      dispatchManager.emitDirectAssign(Number(riderId), nextOrder);
+      dispatchManager.emitQueueUpdate(Number(riderId));
+      logger.info(`Next queued order #${nextOrder.id} automatically activated for Monthly Driver #${riderId}`);
+    }
+  } catch (err) {
+    logger.error("Error processing next queued order:", err);
+  }
 }
 
 /**

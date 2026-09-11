@@ -46,12 +46,17 @@ public class NodeSocketManager {
         void onNextDayAssigned(JSONObject data);
     }
 
+    public interface QueueUpdateListener {
+        void onQueueUpdate(JSONObject data);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
 
     private OrderRequestListener orderRequestListener;
     private NextDayAssignmentListener nextDayAssignmentListener;
+    private QueueUpdateListener queueUpdateListener;
 
     private NodeSocketManager() {}
 
@@ -122,6 +127,13 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("queue:update", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (queueUpdateListener != null) {
+                queueUpdateListener.onQueueUpdate(data != null ? data : new JSONObject());
+            }
+        }));
+
         socket.connect();
     }
 
@@ -133,6 +145,11 @@ public class NodeSocketManager {
     /** Set once, e.g. from MyApplication — forced next-day-order notification, no accept/reject. */
     public void setNextDayAssignmentListener(NextDayAssignmentListener listener) {
         this.nextDayAssignmentListener = listener;
+    }
+
+    /** Listener for real-time monthly queued orders updates. */
+    public void setQueueUpdateListener(QueueUpdateListener listener) {
+        this.queueUpdateListener = listener;
     }
 
     public void emitAccept(JSONObject data, AckListener ackListener) {
@@ -162,7 +179,41 @@ public class NodeSocketManager {
     }
 
     private void onceThenEmit(String ackEvent, String emitEvent, JSONObject data, AckListener ackListener) {
-        if (socket == null) {
+        onceThenEmit(ackEvent, emitEvent, data, ackListener, 0);
+    }
+
+    private void onceThenEmit(String ackEvent, String emitEvent, JSONObject data,
+                              AckListener ackListener, int connectionAttempts) {
+        if (this.riderId <= 0) {
+            if (data != null && data.has("rider_id")) {
+                try {
+                    int rId = data.optInt("rider_id", -1);
+                    if (rId <= 0) {
+                        rId = Integer.parseInt(data.optString("rider_id", "-1"));
+                    }
+                    if (rId > 0) this.riderId = rId;
+                } catch (Exception ignored) {}
+            }
+            if (this.riderId <= 0 && com.shifter.driver.MyApplication.mContext != null) {
+                try {
+                    com.shifter.driver.utility.SessionManager sm = new com.shifter.driver.utility.SessionManager(com.shifter.driver.MyApplication.mContext);
+                    com.shifter.driver.model.RiderData rd = sm.getUserDetails();
+                    if (rd != null && rd.getId() > 0) {
+                        this.riderId = rd.getId();
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        if (socket == null || !socket.connected()) {
+            if (this.riderId > 0 && connectionAttempts < 30) {
+                Log.d(TAG, "emit(" + emitEvent + ") waiting for socket connection (riderId=" + this.riderId + ", attempt=" + connectionAttempts + ")");
+                connectDriver(this.riderId);
+                mainHandler.postDelayed(() -> onceThenEmit(
+                        ackEvent, emitEvent, data, ackListener, connectionAttempts + 1), 400L);
+                return;
+            }
+
             Log.w(TAG, "emit(" + emitEvent + ") called before connectDriver()");
             mainHandler.post(() -> {
                 if (ackListener != null) {
@@ -191,7 +242,7 @@ public class NodeSocketManager {
                 failure.put("msg", "Server did not respond. Please try again.");
             } catch (Exception ignored) {}
             if (ackListener != null) ackListener.onAck(failure);
-        }, 10_000L);
+        }, 25_000L);
     }
 
     private JSONObject firstArgAsJson(Object[] args) {
