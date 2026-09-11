@@ -1,5 +1,15 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const {
+  SLAB_INTERVALS,
+  DEFAULT_SLAB_RATES,
+  DEFAULT_MODEL_MULTIPLIERS,
+  getSlabPricingConfig,
+  saveSlabPricingConfig,
+  calculateBaseSlabFare,
+  calculateModelFares,
+  findVehicleSlabConfig,
+} = require("../services/slabPricingService");
 
 const PACKAGE_TYPES = ["USER", "DRIVER"];
 
@@ -237,11 +247,122 @@ async function remove(req, res) {
       });
     }
 
-    await prisma.tbl_package.delete({ where: { id } });
-    return res.status(200).json({ success: true, message: "Rate card deleted" });
+async function getSlabs(req, res) {
+  try {
+    const config = await getSlabPricingConfig();
+    return res.status(200).json({
+      success: true,
+      data: {
+        slabRates: config.slabRates,
+        modelMultipliers: config.modelMultipliers,
+        intervals: SLAB_INTERVALS,
+      },
+    });
   } catch (err) {
-    return internalError(res, err, "rateCards.remove");
+    return internalError(res, err, "rateCards.getSlabs");
   }
 }
 
-module.exports = { list, getOne, create, update, remove };
+async function updateSlabs(req, res) {
+  try {
+    const { slabRates, modelMultipliers } = req.body;
+    if (!slabRates && !modelMultipliers) {
+      return res.status(400).json({ success: false, message: "slabRates or modelMultipliers is required" });
+    }
+
+    const saved = await saveSlabPricingConfig({ slabRates, modelMultipliers });
+    return res.status(200).json({
+      success: true,
+      message: "Slab pricing rules updated successfully",
+      data: saved,
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.updateSlabs");
+  }
+}
+
+async function simulateFare(req, res) {
+  try {
+    const { vehicle_key, distance_km } = req.body;
+    const distance = Number(distance_km) || 0;
+    const config = await getSlabPricingConfig();
+    const vehicleConfig = config.slabRates[vehicle_key] || findVehicleSlabConfig(config.slabRates, vehicle_key);
+
+    if (!vehicleConfig) {
+      return res.status(404).json({ success: false, message: `Vehicle slab config not found for '${vehicle_key}'` });
+    }
+
+    const result = calculateModelFares(vehicleConfig, config.modelMultipliers, distance);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return internalError(res, err, "rateCards.simulateFare");
+  }
+}
+
+async function syncModelsFromSlabs(req, res) {
+  try {
+    const config = await getSlabPricingConfig();
+    const categories = await prisma.pkg_category.findMany();
+    const multipliers = config.modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
+    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMultiplier = 1 + anchorMarkup / 100;
+
+    let updatedCount = 0;
+
+    for (const category of categories) {
+      const vehicleConfig = findVehicleSlabConfig(config.slabRates, category.id);
+      if (!vehicleConfig) continue;
+
+      const packages = await prisma.tbl_package.findMany({
+        where: { cat_id: category.id },
+        orderBy: { sort_order: "asc" },
+      });
+
+      for (const pkg of packages) {
+        const pkgTitle = String(pkg.title || "").toLowerCase();
+        const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+
+        if (modelMatch) {
+          const offset = Number(modelMatch.offset_percent) || 0;
+          const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
+
+          const calculatedMin = Math.round(Number(vehicleConfig.min_charge) * effectiveMultiplier * 100) / 100;
+          // Representative per_km_charge for legacy reference (e.g. 5-10 km slab rate scaled)
+          const basePerKm = Number(vehicleConfig.rates?.["5_10"] || vehicleConfig.rates?.["1_5"] || 10);
+          const calculatedPerKm = Math.round(basePerKm * effectiveMultiplier * 100) / 100;
+
+          await prisma.tbl_package.update({
+            where: { id: pkg.id },
+            data: {
+              min_charge: String(calculatedMin),
+              per_km_charge: String(calculatedPerKm),
+              user_title: modelMatch.user_title ? String(modelMatch.user_title).trim() : null,
+              driver_title: modelMatch.driver_title ? String(modelMatch.driver_title).trim() : null,
+            },
+          });
+          updatedCount++;
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully synchronized ${updatedCount} model rate cards with distance-slab pricing rules!`,
+      updatedCount,
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.syncModelsFromSlabs");
+  }
+}
+
+module.exports = {
+  list,
+  getOne,
+  create,
+  update,
+  remove,
+  getSlabs,
+  updateSlabs,
+  simulateFare,
+  syncModelsFromSlabs,
+};

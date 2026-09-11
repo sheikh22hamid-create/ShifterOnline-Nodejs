@@ -1,5 +1,12 @@
 const prisma = require("../config/db");
 const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
+const {
+  DEFAULT_SLAB_RATES,
+  DEFAULT_MODEL_MULTIPLIERS,
+  getSlabPricingConfig,
+  calculateBaseSlabFare,
+  findVehicleSlabConfig,
+} = require("./slabPricingService");
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -82,12 +89,30 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
  * is priced off the identical number instead of a different, Node-only
  * formula that used to diverge from what the customer saw.
  */
-function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0) {
-  const minCharge = Number(pkg.min_charge) || 0;
-  const perKmCharge = Number(pkg.per_km_charge) || 0;
+function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
+  const useSlabs = slabConfig || pkg.use_slab_pricing || pkg.pricing_mode === "slab";
+  const vehicleConfig = slabConfig || (useSlabs ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
+  const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
 
-  const dCharge = minCharge + (perKmCharge * distanceKm) + radiusCharge;
+  let dCharge;
+  if (vehicleConfig) {
+    const baseCalc = calculateBaseSlabFare(vehicleConfig, distanceKm);
+    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMultiplier = 1 + anchorMarkup / 100;
+
+    const pkgTitle = String(pkg.title || "").toLowerCase();
+    const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+    const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
+    const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
+
+    const baseFare = baseCalc.rawFare * effectiveMultiplier;
+    dCharge = baseFare + radiusCharge;
+  } else {
+    const minCharge = Number(pkg.min_charge) || 0;
+    const perKmCharge = Number(pkg.per_km_charge) || 0;
+    dCharge = minCharge + (perKmCharge * distanceKm) + radiusCharge;
+  }
 
   const servicePercent = parseFloat(pkg.service_charge_percent) || 0;
   const serviceCharge = (dCharge * servicePercent) / 100;
@@ -290,14 +315,16 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const stopSettings = await getAddStopSettings();
   if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
   const distancePoints = [{ lat: plat, lng: plong }, ...routeStops, { lat: dlat, lng: dlong }];
-  const [{ distanceKm, durationMin }, packages, discount] = await Promise.all([
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
+    getSlabPricingConfig(),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
   const resolvedExtraMileCharge = Number(extraMileCharge) || 0;
+  const vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
 
   return {
     Result: true,
@@ -324,7 +351,15 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         // can itemize it instead of leaving it as an unexplained gap between
         // min_charge + per_km_charge*distance and estimated_fare.
         radius_charge: roundMoney(calculateRadiusCharge(discountedPkg, resolvedRadiusKm)),
-        estimated_fare: calculateFare(discountedPkg, distanceKm, isNight, resolvedRadiusKm, resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge),
+        estimated_fare: calculateFare(
+          discountedPkg,
+          distanceKm,
+          isNight,
+          resolvedRadiusKm,
+          resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge,
+          vehicleSlabConfig,
+          slabPricingConfig.modelMultipliers
+        ),
         is_night: isNight,
       };
     }),

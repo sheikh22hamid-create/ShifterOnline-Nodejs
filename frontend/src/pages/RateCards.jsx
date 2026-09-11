@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Bike, Truck, Car, Zap, Search, Layers, Clock } from 'lucide-react'
+import { Plus, Pencil, Trash2, Bike, Truck, Car, Zap, Search, Layers, Clock, Sliders } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -7,6 +7,7 @@ import useApiQuery from '../hooks/useApiQuery'
 import Badge from '../components/common/Badge'
 import Modal from '../components/common/Modal'
 import RateCardFormModal from '../components/ratecards/RateCardFormModal'
+import SlabPricingModal from '../components/ratecards/SlabPricingModal'
 import { formatCurrency } from '../utils/format'
 
 function getVehicleIcon(catName) {
@@ -63,6 +64,7 @@ export default function RateCards() {
   const [formTarget, setFormTarget] = useState(undefined)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [slabModalOpen, setSlabModalOpen] = useState(false)
 
   // Map of categories by ID for quick lookup fallback
   const categoryMap = useMemo(() => {
@@ -159,14 +161,25 @@ export default function RateCards() {
           </p>
         </div>
         {canManage && (
-          <button
-            type="button"
-            onClick={() => setFormTarget(null)}
-            className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90"
-            style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-          >
-            <Plus size={14} /> New rate card
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSlabModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[12.5px] font-semibold transition-all hover:bg-black/5 dark:hover:bg-white/5"
+              style={{ borderColor: 'var(--brand)', color: 'var(--brand)', background: 'rgba(234, 88, 12, 0.08)' }}
+              title="Configure Distance Slabs (0-1km, 1-5km...) and Dynamic Model Multipliers"
+            >
+              <Sliders size={14} /> Distance Slabs & Multipliers
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormTarget(null)}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Plus size={14} /> New rate card
+            </button>
+          </div>
         )}
       </div>
 
@@ -446,6 +459,13 @@ export default function RateCards() {
             onSaved={() => {
               toast.success(formTarget ? 'Rate card updated.' : 'Rate card created.')
               setFormTarget(undefined)
+              refetch()
+            }}
+          />
+          <SlabPricingModal
+            open={slabModalOpen}
+            onClose={() => setSlabModalOpen(false)}
+            onSynced={() => {
               refetch()
             }}
           />

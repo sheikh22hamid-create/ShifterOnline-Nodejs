@@ -49,8 +49,12 @@ router.post("/categories", auth, authorize("superadmin"), masterDataController.c
 router.put("/categories/:id", auth, authorize("superadmin"), masterDataController.updateCategory);
 router.delete("/categories/:id", auth, authorize("superadmin"), masterDataController.deleteCategory);
 
-// --- Rate Cards & Pricing Engine (tbl_package, Model 1-5) -------------------
+// --- Rate Cards & Pricing Engine (tbl_package, Model 1-5 & Distance Slabs) -
 router.get("/rate-cards", auth, rateCardController.list);
+router.get("/rate-cards/slabs", auth, rateCardController.getSlabs);
+router.put("/rate-cards/slabs", auth, authorize("superadmin"), rateCardController.updateSlabs);
+router.post("/rate-cards/slabs/simulate", auth, rateCardController.simulateFare);
+router.post("/rate-cards/slabs/sync", auth, authorize("superadmin"), rateCardController.syncModelsFromSlabs);
 router.get("/rate-cards/:id", auth, rateCardController.getOne);
 router.post("/rate-cards", auth, authorize("superadmin"), rateCardController.create);
 router.put("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.update);
