@@ -899,6 +899,7 @@ class _HomeState extends State<Home> {
             title: 'Pickup',
             subtitle: pickupIsCurrent ? 'Current location' : 'Pickup location',
             address: pickupAddress,
+            addressFontSize: 13,
             onTap: _changePickupLocation,
           ),
           connector(),
@@ -922,6 +923,7 @@ class _HomeState extends State<Home> {
             title: 'Drop',
             subtitle: drop == null ? 'Choose final destination' : 'Final drop-off',
             address: dropAddress,
+            addressFontSize: 13,
             onTap: drop == null
                 ? _startDropSelection
                 : () => _editRouteLocation('Drop'),
@@ -1028,6 +1030,7 @@ class _HomeState extends State<Home> {
     required String title,
     required String subtitle,
     required String address,
+    double addressFontSize = 11,
     VoidCallback? onTap,
   }) {
     return InkWell(
@@ -1077,7 +1080,7 @@ class _HomeState extends State<Home> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: greaycolor.withOpacity(.78),
-                      fontSize: 11,
+                      fontSize: addressFontSize,
                       fontFamily: 'Gilroy_Regular',
                     ),
                   ),
