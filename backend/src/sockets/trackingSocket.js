@@ -6,6 +6,8 @@ const { RIDER_LOCATION_WRITE_THROTTLE_MS } = require("../config/constants");
 /** rider_id -> last DB write timestamp, to throttle location persistence. */
 const lastDbWriteAt = new Map();
 
+const dutyTrackingService = require("../services/dutyTrackingService");
+
 function registerTrackingHandlers(io, socket) {
   socket.on("driver:location_ping", ({ rider_id, order_id, lat, lng, heading }) => {
     const riderId = Number(rider_id);
@@ -28,6 +30,11 @@ function registerTrackingHandlers(io, socket) {
     }
 
     adminSocket.notifyLiveDriverPing(riderId, socket.data?.riderCityId, parsedLat, parsedLng, parsedHeading);
+
+    // Track monthly driver duty hours & in-zone minutes
+    dutyTrackingService.recordDutyLocationPing(riderId, parsedLat, parsedLng).catch((err) => {
+      logger.error(`dutyTrackingService.recordDutyLocationPing error for rider ${riderId}:`, err);
+    });
 
     const now = Date.now();
     const lastWrite = lastDbWriteAt.get(riderId) || 0;

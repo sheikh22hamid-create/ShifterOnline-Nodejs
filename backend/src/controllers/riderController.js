@@ -172,6 +172,8 @@ async function setStatus(req, res) {
   }
 }
 
+const dutyTrackingService = require("../services/dutyTrackingService");
+
 /** REST fallback for clients that can't hold a live socket for location updates. */
 async function updateLocation(req, res) {
   try {
@@ -187,6 +189,11 @@ async function updateLocation(req, res) {
     });
 
     adminSocket.notifyLiveDriverPing(Number(rider_id), updated.city_id, Number(lat), Number(lng));
+
+    // Track monthly driver duty hours & in-zone minutes
+    dutyTrackingService.recordDutyLocationPing(Number(rider_id), Number(lat), Number(lng)).catch((err) => {
+      logger.error(`dutyTrackingService.recordDutyLocationPing error for rider ${rider_id}:`, err);
+    });
 
     return res.status(200).json({ Result: true, msg: "Location updated" });
   } catch (err) {
