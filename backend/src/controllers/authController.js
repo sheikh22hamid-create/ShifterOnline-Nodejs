@@ -70,13 +70,18 @@ async function login(req, res) {
     }
 
     const cityName = await getCityName(admin.city_id);
+    const jwtSecret = process.env.JWT_SECRET || "7004f7a8f5c94968583dc101f6b45bf81624ce51ace1197d88d773264b41c9064e51ebf2c74f4895f38739ca0358cfb0";
     const token = jwt.sign(
       { id: admin.id, username: admin.username, role: admin.role, city_id: admin.city_id },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
     );
 
-    await prisma.admin.update({ where: { id: admin.id }, data: { last_login_at: new Date() } });
+    try {
+      await prisma.admin.update({ where: { id: admin.id }, data: { last_login_at: new Date() } });
+    } catch (updateErr) {
+      logger.warn("Could not record last_login_at for admin:", updateErr?.message);
+    }
 
     return res.status(200).json({
       success: true,
