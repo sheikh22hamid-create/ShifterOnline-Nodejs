@@ -149,7 +149,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     return value.isEmpty ? 'Fare at checkout' : 'From ₹${_number(value).round()}';
   }
 
-  String _modelTitle(Map<String, dynamic> model) => _text(model['title'] ?? model['name'], 'Delivery option');
+  String _modelTitle(Map<String, dynamic> model) {
+    final userTitle = _text(model['user_title']);
+    if (userTitle.isNotEmpty) return userTitle;
+    return _text(model['title'] ?? model['name'], 'Delivery option');
+  }
 
   double? _modelFare(Map<String, dynamic> model) {
     for (final key in ['estimated_fare', 'fare', 'price', 'cost']) {
@@ -383,7 +387,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   int _modelOrder(Map<String, dynamic> model, int fallbackIndex) {
     final explicitOrder = int.tryParse(_text(model['sort_order'] ?? model['sortOrder']));
     if (explicitOrder != null) return explicitOrder;
-    final match = RegExp(r'model\s*(\d+)', caseSensitive: false).firstMatch(_modelTitle(model));
+    final match = RegExp(r'model\s*(\d+)', caseSensitive: false).firstMatch(_text(model['title'], _modelTitle(model)));
     return int.tryParse(match?.group(1) ?? '') ?? (fallbackIndex + 1);
   }
 
