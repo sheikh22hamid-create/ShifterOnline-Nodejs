@@ -15,11 +15,7 @@ module.exports = function auth(req, res, next) {
   }
 
   try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      return res.status(500).json({ success: false, message: "Internal server error" });
-    }
-    const payload = jwt.verify(token, secret);
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.user = payload;
     next();
   } catch (err) {

@@ -371,9 +371,10 @@ async function getDistanceEstimate({ plat, plong, dlat, dlong }) {
  * to this fare-estimate flow.
  */
 async function getPackageListForCategory({ uid, catId }) {
-  const [packages, discount] = await Promise.all([
+  const [packages, discount, stopSettings] = await Promise.all([
     getPackagesForCategory(catId),
     getActivePlanDiscount(uid),
+    getAddStopSettings(),
   ]);
 
   const packageData = packages.map((pkg) => {
@@ -421,10 +422,31 @@ async function getPackageListForCategory({ uid, catId }) {
     has_plan_discount: !!discount,
     plan_discount_percent: discount ? discount.percent : 0,
     plan_name: discount ? discount.planName : "",
+    max_extra_stops: stopSettings.maxExtraStops,
+    extra_stop_charge: stopSettings.extraStopCharge,
     ResponseCode: "200",
     Result: "true",
     ResponseMsg: "Package List By Category Get Successfully!!",
   };
+}
+
+async function getAddStopSettings() {
+  const defaults = { maxExtraStops: 2, extraStopCharge: 0 };
+  try {
+    const rows = await prisma.app_settings.findMany({
+      where: { setting_key: { in: ["max_extra_stops", "extra_stop_charge"] } },
+      select: { setting_key: true, setting_value: true },
+    });
+    const values = Object.fromEntries(rows.map((row) => [row.setting_key, Number(row.setting_value)]));
+    return {
+      maxExtraStops: Number.isFinite(values.max_extra_stops) && values.max_extra_stops >= 0
+        ? Math.floor(values.max_extra_stops) : defaults.maxExtraStops,
+      extraStopCharge: Number.isFinite(values.extra_stop_charge) && values.extra_stop_charge >= 0
+        ? values.extra_stop_charge : defaults.extraStopCharge,
+    };
+  } catch (err) {
+    return defaults;
+  }
 }
 
 module.exports = {
@@ -442,4 +464,5 @@ module.exports = {
   getFareEstimate,
   getDistanceEstimate,
   getPackageListForCategory,
+  getAddStopSettings,
 };

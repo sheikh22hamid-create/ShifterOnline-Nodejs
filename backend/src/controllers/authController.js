@@ -70,22 +70,13 @@ async function login(req, res) {
     }
 
     const cityName = await getCityName(admin.city_id);
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      logger.error("login failed: JWT_SECRET env var is not set");
-      return res.status(500).json({ success: false, message: "Internal server error" });
-    }
     const token = jwt.sign(
       { id: admin.id, username: admin.username, role: admin.role, city_id: admin.city_id },
-      jwtSecret,
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
     );
 
-    try {
-      await prisma.admin.update({ where: { id: admin.id }, data: { last_login_at: new Date() } });
-    } catch (updateErr) {
-      logger.warn("Could not record last_login_at for admin:", updateErr?.message);
-    }
+    await prisma.admin.update({ where: { id: admin.id }, data: { last_login_at: new Date() } });
 
     return res.status(200).json({
       success: true,

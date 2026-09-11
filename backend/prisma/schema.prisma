@@ -238,6 +238,20 @@ model pkg_order {
   gst_number             String?            @db.VarChar(255)
 }
 
+model pkg_order_stops {
+  id             Int      @id @default(autoincrement())
+  order_id       Int
+  sequence       Int
+  lat            String   @db.Text
+  lng            String   @db.Text
+  address        String?  @db.Text
+  hno            String?  @db.Text
+  landmark       String?  @db.Text
+  contact_name   String?  @db.Text
+  contact_number String?  @db.Text
+  created_at     DateTime @default(now())
+}
+
 model pkg_order_wait_timer {
   id                  Int       @id @default(autoincrement())
   order_id            Int

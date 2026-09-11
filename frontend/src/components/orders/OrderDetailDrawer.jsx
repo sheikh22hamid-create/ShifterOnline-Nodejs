@@ -333,6 +333,19 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                   <div className="surface-card space-y-2.5 rounded-xl p-3.5">
                     <Field label="Pickup Location" value={order.paddress} />
                     <Field label="Delivery Location" value={order.daddress} />
+                    {order.stops?.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-[var(--line)] p-3">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Extra stops</div>
+                        <div className="space-y-2">
+                          {order.stops.map((stop) => (
+                            <div key={stop.id || stop.sequence} className="text-sm">
+                              <span className="mr-2 font-mono text-xs text-[var(--muted)]">STOP {stop.sequence}</span>
+                              {stop.address || 'Address unavailable'}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-3 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
                       <Field label="Road Distance" value={`${order.distance} km`} />
                       {order.extra_mile_charge > 0 && <Field label="Extra Mile Charge" value={formatCurrency(order.extra_mile_charge)} />}

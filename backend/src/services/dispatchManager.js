@@ -208,6 +208,16 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     delivery_address: order.daddress || "",
     delivery_latitude: String(order.dlat),
     delivery_longitude: String(order.dlong),
+    stops: JSON.stringify(Array.isArray(order.stops) ? order.stops.map((stop) => ({
+      sequence: stop.sequence,
+      address: stop.address || "",
+      hno: stop.hno || "",
+      landmark: stop.landmark || "",
+      lat: String(stop.lat),
+      lng: String(stop.lng),
+      contact_name: stop.contact_name || "",
+      contact_number: stop.contact_number || "",
+    })) : []),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
     // Driver popup shows the full gross fare — the same number the customer
@@ -366,6 +376,11 @@ async function runBatchInner(orderId) {
   const currentOrder = precomputed ? precomputed.order : await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (!currentOrder || currentOrder.rid !== 0 || currentOrder.order_status !== 0) {
     return; // already accepted or cancelled by the time this tier fired
+  }
+  if (!Array.isArray(currentOrder.stops) && prisma.pkg_order_stops) {
+    currentOrder.stops = await prisma.pkg_order_stops.findMany({
+      where: { order_id: orderId }, orderBy: { sequence: "asc" },
+    });
   }
 
   const rejectedRiderIds = await getRejectedRiderIds(orderId);

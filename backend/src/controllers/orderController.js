@@ -4,7 +4,7 @@ const pricingEngine = require("../services/pricingEngine");
 const tripLifecycle = require("../services/tripLifecycle");
 const dispatchManager = require("../services/dispatchManager");
 const adminSocket = require("../sockets/adminSocket");
-const { getRoadDistanceKm } = require("../utils/geoDistance");
+const { getRoadDistanceKm, getMultiStopDistanceKm } = require("../utils/geoDistance");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 
@@ -156,6 +156,7 @@ async function createOrderCore({
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
+  stops = [],
 }) {
   if (
     !uid ||
@@ -169,8 +170,24 @@ async function createOrderCore({
 
   const requestedPackageIds = deliveryTypeIds.map(Number);
 
+  const normalizedStops = Array.isArray(stops) ? stops : [];
+  const validStops = normalizedStops.map((stop) => ({
+    lat: Number(stop.lat), lng: Number(stop.lng), address: stop.address, hno: stop.hno,
+    landmark: stop.landmark, contact_name: stop.contact_name, contact_number: stop.contact_number,
+  }));
+  if (validStops.some((stop) => !Number.isFinite(stop.lat) || !Number.isFinite(stop.lng))) {
+    return { ok: false, code: "VALIDATION", msg: "Every stop must have valid coordinates" };
+  }
+  const stopSettings = typeof pricingEngine.getAddStopSettings === "function"
+    ? await pricingEngine.getAddStopSettings()
+    : { maxExtraStops: 2, extraStopCharge: 0 };
+  if (validStops.length > stopSettings.maxExtraStops) {
+    return { ok: false, code: "VALIDATION", msg: `A maximum of ${stopSettings.maxExtraStops} extra stops is allowed` };
+  }
   const clientDistance = Number(distance);
-  const distancePromise = (Number.isFinite(clientDistance) && clientDistance > 0)
+  const distancePromise = validStops.length > 0
+    ? getMultiStopDistanceKm([{ lat: plat, lng: plong }, ...validStops, { lat: dlat, lng: dlong }])
+    : (Number.isFinite(clientDistance) && clientDistance > 0)
     ? Promise.resolve({ distanceKm: clientDistance, durationMin: Math.round(clientDistance * 2), source: "client" })
     : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
 
@@ -224,20 +241,21 @@ async function createOrderCore({
     firstPkg,
     distanceKm,
     1,
-    Number(extraMileCharge) || 0,
+    (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
     planDiscount
   );
 
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);
-  const finalTotalCharge = (Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare;
-  const finalDCharge = (Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare;
+  const finalTotalCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare);
+  const finalDCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare);
 
   const parsedWeight = parseFloat(String(packageWeight));
   const finalScheduleDateTime = Number(bookingType) === 3
     ? nextDayScheduleDateIST()
     : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
+  const stopCharge = validStops.length * stopSettings.extraStopCharge;
   const order = await prisma.pkg_order.create({
     data: {
       uid: Number(uid),
@@ -262,7 +280,7 @@ async function createOrderCore({
       d_charge: finalDCharge,
       total_dcharge: finalTotalCharge,
       commission,
-      extra_mile_charge: Number(extraMileCharge) || 0,
+      extra_mile_charge: (Number(extraMileCharge) || 0) + stopCharge,
       time_duration: 0,
       package_weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
       package_cost: Number(packageCost) || 0,
@@ -280,6 +298,13 @@ async function createOrderCore({
       otp: crypto.randomInt(1000, 10000),
     },
   });
+
+  if (validStops.length > 0) {
+    await prisma.pkg_order_stops.createMany({
+      data: validStops.map((stop, index) => ({ order_id: order.id, sequence: index + 1, lat: String(stop.lat), lng: String(stop.lng), address: stop.address || null, hno: stop.hno || null, landmark: stop.landmark || null, contact_name: stop.contact_name || null, contact_number: stop.contact_number || null })),
+    });
+  }
+  order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
 
   // Next-day orders (booking_type 3) are never auto-dispatched — admin
   // assigns them manually, individually or as a sequenced batch, from the
@@ -312,6 +337,7 @@ async function createOrder(req, res) {
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime,
+      stops,
     } = req.body;
 
     const result = await createOrderCore({
@@ -321,6 +347,7 @@ async function createOrder(req, res) {
       pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
       couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
       scheduleDateTime: schedule_date_time || scheduleDateTime || null,
+      stops,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
@@ -370,6 +397,9 @@ async function getOrderDetails(req, res) {
       LIMIT 1
     `;
     const advancePayment = advanceRows[0]?.advance_payment;
+    const stops = prisma.pkg_order_stops
+      ? await prisma.pkg_order_stops.findMany({ where: { order_id: order.id }, orderBy: { sequence: "asc" } })
+      : [];
 
     let rider = null;
     if (order.rid && order.rid !== 0) {
@@ -459,6 +489,7 @@ async function getOrderDetails(req, res) {
           dlat: order.dlat,
           dlong: order.dlong,
           drop_mobile: order.dmobile,
+          stops,
         },
       ],
     });

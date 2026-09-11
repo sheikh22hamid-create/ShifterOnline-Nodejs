@@ -130,4 +130,18 @@ function buildNextDaySequence(driverLat, driverLng, orders) {
   return sequence;
 }
 
-module.exports = { haversineKm, getRoadDistanceKm, buildNextDaySequence };
+async function getMultiStopDistanceKm(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    throw new Error("At least two route points are required");
+  }
+  const legs = await Promise.all(points.slice(0, -1).map((point, i) =>
+    getRoadDistanceKm(Number(point.lat), Number(point.lng), Number(points[i + 1].lat), Number(points[i + 1].lng))
+  ));
+  return {
+    distanceKm: legs.reduce((sum, leg) => sum + Number(leg.distanceKm || 0), 0),
+    durationMin: legs.reduce((sum, leg) => sum + Number(leg.durationMin || 0), 0),
+    source: legs.every((leg) => leg.source === "google") ? "google" : "mixed",
+  };
+}
+
+module.exports = { haversineKm, getRoadDistanceKm, buildNextDaySequence, getMultiStopDistanceKm };
