@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Sunrise, Users } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
@@ -16,20 +16,21 @@ export default function NextDayOrders() {
 
   const fetcher = useCallback(() => api.get('/orders/next-day').then((res) => res.data), [])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
-  const orders = data?.data ?? []
+  // Memoized on `data`, not recomputed fresh on every render — `data?.data
+  // ?? []` would otherwise return a new array reference every render (even
+  // while `data` is still null, pre-fetch), which is wasteful for a value
+  // multiple derived lists below are filtered from.
+  const orders = useMemo(() => data?.data ?? [], [data])
   const unassigned = orders.filter((o) => !o.rid)
+  // Filtering against the current `unassigned` on every render (rather than
+  // pruning `selectedIds` itself in an effect) means a selection that drops
+  // out of `unassigned` — assigned/cancelled elsewhere, seen via the
+  // realtime refetch below — simply stops appearing here on its own; the
+  // banner and the batch posted to the assign modal read `selectedOrders`,
+  // never the raw (possibly stale) `selectedIds`.
   const selectedOrders = unassigned.filter((o) => selectedIds.includes(o.id))
 
   useRealtimeSync(['admin:new_order', 'admin:order_status_update'], refetch)
-
-  // `orders` can change underneath the user via the realtime refetch above —
-  // if a selected order drops out of the unassigned list (assigned/cancelled
-  // elsewhere), prune it from selectedIds so the "N selected" banner and the
-  // batch posted to the assign modal never reference a stale/vanished order.
-  useEffect(() => {
-    setSelectedIds((prev) => prev.filter((id) => unassigned.some((o) => o.id === id)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders])
 
   function toggleSelect(id) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -44,9 +45,9 @@ export default function NextDayOrders() {
         Next-day bookings, priced at Model 1 with no fixed pickup time (10 AM–8 PM) — never auto-dispatched, assign manually to a driver.
       </p>
 
-      {selectedIds.length > 0 && (
+      {selectedOrders.length > 0 && (
         <div className="mt-3 flex items-center justify-between rounded-xl px-4 py-2.5" style={{ background: 'var(--brand-soft)' }}>
-          <span className="text-[13px]" style={{ color: 'var(--brand)' }}>{selectedIds.length} order(s) selected</span>
+          <span className="text-[13px]" style={{ color: 'var(--brand)' }}>{selectedOrders.length} order(s) selected</span>
           <button
             type="button"
             onClick={() => setAssigning(true)}

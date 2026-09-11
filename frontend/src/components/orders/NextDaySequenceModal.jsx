@@ -23,6 +23,12 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
   // fresh open starts clean.
   useEffect(() => {
     if (open) {
+      // Resetting internal state on a prop transition (not on every render —
+      // guarded by `if (open)` and keyed only on `open` itself, a stable
+      // primitive) is exactly the case React's own docs carve out as a
+      // legitimate use of an effect; see useApiQuery.js's matching
+      // eslint-disable for the same justification.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedRiderId('')
       setSequence(null)
       setNotifyNow(true)
