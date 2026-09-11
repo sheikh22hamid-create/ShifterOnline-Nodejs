@@ -189,8 +189,8 @@ const STANDARD_MODEL_TITLES = {
   34: "Model 5",
 };
 
-function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt) {
-  const modelName = STANDARD_MODEL_TITLES[Number(packageId)] || packageTitle || `Model ${packageId}`;
+function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt, driverTitle = null) {
+  const modelName = driverTitle || packageTitle || STANDARD_MODEL_TITLES[Number(packageId)] || `Model ${packageId}`;
   return {
     type: "order",
     order_id: String(order.id),
@@ -198,6 +198,7 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     delivery_type: String(packageId),
     package_name: modelName,
     package_title: modelName,
+    driver_title: driverTitle || modelName,
     model_name: modelName,
     category: order.category,
     customer_name: order.pick_name || "Customer",
@@ -554,7 +555,7 @@ async function runBatchInner(orderId) {
           // edge of the customer's search radius (see priceForPackage's
           // radiusRangeKm and calculateRadiusCharge).
           const driverDistanceKm = Number(driver.distance_km);
-          const { fare } = pricingEngine.priceForPackage(
+          const { fare, driverTitle } = pricingEngine.priceForPackage(
             pkg,
             distanceKm,
             Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
@@ -563,7 +564,8 @@ async function runBatchInner(orderId) {
           );
           const payload = buildOrderRequestPayload(
             currentOrder, packageId, distanceKm.toFixed(1), fare, packageTitle,
-            armedAt + POPUP_TIMEOUT_MS
+            armedAt + POPUP_TIMEOUT_MS,
+            driverTitle
           );
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);

@@ -549,6 +549,8 @@ model tbl_otp {
 model tbl_package {
   id                           Int              @id @default(autoincrement())
   title                        String           @db.Text
+  user_title                   String?          @db.VarChar(255)
+  driver_title                 String?          @db.VarChar(255)
   type                         tbl_package_type
   min_charge                   Decimal          @db.Decimal(10, 2)
   per_km_charge                Decimal          @db.Decimal(10, 2)

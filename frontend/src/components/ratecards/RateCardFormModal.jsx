@@ -7,6 +7,8 @@ const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', col
 
 const EMPTY_FORM = {
   title: '',
+  user_title: '',
+  driver_title: '',
   type: 'USER',
   cat_id: '',
   city_id: '',
@@ -54,7 +56,9 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
     setForm(
       rateCard
         ? {
-            title: rateCard.title,
+            title: rateCard.title || '',
+            user_title: rateCard.user_title || '',
+            driver_title: rateCard.driver_title || '',
             type: rateCard.type,
             cat_id: rateCard.cat_id,
             city_id: rateCard.city_id,
@@ -101,7 +105,7 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
       open={open}
       onClose={onClose}
       title={isEdit ? `Edit ${vehicleLabel ? `${vehicleLabel} - ` : ''}${rateCard.title}` : 'New rate card'}
-      width={480}
+      width={520}
       footer={
         <>
           <button type="button" onClick={onClose} className="rounded-lg border px-3 py-1.5 text-[13px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
@@ -126,6 +130,33 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
       )}
 
       <div className="space-y-3">
+        {/* Live Preview Box */}
+        <div className="rounded-xl border p-3 text-[12px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>
+          <div className="mb-1.5 font-semibold uppercase tracking-wider text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+            Display Preview Across Apps & Admin
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <div className="text-[10px] text-emerald-600 font-semibold">👤 User App Sees</div>
+              <div className="mt-0.5 truncate font-medium" style={{ color: 'var(--ink)' }}>
+                {form.user_title || form.title || 'Super Saver'}
+              </div>
+            </div>
+            <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <div className="text-[10px] text-blue-600 font-semibold">🚗 Driver App Sees</div>
+              <div className="mt-0.5 truncate font-medium" style={{ color: 'var(--ink)' }}>
+                {form.driver_title || form.title || 'Earning Beast'}
+              </div>
+            </div>
+            <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <div className="text-[10px] text-amber-600 font-semibold">⚙️ Admin Model</div>
+              <div className="mt-0.5 truncate font-medium" style={{ color: 'var(--ink)' }}>
+                {form.title || 'Model 1'}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="cat_id">Vehicle Category</Label>
@@ -139,8 +170,29 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             </select>
           </div>
           <div>
-            <Label htmlFor="title">Pricing Model / Title</Label>
-            <Input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Model 1" />
+            <Label htmlFor="title">Admin Model Title</Label>
+            <Input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Model 1" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="user_title">👤 Customer Display Name</Label>
+            <Input
+              id="user_title"
+              value={form.user_title}
+              onChange={(e) => set('user_title', e.target.value)}
+              placeholder="e.g. Super Saver / Economy"
+            />
+          </div>
+          <div>
+            <Label htmlFor="driver_title">🚗 Driver Display Name</Label>
+            <Input
+              id="driver_title"
+              value={form.driver_title}
+              onChange={(e) => set('driver_title', e.target.value)}
+              placeholder="e.g. Earning Beast / Prime Tier"
+            />
           </div>
         </div>
 

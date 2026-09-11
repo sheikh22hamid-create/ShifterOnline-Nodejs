@@ -28,6 +28,8 @@ function formatTime(date) {
 function serializePackage(pkg, category) {
   return {
     ...pkg,
+    user_title: pkg.user_title || null,
+    driver_title: pkg.driver_title || null,
     start_time: formatTime(pkg.start_time),
     end_time: formatTime(pkg.end_time),
     category_name: category?.cat_name || null,
@@ -110,6 +112,8 @@ async function create(req, res) {
     const created = await prisma.tbl_package.create({
       data: {
         title: b.title,
+        user_title: b.user_title ? String(b.user_title).trim() : null,
+        driver_title: b.driver_title ? String(b.driver_title).trim() : null,
         type: b.type,
         cat_id: parseInt(b.cat_id, 10),
         city_id: String(b.city_id),
@@ -166,6 +170,8 @@ async function update(req, res) {
     const data = {};
     const directFields = [
       "title",
+      "user_title",
+      "driver_title",
       "min_charge",
       "per_km_charge",
       "free_waiting_time",
@@ -183,7 +189,13 @@ async function update(req, res) {
       "driver_detail_image",
     ];
     for (const field of directFields) {
-      if (b[field] !== undefined) data[field] = b[field];
+      if (b[field] !== undefined) {
+        if (field === "user_title" || field === "driver_title") {
+          data[field] = b[field] ? String(b[field]).trim() : null;
+        } else {
+          data[field] = b[field];
+        }
+      }
     }
     if (b.type !== undefined) data.type = b.type;
     if (b.cat_id !== undefined) data.cat_id = parseInt(b.cat_id, 10);

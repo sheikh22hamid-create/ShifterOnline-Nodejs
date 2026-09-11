@@ -104,9 +104,11 @@ export default function RateCards() {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim()
         const titleMatch = (rc.title || '').toLowerCase().includes(q)
+        const userTitleMatch = (rc.user_title || '').toLowerCase().includes(q)
+        const driverTitleMatch = (rc.driver_title || '').toLowerCase().includes(q)
         const vehicleMatch = vehicleName.toLowerCase().includes(q)
         const typeMatch = (rc.type || '').toLowerCase().includes(q)
-        if (!titleMatch && !vehicleMatch && !typeMatch) {
+        if (!titleMatch && !userTitleMatch && !driverTitleMatch && !vehicleMatch && !typeMatch) {
           return false
         }
       }
@@ -339,11 +341,19 @@ export default function RateCards() {
 
                       {/* Model / Title Column */}
                       <td className="whitespace-nowrap px-4 py-3">
-                        <div className="font-medium" style={{ color: 'var(--ink)' }}>
+                        <div className="flex items-center gap-1.5 font-semibold text-[13.5px]" style={{ color: 'var(--ink)' }}>
                           {rc.title}
+                          <span className="text-[11px] font-normal" style={{ color: 'var(--ink-faint)' }}>
+                            ({rc.type === 'USER' ? 'Customer Fare' : 'Driver Earning'})
+                          </span>
                         </div>
-                        <div className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                          {rc.type === 'USER' ? 'Customer Fare' : 'Driver Earning'}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 font-medium text-emerald-600 dark:text-emerald-400">
+                            👤 User: {rc.user_title || rc.title}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 font-medium text-blue-600 dark:text-blue-400">
+                            🚗 Driver: {rc.driver_title || rc.title}
+                          </span>
                         </div>
                       </td>
 

@@ -248,7 +248,9 @@ function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0
   const driverEarning = calculateDriverEarning(discountedPkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
-  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, radiusCharge };
+  const userTitle = pkg?.user_title || packageTitle;
+  const driverTitle = pkg?.driver_title || packageTitle;
+  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, userTitle, driverTitle, radiusCharge };
 }
 
 /** `uid`, when given, looks up that customer's active plan discount (if any) and applies it — see priceForPackage. */
@@ -311,6 +313,8 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
       return {
         package_id: pkg.id,
         title: pkg.title,
+        user_title: pkg.user_title || pkg.title,
+        driver_title: pkg.driver_title || pkg.title,
         min_charge: Number(discountedPkg.min_charge),
         per_km_charge: Number(discountedPkg.per_km_charge),
         original_min_charge: Number(pkg.min_charge),
@@ -389,6 +393,8 @@ async function getPackageListForCategory({ uid, catId }) {
     return {
       id: pkg.id,
       title: pkg.title,
+      user_title: pkg.user_title || pkg.title,
+      driver_title: pkg.driver_title || pkg.title,
       type: pkg.type,
       min_charge: String(discountedPkg.min_charge),
       per_km_charge: String(discountedPkg.per_km_charge),
