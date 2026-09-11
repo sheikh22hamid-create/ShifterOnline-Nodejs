@@ -74,56 +74,128 @@
             android:layout_marginTop="12dp"
             android:background="#F8FAFC"
             android:padding="10dp"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
-            <!-- Live Hours -->
+            <!-- Row 1: Live In-Zone Duty & Base Salary -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <!-- Live Hours -->
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="Today's In-Zone Duty"
-                    android:textColor="#64748B"
-                    android:textSize="10.5sp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/txt_live_duty_hours"
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="In-Zone Duty"
+                        android:textColor="#64748B"
+                        android:textSize="10.5sp" />
+
+                    <TextView
+                        android:id="@+id/txt_live_duty_hours"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="00h 00m / 10h"
+                        android:textColor="#0F172A"
+                        android:textSize="13.5sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Daily Salary Accrued -->
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="00h 00m / 10h"
-                    android:textColor="#0F172A"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Base Salary"
+                        android:textColor="#64748B"
+                        android:textSize="10.5sp" />
+
+                    <TextView
+                        android:id="@+id/txt_today_salary_earned"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="₹0.00"
+                        android:textColor="#059669"
+                        android:textSize="13.5sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
             </LinearLayout>
 
-            <!-- Daily Salary Accrued -->
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:background="#E2E8F0" />
+
+            <!-- Row 2: Overtime Pay & Cash Collected -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <!-- Overtime Pay -->
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="Today's Earned Salary"
-                    android:textColor="#64748B"
-                    android:textSize="10.5sp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/txt_today_salary_earned"
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Overtime Pay"
+                        android:textColor="#64748B"
+                        android:textSize="10.5sp" />
+
+                    <TextView
+                        android:id="@+id/txt_today_overtime"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="₹0.00 (0h)"
+                        android:textColor="#D97706"
+                        android:textSize="13.5sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Cash in Hand -->
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="₹0.00"
-                    android:textColor="#059669"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Cash in Hand"
+                        android:textColor="#64748B"
+                        android:textSize="10.5sp" />
+
+                    <TextView
+                        android:id="@+id/txt_today_cash_collected"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="₹0.00"
+                        android:textColor="#DC2626"
+                        android:textSize="13.5sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 

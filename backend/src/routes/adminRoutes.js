@@ -42,6 +42,8 @@ router.post("/monthly-drivers/promote", auth, authorize("superadmin", "admin"), 
 router.post("/monthly-drivers/demote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.demoteDriver);
 router.get("/monthly-drivers/attendance", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.getAttendanceReport);
 router.get("/monthly-drivers/:riderId/duty", auth, authorize(...RIDER_ROLES), monthlyDriverController.getDutyStatus);
+router.get("/monthly-drivers/:riderId/ledger", auth, authorize(...RIDER_ROLES), monthlyDriverController.getMonthlyDriverLedger);
+router.post("/monthly-drivers/:riderId/ledger-adjustment", auth, authorize("superadmin", "admin"), monthlyDriverController.addLedgerAdjustment);
 
 // --- Monthly Driver Advance Order Queue --------------------------------------
 router.get("/monthly-drivers/:riderId/queue", auth, authorize(...RIDER_ROLES), orderQueueController.getDriverQueue);

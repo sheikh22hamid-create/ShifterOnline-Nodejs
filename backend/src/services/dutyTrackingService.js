@@ -110,19 +110,75 @@ async function punchOut(riderId) {
   const contract = await getDriverContract(riderId);
   const targetMinutes = contract ? (Number(contract.target_shift_hours) * 60) : 600;
   const baseSalary = contract ? Number(contract.monthly_base_salary) : 15000;
+  const overtimeHourlyRate = contract ? Number(contract.overtime_hourly_rate) : 0;
   const dailyBase = baseSalary / 30;
 
   const validMinutes = Math.min(targetMinutes, log.total_in_zone_minutes);
-  const dailySalary = Math.round(((validMinutes / targetMinutes) * dailyBase) * 100) / 100;
+  const overtimeMins = Math.max(0, log.total_in_zone_minutes - targetMinutes);
+  const baseSalaryEarned = Math.round(((validMinutes / targetMinutes) * dailyBase) * 100) / 100;
+  const overtimePay = Math.round(((overtimeMins / 60) * overtimeHourlyRate) * 100) / 100;
+  const dailySalary = Math.round((baseSalaryEarned + overtimePay) * 100) / 100;
 
   const updatedLog = await prisma.driver_duty_log.update({
     where: { id: log.id },
     data: {
       punch_out_at: new Date(),
       status: "completed",
+      overtime_minutes: overtimeMins,
+      overtime_pay: overtimePay,
       calculated_daily_salary: dailySalary,
     },
   });
+
+  // Create Ledger Entries for Base Salary and Overtime (if not already logged for this duty log)
+  try {
+    const todayDate = log.duty_date;
+    const existingSalaryEntry = await prisma.monthly_driver_ledger.findFirst({
+      where: {
+        rider_id: Number(riderId),
+        duty_date: todayDate,
+        entry_type: "BASE_SALARY",
+      },
+    });
+
+    if (!existingSalaryEntry && baseSalaryEarned > 0) {
+      await prisma.monthly_driver_ledger.create({
+        data: {
+          rider_id: Number(riderId),
+          duty_date: todayDate,
+          entry_type: "BASE_SALARY",
+          amount: baseSalaryEarned,
+          balance_effect: "CREDIT",
+          notes: `Base salary earned for shift on ${todayDate.toISOString().split("T")[0]} (${Math.round(validMinutes / 60 * 10) / 10} hrs)`,
+        },
+      });
+    }
+
+    if (overtimePay > 0) {
+      const existingOtEntry = await prisma.monthly_driver_ledger.findFirst({
+        where: {
+          rider_id: Number(riderId),
+          duty_date: todayDate,
+          entry_type: "OVERTIME_PAY",
+        },
+      });
+
+      if (!existingOtEntry) {
+        await prisma.monthly_driver_ledger.create({
+          data: {
+            rider_id: Number(riderId),
+            duty_date: todayDate,
+            entry_type: "OVERTIME_PAY",
+            amount: overtimePay,
+            balance_effect: "CREDIT",
+            notes: `Overtime pay earned: ${Math.round(overtimeMins / 60 * 10) / 10} hrs @ ₹${overtimeHourlyRate}/hr`,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    logger.error("Error creating ledger entries on punch out:", err);
+  }
 
   return {
     success: true,
@@ -169,12 +225,17 @@ async function recordDutyLocationPing(riderId, lat, lng) {
 
   const targetMinutes = Number(contract.target_shift_hours) * 60 || 600;
   const baseDaily = (Number(contract.monthly_base_salary) || 15000) / 30;
+  const overtimeHourlyRate = Number(contract.overtime_hourly_rate) || 0;
 
   const newInZoneMins = log.total_in_zone_minutes + incrementInZone;
   const newOutZoneMins = log.total_out_zone_minutes + incrementOutZone;
   const newOnlineMins = log.total_online_minutes + 1;
 
-  const dailySalary = Math.round((Math.min(1.0, newInZoneMins / targetMinutes) * baseDaily) * 100) / 100;
+  const validMinutes = Math.min(targetMinutes, newInZoneMins);
+  const overtimeMins = Math.max(0, newInZoneMins - targetMinutes);
+  const baseSalaryEarned = (validMinutes / targetMinutes) * baseDaily;
+  const overtimePay = Math.round(((overtimeMins / 60) * overtimeHourlyRate) * 100) / 100;
+  const dailySalary = Math.round((baseSalaryEarned + overtimePay) * 100) / 100;
 
   const updated = await prisma.driver_duty_log.update({
     where: { id: log.id },
@@ -182,6 +243,8 @@ async function recordDutyLocationPing(riderId, lat, lng) {
       total_online_minutes: newOnlineMins,
       total_in_zone_minutes: newInZoneMins,
       total_out_zone_minutes: newOutZoneMins,
+      overtime_minutes: overtimeMins,
+      overtime_pay: overtimePay,
       calculated_daily_salary: dailySalary,
     },
   });
@@ -192,6 +255,8 @@ async function recordDutyLocationPing(riderId, lat, lng) {
     inDelivery: activeOrder != null,
     totalInZoneMinutes: newInZoneMins,
     totalOutZoneMinutes: newOutZoneMins,
+    overtimeMinutes: overtimeMins,
+    overtimePay,
     dailySalary,
   };
 }
@@ -218,6 +283,9 @@ async function getDriverDutyStatus(riderId) {
   const targetMinutes = Number(contract.target_shift_hours) * 60;
   const inZoneMinutes = log ? log.total_in_zone_minutes : 0;
   const outZoneMinutes = log ? log.total_out_zone_minutes : 0;
+  const overtimeMinutes = log ? log.overtime_minutes : 0;
+  const overtimePay = log ? Number(log.overtime_pay) : 0;
+  const cashCollected = log ? Number(log.cash_collected) : 0;
   const dailySalary = log ? Number(log.calculated_daily_salary) : 0;
 
   return {
@@ -228,6 +296,7 @@ async function getDriverDutyStatus(riderId) {
       shiftEndTime: contract.shift_end_time,
       targetShiftHours: contract.target_shift_hours,
       monthlyBaseSalary: Number(contract.monthly_base_salary),
+      overtimeHourlyRate: Number(contract.overtime_hourly_rate || 0),
       allowedBreakMinutes: contract.allowed_break_minutes,
       status: contract.status,
     },
@@ -245,6 +314,9 @@ async function getDriverDutyStatus(riderId) {
       punchOutAt: log ? log.punch_out_at : null,
       inZoneMinutes,
       outZoneMinutes,
+      overtimeMinutes,
+      overtimePay,
+      cashCollected,
       totalOnlineMinutes: log ? log.total_online_minutes : 0,
       targetMinutes,
       dailySalary,

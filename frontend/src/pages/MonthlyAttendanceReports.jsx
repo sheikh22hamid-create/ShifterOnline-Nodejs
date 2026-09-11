@@ -37,6 +37,8 @@ export default function MonthlyAttendanceReports() {
   const totalDutyDays = logs.length
   const totalInZoneMins = logs.reduce((acc, l) => acc + (l.total_in_zone_minutes || 0), 0)
   const totalCalculatedSalary = logs.reduce((acc, l) => acc + (Number(l.calculated_daily_salary) || 0), 0)
+  const totalOvertimePay = logs.reduce((acc, l) => acc + (Number(l.overtime_pay) || 0), 0)
+  const totalCashCollected = logs.reduce((acc, l) => acc + (Number(l.cash_collected) || 0), 0)
   const totalOrders = logs.reduce((acc, l) => acc + (l.orders_completed || 0), 0)
 
   return (
@@ -48,13 +50,13 @@ export default function MonthlyAttendanceReports() {
             Monthly Driver Duty & Salary Reports
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Track live working hours inside geofenced zones, attendance compliance, and calculated daily payouts.
+            Track live working hours inside geofenced zones, attendance compliance, overtime pay, and cash collections.
           </p>
         </div>
       </div>
 
       {/* STATS OVERVIEW */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500">Duty Shifts Logged</span>
@@ -65,7 +67,7 @@ export default function MonthlyAttendanceReports() {
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Total Live In-Zone Hours</span>
+            <span className="text-xs font-semibold text-slate-500">Total Live In-Zone</span>
             <Clock size={18} className="text-emerald-500" />
           </div>
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">
@@ -75,20 +77,32 @@ export default function MonthlyAttendanceReports() {
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Calculated Payout</span>
-            <DollarSign size={18} className="text-amber-500" />
+            <span className="text-xs font-semibold text-slate-500">Total Base Salary</span>
+            <DollarSign size={18} className="text-blue-500" />
           </div>
-          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-2">
+          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-2">
             ₹{totalCalculatedSalary.toLocaleString()}
           </p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Orders Delivered</span>
-            <TrendingUp size={18} className="text-purple-500" />
+            <span className="text-xs font-semibold text-slate-500">Overtime Pay Earned</span>
+            <TrendingUp size={18} className="text-amber-500" />
           </div>
-          <p className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-2">{totalOrders}</p>
+          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-2">
+            ₹{totalOvertimePay.toLocaleString()}
+          </p>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Cash Collected</span>
+            <DollarSign size={18} className="text-rose-500" />
+          </div>
+          <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-2">
+            ₹{totalCashCollected.toLocaleString()}
+          </p>
         </div>
       </div>
 
@@ -152,20 +166,23 @@ export default function MonthlyAttendanceReports() {
             <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
               <thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <tr>
-                  <th className="px-5 py-3.5">Duty Date</th>
-                  <th className="px-5 py-3.5">Driver</th>
-                  <th className="px-5 py-3.5">Punch In / Out</th>
-                  <th className="px-5 py-3.5">In-Zone Live Time</th>
-                  <th className="px-5 py-3.5">Out-of-Zone</th>
-                  <th className="px-5 py-3.5">Orders</th>
-                  <th className="px-5 py-3.5">Daily Payout</th>
-                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-4 py-3.5">Duty Date</th>
+                  <th className="px-4 py-3.5">Driver</th>
+                  <th className="px-4 py-3.5">Punch In / Out</th>
+                  <th className="px-4 py-3.5">In-Zone Live</th>
+                  <th className="px-4 py-3.5">Out-of-Zone</th>
+                  <th className="px-4 py-3.5">Orders</th>
+                  <th className="px-4 py-3.5">Daily Salary</th>
+                  <th className="px-4 py-3.5">Overtime Pay</th>
+                  <th className="px-4 py-3.5">Cash Collected</th>
+                  <th className="px-4 py-3.5">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {logs.map((log) => {
                   const inZoneHours = (log.total_in_zone_minutes / 60).toFixed(1)
                   const outZoneHours = (log.total_out_zone_minutes / 60).toFixed(1)
+                  const overtimeHours = (log.overtime_minutes ? log.overtime_minutes / 60 : 0).toFixed(1)
                   const dateStr = log.duty_date ? new Date(log.duty_date).toLocaleDateString() : 'N/A'
                   const punchInStr = log.punch_in_at ? new Date(log.punch_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'
                   const punchOutStr = log.punch_out_at ? new Date(log.punch_out_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'
@@ -174,27 +191,33 @@ export default function MonthlyAttendanceReports() {
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
-                      <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-white">{dateStr}</td>
-                      <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-white">
+                      <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">{dateStr}</td>
+                      <td className="px-4 py-3.5 font-semibold text-slate-900 dark:text-white">
                         {driverName}
                         {driverPhone ? (
                           <span className="block text-[10px] font-normal text-slate-400 font-mono">📱 {driverPhone}</span>
                         ) : null}
                       </td>
-                      <td className="px-5 py-3.5 text-slate-500">
+                      <td className="px-4 py-3.5 text-slate-500">
                         {punchInStr} ➔ {punchOutStr}
                       </td>
-                      <td className="px-5 py-3.5 font-bold text-emerald-600 dark:text-emerald-400">
+                      <td className="px-4 py-3.5 font-bold text-emerald-600 dark:text-emerald-400">
                         {inZoneHours} hrs
                       </td>
-                      <td className="px-5 py-3.5 text-rose-500 font-medium">
+                      <td className="px-4 py-3.5 text-rose-500 font-medium">
                         {outZoneHours} hrs
                       </td>
-                      <td className="px-5 py-3.5">{log.orders_completed || 0}</td>
-                      <td className="px-5 py-3.5 font-bold text-slate-900 dark:text-white">
+                      <td className="px-4 py-3.5">{log.orders_completed || 0}</td>
+                      <td className="px-4 py-3.5 font-bold text-slate-900 dark:text-white">
                         ₹{log.calculated_daily_salary?.toLocaleString() || '0'}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5 font-bold text-amber-600 dark:text-amber-400">
+                        {Number(log.overtime_pay) > 0 ? `₹${log.overtime_pay} (${overtimeHours}h)` : '₹0'}
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-rose-600 dark:text-rose-400">
+                        ₹{Number(log.cash_collected || 0).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3.5">
                         <span
                           className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                             log.status === 'in_progress'

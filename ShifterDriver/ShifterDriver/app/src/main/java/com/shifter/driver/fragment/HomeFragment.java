@@ -1308,7 +1308,20 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         binding.incMonthlyDutyCard.txtTodaySalaryEarned.setText(
                                 "₹" + String.format(Locale.getDefault(), "%.2f", status.getTodaySalaryEarned()));
 
-                        // 4. Punch In / Punch Out Button
+                        // 4. Overtime pay & hours
+                        int otMins = status.getTodayOvertimeMinutes();
+                        int otHrs = otMins / 60;
+                        int otRemMins = otMins % 60;
+                        double otPay = status.getTodayOvertimePay();
+                        binding.incMonthlyDutyCard.txtTodayOvertime.setText(
+                                "₹" + String.format(Locale.getDefault(), "%.2f", otPay) + " (" + otHrs + "h " + otRemMins + "m)");
+
+                        // 5. Cash collected today (Cash in Hand)
+                        double cashCol = status.getTodayCashCollected();
+                        binding.incMonthlyDutyCard.txtTodayCashCollected.setText(
+                                "₹" + String.format(Locale.getDefault(), "%.2f", cashCol));
+
+                        // 6. Punch In / Punch Out Button
                         if (status.isCurrentlyPunchedIn()) {
                             binding.incMonthlyDutyCard.btnPunchDuty.setText("END DUTY (PUNCH OUT)");
                             binding.incMonthlyDutyCard.btnPunchDuty.setBackgroundTintList(
@@ -1320,7 +1333,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         }
                         binding.incMonthlyDutyCard.btnPunchDuty.setOnClickListener(v -> handlePunchDuty(status));
 
-                        // 5. In-Zone Badge
+                        // 7. In-Zone Badge
                         boolean inside = MonthlyDutyManager.getInstance().isInsideZone();
                         if (inside) {
                             binding.incMonthlyDutyCard.badgeZoneStatus.setText("🟢 In-Zone");

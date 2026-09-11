@@ -125,6 +125,24 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         OR r.model1_suspended_until IS NULL
         OR r.model1_suspended_until <= NOW()
       )
+      AND (
+        (COALESCE(r.monthly_plan, 0) != 1)
+        OR (
+          COALESCE(r.monthly_plan, 0) = 1
+          AND ${Number(packageId)} = ${MODEL_1_PACKAGE_ID}
+          AND EXISTS (
+            SELECT 1 FROM driver_duty_log ddl
+            WHERE ddl.rider_id = r.id
+              AND ddl.duty_date = CURDATE()
+              AND ddl.status = 'in_progress'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM driver_order_queue doq
+            WHERE doq.rider_id = r.id
+              AND doq.status IN ('pending', 'active')
+          )
+        )
+      )
     HAVING distance_km <= ${radiusKm}
     ORDER BY has_priority_plan DESC, is_favorite DESC, distance_km ASC
     LIMIT ${limit}

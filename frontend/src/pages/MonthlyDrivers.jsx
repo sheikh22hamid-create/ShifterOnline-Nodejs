@@ -1,5 +1,22 @@
 import { useState, useEffect } from 'react'
-import { UserCheck, Plus, Clock, DollarSign, MapPin, ListOrdered, Search, ShieldCheck, X, Trash2 } from 'lucide-react'
+import {
+  UserCheck,
+  Plus,
+  Clock,
+  DollarSign,
+  MapPin,
+  ListOrdered,
+  Search,
+  ShieldCheck,
+  X,
+  Trash2,
+  BookOpen,
+  TrendingUp,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Calendar,
+  CheckCircle2,
+} from 'lucide-react'
 import api from '../services/api'
 
 export default function MonthlyDrivers() {
@@ -18,6 +35,7 @@ export default function MonthlyDrivers() {
     shift_end_time: '20:00:00',
     target_shift_hours: '10',
     monthly_base_salary: '15000',
+    overtime_hourly_rate: '50',
     allowed_break_minutes: '45',
   })
 
@@ -27,6 +45,23 @@ export default function MonthlyDrivers() {
   const [driverQueue, setDriverQueue] = useState([])
   const [availableOrders, setAvailableOrders] = useState([])
   const [assignOrderId, setAssignOrderId] = useState('')
+
+  // Ledger Modal
+  const [ledgerModalOpen, setLedgerModalOpen] = useState(false)
+  const [selectedLedgerDriver, setSelectedLedgerDriver] = useState(null)
+  const [ledgerData, setLedgerData] = useState(null)
+  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [ledgerStartDate, setLedgerStartDate] = useState('')
+  const [ledgerEndDate, setLedgerEndDate] = useState('')
+
+  // Ledger Adjustment Form
+  const [showAdjForm, setShowAdjForm] = useState(false)
+  const [adjForm, setAdjForm] = useState({
+    entry_type: 'CASH_DEPOSIT',
+    amount: '',
+    balance_effect: 'CREDIT',
+    notes: '',
+  })
 
   useEffect(() => {
     fetchMonthlyDrivers()
@@ -68,12 +103,12 @@ export default function MonthlyDrivers() {
     }
   }
 
+  // Queue Actions
   async function openQueueModal(driver) {
     setSelectedDriver(driver)
     setQueueModalOpen(true)
     fetchQueue(driver.rider_id)
 
-    // Fetch unassigned / pending orders that can be queued
     api.get('/orders', { params: { status: 'Pending' } }).then((res) => {
       setAvailableOrders(res.data.data || res.data?.orders || [])
     }).catch(() => {})
@@ -111,6 +146,49 @@ export default function MonthlyDrivers() {
     }
   }
 
+  // Ledger Actions
+  function openLedgerModal(driver) {
+    setSelectedLedgerDriver(driver)
+    setLedgerModalOpen(true)
+    setShowAdjForm(false)
+    fetchLedger(driver.rider_id)
+  }
+
+  function fetchLedger(riderId) {
+    setLedgerLoading(true)
+    const params = {}
+    if (ledgerStartDate) params.start_date = ledgerStartDate
+    if (ledgerEndDate) params.end_date = ledgerEndDate
+
+    api
+      .get(`/monthly-drivers/${riderId}/ledger`, { params })
+      .then((res) => setLedgerData(res.data.data))
+      .catch((err) => console.error(err))
+      .finally(() => setLedgerLoading(false))
+  }
+
+  async function handleAddAdjustment(e) {
+    e.preventDefault()
+    if (!adjForm.amount || !selectedLedgerDriver) return
+
+    try {
+      await api.post(`/monthly-drivers/${selectedLedgerDriver.rider_id}/ledger-adjustment`, {
+        ...adjForm,
+        rider_id: selectedLedgerDriver.rider_id,
+      })
+      setAdjForm({
+        entry_type: 'CASH_DEPOSIT',
+        amount: '',
+        balance_effect: 'CREDIT',
+        notes: '',
+      })
+      setShowAdjForm(false)
+      fetchLedger(selectedLedgerDriver.rider_id)
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to record ledger entry')
+    }
+  }
+
   const filtered = drivers.filter((d) => {
     const name = d.rider?.full_name || d.rider?.title || `Driver #${d.rider_id}`
     const phone = d.rider?.fmobile || d.rider?.mobile || ''
@@ -127,7 +205,7 @@ export default function MonthlyDrivers() {
             Monthly Dedicated Drivers
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Manage salaried drivers, working shifts, mandatory order dispatch, and advance stacked queues.
+            Manage salaried drivers, shift overtime rates, cash collections, ledger balances, and order queues.
           </p>
         </div>
 
@@ -140,6 +218,7 @@ export default function MonthlyDrivers() {
               shift_end_time: '20:00:00',
               target_shift_hours: '10',
               monthly_base_salary: '15000',
+              overtime_hourly_rate: '50',
               allowed_break_minutes: '45',
             })
             setPromoteModalOpen(true)
@@ -212,6 +291,13 @@ export default function MonthlyDrivers() {
 
                   <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
                     <span className="flex items-center gap-1.5 font-medium">
+                      <TrendingUp size={14} className="text-amber-500" /> Overtime Rate:
+                    </span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">₹{d.overtime_hourly_rate || 50} / hr</span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                    <span className="flex items-center gap-1.5 font-medium">
                       <MapPin size={14} className="text-orange-500" /> Service Zone:
                     </span>
                     <span className="font-medium text-slate-800 dark:text-slate-200">{d.zone?.name || 'All City'}</span>
@@ -219,20 +305,30 @@ export default function MonthlyDrivers() {
                 </div>
               </div>
 
-              <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <button
-                  onClick={() => openQueueModal(d)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 px-3 py-1.5 text-xs font-semibold hover:bg-blue-100 transition"
-                >
-                  <ListOrdered size={14} />
-                  Order Queue
-                </button>
+              <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openLedgerModal(d)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 text-xs font-semibold hover:bg-emerald-100 transition"
+                  >
+                    <BookOpen size={14} />
+                    Ledger & Cash
+                  </button>
+
+                  <button
+                    onClick={() => openQueueModal(d)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 px-3 py-1.5 text-xs font-semibold hover:bg-blue-100 transition"
+                  >
+                    <ListOrdered size={14} />
+                    Queue
+                  </button>
+                </div>
 
                 <button
                   onClick={() => handleDemote(d.rider_id)}
                   className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
                 >
-                  Revert to Freelance
+                  Demote
                 </button>
               </div>
             </div>
@@ -292,26 +388,36 @@ export default function MonthlyDrivers() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Target Duty Hours</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Target Shift (Hrs)</label>
                   <input
                     type="number"
                     step="0.5"
                     required
                     value={promoteForm.target_shift_hours}
                     onChange={(e) => setPromoteForm({ ...promoteForm, target_shift_hours: e.target.value })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Monthly Base Salary (₹)</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Salary (₹/mo)</label>
                   <input
                     type="number"
                     required
                     value={promoteForm.monthly_base_salary}
                     onChange={(e) => setPromoteForm({ ...promoteForm, monthly_base_salary: e.target.value })}
-                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Overtime (₹/hr)</label>
+                  <input
+                    type="number"
+                    required
+                    value={promoteForm.overtime_hourly_rate}
+                    onChange={(e) => setPromoteForm({ ...promoteForm, overtime_hourly_rate: e.target.value })}
+                    className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -437,6 +543,230 @@ export default function MonthlyDrivers() {
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
               <button
                 onClick={() => setQueueModalOpen(false)}
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* LEDGER & CASH SETTLEMENT MODAL */}
+      {ledgerModalOpen && selectedLedgerDriver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[92vh] flex flex-col justify-between">
+            <div className="overflow-y-auto pr-1 space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <BookOpen className="text-emerald-600" />
+                    Ledger & Cash Settlement: {selectedLedgerDriver.rider?.full_name || `Driver #${selectedLedgerDriver.rider_id}`}
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    📱 {selectedLedgerDriver.rider?.fmobile || 'No Phone'} • Overtime: ₹{selectedLedgerDriver.overtime_hourly_rate || 50}/hr • Base Salary: ₹{selectedLedgerDriver.monthly_base_salary?.toLocaleString()}/mo
+                  </p>
+                </div>
+                <button onClick={() => setLedgerModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Financial Metrics Summary */}
+              {ledgerData?.summary && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-blue-50 dark:bg-blue-950/30 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/50">
+                    <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400">Total Salary (Credit)</span>
+                    <p className="text-lg font-bold text-blue-900 dark:text-blue-200 mt-0.5">
+                      +₹{ledgerData.summary.total_base_salary.toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="bg-amber-50 dark:bg-amber-950/30 p-3.5 rounded-xl border border-amber-100 dark:border-amber-900/50">
+                    <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">Overtime Pay (Credit)</span>
+                    <p className="text-lg font-bold text-amber-900 dark:text-amber-200 mt-0.5">
+                      +₹{ledgerData.summary.total_overtime_pay.toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="bg-rose-50 dark:bg-rose-950/30 p-3.5 rounded-xl border border-rose-100 dark:border-rose-900/50">
+                    <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-400">Cash Collected (Debit)</span>
+                    <p className="text-lg font-bold text-rose-900 dark:text-rose-200 mt-0.5">
+                      -₹{ledgerData.summary.total_cash_collected.toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className={`p-3.5 rounded-xl border ${
+                    ledgerData.summary.net_settlement_balance >= 0
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-900 dark:text-emerald-200'
+                      : 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50 text-red-900 dark:text-red-200'
+                  }`}>
+                    <span className="text-[11px] font-semibold">
+                      {ledgerData.summary.net_settlement_balance >= 0 ? 'Net Payable to Driver' : 'Excess Cash with Driver'}
+                    </span>
+                    <p className="text-lg font-bold mt-0.5">
+                      {ledgerData.summary.net_settlement_balance >= 0 ? '+' : ''}₹{ledgerData.summary.net_settlement_balance.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Date Filter & Add Adjustment Button */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={ledgerStartDate}
+                    onChange={(e) => setLedgerStartDate(e.target.value)}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                  />
+                  <span className="text-xs text-slate-400">to</span>
+                  <input
+                    type="date"
+                    value={ledgerEndDate}
+                    onChange={(e) => setLedgerEndDate(e.target.value)}
+                    className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                  />
+                  <button
+                    onClick={() => fetchLedger(selectedLedgerDriver.rider_id)}
+                    className="rounded-xl bg-slate-800 text-white dark:bg-slate-700 px-3 py-1.5 text-xs font-semibold hover:bg-slate-900 transition"
+                  >
+                    Filter
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowAdjForm(!showAdjForm)}
+                  className="rounded-xl bg-emerald-600 text-white px-3.5 py-1.5 text-xs font-semibold hover:bg-emerald-700 transition flex items-center gap-1.5"
+                >
+                  <Plus size={14} />
+                  {showAdjForm ? 'Close Entry Form' : 'Record Deposit / Payout'}
+                </button>
+              </div>
+
+              {/* Add Adjustment Entry Form */}
+              {showAdjForm && (
+                <form onSubmit={handleAddAdjustment} className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    Record Settlement / Deposit Transaction
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Entry Type</label>
+                      <select
+                        value={adjForm.entry_type}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          const effect = (val === 'CASH_DEPOSIT' || val === 'SETTLEMENT_PAYOUT') ? 'CREDIT' : 'DEBIT'
+                          setAdjForm({ ...adjForm, entry_type: val, balance_effect: effect })
+                        }}
+                        className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                      >
+                        <option value="CASH_DEPOSIT">Cash Deposit (Driver handed over cash)</option>
+                        <option value="SETTLEMENT_PAYOUT">Settlement Payout (Admin paid driver salary)</option>
+                        <option value="BONUS">Bonus / Incentive (Credit)</option>
+                        <option value="PENALTY">Penalty / Deduction (Debit)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Amount (₹)</label>
+                      <input
+                        type="number"
+                        required
+                        placeholder="e.g. 500"
+                        value={adjForm.amount}
+                        onChange={(e) => setAdjForm({ ...adjForm, amount: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Notes / Reference</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. UPI transfer / Cash in office"
+                        value={adjForm.notes}
+                        onChange={(e) => setAdjForm({ ...adjForm, notes: e.target.value })}
+                        className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition"
+                    >
+                      Save Transaction
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Transactions List */}
+              {ledgerLoading ? (
+                <div className="flex justify-center py-10">
+                  <div className="h-7 w-7 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+                </div>
+              ) : !ledgerData?.entries || ledgerData.entries.length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-10">No ledger entries found for this driver.</p>
+              ) : (
+                <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      <tr>
+                        <th className="px-3.5 py-2.5">Date & Time</th>
+                        <th className="px-3.5 py-2.5">Type</th>
+                        <th className="px-3.5 py-2.5">Order</th>
+                        <th className="px-3.5 py-2.5">Amount</th>
+                        <th className="px-3.5 py-2.5">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {ledgerData.entries.map((entry) => {
+                        const isCredit = entry.balance_effect === 'CREDIT'
+                        const dateStr = entry.created_at ? new Date(entry.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '-'
+                        return (
+                          <tr key={entry.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                            <td className="px-3.5 py-2.5 font-mono text-slate-500">{dateStr}</td>
+                            <td className="px-3.5 py-2.5">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                entry.entry_type === 'BASE_SALARY'
+                                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400'
+                                  : entry.entry_type === 'OVERTIME_PAY'
+                                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                                  : entry.entry_type === 'CASH_COLLECTED'
+                                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400'
+                                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                              }`}>
+                                {entry.entry_type}
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400">
+                              {entry.order_id ? `#${entry.order_id}` : '-'}
+                            </td>
+                            <td className={`px-3.5 py-2.5 font-bold ${
+                              isCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                            }`}>
+                              {isCredit ? '+₹' : '-₹'}{Number(entry.amount).toLocaleString()}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-slate-600 dark:text-slate-400 text-[11px]">
+                              {entry.notes || '-'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                onClick={() => setLedgerModalOpen(false)}
                 className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
                 Close

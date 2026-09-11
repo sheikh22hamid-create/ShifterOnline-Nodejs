@@ -428,16 +428,52 @@ async function updateStatus(orderId, riderId, status) {
     const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
     const advancePaymentCollected = Number(advanceRow?.advance_payment) || 0;
 
-    // The customer app's own order-create call (select_vehicle.dart) stamps
-    // trans_id as "cash_<timestamp>" (legacy pickupdrop.dart used
-    // "cash_payment_<timestamp>") — never the literal "cash_payment" this
-    // check used to require exactly, so it never matched a single real cash
-    // order and commission was never actually clawed back from the driver's
-    // wallet for any of them. A driver who collects the full fare in cash
-    // must still have admin's commission debited here; a wallet/online
-    // payment already routes through the platform, so the driver only ever
-    // receives their net driverEarning directly and needs no such debit.
-    if ((order.trans_id || "").toLowerCase().startsWith("cash") && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || advancePaymentCollected > 0)) {
+    const rider = await prisma.tbl_rider.findUnique({
+      where: { id: riderId },
+      select: { id: true, monthly_plan: true },
+    });
+    const isMonthlyDriver = Number(rider?.monthly_plan) === 1;
+
+    const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
+    const cashCollected = isCashOrder ? Math.max(0, finalTotal - advancePaymentCollected) : 0;
+
+    if (isMonthlyDriver) {
+      if (cashCollected > 0) {
+        const existingLedger = await prisma.monthly_driver_ledger.findFirst({
+          where: {
+            rider_id: riderId,
+            order_id: orderId,
+            entry_type: "CASH_COLLECTED",
+          },
+        });
+        if (!existingLedger) {
+          const todayDate = new Date(new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0]);
+          await prisma.monthly_driver_ledger.create({
+            data: {
+              rider_id: riderId,
+              order_id: orderId,
+              duty_date: todayDate,
+              entry_type: "CASH_COLLECTED",
+              amount: cashCollected,
+              balance_effect: "DEBIT",
+              notes: `Cash collected for order #${orderId} (Fare: ₹${finalTotal}${advancePaymentCollected > 0 ? `, Advance paid online: ₹${advancePaymentCollected}` : ""})`,
+              created_at: istNow(),
+            },
+          });
+
+          await prisma.driver_duty_log.updateMany({
+            where: {
+              rider_id: riderId,
+              duty_date: todayDate,
+              status: "in_progress",
+            },
+            data: {
+              cash_collected: { increment: cashCollected },
+            },
+          });
+        }
+      }
+    } else if (isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || advancePaymentCollected > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money. Computed off finalTotal (includes waiting

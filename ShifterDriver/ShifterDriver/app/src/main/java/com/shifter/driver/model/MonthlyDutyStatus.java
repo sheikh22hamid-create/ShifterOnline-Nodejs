@@ -65,12 +65,25 @@ public class MonthlyDutyStatus implements Serializable {
         return duty != null && duty.isPunchedIn();
     }
 
+    public double getTodayOvertimePay() {
+        return duty != null ? duty.getOvertimePay() : 0.0;
+    }
+
+    public int getTodayOvertimeMinutes() {
+        return duty != null ? duty.getOvertimeMinutes() : 0;
+    }
+
+    public double getTodayCashCollected() {
+        return duty != null ? duty.getCashCollected() : 0.0;
+    }
+
     public static class Contract implements Serializable {
         private int id;
         private String shiftStartTime;
         private String shiftEndTime;
         private double targetShiftHours;
         private double monthlyBaseSalary;
+        private double overtimeHourlyRate;
         private int allowedBreakMinutes;
         private String status;
 
@@ -84,6 +97,8 @@ public class MonthlyDutyStatus implements Serializable {
         public void setTargetShiftHours(double targetShiftHours) { this.targetShiftHours = targetShiftHours; }
         public double getMonthlyBaseSalary() { return monthlyBaseSalary; }
         public void setMonthlyBaseSalary(double monthlyBaseSalary) { this.monthlyBaseSalary = monthlyBaseSalary; }
+        public double getOvertimeHourlyRate() { return overtimeHourlyRate; }
+        public void setOvertimeHourlyRate(double overtimeHourlyRate) { this.overtimeHourlyRate = overtimeHourlyRate; }
         public int getAllowedBreakMinutes() { return allowedBreakMinutes; }
         public void setAllowedBreakMinutes(int allowedBreakMinutes) { this.allowedBreakMinutes = allowedBreakMinutes; }
         public String getStatus() { return status; }
@@ -118,6 +133,9 @@ public class MonthlyDutyStatus implements Serializable {
         private String punchOutAt;
         private int inZoneMinutes;
         private int outZoneMinutes;
+        private int overtimeMinutes;
+        private double overtimePay;
+        private double cashCollected;
         private int totalOnlineMinutes;
         private int targetMinutes;
         private double dailySalary;
@@ -133,6 +151,12 @@ public class MonthlyDutyStatus implements Serializable {
         public void setInZoneMinutes(int inZoneMinutes) { this.inZoneMinutes = inZoneMinutes; }
         public int getOutZoneMinutes() { return outZoneMinutes; }
         public void setOutZoneMinutes(int outZoneMinutes) { this.outZoneMinutes = outZoneMinutes; }
+        public int getOvertimeMinutes() { return overtimeMinutes; }
+        public void setOvertimeMinutes(int overtimeMinutes) { this.overtimeMinutes = overtimeMinutes; }
+        public double getOvertimePay() { return overtimePay; }
+        public void setOvertimePay(double overtimePay) { this.overtimePay = overtimePay; }
+        public double getCashCollected() { return cashCollected; }
+        public void setCashCollected(double cashCollected) { this.cashCollected = cashCollected; }
         public int getTotalOnlineMinutes() { return totalOnlineMinutes; }
         public void setTotalOnlineMinutes(int totalOnlineMinutes) { this.totalOnlineMinutes = totalOnlineMinutes; }
         public int getTargetMinutes() { return targetMinutes; }
