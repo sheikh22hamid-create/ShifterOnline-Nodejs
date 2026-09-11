@@ -532,7 +532,6 @@ public class OrderDetailsActivity extends AppCompatActivity
 
         String dropType = orderItem.getDropType();
         if (TextUtils.isEmpty(dropType)) dropType = "Drop";
-        binding.txtFromtype.setText(dropType);
 
         String pAddress = orderItem.getCustomerPaddress();
         if (pAddress != null) {
@@ -546,11 +545,12 @@ public class OrderDetailsActivity extends AppCompatActivity
         }
         StringBuilder routeText = new StringBuilder();
         for (com.shifter.driver.model.OrderStop stop : orderItem.getStops()) {
-            if (routeText.length() > 0) routeText.append("\\n\\n");
+            if (routeText.length() > 0) routeText.append("\n\n");
             routeText.append("Stop ").append(stop.getSequence()).append(": ").append(stop.displayAddress());
         }
-        if (routeText.length() > 0) routeText.append("\\n\\n");
+        if (routeText.length() > 0) routeText.append("\n\n");
         routeText.append("Final Drop: ").append(dAddress == null ? "Address unavailable" : dAddress);
+        binding.txtFromtype.setText(orderItem.getStops().isEmpty() ? dropType : "Stops & Final Drop");
         binding.txtFromaddress.setText(routeText.toString());
 
         if (orderItem.getOrderFlowId().equals("1") || orderItem.getOrderFlowId().equals("2")) {
