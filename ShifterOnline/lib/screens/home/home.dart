@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:goParcel/bottombar.dart';
 import 'package:goParcel/screens/authscreen/signin.dart';
 import 'package:goParcel/screens/home/buyanythingselect.dart';
@@ -454,12 +455,92 @@ class _HomeState extends State<Home> {
       ApiWrapper.showToastMessage('Maximum $_maxExtraStops extra stops allowed.');
       return;
     }
+    final currentDrop = _confirmedDropData;
     await Get.to(() => const Traking(type: "Drop", addressAdd: "0"));
     final selected = getdata.read("DropeAddress");
+    if (currentDrop != null) {
+      await getdata.write("DropeAddress", [currentDrop]);
+    }
     if (!mounted || selected is! List || selected.isEmpty || selected.first is! Map) return;
     final stop = Map<String, dynamic>.from(selected.first as Map);
+
+    if (_isBeyondFinalDrop(stop)) {
+      await _showStopBeyondDropDialog();
+      return;
+    }
+
     setState(() => _extraStops.add(stop));
-    if (_confirmedDropData != null) await getdata.write("DropeAddress", [_confirmedDropData]);
+  }
+
+  bool _isBeyondFinalDrop(Map<String, dynamic> stop) {
+    final pickup = _confirmedPickupData;
+    final drop = _confirmedDropData;
+    if (pickup == null || drop == null) return false;
+
+    final pickupLat = double.tryParse(pickup['lat_map']?.toString() ?? '');
+    final pickupLng = double.tryParse(pickup['long_map']?.toString() ?? '');
+    final dropLat = double.tryParse(drop['lat_map']?.toString() ?? '');
+    final dropLng = double.tryParse(drop['long_map']?.toString() ?? '');
+    final stopLat = double.tryParse(stop['lat_map']?.toString() ?? '');
+    final stopLng = double.tryParse(stop['long_map']?.toString() ?? '');
+
+    if ([pickupLat, pickupLng, dropLat, dropLng, stopLat, stopLng]
+        .any((value) => value == null)) {
+      return false;
+    }
+
+    final pickupToDrop = _distanceInKm(
+      pickupLat!,
+      pickupLng!,
+      dropLat!,
+      dropLng!,
+    );
+    final pickupToStop = _distanceInKm(
+      pickupLat,
+      pickupLng,
+      stopLat!,
+      stopLng!,
+    );
+
+    // A small GPS/map tolerance prevents a stop very close to the drop from
+    // being rejected because of coordinate rounding.
+    return pickupToStop > pickupToDrop + 0.1;
+  }
+
+  double _distanceInKm(
+    double latitude1,
+    double longitude1,
+    double latitude2,
+    double longitude2,
+  ) {
+    const earthRadiusKm = 6371.0;
+    final dLat = (latitude2 - latitude1) * math.pi / 180;
+    final dLng = (longitude2 - longitude1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(latitude1 * math.pi / 180) *
+            math.cos(latitude2 * math.pi / 180) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  Future<void> _showStopBeyondDropDialog() async {
+    await Get.dialog<void>(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Stop location not allowed'),
+        content: const Text(
+          'You cannot add a stop beyond the final drop location. Please choose a location before the final drop.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: Get.back,
+            child: const Text('Okay'),
+          ),
+        ],
+      ),
+      barrierDismissible: false,
+    );
   }
 
   Future<void> _loadVehicleAvailability(Map<dynamic, dynamic> pickup) async {
