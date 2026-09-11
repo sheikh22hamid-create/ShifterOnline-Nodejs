@@ -983,9 +983,20 @@ public class OrderDetailsActivity extends AppCompatActivity
 
             RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
             Call<JsonObject> call = APIClient.getInterface().checkArrivedOtp(bodyRequest);
+            android.os.Handler otpTimeoutHandler = new android.os.Handler(getMainLooper());
+            Runnable otpTimeout = () -> {
+                if (!call.isCanceled()) {
+                    call.cancel();
+                    custPrograssbar.closePrograssBar();
+                    Toast.makeText(OrderDetailsActivity.this,
+                            "OTP verification timed out. Please try again.", Toast.LENGTH_SHORT).show();
+                }
+            };
+            otpTimeoutHandler.postDelayed(otpTimeout, 15_000L);
             call.enqueue(new retrofit2.Callback<JsonObject>() {
                 @Override
                 public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                    otpTimeoutHandler.removeCallbacks(otpTimeout);
                     custPrograssbar.closePrograssBar();
                     if (response.isSuccessful() && response.body() != null) {
                         try {
@@ -1018,8 +1029,11 @@ public class OrderDetailsActivity extends AppCompatActivity
 
                 @Override
                 public void onFailure(Call<JsonObject> call, Throwable t) {
+                    otpTimeoutHandler.removeCallbacks(otpTimeout);
                     custPrograssbar.closePrograssBar();
-                    Toast.makeText(OrderDetailsActivity.this, "Network error", Toast.LENGTH_SHORT).show();
+                    if (!call.isCanceled()) {
+                        Toast.makeText(OrderDetailsActivity.this, "Network error", Toast.LENGTH_SHORT).show();
+                    }
                 }
             });
         });
