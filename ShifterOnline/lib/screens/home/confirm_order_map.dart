@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -104,16 +106,70 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   }
 
   void _initMap() async {
-    _addMarkers();
+    await _addMarkers();
     await _getDirections();
   }
 
-  void _addMarkers() {
+  Future<BitmapDescriptor> _labeledMarkerIcon(
+      String label, Color markerColor) async {
+    const width = 300.0;
+    const height = 132.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final labelPaint = Paint()..color = Colors.white;
+    final borderPaint = Paint()
+      ..color = markerColor.withOpacity(.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    final labelRect = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(10, 8, width - 20, 58),
+      const Radius.circular(29),
+    );
+    canvas.drawRRect(labelRect, labelPaint);
+    canvas.drawRRect(labelRect, borderPaint);
+
+    final paragraphBuilder = ui.ParagraphBuilder(
+      ui.ParagraphStyle(
+        textAlign: TextAlign.center,
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+      ),
+    )
+      ..pushStyle(ui.TextStyle(color: const Color(0xff202124)))
+      ..addText(label);
+    final paragraph = paragraphBuilder.build()
+      ..layout(const ui.ParagraphConstraints(width: width - 32));
+    canvas.drawParagraph(paragraph, Offset(16, 22));
+
+    final pinPath = Path()
+      ..moveTo(width / 2 - 24, 77)
+      ..quadraticBezierTo(width / 2, 68, width / 2 + 24, 77)
+      ..lineTo(width / 2, height - 8)
+      ..close();
+    canvas.drawPath(pinPath, Paint()..color = markerColor);
+    canvas.drawCircle(
+      Offset(width / 2, 82),
+      9,
+      Paint()..color = Colors.white,
+    );
+
+    final image = await recorder.endRecording().toImage(
+          width.toInt(),
+          height.toInt(),
+        );
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(
+      Uint8List.fromList(byteData!.buffer.asUint8List()),
+    );
+  }
+
+  Future<void> _addMarkers() async {
     markers.add(
       Marker(
         markerId: const MarkerId('pickup'),
         position: LatLng(widget.startLat, widget.startLng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon: await _labeledMarkerIcon('Pickup', const Color(0xff35a853)),
+        anchor: const Offset(.5, 1),
         infoWindow: const InfoWindow(title: 'Pickup'),
       ),
     );
@@ -127,11 +183,13 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
         Marker(
           markerId: MarkerId('stop_${index + 1}'),
           position: LatLng(lat, lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
+          icon: await _labeledMarkerIcon(
+            'Stop ${index + 1}',
             index == 0
-                ? BitmapDescriptor.hueOrange
-                : BitmapDescriptor.hueAzure,
+                ? const Color(0xfff27b38)
+                : const Color(0xff3976d3),
           ),
+          anchor: const Offset(.5, 1),
           infoWindow: InfoWindow(title: 'Stop ${index + 1}'),
         ),
       );
@@ -141,7 +199,8 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
       Marker(
         markerId: const MarkerId('drop'),
         position: LatLng(widget.endLat, widget.endLng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        icon: await _labeledMarkerIcon('Drop', const Color(0xffe55353)),
+        anchor: const Offset(.5, 1),
         infoWindow: const InfoWindow(title: 'Drop'),
       ),
     );
