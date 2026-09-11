@@ -213,7 +213,9 @@ public class OrderOverlayService extends Service {
         // distance to pickup, and the pickup->drop trip distance, shown on
         // the location line (matches OrderDialogHelper's foreground popup).
         String pickupAddress = intent.getStringExtra("pickup_address");
-        String deliveryAddress = formatStops(intent.getStringExtra("delivery_address"), intent.getStringExtra("stops"));
+        String finalDropAddress = intent.getStringExtra("delivery_address");
+        String rawStops = intent.getStringExtra("stops");
+        String deliveryAddress = formatStops(finalDropAddress, rawStops);
         String tripDistanceKm = intent.getStringExtra("distance");
         Double pickupLat = parseNullableDouble(intent.getStringExtra("pickup_latitude"));
         Double pickupLng = parseNullableDouble(intent.getStringExtra("pickup_longitude"));
@@ -223,9 +225,11 @@ public class OrderOverlayService extends Service {
         txtPickup.setText(pickupAddress != null
                 ? com.shifter.driver.utility.OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
                 : "Unknown Pickup Location");
-        txtDrop.setText(deliveryAddress != null
-                ? com.shifter.driver.utility.OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
-                : "Unknown Drop Location");
+        txtDrop.setText(hasStops(rawStops)
+                ? appendTripDistance(deliveryAddress, tripDistanceKm)
+                : (finalDropAddress != null
+                    ? com.shifter.driver.utility.OrderVoiceAnnouncer.dropLabel(finalDropAddress, tripDistanceKm)
+                    : "Unknown Drop Location"));
         txtName.setText(intent.getStringExtra("customer_name") != null ? intent.getStringExtra("customer_name") : "Customer");
         txtDist.setText(intent.getStringExtra("distance") != null ? intent.getStringExtra("distance") : "0 km");
         txtDetails.setText(intent.getStringExtra("order_details") != null ? intent.getStringExtra("order_details") : "No additional details");
@@ -329,6 +333,15 @@ public class OrderOverlayService extends Service {
             result.append("Final Drop: ").append(finalDrop == null ? "Address unavailable" : finalDrop);
             return result.toString();
         } catch (Exception ignored) { return finalDrop; }
+    }
+
+    private boolean hasStops(String rawStops) {
+        return rawStops != null && !rawStops.trim().isEmpty() && !"[]".equals(rawStops.trim());
+    }
+
+    private String appendTripDistance(String routeText, String tripDistanceKm) {
+        if (tripDistanceKm == null || tripDistanceKm.trim().isEmpty()) return routeText;
+        return routeText + "\nTotal trip: " + tripDistanceKm + " km";
     }
 
     private void playVoiceAnnouncement(Intent intent) {

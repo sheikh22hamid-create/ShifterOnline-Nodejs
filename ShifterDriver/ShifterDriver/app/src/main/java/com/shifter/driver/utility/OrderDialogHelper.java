@@ -115,7 +115,8 @@ public class OrderDialogHelper {
         // their own.
         String pickupAddress = getMapValue(orderData, "pickup_address", null);
         String deliveryAddress = getMapValue(orderData, "delivery_address", null);
-        deliveryAddress = formatStops(deliveryAddress, getMapValue(orderData, "stops", null));
+        String rawStops = getMapValue(orderData, "stops", null);
+        String routeText = formatStops(deliveryAddress, rawStops);
         String tripDistanceKm = getMapValue(orderData, "distance", null);
         Double pickupLat = parseNullableDouble(getMapValue(orderData, "pickup_latitude", null));
         Double pickupLng = parseNullableDouble(getMapValue(orderData, "pickup_longitude", null));
@@ -127,9 +128,11 @@ public class OrderDialogHelper {
             txtPickup.setText(pickupAddress != null
                     ? OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
                     : "Unknown Pickup Location");
-            txtDrop.setText(deliveryAddress != null
-                    ? OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
-                    : "Unknown Drop Location");
+            txtDrop.setText(hasStops(rawStops)
+                    ? appendTripDistance(routeText, tripDistanceKm)
+                    : (deliveryAddress != null
+                        ? OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
+                        : "Unknown Drop Location"));
             txtName.setText(getMapValue(orderData, "customer_name", "Customer"));
             txtDist.setText(getMapValue(orderData, "distance", "0 km"));
             txtDetails.setText(getMapValue(orderData, "order_details", "No additional details"));
@@ -286,6 +289,15 @@ public class OrderDialogHelper {
         } catch (Exception ignored) {
             return finalDrop;
         }
+    }
+
+    private static boolean hasStops(String rawStops) {
+        return rawStops != null && !rawStops.trim().isEmpty() && !"[]".equals(rawStops.trim());
+    }
+
+    private static String appendTripDistance(String routeText, String tripDistanceKm) {
+        if (tripDistanceKm == null || tripDistanceKm.trim().isEmpty()) return routeText;
+        return routeText + "\nTotal trip: " + tripDistanceKm + " km";
     }
 
     /**
