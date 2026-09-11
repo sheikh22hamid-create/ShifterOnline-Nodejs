@@ -47,6 +47,7 @@ class ConfirmOrderMap extends StatefulWidget {
 
 class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   final Completer<GoogleMapController> _controller = Completer();
+  GoogleMapController? _mapController;
   PolylinePoints polylinePoints = PolylinePoints();
   Set<Marker> markers = {};
   Map<PolylineId, Polyline> polylines = {};
@@ -146,14 +147,18 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     );
   }
 
-  List<LatLng> get _routeLocations => [
-        LatLng(widget.startLat, widget.startLng),
-        ...widget.stops.map((stop) => LatLng(
-              double.tryParse(stop['lat_map']?.toString() ?? '') ?? 0,
-              double.tryParse(stop['long_map']?.toString() ?? '') ?? 0,
-            )),
-        LatLng(widget.endLat, widget.endLng),
-      ];
+  List<LatLng> get _routeLocations {
+    final locations = <LatLng>[
+      LatLng(widget.startLat, widget.startLng),
+    ];
+    for (final stop in widget.stops) {
+      final lat = double.tryParse(stop['lat_map']?.toString() ?? '');
+      final lng = double.tryParse(stop['long_map']?.toString() ?? '');
+      if (lat != null && lng != null) locations.add(LatLng(lat, lng));
+    }
+    locations.add(LatLng(widget.endLat, widget.endLng));
+    return locations;
+  }
 
   Future<void> _getDirections() async {
     try {
@@ -239,10 +244,11 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
       northeast: LatLng(neLat, neLng),
     );
 
-    if (_controller.isCompleted) {
+    final currentController = _mapController;
+    if (currentController != null) {
       try {
-        final ctrl = await _controller.future;
-        await ctrl.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
+        await currentController.animateCamera(
+            CameraUpdate.newLatLngBounds(bounds, 145));
       } catch (e) {
         debugPrint("SetCameraBounds error: $e");
       }
@@ -276,7 +282,6 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             child: Stack(
               children: [
                 GoogleMap(
-                  key: ValueKey('map_${polylines.length}_${markers.length}'),
                   myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
                   mapType: MapType.normal,
@@ -287,6 +292,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                     zoom: 14.0,
                   ),
                   onMapCreated: (GoogleMapController controller) {
+                    _mapController = controller;
                     if (!_controller.isCompleted) {
                       _controller.complete(controller);
                     }
@@ -294,7 +300,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                     // created its controller. Fit the whole ordered route
                     // again once the map is ready so pickup, every stop and
                     // the final drop are visible together.
-                    Future<void>.delayed(const Duration(milliseconds: 250), () {
+                    Future<void>.delayed(const Duration(milliseconds: 500), () {
                       if (mounted) _setCameraBounds(_routeLocations);
                     });
                     if (mounted) setState(() {});
