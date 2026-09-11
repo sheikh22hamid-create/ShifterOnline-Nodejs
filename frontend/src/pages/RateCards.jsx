@@ -289,7 +289,7 @@ export default function RateCards() {
                   'Vehicle Type',
                   'Model / Title',
                   'Min Fare',
-                  'Per KM',
+                  'Distance Pricing',
                   'Night Surge',
                   'Driver Share',
                   'Wait Policy',
@@ -375,9 +375,21 @@ export default function RateCards() {
                         {formatCurrency(rc.min_charge)}
                       </td>
 
-                      {/* Per KM */}
-                      <td className="font-mono-data whitespace-nowrap px-4 py-3" style={{ color: 'var(--ink-muted)' }}>
-                        {formatCurrency(rc.per_km_charge)} / km
+                      {/* Distance Pricing Column */}
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => setSlabModalOpen(true)}
+                          className="group inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[11.5px] font-semibold transition-all hover:border-brand hover:bg-brand/10"
+                          style={{ borderColor: 'rgba(234, 88, 12, 0.3)', background: 'rgba(234, 88, 12, 0.08)', color: 'var(--brand)' }}
+                          title="Click to view and edit distance slab brackets (0-1km, 1-5km, 5-10km...)"
+                        >
+                          <Sliders size={11} />
+                          <span>Distance Slabs (0–60km)</span>
+                        </button>
+                        <div className="mt-0.5 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                          10 bracketed tiers
+                        </div>
                       </td>
 
                       {/* Night Surge */}
