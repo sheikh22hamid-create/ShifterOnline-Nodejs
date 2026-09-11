@@ -166,17 +166,33 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   Future<void> _loadRoute() async {
     final points = <LatLng>[];
     try {
+      final waypoints = widget.stops
+          .map((stop) => '${stop['lat_map']},${stop['long_map']}')
+          .join('|');
       final response = await http.get(Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json?origin=${_pickup.latitude},${_pickup.longitude}&destination=${_drop.latitude},${_drop.longitude}&mode=driving&key=${Config.googleApikey}',
+        'https://maps.googleapis.com/maps/api/directions/json?'
+        'origin=${_pickup.latitude},${_pickup.longitude}&'
+        'destination=${_drop.latitude},${_drop.longitude}&'
+        '${waypoints.isEmpty ? '' : 'waypoints=${Uri.encodeComponent(waypoints)}&'}'
+        'mode=driving&key=${Config.googleApikey}',
       )).timeout(const Duration(seconds: 12));
       final data = jsonDecode(response.body);
       final routes = data is Map ? data['routes'] : null;
       if (data is Map && data['status'] == 'OK' && routes is List && routes.isNotEmpty) {
-        final leg = routes.first['legs']?[0];
-        final meters = _number(leg?['distance']?['value']);
-        final seconds = _number(leg?['duration']?['value']);
-        if (meters > 0) _distanceKm = meters / 1000;
-        if (seconds > 0) _durationMinutes = (seconds / 60).ceil();
+        final legs = routes.first['legs'];
+        if (legs is List) {
+          var totalMeters = 0.0;
+          var totalSeconds = 0.0;
+          for (final leg in legs) {
+            if (leg is! Map) continue;
+            totalMeters += _number(leg['distance']?['value']);
+            totalSeconds += _number(leg['duration']?['value']);
+          }
+          if (totalMeters > 0) _distanceKm = totalMeters / 1000;
+          if (totalSeconds > 0) {
+            _durationMinutes = (totalSeconds / 60).ceil();
+          }
+        }
         final encoded = routes.first['overview_polyline']?['points'];
         if (encoded is String && encoded.isNotEmpty) {
           points.addAll(_polylinePoints.decodePolyline(encoded).map((p) => LatLng(p.latitude, p.longitude)));
@@ -184,6 +200,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       }
     } catch (_) {}
     _distanceKm ??= _fallbackDistanceKm();
+    _durationMinutes ??= math.max(1, (_distanceKm! * 2).ceil());
     if (!mounted) return;
     setState(() { _route = points; _loadingRoute = false; });
     if (points.length > 1) _fitRoute(points);
@@ -191,10 +208,24 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   double _fallbackDistanceKm() {
     const p = math.pi / 180;
-    final a = 0.5 - math.cos((_drop.latitude - _pickup.latitude) * p) / 2 +
-        math.cos(_pickup.latitude * p) * math.cos(_drop.latitude * p) *
-            (1 - math.cos((_drop.longitude - _pickup.longitude) * p)) / 2;
-    return math.max(1, 12742 * math.asin(math.sqrt(a)) * 1.25);
+    final locations = <LatLng>[
+      _pickup,
+      ...widget.stops.map((stop) => LatLng(
+            _number(stop['lat_map']),
+            _number(stop['long_map']),
+          )),
+      _drop,
+    ];
+    var total = 0.0;
+    for (var index = 0; index < locations.length - 1; index++) {
+      final from = locations[index];
+      final to = locations[index + 1];
+      final a = 0.5 - math.cos((to.latitude - from.latitude) * p) / 2 +
+          math.cos(from.latitude * p) * math.cos(to.latitude * p) *
+              (1 - math.cos((to.longitude - from.longitude) * p)) / 2;
+      total += 12742 * math.asin(math.sqrt(a));
+    }
+    return math.max(1, total * 1.25);
   }
 
   void _fitRoute(List<LatLng> points) {
