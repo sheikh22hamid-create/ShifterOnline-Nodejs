@@ -74,4 +74,10 @@ function error(...args) {
   writeToFile(line);
 }
 
-module.exports = { info, warn, error };
+function debug(...args) {
+  const line = `[${timestamp()}] [DEBUG] ${formatArgs(args)}`;
+  console.debug(`[${timestamp()}] [DEBUG]`, ...args);
+  writeToFile(line);
+}
+
+module.exports = { info, warn, error, debug };

@@ -1,0 +1,260 @@
+SHIFTER ONLINE
+WhatsApp Bot – Company & Service Information
+For Customer & Driver Support / Information
+SECURITY NOTE: This document contains only business/service information. Do NOT share API keys, passwords, database credentials, payment-gateway secrets, webhook secrets, Firebase private keys, server credentials, OTP secrets, admin passwords, encryption keys, .env files or private Git credentials.
+1. Company / Brand Information
+Legal Company Name
+Movigo Logistic Aggregator Private Limited
+Brand / Application
+Shifter Online
+Business Type
+Goods transportation / logistics aggregation
+Primary Service
+Connecting customers with suitable drivers for transportation of goods
+Service Scope
+Goods transport only; not passenger transportation
+Vehicle Categories
+Bike, E-loader, 3-wheeler and 4-wheeler
+Customer Care
+9109114515
+Support Email
+support@shifteronline.com
+Website
+www.shifteronline.com
+2. What Shifter Online Does
+Shifter Online is a logistics aggregation platform for goods transportation.
+Customers can enter pickup and drop locations, select an available vehicle/service option and book a goods-transport service.
+The system connects bookings with eligible drivers.
+Fare may depend on distance, waiting time, stops, location changes and other configured charges.
+The WhatsApp bot should provide simple information and guide customers/drivers to the correct support option.
+3. Customer WhatsApp Bot – Main Support Topics
+How to book a delivery / goods transport.
+Fare calculation and understanding an estimated fare.
+Vehicle types and basic vehicle information.
+Pickup/drop location guidance.
+Booking status and booking-related help.
+No-driver-available issues.
+Driver cancellation/rejection or driver not moving toward pickup.
+Waiting time, extra stops, loading/unloading, toll and parking questions.
+Payment, advance payment and refund/cancellation guidance.
+Customer Care contact and escalation.
+4. Customer Bot Menu
+Book a Delivery
+Calculate Fare
+My Booking / Booking Status
+Cancellation / Refund Help
+Payment Help
+Driver / Pickup Issue
+Fare & Charges
+Vehicle Information
+Customer Support
+5. Driver WhatsApp Bot – Main Support Topics
+New booking/request help.
+Booking request timeout or request not responding.
+Why a booking was or was not received.
+Online/offline and service-area guidance.
+Pickup, drop and trip-status guidance.
+Start Trip, Pickup Complete, stops and Drop guidance.
+Waiting time and fare-related general information.
+Advance/payment-related general guidance.
+Cancellation, rejection and penalty-related questions.
+Profile/documents support.
+Premium plan/referral-points questions, where applicable.
+Driver Support escalation.
+6. Driver Bot Menu
+New Booking Help
+Booking Request / Timeout
+Trip & Pickup Help
+Waiting / Stop Help
+Payment / Advance Help
+Cancellation / Penalty Help
+Profile / Documents
+Premium Plan / Referral Points
+Driver Support
+7. Booking Functionality
+Online booking functionality is already part of the Shifter Online system.
+The WhatsApp bot may guide the customer into the existing booking flow or use an approved booking API/integration.
+The bot must not confirm a booking unless the booking system returns a successful confirmation.
+Booking should follow the same approved vehicle availability and business rules as the main system.
+8. Fare Calculation Functionality
+Fare calculation is already available in the Shifter Online system.
+The bot may provide an estimated/live fare when connected to the approved fare-calculation service.
+Possible components include base fare, distance charge, waiting charge, extra stop charge, handling/loading charge, helper charge, toll, parking and applicable discounts/promotions.
+The bot must clearly distinguish an estimate from a final fare when applicable.
+The bot must never invent a fare; if live calculation is unavailable, direct the user to the app/booking flow or support.
+9. Basic Customer FAQ
+Customer Question
+Bot Guidance
+What is Shifter Online?
+A goods transportation and logistics aggregation service that connects customers with suitable drivers.
+Does Shifter Online provide passenger rides?
+No. The service is focused on goods transportation.
+How can I book?
+Enter pickup and drop locations, select the suitable vehicle/service option and follow the booking instructions.
+How is my fare calculated?
+The applicable fare can depend on base fare, distance and configured charges such as waiting, stops, toll/parking and applicable discounts.
+I have a booking problem.
+Use the support flow and provide the required booking/reference information. If unresolved, contact Customer Care.
+How do I contact Customer Care?
+Call/WhatsApp Customer Care at 9109114515 or use support@shifteronline.com.
+10. Bot Escalation & Privacy Rules
+If the bot cannot confidently answer, it must not guess; offer human support.
+For payment/refund disputes, collect only the minimum required booking/reference information and escalate securely.
+Account-specific information must be shown only after appropriate user verification.
+Never reveal another customer's or driver's personal information.
+Do not expose internal admin settings, server/database information, driver-selection internals or security credentials.
+Safety-related incidents should be escalated to human support promptly.
+11. Information NOT to Share With the Bot Developer in This Document
+Database host/user/password/connection strings
+API keys and secret keys
+Razorpay/Cashfree or other payment secret credentials
+Webhook signing secrets
+Firebase service-account/private keys
+JWT/encryption secrets
+Admin usernames/passwords
+AWS/cloud/server credentials
+OTP-provider credentials
+Private source-code secrets, .env files and Git credentials
+12. Bot Response Style
+Simple, polite and professional language
+Hindi + Hinglish + English support where possible
+Short replies for normal questions
+Buttons/quick replies for common actions
+Ask only the minimum required information
+Always provide Customer Care when escalation is needed
+13. Integration Note
+Static knowledge vs live data: Company/service information can be stored in the bot knowledge base. Live booking status, fare, payment status and account-specific information should come from authenticated backend APIs/integrations, not from static bot text.
+14. Public Contact Information
+Customer Care / WhatsApp: 9109114515
+Email: support@shifteronline.com
+Website: www.shifteronline.com
+Shifter Online | Movigo Logistic Aggregator Private Limited
+Business Information Document – WhatsApp Bot Development
+15. Additional Customer & Driver Questions / Answers from Application Script
+The following Q&A has been added from the supplied Shifter Online Telecalling Employee Product Knowledge Guide and Calling & Conversion Scripts. Where the source itself says a value is approximate, applicable, planned or subject to the latest approved rules, the bot must use the same cautious wording and must not present it as a guaranteed/final value.
+Customer Questions
+Q: Shifter Online kya hai?
+A: Shifter Online ek on-demand logistics marketplace platform hai jo customers ko available delivery drivers se connect karta hai. Service goods transportation ke liye hai, passenger transportation ke liye nahi.
+Q: Shifter Online mein kaun-kaun se vehicles milte hain?
+A: Current vehicle categories Bike, E-Loader, 3 Wheeler aur Tata Ace / 4 Wheeler hain. Future mein demand ke according categories add ho sakti hain.
+Q: Main booking kaise kar sakta hoon?
+A: App mein vehicle select karein, pickup aur drop location enter karein, driver search range select karein, suitable model aur booking type choose karein, fare check karein aur booking confirm karein.
+Q: Kya main driver search range khud select kar sakta hoon?
+A: Haan. Customer driver search ki distance range select kar sakta hai. Range badhane se available driver milne ke chances improve ho sakte hain, lekin driver milne ki guarantee nahi hai.
+Q: Search range badhane par kya extra charge lag sakta hai?
+A: Agar driver door se pickup ke liye aa raha hai to applicable pickup charge badh sakta hai. Current rule ke according first 1 KM free ho sakta hai aur uske baad applicable pickup-distance charge lag sakta hai.
+Q: Model 1 kya hai?
+A: Model 1 Budget Saver hai. Ye lowest-fare, standard-matching option hai aur budget-conscious ya non-urgent delivery ke liye suitable hai.
+Q: Model 2 kya hai?
+A: Model 2 Smart Saver hai. Ismein Model 1 se thoda higher fare ho sakta hai aur better driver availability/matching ke chances mil sakte hain.
+Q: Model 3 kya hai?
+A: Model 3 Balanced Choice hai. Ye fare aur driver availability ke beech balanced option hai.
+Q: Model 4 kya hai?
+A: Model 4 Priority Booking hai. Important ya time-sensitive delivery ke liye higher fare ke saath better matching priority mil sakti hai.
+Q: Model 5 kya hai?
+A: Model 5 Urgent Booking hai. Ismein premium fare aur highest matching priority positioning hai; available drivers se quick matching ke chances comparatively better hote hain. Driver guaranteed nahi hota.
+Q: Sabse sasti booking kaunsi hai?
+A: Model 1 Budget Saver generally sabse economical option hai.
+Q: Urgent delivery ke liye kaunsa model lena chahiye?
+A: Urgent requirement ke liye Model 4 ya Model 5 suitable ho sakta hai. Model 5 mein quick matching ke chances comparatively highest hote hain, lekin guarantee nahi hai.
+Q: Kya Instant Booking available hai?
+A: Haan, current app mein Instant Booking available hai.
+Q: Kya Scheduled Booking available hai?
+A: Haan, customer future date/time select karke Scheduled Booking kar sakta hai.
+Q: Kya Next-Day Booking available hai?
+A: Next-Day Booking development mein hai. Isse active feature ke roop mein promise nahi karna chahiye.
+Q: Kya main goods ki photo aur instructions add kar sakta hoon?
+A: Haan. Customer goods ki image, special instructions aur additional details add kar sakta hai, jisse driver ko goods ki requirement pehle se samajh aati hai.
+Q: Booking confirm hone ke baad kya hota hai?
+A: System driver search karta hai. Driver accept karne ke baad applicable customer advance payment ho sakta hai. Payment ke baad driver pickup ke liye aata hai, pickup par 4-digit OTP verify hota hai, trip complete hone par remaining amount show hota hai aur applicable payment mode se driver ko pay karna hota hai.
+Q: Advance payment kyun liya ja sakta hai?
+A: General customer se driver ke pickup tak aane ke applicable amount aur booking confirmation se related advance liya ja sakta hai.
+Q: Waiting charge kya hai?
+A: Driver pickup par pahunchne aur OTP verification ke baad waiting calculation start ho sakti hai. Free waiting time ke baad applicable per-minute waiting charge lag sakta hai. Exact amount current rate card par depend karta hai.
+Q: Customer booking cancel kare to kya hoga?
+A: Accepted booking cancel karne par applicable cancellation penalty lag sakti hai. Exact refund/penalty case ke applicable rules par depend karegi.
+Q: Premium Customer Plan kya benefit deta hai?
+A: Current plan rules ke according Premium customer ko advance-payment requirement se relief aur applicable general fare ke comparison mein approximately 10% fare benefit mil sakta hai. Exact plan price/benefits latest approved configuration par depend karte hain.
+Q: Customer ke liye joining free hai?
+A: Haan, supplied guide ke according customer ke liye Shifter Online join karna free hai.
+Q: Referral par kitne points mil sakte hain?
+A: Supplied guide ke according eligible referral par 100 points mil sakte hain. Ye points eligible plan purchase mein use kiye ja sakte hain. Current system rules ke according additional uses ho sakte hain; bot ko final/current configuration follow karni chahiye.
+Q: Driver nahi mil raha, kya karun?
+A: Driver availability real-time location aur availability par depend karti hai. Search range increase karne ya higher-priority model select karne se matching chances improve ho sakte hain, lekin guarantee nahi hai.
+Q: Main already Porter ya kisi aur app ka use karta hoon, kya Shifter Online bhi use kar sakta hoon?
+A: Bilkul. Shifter Online ko additional option ke roop mein use kar sakte hain aur requirement ke time fare/options compare karke suitable service choose kar sakte hain.
+Q: Customer support se kaise contact karun?
+A: Customer Care: 9109114515. Support email: support@shifteronline.com.
+Driver Questions
+Q: Shifter Online Partner kya hai?
+A: Shifter Online Partner driver application hai, jiske through driver goods-transport bookings receive kar sakta hai.
+Q: Driver registration ka process kya hai?
+A: App Install → Mobile Number → OTP Verification → Personal Details → Bank Details → Vehicle Details → KYC → Joining/Verification → Account Activation.
+Q: Driver ko kaun se personal details deni hoti hain?
+A: Name, Email ID aur agar available ho to Referral Code.
+Q: Bank details kahan bharni hain?
+A: Driver ko bank details app ke andar khud securely fill karni chahiye. Calling employee ko phone par bank details nahi leni chahiye.
+Q: Bank details mein kya chahiye?
+A: Account Holder Name, Account Number, IFSC Code aur City.
+Q: Driver ke liye kaun se vehicles available hain?
+A: Bike, E-Loader, 3 Wheeler aur Tata Ace / 4 Wheeler.
+Q: KYC ke liye kaun se documents chahiye?
+A: Aadhaar Card, Driving Licence, RC aur PAN Card verification.
+Q: Current joining fee kitni hai?
+A: Supplied guide ke according current joining fee ₹99 hai. Agar officially amount change ho, bot ko latest approved amount hi batana chahiye.
+Q: Driver wallet mein kitna balance maintain karna hota hai?
+A: Supplied guide ke according approximately ₹500 starting wallet balance maintain karna hota hai. Exact current requirement approved configuration se verify honi chahiye.
+Q: Driver wallet ka use kis liye hota hai?
+A: Commission adjustment, advance payment adjustment, cancellation penalty aur other applicable credits/debits ke liye.
+Q: Driver commission kitna hai?
+A: Supplied guide ke according model-wise commission: Model 1 = 5%, Model 2 = 6.5%, Model 3 = 8%, Model 4 = 9.5%, Model 5 = 11%. Current admin-approved rate card ko final source maana jana chahiye.
+Q: Driver Model 1 kya hai?
+A: Model 1 comparatively low fare model hai, lekin more booking opportunities, regular work, less idle time aur better customer reach ke liye useful ho sakta hai.
+Q: Driver Model 2 kya hai?
+A: Model 2 fare aur booking frequency ka smart balance deta hai aur regular trips ke liye useful ho sakta hai.
+Q: Driver Model 3 kya hai?
+A: Model 3 balanced booking flow aur fare provide karta hai, with stable trip opportunities.
+Q: Driver Model 4 kya hai?
+A: Model 4 higher-fare model hai, jisme better per-trip earning potential aur priority booking opportunity ho sakti hai. Lower models ke comparison mein rides kam aa sakti hain.
+Q: Driver Model 5 kya hai?
+A: Model 5 premium-fare model hai, jisme higher per-trip earning potential aur urgent bookings ke liye priority access ho sakta hai. Booking volume comparatively low ho sakta hai.
+Q: Kya driver multiple models ON kar sakta hai?
+A: Haan. Driver ek se zyada models ON rakh sakta hai. Maximum booking opportunities ke liye Model 1–5 sab ON rakh sakta hai.
+Q: Driver online kaise hota hai?
+A: App login ke baad Go Online button use karein. Online hone ke baad booking popup ka wait karein.
+Q: Booking popup mein kya dikhega?
+A: Fare, pickup distance, drop distance aur other booking information.
+Q: Kya driver booking accept ya reject kar sakta hai?
+A: Haan. Popup mein details check karne ke baad accept ya reject karna driver ke decision par hai.
+Q: Driver booking flow kya hai?
+A: Go Online → Booking Request → Fare/Pickup/Drop Check → Accept → Customer Advance Payment → Navigation Open → Pickup Reach → Customer OTP → Loading/Waiting → Trip Start → Drop Reach → Unloading → Complete Delivery → Remaining Amount Collect → Wallet/Commission Adjustment.
+Q: Pickup charge driver ko kaise benefit deta hai?
+A: Driver ki current location se pickup tak ka applicable distance booking calculation mein consider hota hai. Isliye pickup tak ka travel completely free consider nahi kiya jaata.
+Q: Waiting charge driver ko kab mil sakta hai?
+A: Pickup par pahunchne aur customer OTP verify hone ke baad waiting calculation start ho sakti hai. Free waiting time ke baad applicable per-minute charge loading ya unloading mein add ho sakta hai.
+Q: Driver accept karne ke baad cancel kare to kya hoga?
+A: Applicable cancellation penalty lag sakti hai. Current policy ka focus fair cancellation adjustment par hai; exact penalty current approved rules par depend karegi.
+Q: Kya driver ko guaranteed rides milengi?
+A: Nahi. Guaranteed ride, guaranteed income ya guaranteed monthly earning promise nahi karni chahiye. Booking demand, location aur availability par depend karti hai.
+Q: Kya driver doosri app bhi use kar sakta hai?
+A: Haan. Shifter Online ko additional booking source ke roop mein use kar sakta hai.
+Q: Driver Premium Plan kya hai?
+A: Supplied guide mein two driver plan concepts diye gaye hain. Plan 1 mein 0% percentage commission aur fixed per-trip company charge applicable ho sakta hai. Plan 2 mein 0% commission, no per-trip company charge, subscription/recharge-based aur order-quota-based validity concept hai. Final pricing officially confirmed hone ke baad hi batani chahiye.
+Q: Driver referral kaise karta hai?
+A: Driver profile mein Referral option se Refer Driver ya Refer Customer kiya ja sakta hai.
+Q: Favourite Driver feature kya hai?
+A: Agar driver kisi customer ko refer karta hai aur customer qualifying first booking complete karta hai, to referring driver us customer ka Favourite Driver ban sakta hai. Future booking mein driver online ho, vehicle/conditions match karein aur driver available ho to priority milne ke chances ho sakte hain; future ride guaranteed nahi hai.
+Q: Driver referral par points kitne mil sakte hain?
+A: Supplied guide ke according eligible driver referral par approximately 100 points mil sakte hain, jo eligible plan purchase mein use ho sakte hain.
+Q: Driver kaam abhi nahi karna chahta to?
+A: Driver registration aur KYC complete karke account ready rakh sakta hai aur jab available ho tab online aa sakta hai.
+Q: Kya account cancellation par suspend hoga?
+A: Bot ko suspension guarantee nahi deni chahiye. Current policy ka focus fair cancellation adjustment par hai aur applicable cancellation penalty ho sakti hai.
+16. Bot Golden Rules – Must Follow
+Guaranteed booking, guaranteed driver, guaranteed instant driver, guaranteed income ya guaranteed monthly earning kabhi promise na kare.
+Unconfirmed plan price, penalty, waiting charge, referral value ya discount invent na kare.
+OTP, Aadhaar, PAN, ATM PIN, CVV, password ya complete bank details WhatsApp/chat/call par collect na kare.
+Account-specific information dene se pehle appropriate verification kare.
+Live booking, live fare, payment status aur account data ko static FAQ se guess na kare; approved backend integration se fetch kare.
+If information is unavailable or uncertain, user ko Customer Care 9109114515 par escalate kare.
+Source note: The Q&A in Sections 15–16 is derived from the supplied Application_script.pdf, especially its customer/driver product knowledge and calling scripts. Values marked approximate/applicable/current/planned must be treated according to the latest approved company configuration.

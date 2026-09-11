@@ -162,6 +162,7 @@ body {
   box-shadow: var(--shadow-sm);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+
 .kpi-card:hover {
   border-color: var(--glow, var(--border-strong));
   box-shadow: var(--shadow-md);
@@ -179,24 +180,30 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--rail-border) transparent;
 }
+
 .rail-nav::-webkit-scrollbar {
   width: 6px;
 }
+
 .rail-nav::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .rail-nav::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 9999px;
 }
+
 .rail-nav:hover::-webkit-scrollbar-thumb {
   background: var(--rail-border);
 }
+
 .rail-nav::-webkit-scrollbar-thumb:hover {
   background: var(--rail-ink-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -213,6 +220,7 @@ body {
   width: 34px;
   height: 34px;
 }
+
 .driver-beacon {
   position: absolute;
   inset: 0;
@@ -221,6 +229,7 @@ body {
   opacity: 0.45;
   animation: radar-pulse 1.8s ease-out infinite;
 }
+
 .driver-glyph {
   position: absolute;
   inset: 6px;
@@ -231,15 +240,18 @@ body {
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
+
 .driver-heading {
   display: flex;
   transition: transform 0.2s linear;
 }
+
 @keyframes radar-pulse {
   0% {
     transform: scale(0.6);
     opacity: 0.55;
   }
+
   100% {
     transform: scale(2);
     opacity: 0;
@@ -252,6 +264,7 @@ body {
   align-items: center;
   gap: 2px;
 }
+
 .stop-badge-icon {
   width: 26px;
   height: 26px;
@@ -263,6 +276,7 @@ body {
   align-items: center;
   justify-content: center;
 }
+
 .stop-badge-label {
   font-size: 9px;
   font-weight: 700;
@@ -280,6 +294,14 @@ body {
    shadow, not a blur, so it stays cheap to repaint while the map underneath
    is animating every frame. */
 .mission-hud {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+shadow,
+not a blur,
+so it stays cheap to repaint while the map underneath is animating every frame. */ .mission-hud {
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);

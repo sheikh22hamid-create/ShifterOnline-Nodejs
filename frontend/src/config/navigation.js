@@ -26,6 +26,7 @@ import {
   GraduationCap,
   ShoppingBag,
   Activity,
+  Bot,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -80,6 +81,7 @@ export const NAV_GROUPS = [
       { to: '/cms/faqs', label: 'FAQs & Support', icon: HelpCircle, roles: ALL_STAFF, built: true },
       { to: '/cms/pages', label: 'Legal Pages (CMS)', icon: FileText, roles: ALL_STAFF, built: true },
       { to: '/cms/cancel-reasons', label: 'Cancellation Reasons', icon: Ban, roles: ALL_STAFF, built: true },
+      { to: '/cms/bot-file', label: 'Bot File (AI Knowledge)', icon: Bot, roles: ['superadmin'], built: true },
       { to: '/settings/dynamic-questions', label: 'Dynamic Questions', icon: ListChecks, roles: ['superadmin'], built: true },
       { to: '/settings', label: 'Payment Gateways', icon: CreditCard, roles: ['superadmin'], built: true },
       { to: '/staff', label: 'Staff Management', icon: UserCog, roles: MANAGERS, built: true },
