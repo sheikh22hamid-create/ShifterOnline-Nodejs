@@ -9,7 +9,6 @@ import 'package:goParcel/screens/home/chatscreen.dart';
 import 'package:goParcel/screens/home/custom_order_screen.dart';
 import 'package:goParcel/screens/home/makewishlist.dart';
 import 'package:goParcel/screens/home/my_custom_orders.dart';
-import 'package:goParcel/screens/home/pickupdrop.dart';
 import 'package:goParcel/screens/home/route_review.dart';
 import 'package:goParcel/screens/home/select_vehicle.dart';
 import 'package:goParcel/screens/home/trackingpoliyline.dart';
@@ -571,7 +570,7 @@ class _HomeState extends State<Home> {
     await Get.to(() => RouteReviewScreen(
           pickup: pickup,
           drop: drop,
-          onConfirm: () => Get.off(() => PickUpDrop()),
+          onConfirm: _openVehicleSelection,
         ));
   }
 
@@ -582,7 +581,7 @@ class _HomeState extends State<Home> {
     Get.off(() => RouteReviewScreen(
           pickup: pickup,
           drop: drop,
-          onConfirm: () => Get.off(() => PickUpDrop()),
+          onConfirm: _openVehicleSelection,
         ));
   }
 
@@ -1646,7 +1645,8 @@ class _HomeState extends State<Home> {
                                                                             "========= pickup_charges: $pickupCharges =========");
                                                                       }
 
-                                                                      // Navigate to PickUpDrop with selected wheeler
+                                                                      // Legacy vehicle section is disabled; the active booking
+                                                                      // entry point is the latest route/vehicle flow above.
                                                                       getdata.remove(
                                                                           "TaskDetails");
 
