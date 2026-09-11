@@ -1,6 +1,8 @@
 package com.shifter.driver.activity;
 
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -543,23 +545,11 @@ public class OrderDetailsActivity extends AppCompatActivity
         if (dAddress != null) {
             dAddress = dAddress.replaceAll("^[\\s,]+", "").trim();
         }
-        StringBuilder routeText = new StringBuilder();
-        for (com.shifter.driver.model.OrderStop stop : orderItem.getStops()) {
-            if (routeText.length() > 0) routeText.append("\n\n");
-            routeText.append("Stop ").append(stop.getSequence()).append(": ").append(stop.displayAddress());
-        }
-        if (routeText.length() > 0) routeText.append("\n\n");
-        routeText.append("Final Drop: ").append(dAddress == null ? "Address unavailable" : dAddress);
-        boolean hasStops = !orderItem.getStops().isEmpty();
-        binding.txtFromtype.setText(hasStops ? "Stops & Final Drop" : dropType);
-        if (hasStops) {
-            // The XML layout is intentionally compact for normal orders. A
-            // multi-stop order needs the complete route visible, including
-            // the final drop, instead of truncating it to "...".
-            binding.txtFromaddress.setMaxLines(Integer.MAX_VALUE);
-            binding.txtFromaddress.setEllipsize(null);
-        }
-        binding.txtFromaddress.setText(routeText.toString());
+        binding.txtFromtype.setText(dropType);
+        binding.txtFromaddress.setMaxLines(2);
+        binding.txtFromaddress.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        binding.txtFromaddress.setText(dAddress == null ? "Address unavailable" : dAddress);
+        populateStopBoxes(orderItem.getStops());
 
         if (orderItem.getOrderFlowId().equals("1") || orderItem.getOrderFlowId().equals("2")) {
             dialPhone = orderItem.getCustomerPmobile();
@@ -574,6 +564,49 @@ public class OrderDetailsActivity extends AppCompatActivity
         }
 
         checkAndManagePickupTimer();
+    }
+
+    private void populateStopBoxes(List<com.shifter.driver.model.OrderStop> stops) {
+        LinearLayout container = binding.layoutStopRoutes;
+        container.removeAllViews();
+        if (stops == null || stops.isEmpty()) {
+            container.setVisibility(View.GONE);
+            return;
+        }
+
+        container.setVisibility(View.VISIBLE);
+        for (com.shifter.driver.model.OrderStop stop : stops) {
+            LinearLayout box = new LinearLayout(this);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.setPadding(12, 9, 12, 9);
+            box.setBackgroundResource(R.drawable.box_boder);
+            box.setBackgroundTintList(ColorStateList.valueOf(Color.WHITE));
+
+            TextView title = new TextView(this);
+            title.setText("Stop " + stop.getSequence());
+            title.setTextColor(Color.rgb(239, 108, 0));
+            title.setTextSize(12);
+            title.setTypeface(null, android.graphics.Typeface.BOLD);
+
+            TextView address = new TextView(this);
+            address.setText(stop.displayAddress());
+            address.setTextColor(Color.rgb(51, 65, 85));
+            address.setTextSize(13);
+            address.setPadding(0, 4, 0, 0);
+
+            box.addView(title, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+            box.addView(address, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            boxParams.bottomMargin = 6;
+            container.addView(box, boxParams);
+        }
     }
 
     private void checkAndManagePickupTimer() {
