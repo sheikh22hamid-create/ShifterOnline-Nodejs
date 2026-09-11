@@ -1018,6 +1018,7 @@ class _HomeState extends State<Home> {
               subtitle: 'Additional stop',
               address: _extraStops[index]['address']?.toString() ??
                   'Selected location',
+              addressFontSize: 13,
               onTap: () => _editExtraStop(index),
               onDelete: () => setState(() => _extraStops.removeAt(index)),
             ),
