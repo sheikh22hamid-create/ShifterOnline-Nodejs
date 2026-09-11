@@ -290,6 +290,13 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                     if (!_controller.isCompleted) {
                       _controller.complete(controller);
                     }
+                    // The directions request can finish before GoogleMap has
+                    // created its controller. Fit the whole ordered route
+                    // again once the map is ready so pickup, every stop and
+                    // the final drop are visible together.
+                    Future<void>.delayed(const Duration(milliseconds: 250), () {
+                      if (mounted) _setCameraBounds(_routeLocations);
+                    });
                     if (mounted) setState(() {});
                   },
                 ),
