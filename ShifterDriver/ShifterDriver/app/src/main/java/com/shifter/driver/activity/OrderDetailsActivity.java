@@ -550,7 +550,15 @@ public class OrderDetailsActivity extends AppCompatActivity
         }
         if (routeText.length() > 0) routeText.append("\n\n");
         routeText.append("Final Drop: ").append(dAddress == null ? "Address unavailable" : dAddress);
-        binding.txtFromtype.setText(orderItem.getStops().isEmpty() ? dropType : "Stops & Final Drop");
+        boolean hasStops = !orderItem.getStops().isEmpty();
+        binding.txtFromtype.setText(hasStops ? "Stops & Final Drop" : dropType);
+        if (hasStops) {
+            // The XML layout is intentionally compact for normal orders. A
+            // multi-stop order needs the complete route visible, including
+            // the final drop, instead of truncating it to "...".
+            binding.txtFromaddress.setMaxLines(Integer.MAX_VALUE);
+            binding.txtFromaddress.setEllipsize(null);
+        }
         binding.txtFromaddress.setText(routeText.toString());
 
         if (orderItem.getOrderFlowId().equals("1") || orderItem.getOrderFlowId().equals("2")) {
