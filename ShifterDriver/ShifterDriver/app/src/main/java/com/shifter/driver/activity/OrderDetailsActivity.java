@@ -677,7 +677,7 @@ public class OrderDetailsActivity extends AppCompatActivity
         TextView titleView = new TextView(this);
         titleView.setText(title);
         titleView.setTextColor(color);
-        titleView.setTextSize(16);
+        titleView.setTextSize(14);
         titleView.setTypeface(null, android.graphics.Typeface.BOLD);
         titleRow.addView(titleView, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -686,7 +686,8 @@ public class OrderDetailsActivity extends AppCompatActivity
         TextView addressView = new TextView(this);
         addressView.setText(address);
         addressView.setTextColor(Color.rgb(71, 85, 105));
-        addressView.setTextSize(12);
+        addressView.setTextSize(14);
+        addressView.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         addressView.setMaxLines(2);
         addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
         content.addView(addressView, new LinearLayout.LayoutParams(
