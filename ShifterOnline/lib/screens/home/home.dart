@@ -985,7 +985,9 @@ class _HomeState extends State<Home> {
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: Text(
-                  '${_extraStops.length} ${_extraStops.length == 1 ? 'stop' : 'stops'}',
+                  _maxExtraStops - _extraStops.length == 0
+                      ? 'No stops left'
+                      : '${_maxExtraStops - _extraStops.length} ${_maxExtraStops - _extraStops.length == 1 ? 'stop' : 'stops'} left',
                   style: TextStyle(
                     color: Color(0xfff26522),
                     fontSize: 12,
