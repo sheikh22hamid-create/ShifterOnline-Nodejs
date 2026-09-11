@@ -100,21 +100,25 @@ function SettingsForm({ data, onSaved }) {
   }
 
   return (
-    <div>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        handleSave()
+      }}
+    >
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
             Settings
           </h1>
           <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-            Platform configuration. API keys and auth secrets stay in environment variables, not here.
+            Platform configuration. Press <kbd className="rounded border px-1 py-0.5 font-mono text-[11px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>Enter</kbd> in any field to save immediately.
           </p>
         </div>
         <button
-          type="button"
+          type="submit"
           disabled={saving}
-          onClick={handleSave}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
           style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
         >
           <Save size={14} /> {saving ? 'Saving…' : 'Save changes'}
@@ -296,9 +300,19 @@ function SettingsForm({ data, onSaved }) {
 
         {Object.keys(flags).filter((k) => k !== 'training_video_url' && k !== 'training_video_title').length > 0 && (
           <section className="surface-card rounded-xl p-4">
-            <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-              Other Feature Flags
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                Other Feature Flags
+              </h3>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+              >
+                <Save size={13} /> {saving ? 'Saving…' : 'Save Flags'}
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Object.entries(flags)
                 .filter(([key]) => key !== 'training_video_url' && key !== 'training_video_title')
@@ -309,12 +323,40 @@ function SettingsForm({ data, onSaved }) {
                   </div>
                 ))}
             </div>
+            <div className="mt-4 flex items-center justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+              <span className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                💡 Press <kbd className="rounded border px-1 py-0.5 font-mono text-[10.5px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>Enter</kbd> in any field to save immediately
+              </span>
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+              >
+                <Save size={14} /> {saving ? 'Saving…' : 'Save Feature Flags'}
+              </button>
+            </div>
           </section>
         )}
 
         <PaymentGateways />
+
+        {/* Bottom Save Action Bar */}
+        <div className="sticky bottom-4 z-10 flex items-center justify-between rounded-xl border p-3.5 shadow-lg backdrop-blur-md" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>
+          <div className="text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
+            Unsaved changes? Press <kbd className="rounded border px-1.5 py-0.5 font-mono text-[11px]" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>Enter</kbd> or click save.
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-semibold shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+            style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+          >
+            <Save size={15} /> {saving ? 'Saving settings…' : 'Save All Changes'}
+          </button>
+        </div>
       </div>
-    </div>
+    </form>
   )
 }
 
