@@ -529,8 +529,10 @@ public class OrderDetailsActivity extends AppCompatActivity
         }
 
         String pickType = orderItem.getPickType();
-        if (TextUtils.isEmpty(pickType)) pickType = "Pickup";
+        if (TextUtils.isEmpty(pickType)) pickType = "Pickup location";
         binding.txtTotype.setText(pickType);
+        binding.txtCurrentRouteType.setText("Current location");
+        binding.txtCurrentRouteAddress.setText("You are here");
 
         String dropType = orderItem.getDropType();
         if (TextUtils.isEmpty(dropType)) dropType = "Drop";
