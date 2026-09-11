@@ -170,8 +170,6 @@ class _HomeState extends State<Home> {
     });
 
     await _loadVehicleAvailability(pickup);
-    if (!mounted) return;
-    await _openVehicleSelection();
   }
 
   Future<void> _loadSavedLocations() async {
@@ -220,8 +218,6 @@ class _HomeState extends State<Home> {
     });
 
     await _loadVehicleAvailability(_confirmedPickupData!);
-    if (!mounted) return;
-    await _openVehicleSelection();
   }
 
   Future<void> _addQuickLocation() async {
