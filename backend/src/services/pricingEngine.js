@@ -91,12 +91,11 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
  */
 function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
-  const useSlabs = slabConfig || pkg.use_slab_pricing || pkg.pricing_mode === "slab";
-  const vehicleConfig = slabConfig || (useSlabs ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
+  const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
 
   let dCharge;
-  if (vehicleConfig) {
+  if (vehicleConfig && pkg?.use_linear_pricing !== true) {
     const baseCalc = calculateBaseSlabFare(vehicleConfig, distanceKm);
     const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
     const anchorMultiplier = 1 + anchorMarkup / 100;
