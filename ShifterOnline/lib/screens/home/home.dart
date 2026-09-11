@@ -804,116 +804,308 @@ class _HomeState extends State<Home> {
   }
 
   Widget _buildRouteSelectionCard() {
-    final pickup = _confirmedPickupAddress ?? 'Detecting current location...';
+    final pickupAddress =
+        _confirmedPickupAddress ?? 'Detecting current location...';
+    final dropAddress = _confirmedDropAddress ?? 'Select drop location';
     final drop = _confirmedDropAddress;
     final pickupType =
-        _confirmedPickupData?["type"]?.toString().toLowerCase().trim() ?? "";
-    final pickupIsCurrent = pickupType == "current location" ||
-        pickupType == "current" ||
+        _confirmedPickupData?["type"]?.toString().toLowerCase().trim() ?? '';
+    final pickupIsCurrent = pickupType == 'current location' ||
+        pickupType == 'current' ||
         (currentLat != null &&
             currentLong != null &&
-            double.tryParse(_confirmedPickupData?["lat_map"]?.toString() ?? "") ==
+            double.tryParse(
+                    _confirmedPickupData?['lat_map']?.toString() ?? '') ==
                 currentLat &&
-            double.tryParse(_confirmedPickupData?["long_map"]?.toString() ?? "") ==
+            double.tryParse(
+                    _confirmedPickupData?['long_map']?.toString() ?? '') ==
                 currentLong);
+
+    final routeStops = List<Map<String, dynamic>>.generate(2, (index) {
+      if (index < _extraStops.length) return _extraStops[index];
+      return <String, dynamic>{};
+    });
+
+    Widget connector() => Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Container(
+            width: 1.5,
+            height: 15,
+            color: const Color(0xffd9dee5),
+          ),
+        );
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.fromLTRB(17, 19, 17, 17),
+      padding: const EdgeInsets.fromLTRB(18, 19, 14, 17),
       decoration: BoxDecoration(
-        color: notifier.getBgColor,
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(.05),
-              blurRadius: 18,
-              offset: const Offset(0, 7))
+            color: const Color(0xff263238).withOpacity(.06),
+            blurRadius: 18,
+            offset: const Offset(0, 7),
+          ),
         ],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Where do you want to deliver?',
-            style: TextStyle(
-                color: notifier.text, fontSize: 20, fontFamily: 'Gilroy_Bold')),
-        const SizedBox(height: 5),
-        Text(
-            pickupIsCurrent
-                ? 'Your pickup is set from your current location'
-                : 'Your selected pickup location',
-            style: TextStyle(
-                color: greaycolor, fontSize: 13, fontFamily: 'Gilroy_Medium')),
-        const SizedBox(height: 16),
-        _locationRow(
-          pickup: true,
-          title: pickupIsCurrent ? 'Pickup (Current Location)' : 'Pickup Location',
-          address: pickup,
-          action: 'Change',
-          onTap: _changePickupLocation,
-        ),
-        const SizedBox(height: 9),
-        _locationRow(
-          pickup: false,
-          title: drop ?? 'Enter drop location',
-          address: drop == null
-              ? 'Search address, landmark or select on map'
-              : 'Drop location selected',
-          action: drop == null ? 'Map' : 'Change',
-          onTap: drop == null
-              ? _startDropSelection
-              : () => _editRouteLocation('Drop'),
-        ),
-        if (_extraStops.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          ..._extraStops.asMap().entries.map((entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: _locationRow(
-                  pickup: false,
-                  title: 'Stop ${entry.key + 1}: ${entry.value["address"] ?? "Selected location"}',
-                  address: 'Additional drop-off point',
-                  action: 'Remove',
-                  onTap: () => setState(() => _extraStops.removeAt(entry.key)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Delivery Route',
+                      style: TextStyle(
+                        color: notifier.text,
+                        fontSize: 20,
+                        fontFamily: 'Gilroy_Bold',
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Pickup → Stop 1 → Stop 2 → Drop',
+                      style: TextStyle(
+                        color: greaycolor,
+                        fontSize: 13,
+                        fontFamily: 'Gilroy_Medium',
+                      ),
+                    ),
+                  ],
                 ),
-              )),
-        ],
-        if (drop != null) ...[
-          const SizedBox(height: 6),
-          Row(children: [
-            Expanded(child: OutlinedButton.icon(
-              onPressed: _extraStops.length < _maxExtraStops ? _addExtraStop : null,
-              icon: const Icon(Icons.add_location_alt_outlined, size: 18),
-              label: Text('Add Stop (${_extraStops.length}/$_maxExtraStops)'),
-            )),
-            const SizedBox(width: 8),
-            Expanded(child: DropdownButtonFormField<int>(
-              value: _selectedBookingType,
-              decoration: const InputDecoration(labelText: 'Booking', border: OutlineInputBorder()),
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('Now')),
-                DropdownMenuItem(value: 3, child: Text('Next Day')),
-              ],
-              onChanged: (value) => setState(() => _selectedBookingType = value ?? 1),
-            )),
-          ]),
-        ],
-        const SizedBox(height: 15),
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton.icon(
-            onPressed:
-                drop == null ? _startDropSelection : _openVehicleSelection,
-            icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-            iconAlignment: IconAlignment.end,
-            label: Text(drop == null ? 'Continue' : 'View vehicles'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xffff6a2a),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xfffff0e9),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Text(
+                  '4 stops',
+                  style: TextStyle(
+                    color: Color(0xfff26522),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 19),
+          _routeTimelineRow(
+            icon: Icons.inventory_2_rounded,
+            iconColor: const Color(0xff46a45a),
+            title: 'Pickup',
+            subtitle: pickupIsCurrent ? 'Current location' : 'Pickup location',
+            address: pickupAddress,
+            onTap: _changePickupLocation,
+          ),
+          connector(),
+          _routeTimelineRow(
+            icon: Icons.location_on_rounded,
+            iconColor: const Color(0xfff27b38),
+            title: 'Stop 1',
+            subtitle: routeStops[0]['address'] == null
+                ? 'Additional drop-off point'
+                : 'Additional stop',
+            address: routeStops[0]['address']?.toString() ?? 'Add stop location',
+            onTap: routeStops[0].isEmpty
+                ? _addExtraStop
+                : () => setState(() => _extraStops.removeAt(0)),
+          ),
+          connector(),
+          _routeTimelineRow(
+            icon: Icons.location_on_rounded,
+            iconColor: const Color(0xff3976d3),
+            title: 'Stop 2',
+            subtitle: routeStops[1]['address'] == null
+                ? 'Additional drop-off point'
+                : 'Additional stop',
+            address: routeStops[1]['address']?.toString() ?? 'Add stop location',
+            onTap: routeStops[1].isEmpty
+                ? (_extraStops.length < 1 ? _addExtraStop : null)
+                : () => setState(() => _extraStops.removeAt(1)),
+          ),
+          connector(),
+          _routeTimelineRow(
+            icon: Icons.location_on_rounded,
+            iconColor: const Color(0xffe55353),
+            title: 'Drop',
+            subtitle: drop == null ? 'Choose final destination' : 'Final drop-off',
+            address: dropAddress,
+            onTap: drop == null
+                ? _startDropSelection
+                : () => _editRouteLocation('Drop'),
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: _extraStops.length < _maxExtraStops ? _addExtraStop : null,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xfffff0e9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.add_location_alt_outlined,
+                      color: Color(0xfff26522),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '+ Add another stop',
+                          style: TextStyle(
+                            color: Color(0xfff26522),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'You can add up to 2 stops',
+                          style: TextStyle(
+                            color: greaycolor,
+                            fontSize: 12,
+                            fontFamily: 'Gilroy_Medium',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: Color(0xff8b949e), size: 22),
+                ],
+              ),
             ),
           ),
+          if (drop != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _selectedBookingType,
+                    decoration: const InputDecoration(
+                      labelText: 'Booking',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('Now')),
+                      DropdownMenuItem(value: 3, child: Text('Next Day')),
+                    ],
+                    onChanged: (value) => setState(
+                        () => _selectedBookingType = value ?? 1),
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _openVehicleSelection,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xffff6a2a),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('View vehicles'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _routeTimelineRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required String address,
+    VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 33,
+              height: 33,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: notifier.text,
+                      fontSize: 14,
+                      fontFamily: 'Gilroy_Bold',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: greaycolor,
+                      fontSize: 11,
+                      fontFamily: 'Gilroy_Medium',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: greaycolor.withOpacity(.78),
+                      fontSize: 11,
+                      fontFamily: 'Gilroy_Regular',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Color(0xff8b949e), size: 22),
+          ],
         ),
-      ]),
+      ),
     );
   }
 
