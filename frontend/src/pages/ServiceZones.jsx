@@ -110,22 +110,33 @@ export default function ServiceZones() {
   }
 
   async function handleSave(e) {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
     if (!form.name.trim()) {
       alert('Zone Name is required')
       return
     }
 
+    const payload = {
+      name: form.name.trim(),
+      city_id: form.city_id && Number(form.city_id) > 0 ? Number(form.city_id) : null,
+      center_lat: parseFloat(form.center_lat),
+      center_lng: parseFloat(form.center_lng),
+      radius_km: parseFloat(form.radius_km) || 5.0,
+      polygon_geojson: form.polygon_geojson && form.polygon_geojson.trim() !== '' ? form.polygon_geojson : null,
+      status: Number(form.status || 1),
+    }
+
     try {
       if (editingZone) {
-        await api.put(`/service-zones/${editingZone.id}`, form)
+        await api.put(`/service-zones/${editingZone.id}`, payload)
       } else {
-        await api.post('/service-zones', form)
+        await api.post('/service-zones', payload)
       }
       setModalOpen(false)
       fetchZones()
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to save service zone')
+      console.error('Failed to save service zone:', err)
+      alert(err.response?.data?.message || err.message || 'Failed to save service zone')
     }
   }
 

@@ -25,6 +25,9 @@ const scopeFilter = require("../middleware/scopeFilter");
 
 const router = express.Router();
 
+// Define role whitelist for rider/fleet management before any route registrations
+const RIDER_ROLES = ["superadmin", "admin", "executive"];
+
 // Every route below (except login) requires a valid admin-panel JWT.
 router.post("/auth/login", authController.login);
 router.get("/auth/me", auth, authController.me);
@@ -85,7 +88,6 @@ router.put("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.
 router.delete("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.remove);
 
 // --- Drivers & KYC Verification ---------------------------------------------
-const RIDER_ROLES = ["superadmin", "admin", "executive"];
 router.get("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.list);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
 router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
