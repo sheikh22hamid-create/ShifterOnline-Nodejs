@@ -36,8 +36,9 @@ function Input(props) {
 
 export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) {
   const isEdit = Boolean(rateCard)
-  const categoriesFetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
-  const { data: categories } = useApiQuery(categoriesFetcher)
+  const categoriesFetcher = useCallback(() => api.get('/categories').then((res) => res.data?.data || res.data || []), [])
+  const { data: rawCategories } = useApiQuery(categoriesFetcher)
+  const categories = Array.isArray(rawCategories) ? rawCategories : (Array.isArray(rawCategories?.data) ? rawCategories.data : [])
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)

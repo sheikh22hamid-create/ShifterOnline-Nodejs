@@ -42,10 +42,19 @@ export default function RateCards() {
 
   const fetcher = useCallback(() => api.get('/rate-cards').then((res) => res.data), [])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
-  const rateCards = data?.data ?? []
+  const rateCards = useMemo(() => {
+    if (Array.isArray(data?.data)) return data.data
+    if (Array.isArray(data)) return data
+    return []
+  }, [data])
 
-  const categoriesFetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
-  const { data: categories = [] } = useApiQuery(categoriesFetcher)
+  const categoriesFetcher = useCallback(() => api.get('/categories').then((res) => res.data?.data || res.data || []), [])
+  const { data: rawCategories } = useApiQuery(categoriesFetcher)
+  const categories = useMemo(() => {
+    if (Array.isArray(rawCategories)) return rawCategories
+    if (Array.isArray(rawCategories?.data)) return rawCategories.data
+    return []
+  }, [rawCategories])
 
   const [selectedCategory, setSelectedCategory] = useState('ALL')
   const [selectedType, setSelectedType] = useState('ALL')
@@ -59,7 +68,9 @@ export default function RateCards() {
   const categoryMap = useMemo(() => {
     const map = new Map()
     for (const cat of categories) {
-      map.set(cat.id, cat)
+      if (cat && cat.id) {
+        map.set(cat.id, cat)
+      }
     }
     return map
   }, [categories])

@@ -2165,3 +2165,24 @@ class _BuyAnythingSelectState extends State<BuyAnythingSelect> with SingleTicker
   }
 
 }
+
+class DownwardTrianglePainter extends CustomPainter {
+  final Color color;
+  DownwardTrianglePainter({this.color = const Color(0xFF1E1E1E)});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final path = Path();
+    path.moveTo(0, 0);
+    path.lineTo(size.width, 0);
+    path.lineTo(size.width / 2, size.height);
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
