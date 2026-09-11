@@ -3,11 +3,13 @@ package com.shifter.driver.activity;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
+import android.view.Gravity;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
@@ -531,8 +533,6 @@ public class OrderDetailsActivity extends AppCompatActivity
         String pickType = orderItem.getPickType();
         if (TextUtils.isEmpty(pickType)) pickType = "Pickup location";
         binding.txtTotype.setText(pickType);
-        binding.txtCurrentRouteType.setText("Current location");
-        binding.txtCurrentRouteAddress.setText("You are here");
 
         String dropType = orderItem.getDropType();
         if (TextUtils.isEmpty(dropType)) dropType = "Drop";
@@ -547,11 +547,7 @@ public class OrderDetailsActivity extends AppCompatActivity
         if (dAddress != null) {
             dAddress = dAddress.replaceAll("^[\\s,]+", "").trim();
         }
-        binding.txtFromtype.setText(dropType);
-        binding.txtFromaddress.setMaxLines(2);
-        binding.txtFromaddress.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        binding.txtFromaddress.setText(dAddress == null ? "Address unavailable" : dAddress);
-        populateStopBoxes(orderItem.getStops());
+        buildDeliveryTimeline(pAddress, dAddress, orderItem.getStops(), orderItem.getDescription());
 
         if (orderItem.getOrderFlowId().equals("1") || orderItem.getOrderFlowId().equals("2")) {
             dialPhone = orderItem.getCustomerPmobile();
@@ -609,6 +605,122 @@ public class OrderDetailsActivity extends AppCompatActivity
             boxParams.bottomMargin = 6;
             container.addView(box, boxParams);
         }
+    }
+
+    /** Builds the compact route timeline shown in the order details card. */
+    private void buildDeliveryTimeline(String pickupAddress, String dropAddress,
+                                       List<com.shifter.driver.model.OrderStop> stops,
+                                       String packageDescription) {
+        LinearLayout route = binding.routeContainer;
+        route.removeAllViews();
+
+        List<String[]> items = new ArrayList<>();
+        items.add(new String[]{"Pickup location", safeRouteAddress(pickupAddress), "pickup"});
+        if (stops != null) {
+            for (com.shifter.driver.model.OrderStop stop : stops) {
+                items.add(new String[]{"Stop " + stop.getSequence(), stop.displayAddress(), "stop"});
+            }
+        }
+        items.add(new String[]{"Drop location", safeRouteAddress(dropAddress), "drop"});
+
+        for (int index = 0; index < items.size(); index++) {
+            String[] item = items.get(index);
+            boolean last = index == items.size() - 1;
+            int color = "current".equals(item[2]) ? Color.rgb(0, 190, 105)
+                    : "pickup".equals(item[2]) ? Color.rgb(25, 118, 210)
+                    : "stop".equals(item[2]) ? Color.rgb(124, 77, 196)
+                    : Color.rgb(239, 68, 68);
+            addTimelineItem(route, item[0], item[1], color, last,
+                    "pickup".equals(item[2]) ? packageDescription : null);
+        }
+    }
+
+    private String safeRouteAddress(String address) {
+        return TextUtils.isEmpty(address) ? "Address unavailable" : address;
+    }
+
+    private void addTimelineItem(LinearLayout parent, String title, String address,
+                                 int color, boolean last, String packageDescription) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.TOP);
+
+        LinearLayout rail = new LinearLayout(this);
+        rail.setOrientation(LinearLayout.VERTICAL);
+        rail.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout.LayoutParams railParams = new LinearLayout.LayoutParams(28,
+                LinearLayout.LayoutParams.MATCH_PARENT);
+
+        View dot = new View(this);
+        GradientDrawable dotBackground = new GradientDrawable();
+        dotBackground.setShape(GradientDrawable.OVAL);
+        dotBackground.setColor(color);
+        dot.setBackground(dotBackground);
+        int dotSize = title.startsWith("Pickup") ? 18 : 14;
+        rail.addView(dot, new LinearLayout.LayoutParams(dotSize, dotSize));
+
+        if (!last) {
+            View connector = new View(this);
+            connector.setBackgroundColor(Color.rgb(203, 213, 225));
+            LinearLayout.LayoutParams connectorParams = new LinearLayout.LayoutParams(2, 0, 1f);
+            connectorParams.gravity = Gravity.CENTER_HORIZONTAL;
+            rail.addView(connector, connectorParams);
+        }
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(2, 0, 0, 8);
+        LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView titleView = new TextView(this);
+        titleView.setText(title);
+        titleView.setTextColor(color);
+        titleView.setTextSize("Pickup location".equalsIgnoreCase(title) ? 16 : 14);
+        titleView.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleRow.addView(titleView, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView chevron = new TextView(this);
+        chevron.setText("›");
+        chevron.setTextColor(Color.rgb(51, 65, 85));
+        chevron.setTextSize(24);
+        titleRow.addView(chevron, new LinearLayout.LayoutParams(24,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        content.addView(titleRow);
+
+        TextView addressView = new TextView(this);
+        addressView.setText(address);
+        addressView.setTextColor(Color.rgb(71, 85, 105));
+        addressView.setTextSize(12);
+        addressView.setMaxLines(2);
+        addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        content.addView(addressView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        if (!TextUtils.isEmpty(packageDescription)
+                && !"no description provided".equalsIgnoreCase(packageDescription.trim())) {
+            TextView packageView = new TextView(this);
+            packageView.setText("▣  " + packageDescription);
+            packageView.setTextColor(Color.rgb(51, 65, 85));
+            packageView.setTextSize(11);
+            packageView.setPadding(10, 8, 10, 8);
+            GradientDrawable packageBackground = new GradientDrawable();
+            packageBackground.setColor(Color.rgb(239, 246, 255));
+            packageBackground.setCornerRadius(10);
+            packageView.setBackground(packageBackground);
+            LinearLayout.LayoutParams packageParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            packageParams.topMargin = 6;
+            content.addView(packageView, packageParams);
+        }
+
+        row.addView(rail, railParams);
+        row.addView(content, contentParams);
+        parent.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private void checkAndManagePickupTimer() {
