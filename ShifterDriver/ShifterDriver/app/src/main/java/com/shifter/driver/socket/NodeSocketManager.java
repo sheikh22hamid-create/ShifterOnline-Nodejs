@@ -50,6 +50,10 @@ public class NodeSocketManager {
         void onQueueUpdate(JSONObject data);
     }
 
+    public interface RoleChangeListener {
+        void onRoleChanged(JSONObject data);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -57,6 +61,7 @@ public class NodeSocketManager {
     private OrderRequestListener orderRequestListener;
     private NextDayAssignmentListener nextDayAssignmentListener;
     private QueueUpdateListener queueUpdateListener;
+    private RoleChangeListener roleChangeListener;
 
     private NodeSocketManager() {}
 
@@ -155,6 +160,13 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("rider:role_changed", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (roleChangeListener != null) {
+                roleChangeListener.onRoleChanged(data != null ? data : new JSONObject());
+            }
+        }));
+
         socket.connect();
     }
 
@@ -171,6 +183,11 @@ public class NodeSocketManager {
     /** Listener for real-time monthly queued orders updates. */
     public void setQueueUpdateListener(QueueUpdateListener listener) {
         this.queueUpdateListener = listener;
+    }
+
+    /** Listener for driver role shifts (e.g. Monthly -> Freelance or vice versa). */
+    public void setRoleChangeListener(RoleChangeListener listener) {
+        this.roleChangeListener = listener;
     }
 
     public void emitAccept(JSONObject data, AckListener ackListener) {

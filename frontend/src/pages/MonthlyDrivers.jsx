@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   UserCheck,
+  UserMinus,
   Plus,
   Clock,
   DollarSign,
@@ -12,10 +13,13 @@ import {
   Trash2,
   BookOpen,
   TrendingUp,
+  AlertCircle,
 } from 'lucide-react'
 import api from '../services/api'
+import { useToast } from '../context/ToastContext'
 
 export default function MonthlyDrivers() {
+  const toast = useToast()
   const [drivers, setDrivers] = useState([])
   const [allRiders, setAllRiders] = useState([])
   const [zones, setZones] = useState([])
@@ -34,6 +38,9 @@ export default function MonthlyDrivers() {
     overtime_hourly_rate: '50',
     allowed_break_minutes: '45',
   })
+
+  // Demote Confirmation Modal State
+  const [demoteConfirmModal, setDemoteConfirmModal] = useState({ open: false, driver: null, busy: false })
 
   // Queue Modal
   const [queueModalOpen, setQueueModalOpen] = useState(false)
@@ -82,20 +89,27 @@ export default function MonthlyDrivers() {
     e.preventDefault()
     try {
       await api.post('/monthly-drivers/promote', promoteForm)
+      toast.success('Driver promoted to Monthly Dedicated Driver successfully')
       setPromoteModalOpen(false)
       fetchMonthlyDrivers()
+      fetchRidersAndZones()
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to promote driver')
+      toast.error(err.response?.data?.message || 'Failed to promote driver')
     }
   }
 
-  async function handleDemote(riderId) {
-    if (!window.confirm('Are you sure you want to revert this driver back to freelance?')) return
+  async function handleDemoteConfirm() {
+    if (!demoteConfirmModal.driver) return
+    setDemoteConfirmModal((prev) => ({ ...prev, busy: true }))
     try {
-      await api.post('/monthly-drivers/demote', { rider_id: riderId })
+      const res = await api.post('/monthly-drivers/demote', { rider_id: demoteConfirmModal.driver.rider_id })
+      toast.success(res.data?.message || 'Driver shifted back to Standard Freelance driver')
+      setDemoteConfirmModal({ open: false, driver: null, busy: false })
       fetchMonthlyDrivers()
+      fetchRidersAndZones()
     } catch (err) {
-      alert('Failed to demote driver')
+      toast.error(err.response?.data?.message || 'Failed to shift driver back to normal')
+      setDemoteConfirmModal((prev) => ({ ...prev, busy: false }))
     }
   }
 
@@ -342,10 +356,16 @@ export default function MonthlyDrivers() {
                 </div>
 
                 <button
-                  onClick={() => handleDemote(d.rider_id)}
-                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline"
+                  onClick={() => setDemoteConfirmModal({ open: true, driver: d, busy: false })}
+                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold hover:opacity-85 transition"
+                  style={{
+                    background: 'var(--danger-soft, #fef2f2)',
+                    color: 'var(--danger, #dc2626)',
+                    border: '1px solid var(--danger-soft-border, #fecaca)',
+                  }}
                 >
-                  Demote
+                  <UserMinus size={13} />
+                  Shift to Normal
                 </button>
               </div>
             </div>
@@ -374,15 +394,17 @@ export default function MonthlyDrivers() {
                   style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
                 >
                   <option value="">-- Select Driver --</option>
-                  {allRiders.map((r) => {
-                    const name = r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.title || `Driver #${r.id}`
-                    const phone = r.fmobile || r.mobile || 'No Phone'
-                    return (
-                      <option key={r.id} value={r.id}>
-                        Driver #{r.id} - {name} ({phone})
-                      </option>
-                    )
-                  })}
+                  {allRiders
+                    .filter((r) => !drivers.some((d) => d.rider_id === r.id))
+                    .map((r) => {
+                      const name = r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.title || `Driver #${r.id}`
+                      const phone = r.fmobile || r.mobile || 'No Phone'
+                      return (
+                        <option key={r.id} value={r.id}>
+                          Driver #{r.id} - {name} ({phone})
+                        </option>
+                      )
+                    })}
                 </select>
               </div>
 
@@ -826,6 +848,68 @@ export default function MonthlyDrivers() {
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEMOTE CONFIRMATION MODAL */}
+      {demoteConfirmModal.open && demoteConfirmModal.driver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="rounded-2xl max-w-md w-full p-6 shadow-2xl border"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold" style={{ color: 'var(--ink)' }}>
+                  Shift Driver to Normal Fleet?
+                </h3>
+                <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                  Revert to standard freelance commission model
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="p-3.5 rounded-xl border text-xs space-y-2 mb-5"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+            >
+              <p>
+                You are about to revert{' '}
+                <strong className="text-rose-600 font-semibold">
+                  {demoteConfirmModal.driver.rider?.full_name || `Driver #${demoteConfirmModal.driver.rider_id}`}
+                </strong>{' '}
+                from Monthly Dedicated to <strong>Standard Freelance Driver</strong>.
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-500 dark:text-slate-400">
+                <li>Monthly contract will be terminated immediately.</li>
+                <li>Any ongoing duty shift will be automatically punched out.</li>
+                <li>Driver App will instantly restore standard delivery modes and freelance order matching.</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={demoteConfirmModal.busy}
+                onClick={() => setDemoteConfirmModal({ open: false, driver: null, busy: false })}
+                className="rounded-xl px-4 py-2 text-xs font-semibold transition hover:opacity-80 border"
+                style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={demoteConfirmModal.busy}
+                onClick={handleDemoteConfirm}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700 transition shadow-sm disabled:opacity-50"
+              >
+                {demoteConfirmModal.busy ? 'Shifting…' : 'Yes, Shift to Normal'}
               </button>
             </div>
           </div>

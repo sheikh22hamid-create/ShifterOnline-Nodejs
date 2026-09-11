@@ -196,6 +196,28 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             }
         });
 
+        // Listen for real-time driver role shifts (e.g. Monthly -> Freelance or Freelance -> Monthly)
+        NodeSocketManager.getInstance().setRoleChangeListener(data -> {
+            if (isAdded() && getActivity() != null) {
+                getActivity().runOnUiThread(() -> {
+                    int newPlan = data.optInt("monthly_plan", 0);
+                    if (riderData != null) {
+                        riderData.setMonthlyPlan(newPlan);
+                    }
+                    String msg = data.optString("message", "");
+                    if (!msg.isEmpty()) {
+                        Toast.makeText(getActivity(), msg, Toast.LENGTH_LONG).show();
+                    }
+                    MonthlyDutyStatus nonMonthly = new MonthlyDutyStatus();
+                    nonMonthly.setMonthlyDriver(newPlan == 1);
+                    MonthlyDutyManager.getInstance().setCurrentStatus(nonMonthly);
+                    setupMonthlyDriverUI();
+                    getPackageList();
+                    getHome();
+                });
+            }
+        });
+
         // Initialize Monthly Duty UI
         setupMonthlyDriverUI();
 
@@ -1392,6 +1414,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     // Fetch upcoming orders in queue
                     fetchDriverQueue();
                 } else {
+                    MonthlyDutyStatus nonMonthly = new MonthlyDutyStatus();
+                    nonMonthly.setMonthlyDriver(false);
+                    MonthlyDutyManager.getInstance().setCurrentStatus(nonMonthly);
+
                     if (binding.cardDeliveryTypesSection != null) {
                         binding.cardDeliveryTypesSection.setVisibility(View.VISIBLE);
                     }

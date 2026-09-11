@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { ShieldBan, ShieldCheck, Trash2 } from 'lucide-react'
+import { ShieldBan, ShieldCheck, Trash2, UserMinus } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -32,11 +32,27 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
   const [blockReason, setBlockReason] = useState('')
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [demoteModalOpen, setDemoteModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [togglingModelId, setTogglingModelId] = useState(null)
 
   const fetcher = useCallback(() => api.get(`/riders/${riderId}`).then((res) => res.data.data), [riderId])
   const { data: rider, setData, loading, refetch } = useApiQuery(fetcher)
+
+  async function handleDemote() {
+    setBusy(true)
+    try {
+      await api.post('/monthly-drivers/demote', { rider_id: riderId })
+      toast.success('Driver shifted back to Standard Freelance Driver.')
+      setDemoteModalOpen(false)
+      refetch()
+      onChanged?.()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not revert driver status.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleToggleModel(packageId, currentEnabled) {
     const newEnabled = !currentEnabled
@@ -135,10 +151,25 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
               <Badge tone={approvalTone(rider.status)}>{approvalLabel(rider.status)}</Badge>
               <Badge tone={onlineTone(rider.a_status)}>{onlineLabel(rider.a_status)}</Badge>
               <Badge tone={verificationTone(rider.verification_status)}>KYC: {rider.verification_status}</Badge>
+              {rider.monthly_plan === 1 ? (
+                <Badge tone="info">💼 Monthly Dedicated</Badge>
+              ) : (
+                <Badge tone="neutral">⚡ Freelance Driver</Badge>
+              )}
             </div>
 
             {canModerate && (
               <div className="flex flex-wrap gap-2">
+                {rider.monthly_plan === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setDemoteModalOpen(true)}
+                    className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition"
+                    style={{ borderColor: 'var(--danger-soft-border)', color: 'var(--danger)', background: 'var(--danger-soft)' }}
+                  >
+                    <UserMinus size={13} /> Shift to Normal Driver
+                  </button>
+                )}
                 {rider.status === 1 ? (
                   <button
                     type="button"
@@ -435,6 +466,47 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
           This permanently removes the driver and their documents, bank details, and delivery-type enablements. This
           can't be undone. Drivers with a trip in progress can't be deleted.
         </p>
+      </Modal>
+
+      <Modal
+        open={demoteModalOpen}
+        onClose={() => setDemoteModalOpen(false)}
+        title="Shift to Standard Freelance Driver"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDemoteModalOpen(false)}
+              className="rounded-lg border px-3 py-1.5 text-[13px]"
+              style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleDemote}
+              className="rounded-lg px-3.5 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--danger)' }}
+            >
+              {busy ? 'Shifting…' : 'Yes, Shift to Normal'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[13px]" style={{ color: 'var(--ink)' }}>
+            Are you sure you want to revert <strong>{rider?.full_name || `Driver #${riderId}`}</strong> from Monthly Dedicated back to <strong>Standard Freelance Driver</strong>?
+          </p>
+          <div
+            className="rounded-xl border p-3 text-[12px] space-y-1.5"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+          >
+            <div>• Monthly contract will be terminated immediately.</div>
+            <div>• Any ongoing shift duty will be auto punched out.</div>
+            <div>• Driver App will immediately restore standard freelance delivery modes and commission flow.</div>
+          </div>
+        </div>
       </Modal>
     </>
   )

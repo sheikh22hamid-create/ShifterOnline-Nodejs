@@ -8,6 +8,7 @@ const logger = require("../utils/logger");
 async function listMonthlyDrivers(req, res) {
   try {
     const contracts = await prisma.monthly_driver_contract.findMany({
+      where: { status: "active" },
       orderBy: { id: "desc" },
     });
 
@@ -146,7 +147,7 @@ async function promoteDriver(req, res) {
 }
 
 /**
- * Demotes a monthly driver back to freelance.
+ * Demotes a monthly driver back to freelance / standard commission driver.
  */
 async function demoteDriver(req, res) {
   try {
@@ -157,17 +158,64 @@ async function demoteDriver(req, res) {
 
     const riderId = Number(rider_id);
 
+    // 1. Update tbl_rider monthly_plan = 0
     await prisma.tbl_rider.update({
       where: { id: riderId },
       data: { monthly_plan: 0 },
     });
 
+    // 2. Mark contract status as terminated
     await prisma.monthly_driver_contract.updateMany({
       where: { rider_id: riderId },
       data: { status: "terminated" },
     });
 
-    return res.json({ success: true, message: "Driver reverted to Standard Freelance driver" });
+    // 3. Auto punch-out active duty log if currently in_progress
+    try {
+      const activeLog = await prisma.driver_duty_log.findFirst({
+        where: { rider_id: riderId, status: "in_progress" },
+        orderBy: { id: "desc" },
+      });
+      if (activeLog) {
+        await dutyTrackingService.punchOut(riderId);
+      }
+    } catch (punchErr) {
+      logger.error("Error auto punching out on demote:", punchErr);
+    }
+
+    // 4. Cancel any queued orders in driver_order_queue for this monthly driver
+    try {
+      await prisma.driver_order_queue.updateMany({
+        where: {
+          rider_id: riderId,
+          status: { in: ["queued", "assigned"] },
+        },
+        data: { status: "cancelled" },
+      });
+    } catch (queueErr) {
+      logger.error("Error cancelling driver queue on demote:", queueErr);
+    }
+
+    // 5. Emit socket event to driver app so it instantly updates role/UI without needing app restart
+    try {
+      const io = req.app.get("io") || global.io;
+      if (io) {
+        io.to(`driver_${riderId}`).emit("rider:role_changed", {
+          rider_id: riderId,
+          is_monthly_driver: false,
+          monthly_plan: 0,
+          message: "You have been shifted back to Standard Freelance Driver.",
+        });
+        io.emit("admin:driver_status_update", { rider_id: riderId });
+      }
+    } catch (socketErr) {
+      logger.error("Socket emit error on demote:", socketErr);
+    }
+
+    return res.json({
+      success: true,
+      message: "Driver shifted back to Standard Freelance driver successfully",
+    });
   } catch (err) {
     logger.error("Error demoting monthly driver:", err);
     return res.status(500).json({ success: false, message: "Internal server error" });

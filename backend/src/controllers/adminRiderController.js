@@ -111,7 +111,18 @@ async function getOne(req, res) {
       return cName === riderVehicle || cName.includes(riderVehicle) || riderVehicle.includes(cName);
     });
 
-    const [cityName, personalDoc, vehicleDetails, bankAccounts, emergencyContact, kit, training, deliveryTypes, packages] = await Promise.all([
+    const [
+      cityName,
+      personalDoc,
+      vehicleDetails,
+      bankAccounts,
+      emergencyContact,
+      kit,
+      training,
+      deliveryTypes,
+      packages,
+      monthlyContract,
+    ] = await Promise.all([
       rider.city_id ? prisma.tbl_city.findUnique({ where: { id: rider.city_id }, select: { title: true } }) : null,
       prisma.tbl_personal_doc.findFirst({ where: { rider_id: id } }),
       prisma.tbl_vehicle_details.findMany({ where: { rider_id: id } }),
@@ -123,6 +134,7 @@ async function getOne(req, res) {
       matchedCategory
         ? prisma.tbl_package.findMany({ where: { cat_id: matchedCategory.id, status: 1 }, orderBy: { sort_order: "asc" } })
         : prisma.tbl_package.findMany({ where: { status: 1 }, orderBy: { sort_order: "asc" } }),
+      prisma.monthly_driver_contract.findUnique({ where: { rider_id: id } }),
     ]);
 
     const deliveryStatusMap = new Map(deliveryTypes.map((dt) => [String(dt.delivery_type), dt.status === 1]));
@@ -159,6 +171,8 @@ async function getOne(req, res) {
         verification_type: rider.verification_type,
         wallet_balance: rider.wallet_balance,
         plan_type: rider.plan_type,
+        monthly_plan: rider.monthly_plan || 0,
+        monthly_contract: monthlyContract,
         rdate: rider.rdate,
         rlats: rider.rlats,
         rlongs: rider.rlongs,

@@ -268,7 +268,7 @@ async function recordDutyLocationPing(riderId, lat, lng) {
  */
 async function getDriverDutyStatus(riderId) {
   const contract = await getDriverContract(riderId);
-  if (!contract) {
+  if (!contract || contract.status !== "active") {
     return { isMonthlyDriver: false };
   }
 
