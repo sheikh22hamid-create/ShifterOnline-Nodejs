@@ -821,11 +821,6 @@ class _HomeState extends State<Home> {
                     _confirmedPickupData?['long_map']?.toString() ?? '') ==
                 currentLong);
 
-    final routeStops = List<Map<String, dynamic>>.generate(2, (index) {
-      if (index < _extraStops.length) return _extraStops[index];
-      return <String, dynamic>{};
-    });
-
     Widget connector() => Padding(
           padding: const EdgeInsets.only(left: 16),
           child: Container(
@@ -886,8 +881,8 @@ class _HomeState extends State<Home> {
                   color: const Color(0xfffff0e9),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: const Text(
-                  '4 stops',
+                child: Text(
+                  '${_extraStops.length + 2} stops',
                   style: TextStyle(
                     color: Color(0xfff26522),
                     fontSize: 12,
@@ -907,32 +902,20 @@ class _HomeState extends State<Home> {
             onTap: _changePickupLocation,
           ),
           connector(),
-          _routeTimelineRow(
-            icon: Icons.location_on_rounded,
-            iconColor: const Color(0xfff27b38),
-            title: 'Stop 1',
-            subtitle: routeStops[0]['address'] == null
-                ? 'Additional drop-off point'
-                : 'Additional stop',
-            address: routeStops[0]['address']?.toString() ?? 'Add stop location',
-            onTap: routeStops[0].isEmpty
-                ? _addExtraStop
-                : () => setState(() => _extraStops.removeAt(0)),
-          ),
-          connector(),
-          _routeTimelineRow(
-            icon: Icons.location_on_rounded,
-            iconColor: const Color(0xff3976d3),
-            title: 'Stop 2',
-            subtitle: routeStops[1]['address'] == null
-                ? 'Additional drop-off point'
-                : 'Additional stop',
-            address: routeStops[1]['address']?.toString() ?? 'Add stop location',
-            onTap: routeStops[1].isEmpty
-                ? (_extraStops.length < 1 ? _addExtraStop : null)
-                : () => setState(() => _extraStops.removeAt(1)),
-          ),
-          connector(),
+          for (var index = 0; index < _extraStops.length; index++) ...[
+            _routeTimelineRow(
+              icon: Icons.location_on_rounded,
+              iconColor: index == 0
+                  ? const Color(0xfff27b38)
+                  : const Color(0xff3976d3),
+              title: 'Stop ${index + 1}',
+              subtitle: 'Additional stop',
+              address: _extraStops[index]['address']?.toString() ??
+                  'Selected location',
+              onTap: () => setState(() => _extraStops.removeAt(index)),
+            ),
+            connector(),
+          ],
           _routeTimelineRow(
             icon: Icons.location_on_rounded,
             iconColor: const Color(0xffe55353),
