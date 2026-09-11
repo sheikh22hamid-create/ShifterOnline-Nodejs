@@ -21,6 +21,7 @@ class ConfirmOrderMap extends StatefulWidget {
   final double endLat;
   final double endLng;
   final List<Map<String, dynamic>> stops;
+  final Future<Map<String, dynamic>?> Function(int index)? onEditStop;
   final double deliveryFees;
   final double walletBalance;
   final String currency;
@@ -35,6 +36,7 @@ class ConfirmOrderMap extends StatefulWidget {
     required this.endLat,
     required this.endLng,
     this.stops = const [],
+    this.onEditStop,
     required this.deliveryFees,
     required this.walletBalance,
     required this.currency,
@@ -190,6 +192,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                 : const Color(0xff3976d3),
           ),
           anchor: const Offset(.5, 1),
+          onTap: () => _editStop(index),
           infoWindow: InfoWindow(title: 'Stop ${index + 1}'),
         ),
       );
@@ -204,6 +207,21 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
         infoWindow: const InfoWindow(title: 'Drop'),
       ),
     );
+  }
+
+  Future<void> _editStop(int index) async {
+    final editStop = widget.onEditStop;
+    if (editStop == null) return;
+    final updatedStop = await editStop(index);
+    if (!mounted || updatedStop == null || index >= widget.stops.length) {
+      return;
+    }
+    widget.stops[index] = updatedStop;
+    markers.clear();
+    polylines.clear();
+    await _addMarkers();
+    await _getDirections();
+    if (mounted) setState(() {});
   }
 
   List<LatLng> get _routeLocations {
