@@ -80,7 +80,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km, stops } = req.body;
 
     if (
       !cat_id ||
@@ -103,6 +103,7 @@ async function fareEstimate(req, res) {
       // nearby driver ends up accepting.
       radiusRangeKm: radius_km,
       extraMileCharge: extra_mile_charge,
+      stops,
     });
     return res.status(200).json(estimate);
   } catch (err) {

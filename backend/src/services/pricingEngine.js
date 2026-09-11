@@ -1,5 +1,5 @@
 const prisma = require("../config/db");
-const { getRoadDistanceKm, haversineKm } = require("../utils/geoDistance");
+const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -283,9 +283,13 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
  * at its default (1 -> zero radius charge) quotes the best-case "starting
  * from" fare when no radius is supplied.
  */
-async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0 }) {
+async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [] }) {
+  const routeStops = Array.isArray(stops) ? stops : [];
+  const stopSettings = await getAddStopSettings();
+  if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
+  const distancePoints = [{ lat: plat, lng: plong }, ...routeStops, { lat: dlat, lng: dlong }];
   const [{ distanceKm, durationMin }, packages, discount] = await Promise.all([
-    getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
+    routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
   ]);
@@ -316,7 +320,7 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         // can itemize it instead of leaving it as an unexplained gap between
         // min_charge + per_km_charge*distance and estimated_fare.
         radius_charge: roundMoney(calculateRadiusCharge(discountedPkg, resolvedRadiusKm)),
-        estimated_fare: calculateFare(discountedPkg, distanceKm, isNight, resolvedRadiusKm, resolvedExtraMileCharge),
+        estimated_fare: calculateFare(discountedPkg, distanceKm, isNight, resolvedRadiusKm, resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge),
         is_night: isNight,
       };
     }),
