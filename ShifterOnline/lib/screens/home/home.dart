@@ -891,6 +891,12 @@ class _HomeState extends State<Home> {
     final drop = _confirmedDropAddress;
     final pickupType =
         _confirmedPickupData?["type"]?.toString().toLowerCase().trim() ?? '';
+    final routeSubtitle = [
+      'Pickup',
+      for (var index = 0; index < _extraStops.length; index++)
+        'Stop ${index + 1}',
+      'Drop',
+    ].join(' → ');
     final pickupIsCurrent = pickupType == 'current location' ||
         pickupType == 'current' ||
         (currentLat != null &&
@@ -946,7 +952,7 @@ class _HomeState extends State<Home> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'Pickup → Stop 1 → Stop 2 → Drop',
+                      routeSubtitle,
                       style: TextStyle(
                         color: greaycolor,
                         fontSize: 13,
