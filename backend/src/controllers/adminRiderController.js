@@ -104,7 +104,14 @@ async function getOne(req, res) {
       return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
     }
 
-    const [cityName, personalDoc, vehicleDetails, bankAccounts, emergencyContact, kit, training] = await Promise.all([
+    const categories = await prisma.pkg_category.findMany();
+    const riderVehicle = String(rider.vehicle || "").toLowerCase().trim();
+    const matchedCategory = categories.find((c) => {
+      const cName = String(c.cat_name || "").toLowerCase().trim();
+      return cName === riderVehicle || cName.includes(riderVehicle) || riderVehicle.includes(cName);
+    });
+
+    const [cityName, personalDoc, vehicleDetails, bankAccounts, emergencyContact, kit, training, deliveryTypes, packages] = await Promise.all([
       rider.city_id ? prisma.tbl_city.findUnique({ where: { id: rider.city_id }, select: { title: true } }) : null,
       prisma.tbl_personal_doc.findFirst({ where: { rider_id: id } }),
       prisma.tbl_vehicle_details.findMany({ where: { rider_id: id } }),
@@ -112,7 +119,22 @@ async function getOne(req, res) {
       prisma.tbl_eme_contact.findFirst({ where: { rider_id: id } }),
       prisma.tbl_kit.findFirst({ where: { rider_id: id } }),
       prisma.driver_training_progress.findUnique({ where: { rider_id: id } }),
+      prisma.tbl_rider_delivery_type.findMany({ where: { rider_id: id } }),
+      matchedCategory
+        ? prisma.tbl_package.findMany({ where: { cat_id: matchedCategory.id, status: 1 }, orderBy: { sort_order: "asc" } })
+        : prisma.tbl_package.findMany({ where: { status: 1 }, orderBy: { sort_order: "asc" } }),
     ]);
+
+    const deliveryStatusMap = new Map(deliveryTypes.map((dt) => [String(dt.delivery_type), dt.status === 1]));
+    const models = packages.map((pkg) => ({
+      package_id: pkg.id,
+      title: pkg.title,
+      user_title: pkg.user_title || pkg.title,
+      driver_title: pkg.driver_title || pkg.title,
+      min_charge: Number(pkg.min_charge),
+      per_km_charge: Number(pkg.per_km_charge),
+      enabled: deliveryStatusMap.has(String(pkg.id)) ? deliveryStatusMap.get(String(pkg.id)) : true,
+    }));
 
     return res.status(200).json({
       success: true,
@@ -140,6 +162,7 @@ async function getOne(req, res) {
         rdate: rider.rdate,
         rlats: rider.rlats,
         rlongs: rider.rlongs,
+        models,
         personal_doc: personalDoc,
         vehicle_details: vehicleDetails,
         bank_accounts: bankAccounts,
@@ -330,4 +353,46 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { list, getOne, kycDecision, toggleStatus, remove };
+async function toggleModel(req, res) {
+  try {
+    const riderId = parseInt(req.params.id, 10);
+    const packageId = parseInt(req.params.packageId, 10);
+    const { enabled } = req.body;
+
+    if (!riderId || !packageId || typeof enabled !== "boolean") {
+      return res.status(400).json({ success: false, message: "rider_id, package_id and enabled (boolean) are required" });
+    }
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+
+    const status = enabled ? 1 : 0;
+    const existing = await prisma.tbl_rider_delivery_type.findFirst({
+      where: { rider_id: riderId, delivery_type: String(packageId) },
+    });
+
+    if (existing) {
+      await prisma.tbl_rider_delivery_type.update({
+        where: { id: existing.id },
+        data: { status },
+      });
+    } else {
+      await prisma.tbl_rider_delivery_type.create({
+        data: { rider_id: riderId, delivery_type: String(packageId), status },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Model ${enabled ? "enabled" : "disabled"} for driver successfully`,
+      enabled,
+      package_id: packageId,
+    });
+  } catch (err) {
+    return internalError(res, err, "riders.toggleModel");
+  }
+}
+
+module.exports = { list, getOne, kycDecision, toggleStatus, remove, toggleModel };

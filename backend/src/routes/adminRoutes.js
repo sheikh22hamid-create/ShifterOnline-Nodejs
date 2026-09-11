@@ -64,6 +64,7 @@ router.delete("/rate-cards/:id", auth, authorize("superadmin"), rateCardControll
 const RIDER_ROLES = ["superadmin", "admin", "executive"];
 router.get("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.list);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
+router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);
 router.patch("/riders/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleStatus);
 router.delete("/riders/:id", auth, authorize("superadmin"), adminRiderController.remove);
