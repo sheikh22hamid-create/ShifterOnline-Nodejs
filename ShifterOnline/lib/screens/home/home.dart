@@ -472,6 +472,26 @@ class _HomeState extends State<Home> {
     setState(() => _extraStops.add(stop));
   }
 
+  Future<void> _editExtraStop(int index) async {
+    if (index < 0 || index >= _extraStops.length) return;
+    final currentDrop = _confirmedDropData;
+    await getdata.remove('DropeAddress');
+    await Get.to(() => const Traking(type: 'Drop', addressAdd: '0'));
+    final selected = getdata.read('DropeAddress');
+    if (currentDrop != null) {
+      await getdata.write('DropeAddress', [currentDrop]);
+    }
+    if (!mounted || selected is! List || selected.isEmpty || selected.first is! Map) {
+      return;
+    }
+    final stop = Map<String, dynamic>.from(selected.first as Map);
+    if (_isBeyondFinalDrop(stop)) {
+      await _showStopBeyondDropDialog();
+      return;
+    }
+    setState(() => _extraStops[index] = stop);
+  }
+
   bool _isBeyondFinalDrop(Map<String, dynamic> stop) {
     final pickup = _confirmedPickupData;
     final drop = _confirmedDropData;
@@ -1000,6 +1020,7 @@ class _HomeState extends State<Home> {
               subtitle: 'Additional stop',
               address: _extraStops[index]['address']?.toString() ??
                   'Selected location',
+              onTap: () => _editExtraStop(index),
               onDelete: () => setState(() => _extraStops.removeAt(index)),
             ),
             connector(),

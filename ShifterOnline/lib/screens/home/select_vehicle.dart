@@ -12,7 +12,6 @@ import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../utils/colors.dart';
 import 'confirm_order_map.dart';
-import 'traking.dart';
 import 'waiting_screen.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
@@ -494,7 +493,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     await Get.to(() => ConfirmOrderMap(
       startLat: _pickup.latitude, startLng: _pickup.longitude, endLat: _drop.latitude, endLng: _drop.longitude,
       stops: widget.stops,
-      onEditStop: _editStop,
       deliveryFees: fee, walletBalance: walletBalance, currency: _text(model['currency'], '₹'),
       deliveryType: _text(model['package_id'] ?? model['id']),
       onConfirmPayment: (payValue, _) => _submitOrder(payValue, category, model, fee),
@@ -507,20 +505,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (login is! Map) return 0;
     final response = await ApiWrapper.dataPost(Config.walletHistory, {'mobile': login['mobile'], 'wallet_type': 'user'});
     return _number(response is Map ? response['wallet_balance'] : 0);
-  }
-
-  Future<Map<String, dynamic>?> _editStop(int index) async {
-    final savedDrop = _storage.read('DropeAddress');
-    await _storage.remove('DropeAddress');
-    await Get.to(() => const Traking(type: 'Drop', addressAdd: '0'));
-    final selected = _storage.read('DropeAddress');
-    if (savedDrop != null) {
-      await _storage.write('DropeAddress', savedDrop);
-    }
-    if (selected is! List || selected.isEmpty || selected.first is! Map) {
-      return null;
-    }
-    return Map<String, dynamic>.from(selected.first as Map);
   }
 
   Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee) async {
