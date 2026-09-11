@@ -139,12 +139,36 @@ public class OrderDetailsActivity extends AppCompatActivity
             com.shifter.driver.socket.NodeSocketManager.getInstance().connectDriver(riderData.getId());
         }
 
-        if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
+        if (!isAdvancePaymentRequired(orderItem)) {
+            new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
+            initOrderDetailsScreen();
+        } else if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
             showWaitingForPaymentScreen(null, null);
             pollPaymentStatusFromApi();
         } else {
             checkPaymentStatusFromApi();
         }
+    }
+
+    private boolean isAdvancePaymentRequired(PDOrderItem item) {
+        if (item == null) return false;
+        try {
+            boolean isMonthly = new SessionManager(this).isMonthlyDriver();
+            if (isMonthly) return false;
+        } catch (Exception ignored) {}
+
+        String bookingType = item.getBookingType();
+        if ("2".equals(bookingType) || "3".equals(bookingType)) return false;
+
+        String pMethod = item.getPMethodId();
+        if ("1".equals(pMethod)) return false; // Cash on delivery
+
+        String adv = item.getAdvancePayment();
+        if (adv != null && ("0".equals(adv.trim()) || "0.00".equals(adv.trim()) || adv.trim().isEmpty())) {
+            return false;
+        }
+
+        return true;
     }
 
     private void checkPaymentStatusFromApi() {
@@ -175,7 +199,7 @@ public class OrderDetailsActivity extends AppCompatActivity
                             if (latestOrder != null) {
                                 if ("CANCEL".equalsIgnoreCase(latestOrder.getStatus()) || "CANCELLED".equalsIgnoreCase(latestOrder.getStatus())) {
                                     navigateToHomeAndFinish("Order was cancelled.");
-                                } else if ("1".equals(latestOrder.getPaymentStatus())) {
+                                } else if (!isAdvancePaymentRequired(latestOrder) || "1".equals(latestOrder.getPaymentStatus())) {
                                     orderItem = latestOrder;
                                     new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
                                     initOrderDetailsScreen();
@@ -484,7 +508,7 @@ public class OrderDetailsActivity extends AppCompatActivity
                             if (latestOrder != null) {
                                 if ("CANCEL".equalsIgnoreCase(latestOrder.getStatus()) || "CANCELLED".equalsIgnoreCase(latestOrder.getStatus())) {
                                     navigateToHomeAndFinish("Order was cancelled.");
-                                } else if ("1".equals(latestOrder.getPaymentStatus())) {
+                                } else if (!isAdvancePaymentRequired(latestOrder) || "1".equals(latestOrder.getPaymentStatus())) {
                                     if (waitingHandler != null) waitingHandler.removeCallbacksAndMessages(null);
                                     if (paymentCountDownTimer != null) {
                                         paymentCountDownTimer.cancel();

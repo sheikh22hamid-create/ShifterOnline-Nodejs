@@ -174,6 +174,28 @@ public class PDOrderItem implements Parcelable {
 	@SerializedName("plan_incentive_earned")
 	private String planIncentiveEarned;
 
+	@SerializedName("booking_type")
+	private String bookingType;
+
+	@SerializedName("p_method_id")
+	private String pMethodId;
+
+	public String getBookingType() {
+		return bookingType;
+	}
+
+	public void setBookingType(String bookingType) {
+		this.bookingType = bookingType;
+	}
+
+	public String getPMethodId() {
+		return pMethodId;
+	}
+
+	public void setPMethodId(String pMethodId) {
+		this.pMethodId = pMethodId;
+	}
+
 	// Constructor to build from notification data (no API call needed)
 	public PDOrderItem(String id, String orderFlowId, String pickName, String dropName,
 	                   String customerPaddress, String customerDaddress,

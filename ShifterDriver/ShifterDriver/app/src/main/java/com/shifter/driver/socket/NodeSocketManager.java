@@ -113,6 +113,27 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("order:direct_assign", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderRequestListener != null) {
+                orderRequestListener.onOrderRequest(data);
+            }
+        }));
+
+        socket.on("order:assigned", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderRequestListener != null) {
+                orderRequestListener.onOrderRequest(data);
+            }
+        }));
+
+        socket.on("order:scheduled_assigned", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderRequestListener != null) {
+                orderRequestListener.onOrderRequest(data);
+            }
+        }));
+
         socket.on("order:dismiss", args -> mainHandler.post(() -> {
             JSONObject data = firstArgAsJson(args);
             if (data != null && orderRequestListener != null) {
