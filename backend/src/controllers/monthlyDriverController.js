@@ -16,8 +16,10 @@ async function listMonthlyDrivers(req, res) {
       where: { id: { in: riderIds } },
       select: {
         id: true,
-        title: true,
-        mobile: true,
+        full_name: true,
+        first_name: true,
+        last_name: true,
+        fmobile: true,
         email: true,
         vehicle: true,
         vehicle_no: true,
@@ -29,7 +31,14 @@ async function listMonthlyDrivers(req, res) {
 
     const zones = await prisma.service_zone.findMany();
     const zoneMap = new Map(zones.map((z) => [z.id, z]));
-    const riderMap = new Map(riders.map((r) => [r.id, r]));
+    const riderMap = new Map(riders.map((r) => {
+      const name = r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || `Driver #${r.id}`;
+      return [r.id, {
+        ...r,
+        full_name: name,
+        fmobile: r.fmobile || "",
+      }];
+    }));
 
     const result = contracts.map((contract) => {
       const rider = riderMap.get(contract.rider_id);
@@ -239,9 +248,16 @@ async function getAttendanceReport(req, res) {
     const riderIds = [...new Set(logs.map((l) => l.rider_id))];
     const riders = await prisma.tbl_rider.findMany({
       where: { id: { in: riderIds } },
-      select: { id: true, title: true, mobile: true },
+      select: { id: true, full_name: true, first_name: true, last_name: true, fmobile: true },
     });
-    const riderMap = new Map(riders.map((r) => [r.id, r]));
+    const riderMap = new Map(riders.map((r) => {
+      const name = r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || `Driver #${r.id}`;
+      return [r.id, {
+        id: r.id,
+        full_name: name,
+        fmobile: r.fmobile || "",
+      }];
+    }));
 
     const result = logs.map((log) => ({
       ...log,

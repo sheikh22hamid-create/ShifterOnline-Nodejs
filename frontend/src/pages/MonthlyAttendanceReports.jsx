@@ -101,11 +101,15 @@ export default function MonthlyAttendanceReports() {
             className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs text-slate-900 dark:text-white outline-none"
           >
             <option value="">-- All Monthly Drivers --</option>
-            {drivers.map((d) => (
-              <option key={d.rider_id} value={d.rider_id}>
-                {d.rider?.title || `Driver #${d.rider_id}`} ({d.rider?.mobile})
-              </option>
-            ))}
+            {drivers.map((d) => {
+              const name = d.rider?.full_name || d.rider?.title || `Driver #${d.rider_id}`
+              const phone = d.rider?.fmobile || d.rider?.mobile || ''
+              return (
+                <option key={d.rider_id} value={d.rider_id}>
+                  Driver #{d.rider_id} - {name} {phone ? `(${phone})` : ''}
+                </option>
+              )
+            })}
           </select>
         </div>
 
@@ -165,12 +169,17 @@ export default function MonthlyAttendanceReports() {
                   const dateStr = log.duty_date ? new Date(log.duty_date).toLocaleDateString() : 'N/A'
                   const punchInStr = log.punch_in_at ? new Date(log.punch_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'
                   const punchOutStr = log.punch_out_at ? new Date(log.punch_out_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'
+                  const driverName = log.rider?.full_name || log.rider?.title || `Driver #${log.rider_id}`
+                  const driverPhone = log.rider?.fmobile || log.rider?.mobile || ''
 
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
                       <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-white">{dateStr}</td>
                       <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-white">
-                        {log.rider?.title || `Rider #${log.rider_id}`}
+                        {driverName}
+                        {driverPhone ? (
+                          <span className="block text-[10px] font-normal text-slate-400 font-mono">📱 {driverPhone}</span>
+                        ) : null}
                       </td>
                       <td className="px-5 py-3.5 text-slate-500">
                         {punchInStr} ➔ {punchOutStr}

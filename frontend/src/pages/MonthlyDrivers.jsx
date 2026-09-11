@@ -111,11 +111,12 @@ export default function MonthlyDrivers() {
     }
   }
 
-  const filtered = drivers.filter(
-    (d) =>
-      d.rider?.title?.toLowerCase().includes(search.toLowerCase()) ||
-      d.rider?.mobile?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = drivers.filter((d) => {
+    const name = d.rider?.full_name || d.rider?.title || `Driver #${d.rider_id}`
+    const phone = d.rider?.fmobile || d.rider?.mobile || ''
+    const q = search.toLowerCase()
+    return name.toLowerCase().includes(q) || phone.toLowerCase().includes(q) || String(d.rider_id).includes(q)
+  })
 
   return (
     <div className="space-y-6">
@@ -181,9 +182,11 @@ export default function MonthlyDrivers() {
               <div>
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">{d.rider?.title || `Rider #${d.rider_id}`}</h3>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                      {d.rider?.full_name || d.rider?.title || `Driver #${d.rider_id}`}
+                    </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      📱 {d.rider?.mobile} • {d.rider?.vehicle || 'Bike'}
+                      📱 {d.rider?.fmobile || d.rider?.mobile || 'No Phone'} • {d.rider?.vehicle || 'Bike'}
                     </p>
                   </div>
                   <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
@@ -253,11 +256,16 @@ export default function MonthlyDrivers() {
                   onChange={(e) => setPromoteForm({ ...promoteForm, rider_id: e.target.value })}
                   className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  {allRiders.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.title || `Driver #${r.id}`} ({r.mobile})
-                    </option>
-                  ))}
+                  <option value="">-- Select Driver --</option>
+                  {allRiders.map((r) => {
+                    const name = r.full_name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.title || `Driver #${r.id}`
+                    const phone = r.fmobile || r.mobile || 'No Phone'
+                    return (
+                      <option key={r.id} value={r.id}>
+                        Driver #{r.id} - {name} ({phone})
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
 
@@ -352,10 +360,10 @@ export default function MonthlyDrivers() {
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                    Order Queue: {selectedDriver.rider?.title}
+                    Order Queue: {selectedDriver.rider?.full_name || selectedDriver.rider?.title || `Driver #${selectedDriver.rider_id}`}
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Stacked orders automatically cascade to driver upon completing the active trip.
+                    📱 {selectedDriver.rider?.fmobile || selectedDriver.rider?.mobile || 'No Phone'} • Stacked orders automatically cascade to driver upon completing the active trip.
                   </p>
                 </div>
                 <button onClick={() => setQueueModalOpen(false)} className="text-slate-400 hover:text-slate-600">
