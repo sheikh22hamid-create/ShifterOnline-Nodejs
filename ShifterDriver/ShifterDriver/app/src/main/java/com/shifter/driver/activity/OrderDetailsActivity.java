@@ -1014,6 +1014,11 @@ public class OrderDetailsActivity extends AppCompatActivity
             }
         }
         routePoints.add(dropLoc);
+        // The driver should see the full approach route as well: current GPS
+        // position -> pickup -> customer stops -> final drop.
+        if (driverLat != 0.0 && driverLng != 0.0) {
+            routePoints.add(0, new LatLng(driverLat, driverLng));
+        }
 
         switch (orderItem.getOrderFlowId()) {
             case "0":
@@ -1097,7 +1102,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             LatLng driverLoc = new LatLng(driverLat, driverLng);
             MarkerOptions driverMarker = new MarkerOptions()
                     .position(driverLoc)
-                    .title("My Location")
+                    .title("Current Location")
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
             mMap.addMarker(driverMarker);
         }
