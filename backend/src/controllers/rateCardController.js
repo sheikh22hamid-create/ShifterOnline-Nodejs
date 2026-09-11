@@ -247,14 +247,60 @@ async function remove(req, res) {
       });
     }
 
+    await prisma.tbl_package.delete({ where: { id } });
+    return res.status(200).json({ success: true, message: "Rate card deleted" });
+  } catch (err) {
+    return internalError(res, err, "rateCards.remove");
+  }
+}
+
 async function getSlabs(req, res) {
   try {
     const config = await getSlabPricingConfig();
+    const slabRates = config.slabRates || DEFAULT_SLAB_RATES;
+    const modelMultipliers = config.modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
+
+    // Build vehicle_slabs array for clean frontend UI
+    const vehicle_slabs = Object.values(slabRates).map((v) => {
+      const slabs = SLAB_INTERVALS.filter((i) => i.to !== Infinity).map((interval) => ({
+        key: interval.key,
+        from_km: interval.from,
+        to_km: interval.to,
+        label: interval.label,
+        rate: Number(v.rates?.[interval.key] ?? v.rates?.[interval.label] ?? 0),
+      }));
+      return {
+        vehicle_key: v.vehicle_key,
+        vehicle_type: v.vehicle_name || v.vehicle_type,
+        category_id: v.category_id,
+        min_charge: Number(v.min_charge) || 0,
+        slabs,
+      };
+    });
+
+    const model_multipliers = (modelMultipliers.models || []).map((m, idx) => ({
+      model_number: idx + 1,
+      model: m.model,
+      name: m.model,
+      user_title: m.user_title || "",
+      driver_title: m.driver_title || "",
+      percent_offset: Number(m.offset_percent) || 0,
+    }));
+
+    const anchor_model = {
+      model_number: 3,
+      name: modelMultipliers.anchor_model || "Model 3",
+      markup_percent: Number(modelMultipliers.anchor_markup_percent) || 10,
+    };
+
     return res.status(200).json({
       success: true,
       data: {
-        slabRates: config.slabRates,
-        modelMultipliers: config.modelMultipliers,
+        vehicle_slabs,
+        model_multipliers,
+        anchor_model,
+        slabRates,
+        modelMultipliers,
         intervals: SLAB_INTERVALS,
       },
     });
@@ -265,15 +311,54 @@ async function getSlabs(req, res) {
 
 async function updateSlabs(req, res) {
   try {
-    const { slabRates, modelMultipliers } = req.body;
-    if (!slabRates && !modelMultipliers) {
-      return res.status(400).json({ success: false, message: "slabRates or modelMultipliers is required" });
+    const { vehicle_slabs, model_multipliers, anchor_model, slabRates, modelMultipliers } = req.body;
+
+    let savedSlabRates = slabRates;
+    if (!savedSlabRates && Array.isArray(vehicle_slabs)) {
+      savedSlabRates = {};
+      for (const v of vehicle_slabs) {
+        const key = v.vehicle_key || String(v.vehicle_type).toLowerCase().replace(/[^a-z0-9]/g, "_");
+        const rates = {};
+        for (const s of v.slabs || []) {
+          const sKey = s.key || `${s.from_km}_${s.to_km}`;
+          rates[sKey] = Number(s.rate) || 0;
+        }
+        savedSlabRates[key] = {
+          vehicle_key: key,
+          vehicle_name: v.vehicle_type || v.vehicle_name,
+          category_id: v.category_id,
+          min_charge: Number(v.min_charge) || 0,
+          rates,
+        };
+      }
     }
 
-    const saved = await saveSlabPricingConfig({ slabRates, modelMultipliers });
+    let savedModelMultipliers = modelMultipliers;
+    if (!savedModelMultipliers && (Array.isArray(model_multipliers) || anchor_model)) {
+      const anchorMarkup = Number(anchor_model?.markup_percent) || 10;
+      const anchorName = anchor_model?.name || `Model ${anchor_model?.model_number || 3}`;
+      const models = (model_multipliers || []).map((m) => ({
+        model: m.name || m.model || `Model ${m.model_number}`,
+        offset_percent: Number(m.percent_offset) || 0,
+        user_title: m.user_title || "",
+        driver_title: m.driver_title || "",
+      }));
+
+      savedModelMultipliers = {
+        anchor_model: anchorName,
+        anchor_markup_percent: anchorMarkup,
+        models,
+      };
+    }
+
+    const saved = await saveSlabPricingConfig({
+      slabRates: savedSlabRates,
+      modelMultipliers: savedModelMultipliers,
+    });
+
     return res.status(200).json({
       success: true,
-      message: "Slab pricing rules updated successfully",
+      message: "Slab pricing configuration saved successfully",
       data: saved,
     });
   } catch (err) {

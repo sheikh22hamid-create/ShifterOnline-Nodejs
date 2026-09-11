@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bike,
   Truck,
@@ -10,29 +10,137 @@ import {
   Save,
   RefreshCw,
   Info,
-  Check,
   TrendingUp,
-  RotateCcw,
-  Sparkles,
-  ArrowRight,
 } from 'lucide-react'
 import api from '../../services/api'
 import Modal from '../common/Modal'
-import Badge from '../common/Badge'
 import { useToast } from '../../context/ToastContext'
 import { formatCurrency } from '../../utils/format'
 
 const SLAB_INTERVALS = [
-  { from_km: 0, to_km: 1, label: '0–1 km' },
-  { from_km: 1, to_km: 5, label: '1–5 km' },
-  { from_km: 5, to_km: 10, label: '5–10 km' },
-  { from_km: 10, to_km: 15, label: '10–15 km' },
-  { from_km: 15, to_km: 20, label: '15–20 km' },
-  { from_km: 20, to_km: 25, label: '20–25 km' },
-  { from_km: 25, to_km: 30, label: '25–30 km' },
-  { from_km: 30, to_km: 40, label: '30–40 km' },
-  { from_km: 40, to_km: 50, label: '40–50 km' },
-  { from_km: 50, to_km: 60, label: '50–60 km' },
+  { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km' },
+  { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km' },
+  { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km' },
+  { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km' },
+  { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km' },
+  { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km' },
+  { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km' },
+  { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km' },
+  { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km' },
+  { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km' },
+]
+
+const DEFAULT_VEHICLES = [
+  {
+    vehicle_key: 'bike',
+    vehicle_type: 'Bike',
+    min_charge: 42,
+    slabs: [
+      { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 1.0 },
+      { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 4.0 },
+      { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km', rate: 9.4 },
+      { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km', rate: 7.2 },
+      { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km', rate: 7.4 },
+      { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km', rate: 11.2 },
+      { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km', rate: 8.8 },
+      { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 14.1 },
+      { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 14.1 },
+      { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 14.1 },
+    ],
+  },
+  {
+    vehicle_key: 'scooter',
+    vehicle_type: 'Scooter',
+    min_charge: 48,
+    slabs: [
+      { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 2.0 },
+      { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 4.5 },
+      { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km', rate: 10.8 },
+      { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km', rate: 8.2 },
+      { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km', rate: 8.6 },
+      { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km', rate: 12.8 },
+      { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km', rate: 10.2 },
+      { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 16.4 },
+      { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 16.3 },
+      { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 16.3 },
+    ],
+  },
+  {
+    vehicle_key: 'mini_3w',
+    vehicle_type: 'Mini 3 Wheeler',
+    min_charge: 103,
+    slabs: [
+      { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 5.0 },
+      { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 8.5 },
+      { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km', rate: 18.6 },
+      { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km', rate: 13.4 },
+      { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km', rate: 12.4 },
+      { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km', rate: 20.8 },
+      { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km', rate: 16.4 },
+      { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 18.8 },
+      { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 18.8 },
+      { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 18.8 },
+    ],
+  },
+  {
+    vehicle_key: 'e_loader',
+    vehicle_type: 'E Loader',
+    min_charge: 143,
+    slabs: [
+      { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 8.0 },
+      { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 10.75 },
+      { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km', rate: 20.0 },
+      { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km', rate: 12.6 },
+      { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km', rate: 12.2 },
+      { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km', rate: 20.4 },
+      { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km', rate: 15.8 },
+      { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 18.3 },
+      { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 18.3 },
+      { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 18.3 },
+    ],
+  },
+  {
+    vehicle_key: 'three_wheeler',
+    vehicle_type: '3 Wheeler',
+    min_charge: 195,
+    slabs: [
+      { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 10.0 },
+      { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 21.5 },
+      { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km', rate: 23.6 },
+      { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km', rate: 18.2 },
+      { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km', rate: 15.4 },
+      { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km', rate: 25.2 },
+      { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km', rate: 19.8 },
+      { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 22.9 },
+      { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 22.8 },
+      { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 22.8 },
+    ],
+  },
+  {
+    vehicle_key: 'four_wheeler',
+    vehicle_type: 'Tata Ace / 4 Wheeler',
+    min_charge: 287,
+    slabs: [
+      { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 10.0 },
+      { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 25.5 },
+      { key: '5_10', from_km: 5, to_km: 10, label: '5–10 km', rate: 39.0 },
+      { key: '10_15', from_km: 10, to_km: 15, label: '10–15 km', rate: 30.0 },
+      { key: '15_20', from_km: 15, to_km: 20, label: '15–20 km', rate: 27.8 },
+      { key: '20_25', from_km: 20, to_km: 25, label: '20–25 km', rate: 39.6 },
+      { key: '25_30', from_km: 25, to_km: 30, label: '25–30 km', rate: 63.6 },
+      { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 36.7 },
+      { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 36.5 },
+      { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 36.5 },
+    ],
+  },
+]
+
+const DEFAULT_MODELS = [
+  { model_number: 1, name: 'Model 1', user_title: 'Super Saver', driver_title: 'Standard Tier', percent_offset: -10 },
+  { model_number: 2, name: 'Model 2', user_title: 'Saver Plus', driver_title: 'Silver Tier', percent_offset: -5 },
+  { model_number: 3, name: 'Model 3', user_title: 'Comfort', driver_title: 'Prime Tier', percent_offset: 0 },
+  { model_number: 4, name: 'Model 4', user_title: 'Express', driver_title: 'Gold Beast', percent_offset: 10 },
+  { model_number: 5, name: 'Model 5', user_title: 'Priority', driver_title: 'Earning Beast', percent_offset: 20 },
 ]
 
 function getVehicleIcon(type) {
@@ -45,14 +153,16 @@ function getVehicleIcon(type) {
 
 export default function SlabPricingModal({ open, onClose, onSynced }) {
   const toast = useToast()
+  const toastRef = useRef(toast)
+  toastRef.current = toast
 
   const [activeTab, setActiveTab] = useState('slabs') // 'slabs' | 'multipliers' | 'simulator'
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
 
-  const [vehicleSlabs, setVehicleSlabs] = useState([])
-  const [modelMultipliers, setModelMultipliers] = useState([])
+  const [vehicleSlabs, setVehicleSlabs] = useState(DEFAULT_VEHICLES)
+  const [modelMultipliers, setModelMultipliers] = useState(DEFAULT_MODELS)
   const [anchorModel, setAnchorModel] = useState({ model_number: 3, name: 'Model 3', markup_percent: 10 })
 
   // Live Simulator state
@@ -65,21 +175,21 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
     try {
       const res = await api.get('/rate-cards/slabs')
       const data = res.data?.data || {}
-      if (Array.isArray(data.vehicle_slabs)) {
+      if (Array.isArray(data.vehicle_slabs) && data.vehicle_slabs.length > 0) {
         setVehicleSlabs(data.vehicle_slabs)
       }
-      if (Array.isArray(data.model_multipliers)) {
+      if (Array.isArray(data.model_multipliers) && data.model_multipliers.length > 0) {
         setModelMultipliers(data.model_multipliers)
       }
       if (data.anchor_model) {
         setAnchorModel(data.anchor_model)
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Could not load slab pricing configuration.')
+      console.warn('Could not load remote slab config, using defaults:', err)
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [])
 
   useEffect(() => {
     if (open) {
@@ -151,15 +261,15 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
         model_multipliers: modelMultipliers,
         anchor_model: anchorModel,
       })
-      toast.success('Distance slab pricing and multipliers saved successfully!')
+      toastRef.current?.success('Distance slab pricing and multipliers saved successfully!')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save slab pricing.')
+      toastRef.current?.error(err.response?.data?.message || 'Failed to save slab pricing.')
     } finally {
       setSaving(false)
     }
   }
 
-  // Sync models to DB (tbl_package_model)
+  // Sync models to DB (tbl_package)
   async function handleSyncToRateCards() {
     setSyncing(true)
     try {
@@ -172,19 +282,19 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
 
       // Then trigger sync
       const res = await api.post('/rate-cards/slabs/sync')
-      toast.success(res.data?.message || 'All vehicle models synchronized successfully!')
+      toastRef.current?.success(res.data?.message || 'All vehicle models synchronized successfully!')
       if (onSynced) onSynced()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to sync models to rate cards.')
+      toastRef.current?.error(err.response?.data?.message || 'Failed to sync models to rate cards.')
     } finally {
       setSyncing(false)
     }
   }
 
-  // Live Local Simulation Calculation (for immediate reactivity without roundtrips)
+  // Live Local Simulation Calculation (for immediate reactivity without network lag)
   const simulationResult = useMemo(() => {
     const vConfig = vehicleSlabs.find(
-      (v) => v.vehicle_type?.toLowerCase() === simVehicle.toLowerCase()
+      (v) => (v.vehicle_type || '').toLowerCase() === simVehicle.toLowerCase()
     ) || vehicleSlabs[0]
 
     if (!vConfig) return null
@@ -256,7 +366,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
       width={1060}
       title={
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand/15 text-brand" style={{ background: 'rgba(234, 88, 12, 0.12)', color: 'var(--brand)' }}>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: 'rgba(234, 88, 12, 0.12)', color: 'var(--brand)' }}>
             <Sliders size={16} />
           </div>
           <div>
@@ -394,7 +504,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                 </thead>
                 <tbody>
                   {vehicleSlabs.map((v, vIdx) => (
-                    <tr key={v.vehicle_type} className="border-t transition-colors hover:bg-black/2 dark:hover:bg-white/2" style={{ borderColor: 'var(--border)' }}>
+                    <tr key={v.vehicle_key || v.vehicle_type} className="border-t transition-colors hover:bg-black/2 dark:hover:bg-white/2" style={{ borderColor: 'var(--border)' }}>
                       {/* Vehicle Name */}
                       <td className="sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-medium" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
                         <div className="flex items-center gap-1.5 font-semibold text-[12.5px]">
