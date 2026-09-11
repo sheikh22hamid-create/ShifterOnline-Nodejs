@@ -194,7 +194,9 @@ public class OrderDialogHelper {
                 if (dialog.isShowing()) {
                     dialog.dismiss();
                 }
-                if (listener != null) {
+                if (isDirectAssign) {
+                    acceptOrder(context, orderId, riderId, orderData, listener);
+                } else if (listener != null) {
                     listener.onOrderTimedOut(orderId);
                 }
             }

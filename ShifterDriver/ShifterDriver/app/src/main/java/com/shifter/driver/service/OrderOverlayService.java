@@ -318,7 +318,12 @@ public class OrderOverlayService extends Service {
 
             @Override
             public void onFinish() {
-                removeOverlay();
+                if (isDirectAssign) {
+                    hideOverlayUI();
+                    acceptOrder(orderId, riderId, intent);
+                } else {
+                    removeOverlay();
+                }
             }
         };
         countDownTimer.start();

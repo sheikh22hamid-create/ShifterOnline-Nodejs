@@ -237,6 +237,7 @@ async function assignRider(req, res) {
         delivery_address: updatedOrder.daddress,
         driver_earning: String(fare),
       });
+      dispatchManager.emitDirectAssign(riderId, updatedOrder);
       io.to(`customer_${updatedOrder.uid}`).emit("order:assigned", {
         order_id: updatedOrder.id,
         rider_id: rider.id,
@@ -479,6 +480,7 @@ async function assignScheduledDriver(req, res) {
       });
       try {
         getIO().to(`driver_${riderId}`).emit("order:scheduled_assigned", { order_id: id, pickup_address: order.paddress });
+        dispatchManager.emitDirectAssign(riderId, updated);
       } catch (socketErr) {
         logger.error(`assignScheduledDriver: socket notify failed for order ${id}:`, socketErr);
       }
@@ -620,6 +622,11 @@ async function assignNextDayBatch(req, res) {
             fare: o.total_dcharge,
           }));
         getIO().to(`driver_${riderId}`).emit("order:next_day_assigned", { orders: orderedForDriver });
+        orders.forEach((o) => {
+          try {
+            dispatchManager.emitDirectAssign(riderId, o);
+          } catch (e) {}
+        });
       } catch (socketErr) {
         logger.error(`assignNextDayBatch: socket notify failed for rider ${riderId}:`, socketErr);
       }

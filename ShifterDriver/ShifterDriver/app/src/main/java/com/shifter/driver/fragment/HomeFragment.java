@@ -201,6 +201,18 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         return binding.getRoot();
     }
+
+    private final android.os.Handler dutyTickerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable dutyTickerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isAdded() && getActivity() != null) {
+                setupMonthlyDriverUI();
+                dutyTickerHandler.postDelayed(this, 10000); // Live poll duty stats every 10s
+            }
+        }
+    };
+
     private void setupSwipeButton() {
         android.widget.FrameLayout thumb = binding.swipeThumb;
         android.widget.FrameLayout container = binding.swipeBtnContainer;
@@ -691,9 +703,22 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         getActivity().runOnUiThread(() -> {
             try {
-
                 if (binding.deliveryTypesContainer == null) {
                     return;
+                }
+
+                // If monthly driver, hide delivery types selection completely
+                MonthlyDutyStatus currentDuty = MonthlyDutyManager.getInstance().getCurrentStatus();
+                boolean isMonthly = (currentDuty != null && currentDuty.isMonthlyDriver());
+                if (isMonthly) {
+                    if (binding.cardDeliveryTypesSection != null) {
+                        binding.cardDeliveryTypesSection.setVisibility(View.GONE);
+                    }
+                    return;
+                } else {
+                    if (binding.cardDeliveryTypesSection != null) {
+                        binding.cardDeliveryTypesSection.setVisibility(View.VISIBLE);
+                    }
                 }
 
                 if (packageDataList == null || packageDataList.isEmpty()) {
@@ -998,6 +1023,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             getHome();
         }
         setupMonthlyDriverUI();
+        dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
+        dutyTickerHandler.postDelayed(dutyTickerRunnable, 10000);
+
         // Update volume button icon when fragment resumes
         if (binding.btnVolumeControl != null) {
             updateVolumeButtonIcon();
@@ -1014,6 +1042,18 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                                 .putExtra("myclass", homeData.getOrderHistory()));
             }
         }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
     }
 
     public static boolean isUpdateHome = false;
@@ -1288,6 +1328,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 if (!isAdded() || getActivity() == null || binding == null) return;
 
                 if (status != null && status.isMonthlyDriver()) {
+                    if (binding.cardDeliveryTypesSection != null) {
+                        binding.cardDeliveryTypesSection.setVisibility(View.GONE);
+                    }
                     if (binding.incMonthlyDutyCard != null && binding.incMonthlyDutyCard.cardMonthlyDuty != null) {
                         binding.incMonthlyDutyCard.cardMonthlyDuty.setVisibility(View.VISIBLE);
 
@@ -1349,6 +1392,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     // Fetch upcoming orders in queue
                     fetchDriverQueue();
                 } else {
+                    if (binding.cardDeliveryTypesSection != null) {
+                        binding.cardDeliveryTypesSection.setVisibility(View.VISIBLE);
+                    }
                     if (binding.incMonthlyDutyCard != null && binding.incMonthlyDutyCard.cardMonthlyDuty != null) {
                         binding.incMonthlyDutyCard.cardMonthlyDuty.setVisibility(View.GONE);
                     }

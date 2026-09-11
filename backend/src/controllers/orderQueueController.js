@@ -27,15 +27,14 @@ async function getDriverQueue(req, res) {
         id: true,
         uid: true,
         o_status: true,
-        pick_address: true,
-        drop_address: true,
-        pickup_name: true,
+        paddress: true,
+        daddress: true,
+        pick_name: true,
         drop_name: true,
         distance: true,
         time_duration: true,
         total_dcharge: true,
-        sub_total: true,
-        order_date: true,
+        odate: true,
       },
     });
 
@@ -91,12 +90,13 @@ async function assignOrderToQueue(req, res) {
 
     // If driver is completely free (no active order), assign immediately
     if (!activeOrder) {
-      await prisma.pkg_order.update({
+      const updatedOrder = await prisma.pkg_order.update({
         where: { id: orderId },
         data: {
           rid: riderId,
+          order_status: 1,
           o_status: "Processing",
-          flow_id: 1,
+          accept_time: new Date(),
         },
       });
 

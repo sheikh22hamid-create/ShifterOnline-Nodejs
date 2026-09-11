@@ -238,6 +238,7 @@
 
                     <!-- Delivery Type Selection Section -->
                     <LinearLayout
+                        android:id="@+id/card_delivery_types_section"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_margin="10dp"

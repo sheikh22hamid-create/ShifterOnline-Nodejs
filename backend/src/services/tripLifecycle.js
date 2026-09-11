@@ -76,6 +76,12 @@ async function claimOrderForRider(orderId, riderId) {
   const popupSeconds = POPUP_TIMEOUT_MS / 1000;
   let acceptedPackageId = null;
 
+  // Check if order is already assigned to this rider (e.g. direct assigned by admin or queue)
+  const existingOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  if (existingOrder && existingOrder.rid === riderId && existingOrder.o_status !== "Cancelled") {
+    return { success: true, acceptedPackageId: existingOrder.delivery_type || 1 };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       const requestAffected = await tx.$executeRaw`
@@ -90,36 +96,19 @@ async function claimOrderForRider(orderId, riderId) {
         throw new OfferNotFreshError();
       }
 
-      // The offer we just claimed carries the exact package/model the
-      // driver actually saw — pkg_order.delivery_type may have since been
-      // overwritten by a later tier's batch, so it is never used here.
       const acceptedRequest = await tx.tbl_order_requests.findFirst({
         where: { order_id: orderId, rider_id: riderId, status: "accepted" },
         orderBy: { id: "desc" },
       });
-      acceptedPackageId = acceptedRequest.package_id;
+      acceptedPackageId = acceptedRequest ? acceptedRequest.package_id : (existingOrder?.delivery_type || 1);
 
-      // accept_time = NOW() + 5:30, not NOW() — the live PHP backend's
-      // advance_payment_helper.php reads this column via PHP's strtotime()
-      // after date_default_timezone_set('Asia/Kolkata'), so it treats
-      // whatever digits are stored as IST wall-clock (same DB convention
-      // already confirmed for tbl_package.start_time/end_time — see
-      // pricingEngine.isNightNow). MySQL's NOW() here returns true UTC
-      // (confirmed live: NOW() and UTC_TIMESTAMP() return the identical
-      // value on this DB), so storing it as-is put PHP's own "now" 5.5
-      // hours ahead of the real accept moment — every accepted order's
-      // 2-minute advance-payment window looked like it had already been
-      // exceeded by ~5.5 hours the instant the driver accepted, and got
-      // auto-cancelled within seconds (confirmed live: order #1673,
-      // cancel_reason "Advance payment timeout (2 minutes exceeded)"
-      // fired well within 2 real minutes of accept_time).
       const orderAffected = await tx.$executeRaw`
         UPDATE pkg_order
         SET rid = ${riderId},
             order_status = 1,
             o_status = 'Processing',
             accept_time = DATE_ADD(NOW(), INTERVAL 330 MINUTE)
-        WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
+        WHERE id = ${orderId} AND (rid = 0 OR rid = ${riderId}) AND o_status != 'Cancelled'
       `;
       if (orderAffected === 0) {
         throw new OrderAlreadyTakenError();
@@ -127,8 +116,6 @@ async function claimOrderForRider(orderId, riderId) {
     });
   } catch (err) {
     if (err instanceof OfferNotFreshError) {
-      // Non-authoritative — only to produce a more specific message than
-      // the rollback alone gives us. Correctness never depends on this read.
       const requestRow = await prisma.tbl_order_requests.findFirst({
         where: { order_id: orderId, rider_id: riderId },
         orderBy: { id: "desc" },
@@ -624,6 +611,8 @@ async function updateStatus(orderId, riderId, status) {
  */
 async function processNextQueuedOrder(riderId, completedOrderId) {
   try {
+    if (!prisma.driver_order_queue) return;
+
     // 1. Mark completed queue item
     await prisma.driver_order_queue.updateMany({
       where: { rider_id: Number(riderId), order_id: Number(completedOrderId), status: "active" },
@@ -631,11 +620,13 @@ async function processNextQueuedOrder(riderId, completedOrderId) {
     });
 
     // 2. Increment today's completed order counter
-    const todayStr = new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0];
-    await prisma.driver_duty_log.updateMany({
-      where: { rider_id: Number(riderId), duty_date: new Date(todayStr), status: "in_progress" },
-      data: { orders_completed: { increment: 1 } },
-    });
+    if (prisma.driver_duty_log) {
+      const todayStr = new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0];
+      await prisma.driver_duty_log.updateMany({
+        where: { rider_id: Number(riderId), duty_date: new Date(todayStr), status: "in_progress" },
+        data: { orders_completed: { increment: 1 } },
+      });
+    }
 
     // 3. Find next pending order in queue
     const nextItem = await prisma.driver_order_queue.findFirst({
