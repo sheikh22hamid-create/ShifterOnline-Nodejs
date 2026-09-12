@@ -171,7 +171,7 @@ public class OrderOverlayService extends Service {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         viewParams.gravity = Gravity.CENTER;
         
-        int margin = (int) (20 * getResources().getDisplayMetrics().density);
+        int margin = (int) (12 * getResources().getDisplayMetrics().density);
         viewParams.setMargins(margin, margin, margin, margin);
 
         rootContainer.addView(view, viewParams);
@@ -250,14 +250,10 @@ public class OrderOverlayService extends Service {
                 packageId,
                 modelName,
                 packageTitle,
-                pickupAddress != null
-                        ? com.shifter.driver.utility.OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
-                        : "Unknown Pickup Location",
-                hasStops(rawStops)
-                        ? deliveryAddress
-                        : (finalDropAddress != null
-                            ? com.shifter.driver.utility.OrderVoiceAnnouncer.dropLabel(finalDropAddress, tripDistanceKm)
-                            : "Unknown Drop Location"),
+                pickupAddress != null ? pickupAddress : "Unknown Pickup Location",
+                deliveryAddress != null ? deliveryAddress : "Unknown Drop Location",
+                pickupLat,
+                pickupLng,
                 tripDistanceKm,
                 category,
                 customerName,

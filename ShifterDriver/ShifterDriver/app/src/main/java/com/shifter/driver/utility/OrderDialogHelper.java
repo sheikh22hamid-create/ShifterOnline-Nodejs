@@ -119,14 +119,10 @@ public class OrderDialogHelper {
                 packageId,
                 modelName,
                 packageTitle,
-                pickupAddress != null
-                        ? OrderVoiceAnnouncer.pickupLabel(pickupAddress, pickupLat, pickupLng, driverLocation)
-                        : "Unknown Pickup Location",
-                hasStops(rawStops)
-                        ? deliveryAddress
-                        : (deliveryAddress != null
-                            ? OrderVoiceAnnouncer.dropLabel(deliveryAddress, tripDistanceKm)
-                            : "Unknown Drop Location"),
+                pickupAddress != null ? pickupAddress : "Unknown Pickup Location",
+                deliveryAddress != null ? deliveryAddress : "Unknown Drop Location",
+                pickupLat,
+                pickupLng,
                 tripDistanceKm,
                 category,
                 customerName,
@@ -226,6 +222,11 @@ public class OrderDialogHelper {
         currentDialog = dialog;
         currentOrderId = orderId;
         dialog.show();
+        if (dialog.getWindow() != null) {
+            android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+            int dialogWidth = Math.min((int) (metrics.widthPixels * 0.94), metrics.widthPixels - 20);
+            dialog.getWindow().setLayout(dialogWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
         Log.d(TAG, "dialog.show() returned at t=" + System.currentTimeMillis() + " orderId=" + orderId);
 
         // Voice announcement
