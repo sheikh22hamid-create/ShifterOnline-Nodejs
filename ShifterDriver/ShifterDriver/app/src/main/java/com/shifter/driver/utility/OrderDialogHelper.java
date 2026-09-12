@@ -111,6 +111,13 @@ public class OrderDialogHelper {
                 getMapValue(orderData, "total",
                 getMapValue(orderData, "fare", "0")))));
 
+        String customerRating = getMapValue(orderData, "customer_rating",
+                getMapValue(orderData, "cust_rating",
+                getMapValue(orderData, "user_rating", "5.0")));
+        String customerOrders = getMapValue(orderData, "customer_orders",
+                getMapValue(orderData, "customer_total_orders",
+                getMapValue(orderData, "total_orders", "0")));
+
         // 1. Apply Tier Visual Theme & Bind Order Data to View
         TierTheme.applyThemeToView(
                 view,
@@ -126,6 +133,8 @@ public class OrderDialogHelper {
                 tripDistanceKm,
                 category,
                 customerName,
+                customerRating,
+                customerOrders,
                 estimatedEarning,
                 driverLocation
         );

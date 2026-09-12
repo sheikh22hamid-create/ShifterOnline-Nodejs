@@ -242,6 +242,28 @@ public class OrderOverlayService extends Service {
             estimatedEarning = "0";
         }
 
+        String customerRating = intent.getStringExtra("customer_rating");
+        if (customerRating == null || customerRating.isEmpty()) {
+            customerRating = intent.getStringExtra("cust_rating");
+        }
+        if (customerRating == null || customerRating.isEmpty()) {
+            customerRating = intent.getStringExtra("user_rating");
+        }
+        if (customerRating == null || customerRating.isEmpty()) {
+            customerRating = "5.0";
+        }
+
+        String customerOrders = intent.getStringExtra("customer_orders");
+        if (customerOrders == null || customerOrders.isEmpty()) {
+            customerOrders = intent.getStringExtra("customer_total_orders");
+        }
+        if (customerOrders == null || customerOrders.isEmpty()) {
+            customerOrders = intent.getStringExtra("total_orders");
+        }
+        if (customerOrders == null || customerOrders.isEmpty()) {
+            customerOrders = "0";
+        }
+
         // 1. Apply Tier Visual Theme & Bind Order Data
         com.shifter.driver.utility.TierTheme.applyThemeToView(
                 view,
@@ -257,6 +279,8 @@ public class OrderOverlayService extends Service {
                 tripDistanceKm,
                 category,
                 customerName,
+                customerRating,
+                customerOrders,
                 estimatedEarning,
                 driverLocation
         );

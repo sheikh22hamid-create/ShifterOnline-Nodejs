@@ -207,7 +207,7 @@ const STANDARD_MODEL_TITLES = {
   34: "Model 5",
 };
 
-function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt, driverTitle = null) {
+function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt, driverTitle = null, customerRating = "5.0", customerOrders = "0") {
   const modelName = driverTitle || packageTitle || STANDARD_MODEL_TITLES[Number(packageId)] || `Model ${packageId}`;
   return {
     type: "order",
@@ -221,6 +221,9 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     category: order.category,
     customer_name: order.pick_name || "Customer",
     customer_phone: order.pmobile || "",
+    customer_rating: String(customerRating || "5.0"),
+    customer_orders: String(customerOrders || "0"),
+    customer_total_orders: String(customerOrders || "0"),
     pickup_address: order.paddress || "",
     pickup_latitude: String(order.plat),
     pickup_longitude: String(order.plong),
@@ -435,6 +438,36 @@ async function runBatchInner(orderId) {
       data: { d_charge: basePriced.fare, total_dcharge: basePriced.fare, commission: basePriced.commission, delivery_type: Number(packageId) },
     }).catch((err) => logger.error("dispatchManager: async pkg_order update failed:", err));
   }
+  if (!state.customerStats) {
+    let customerRating = "5.0";
+    let customerOrders = "0";
+    if (currentOrder.uid) {
+      try {
+        const [completedCount, ratingAgg] = await Promise.all([
+          prisma.pkg_order.count({
+            where: {
+              uid: Number(currentOrder.uid),
+              o_status: "Complete",
+            },
+          }),
+          prisma.pkg_order.aggregate({
+            where: {
+              uid: Number(currentOrder.uid),
+              cust_rate: { gt: 0 },
+            },
+            _avg: { cust_rate: true },
+          }),
+        ]);
+        customerOrders = String(completedCount || 0);
+        if (ratingAgg && ratingAgg._avg && ratingAgg._avg.cust_rate) {
+          customerRating = Number(ratingAgg._avg.cust_rate).toFixed(1);
+        }
+      } catch (err) {
+        logger.error(`dispatchManager: error calculating customer stats for order ${orderId}:`, err);
+      }
+    }
+    state.customerStats = { customerRating, customerOrders };
+  }
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch started`);
 
@@ -583,7 +616,9 @@ async function runBatchInner(orderId) {
           const payload = buildOrderRequestPayload(
             currentOrder, packageId, distanceKm.toFixed(1), fare, packageTitle,
             armedAt + POPUP_TIMEOUT_MS,
-            driverTitle
+            driverTitle,
+            state.customerStats?.customerRating,
+            state.customerStats?.customerOrders
           );
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
