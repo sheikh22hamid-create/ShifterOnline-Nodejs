@@ -418,6 +418,18 @@ public class PDOrderItem implements Parcelable {
 		return advancePayment;
 	}
 
+	public void setAdvancePayment(String advancePayment) {
+		this.advancePayment = advancePayment;
+	}
+
+	public void setAdvancePaymentMsg(String advancePaymentMsg) {
+		this.advancePaymentMsg = advancePaymentMsg;
+	}
+
+	public void setAdvancePaymentTimer(String advancePaymentTimer) {
+		this.advancePaymentTimer = advancePaymentTimer;
+	}
+
 	public String getMinimumCharge() {
 		return minimumCharge;
 	}
