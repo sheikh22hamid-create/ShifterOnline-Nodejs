@@ -623,10 +623,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           ))
               : SizedBox()),
         ),
-        body: RefreshIndicator(
-          backgroundColor: notifier.lightBgColor,
-          color: linercolor,
-          onRefresh: pageRefresh,
+        body: SingleChildScrollView(
           child: Container(
             height: Get.height,
             width: Get.width,
@@ -649,13 +646,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               ],
             )
                 : ImageFiltered(
-              imageFilter: (orderProduc != null &&
-                  (orderProduc["payment_status"] ?? "").toString() != "1")
+              imageFilter: _isAdvancePaymentRequiredForOrder
                   ? ImageFilter.blur(sigmaX: 12, sigmaY: 12)
                   : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
               child: IgnorePointer(
-                ignoring: (orderProduc != null &&
-                    (orderProduc["payment_status"] ?? "").toString() != "1"),
+                ignoring: _isAdvancePaymentRequiredForOrder,
                 child: SingleChildScrollView(
                   padding: EdgeInsets.all(15),
                   physics: BouncingScrollPhysics(),
@@ -1407,7 +1402,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                         : SizedBox(),
 
                     //! deliver Rider details
-                   if (orderProduc["payment_status"] != null && orderProduc["payment_status"].toString() == "1")
+                   if (orderProduc["payment_status"]?.toString() == "1" || !_isAdvancePaymentRequiredForOrder)
                     if (orderProduc["rider_img"] != null)...[
                       SizedBox(height: 10),
                       Text(

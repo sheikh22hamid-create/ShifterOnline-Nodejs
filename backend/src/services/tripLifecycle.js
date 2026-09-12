@@ -210,10 +210,12 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // accept transaction's own writes above.
   const customerPlan = await pricingEngine.getActiveCustomerPlan(order.uid);
   let advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
+  let paymentStatus = order.payment_status ?? 0;
   if (customerPlan && customerPlan.noAdvancePayment) {
     advancePayment = 0;
+    paymentStatus = 1;
   }
-  await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)} WHERE id = ${orderId}`;
+  await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)}, payment_status = ${paymentStatus} WHERE id = ${orderId}`;
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
   // FCM is only a background/reconnect fallback.  It must not block the
@@ -231,7 +233,7 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   });
 
   return {
-    order: { ...order, ...priced, advance_payment: String(advancePayment), package: pkg },
+    order: { ...order, ...priced, advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
     rider,
   };
 }

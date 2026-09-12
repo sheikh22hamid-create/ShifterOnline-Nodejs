@@ -227,9 +227,11 @@ describe("tripLifecycle.acceptOrder", () => {
     const result = await tripLifecycle.acceptOrder(297, 1);
 
     expect(result.order.advance_payment).toBe("0");
+    expect(result.order.payment_status).toBe(1);
     expect(prisma.$executeRaw).toHaveBeenCalledWith(
       expect.anything(),
       "0",
+      1,
       297
     );
   });

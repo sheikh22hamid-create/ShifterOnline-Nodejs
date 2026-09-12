@@ -52,7 +52,7 @@ function registerOrderHandlers(io, socket) {
           Order_flow_id: order.order_status,
           total_Delivery_charge: String(order.total_dcharge),
           advance_payment: order.advance_payment,
-          payment_status: order.payment_status ?? 0,
+          payment_status: (order.advance_payment === "0" || order.advance_payment === 0) ? 1 : (order.payment_status ?? 0),
           advance_payment_timer: 120,
         });
       })

@@ -458,7 +458,7 @@ async function getOrderDetails(req, res) {
           grand_total: String(order.total_dcharge),
           Delivery_charge: String(order.d_charge),
           advance_payment: advancePayment == null ? "0" : String(advancePayment),
-          payment_status: order.payment_status ?? 0,
+          payment_status: (advancePayment == null || advancePayment === "0" || Number(advancePayment) === 0) ? 1 : (order.payment_status ?? 0),
           advance_payment_timer: 120,
           is_rate: order.is_rate,
           distance: order.distance,
@@ -482,13 +482,9 @@ async function getOrderDetails(req, res) {
           customer_daddress: order.daddress,
           customer_pmobile: order.pmobile,
           customer_dmobile: order.dmobile,
-          // Pickup/drop coordinates for the live tracking map — not
-          // previously returned since nothing on this screen used to render
-          // a map at all.
           plat: order.plat,
           plong: order.plong,
           dlat: order.dlat,
-          dlong: order.dlong,
           drop_mobile: order.dmobile,
           stops,
         },

@@ -163,10 +163,17 @@ public class OrderDetailsActivity extends AppCompatActivity
         String pMethod = item.getPMethodId();
         if ("1".equals(pMethod)) return false; // Cash on delivery
 
+        String paymentStatus = item.getPaymentStatus();
+        if ("1".equals(paymentStatus)) return false; // Already paid / exempt
+
         String adv = item.getAdvancePayment();
-        if (adv != null && ("0".equals(adv.trim()) || "0.00".equals(adv.trim()) || adv.trim().isEmpty())) {
+        if (adv == null || "0".equals(adv.trim()) || "0.00".equals(adv.trim()) || adv.trim().isEmpty()) {
             return false;
         }
+        try {
+            double advAmt = Double.parseDouble(adv.trim());
+            if (advAmt <= 0) return false;
+        } catch (Exception ignored) {}
 
         return true;
     }

@@ -432,6 +432,7 @@ public class OrderDialogHelper {
                 "0.00", "0.00", "0.00", "0.00", "0.00", "0", "0.00",
                 getMapValue(data, "payment_status", "1")
         );
+        orderItem.setAdvancePayment(getMapValue(data, "advance_payment", "0"));
         // The socket dispatch payload carries stops as a JSON string.
         orderItem.setStops(parseStops(getMapValue(data, "stops", "[]")));
         // Save active order locally so app always remembers and re-opens it
