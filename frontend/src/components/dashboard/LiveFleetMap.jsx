@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import api from '../../services/api'
 import { useSocket } from '../../context/SocketContext'
 import useApiQuery from '../../hooks/useApiQuery'
+import useRealtimeSync from '../../hooks/useRealtimeSync'
 
 const IDLE_COLOR = '#34d399'
 const TRIP_COLOR = '#e8871e'
@@ -41,7 +42,14 @@ export default function LiveFleetMap() {
   const [filter, setFilter] = useState('all')
 
   const fetcher = useCallback(() => api.get('/fleet/live-tracking').then((res) => res.data.data), [])
-  const { data: riders, loading } = useApiQuery(fetcher)
+  const { data: riders, loading, refetch } = useApiQuery(fetcher)
+
+  // Real-time synchronization for fleet status and active trips
+  useRealtimeSync(
+    ['admin:driver_status_update', 'admin:order_status_update', 'admin:new_order'],
+    refetch,
+    { fallbackInterval: 15000 }
+  )
 
   const counts = useMemo(() => {
     const all = riders?.length ?? 0
@@ -63,12 +71,6 @@ export default function LiveFleetMap() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map)
     mapRef.current = map
 
-    // Leaflet caches the container's pixel size at init time. Because this
-    // component is lazy-loaded inside a grid column, that size can still be
-    // settling (webfont swap, Suspense resolve) when L.map() runs, leaving
-    // the rendered tiles smaller than the actual box. ResizeObserver fires
-    // once immediately with the current size (fixing that first mis-measure)
-    // and again on every later layout change (sidebar toggle, window resize).
     const resizeObserver = new ResizeObserver(() => map.invalidateSize())
     resizeObserver.observe(containerRef.current)
 
@@ -89,12 +91,14 @@ export default function LiveFleetMap() {
 
     const points = []
     for (const r of visibleRiders) {
-      if (!Number.isFinite(r.lat) || !Number.isFinite(r.lng)) continue
-      const marker = L.marker([r.lat, r.lng], { icon: markerIcon(r.status === 'on_trip' ? TRIP_COLOR : IDLE_COLOR) })
+      const lat = Number(r.lat)
+      const lng = Number(r.lng)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
+      const marker = L.marker([lat, lng], { icon: markerIcon(r.status === 'on_trip' ? TRIP_COLOR : IDLE_COLOR) })
         .addTo(map)
         .bindTooltip(riderTooltipContent(r), { direction: 'top' })
-      markersRef.current.set(r.rider_id, marker)
-      points.push([r.lat, r.lng])
+      markersRef.current.set(Number(r.rider_id), marker)
+      points.push([lat, lng])
     }
     if (points.length > 0) map.fitBounds(points, { padding: [24, 24], maxZoom: 14 })
   }, [visibleRiders])
@@ -102,12 +106,22 @@ export default function LiveFleetMap() {
   // Live incremental position updates — no full refetch per ping.
   useEffect(() => {
     if (!socket) return
-    function onPing({ rider_id, lat, lng }) {
-      const marker = markersRef.current.get(rider_id)
-      if (marker && Number.isFinite(lat) && Number.isFinite(lng)) marker.setLatLng([lat, lng])
+    function onPing(payload) {
+      if (!payload) return
+      const pRiderId = Number(payload.rider_id)
+      const pLat = Number(payload.lat)
+      const pLng = Number(payload.lng)
+      const marker = markersRef.current.get(pRiderId)
+      if (marker && Number.isFinite(pLat) && Number.isFinite(pLng)) {
+        marker.setLatLng([pLat, pLng])
+      }
     }
     socket.on('admin:live_driver_ping', onPing)
-    return () => socket.off('admin:live_driver_ping', onPing)
+    socket.on('driver:location_stream', onPing)
+    return () => {
+      socket.off('admin:live_driver_ping', onPing)
+      socket.off('driver:location_stream', onPing)
+    }
   }, [socket])
 
   return (

@@ -1,7 +1,19 @@
 import axios from 'axios'
 
+const PROD_API_BASE = 'https://shifteronline-nodejs.onrender.com/api/v1/admin'
+
+function getBaseUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return '/api/v1/admin'
+  }
+  return PROD_API_BASE
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1/admin',
+  baseURL: getBaseUrl(),
   headers: { 'Content-Type': 'application/json' },
 })
 

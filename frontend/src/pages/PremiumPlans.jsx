@@ -108,6 +108,60 @@ export default function PremiumPlans() {
                   {p.description}
                 </p>
               )}
+              {/* Feature Chips */}
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {p.plan_for === 'USER' && (
+                  <>
+                    {Boolean(p.discount_enabled) && Number(p.discount_percent) > 0 && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)', color: 'var(--brand)' }}>
+                        {p.discount_percent}% off rides
+                      </span>
+                    )}
+                    {Boolean(p.no_advance_payment) && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        No advance pay
+                      </span>
+                    )}
+                    {Boolean(p.referral_enabled) && Number(p.referral_points_per_referral) > 0 && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        {p.referral_points_per_referral} pts/ref
+                      </span>
+                    )}
+                    {Boolean(p.cancellation_enabled) && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        Free cancel
+                      </span>
+                    )}
+                    {Boolean(p.priority_enabled) && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        Priority match
+                      </span>
+                    )}
+                    {Boolean(p.wallet_bonus_enabled) && Number(p.wallet_bonus_amount) > 0 && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        ₹{p.wallet_bonus_amount} bonus
+                      </span>
+                    )}
+                  </>
+                )}
+                {p.plan_for === 'DRIVER' && (
+                  <>
+                    <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)', color: 'var(--brand)' }}>
+                      Comm: {p.commission_percent}%
+                    </span>
+                    {Number(p.per_trip_charge) > 0 && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        ₹{p.per_trip_charge}/trip
+                      </span>
+                    )}
+                    {Boolean(p.priority_enabled) && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+                        Priority
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
               <div className="mt-auto flex items-center justify-between pt-3">
                 <Badge tone={p.status ? 'success' : 'neutral'}>{p.status ? 'Active' : 'Inactive'}</Badge>
                 {canManage && (

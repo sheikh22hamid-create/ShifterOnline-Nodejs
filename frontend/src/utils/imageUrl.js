@@ -3,7 +3,9 @@
 // public_html/admin root, not this app's origin. VITE_IMAGE_BASE_URL points
 // at wherever that root is served from (see backend/src/app.js's
 // LEGACY_IMAGES_DIR static mount, or a real CDN/domain if one exists).
-const DEFAULT_BASE_URL = 'http://localhost:5000'
+const DEFAULT_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+  ? 'http://localhost:5000'
+  : 'https://shifteronline-nodejs.onrender.com'
 
 export function resolveImageUrl(path) {
   if (!path) return null

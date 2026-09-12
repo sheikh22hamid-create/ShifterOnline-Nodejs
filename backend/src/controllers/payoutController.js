@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 
 function internalError(res, err, label) {
@@ -110,6 +111,14 @@ async function approve(req, res) {
       }),
     ]);
 
+    adminSocket.notifyPayoutUpdate({
+      id,
+      rider_id: rider.id,
+      city_id: cityId,
+      status: "approved",
+      amount,
+    });
+
     return res.status(200).json({ success: true, message: "Withdrawal request approved" });
   } catch (err) {
     return internalError(res, err, "payouts.approve");
@@ -148,6 +157,14 @@ async function reject(req, res) {
         },
       });
     }
+
+    adminSocket.notifyPayoutUpdate({
+      id,
+      rider_id: withdrawal.rider_id,
+      city_id: cityId,
+      status: "rejected",
+      amount: withdrawal.amount,
+    });
 
     return res.status(200).json({ success: true, message: "Withdrawal request rejected" });
   } catch (err) {

@@ -97,4 +97,65 @@ async function driverActivity(req, res) {
   }
 }
 
-module.exports = { liveTracking, driverActivity };
+async function activeTrips(req, res) {
+  try {
+    const where = {
+      o_status: { in: ["Pending", "Processing", "Pickup", "On_Route"] },
+      order_status: { in: [0, 1, 2, 3] },
+    };
+    if (req.scopedCityId) where.city_id = req.scopedCityId;
+
+    const rows = await prisma.pkg_order.findMany({
+      where,
+      orderBy: { id: "desc" },
+      take: 60,
+    });
+
+    const uids = [...new Set(rows.map((o) => o.uid))];
+    const rids = [...new Set(rows.map((o) => o.rid).filter((rid) => rid))];
+    const [customers, riders, packages] = await Promise.all([
+      prisma.tbl_user.findMany({ where: { id: { in: uids } }, select: { id: true, name: true, mobile: true } }),
+      prisma.tbl_rider.findMany({ where: { id: { in: rids } }, select: { id: true, first_name: true, last_name: true, full_name: true, fmobile: true, vehicle_no: true, rlats: true, rlongs: true } }),
+      prisma.tbl_package.findMany({ select: { id: true, title: true } }),
+    ]);
+    const customerById = Object.fromEntries(customers.map((c) => [c.id, c]));
+    const riderById = Object.fromEntries(riders.map((r) => [r.id, r]));
+    const packageById = Object.fromEntries(packages.map((p) => [p.id, p.title]));
+
+    const data = rows.map((o) => {
+      const customer = customerById[o.uid];
+      const rider = o.rid ? riderById[o.rid] : null;
+      return {
+        id: o.id,
+        uid: o.uid,
+        customer_name: customer ? customer.name : null,
+        customer_mobile: customer ? String(customer.mobile) : null,
+        rid: o.rid,
+        rider_name: rider ? rider.full_name || `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "Unassigned",
+        rider_mobile: rider ? rider.fmobile : null,
+        rider_vehicle: rider ? rider.vehicle_no : null,
+        rider_lat: rider?.rlats ? Number(rider.rlats) : null,
+        rider_lng: rider?.rlongs ? Number(rider.rlongs) : null,
+        o_status: o.o_status,
+        order_status: o.order_status,
+        total_dcharge: String(o.total_dcharge),
+        paddress: o.paddress,
+        daddress: o.daddress,
+        plat: o.plat,
+        plong: o.plong,
+        dlat: o.dlat,
+        dlong: o.dlong,
+        package_title: packageById[o.delivery_type] || o.category || null,
+        booking_type: o.booking_type,
+        odate: o.odate,
+        city_id: o.city_id,
+      };
+    });
+
+    return res.status(200).json({ success: true, total: data.length, data });
+  } catch (err) {
+    return internalError(res, err, "fleet.activeTrips");
+  }
+}
+
+module.exports = { liveTracking, driverActivity, activeTrips };

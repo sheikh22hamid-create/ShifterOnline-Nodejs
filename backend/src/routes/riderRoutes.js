@@ -19,4 +19,14 @@ router.post("/training/status", trainingController.getStatus);
 router.post("/training/progress", trainingController.saveProgress);
 router.post("/training/complete", trainingController.complete);
 
+// Monthly Driver Duty & Queue endpoints
+const monthlyDriverController = require("../controllers/monthlyDriverController");
+const orderQueueController = require("../controllers/orderQueueController");
+
+router.get("/duty/status/:riderId", monthlyDriverController.getDutyStatus);
+router.post("/duty/punch-in", monthlyDriverController.punchIn);
+router.post("/duty/punch-out", monthlyDriverController.punchOut);
+router.get("/queue/:riderId", orderQueueController.getDriverQueue);
+
 module.exports = router;
+

@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useState } from 'react'
 import api from '../services/api'
-import { useSocket } from '../context/SocketContext'
+import useRealtimeSync from './useRealtimeSync'
 
-// "Active" = accepted but not yet delivered/cancelled. There's no single
-// backend filter for that OR-of-statuses, so this fans out to the existing
-// list endpoint once per status and merges — three small requests instead
-// of a new backend endpoint.
-const ACTIVE_STATUSES = ['processing', 'pickup', 'on_route']
+const FALLBACK_STATUSES = ['pending', 'processing', 'pickup', 'on_route']
 
 export default function useActiveTrips() {
-  const { socket } = useSocket()
   const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   const fetchActive = useCallback(async () => {
     try {
-      const responses = await Promise.all(ACTIVE_STATUSES.map((status) => api.get('/orders', { params: { status, limit: 100 } })))
-      const merged = responses.flatMap((res) => res.data.data)
-      merged.sort((a, b) => b.id - a.id)
-      setTrips(merged)
+      const res = await api.get('/fleet/active-trips')
+      if (res?.data?.success && Array.isArray(res.data.data)) {
+        setTrips(res.data.data)
+        setError('')
+        return
+      }
+    } catch (err) {
+      // Fallback to fanout if active-trips endpoint fails
+    }
+
+    try {
+      const responses = await Promise.all(
+        FALLBACK_STATUSES.map((status) => api.get('/orders', { params: { status, limit: 50 } }))
+      )
+      const merged = responses.flatMap((res) => res.data?.data || [])
+      const unique = Array.from(new Map(merged.map((item) => [item.id, item])).values())
+      unique.sort((a, b) => b.id - a.id)
+      setTrips(unique)
       setError('')
     } catch (err) {
       setError(err?.response?.data?.message || 'Could not load active trips.')
@@ -29,27 +38,15 @@ export default function useActiveTrips() {
   }, [])
 
   useEffect(() => {
-    // This effect's whole purpose is kicking off the async fetch against
-    // the API — same async-boundary case as useApiQuery's own effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchActive()
   }, [fetchActive])
 
-  // Real-time refresh instead of polling — both events already broadcast
-  // to the admin room today (adminSocket.js) whenever a trip's status
-  // changes or a new one enters the accepted/pickup/on_route set.
-  useEffect(() => {
-    if (!socket) return
-    function onChange() {
-      fetchActive()
-    }
-    socket.on('admin:order_status_update', onChange)
-    socket.on('admin:new_order', onChange)
-    return () => {
-      socket.off('admin:order_status_update', onChange)
-      socket.off('admin:new_order', onChange)
-    }
-  }, [socket, fetchActive])
+  // Real-time refresh on order updates, new orders, dispatch alerts and driver transitions
+  useRealtimeSync(
+    ['admin:order_status_update', 'admin:new_order', 'admin:driver_status_update', 'admin:dispatch_alert'],
+    fetchActive,
+    { fallbackInterval: 6000 }
+  )
 
   return { trips, loading, error, refetch: fetchActive }
 }

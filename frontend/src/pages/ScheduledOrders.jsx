@@ -3,6 +3,7 @@ import { CalendarClock, UserPlus } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import AssignScheduledDriverModal from '../components/orders/AssignScheduledDriverModal'
 import { orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
@@ -15,6 +16,8 @@ export default function ScheduledOrders() {
   const fetcher = useCallback(() => api.get('/orders/scheduled').then((res) => res.data), [])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
   const orders = data?.data ?? []
+
+  useRealtimeSync(['admin:new_order', 'admin:order_status_update'], refetch)
 
   return (
     <div>

@@ -125,6 +125,24 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         OR r.model1_suspended_until IS NULL
         OR r.model1_suspended_until <= NOW()
       )
+      AND (
+        (COALESCE(r.monthly_plan, 0) != 1)
+        OR (
+          COALESCE(r.monthly_plan, 0) = 1
+          AND ${Number(packageId)} = ${MODEL_1_PACKAGE_ID}
+          AND EXISTS (
+            SELECT 1 FROM driver_duty_log ddl
+            WHERE ddl.rider_id = r.id
+              AND ddl.duty_date = CURDATE()
+              AND ddl.status = 'in_progress'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM driver_order_queue doq
+            WHERE doq.rider_id = r.id
+              AND doq.status IN ('pending', 'active')
+          )
+        )
+      )
     HAVING distance_km <= ${radiusKm}
     ORDER BY has_priority_plan DESC, is_favorite DESC, distance_km ASC
     LIMIT ${limit}
@@ -189,8 +207,8 @@ const STANDARD_MODEL_TITLES = {
   34: "Model 5",
 };
 
-function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt) {
-  const modelName = STANDARD_MODEL_TITLES[Number(packageId)] || packageTitle || `Model ${packageId}`;
+function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packageTitle, expiresAt, driverTitle = null, customerRating = "5.0", customerOrders = "0") {
+  const modelName = driverTitle || packageTitle || STANDARD_MODEL_TITLES[Number(packageId)] || `Model ${packageId}`;
   return {
     type: "order",
     order_id: String(order.id),
@@ -198,16 +216,30 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     delivery_type: String(packageId),
     package_name: modelName,
     package_title: modelName,
+    driver_title: driverTitle || modelName,
     model_name: modelName,
     category: order.category,
     customer_name: order.pick_name || "Customer",
     customer_phone: order.pmobile || "",
+    customer_rating: String(customerRating || "5.0"),
+    customer_orders: String(customerOrders || "0"),
+    customer_total_orders: String(customerOrders || "0"),
     pickup_address: order.paddress || "",
     pickup_latitude: String(order.plat),
     pickup_longitude: String(order.plong),
     delivery_address: order.daddress || "",
     delivery_latitude: String(order.dlat),
     delivery_longitude: String(order.dlong),
+    stops: JSON.stringify(Array.isArray(order.stops) ? order.stops.map((stop) => ({
+      sequence: stop.sequence,
+      address: stop.address || "",
+      hno: stop.hno || "",
+      landmark: stop.landmark || "",
+      lat: String(stop.lat),
+      lng: String(stop.lng),
+      contact_name: stop.contact_name || "",
+      contact_number: stop.contact_number || "",
+    })) : []),
     distance_km: String(distanceKm),
     distance: String(Math.round(Number(distanceKm) * 100) / 100),
     // Driver popup shows the full gross fare — the same number the customer
@@ -367,6 +399,11 @@ async function runBatchInner(orderId) {
   if (!currentOrder || currentOrder.rid !== 0 || currentOrder.order_status !== 0) {
     return; // already accepted or cancelled by the time this tier fired
   }
+  if (!Array.isArray(currentOrder.stops) && prisma.pkg_order_stops) {
+    currentOrder.stops = await prisma.pkg_order_stops.findMany({
+      where: { order_id: orderId }, orderBy: { sequence: "asc" },
+    });
+  }
 
   const rejectedRiderIds = await getRejectedRiderIds(orderId);
 
@@ -400,6 +437,36 @@ async function runBatchInner(orderId) {
       where: { id: orderId },
       data: { d_charge: basePriced.fare, total_dcharge: basePriced.fare, commission: basePriced.commission, delivery_type: Number(packageId) },
     }).catch((err) => logger.error("dispatchManager: async pkg_order update failed:", err));
+  }
+  if (!state.customerStats) {
+    let customerRating = "5.0";
+    let customerOrders = "0";
+    if (currentOrder.uid) {
+      try {
+        const [completedCount, ratingAgg] = await Promise.all([
+          prisma.pkg_order.count({
+            where: {
+              uid: Number(currentOrder.uid),
+              o_status: "Complete",
+            },
+          }),
+          prisma.pkg_order.aggregate({
+            where: {
+              uid: Number(currentOrder.uid),
+              cust_rate: { gt: 0 },
+            },
+            _avg: { cust_rate: true },
+          }),
+        ]);
+        customerOrders = String(completedCount || 0);
+        if (ratingAgg && ratingAgg._avg && ratingAgg._avg.cust_rate) {
+          customerRating = Number(ratingAgg._avg.cust_rate).toFixed(1);
+        }
+      } catch (err) {
+        logger.error(`dispatchManager: error calculating customer stats for order ${orderId}:`, err);
+      }
+    }
+    state.customerStats = { customerRating, customerOrders };
   }
 
   logger.info(`dispatchManager: order=${orderId} tier=${tierIndex} batch started`);
@@ -539,7 +606,7 @@ async function runBatchInner(orderId) {
           // edge of the customer's search radius (see priceForPackage's
           // radiusRangeKm and calculateRadiusCharge).
           const driverDistanceKm = Number(driver.distance_km);
-          const { fare } = pricingEngine.priceForPackage(
+          const { fare, driverTitle } = pricingEngine.priceForPackage(
             pkg,
             distanceKm,
             Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
@@ -548,7 +615,10 @@ async function runBatchInner(orderId) {
           );
           const payload = buildOrderRequestPayload(
             currentOrder, packageId, distanceKm.toFixed(1), fare, packageTitle,
-            armedAt + POPUP_TIMEOUT_MS
+            armedAt + POPUP_TIMEOUT_MS,
+            driverTitle,
+            state.customerStats?.customerRating,
+            state.customerStats?.customerOrders
           );
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
@@ -932,6 +1002,60 @@ async function reconcileStaleOffersOnStartup() {
   }
 }
 
+/**
+ * Directly dispatches an order to a Monthly Driver (non-rejectable auto-assigned).
+ */
+async function emitDirectAssign(riderId, order) {
+  if (!ioRef || !riderId || !order) return;
+
+  const payload = {
+    order_id: String(order.id),
+    rider_id: String(riderId),
+    pickup_address: order.paddress || order.pick_address || "",
+    delivery_address: order.daddress || order.drop_address || "",
+    pickup_name: order.pick_name || order.pickup_name || "Pickup",
+    drop_name: order.drop_name || "Drop Off",
+    customer_name: order.customer_name || order.pick_name || "Customer",
+    customer_phone: order.pmobile || order.customer_pmobile || "",
+    pickup_latitude: String(order.plat || order.pick_lat || "0"),
+    pickup_longitude: String(order.plong || order.pick_long || "0"),
+    delivery_latitude: String(order.dlat || order.drop_lat || "0"),
+    delivery_longitude: String(order.dlong || order.drop_long || "0"),
+    distance: String(order.distance || "0"),
+    estimated_earning: String(order.total_dcharge || order.d_charge || "0"),
+    stops: order.stops || "[]",
+    is_direct_assign: "true",
+    is_monthly_order: "true",
+    order_flow_id: String(order.flow_id || order.order_status || "1"),
+    popup_duration: "10",
+  };
+
+  // 1. Emit via socket
+  ioRef.to(`driver_${riderId}`).emit("order:direct_assign", payload);
+  ioRef.to(`driver_${riderId}`).emit("order:request", payload);
+
+  // 2. Send Push notification
+  try {
+    const rider = await prisma.tbl_rider.findUnique({
+      where: { id: Number(riderId) },
+      select: { fcm_token: true },
+    });
+    if (rider && rider.fcm_token) {
+      pushNotifier.sendPush(rider.fcm_token, "Direct Order Assigned", "You have a new mandatory delivery assigned.", payload);
+    }
+  } catch (err) {
+    logger.error("Error sending push for direct assign:", err);
+  }
+}
+
+/**
+ * Emits queue update to monthly driver.
+ */
+function emitQueueUpdate(riderId) {
+  if (!ioRef || !riderId) return;
+  ioRef.to(`driver_${riderId}`).emit("queue:update", { rider_id: Number(riderId) });
+}
+
 function _resetForTests() {
   for (const [id, state] of activeDispatches.entries()) {
     for (const t of state.timers) clearTimeout(t);
@@ -942,6 +1066,8 @@ function _resetForTests() {
 module.exports = {
   init,
   emitCustomerEvent,
+  emitDirectAssign,
+  emitQueueUpdate,
   startDispatch,
   stopDispatch,
   selectEligibleDrivers,
@@ -953,3 +1079,4 @@ module.exports = {
   // serialization without needing to fight fake-timer scheduling.
   _runBatchForTests: runBatch,
 };
+

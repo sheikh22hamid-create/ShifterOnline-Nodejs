@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
-import { Menu, Search, Sun, Moon, ChevronDown, LogOut } from 'lucide-react'
+import { Menu, Search, Sun, Moon, ChevronDown, LogOut, Volume2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useSocket } from '../../context/SocketContext'
+import { useToast } from '../../context/ToastContext'
+import { playOrderChime } from '../../utils/sound'
 import { ROLE_LABELS } from '../../config/navigation'
 
-export default function Topbar({ onMenuClick }) {
+export default function Topbar({ onMenuClick, onSearchClick }) {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const { connected } = useSocket()
+  const { connected, reconnect } = useSocket()
+  const toast = useToast()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
@@ -39,6 +42,7 @@ export default function Topbar({ onMenuClick }) {
 
       <button
         type="button"
+        onClick={onSearchClick}
         className="flex flex-1 max-w-sm items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-[13px] transition-colors hover:border-[var(--border-strong)]"
         style={{ borderColor: 'var(--border)', color: 'var(--ink-faint)', background: 'var(--bg)' }}
       >
@@ -53,20 +57,46 @@ export default function Topbar({ onMenuClick }) {
       </button>
 
       <div className="ml-auto flex items-center gap-2">
-        <div
-          className="hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] sm:flex"
+        <button
+          type="button"
+          onClick={() => {
+            playOrderChime()
+            toast.info('🔔 Order chime sound tested successfully!')
+          }}
+          className="hidden sm:flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all hover:border-[var(--brand)] hover:text-[var(--brand)]"
           style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
-          title={connected ? 'Live updates connected' : 'Live updates disconnected'}
+          title="Click to test new order sound"
+        >
+          <Volume2 size={13} style={{ color: 'var(--brand)' }} />
+          <span>Test Sound</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!connected && typeof reconnect === 'function') {
+              reconnect()
+            }
+          }}
+          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all ${
+            !connected ? 'cursor-pointer hover:border-[var(--brand)] hover:text-[var(--brand)]' : ''
+          }`}
+          style={{
+            borderColor: connected ? 'var(--success-soft)' : 'var(--border)',
+            background: connected ? 'var(--success-soft)' : 'transparent',
+            color: connected ? 'var(--success)' : 'var(--ink-muted)',
+          }}
+          title={connected ? 'Live real-time streaming active' : 'Disconnected from server — click to reconnect'}
         >
           <span
-            className="h-1.5 w-1.5 rounded-full"
+            className={`h-2 w-2 rounded-full ${connected ? 'animate-pulse' : ''}`}
             style={{
-              background: connected ? 'var(--success)' : 'var(--ink-faint)',
-              boxShadow: connected ? '0 0 0 3px var(--success-soft)' : 'none',
+              background: connected ? 'var(--success)' : 'var(--danger)',
+              boxShadow: connected ? '0 0 6px var(--success)' : 'none',
             }}
           />
-          {connected ? 'Live' : 'Offline'}
-        </div>
+          {connected ? 'Live' : 'Offline (Click to reconnect)'}
+        </button>
 
         <button
           type="button"

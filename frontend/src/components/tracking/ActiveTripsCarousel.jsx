@@ -8,17 +8,18 @@ export default function ActiveTripsCarousel({ trips, selectedOrderId, onSelect, 
     <div className="mission-hud absolute bottom-4 left-4 right-[385px] z-[1000] rounded-2xl p-3 max-md:bottom-4 max-md:right-4">
       <div className="mb-2 flex items-center justify-between px-1">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-          {loading ? 'Loading active trips…' : `${trips.length} Trip${trips.length === 1 ? '' : 's'} In Transit`}
+          {loading ? 'Loading active trips…' : `${trips.length} Active Booking${trips.length === 1 ? '' : 's'}`}
         </h3>
       </div>
       {trips.length === 0 && !loading ? (
         <p className="px-1 pb-1 text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
-          No trips are currently in progress.
+          No active orders or trips right now.
         </p>
       ) : (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {trips.map((trip) => {
             const selected = trip.id === selectedOrderId
+            const driverLabel = trip.rider_name && trip.rider_name !== 'Unassigned' ? trip.rider_name : (trip.rider?.name || 'Searching Driver…')
             return (
               <button
                 key={trip.id}
@@ -37,7 +38,7 @@ export default function ActiveTripsCarousel({ trips, selectedOrderId, onSelect, 
                   <Badge tone={orderStatusTone(trip.o_status)}>{orderStatusLabel(trip.o_status)}</Badge>
                 </div>
                 <div className="mt-1.5 flex items-center gap-1 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-                  <Bike size={11} /> {trip.rider_name}
+                  <Bike size={11} /> {driverLabel}
                 </div>
                 <div className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
                   <MapPin size={11} /> {truncate(trip.daddress, 30)}

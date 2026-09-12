@@ -47,6 +47,7 @@ const whatsappRoutes = require("./routes/whatsappRoutes");
 app.use("/api/users", userRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/rider", riderRoutes);
+app.use("/rider", riderRoutes);
 app.use("/api/location", locationRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/whatsapp", whatsappRoutes);
