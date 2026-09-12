@@ -258,6 +258,101 @@ const PLAN_INT_FIELDS = new Set([
   "activity_min_online_hours",
   "sort_order",
 ]);
+
+function cleanPlanPayload(body) {
+  const data = {};
+  for (const field of PLAN_FIELDS) {
+    if (body[field] === undefined) continue;
+    const val = body[field];
+    if (PLAN_BOOL_FIELDS.has(field)) {
+      data[field] = Boolean(val);
+    } else if (PLAN_INT_FIELDS.has(field)) {
+      data[field] = val === "" || val === null ? 0 : parseInt(val, 10) || 0;
+    } else if (field === "expire_date") {
+      data[field] = val ? new Date(val) : null;
+    } else if (
+      field === "price" ||
+      field === "discount_percent" ||
+      field === "discount_max_cap" ||
+      field === "incentive_value" ||
+      field === "incentive_min_fare" ||
+      field === "incentive_monthly_cap" ||
+      field === "wallet_bonus_amount" ||
+      field === "commission_percent" ||
+      field === "per_trip_charge" ||
+      field === "initial_price" ||
+      field === "subscription_price" ||
+      field === "referral_point_value" ||
+      field === "activity_protection_3m" ||
+      field === "activity_protection_6m" ||
+      field === "activity_protection_12m"
+    ) {
+      data[field] = val === "" || val === null ? "0.00" : String(val);
+    } else {
+      data[field] = val;
+    }
+  }
+  return data;
+}
+
+async function listPremiumPlans(req, res) {
+  try {
+    const where = {};
+    if (req.query.plan_for) where.plan_for = req.query.plan_for;
+    if (req.query.city) where.city = req.query.city;
+    if (req.query.status !== undefined) where.status = req.query.status === "true" || req.query.status === "1" || req.query.status === 1;
+
+    const rows = await prisma.tbl_premium_plan.findMany({
+      where,
+      orderBy: [{ sort_order: "asc" }, { id: "desc" }],
+    });
+    return res.status(200).json({ success: true, total: rows.length, data: rows });
+  } catch (err) {
+    return internalError(res, err, "marketing.listPremiumPlans");
+  }
+}
+
+async function createPremiumPlan(req, res) {
+  try {
+    const { plan_name, plan_for, price } = req.body;
+    if (!plan_name) {
+      return res.status(400).json({ success: false, message: "plan_name is required" });
+    }
+
+    const data = cleanPlanPayload(req.body);
+    data.plan_name = plan_name;
+    data.plan_for = plan_for || "USER";
+    data.price = price !== undefined ? String(price) : "0.00";
+    if (data.guarantee_driver === undefined) data.guarantee_driver = false;
+    if (data.city === undefined) data.city = "indore";
+
+    const created = await prisma.tbl_premium_plan.create({ data });
+    return res.status(201).json({ success: true, message: "Premium plan created", data: created });
+  } catch (err) {
+    return internalError(res, err, "marketing.createPremiumPlan");
+  }
+}
+
+async function updatePremiumPlan(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await prisma.tbl_premium_plan.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Premium plan not found" });
+    }
+
+    const data = cleanPlanPayload(req.body);
+    const updated = await prisma.tbl_premium_plan.update({ where: { id }, data });
+    return res.status(200).json({ success: true, message: "Premium plan updated", data: updated });
+  } catch (err) {
+    return internalError(res, err, "marketing.updatePremiumPlan");
+  }
+}
+
+async function deletePremiumPlan(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await prisma.tbl_premium_plan.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: "Premium plan not found" });
     }
