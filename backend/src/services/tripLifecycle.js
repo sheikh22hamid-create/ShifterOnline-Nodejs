@@ -208,7 +208,11 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // introspection — the live column exists but was never modeled), so this
   // is a raw SQL write rather than a typed .update() call, same as the
   // accept transaction's own writes above.
-  const advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
+  const customerPlan = await pricingEngine.getActiveCustomerPlan(order.uid);
+  let advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
+  if (customerPlan && customerPlan.noAdvancePayment) {
+    advancePayment = 0;
+  }
   await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)} WHERE id = ${orderId}`;
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
@@ -688,7 +692,22 @@ async function customerCancel(uid, orderId, comment) {
 
   if (orderBefore.rid !== 0) {
     const pkg = await pricingEngine.getPackageById(orderBefore.delivery_type);
-    const cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
+    let cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
+
+    const customerPlan = await pricingEngine.getActiveCustomerPlan(uid);
+    const hasFreeCancellation = customerPlan && customerPlan.cancellationEnabled && (
+      customerPlan.freeCancellations === -1 || customerPlan.cancellationsUsed < customerPlan.freeCancellations
+    );
+
+    if (hasFreeCancellation) {
+      cancellationCharge = 0;
+      await prisma.$executeRaw`
+        UPDATE tbl_user_plan_subscription
+        SET cancellations_used = cancellations_used + 1
+        WHERE id = ${customerPlan.subscriptionId}
+      `;
+    }
+
     if (cancellationCharge > 0) {
       await prisma.tbl_wallet_history.create({
         data: {

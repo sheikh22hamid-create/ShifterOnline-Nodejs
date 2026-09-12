@@ -155,6 +155,40 @@ async function getPackageById(packageId) {
   return prisma.tbl_package.findUnique({ where: { id: Number(packageId) } });
 }
 
+async function getActiveCustomerPlan(uid) {
+  if (!uid) return null;
+  const rows = await prisma.$queryRaw`
+    SELECT ups.id AS subscription_id, ups.cancellations_used,
+           pp.id AS plan_id, pp.plan_name, pp.no_advance_payment,
+           pp.cancellation_enabled, pp.free_cancellations, pp.cancellation_window_min,
+           pp.discount_enabled, pp.discount_percent, pp.discount_max_cap
+    FROM tbl_user_plan_subscription ups
+    JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
+    WHERE ups.user_id = ${Number(uid)}
+      AND ups.status = 'active'
+      AND ups.plan_for = 'USER'
+      AND CURDATE() BETWEEN ups.start_date AND ups.end_date
+      AND pp.status = 1
+    ORDER BY ups.id DESC
+    LIMIT 1
+  `;
+  if (!rows.length) return null;
+  const row = rows[0];
+  return {
+    subscriptionId: Number(row.subscription_id),
+    cancellationsUsed: Number(row.cancellations_used) || 0,
+    planId: Number(row.plan_id),
+    planName: row.plan_name || "",
+    noAdvancePayment: Boolean(row.no_advance_payment),
+    cancellationEnabled: Boolean(row.cancellation_enabled),
+    freeCancellations: Number(row.free_cancellations) || 0,
+    cancellationWindowMin: Number(row.cancellation_window_min) || 5,
+    discountEnabled: Boolean(row.discount_enabled),
+    discountPercent: Number(row.discount_percent) || 0,
+    discountMaxCap: Number(row.discount_max_cap) || 0,
+  };
+}
+
 /**
  * Active USER-type premium-plan fare discount for this customer, if any —
  * matches the live PHP backend's packagelist.php query exactly: same table
@@ -500,6 +534,7 @@ module.exports = {
   calculateCommissionPercent,
   commissionAmount,
   getActivePlanDiscount,
+  getActiveCustomerPlan,
   applyPlanDiscount,
   getPackagesForCategory,
   getPackageById,
