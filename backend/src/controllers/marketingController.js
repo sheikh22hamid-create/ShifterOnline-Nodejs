@@ -160,6 +160,7 @@ async function deleteCoupon(req, res) {
   }
 }
 
+
 // ---------------------------------------------------------------------------
 // Premium plans (tbl_premium_plan) — the live schema is a much richer loyalty
 // engine than the spec doc's simple description; only a curated subset of
@@ -179,9 +180,24 @@ const PLAN_FIELDS = [
   "discount_enabled",
   "discount_percent",
   "discount_max_cap",
+  "no_advance_payment",
+  "cancellation_enabled",
+  "free_cancellations",
+  "cancellation_window_min",
+  "priority_enabled",
+  "guarantee_driver",
+  "priority_support",
+  "special_offers",
+  "referral_enabled",
+  "referral_points_per_referral",
+  "referral_point_value",
+  "number_of_referrals",
+  "auto_activate_on_referrals",
   "incentive_enabled",
   "incentive_type",
   "incentive_value",
+  "incentive_min_fare",
+  "incentive_monthly_cap",
   "wallet_bonus_enabled",
   "wallet_bonus_amount",
   "commission_percent",
@@ -192,12 +208,6 @@ const PLAN_FIELDS = [
   "guaranteed_rides_per_month",
   "guaranteed_compensation",
   "rides_carry_forward",
-  "priority_enabled",
-  "referral_enabled",
-  "referral_points_per_referral",
-  "referral_point_value",
-  "number_of_referrals",
-  "auto_activate_on_referrals",
   "lifetime_enabled",
   "activity_protection_enabled",
   "activity_protection_3m",
@@ -213,91 +223,41 @@ const PLAN_FIELDS = [
   "status",
 ];
 
+const PLAN_BOOL_FIELDS = new Set([
+  "discount_enabled",
+  "incentive_enabled",
+  "guaranteed_enabled",
+  "cancellation_enabled",
+  "priority_enabled",
+  "guarantee_driver",
+  "wallet_bonus_enabled",
+  "is_popular",
+  "status",
+  "referral_enabled",
+  "auto_activate_on_referrals",
+  "rides_carry_forward",
+  "no_advance_payment",
+  "priority_support",
+  "special_offers",
+  "lifetime_enabled",
+  "activity_protection_enabled",
+  "activity_require_model1",
+  "activity_require_zero_requests",
+  "activity_require_service_zone",
+  "activity_request_ends_day",
+]);
+
 const PLAN_INT_FIELDS = new Set([
   "validity_days",
   "guaranteed_rides_per_month",
-  "referral_points_per_referral",
-  "number_of_referrals",
   "free_cancellations",
   "cancellation_window_min",
+  "referral_points_per_referral",
+  "number_of_referrals",
   "compunsation_charge",
   "activity_min_online_hours",
   "sort_order",
 ]);
-
-async function listPremiumPlans(req, res) {
-  try {
-    const rows = await prisma.tbl_premium_plan.findMany({ orderBy: [{ sort_order: "asc" }, { id: "asc" }] });
-    return res.status(200).json({ success: true, total: rows.length, data: rows });
-  } catch (err) {
-    return internalError(res, err, "marketing.listPremiumPlans");
-  }
-}
-
-async function createPremiumPlan(req, res) {
-  try {
-    const b = req.body;
-    if (!b.plan_name || !b.plan_for || b.price === undefined) {
-      return res.status(400).json({ success: false, message: "plan_name, plan_for and price are required" });
-    }
-    if (!["USER", "DRIVER"].includes(b.plan_for)) {
-      return res.status(400).json({ success: false, message: "plan_for must be USER or DRIVER" });
-    }
-
-    const data = { plan_name: b.plan_name, plan_for: b.plan_for, price: b.price, city: b.city || "all", guarantee_driver: Boolean(b.guarantee_driver) };
-    for (const field of PLAN_FIELDS) {
-      if (field === "plan_name" || field === "plan_for" || field === "price" || field === "city") continue;
-      if (b[field] !== undefined) {
-        data[field] = field === "expire_date" && b[field]
-          ? new Date(b[field])
-          : PLAN_INT_FIELDS.has(field)
-            ? Number(b[field]) || 0
-            : b[field];
-      }
-    }
-
-    const created = await prisma.tbl_premium_plan.create({ data });
-    return res.status(201).json({ success: true, message: "Premium plan created", data: created });
-  } catch (err) {
-    return internalError(res, err, "marketing.createPremiumPlan");
-  }
-}
-
-async function updatePremiumPlan(req, res) {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const existing = await prisma.tbl_premium_plan.findUnique({ where: { id } });
-    if (!existing) {
-      return res.status(404).json({ success: false, message: "Premium plan not found" });
-    }
-
-    const b = req.body;
-    if (b.plan_for !== undefined && !["USER", "DRIVER"].includes(b.plan_for)) {
-      return res.status(400).json({ success: false, message: "plan_for must be USER or DRIVER" });
-    }
-
-    const data = {};
-    for (const field of [...PLAN_FIELDS, "guarantee_driver"]) {
-      if (b[field] !== undefined) {
-        data[field] = field === "expire_date" && b[field]
-          ? new Date(b[field])
-          : PLAN_INT_FIELDS.has(field)
-            ? Number(b[field]) || 0
-            : b[field];
-      }
-    }
-
-    const updated = await prisma.tbl_premium_plan.update({ where: { id }, data });
-    return res.status(200).json({ success: true, message: "Premium plan updated", data: updated });
-  } catch (err) {
-    return internalError(res, err, "marketing.updatePremiumPlan");
-  }
-}
-
-async function deletePremiumPlan(req, res) {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const existing = await prisma.tbl_premium_plan.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: "Premium plan not found" });
     }
