@@ -7,7 +7,7 @@ import { useToast } from '../../context/ToastContext'
 import { playOrderChime } from '../../utils/sound'
 import { ROLE_LABELS } from '../../config/navigation'
 
-export default function Topbar({ onMenuClick }) {
+export default function Topbar({ onMenuClick, onSearchClick }) {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const { connected, reconnect } = useSocket()
@@ -42,6 +42,7 @@ export default function Topbar({ onMenuClick }) {
 
       <button
         type="button"
+        onClick={onSearchClick}
         className="flex flex-1 max-w-sm items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-[13px] transition-colors hover:border-[var(--border-strong)]"
         style={{ borderColor: 'var(--border)', color: 'var(--ink-faint)', background: 'var(--bg)' }}
       >

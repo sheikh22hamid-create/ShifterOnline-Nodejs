@@ -6,6 +6,7 @@ import { useToast } from '../../context/ToastContext'
 import { playOrderChime } from '../../utils/sound'
 import { formatCurrency } from '../../utils/format'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
+import GlobalSearchModal from './GlobalSearchModal'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 
@@ -13,8 +14,21 @@ export default function AppShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [incomingOrder, setIncomingOrder] = useState(null)
   const [activeOrderDrawerId, setActiveOrderDrawerId] = useState(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const { socket } = useSocket()
   const toast = useToast()
+
+  // Global Ctrl + K / Cmd + K shortcut to open search modal
+  useEffect(() => {
+    function handleGlobalKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        setSearchOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [])
 
   useEffect(() => {
     if (!socket) return
@@ -107,11 +121,20 @@ export default function AppShell() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onMenuClick={() => setMobileNavOpen((o) => !o)} />
+        <Topbar
+          onMenuClick={() => setMobileNavOpen((o) => !o)}
+          onSearchClick={() => setSearchOpen(true)}
+        />
         <main className="flex-1 overflow-y-auto p-5">
           <Outlet />
         </main>
       </div>
+
+      <GlobalSearchModal
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onSelectOrder={(orderId) => setActiveOrderDrawerId(orderId)}
+      />
 
       {activeOrderDrawerId && (
         <OrderDetailDrawer
@@ -122,3 +145,4 @@ export default function AppShell() {
     </div>
   )
 }
+

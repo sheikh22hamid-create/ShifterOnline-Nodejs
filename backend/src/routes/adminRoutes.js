@@ -19,6 +19,7 @@ const adminTrainingController = require("../controllers/adminTrainingController"
 const serviceZoneController = require("../controllers/serviceZoneController");
 const monthlyDriverController = require("../controllers/monthlyDriverController");
 const orderQueueController = require("../controllers/orderQueueController");
+const adminSearchController = require("../controllers/adminSearchController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -32,6 +33,10 @@ const RIDER_ROLES = ["superadmin", "admin", "executive"];
 router.post("/auth/login", authController.login);
 router.get("/auth/me", auth, authController.me);
 router.put("/auth/profile", auth, authController.updateProfile);
+
+// --- Global Command Search (Orders, Drivers, Customers) --------------------
+router.get("/search", auth, authorize(...RIDER_ROLES), scopeFilter, adminSearchController.globalSearch);
+
 
 // --- Service Zones & Geofencing --------------------------------------------
 router.get("/service-zones", auth, authorize(...RIDER_ROLES), serviceZoneController.listZones);
