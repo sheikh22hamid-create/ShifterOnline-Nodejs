@@ -28,14 +28,14 @@
 
             <!-- Circle Badge with Tier Icon -->
             <FrameLayout
-                android:layout_width="40dp"
-                android:layout_height="40dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
                 android:background="@drawable/bg_circle_glass">
 
                 <ImageView
                     android:id="@+id/img_tier_icon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_tier_standard_box"
                     app:tint="@color/white" />
@@ -57,7 +57,7 @@
                     android:maxLines="1"
                     android:text="Standard Tier"
                     android:textColor="@color/white"
-                    android:textSize="17sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -67,7 +67,7 @@
                     android:layout_marginTop="2dp"
                     android:text="New Order Request"
                     android:textColor="#E2E8F0"
-                    android:textSize="12sp" />
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <!-- Fare Amount Badge -->
@@ -82,7 +82,7 @@
                 android:paddingBottom="6dp"
                 android:text="₹0"
                 android:textColor="@color/white"
-                android:textSize="15sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -112,7 +112,7 @@
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:background="@drawable/bg_badge_green" />
 
                     <LinearLayout
@@ -127,19 +127,18 @@
                             android:layout_height="wrap_content"
                             android:text="PICKUP LOCATION"
                             android:textColor="#10B981"
-                            android:textSize="11sp"
+                            android:textSize="12sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/txt_pickup_address"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:ellipsize="end"
-                            android:maxLines="2"
+                            android:layout_marginTop="3dp"
+                            android:lineSpacingExtra="2dp"
                             android:text="Pickup Location"
                             android:textColor="#0F172A"
-                            android:textSize="13.5sp"
+                            android:textSize="14.5sp"
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
@@ -148,10 +147,10 @@
                 <View
                     android:id="@+id/route_line_pickup_stop1"
                     android:layout_width="2dp"
-                    android:layout_height="14dp"
+                    android:layout_height="16dp"
                     android:layout_marginStart="5dp"
-                    android:layout_marginTop="2dp"
-                    android:layout_marginBottom="2dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="3dp"
                     android:background="#CBD5E1" />
 
                 <!-- Stop 1 (Optional) -->
@@ -165,7 +164,7 @@
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:background="@drawable/bg_badge_orange" />
 
                     <LinearLayout
@@ -180,18 +179,17 @@
                             android:layout_height="wrap_content"
                             android:text="STOP 1"
                             android:textColor="#EA580C"
-                            android:textSize="11sp"
+                            android:textSize="12sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/txt_stop1_address"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:ellipsize="end"
-                            android:maxLines="2"
+                            android:layout_marginTop="3dp"
+                            android:lineSpacingExtra="2dp"
                             android:textColor="#0F172A"
-                            android:textSize="13.5sp"
+                            android:textSize="14.5sp"
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
@@ -199,10 +197,10 @@
                 <View
                     android:id="@+id/route_line_stop1_stop2"
                     android:layout_width="2dp"
-                    android:layout_height="14dp"
+                    android:layout_height="16dp"
                     android:layout_marginStart="5dp"
-                    android:layout_marginTop="2dp"
-                    android:layout_marginBottom="2dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="3dp"
                     android:background="#CBD5E1"
                     android:visibility="gone" />
 
@@ -217,7 +215,7 @@
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:background="@drawable/dot_purple" />
 
                     <LinearLayout
@@ -232,18 +230,17 @@
                             android:layout_height="wrap_content"
                             android:text="STOP 2"
                             android:textColor="#9333EA"
-                            android:textSize="11sp"
+                            android:textSize="12sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/txt_stop2_address"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:ellipsize="end"
-                            android:maxLines="2"
+                            android:layout_marginTop="3dp"
+                            android:lineSpacingExtra="2dp"
                             android:textColor="#0F172A"
-                            android:textSize="13.5sp"
+                            android:textSize="14.5sp"
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
@@ -251,10 +248,10 @@
                 <View
                     android:id="@+id/route_line_stop2_drop"
                     android:layout_width="2dp"
-                    android:layout_height="14dp"
+                    android:layout_height="16dp"
                     android:layout_marginStart="5dp"
-                    android:layout_marginTop="2dp"
-                    android:layout_marginBottom="2dp"
+                    android:layout_marginTop="3dp"
+                    android:layout_marginBottom="3dp"
                     android:background="#CBD5E1"
                     android:visibility="gone" />
 
@@ -268,7 +265,7 @@
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:background="@drawable/dot_purple" />
 
                     <LinearLayout
@@ -277,38 +274,24 @@
                         android:layout_marginStart="12dp"
                         android:orientation="vertical">
 
-                        <LinearLayout
+                        <TextView
+                            android:id="@+id/txt_drop_name_title"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:id="@+id/txt_drop_name_title"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:text="DROP LOCATION"
-                                android:textColor="#7C3AED"
-                                android:textSize="11sp"
-                                android:textStyle="bold" />
-
-                            <ImageView
-                                android:layout_width="14dp"
-                                android:layout_height="14dp"
-                                android:src="@drawable/ic_chevron_right_gray" />
-                        </LinearLayout>
+                            android:text="DROP LOCATION"
+                            android:textColor="#7C3AED"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/txt_drop_address"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            android:ellipsize="end"
-                            android:maxLines="2"
+                            android:layout_marginTop="3dp"
+                            android:lineSpacingExtra="2dp"
                             android:text="Drop Location"
                             android:textColor="#0F172A"
-                            android:textSize="13.5sp"
+                            android:textSize="14.5sp"
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
@@ -352,7 +335,7 @@
                             android:layout_height="wrap_content"
                             android:text="18.7 km"
                             android:textColor="#0F172A"
-                            android:textSize="13sp"
+                            android:textSize="14sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -361,7 +344,7 @@
                             android:layout_height="wrap_content"
                             android:text="~ 28 mins"
                             android:textColor="#64748B"
-                            android:textSize="11sp" />
+                            android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>
 
@@ -399,7 +382,7 @@
                             android:maxLines="1"
                             android:text="Bike"
                             android:textColor="#0F172A"
-                            android:textSize="13sp"
+                            android:textSize="14sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -410,7 +393,7 @@
                             android:maxLines="1"
                             android:text="Standard Tier"
                             android:textColor="#64748B"
-                            android:textSize="11sp" />
+                            android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
@@ -439,7 +422,7 @@
                     android:maxLines="1"
                     android:text="Customer"
                     android:textColor="#0F172A"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
 
                 <ImageView
@@ -454,7 +437,7 @@
                     android:layout_marginStart="4dp"
                     android:text="4.8 (120 orders)"
                     android:textColor="#64748B"
-                    android:textSize="12sp"
+                    android:textSize="12.5sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -487,7 +470,7 @@
                     android:maxLines="1"
                     android:text="Standard delivery • Earn steadily"
                     android:textColor="#1D4ED8"
-                    android:textSize="12sp"
+                    android:textSize="12.5sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -517,7 +500,7 @@
                     android:text="REJECT (10S)"
                     android:textAllCaps="true"
                     android:textColor="#DC2626"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
 
                 <androidx.appcompat.widget.AppCompatButton
@@ -531,7 +514,7 @@
                     android:text="ACCEPT"
                     android:textAllCaps="true"
                     android:textColor="@color/white"
-                    android:textSize="13.5sp"
+                    android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
