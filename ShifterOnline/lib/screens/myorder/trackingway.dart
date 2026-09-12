@@ -3458,6 +3458,26 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     }
   }
 
+  bool get _isAdvancePaymentRequiredForOrder {
+    if (_advancePaymentCompleted) return false;
+    if (widget.type != "Pickup") return false;
+    var dataObj = orderProduc ?? buyMapinfo;
+    if (dataObj == null) return false;
+
+    final flowId = int.tryParse(
+      (dataObj["Order_flow_id"] ?? dataObj["order_status"] ?? "0").toString(),
+    );
+    final advanceAmount = double.tryParse(
+      (dataObj["advance_payment"] ?? dataObj["advance_payment "] ?? "0").toString(),
+    ) ?? 0;
+    if (flowId != 1 || advanceAmount <= 0) return false;
+
+    dynamic pStatus = dataObj["payment_status"];
+    if (pStatus != null && pStatus.toString() == "1") return false;
+
+    return true;
+  }
+
   void checkAdvancePaymentStatus() {
     if (orderProduc == null && buyMapinfo == null) return;
 
