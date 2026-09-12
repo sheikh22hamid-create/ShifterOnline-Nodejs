@@ -225,6 +225,23 @@ public class OrderOverlayService extends Service {
         Double pickupLng = parseNullableDouble(intent.getStringExtra("pickup_longitude"));
         android.location.Location driverLocation = com.shifter.driver.locationservice.LocationUpdateService.getLocation();
 
+        String estimatedEarning = intent.getStringExtra("estimated_earning");
+        if (estimatedEarning == null || estimatedEarning.isEmpty()) {
+            estimatedEarning = intent.getStringExtra("driver_earning");
+        }
+        if (estimatedEarning == null || estimatedEarning.isEmpty()) {
+            estimatedEarning = intent.getStringExtra("trip_total");
+        }
+        if (estimatedEarning == null || estimatedEarning.isEmpty()) {
+            estimatedEarning = intent.getStringExtra("total");
+        }
+        if (estimatedEarning == null || estimatedEarning.isEmpty()) {
+            estimatedEarning = intent.getStringExtra("fare");
+        }
+        if (estimatedEarning == null || estimatedEarning.isEmpty()) {
+            estimatedEarning = "0";
+        }
+
         // 1. Apply Tier Visual Theme & Bind Order Data
         com.shifter.driver.utility.TierTheme.applyThemeToView(
                 view,
@@ -244,6 +261,7 @@ public class OrderOverlayService extends Service {
                 tripDistanceKm,
                 category,
                 customerName,
+                estimatedEarning,
                 driverLocation
         );
 

@@ -105,6 +105,12 @@ public class OrderDialogHelper {
         Double pickupLng = parseNullableDouble(getMapValue(orderData, "pickup_longitude", null));
         android.location.Location driverLocation = com.shifter.driver.locationservice.LocationUpdateService.getLocation();
 
+        String estimatedEarning = getMapValue(orderData, "estimated_earning",
+                getMapValue(orderData, "driver_earning",
+                getMapValue(orderData, "trip_total",
+                getMapValue(orderData, "total",
+                getMapValue(orderData, "fare", "0")))));
+
         // 1. Apply Tier Visual Theme & Bind Order Data to View
         TierTheme.applyThemeToView(
                 view,
@@ -124,6 +130,7 @@ public class OrderDialogHelper {
                 tripDistanceKm,
                 category,
                 customerName,
+                estimatedEarning,
                 driverLocation
         );
 
