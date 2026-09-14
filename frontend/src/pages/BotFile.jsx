@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Bot, Save, Upload, RefreshCw, FileText, CheckCircle2, AlertCircle, Sparkles, Send } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Bot, Save, Upload, RefreshCw, FileText, CheckCircle2, AlertCircle, Sparkles, Send, Smartphone } from 'lucide-react'
 import api from '../services/api'
 
 export default function BotFile() {
@@ -156,6 +157,15 @@ export default function BotFile() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            to="/cms/whatsapp-account"
+            className="flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-[var(--surface-raised)]"
+            style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+          >
+            <Smartphone size={14} style={{ color: 'var(--brand)' }} />
+            WhatsApp Account Status
+          </Link>
+
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)', color: 'var(--ink)' }}>
             <Upload size={14} />
             {uploading ? 'Uploading…' : 'Upload .docx / .txt'}

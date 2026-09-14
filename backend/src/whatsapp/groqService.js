@@ -255,4 +255,5 @@ module.exports = {
   fallbackRuleBasedParser,
   getBotKnowledge,
   clearBotKnowledgeCache,
+  getGroqApiKeys,
 };
