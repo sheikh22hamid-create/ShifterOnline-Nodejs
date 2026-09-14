@@ -2,5 +2,6 @@
   "enabledPlugins": {
     "superpowers@superpowers-marketplace": true,
     "andrej-karpathy-skills@karpathy-skills": true
-  }
+  },
+  "worktree": {"bgIsolation": "none"}
 }

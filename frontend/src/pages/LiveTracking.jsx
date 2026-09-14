@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import api from '../services/api'
 import { useSocket } from '../context/SocketContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import useActiveTrips from '../hooks/useActiveTrips'
 import useOsrmRoute from '../hooks/useOsrmRoute'
 import useLiveDriverPosition from '../hooks/useLiveDriverPosition'
@@ -24,15 +25,19 @@ function toPoint(latStr, lngStr) {
 
 export default function LiveTracking() {
   const { socket } = useSocket()
-  const { trips, loading: tripsLoading } = useActiveTrips()
+  const { trips, loading: tripsLoading, refetch: refetchTrips } = useActiveTrips()
   const [selectedOrderId, setSelectedOrderId] = useState(null)
   const [liveMetrics, setLiveMetrics] = useState(null)
 
   useEffect(() => {
-    // Auto-focusing the first active trip once the list arrives — same
-    // external-data-arrived case as useApiQuery's own setData.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (!selectedOrderId && trips.length > 0) setSelectedOrderId(trips[0].id)
+    // Auto-focusing the first active trip once the list arrives, or switching if current selection ended
+    if (trips.length > 0) {
+      if (!selectedOrderId || !trips.some((t) => t.id === selectedOrderId)) {
+        setSelectedOrderId(trips[0].id)
+      }
+    } else if (selectedOrderId) {
+      setSelectedOrderId(null)
+    }
   }, [trips, selectedOrderId])
 
   const tripFetcher = useCallback(
@@ -41,21 +46,18 @@ export default function LiveTracking() {
   )
   const { data: trip, loading: tripLoading, refetch: refetchTrip } = useApiQuery(tripFetcher)
 
-  // Phase transitions (e.g. Pickup -> On_Route) arrive on this event —
-  // refetch the focused trip immediately instead of waiting on anything else.
-  useEffect(() => {
-    if (!socket || !selectedOrderId) return
-    function onUpdate(payload) {
-      if (payload?.order_id === selectedOrderId) refetchTrip()
-    }
-    socket.on('admin:order_status_update', onUpdate)
-    return () => socket.off('admin:order_status_update', onUpdate)
-  }, [socket, selectedOrderId, refetchTrip])
+  // Real-time synchronization for focused trip details & phase transitions
+  useRealtimeSync(
+    ['admin:order_status_update', 'admin:new_order', 'admin:driver_status_update'],
+    () => {
+      refetchTrip()
+      refetchTrips()
+    },
+    { fallbackInterval: 10000 }
+  )
 
   useEffect(() => {
-    // Clearing stale metrics from whichever trip was previously focused —
-    // a real transition, not a mirror of initial state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // Clearing stale metrics from whichever trip was previously focused
     setLiveMetrics(null)
   }, [selectedOrderId])
 

@@ -218,6 +218,7 @@ model pkg_order {
   current_package_step   Int?               @default(0)
   driver_earning         Decimal?           @db.Decimal(10, 2)
   booking_type           Int?
+  next_day_sequence      Int?
   city_id                Int?
   schedule_date_time     String?            @db.VarChar(255)
   allowed_delivery_types String?            @db.Text
@@ -235,6 +236,20 @@ model pkg_order {
   payment_status         Int?               @default(0)
   razorpay_payment_id    String?            @db.VarChar(255)
   gst_number             String?            @db.VarChar(255)
+}
+
+model pkg_order_stops {
+  id             Int      @id @default(autoincrement())
+  order_id       Int
+  sequence       Int
+  lat            String   @db.Text
+  lng            String   @db.Text
+  address        String?  @db.Text
+  hno            String?  @db.Text
+  landmark       String?  @db.Text
+  contact_name   String?  @db.Text
+  contact_number String?  @db.Text
+  created_at     DateTime @default(now())
 }
 
 model pkg_order_wait_timer {
@@ -534,6 +549,8 @@ model tbl_otp {
 model tbl_package {
   id                           Int              @id @default(autoincrement())
   title                        String           @db.Text
+  user_title                   String?          @db.VarChar(255)
+  driver_title                 String?          @db.VarChar(255)
   type                         tbl_package_type
   min_charge                   Decimal          @db.Decimal(10, 2)
   per_km_charge                Decimal          @db.Decimal(10, 2)
@@ -1128,4 +1145,80 @@ enum tbl_rider_plan_type {
   general
   super
   premium
+}
+
+model service_zone {
+  id               Int       @id @default(autoincrement())
+  name             String    @db.VarChar(150)
+  city_id          Int?
+  center_lat       Float
+  center_lng       Float
+  radius_km        Float     @default(5.0)
+  polygon_geojson  String?   @db.LongText
+  status           Int       @default(1)
+  created_at       DateTime? @default(now()) @db.DateTime(0)
+  updated_at       DateTime? @default(now()) @updatedAt @db.DateTime(0)
+}
+
+model monthly_driver_contract {
+  id                    Int       @id @default(autoincrement())
+  rider_id              Int       @unique
+  assigned_zone_id      Int?
+  shift_start_time      String    @default("10:00:00") @db.VarChar(20)
+  shift_end_time        String    @default("20:00:00") @db.VarChar(20)
+  target_shift_hours    Float     @default(10.0)
+  monthly_base_salary   Decimal   @default(15000.00) @db.Decimal(10, 2)
+  overtime_hourly_rate  Decimal   @default(0.00) @db.Decimal(10, 2)
+  allowed_break_minutes Int       @default(45)
+  status                String    @default("active") @db.VarChar(20)
+  created_at            DateTime? @default(now()) @db.DateTime(0)
+  updated_at            DateTime? @default(now()) @updatedAt @db.DateTime(0)
+}
+
+model driver_duty_log {
+  id                      Int       @id @default(autoincrement())
+  rider_id                Int
+  duty_date               DateTime  @db.Date
+  punch_in_at             DateTime? @db.DateTime(0)
+  punch_out_at            DateTime? @db.DateTime(0)
+  total_online_minutes    Int       @default(0)
+  total_in_zone_minutes   Int       @default(0)
+  total_out_zone_minutes  Int       @default(0)
+  total_break_minutes     Int       @default(0)
+  orders_completed        Int       @default(0)
+  overtime_minutes        Int       @default(0)
+  overtime_pay            Decimal   @default(0.00) @db.Decimal(10, 2)
+  cash_collected          Decimal   @default(0.00) @db.Decimal(10, 2)
+  calculated_daily_salary Decimal   @default(0.00) @db.Decimal(10, 2)
+  status                  String    @default("completed") @db.VarChar(20)
+  created_at              DateTime? @default(now()) @db.DateTime(0)
+  updated_at              DateTime? @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([rider_id, duty_date], map: "idx_duty_rider_date")
+}
+
+model driver_order_queue {
+  id           Int       @id @default(autoincrement())
+  rider_id     Int
+  order_id     Int
+  queue_order  Int       @default(1)
+  status       String    @default("pending") @db.VarChar(20)
+  assigned_at  DateTime  @default(now()) @db.DateTime(0)
+  completed_at DateTime? @db.DateTime(0)
+
+  @@index([rider_id, status], map: "idx_queue_rider_status")
+}
+
+model monthly_driver_ledger {
+  id             Int       @id @default(autoincrement())
+  rider_id       Int
+  order_id       Int?
+  duty_date      DateTime? @db.Date
+  entry_type     String    @db.VarChar(50)
+  amount         Decimal   @db.Decimal(10, 2)
+  balance_effect String    @db.VarChar(10)
+  notes          String?   @db.Text
+  created_at     DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([rider_id, created_at], map: "idx_ledger_rider_created")
 }

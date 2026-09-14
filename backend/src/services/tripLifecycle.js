@@ -75,9 +75,29 @@ class OrderAlreadyTakenError extends Error { }
  * request row is what makes "accept vs. expiry at the same instant"
  * deterministic, with no extra app-level locking needed.
  */
-async function acceptOrder(orderId, riderId) {
+/**
+ * Fast path: just the atomic first-come-first-served claim (spec §4.5) —
+ * the two conditional UPDATEs below, inside one transaction. Returns the
+ * instant the claim itself is decided, without waiting on anything
+ * finalizeAcceptedOrder does afterward (streak tracking, pricing off the
+ * driver's real distance, advance_payment, admin/customer notifications) —
+ * several sequential DB round-trips that have no bearing on whether THIS
+ * accept won. orderSocket's order:accept handler acks the driver right off
+ * this, then calls finalizeAcceptedOrder in the background: measured live,
+ * the combined wait was costing the driver's own accept ack ~8s — almost
+ * entirely finalize work — before "waiting for advance payment" could even
+ * open (see ShifterDriver's OrderDetailsActivity). acceptOrder() below
+ * still runs both in sequence for callers that want the one-shot result.
+ */
+async function claimOrderForRider(orderId, riderId) {
   const popupSeconds = POPUP_TIMEOUT_MS / 1000;
   let acceptedPackageId = null;
+
+  // Check if order is already assigned to this rider (e.g. direct assigned by admin or queue)
+  const existingOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  if (existingOrder && existingOrder.rid === riderId && existingOrder.o_status !== "Cancelled") {
+    return { success: true, acceptedPackageId: existingOrder.delivery_type || 1 };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -93,36 +113,19 @@ async function acceptOrder(orderId, riderId) {
         throw new OfferNotFreshError();
       }
 
-      // The offer we just claimed carries the exact package/model the
-      // driver actually saw — pkg_order.delivery_type may have since been
-      // overwritten by a later tier's batch, so it is never used here.
       const acceptedRequest = await tx.tbl_order_requests.findFirst({
         where: { order_id: orderId, rider_id: riderId, status: "accepted" },
         orderBy: { id: "desc" },
       });
-      acceptedPackageId = acceptedRequest.package_id;
+      acceptedPackageId = acceptedRequest ? acceptedRequest.package_id : (existingOrder?.delivery_type || 1);
 
-      // accept_time = NOW() + 5:30, not NOW() — the live PHP backend's
-      // advance_payment_helper.php reads this column via PHP's strtotime()
-      // after date_default_timezone_set('Asia/Kolkata'), so it treats
-      // whatever digits are stored as IST wall-clock (same DB convention
-      // already confirmed for tbl_package.start_time/end_time — see
-      // pricingEngine.isNightNow). MySQL's NOW() here returns true UTC
-      // (confirmed live: NOW() and UTC_TIMESTAMP() return the identical
-      // value on this DB), so storing it as-is put PHP's own "now" 5.5
-      // hours ahead of the real accept moment — every accepted order's
-      // 2-minute advance-payment window looked like it had already been
-      // exceeded by ~5.5 hours the instant the driver accepted, and got
-      // auto-cancelled within seconds (confirmed live: order #1673,
-      // cancel_reason "Advance payment timeout (2 minutes exceeded)"
-      // fired well within 2 real minutes of accept_time).
       const orderAffected = await tx.$executeRaw`
         UPDATE pkg_order
         SET rid = ${riderId},
             order_status = 1,
             o_status = 'Processing',
             accept_time = DATE_ADD(NOW(), INTERVAL 330 MINUTE)
-        WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
+        WHERE id = ${orderId} AND (rid = 0 OR rid = ${riderId}) AND o_status != 'Cancelled'
       `;
       if (orderAffected === 0) {
         throw new OrderAlreadyTakenError();
@@ -130,8 +133,6 @@ async function acceptOrder(orderId, riderId) {
     });
   } catch (err) {
     if (err instanceof OfferNotFreshError) {
-      // Non-authoritative — only to produce a more specific message than
-      // the rollback alone gives us. Correctness never depends on this read.
       const requestRow = await prisma.tbl_order_requests.findFirst({
         where: { order_id: orderId, rider_id: riderId },
         orderBy: { id: "desc" },
@@ -147,10 +148,19 @@ async function acceptOrder(orderId, riderId) {
     throw err;
   }
 
-  // Only reached once the transaction above has actually committed — an
-  // accept that lost the race (OrderAlreadyTakenError) never reaches here,
-  // so this can't wrongly reset the streak for an attempt that didn't
-  // really succeed.
+  return { success: true, acceptedPackageId };
+}
+
+/**
+ * Everything after a successful claim: streak tracking, pricing off the
+ * accepting driver's real distance, advance_payment, admin/customer
+ * notifications. Split out from claimOrderForRider so the driver's own
+ * accept ack doesn't wait on any of it — see that function's comment.
+ */
+async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
+  // An accept that lost the race (claimOrderForRider returned success:
+  // false) never reaches here, so this can't wrongly reset the streak for
+  // an attempt that didn't really succeed.
   await dispatchManager.recordModel1Outcome(riderId, acceptedPackageId, "accept");
 
   const [order, rider] = await Promise.all([
@@ -215,14 +225,20 @@ async function acceptOrder(orderId, riderId) {
   // introspection — the live column exists but was never modeled), so this
   // is a raw SQL write rather than a typed .update() call, same as the
   // accept transaction's own writes above.
-  const advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
-  await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)} WHERE id = ${orderId}`;
+  const customerPlan = await pricingEngine.getActiveCustomerPlan(order.uid);
+  let advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
+  let paymentStatus = order.payment_status ?? 0;
+  if (customerPlan && customerPlan.noAdvancePayment) {
+    advancePayment = 0;
+    paymentStatus = 1;
+  }
+  await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)}, payment_status = ${paymentStatus} WHERE id = ${orderId}`;
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
   // FCM is only a background/reconnect fallback.  It must not block the
-  // accept response: orderSocket emits the live `order:assigned` event and
-  // the driver accept ACK only after acceptOrder resolves.  Waiting for a
-  // slow FCM request here made both apps sit on their old screens for ~10s.
+  // customer's order:assigned event (see orderSocket, which emits that
+  // once this whole finalize step resolves).  Waiting for a slow FCM
+  // request here made the customer app sit on its old screen for ~10s.
   void pushNotifier.notifyCustomerOrderAssigned(customer?.fcm_token, {
     order_id: orderId,
     rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
@@ -234,10 +250,24 @@ async function acceptOrder(orderId, riderId) {
   });
 
   return {
-    success: true,
-    order: { ...order, ...priced, advance_payment: String(advancePayment), package: pkg },
+    order: { ...order, ...priced, advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
     rider,
   };
+}
+
+/**
+ * Convenience wrapper preserving the old one-call accept contract (claim +
+ * finalize, run in sequence, single combined result) for callers that want
+ * the whole thing done before they get anything back — this file's own
+ * test suite included. orderSocket's order:accept handler calls
+ * claimOrderForRider/finalizeAcceptedOrder directly instead, specifically
+ * so the driver's accept ack doesn't wait on finalize (see its comment).
+ */
+async function acceptOrder(orderId, riderId) {
+  const claim = await claimOrderForRider(orderId, riderId);
+  if (!claim.success) return claim;
+  const finalized = await finalizeAcceptedOrder(orderId, riderId, claim.acceptedPackageId);
+  return { success: true, ...finalized };
 }
 
 /**
@@ -408,16 +438,52 @@ async function updateStatus(orderId, riderId, status) {
     const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
     const advancePaymentCollected = Number(advanceRow?.advance_payment) || 0;
 
-    // The customer app's own order-create call (select_vehicle.dart) stamps
-    // trans_id as "cash_<timestamp>" (legacy pickupdrop.dart used
-    // "cash_payment_<timestamp>") — never the literal "cash_payment" this
-    // check used to require exactly, so it never matched a single real cash
-    // order and commission was never actually clawed back from the driver's
-    // wallet for any of them. A driver who collects the full fare in cash
-    // must still have admin's commission debited here; a wallet/online
-    // payment already routes through the platform, so the driver only ever
-    // receives their net driverEarning directly and needs no such debit.
-    if ((order.trans_id || "").toLowerCase().startsWith("cash") && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0)) {
+    const rider = await prisma.tbl_rider.findUnique({
+      where: { id: riderId },
+      select: { id: true, monthly_plan: true },
+    });
+    const isMonthlyDriver = Number(rider?.monthly_plan) === 1;
+
+    const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
+    const cashCollected = isCashOrder ? Math.max(0, finalTotal - advancePaymentCollected) : 0;
+
+    if (isMonthlyDriver) {
+      if (cashCollected > 0) {
+        const existingLedger = await prisma.monthly_driver_ledger.findFirst({
+          where: {
+            rider_id: riderId,
+            order_id: orderId,
+            entry_type: "CASH_COLLECTED",
+          },
+        });
+        if (!existingLedger) {
+          const todayDate = new Date(new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0]);
+          await prisma.monthly_driver_ledger.create({
+            data: {
+              rider_id: riderId,
+              order_id: orderId,
+              duty_date: todayDate,
+              entry_type: "CASH_COLLECTED",
+              amount: cashCollected,
+              balance_effect: "DEBIT",
+              notes: `Cash collected for order #${orderId} (Fare: ₹${finalTotal}${advancePaymentCollected > 0 ? `, Advance paid online: ₹${advancePaymentCollected}` : ""})`,
+              created_at: istNow(),
+            },
+          });
+
+          await prisma.driver_duty_log.updateMany({
+            where: {
+              rider_id: riderId,
+              duty_date: todayDate,
+              status: "in_progress",
+            },
+            data: {
+              cash_collected: { increment: cashCollected },
+            },
+          });
+        }
+      }
+    } else if (isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || advancePaymentCollected > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money. Computed off finalTotal (includes waiting
@@ -459,6 +525,42 @@ async function updateStatus(orderId, riderId, status) {
               wallet_type: "driver",
               order_id: orderId,
               payment_id: commissionKey,
+              created_at: istNow(),
+            },
+          });
+        }
+      }
+
+      // The reverse case (order #1832): a small/low-fare cash trip where the
+      // flat advance_payment collected online is bigger than what admin is
+      // actually owed (commission + perTripCharge). The driver then only
+      // collects a reduced cash-in-hand (fare - advance) that's LESS than
+      // their real net earning (fare - commission - perTripCharge) — the
+      // leftover advance is sitting with admin and belongs to the driver.
+      // pkg_history.php's own "wallet_adjustment" display already computes
+      // this exact shortfall and shows "₹X added to wallet" on the driver's
+      // trip-detail screen, but nothing here ever actually paid it — the
+      // driver's real wallet never received a matching credit for it.
+      const advanceRefundDue = Math.max(0, advancePaymentCollected - (commission + perTripCharge));
+      if (advanceRefundDue > 0) {
+        const refundKey = `advance_refund:${orderId}`;
+        const alreadyRefunded = await prisma.tbl_wallet_history.findFirst({
+          where: { payment_id: refundKey, type: "credit", wallet_type: "driver" },
+        });
+        if (!alreadyRefunded) {
+          await prisma.tbl_rider.update({
+            where: { id: riderId },
+            data: { wallet_balance: { increment: advanceRefundDue } },
+          });
+          await prisma.tbl_wallet_history.create({
+            data: {
+              user_id: riderId,
+              amount: advanceRefundDue,
+              type: "credit",
+              remark: `Advance payment balance for order #${orderId} (cash collected was less than net earning)`,
+              wallet_type: "driver",
+              order_id: orderId,
+              payment_id: refundKey,
               created_at: istNow(),
             },
           });
@@ -515,11 +617,75 @@ async function updateStatus(orderId, riderId, status) {
       });
     }
 
+    // Check & cascade next queued order if rider is a Monthly Driver
+    processNextQueuedOrder(riderId, orderId).catch((err) => {
+      logger.error(`processNextQueuedOrder error for rider ${riderId}:`, err);
+    });
+
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     return { success: true, order_status: 5, o_status: "Completed" };
   }
 
   return { success: false, msg: `Unknown status transition: ${status}` };
+}
+
+/**
+ * Automatically checks and activates the next pending order for a Monthly Driver upon trip completion.
+ */
+async function processNextQueuedOrder(riderId, completedOrderId) {
+  try {
+    if (!prisma.driver_order_queue) return;
+
+    // 1. Mark completed queue item
+    await prisma.driver_order_queue.updateMany({
+      where: { rider_id: Number(riderId), order_id: Number(completedOrderId), status: "active" },
+      data: { status: "completed", completed_at: new Date() },
+    });
+
+    // 2. Increment today's completed order counter
+    if (prisma.driver_duty_log) {
+      const todayStr = new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0];
+      await prisma.driver_duty_log.updateMany({
+        where: { rider_id: Number(riderId), duty_date: new Date(todayStr), status: "in_progress" },
+        data: { orders_completed: { increment: 1 } },
+      });
+    }
+
+    // 3. Find next pending order in queue
+    const nextItem = await prisma.driver_order_queue.findFirst({
+      where: { rider_id: Number(riderId), status: "pending" },
+      orderBy: { queue_order: "asc" },
+    });
+
+    if (!nextItem) return;
+
+    // 4. Activate next order
+    await prisma.pkg_order.update({
+      where: { id: nextItem.order_id },
+      data: {
+        rid: Number(riderId),
+        o_status: "Processing",
+        flow_id: 1,
+      },
+    });
+
+    await prisma.driver_order_queue.update({
+      where: { id: nextItem.id },
+      data: { status: "active" },
+    });
+
+    // 5. Emit direct assign & notify driver
+    const nextOrder = await prisma.pkg_order.findUnique({
+      where: { id: nextItem.order_id },
+    });
+    if (nextOrder) {
+      dispatchManager.emitDirectAssign(Number(riderId), nextOrder);
+      dispatchManager.emitQueueUpdate(Number(riderId));
+      logger.info(`Next queued order #${nextOrder.id} automatically activated for Monthly Driver #${riderId}`);
+    }
+  } catch (err) {
+    logger.error("Error processing next queued order:", err);
+  }
 }
 
 /**
@@ -545,7 +711,22 @@ async function customerCancel(uid, orderId, comment) {
 
   if (orderBefore.rid !== 0) {
     const pkg = await pricingEngine.getPackageById(orderBefore.delivery_type);
-    const cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
+    let cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
+
+    const customerPlan = await pricingEngine.getActiveCustomerPlan(uid);
+    const hasFreeCancellation = customerPlan && customerPlan.cancellationEnabled && (
+      customerPlan.freeCancellations === -1 || customerPlan.cancellationsUsed < customerPlan.freeCancellations
+    );
+
+    if (hasFreeCancellation) {
+      cancellationCharge = 0;
+      await prisma.$executeRaw`
+        UPDATE tbl_user_plan_subscription
+        SET cancellations_used = cancellations_used + 1
+        WHERE id = ${customerPlan.subscriptionId}
+      `;
+    }
+
     if (cancellationCharge > 0) {
       await prisma.tbl_wallet_history.create({
         data: {
@@ -811,6 +992,8 @@ async function sweepOverduePickups() {
 
 module.exports = {
   acceptOrder,
+  claimOrderForRider,
+  finalizeAcceptedOrder,
   rejectOrder,
   updateStatus,
   customerCancel,

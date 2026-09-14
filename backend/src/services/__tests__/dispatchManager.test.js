@@ -1,6 +1,11 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
-  pkg_order: { findUnique: jest.fn(), update: jest.fn() },
+  pkg_order: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
+    count: jest.fn().mockResolvedValue(0),
+    aggregate: jest.fn().mockResolvedValue({ _avg: { cust_rate: null } }),
+  },
   tbl_order_requests: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn(), update: jest.fn() },
   tbl_user: { findUnique: jest.fn() },

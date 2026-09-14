@@ -3,6 +3,7 @@ import { Search, Eye, Users, Radio, Navigation, ShieldAlert } from 'lucide-react
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import KpiCard from '../components/common/KpiCard'
 import Badge from '../components/common/Badge'
 import Pagination from '../components/common/Pagination'
@@ -46,8 +47,17 @@ export default function Drivers() {
   const { data, loading, error, refetch } = useApiQuery(fetcher)
 
   const busyFetcher = useCallback(() => api.get('/fleet/live-tracking').then((res) => res.data.data), [])
-  const { data: liveTracking } = useApiQuery(busyFetcher)
+  const { data: liveTracking, refetch: refetchLiveTracking } = useApiQuery(busyFetcher)
   const busyCount = liveTracking?.filter((r) => r.status === 'on_trip').length ?? 0
+
+  // Real-time synchronization for driver directory & online/offline statuses
+  useRealtimeSync(
+    ['admin:driver_status_update', 'admin:driver_kyc_submitted', 'admin:driver_kyc_update'],
+    () => {
+      refetch()
+      refetchLiveTracking()
+    }
+  )
 
   const allDrivers = data?.data ?? []
   const drivers = vehicle ? allDrivers.filter((d) => d.vehicle === vehicle) : allDrivers

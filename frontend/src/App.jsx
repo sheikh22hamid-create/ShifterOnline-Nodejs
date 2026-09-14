@@ -13,6 +13,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const LiveTracking = lazy(() => import('./pages/LiveTracking'))
 const Orders = lazy(() => import('./pages/Orders'))
 const ScheduledOrders = lazy(() => import('./pages/ScheduledOrders'))
+const NextDayOrders = lazy(() => import('./pages/NextDayOrders'))
 const Drivers = lazy(() => import('./pages/Drivers'))
 const DriverActivity = lazy(() => import('./pages/DriverActivity'))
 const DriverTraining = lazy(() => import('./pages/DriverTraining'))
@@ -36,6 +37,9 @@ const BotFile = lazy(() => import('./pages/BotFile'))
 const DynamicQuestions = lazy(() => import('./pages/DynamicQuestions'))
 const Staff = lazy(() => import('./pages/Staff'))
 const Settings = lazy(() => import('./pages/Settings'))
+const ServiceZones = lazy(() => import('./pages/ServiceZones'))
+const MonthlyDrivers = lazy(() => import('./pages/MonthlyDrivers'))
+const MonthlyAttendanceReports = lazy(() => import('./pages/MonthlyAttendanceReports'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function Gated({ roles, children }) {
@@ -68,20 +72,24 @@ function App() {
             <Route path="/fleet/live-tracking" element={<LiveTracking />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/orders/scheduled" element={<ScheduledOrders />} />
+            <Route path="/orders/next-day" element={<NextDayOrders />} />
             <Route path="/custom-orders" element={<CustomOrders />} />
             <Route path="/drivers" element={<Drivers />} />
+            <Route path="/monthly-drivers" element={<MonthlyDrivers />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />
             <Route path="/driver-training" element={<DriverTraining />} />
             <Route path="/kyc" element={<KycApproval />} />
             <Route path="/customers" element={<Customers />} />
 
             {/* Fleet & Pricing */}
+            <Route path="/service-zones" element={<ServiceZones />} />
             <Route path="/rate-cards" element={<RateCards />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/cities" element={<Cities />} />
 
             {/* Financials & Growth */}
+            <Route path="/monthly-attendance" element={<Gated roles={['superadmin', 'admin']}><MonthlyAttendanceReports /></Gated>} />
             <Route path="/payouts" element={<Gated roles={['superadmin', 'admin']}><Payouts /></Gated>} />
             <Route path="/marketing/premium-plans" element={<PremiumPlans />} />
             <Route path="/marketing/coupons" element={<Coupons />} />
@@ -99,7 +107,6 @@ function App() {
             <Route path="/settings" element={<Gated roles={['superadmin']}><Settings /></Gated>} />
           </Route>
         </Route>
-
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>
@@ -107,3 +114,4 @@ function App() {
 }
 
 export default App
+

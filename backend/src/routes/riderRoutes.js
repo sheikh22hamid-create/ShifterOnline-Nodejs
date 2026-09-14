@@ -2,8 +2,18 @@ const express = require("express");
 const riderController = require("../controllers/riderController");
 const driverPlanController = require("../controllers/driverPlanController");
 const trainingController = require("../controllers/trainingController");
+const riderAuthController = require("../controllers/riderAuthController");
 
 const router = express.Router();
+
+// Driver auth (Node port of rider_api/*.php - mobile check, OTP login,
+// password login, registration with KYC docs, logout)
+router.post("/auth/mobile-check", riderAuthController.mobileCheck);
+router.post("/auth/send-otp", riderAuthController.sendOtp);
+router.post("/auth/verify-otp", riderAuthController.verifyOtp);
+router.post("/auth/login", riderAuthController.login);
+router.post("/auth/register", riderAuthController.register);
+router.post("/auth/logout", riderAuthController.logout);
 
 router.get("/test-drivers", riderController.listTestDrivers);
 router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);
@@ -19,4 +29,14 @@ router.post("/training/status", trainingController.getStatus);
 router.post("/training/progress", trainingController.saveProgress);
 router.post("/training/complete", trainingController.complete);
 
+// Monthly Driver Duty & Queue endpoints
+const monthlyDriverController = require("../controllers/monthlyDriverController");
+const orderQueueController = require("../controllers/orderQueueController");
+
+router.get("/duty/status/:riderId", monthlyDriverController.getDutyStatus);
+router.post("/duty/punch-in", monthlyDriverController.punchIn);
+router.post("/duty/punch-out", monthlyDriverController.punchOut);
+router.get("/queue/:riderId", orderQueueController.getDriverQueue);
+
 module.exports = router;
+

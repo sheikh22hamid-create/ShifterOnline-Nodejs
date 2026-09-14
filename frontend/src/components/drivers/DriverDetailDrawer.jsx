@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { ShieldBan, ShieldCheck, Trash2 } from 'lucide-react'
+import { ShieldBan, ShieldCheck, Trash2, UserMinus } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -32,10 +32,65 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
   const [blockReason, setBlockReason] = useState('')
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [demoteModalOpen, setDemoteModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [togglingModelId, setTogglingModelId] = useState(null)
 
   const fetcher = useCallback(() => api.get(`/riders/${riderId}`).then((res) => res.data.data), [riderId])
-  const { data: rider, loading, refetch } = useApiQuery(fetcher)
+  const { data: rider, setData, loading, refetch } = useApiQuery(fetcher)
+
+  async function handleDemote() {
+    setBusy(true)
+    try {
+      await api.post('/monthly-drivers/demote', { rider_id: riderId })
+      toast.success('Driver shifted back to Standard Freelance Driver.')
+      setDemoteModalOpen(false)
+      refetch()
+      onChanged?.()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not revert driver status.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleToggleModel(packageId, currentEnabled) {
+    const newEnabled = !currentEnabled
+    setTogglingModelId(packageId)
+
+    // Optimistic update
+    setData((prev) => {
+      if (!prev || !prev.models) return prev
+      return {
+        ...prev,
+        models: prev.models.map((m) =>
+          m.package_id === packageId ? { ...m, enabled: newEnabled } : m
+        ),
+      }
+    })
+
+    try {
+      const res = await api.put(`/riders/${riderId}/models/${packageId}/toggle`, {
+        enabled: newEnabled,
+      })
+      toast.success(res.data?.message || `Model ${newEnabled ? 'enabled' : 'disabled'} successfully.`)
+      onChanged?.()
+    } catch (err) {
+      // Revert on failure
+      setData((prev) => {
+        if (!prev || !prev.models) return prev
+        return {
+          ...prev,
+          models: prev.models.map((m) =>
+            m.package_id === packageId ? { ...m, enabled: currentEnabled } : m
+          ),
+        }
+      })
+      toast.error(err.response?.data?.message || 'Could not update model status.')
+    } finally {
+      setTogglingModelId(null)
+    }
+  }
 
   async function handleUnblock() {
     setBusy(true)
@@ -96,10 +151,25 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
               <Badge tone={approvalTone(rider.status)}>{approvalLabel(rider.status)}</Badge>
               <Badge tone={onlineTone(rider.a_status)}>{onlineLabel(rider.a_status)}</Badge>
               <Badge tone={verificationTone(rider.verification_status)}>KYC: {rider.verification_status}</Badge>
+              {rider.monthly_plan === 1 ? (
+                <Badge tone="info">💼 Monthly Dedicated</Badge>
+              ) : (
+                <Badge tone="neutral">⚡ Freelance Driver</Badge>
+              )}
             </div>
 
             {canModerate && (
               <div className="flex flex-wrap gap-2">
+                {rider.monthly_plan === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setDemoteModalOpen(true)}
+                    className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition"
+                    style={{ borderColor: 'var(--danger-soft-border)', color: 'var(--danger)', background: 'var(--danger-soft)' }}
+                  >
+                    <UserMinus size={13} /> Shift to Normal Driver
+                  </button>
+                )}
                 {rider.status === 1 ? (
                   <button
                     type="button"
@@ -145,6 +215,95 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                 <Field label="Wallet" value={<span className="font-mono-data">{formatCurrency(rider.wallet_balance)}</span>} />
                 <Field label="Joined" value={formatDateTime(rider.rdate)} />
               </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                  Vehicle Models / Delivery Tiers
+                </h3>
+                {rider.models && rider.models.length > 0 && (
+                  <span className="text-[11.5px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+                    {rider.models.filter((m) => m.enabled).length}/{rider.models.length} active
+                  </span>
+                )}
+              </div>
+
+              {!rider.models || rider.models.length === 0 ? (
+                <div className="surface-card rounded-xl p-3.5 text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
+                  No models configured for this vehicle category.
+                </div>
+              ) : (
+                <div className="surface-card divide-y rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
+                  {rider.models.map((model) => {
+                    const isToggling = togglingModelId === model.package_id
+                    return (
+                      <div
+                        key={model.package_id}
+                        className="flex items-center justify-between p-3 transition-colors hover:bg-black/[0.02]"
+                        style={{ borderColor: 'var(--border)' }}
+                      >
+                        <div className="flex-1 pr-3 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+                              {model.title}
+                            </span>
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-medium"
+                              style={{
+                                background: model.enabled ? 'var(--success-soft)' : 'var(--danger-soft)',
+                                color: model.enabled ? 'var(--success)' : 'var(--danger)',
+                                border: `1px solid ${model.enabled ? 'var(--success-soft-border)' : 'var(--danger-soft-border)'}`,
+                              }}
+                            >
+                              {model.enabled ? 'Active' : 'Disabled'}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                            {model.user_title && (
+                              <span className="truncate">
+                                <span style={{ color: 'var(--ink-faint)' }}>User:</span> {model.user_title}
+                              </span>
+                            )}
+                            {model.driver_title && (
+                              <span className="truncate">
+                                <span style={{ color: 'var(--ink-faint)' }}>Driver:</span> {model.driver_title}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-0.5 text-[11px] font-mono-data" style={{ color: 'var(--ink-faint)' }}>
+                            Min ₹{model.min_charge} · ₹{model.per_km_charge}/km
+                          </div>
+                        </div>
+
+                        {canModerate && (
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={model.enabled}
+                            disabled={isToggling || busy}
+                            onClick={() => handleToggleModel(model.package_id, model.enabled)}
+                            className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50"
+                            style={{
+                              backgroundColor: model.enabled ? 'var(--success)' : 'var(--border-strong)',
+                            }}
+                            title={`Click to ${model.enabled ? 'disable' : 'enable'} ${model.title}`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                model.enabled ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </section>
 
             <section>
@@ -307,6 +466,47 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
           This permanently removes the driver and their documents, bank details, and delivery-type enablements. This
           can't be undone. Drivers with a trip in progress can't be deleted.
         </p>
+      </Modal>
+
+      <Modal
+        open={demoteModalOpen}
+        onClose={() => setDemoteModalOpen(false)}
+        title="Shift to Standard Freelance Driver"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setDemoteModalOpen(false)}
+              className="rounded-lg border px-3 py-1.5 text-[13px]"
+              style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleDemote}
+              className="rounded-lg px-3.5 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--danger)' }}
+            >
+              {busy ? 'Shifting…' : 'Yes, Shift to Normal'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-[13px]" style={{ color: 'var(--ink)' }}>
+            Are you sure you want to revert <strong>{rider?.full_name || `Driver #${riderId}`}</strong> from Monthly Dedicated back to <strong>Standard Freelance Driver</strong>?
+          </p>
+          <div
+            className="rounded-xl border p-3 text-[12px] space-y-1.5"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+          >
+            <div>• Monthly contract will be terminated immediately.</div>
+            <div>• Any ongoing shift duty will be auto punched out.</div>
+            <div>• Driver App will immediately restore standard freelance delivery modes and commission flow.</div>
+          </div>
+        </div>
       </Modal>
     </>
   )

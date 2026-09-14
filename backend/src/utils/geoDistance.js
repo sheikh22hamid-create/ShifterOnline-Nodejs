@@ -88,4 +88,60 @@ async function getRoadDistanceKm(lat1, lon1, lat2, lon2) {
   }
 }
 
-module.exports = { haversineKm, getRoadDistanceKm };
+/**
+ * Greedy nearest-neighbor route for bundling several next-day orders onto
+ * one driver: from the driver's current position, repeatedly pick whichever
+ * remaining order's PICKUP is closest, then continue from THAT order's DROP
+ * — never re-computes an optimal tour (n is small, e.g. a day's worth of
+ * orders, and this is only a suggestion the admin can manually reorder).
+ * Straight-line haversine only, not the Google Routes API — see
+ * docs/superpowers/specs/2026-09-10-next-day-booking-design.md §7.2 for why.
+ */
+function buildNextDaySequence(driverLat, driverLng, orders) {
+  const remaining = orders.map((o) => ({
+    id: o.id,
+    pickupLat: Number(o.plat),
+    pickupLng: Number(o.plong),
+    dropLat: Number(o.dlat),
+    dropLng: Number(o.dlong),
+  }));
+
+  const sequence = [];
+  let currentLat = driverLat;
+  let currentLng = driverLng;
+
+  while (remaining.length > 0) {
+    let nearestIndex = 0;
+    let nearestDistanceKm = Infinity;
+    for (let i = 0; i < remaining.length; i += 1) {
+      const distanceKm = haversineKm(currentLat, currentLng, remaining[i].pickupLat, remaining[i].pickupLng);
+      if (distanceKm < nearestDistanceKm) {
+        nearestDistanceKm = distanceKm;
+        nearestIndex = i;
+      }
+    }
+    const next = remaining[nearestIndex];
+    sequence.push({ order_id: next.id, pickup_distance_km: Math.round(nearestDistanceKm * 100) / 100 });
+    remaining.splice(nearestIndex, 1);
+    currentLat = next.dropLat;
+    currentLng = next.dropLng;
+  }
+
+  return sequence;
+}
+
+async function getMultiStopDistanceKm(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    throw new Error("At least two route points are required");
+  }
+  const legs = await Promise.all(points.slice(0, -1).map((point, i) =>
+    getRoadDistanceKm(Number(point.lat), Number(point.lng), Number(points[i + 1].lat), Number(points[i + 1].lng))
+  ));
+  return {
+    distanceKm: legs.reduce((sum, leg) => sum + Number(leg.distanceKm || 0), 0),
+    durationMin: legs.reduce((sum, leg) => sum + Number(leg.durationMin || 0), 0),
+    source: legs.every((leg) => leg.source === "google") ? "google" : "mixed",
+  };
+}
+
+module.exports = { haversineKm, getRoadDistanceKm, buildNextDaySequence, getMultiStopDistanceKm };

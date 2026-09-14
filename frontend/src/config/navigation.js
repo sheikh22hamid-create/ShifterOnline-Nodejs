@@ -4,6 +4,9 @@ import {
   Package,
   CalendarClock,
   Users,
+  UserCheck,
+  MapPin,
+  CalendarCheck,
   ShieldCheck,
   UserCircle,
   Tag,
@@ -27,18 +30,12 @@ import {
   ShoppingBag,
   Activity,
   Bot,
+  Sunrise,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
 const MANAGERS = ['superadmin', 'admin']
 
-// Full inventory from ADMIN_PANEL_SECTIONS_AND_MODULES_SPECIFICATION.md
-// (17 sections / 36 subsections) grouped per its §4 Direct Action Checklist.
-// `built: true` = real screen wired to a tested backend endpoint.
-// `built: false` = routed, in the sidebar (so nothing from the legacy system
-// is missing from navigation), but rendering an honest "not built yet" page
-// rather than a fake one — most of these already have a working backend
-// from earlier phases and are quick to wire up on request.
 export const NAV_GROUPS = [
   {
     group: 'Operations',
@@ -47,8 +44,10 @@ export const NAV_GROUPS = [
       { to: '/fleet/live-tracking', label: 'Live Mission Control', icon: Radar, roles: ALL_STAFF, built: true },
       { to: '/orders', label: 'Live Orders', icon: Package, roles: ALL_STAFF, built: true },
       { to: '/orders/scheduled', label: 'Scheduled Orders', icon: CalendarClock, roles: ALL_STAFF, built: true },
+      { to: '/orders/next-day', label: 'Next Day Orders', icon: Sunrise, roles: ALL_STAFF, built: true },
       { to: '/custom-orders', label: 'Custom Orders (Bidding)', icon: ShoppingBag, roles: ALL_STAFF, built: true },
       { to: '/drivers', label: 'Drivers Fleet', icon: Users, roles: ALL_STAFF, built: true },
+      { to: '/monthly-drivers', label: 'Monthly Drivers', icon: UserCheck, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },
       { to: '/kyc', label: 'KYC Approval Dock', icon: ShieldCheck, roles: ALL_STAFF, built: true },
@@ -58,6 +57,7 @@ export const NAV_GROUPS = [
   {
     group: 'Fleet & Pricing',
     items: [
+      { to: '/service-zones', label: 'Service Zones (Geofence)', icon: MapPin, roles: ALL_STAFF, built: true },
       { to: '/rate-cards', label: 'Rate Cards', icon: Tag, roles: ALL_STAFF, built: true },
       { to: '/categories', label: 'Package Categories', icon: LayoutGrid, roles: ALL_STAFF, built: true },
       { to: '/vehicles', label: 'Vehicle Types', icon: Truck, roles: ALL_STAFF, built: true },
@@ -67,6 +67,7 @@ export const NAV_GROUPS = [
   {
     group: 'Financials & Growth',
     items: [
+      { to: '/monthly-attendance', label: 'Monthly Duty & Salary', icon: CalendarCheck, roles: MANAGERS, built: true },
       { to: '/payouts', label: 'Withdrawal Requests', icon: Wallet, roles: MANAGERS, built: true },
       { to: '/marketing/premium-plans', label: 'Premium Plans', icon: Crown, roles: ALL_STAFF, built: true },
       { to: '/marketing/coupons', label: 'Promo Coupons', icon: Ticket, roles: ALL_STAFF, built: true },
@@ -89,6 +90,7 @@ export const NAV_GROUPS = [
     ],
   },
 ]
+
 
 export const ROLE_LABELS = {
   superadmin: 'Super Admin',

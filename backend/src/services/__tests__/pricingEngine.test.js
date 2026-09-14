@@ -16,6 +16,7 @@ const {
   isNightNow,
   applyPlanDiscount,
   getActivePlanDiscount,
+  getActiveCustomerPlan,
   priceForPackage,
   getPackageListForCategory,
   getFareEstimate,
@@ -187,6 +188,48 @@ describe("getActivePlanDiscount", () => {
   it("returns null when the row's discount_percent is 0 or non-positive", async () => {
     prisma.$queryRaw.mockResolvedValue([{ discount_percent: "0", discount_max_cap: "0", plan_name: "x" }]);
     expect(await getActivePlanDiscount(12)).toBeNull();
+  });
+});
+
+describe("getActiveCustomerPlan", () => {
+  it("returns null when uid is not provided", async () => {
+    expect(await getActiveCustomerPlan(null)).toBeNull();
+  });
+
+  it("returns customer plan details when active subscription exists", async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{
+      subscription_id: "5",
+      cancellations_used: "2",
+      plan_id: "10",
+      plan_name: "VIP Gold",
+      no_advance_payment: 1,
+      cancellation_enabled: 1,
+      free_cancellations: "5",
+      cancellation_window_min: "5",
+      discount_enabled: 1,
+      discount_percent: "15.00",
+      discount_max_cap: "50.00",
+    }]);
+
+    const result = await getActiveCustomerPlan(7);
+    expect(result).toEqual({
+      subscriptionId: 5,
+      cancellationsUsed: 2,
+      planId: 10,
+      planName: "VIP Gold",
+      noAdvancePayment: true,
+      cancellationEnabled: true,
+      freeCancellations: 5,
+      cancellationWindowMin: 5,
+      discountEnabled: true,
+      discountPercent: 15,
+      discountMaxCap: 50,
+    });
+  });
+
+  it("returns null when no active customer plan is found", async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([]);
+    expect(await getActiveCustomerPlan(7)).toBeNull();
   });
 });
 

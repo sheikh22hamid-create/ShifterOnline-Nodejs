@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import PayoutApproveModal from '../components/payouts/PayoutApproveModal'
 import PayoutRejectModal from '../components/payouts/PayoutRejectModal'
@@ -16,6 +17,8 @@ export default function Payouts() {
   const fetcher = useCallback(() => api.get('/payouts', { params: { status: status || undefined } }).then((res) => res.data), [status])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
   const payouts = data?.data ?? []
+
+  useRealtimeSync(['admin:payout_request', 'admin:payout_update'], refetch)
 
   return (
     <div>

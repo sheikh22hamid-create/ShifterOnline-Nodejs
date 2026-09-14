@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import { formatCurrency, formatDateTime } from '../utils/format'
 
@@ -41,6 +42,8 @@ export default function DriverActivity() {
   )
 
   const { data: logs, loading, error, refetch } = useApiQuery(fetcher)
+
+  useRealtimeSync(['admin:driver_status_update', 'admin:order_status_update'], refetch)
 
   const filteredLogs = (logs || []).filter((l) => {
     if (!search.trim()) return true

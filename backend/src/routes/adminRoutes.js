@@ -19,16 +19,48 @@ const adminTrainingController = require("../controllers/adminTrainingController"
 const adminBotFileController = require("../controllers/adminBotFileController");
 const multer = require("multer");
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const serviceZoneController = require("../controllers/serviceZoneController");
+const monthlyDriverController = require("../controllers/monthlyDriverController");
+const orderQueueController = require("../controllers/orderQueueController");
+const adminSearchController = require("../controllers/adminSearchController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
 
 const router = express.Router();
 
+// Define role whitelist for rider/fleet management before any route registrations
+const RIDER_ROLES = ["superadmin", "admin", "executive"];
+
 // Every route below (except login) requires a valid admin-panel JWT.
 router.post("/auth/login", authController.login);
 router.get("/auth/me", auth, authController.me);
 router.put("/auth/profile", auth, authController.updateProfile);
+
+// --- Global Command Search (Orders, Drivers, Customers) --------------------
+router.get("/search", auth, authorize(...RIDER_ROLES), scopeFilter, adminSearchController.globalSearch);
+
+
+// --- Service Zones & Geofencing --------------------------------------------
+router.get("/service-zones", auth, authorize(...RIDER_ROLES), serviceZoneController.listZones);
+router.post("/service-zones", auth, authorize("superadmin", "admin"), serviceZoneController.createZone);
+router.put("/service-zones/:id", auth, authorize("superadmin", "admin"), serviceZoneController.updateZone);
+router.delete("/service-zones/:id", auth, authorize("superadmin"), serviceZoneController.deleteZone);
+
+// --- Monthly Dedicated Drivers & Duty Tracking ------------------------------
+router.get("/monthly-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.listMonthlyDrivers);
+router.post("/monthly-drivers/promote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.promoteDriver);
+router.post("/monthly-drivers/demote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.demoteDriver);
+router.get("/monthly-drivers/attendance", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.getAttendanceReport);
+router.get("/monthly-drivers/:riderId/duty", auth, authorize(...RIDER_ROLES), monthlyDriverController.getDutyStatus);
+router.get("/monthly-drivers/:riderId/ledger", auth, authorize(...RIDER_ROLES), monthlyDriverController.getMonthlyDriverLedger);
+router.post("/monthly-drivers/:riderId/ledger-adjustment", auth, authorize("superadmin", "admin"), monthlyDriverController.addLedgerAdjustment);
+
+// --- Monthly Driver Advance Order Queue --------------------------------------
+router.get("/monthly-drivers/:riderId/queue", auth, authorize(...RIDER_ROLES), orderQueueController.getDriverQueue);
+router.post("/monthly-drivers/queue/assign", auth, authorize("superadmin", "admin"), scopeFilter, orderQueueController.assignOrderToQueue);
+router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", "admin"), scopeFilter, orderQueueController.removeOrderFromQueue);
+
 
 // --- Staff & Executive Management -----------------------------------------
 router.get("/staff", auth, authorize("superadmin", "admin"), staffController.list);
@@ -52,17 +84,21 @@ router.post("/categories", auth, authorize("superadmin"), masterDataController.c
 router.put("/categories/:id", auth, authorize("superadmin"), masterDataController.updateCategory);
 router.delete("/categories/:id", auth, authorize("superadmin"), masterDataController.deleteCategory);
 
-// --- Rate Cards & Pricing Engine (tbl_package, Model 1-5) -------------------
+// --- Rate Cards & Pricing Engine (tbl_package, Model 1-5 & Distance Slabs) -
 router.get("/rate-cards", auth, rateCardController.list);
+router.get("/rate-cards/slabs", auth, rateCardController.getSlabs);
+router.put("/rate-cards/slabs", auth, authorize("superadmin"), rateCardController.updateSlabs);
+router.post("/rate-cards/slabs/simulate", auth, rateCardController.simulateFare);
+router.post("/rate-cards/slabs/sync", auth, authorize("superadmin"), rateCardController.syncModelsFromSlabs);
 router.get("/rate-cards/:id", auth, rateCardController.getOne);
 router.post("/rate-cards", auth, authorize("superadmin"), rateCardController.create);
 router.put("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.update);
 router.delete("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.remove);
 
 // --- Drivers & KYC Verification ---------------------------------------------
-const RIDER_ROLES = ["superadmin", "admin", "executive"];
 router.get("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.list);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
+router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);
 router.patch("/riders/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleStatus);
 router.delete("/riders/:id", auth, authorize("superadmin"), adminRiderController.remove);
@@ -74,10 +110,14 @@ router.get("/training/progress", auth, authorize(...RIDER_ROLES), adminTrainingC
 router.post("/training/progress/:riderId/reset", auth, authorize("superadmin", "admin"), adminTrainingController.resetProgress);
 
 // --- Orders & Live Dispatch Intervention ------------------------------------
-// NOTE: /orders/scheduled must be registered before /orders/:id, or Express
-// would match "scheduled" as the :id param.
+// NOTE: /orders/scheduled and /orders/next-day must be registered before
+// /orders/:id, or Express would match "scheduled"/"next-day" as the :id param.
 router.get("/orders/scheduled", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.listScheduled);
 router.post("/orders/scheduled/:id/assign-driver", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignScheduledDriver);
+
+router.get("/orders/next-day", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.listNextDay);
+router.post("/orders/next-day/suggest-sequence", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.suggestNextDaySequence);
+router.post("/orders/next-day/assign-batch", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignNextDayBatch);
 
 router.get("/orders", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.list);
 router.get("/orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.getOne);
@@ -140,6 +180,7 @@ router.get("/analytics/city-comparison", auth, authorize("superadmin"), analytic
 // --- Live Fleet Tracking & Driver Activity -----------------------------------
 router.get("/fleet/live-tracking", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.liveTracking);
 router.get("/fleet/driver-activity", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.driverActivity);
+router.get("/fleet/active-trips", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.activeTrips);
 
 // --- CMS: Cancellation Reasons, Legal Pages, FAQs ----------------------------
 router.get("/cancel-reasons", auth, cmsController.listCancelReasons);

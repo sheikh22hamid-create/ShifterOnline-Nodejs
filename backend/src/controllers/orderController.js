@@ -4,7 +4,7 @@ const pricingEngine = require("../services/pricingEngine");
 const tripLifecycle = require("../services/tripLifecycle");
 const dispatchManager = require("../services/dispatchManager");
 const adminSocket = require("../sockets/adminSocket");
-const { getRoadDistanceKm } = require("../utils/geoDistance");
+const { getRoadDistanceKm, getMultiStopDistanceKm } = require("../utils/geoDistance");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 
@@ -12,21 +12,16 @@ function isFiniteNumber(value) {
   return typeof value === "number" ? Number.isFinite(value) : Number.isFinite(Number(value));
 }
 
-/**
- * The legacy mobile app has a confirmed field-swap quirk: it sends the
- * package's per-km RATE in radius_range and the customer's actually
- * -selected search radius (km) in radius_charge — verified against a real
- * order (cust_api/last_order_debug.json: radius_range=6.75 [the rate],
- * radius_charge=1 [the real 1km radius]; the old PHP code that used to
- * live here computed radius_range_computed=1, confirming the swap).
- * Trusting radius_range blindly silently widens every customer's search
- * radius to whatever the package's per-km rate happens to be, offering
- * the ride to drivers far outside what the customer actually picked.
- *
- * radiusRangeRaw/radiusChargeRaw are the untouched values as received;
- * fallbackKm is used only when neither raw field resolves to anything
- * usable (e.g. a client that never had this quirk in the first place).
- */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function nextDayScheduleDateIST(now = new Date()) {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const istHour = ist.getUTCHours();
+  // If order is placed at or after 10:00 PM IST (22:00), cutoff has passed -> schedule for day after tomorrow
+  const daysToAdd = istHour >= 22 ? 2 : 1;
+  ist.setUTCDate(ist.getUTCDate() + daysToAdd);
+  return ist.toISOString().slice(0, 10);
+}
+
 function resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, perKmCharge, fallbackKm) {
   const range = Number(radiusRangeRaw);
   const charge = Number(radiusChargeRaw);
@@ -67,7 +62,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km, stops } = req.body;
 
     if (
       !cat_id ||
@@ -90,6 +85,7 @@ async function fareEstimate(req, res) {
       // nearby driver ends up accepting.
       radiusRangeKm: radius_km,
       extraMileCharge: extra_mile_charge,
+      stops,
     });
     return res.status(200).json(estimate);
   } catch (err) {
@@ -143,6 +139,7 @@ async function createOrderCore({
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
+  stops = [],
 }) {
   if (
     !uid ||
@@ -156,8 +153,24 @@ async function createOrderCore({
 
   const requestedPackageIds = deliveryTypeIds.map(Number);
 
+  const normalizedStops = Array.isArray(stops) ? stops : [];
+  const validStops = normalizedStops.map((stop) => ({
+    lat: Number(stop.lat), lng: Number(stop.lng), address: stop.address, hno: stop.hno,
+    landmark: stop.landmark, contact_name: stop.contact_name, contact_number: stop.contact_number,
+  }));
+  if (validStops.some((stop) => !Number.isFinite(stop.lat) || !Number.isFinite(stop.lng))) {
+    return { ok: false, code: "VALIDATION", msg: "Every stop must have valid coordinates" };
+  }
+  const stopSettings = typeof pricingEngine.getAddStopSettings === "function"
+    ? await pricingEngine.getAddStopSettings()
+    : { maxExtraStops: 2, extraStopCharge: 0 };
+  if (validStops.length > stopSettings.maxExtraStops) {
+    return { ok: false, code: "VALIDATION", msg: `A maximum of ${stopSettings.maxExtraStops} extra stops is allowed` };
+  }
   const clientDistance = Number(distance);
-  const distancePromise = (Number.isFinite(clientDistance) && clientDistance > 0)
+  const distancePromise = validStops.length > 0
+    ? getMultiStopDistanceKm([{ lat: plat, lng: plong }, ...validStops, { lat: dlat, lng: dlong }])
+    : (Number.isFinite(clientDistance) && clientDistance > 0)
     ? Promise.resolve({ distanceKm: clientDistance, durationMin: Math.round(clientDistance * 2), source: "client" })
     : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
 
@@ -211,18 +224,31 @@ async function createOrderCore({
     firstPkg,
     distanceKm,
     1,
-    Number(extraMileCharge) || 0,
+    (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
     planDiscount
   );
 
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);
-  const finalTotalCharge = (Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare;
-  const finalDCharge = (Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare;
+  const finalTotalCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare);
+  const finalDCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare);
 
   const parsedWeight = parseFloat(String(packageWeight));
-  const finalScheduleDateTime = (scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null;
+  const finalScheduleDateTime = Number(bookingType) === 3
+    ? nextDayScheduleDateIST()
+    : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
+  if (Number(bookingType) === 3) {
+    if (!planDiscount || !planDiscount.noAdvancePayment) {
+      return {
+        ok: false,
+        code: "PREMIUM_PLAN_REQUIRED",
+        msg: "Next Day Delivery is exclusively available for Premium Plan members with No Advance Payment benefits.",
+      };
+    }
+  }
+
+  const stopCharge = validStops.length * stopSettings.extraStopCharge;
   const order = await prisma.pkg_order.create({
     data: {
       uid: Number(uid),
@@ -247,7 +273,7 @@ async function createOrderCore({
       d_charge: finalDCharge,
       total_dcharge: finalTotalCharge,
       commission,
-      extra_mile_charge: Number(extraMileCharge) || 0,
+      extra_mile_charge: (Number(extraMileCharge) || 0) + stopCharge,
       time_duration: 0,
       package_weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
       package_cost: Number(packageCost) || 0,
@@ -266,15 +292,27 @@ async function createOrderCore({
     },
   });
 
-  dispatchManager.startDispatch(order, {
-    fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
-    // Handed through so dispatchManager can price each eligible driver's own
-    // popup off their real pickup distance without a redundant re-fetch of
-    // the package row/discount it already looked up for tier 0 above.
-    pkg: firstPkg, discount: planDiscount,
-  }).catch((err) =>
-    logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
-  );
+  if (validStops.length > 0) {
+    await prisma.pkg_order_stops.createMany({
+      data: validStops.map((stop, index) => ({ order_id: order.id, sequence: index + 1, lat: String(stop.lat), lng: String(stop.lng), address: stop.address || null, hno: stop.hno || null, landmark: stop.landmark || null, contact_name: stop.contact_name || null, contact_number: stop.contact_number || null })),
+    });
+  }
+  order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
+
+  // Next-day orders (booking_type 3) are never auto-dispatched — admin
+  // assigns them manually, individually or as a sequenced batch, from the
+  // Next Day Orders admin panel. See docs/superpowers/specs/2026-09-10-next-day-booking-design.md §5.
+  if (Number(bookingType) !== 3) {
+    dispatchManager.startDispatch(order, {
+      fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
+      // Handed through so dispatchManager can price each eligible driver's own
+      // popup off their real pickup distance without a redundant re-fetch of
+      // the package row/discount it already looked up for tier 0 above.
+      pkg: firstPkg, discount: planDiscount,
+    }).catch((err) =>
+      logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
+    );
+  }
 
   try {
     adminSocket.notifyNewOrder(order);
@@ -292,6 +330,7 @@ async function createOrder(req, res) {
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime,
+      stops,
     } = req.body;
 
     const result = await createOrderCore({
@@ -301,10 +340,14 @@ async function createOrder(req, res) {
       pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
       couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
       scheduleDateTime: schedule_date_time || scheduleDateTime || null,
+      stops,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "PREMIUM_PLAN_REQUIRED") {
+      return res.status(403).json({ ResponseCode: "403", Result: "false", ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "INVALID_PACKAGES") {
       return res.status(400).json({
@@ -350,6 +393,9 @@ async function getOrderDetails(req, res) {
       LIMIT 1
     `;
     const advancePayment = advanceRows[0]?.advance_payment;
+    const stops = prisma.pkg_order_stops
+      ? await prisma.pkg_order_stops.findMany({ where: { order_id: order.id }, orderBy: { sequence: "asc" } })
+      : [];
 
     let rider = null;
     if (order.rid && order.rid !== 0) {
@@ -407,7 +453,7 @@ async function getOrderDetails(req, res) {
           grand_total: String(order.total_dcharge),
           Delivery_charge: String(order.d_charge),
           advance_payment: advancePayment == null ? "0" : String(advancePayment),
-          payment_status: order.payment_status ?? 0,
+          payment_status: (advancePayment == null || advancePayment === "0" || Number(advancePayment) === 0) ? 1 : (order.payment_status ?? 0),
           advance_payment_timer: 120,
           is_rate: order.is_rate,
           distance: order.distance,
@@ -431,14 +477,11 @@ async function getOrderDetails(req, res) {
           customer_daddress: order.daddress,
           customer_pmobile: order.pmobile,
           customer_dmobile: order.dmobile,
-          // Pickup/drop coordinates for the live tracking map — not
-          // previously returned since nothing on this screen used to render
-          // a map at all.
           plat: order.plat,
           plong: order.plong,
           dlat: order.dlat,
-          dlong: order.dlong,
           drop_mobile: order.dmobile,
+          stops,
         },
       ],
     });
@@ -466,6 +509,7 @@ async function customerCancel(req, res) {
     return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
+
 
 async function driverCancel(req, res) {
   try {
@@ -522,6 +566,47 @@ async function rateOrder(req, res) {
   }
 }
 
+async function checkNextDayEligibility(req, res) {
+  try {
+    const uid = req.body?.uid || req.query?.uid;
+    if (!uid) {
+      return res.status(400).json({
+        ResponseCode: "400",
+        Result: "false",
+        ResponseMsg: "uid is required",
+      });
+    }
+
+    const plan = await pricingEngine.getActiveCustomerPlan(Number(uid));
+    const isEligible = Boolean(
+      plan &&
+      (plan.noAdvancePayment === true ||
+       plan.noAdvancePayment === 1 ||
+       String(plan.noAdvancePayment) === "1" ||
+       String(plan.noAdvancePayment) === "true")
+    );
+    const scheduleDate = nextDayScheduleDateIST();
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: isEligible
+        ? "User is eligible for Next Day Delivery"
+        : "Next Day Delivery is exclusively available for Premium Plan members with No Advance Payment benefits.",
+      is_eligible: isEligible,
+      has_active_plan: Boolean(plan),
+      plan_name: plan?.planName || null,
+      no_advance_payment: Boolean(plan?.noAdvancePayment),
+      delivery_date: scheduleDate,
+      delivery_window: "Tomorrow between 10:00 AM – 8:00 PM",
+      cutoff_time: "10:00 PM",
+    });
+  } catch (err) {
+    logger.error("checkNextDayEligibility failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   getCategories,
   fareEstimate,
@@ -533,4 +618,5 @@ module.exports = {
   customerCancel,
   driverCancel,
   rateOrder,
+  checkNextDayEligibility,
 };

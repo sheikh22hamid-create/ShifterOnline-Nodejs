@@ -21,6 +21,7 @@ jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn()
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 0 }),
   getPackageById: jest.fn(),
+  getActiveCustomerPlan: jest.fn().mockResolvedValue(null),
   commissionAmount: jest.fn((dCharge, commissionPercent) => Math.round(((Number(dCharge) * Number(commissionPercent)) / 100) * 100) / 100),
 }));
 jest.mock("../pushNotifier", () => ({
@@ -203,6 +204,37 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 0, undefined);
     expect(result.order.advance_payment).toBe("15");
   });
+
+  it("sets advance_payment = 0 when customer has an active plan with noAdvancePayment enabled", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297, uid: 7, distance: 15.4, extra_mile_charge: 0, plat: 22.7, plong: 75.8,
+    });
+    prisma.tbl_rider.findUnique.mockResolvedValue({
+      id: 1, first_name: "John", last_name: "Doe", fmobile: "9999999999", rlats: 22.7, rlongs: 75.8,
+    });
+    pricingEngine.priceForPackageId.mockResolvedValueOnce({
+      pkg: { cancellation_charge_customer: 15 },
+      fare: 50,
+      driverEarning: 45,
+      commission: 5,
+      radiusCharge: 10,
+    });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({
+      noAdvancePayment: true,
+      cancellationEnabled: false,
+    });
+
+    const result = await tripLifecycle.acceptOrder(297, 1);
+
+    expect(result.order.advance_payment).toBe("0");
+    expect(result.order.payment_status).toBe(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(
+      expect.anything(),
+      "0",
+      1,
+      297
+    );
+  });
 });
 
 
@@ -324,6 +356,46 @@ describe("tripLifecycle.customerCancel", () => {
     const result = await tripLifecycle.customerCancel(7, 297, "too late");
 
     expect(result).toEqual({ success: false, msg: "Order cannot be cancelled" });
+  });
+
+  it("debits wallet when cancelling an assigned order without a free cancellation plan", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+    pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 25 });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+    const result = await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 7,
+        amount: 25,
+        type: "debit",
+      }),
+    });
+  });
+
+  it("waives cancellation fee and increments cancellations_used when customer has active free cancellations perk", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+    prisma.$executeRaw.mockResolvedValueOnce(1); // update pkg_order
+    prisma.$executeRaw.mockResolvedValueOnce(1); // update tbl_user_plan_subscription
+    pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 25 });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({
+      subscriptionId: 44,
+      cancellationEnabled: true,
+      freeCancellations: 5,
+      cancellationsUsed: 1,
+    });
+
+    const result = await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(
+      expect.anything(),
+      44
+    );
   });
 });
 
@@ -594,7 +666,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     );
   });
 
-  it("does not touch the wallet when advance_payment already covers the full commission", async () => {
+  it("credits the driver the advance_payment left over once it covers the full commission", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 303,
       rid: 1,
@@ -611,8 +683,25 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     const result = await tripLifecycle.updateStatus(303, 1, "complete");
 
     expect(result.success).toBe(true);
-    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
-    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    // Advance (15) exceeds commission (5) — the driver collected less cash
+    // than their real net earning, so the leftover 10 admin is holding
+    // belongs to them and must land back in their wallet as a credit.
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { increment: 10 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          user_id: 1,
+          amount: 10,
+          type: "credit",
+          wallet_type: "driver",
+          order_id: 303,
+          payment_id: "advance_refund:303",
+        }),
+      })
+    );
   });
 
   it("computes commission off the final total (including waiting charge), not the pre-waiting-charge d_charge", async () => {
@@ -698,11 +787,18 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       wating_charge: "0",
     });
     prisma.$queryRaw.mockResolvedValueOnce([{ advance_payment: 15 }]);
-    prisma.tbl_wallet_history.findFirst.mockResolvedValueOnce({ id: 999 });
+    // Two idempotency checks fire in order for this order (commission 0,
+    // advance 15): the driver's advance-refund credit first, then the
+    // customer's advance-apply debit — both already recorded, so neither
+    // should re-fire.
+    prisma.tbl_wallet_history.findFirst
+      .mockResolvedValueOnce({ id: 998 })
+      .mockResolvedValueOnce({ id: 999 });
 
     const result = await tripLifecycle.updateStatus(306, 1, "complete");
 
     expect(result.success).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
   });
 

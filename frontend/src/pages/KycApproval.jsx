@@ -3,6 +3,7 @@ import { ShieldCheck } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import DocumentDecisionCard from '../components/kyc/DocumentDecisionCard'
 import DocumentImageViewer from '../components/kyc/DocumentImageViewer'
@@ -19,6 +20,11 @@ export default function KycApproval() {
 
   const listFetcher = useCallback(() => api.get('/riders', { params: { verification_status: statusFilter || undefined } }).then((res) => res.data.data), [statusFilter])
   const { data: drivers, loading: listLoading, refetch: refetchList } = useApiQuery(listFetcher)
+
+  useRealtimeSync(
+    ['admin:driver_kyc_submitted', 'admin:driver_kyc_update', 'admin:driver_status_update'],
+    refetchList
+  )
 
   useEffect(() => {
     if (!drivers) return

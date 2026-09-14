@@ -3,16 +3,7 @@ import { useSocket } from '../context/SocketContext'
 import { haversineMeters } from '../utils/geo'
 
 /**
- * Subscribes to admin:live_driver_ping for one rider and tracks the raw
- * pings — nothing here touches the DOM or interpolates a per-frame
- * position. That work belongs to whatever imperatively drives the Leaflet
- * marker (MissionControlMap), so this hook doesn't trigger a React
- * re-render 60 times a second; it only updates state once per real ping.
- *
- * `latestPingRef` / `prevPingRef` are exposed as refs (not state) since
- * consumers read them inside their own animation loops or on their own
- * timer cadence (e.g. throttled OSRM refetches), not on every ping.
- * `pingVersion` is the cheap signal that a new ping arrived.
+ * Subscribes to admin:live_driver_ping & driver:location_stream for one rider and tracks raw pings.
  */
 export default function useLiveDriverPosition(riderId) {
   const { socket } = useSocket()
@@ -24,9 +15,6 @@ export default function useLiveDriverPosition(riderId) {
   useEffect(() => {
     latestPingRef.current = null
     prevPingRef.current = null
-    // The focused rider changed — a real transition, not a mirror of
-    // initial state, so resetting speed/ping-version here is legitimate.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSpeedKmh(null)
     setPingVersion(0)
   }, [riderId])
@@ -35,13 +23,20 @@ export default function useLiveDriverPosition(riderId) {
     if (!socket || !riderId) return
 
     function onPing(payload) {
-      if (payload.rider_id !== riderId || !Number.isFinite(payload.lat) || !Number.isFinite(payload.lng)) return
+      if (!payload) return
+      const pRiderId = Number(payload.rider_id)
+      const targetRiderId = Number(riderId)
+      const lat = Number(payload.lat)
+      const lng = Number(payload.lng)
+
+      if (pRiderId !== targetRiderId || !Number.isFinite(lat) || !Number.isFinite(lng)) return
 
       const now = performance.now()
+      const heading = Number.isFinite(Number(payload.heading)) ? Number(payload.heading) : prevPingRef.current?.heading ?? 0
       const next = {
-        lat: payload.lat,
-        lng: payload.lng,
-        heading: Number.isFinite(payload.heading) ? payload.heading : prevPingRef.current?.heading ?? 0,
+        lat,
+        lng,
+        heading,
         t: now,
       }
 
@@ -60,7 +55,12 @@ export default function useLiveDriverPosition(riderId) {
     }
 
     socket.on('admin:live_driver_ping', onPing)
-    return () => socket.off('admin:live_driver_ping', onPing)
+    socket.on('driver:location_stream', onPing)
+
+    return () => {
+      socket.off('admin:live_driver_ping', onPing)
+      socket.off('driver:location_stream', onPing)
+    }
   }, [socket, riderId])
 
   return { latestPingRef, speedKmh, pingVersion }

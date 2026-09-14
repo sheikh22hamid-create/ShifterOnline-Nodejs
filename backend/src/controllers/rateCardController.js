@@ -1,5 +1,15 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const {
+  SLAB_INTERVALS,
+  DEFAULT_SLAB_RATES,
+  DEFAULT_MODEL_MULTIPLIERS,
+  getSlabPricingConfig,
+  saveSlabPricingConfig,
+  calculateBaseSlabFare,
+  calculateModelFares,
+  findVehicleSlabConfig,
+} = require("../services/slabPricingService");
 
 const PACKAGE_TYPES = ["USER", "DRIVER"];
 
@@ -25,8 +35,17 @@ function formatTime(date) {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-function serializePackage(pkg) {
-  return { ...pkg, start_time: formatTime(pkg.start_time), end_time: formatTime(pkg.end_time) };
+function serializePackage(pkg, category) {
+  return {
+    ...pkg,
+    user_title: pkg.user_title || null,
+    driver_title: pkg.driver_title || null,
+    start_time: formatTime(pkg.start_time),
+    end_time: formatTime(pkg.end_time),
+    category_name: category?.cat_name || null,
+    category_img: category?.cat_img || null,
+    vehicle_type: category?.cat_name || null,
+  };
 }
 
 async function list(req, res) {
@@ -35,16 +54,24 @@ async function list(req, res) {
     if (req.query.cat_id) where.cat_id = parseInt(req.query.cat_id, 10);
     if (req.query.status !== undefined) where.status = parseInt(req.query.status, 10);
 
-    let rows = await prisma.tbl_package.findMany({ where, orderBy: [{ cat_id: "asc" }, { sort_order: "asc" }] });
+    const [rows, categories] = await Promise.all([
+      prisma.tbl_package.findMany({ where, orderBy: [{ cat_id: "asc" }, { sort_order: "asc" }] }),
+      prisma.pkg_category.findMany(),
+    ]);
 
+    const catMap = new Map(categories.map((c) => [c.id, c]));
+
+    let filteredRows = rows;
     if (req.query.city_id) {
       // city_id is a legacy comma-separated VarChar column, not a real FK —
       // substring match would false-positive ("1" inside "21"), so split first.
       const target = String(parseInt(req.query.city_id, 10));
-      rows = rows.filter((p) => (p.city_id || "").split(",").map((s) => s.trim()).includes(target));
+      filteredRows = filteredRows.filter((p) => (p.city_id || "").split(",").map((s) => s.trim()).includes(target));
     }
 
-    return res.status(200).json({ success: true, total: rows.length, data: rows.map(serializePackage) });
+    const data = filteredRows.map((pkg) => serializePackage(pkg, catMap.get(pkg.cat_id)));
+
+    return res.status(200).json({ success: true, total: data.length, data });
   } catch (err) {
     return internalError(res, err, "rateCards.list");
   }
@@ -57,7 +84,8 @@ async function getOne(req, res) {
     if (!pkg) {
       return res.status(404).json({ success: false, message: "Rate card not found" });
     }
-    return res.status(200).json({ success: true, data: serializePackage(pkg) });
+    const category = pkg.cat_id ? await prisma.pkg_category.findUnique({ where: { id: pkg.cat_id } }) : null;
+    return res.status(200).json({ success: true, data: serializePackage(pkg, category) });
   } catch (err) {
     return internalError(res, err, "rateCards.getOne");
   }
@@ -94,6 +122,8 @@ async function create(req, res) {
     const created = await prisma.tbl_package.create({
       data: {
         title: b.title,
+        user_title: b.user_title ? String(b.user_title).trim() : null,
+        driver_title: b.driver_title ? String(b.driver_title).trim() : null,
         type: b.type,
         cat_id: parseInt(b.cat_id, 10),
         city_id: String(b.city_id),
@@ -122,7 +152,7 @@ async function create(req, res) {
       },
     });
 
-    return res.status(201).json({ success: true, message: "Rate card created", data: serializePackage(created) });
+    return res.status(201).json({ success: true, message: "Rate card created", data: serializePackage(created, category) });
   } catch (err) {
     return internalError(res, err, "rateCards.create");
   }
@@ -150,6 +180,8 @@ async function update(req, res) {
     const data = {};
     const directFields = [
       "title",
+      "user_title",
+      "driver_title",
       "min_charge",
       "per_km_charge",
       "free_waiting_time",
@@ -167,7 +199,13 @@ async function update(req, res) {
       "driver_detail_image",
     ];
     for (const field of directFields) {
-      if (b[field] !== undefined) data[field] = b[field];
+      if (b[field] !== undefined) {
+        if (field === "user_title" || field === "driver_title") {
+          data[field] = b[field] ? String(b[field]).trim() : null;
+        } else {
+          data[field] = b[field];
+        }
+      }
     }
     if (b.type !== undefined) data.type = b.type;
     if (b.cat_id !== undefined) data.cat_id = parseInt(b.cat_id, 10);
@@ -182,7 +220,8 @@ async function update(req, res) {
     if (b.status !== undefined) data.status = parseInt(b.status, 10);
 
     const updated = await prisma.tbl_package.update({ where: { id }, data });
-    return res.status(200).json({ success: true, message: "Rate card updated", data: serializePackage(updated) });
+    const category = updated.cat_id ? await prisma.pkg_category.findUnique({ where: { id: updated.cat_id } }) : null;
+    return res.status(200).json({ success: true, message: "Rate card updated", data: serializePackage(updated, category) });
   } catch (err) {
     return internalError(res, err, "rateCards.update");
   }
@@ -196,23 +235,227 @@ async function remove(req, res) {
       return res.status(404).json({ success: false, message: "Rate card not found" });
     }
 
-    // tbl_rider_delivery_type.delivery_type stores this id as a string —
-    // deleting out from under an enabled driver would silently orphan it.
-    const enabledDriverCount = await prisma.tbl_rider_delivery_type.count({
-      where: { delivery_type: String(id), status: 1 },
+    // Check if there are active in-progress orders using this rate card
+    const activeOrderCount = await prisma.pkg_order.count({
+      where: {
+        delivery_type: id,
+        order_status: { in: [1, 2, 3] },
+        o_status: { notIn: ["Completed", "Cancelled"] },
+      },
     });
-    if (enabledDriverCount) {
+    if (activeOrderCount > 0) {
       return res.status(409).json({
         success: false,
-        message: "Cannot delete a rate card that drivers are currently enabled for — deactivate it instead (PUT status: 0).",
+        message: "Cannot delete rate card while active orders are in progress for it. Deactivate it instead.",
       });
     }
 
+    // Clean up any rider delivery type links
+    await prisma.tbl_rider_delivery_type.deleteMany({
+      where: { delivery_type: String(id) },
+    });
+
     await prisma.tbl_package.delete({ where: { id } });
-    return res.status(200).json({ success: true, message: "Rate card deleted" });
+    return res.status(200).json({ success: true, message: "Rate card deleted successfully" });
   } catch (err) {
     return internalError(res, err, "rateCards.remove");
   }
 }
 
-module.exports = { list, getOne, create, update, remove };
+async function getSlabs(req, res) {
+  try {
+    const config = await getSlabPricingConfig();
+    const slabRates = config.slabRates || DEFAULT_SLAB_RATES;
+    const modelMultipliers = config.modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
+
+    // Build vehicle_slabs array for clean frontend UI
+    const vehicle_slabs = Object.values(slabRates).map((v) => {
+      const slabs = SLAB_INTERVALS.filter((i) => i.to !== Infinity).map((interval) => ({
+        key: interval.key,
+        from_km: interval.from,
+        to_km: interval.to,
+        label: interval.label,
+        rate: Number(v.rates?.[interval.key] ?? v.rates?.[interval.label] ?? 0),
+      }));
+      return {
+        vehicle_key: v.vehicle_key,
+        vehicle_type: v.vehicle_name || v.vehicle_type,
+        category_id: v.category_id,
+        min_charge: Number(v.min_charge) || 0,
+        slabs,
+      };
+    });
+
+    const model_multipliers = (modelMultipliers.models || []).map((m, idx) => ({
+      model_number: idx + 1,
+      model: m.model,
+      name: m.model,
+      user_title: m.user_title || "",
+      driver_title: m.driver_title || "",
+      percent_offset: Number(m.offset_percent) || 0,
+    }));
+
+    const anchor_model = {
+      model_number: 3,
+      name: modelMultipliers.anchor_model || "Model 3",
+      markup_percent: Number(modelMultipliers.anchor_markup_percent) || 10,
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        vehicle_slabs,
+        model_multipliers,
+        anchor_model,
+        slabRates,
+        modelMultipliers,
+        intervals: SLAB_INTERVALS,
+      },
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.getSlabs");
+  }
+}
+
+async function updateSlabs(req, res) {
+  try {
+    const { vehicle_slabs, model_multipliers, anchor_model, slabRates, modelMultipliers } = req.body;
+
+    let savedSlabRates = slabRates;
+    if (!savedSlabRates && Array.isArray(vehicle_slabs)) {
+      savedSlabRates = {};
+      for (const v of vehicle_slabs) {
+        const key = v.vehicle_key || String(v.vehicle_type).toLowerCase().replace(/[^a-z0-9]/g, "_");
+        const rates = {};
+        for (const s of v.slabs || []) {
+          const sKey = s.key || `${s.from_km}_${s.to_km}`;
+          rates[sKey] = Number(s.rate) || 0;
+        }
+        savedSlabRates[key] = {
+          vehicle_key: key,
+          vehicle_name: v.vehicle_type || v.vehicle_name,
+          category_id: v.category_id,
+          min_charge: Number(v.min_charge) || 0,
+          rates,
+        };
+      }
+    }
+
+    let savedModelMultipliers = modelMultipliers;
+    if (!savedModelMultipliers && (Array.isArray(model_multipliers) || anchor_model)) {
+      const anchorMarkup = Number(anchor_model?.markup_percent) || 10;
+      const anchorName = anchor_model?.name || `Model ${anchor_model?.model_number || 3}`;
+      const models = (model_multipliers || []).map((m) => ({
+        model: m.name || m.model || `Model ${m.model_number}`,
+        offset_percent: Number(m.percent_offset) || 0,
+        user_title: m.user_title || "",
+        driver_title: m.driver_title || "",
+      }));
+
+      savedModelMultipliers = {
+        anchor_model: anchorName,
+        anchor_markup_percent: anchorMarkup,
+        models,
+      };
+    }
+
+    const saved = await saveSlabPricingConfig({
+      slabRates: savedSlabRates,
+      modelMultipliers: savedModelMultipliers,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Slab pricing configuration saved successfully",
+      data: saved,
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.updateSlabs");
+  }
+}
+
+async function simulateFare(req, res) {
+  try {
+    const { vehicle_key, distance_km } = req.body;
+    const distance = Number(distance_km) || 0;
+    const config = await getSlabPricingConfig();
+    const vehicleConfig = config.slabRates[vehicle_key] || findVehicleSlabConfig(config.slabRates, vehicle_key);
+
+    if (!vehicleConfig) {
+      return res.status(404).json({ success: false, message: `Vehicle slab config not found for '${vehicle_key}'` });
+    }
+
+    const result = calculateModelFares(vehicleConfig, config.modelMultipliers, distance);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return internalError(res, err, "rateCards.simulateFare");
+  }
+}
+
+async function syncModelsFromSlabs(req, res) {
+  try {
+    const config = await getSlabPricingConfig();
+    const categories = await prisma.pkg_category.findMany();
+    const multipliers = config.modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
+    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMultiplier = 1 + anchorMarkup / 100;
+
+    let updatedCount = 0;
+
+    for (const category of categories) {
+      const vehicleConfig = findVehicleSlabConfig(config.slabRates, category.id);
+      if (!vehicleConfig) continue;
+
+      const packages = await prisma.tbl_package.findMany({
+        where: { cat_id: category.id },
+        orderBy: { sort_order: "asc" },
+      });
+
+      for (const pkg of packages) {
+        const pkgTitle = String(pkg.title || "").toLowerCase();
+        const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+
+        if (modelMatch) {
+          const offset = Number(modelMatch.offset_percent) || 0;
+          const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
+
+          const calculatedMin = Math.round(Number(vehicleConfig.min_charge) * effectiveMultiplier * 100) / 100;
+          // Representative per_km_charge for legacy reference (e.g. 5-10 km slab rate scaled)
+          const basePerKm = Number(vehicleConfig.rates?.["5_10"] || vehicleConfig.rates?.["1_5"] || 10);
+          const calculatedPerKm = Math.round(basePerKm * effectiveMultiplier * 100) / 100;
+
+          await prisma.tbl_package.update({
+            where: { id: pkg.id },
+            data: {
+              min_charge: String(calculatedMin),
+              per_km_charge: String(calculatedPerKm),
+              user_title: modelMatch.user_title ? String(modelMatch.user_title).trim() : null,
+              driver_title: modelMatch.driver_title ? String(modelMatch.driver_title).trim() : null,
+            },
+          });
+          updatedCount++;
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully synchronized ${updatedCount} model rate cards with distance-slab pricing rules!`,
+      updatedCount,
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.syncModelsFromSlabs");
+  }
+}
+
+module.exports = {
+  list,
+  getOne,
+  create,
+  update,
+  remove,
+  getSlabs,
+  updateSlabs,
+  simulateFare,
+  syncModelsFromSlabs,
+};

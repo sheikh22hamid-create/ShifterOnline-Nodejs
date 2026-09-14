@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 
 /**
@@ -152,9 +153,16 @@ async function setStatus(req, res) {
       return res.status(400).json({ Result: false, msg: "rider_id and a_status (0 or 1) are required" });
     }
 
-    await prisma.tbl_rider.update({
+    const updated = await prisma.tbl_rider.update({
       where: { id: Number(rider_id) },
       data: { a_status: Number(a_status) },
+      select: { id: true, city_id: true, a_status: true, status: true },
+    });
+
+    adminSocket.notifyDriverStatusUpdate(updated.id, updated.city_id, {
+      a_status: updated.a_status,
+      online: updated.a_status === 1,
+      status: updated.status,
     });
 
     return res.status(200).json({ Result: true, msg: "Status updated" });
@@ -164,6 +172,8 @@ async function setStatus(req, res) {
   }
 }
 
+const dutyTrackingService = require("../services/dutyTrackingService");
+
 /** REST fallback for clients that can't hold a live socket for location updates. */
 async function updateLocation(req, res) {
   try {
@@ -172,9 +182,17 @@ async function updateLocation(req, res) {
       return res.status(400).json({ Result: false, msg: "rider_id, lat and lng are required" });
     }
 
-    await prisma.tbl_rider.update({
+    const updated = await prisma.tbl_rider.update({
       where: { id: Number(rider_id) },
       data: { rlats: String(lat), rlongs: String(lng) },
+      select: { id: true, city_id: true },
+    });
+
+    adminSocket.notifyLiveDriverPing(Number(rider_id), updated.city_id, Number(lat), Number(lng));
+
+    // Track monthly driver duty hours & in-zone minutes
+    dutyTrackingService.recordDutyLocationPing(Number(rider_id), Number(lat), Number(lng)).catch((err) => {
+      logger.error(`dutyTrackingService.recordDutyLocationPing error for rider ${rider_id}:`, err);
     });
 
     return res.status(200).json({ Result: true, msg: "Location updated" });

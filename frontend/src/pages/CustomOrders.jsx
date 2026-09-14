@@ -16,6 +16,7 @@ import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
+import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import Drawer from '../components/common/Drawer'
 import Modal from '../components/common/Modal'
@@ -60,6 +61,8 @@ function BidsDrawer({ order, onClose, onConverted }) {
 
   const bidsFetcher = useCallback(() => api.get(`/custom-orders/${order.id}/bids`).then((res) => res.data.data), [order.id])
   const { data: bids, loading, refetch } = useApiQuery(bidsFetcher)
+
+  useRealtimeSync('admin:custom_order_update', refetch)
 
   const [selectedBid, setSelectedBid] = useState(null)
   const [agreedPrice, setAgreedPrice] = useState('')
@@ -279,6 +282,8 @@ export default function CustomOrders() {
   )
 
   const { data: orders, loading, error, refetch } = useApiQuery(fetcher)
+
+  useRealtimeSync(['admin:custom_order_update', 'admin:new_order', 'admin:order_status_update'], refetch)
 
   const filteredOrders = (orders || []).filter((o) => {
     if (!search.trim()) return true

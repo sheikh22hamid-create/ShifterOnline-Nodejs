@@ -1,5 +1,12 @@
 const prisma = require("../config/db");
-const { getRoadDistanceKm, haversineKm } = require("../utils/geoDistance");
+const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
+const {
+  DEFAULT_SLAB_RATES,
+  DEFAULT_MODEL_MULTIPLIERS,
+  getSlabPricingConfig,
+  calculateBaseSlabFare,
+  findVehicleSlabConfig,
+} = require("./slabPricingService");
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -82,12 +89,29 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
  * is priced off the identical number instead of a different, Node-only
  * formula that used to diverge from what the customer saw.
  */
-function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0) {
-  const minCharge = Number(pkg.min_charge) || 0;
-  const perKmCharge = Number(pkg.per_km_charge) || 0;
+function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
+  const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
+  const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
 
-  const dCharge = minCharge + (perKmCharge * distanceKm) + radiusCharge;
+  let dCharge;
+  if (vehicleConfig && pkg?.use_linear_pricing !== true) {
+    const baseCalc = calculateBaseSlabFare(vehicleConfig, distanceKm);
+    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMultiplier = 1 + anchorMarkup / 100;
+
+    const pkgTitle = String(pkg.title || "").toLowerCase();
+    const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+    const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
+    const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
+
+    const baseFare = baseCalc.rawFare * effectiveMultiplier;
+    dCharge = baseFare + radiusCharge;
+  } else {
+    const minCharge = Number(pkg.min_charge) || 0;
+    const perKmCharge = Number(pkg.per_km_charge) || 0;
+    dCharge = minCharge + (perKmCharge * distanceKm) + radiusCharge;
+  }
 
   const servicePercent = parseFloat(pkg.service_charge_percent) || 0;
   const serviceCharge = (dCharge * servicePercent) / 100;
@@ -129,6 +153,40 @@ async function getPackagesForCategory(cat_id) {
 
 async function getPackageById(packageId) {
   return prisma.tbl_package.findUnique({ where: { id: Number(packageId) } });
+}
+
+async function getActiveCustomerPlan(uid) {
+  if (!uid) return null;
+  const rows = await prisma.$queryRaw`
+    SELECT ups.id AS subscription_id, ups.cancellations_used,
+           pp.id AS plan_id, pp.plan_name, pp.no_advance_payment,
+           pp.cancellation_enabled, pp.free_cancellations, pp.cancellation_window_min,
+           pp.discount_enabled, pp.discount_percent, pp.discount_max_cap
+    FROM tbl_user_plan_subscription ups
+    JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
+    WHERE ups.user_id = ${Number(uid)}
+      AND ups.status = 'active'
+      AND ups.plan_for = 'USER'
+      AND CURDATE() BETWEEN ups.start_date AND ups.end_date
+      AND pp.status = 1
+    ORDER BY ups.id DESC
+    LIMIT 1
+  `;
+  if (!rows.length) return null;
+  const row = rows[0];
+  return {
+    subscriptionId: Number(row.subscription_id),
+    cancellationsUsed: Number(row.cancellations_used) || 0,
+    planId: Number(row.plan_id),
+    planName: row.plan_name || "",
+    noAdvancePayment: Boolean(row.no_advance_payment),
+    cancellationEnabled: Boolean(row.cancellation_enabled),
+    freeCancellations: Number(row.free_cancellations) || 0,
+    cancellationWindowMin: Number(row.cancellation_window_min) || 5,
+    discountEnabled: Boolean(row.discount_enabled),
+    discountPercent: Number(row.discount_percent) || 0,
+    discountMaxCap: Number(row.discount_max_cap) || 0,
+  };
 }
 
 /**
@@ -248,7 +306,9 @@ function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0
   const driverEarning = calculateDriverEarning(discountedPkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
-  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, radiusCharge };
+  const userTitle = pkg?.user_title || packageTitle;
+  const driverTitle = pkg?.driver_title || packageTitle;
+  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, userTitle, driverTitle, radiusCharge };
 }
 
 /** `uid`, when given, looks up that customer's active plan discount (if any) and applies it — see priceForPackage. */
@@ -283,15 +343,21 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
  * at its default (1 -> zero radius charge) quotes the best-case "starting
  * from" fare when no radius is supplied.
  */
-async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0 }) {
-  const [{ distanceKm, durationMin }, packages, discount] = await Promise.all([
-    getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
+async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [] }) {
+  const routeStops = Array.isArray(stops) ? stops : [];
+  const stopSettings = await getAddStopSettings();
+  if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
+  const distancePoints = [{ lat: plat, lng: plong }, ...routeStops, { lat: dlat, lng: dlong }];
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig] = await Promise.all([
+    routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
+    getSlabPricingConfig(),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
   const resolvedExtraMileCharge = Number(extraMileCharge) || 0;
+  const vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
 
   return {
     Result: true,
@@ -307,6 +373,8 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
       return {
         package_id: pkg.id,
         title: pkg.title,
+        user_title: pkg.user_title || pkg.title,
+        driver_title: pkg.driver_title || pkg.title,
         min_charge: Number(discountedPkg.min_charge),
         per_km_charge: Number(discountedPkg.per_km_charge),
         original_min_charge: Number(pkg.min_charge),
@@ -316,7 +384,15 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         // can itemize it instead of leaving it as an unexplained gap between
         // min_charge + per_km_charge*distance and estimated_fare.
         radius_charge: roundMoney(calculateRadiusCharge(discountedPkg, resolvedRadiusKm)),
-        estimated_fare: calculateFare(discountedPkg, distanceKm, isNight, resolvedRadiusKm, resolvedExtraMileCharge),
+        estimated_fare: calculateFare(
+          discountedPkg,
+          distanceKm,
+          isNight,
+          resolvedRadiusKm,
+          resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge,
+          vehicleSlabConfig,
+          slabPricingConfig.modelMultipliers
+        ),
         is_night: isNight,
       };
     }),
@@ -371,9 +447,10 @@ async function getDistanceEstimate({ plat, plong, dlat, dlong }) {
  * to this fare-estimate flow.
  */
 async function getPackageListForCategory({ uid, catId }) {
-  const [packages, discount] = await Promise.all([
+  const [packages, discount, stopSettings] = await Promise.all([
     getPackagesForCategory(catId),
     getActivePlanDiscount(uid),
+    getAddStopSettings(),
   ]);
 
   const packageData = packages.map((pkg) => {
@@ -384,6 +461,8 @@ async function getPackageListForCategory({ uid, catId }) {
     return {
       id: pkg.id,
       title: pkg.title,
+      user_title: pkg.user_title || pkg.title,
+      driver_title: pkg.driver_title || pkg.title,
       type: pkg.type,
       min_charge: String(discountedPkg.min_charge),
       per_km_charge: String(discountedPkg.per_km_charge),
@@ -421,10 +500,31 @@ async function getPackageListForCategory({ uid, catId }) {
     has_plan_discount: !!discount,
     plan_discount_percent: discount ? discount.percent : 0,
     plan_name: discount ? discount.planName : "",
+    max_extra_stops: stopSettings.maxExtraStops,
+    extra_stop_charge: stopSettings.extraStopCharge,
     ResponseCode: "200",
     Result: "true",
     ResponseMsg: "Package List By Category Get Successfully!!",
   };
+}
+
+async function getAddStopSettings() {
+  const defaults = { maxExtraStops: 2, extraStopCharge: 0 };
+  try {
+    const rows = await prisma.app_settings.findMany({
+      where: { setting_key: { in: ["max_extra_stops", "extra_stop_charge"] } },
+      select: { setting_key: true, setting_value: true },
+    });
+    const values = Object.fromEntries(rows.map((row) => [row.setting_key, Number(row.setting_value)]));
+    return {
+      maxExtraStops: Number.isFinite(values.max_extra_stops) && values.max_extra_stops >= 0
+        ? Math.floor(values.max_extra_stops) : defaults.maxExtraStops,
+      extraStopCharge: Number.isFinite(values.extra_stop_charge) && values.extra_stop_charge >= 0
+        ? values.extra_stop_charge : defaults.extraStopCharge,
+    };
+  } catch (err) {
+    return defaults;
+  }
 }
 
 module.exports = {
@@ -434,6 +534,7 @@ module.exports = {
   calculateCommissionPercent,
   commissionAmount,
   getActivePlanDiscount,
+  getActiveCustomerPlan,
   applyPlanDiscount,
   getPackagesForCategory,
   getPackageById,
@@ -442,4 +543,5 @@ module.exports = {
   getFareEstimate,
   getDistanceEstimate,
   getPackageListForCategory,
+  getAddStopSettings,
 };
