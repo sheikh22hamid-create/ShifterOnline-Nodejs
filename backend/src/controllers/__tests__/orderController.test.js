@@ -8,6 +8,7 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../services/pricingEngine", () => ({
   priceForPackage: jest.fn(),
   getActivePlanDiscount: jest.fn().mockResolvedValue(null),
+  getActiveCustomerPlan: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("../../services/dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyNewOrder: jest.fn() }));
@@ -17,7 +18,7 @@ const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
 const dispatchManager = require("../../services/dispatchManager");
 const { getRoadDistanceKm } = require("../../utils/geoDistance");
-const { createOrderCore, createOrder, getOrderDetails } = require("../orderController");
+const { createOrderCore, createOrder, getOrderDetails, checkNextDayEligibility } = require("../orderController");
 
 describe("orderController.createOrderCore", () => {
   beforeEach(() => {
@@ -165,7 +166,19 @@ describe("orderController.createOrderCore", () => {
     });
   });
 
-  it("does not start automatic dispatch for a next-day booking (booking_type 3)", async () => {
+  it("rejects next-day booking (booking_type 3) when user has no active plan with noAdvancePayment", async () => {
+    pricingEngine.getActivePlanDiscount.mockResolvedValueOnce(null);
+
+    const result = await createOrderCore({ ...baseInput, bookingType: 3 });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PREMIUM_PLAN_REQUIRED");
+    expect(prisma.pkg_order.create).not.toHaveBeenCalled();
+  });
+
+  it("does not start automatic dispatch for a next-day booking (booking_type 3) with eligible plan", async () => {
+    pricingEngine.getActivePlanDiscount.mockResolvedValueOnce({ noAdvancePayment: true, planName: "Gold" });
+
     const result = await createOrderCore({ ...baseInput, bookingType: 3 });
 
     expect(result.ok).toBe(true);
@@ -180,6 +193,8 @@ describe("orderController.createOrderCore", () => {
   });
 
   it("auto-computes tomorrow's date (IST) as schedule_date_time for a next-day booking, ignoring any client-sent value", async () => {
+    pricingEngine.getActivePlanDiscount.mockResolvedValueOnce({ noAdvancePayment: true, planName: "Gold" });
+
     await createOrderCore({ ...baseInput, bookingType: 3, scheduleDateTime: "should be ignored" });
 
     expect(prisma.pkg_order.create).toHaveBeenCalledWith(
@@ -192,7 +207,6 @@ describe("orderController.createOrderCore", () => {
     );
   });
 });
-
 describe("orderController.createOrder (HTTP handler) — photos pass-through", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -323,3 +337,51 @@ describe("orderController.getOrderDetails", () => {
     expect(res.status).toHaveBeenCalledWith(404);
   });
 });
+
+describe("orderController.checkNextDayEligibility", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("returns eligible: true when user has active plan with noAdvancePayment: true", async () => {
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({
+      noAdvancePayment: true,
+      planName: "VIP",
+    });
+
+    const req = { body: { uid: 10 } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await checkNextDayEligibility(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const data = res.json.mock.calls[0][0];
+    expect(data.ResponseCode).toBe("200");
+    expect(data.is_eligible).toBe(true);
+    expect(data.no_advance_payment).toBe(true);
+    expect(data.plan_name).toBe("VIP");
+    expect(data.delivery_window).toBe("Tomorrow between 10:00 AM – 8:00 PM");
+  });
+
+  it("returns eligible: false when user has no active plan", async () => {
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+    const req = { body: { uid: 10 } };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await checkNextDayEligibility(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    const data = res.json.mock.calls[0][0];
+    expect(data.ResponseCode).toBe("200");
+    expect(data.is_eligible).toBe(false);
+  });
+
+  it("returns 400 when uid is missing", async () => {
+    const req = { body: {} };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await checkNextDayEligibility(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+});
+

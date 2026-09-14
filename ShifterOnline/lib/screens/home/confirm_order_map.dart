@@ -50,18 +50,17 @@ class ConfirmOrderMap extends StatefulWidget {
 class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   final Completer<GoogleMapController> _controller = Completer();
   GoogleMapController? _mapController;
-  PolylinePoints polylinePoints = PolylinePoints();
-  Set<Marker> markers = {};
-  Map<PolylineId, Polyline> polylines = {};
-  bool isLoadingmap = true;
-  bool isProcessing = false;
-  int selectedPaymentMethod = 2; // 1 for Wallet, 2 for COD (Default Cash)
-  late ColorNotifier notifier;
+  final PolylinePoints _polylinePoints = PolylinePoints();
+  Set<Marker> _markers = {};
+  Map<PolylineId, Polyline> _polylines = {};
+  bool _isLoadingMap = true;
+  bool _isProcessing = false;
+  int _selectedPaymentMethod = 2; // 1 for Wallet, 2 for COD (Default Cash)
 
-  bool isLoadingPaymentSettings = true;
-  int paymentCod = 1;
-  int paymentWallet = 1;
-  int paymentOnline = 1;
+  bool _isLoadingPaymentSettings = true;
+  int _paymentCod = 1;
+  int _paymentWallet = 1;
+  int _paymentOnline = 1;
 
   @override
   void initState() {
@@ -78,17 +77,16 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
           final setting = response["setting"];
           if (mounted) {
             setState(() {
-              paymentCod = int.tryParse(setting["payment_cod"]?.toString() ?? "1") ?? 1;
-              paymentWallet = int.tryParse(setting["payment_wallet"]?.toString() ?? "1") ?? 1;
-              paymentOnline = int.tryParse(setting["payment_online"]?.toString() ?? "1") ?? 1;
+              _paymentCod = int.tryParse(setting["payment_cod"]?.toString() ?? "1") ?? 1;
+              _paymentWallet = int.tryParse(setting["payment_wallet"]?.toString() ?? "1") ?? 1;
+              _paymentOnline = int.tryParse(setting["payment_online"]?.toString() ?? "1") ?? 1;
 
-              // Auto-select initial payment method based on active settings (Default Cash)
-              if (paymentCod == 1) {
-                selectedPaymentMethod = 2;
-              } else if (paymentWallet == 1) {
-                selectedPaymentMethod = 1;
+              if (_paymentCod == 1) {
+                _selectedPaymentMethod = 2;
+              } else if (_paymentWallet == 1) {
+                _selectedPaymentMethod = 1;
               } else {
-                selectedPaymentMethod = 0;
+                _selectedPaymentMethod = 0;
               }
             });
           }
@@ -99,7 +97,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     } finally {
       if (mounted) {
         setState(() {
-          isLoadingPaymentSettings = false;
+          _isLoadingPaymentSettings = false;
         });
       }
     }
@@ -110,100 +108,139 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     await _getDirections();
   }
 
-  Future<BitmapDescriptor> _labeledMarkerIcon(
-      String label, Color markerColor) async {
-    const width = 300.0;
-    const height = 132.0;
+  Future<BitmapDescriptor> _createNumberedPin({
+    String? label,
+    IconData? icon,
+    required Color color,
+  }) async {
+    const size = 96.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final labelPaint = Paint()..color = Colors.white;
+
+    // Outer Circle Shadow
+    final shadowPaint = Paint()
+      ..color = Colors.black26
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    canvas.drawCircle(const Offset(size / 2, size / 2 + 3), 36, shadowPaint);
+
+    // Main Circle Background
+    final mainPaint = Paint()..color = color;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 36, mainPaint);
+
+    // White Border
     final borderPaint = Paint()
-      ..color = markerColor.withOpacity(.25)
+      ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-    final labelRect = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(10, 8, width - 20, 58),
-      const Radius.circular(29),
-    );
-    canvas.drawRRect(labelRect, labelPaint);
-    canvas.drawRRect(labelRect, borderPaint);
+      ..strokeWidth = 4;
+    canvas.drawCircle(const Offset(size / 2, size / 2), 36, borderPaint);
 
-    final paragraphBuilder = ui.ParagraphBuilder(
-      ui.ParagraphStyle(
-        textAlign: TextAlign.center,
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-      ),
-    )
-      ..pushStyle(ui.TextStyle(color: const Color(0xff202124)))
-      ..addText(label);
-    final paragraph = paragraphBuilder.build()
-      ..layout(const ui.ParagraphConstraints(width: width - 32));
-    canvas.drawParagraph(paragraph, Offset(16, 22));
+    if (label != null && label.isNotEmpty) {
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Gilroy_Bold',
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          (size - textPainter.width) / 2,
+          (size - textPainter.height) / 2,
+        ),
+      );
+    } else if (icon != null) {
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: String.fromCharCode(icon.codePoint),
+          style: TextStyle(
+            inherit: false,
+            color: Colors.white,
+            fontSize: 38,
+            fontFamily: icon.fontFamily,
+            package: icon.fontPackage,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          (size - textPainter.width) / 2,
+          (size - textPainter.height) / 2,
+        ),
+      );
+    }
 
-    final pinPath = Path()
-      ..moveTo(width / 2 - 24, 77)
-      ..quadraticBezierTo(width / 2, 68, width / 2 + 24, 77)
-      ..lineTo(width / 2, height - 8)
-      ..close();
-    canvas.drawPath(pinPath, Paint()..color = markerColor);
-    canvas.drawCircle(
-      Offset(width / 2, 82),
-      9,
-      Paint()..color = Colors.white,
-    );
-
-    final image = await recorder.endRecording().toImage(
-          width.toInt(),
-          height.toInt(),
-        );
+    final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.fromBytes(
-      Uint8List.fromList(byteData!.buffer.asUint8List()),
-    );
+    return BitmapDescriptor.fromBytes(byteData!.buffer.asUint8List());
   }
 
   Future<void> _addMarkers() async {
-    markers.add(
+    final newMarkers = <Marker>{};
+
+    // 1. Pickup Marker (Green Arrow Up)
+    final pickupIcon = await _createNumberedPin(
+      icon: Icons.arrow_upward_rounded,
+      color: const Color(0xff10B981),
+    );
+    newMarkers.add(
       Marker(
         markerId: const MarkerId('pickup'),
         position: LatLng(widget.startLat, widget.startLng),
-        icon: await _labeledMarkerIcon('Pickup', const Color(0xff35a853)),
-        anchor: const Offset(.5, 1),
-        infoWindow: const InfoWindow(title: 'Pickup'),
+        icon: pickupIcon,
+        infoWindow: const InfoWindow(title: 'Pickup Location'),
       ),
     );
 
+    // 2. Intermediate Stops Markers (Numbered Brand Orange Pins)
     for (var index = 0; index < widget.stops.length; index++) {
       final stop = widget.stops[index];
       final lat = double.tryParse(stop['lat_map']?.toString() ?? '');
       final lng = double.tryParse(stop['long_map']?.toString() ?? '');
       if (lat == null || lng == null) continue;
-      markers.add(
+
+      final stopIcon = await _createNumberedPin(
+        label: "${index + 1}",
+        color: linercolor,
+      );
+      newMarkers.add(
         Marker(
           markerId: MarkerId('stop_${index + 1}'),
           position: LatLng(lat, lng),
-          icon: await _labeledMarkerIcon(
-            'Stop ${index + 1}',
-            index == 0
-                ? const Color(0xfff27b38)
-                : const Color(0xff3976d3),
-          ),
-          anchor: const Offset(.5, 1),
+          icon: stopIcon,
           infoWindow: InfoWindow(title: 'Stop ${index + 1}'),
         ),
       );
     }
 
-    markers.add(
+    // 3. Drop Marker (Red Arrow Down)
+    final dropIcon = await _createNumberedPin(
+      icon: Icons.arrow_downward_rounded,
+      color: const Color(0xffEF4444),
+    );
+    newMarkers.add(
       Marker(
         markerId: const MarkerId('drop'),
         position: LatLng(widget.endLat, widget.endLng),
-        icon: await _labeledMarkerIcon('Drop', const Color(0xffe55353)),
-        anchor: const Offset(.5, 1),
-        infoWindow: const InfoWindow(title: 'Drop'),
+        icon: dropIcon,
+        infoWindow: const InfoWindow(title: 'Drop Location'),
       ),
     );
+
+    if (mounted) {
+      setState(() {
+        _markers = newMarkers;
+      });
+    }
   }
 
   List<LatLng> get _routeLocations {
@@ -228,20 +265,21 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
           .map((stop) => '${stop['lat_map']},${stop['long_map']}')
           .join('|');
       final url = Uri.parse(
-          'https://maps.googleapis.com/maps/api/directions/json?'
-          'origin=${locations.first.latitude},${locations.first.longitude}&'
-          'destination=${locations.last.latitude},${locations.last.longitude}&'
-          '${waypoints.isEmpty ? '' : 'waypoints=${Uri.encodeComponent(waypoints)}&'}'
-          'mode=driving&'
-          'key=${Config.googleApikey}');
+        'https://maps.googleapis.com/maps/api/directions/json?'
+        'origin=${locations.first.latitude},${locations.first.longitude}&'
+        'destination=${locations.last.latitude},${locations.last.longitude}&'
+        '${waypoints.isEmpty ? '' : 'waypoints=${Uri.encodeComponent(waypoints)}&'}'
+        'mode=driving&'
+        'key=${Config.googleApikey}',
+      );
 
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 12));
       final data = jsonDecode(response.body);
       if (data['status'] == 'OK' &&
           data['routes'] is List &&
           (data['routes'] as List).isNotEmpty) {
         final encodedPolyline = data['routes'][0]['overview_polyline']['points'];
-        final decodedPoints = polylinePoints.decodePolyline(encodedPolyline);
+        final decodedPoints = _polylinePoints.decodePolyline(encodedPolyline);
         polylineCoordinates.addAll(
           decodedPoints.map((point) => LatLng(point.latitude, point.longitude)),
         );
@@ -258,7 +296,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     } finally {
       if (mounted) {
         setState(() {
-          isLoadingmap = false;
+          _isLoadingMap = false;
         });
       }
     }
@@ -270,8 +308,8 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     final id = const PolylineId('route');
     final poly = Polyline(
       polylineId: id,
-      color: const Color(0xFF4285F4),
-      width: 6,
+      color: linercolor,
+      width: 5,
       points: polylineCoordinates,
       geodesic: true,
       startCap: Cap.roundCap,
@@ -279,12 +317,12 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
       jointType: JointType.round,
     );
 
-    polylines[id] = poly;
+    _polylines[id] = poly;
     if (mounted) setState(() {});
   }
 
   Future<void> _setCameraBounds(List<LatLng> polylineCoordinates) async {
-    if (polylineCoordinates.isEmpty) return;
+    if (polylineCoordinates.isEmpty || _mapController == null) return;
 
     double swLat = polylineCoordinates.first.latitude;
     double swLng = polylineCoordinates.first.longitude;
@@ -303,327 +341,470 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
       northeast: LatLng(neLat, neLng),
     );
 
-    final currentController = _mapController;
-    if (currentController != null) {
-      try {
-        await currentController.animateCamera(
-            CameraUpdate.newLatLngBounds(bounds, 145));
-      } catch (e) {
-        debugPrint("SetCameraBounds error: $e");
+    try {
+      await _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, 70),
+      );
+    } catch (e) {
+      debugPrint("SetCameraBounds error: $e");
+    }
+  }
+
+  void _handleConfirmOrder() {
+    if (_isProcessing) return;
+
+    if (_selectedPaymentMethod == 1 && _paymentWallet == 1) {
+      if (widget.walletBalance >= widget.deliveryFees) {
+        setState(() => _isProcessing = true);
+        widget.onConfirmPayment(-2, "Wallet");
+        Future.delayed(const Duration(seconds: 15), () {
+          if (mounted) setState(() => _isProcessing = false);
+        });
+      } else {
+        ApiWrapper.showToastMessage("Insufficient wallet balance. Please add money or choose Cash.".tr);
       }
+    } else if (_selectedPaymentMethod == 2 && _paymentCod == 1) {
+      setState(() => _isProcessing = true);
+      widget.onConfirmPayment(1, "Cash");
+      Future.delayed(const Duration(seconds: 15), () {
+        if (mounted) setState(() => _isProcessing = false);
+      });
+    } else {
+      ApiWrapper.showToastMessage("Please select a valid payment method.".tr);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    notifier = Provider.of<ColorNotifier>(context, listen: true);
+    final notifier = Provider.of<ColorNotifier>(context, listen: true);
+    final isWalletInsufficient = widget.walletBalance < widget.deliveryFees;
+
     return Scaffold(
       backgroundColor: notifier.lightBgColor,
       appBar: AppBar(
-        title: Text(
-          "Confirm Order",
-          style: TextStyle(
-            color: notifier.text,
-            fontFamily: 'Gilroy_Bold',
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Confirm Booking",
+              style: TextStyle(
+                color: notifier.text,
+                fontFamily: 'Gilroy_Bold',
+                fontSize: 18,
+              ),
+            ),
+            Text(
+              "Review route & select payment method",
+              style: TextStyle(
+                color: greaycolor,
+                fontFamily: 'Gilroy_Medium',
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
         backgroundColor: notifier.lightBgColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: notifier.text),
+          icon: Icon(Icons.arrow_back_rounded, color: notifier.text),
           onPressed: () => Get.back(),
         ),
       ),
-      body: Column(
-        children: [
-          // Upper half for map
-          Expanded(
-            child: Stack(
-              children: [
-                GoogleMap(
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
-                  mapType: MapType.normal,
-                  polylines: Set<Polyline>.of(polylines.values),
-                  markers: markers,
-                  initialCameraPosition: CameraPosition(
-                    target: LatLng(widget.startLat, widget.startLng),
-                    zoom: 14.0,
-                  ),
-                  onMapCreated: (GoogleMapController controller) {
-                    _mapController = controller;
-                    if (!_controller.isCompleted) {
-                      _controller.complete(controller);
-                    }
-                    // The directions request can finish before GoogleMap has
-                    // created its controller. Fit the whole ordered route
-                    // again once the map is ready so pickup, every stop and
-                    // the final drop are visible together.
-                    Future<void>.delayed(const Duration(milliseconds: 500), () {
-                      if (mounted) _setCameraBounds(_routeLocations);
-                    });
-                    if (mounted) setState(() {});
-                  },
-                ),
-                if (isLoadingmap)
-                  Center(child: CircularProgressIndicator(color: linercolor)),
-              ],
-            ),
-          ),
-          
-          // Bottom half for payment
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: notifier.lightBgColor,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Text(
-                    "Select Payment Method".tr,
-                    style: TextStyle(
-                      fontSize: 20,
-                      color: notifier.text,
-                      fontFamily: 'Gilroy_Bold',
-                      fontWeight: FontWeight.bold,
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            // ── TOP SECTION: MAP VIEW ───────────────────────────────────────
+            Expanded(
+              child: Stack(
+                children: [
+                  GoogleMap(
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                    mapType: MapType.normal,
+                    polylines: Set<Polyline>.of(_polylines.values),
+                    markers: _markers,
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(widget.startLat, widget.startLng),
+                      zoom: 13.5,
                     ),
+                    onMapCreated: (GoogleMapController controller) {
+                      _mapController = controller;
+                      if (!_controller.isCompleted) {
+                        _controller.complete(controller);
+                      }
+                      Future<void>.delayed(const Duration(milliseconds: 400), () {
+                        if (mounted) _setCameraBounds(_routeLocations);
+                      });
+                    },
                   ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  "Payment Methods".tr,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: notifier.text,
-                    fontFamily: 'Gilroy_Bold',
-                  ),
-                ),
-                const SizedBox(height: 15),
 
-                if (isLoadingPaymentSettings)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: CircularProgressIndicator(color: notifier.darklinercolor),
-                    ),
-                  )
-                else if (paymentWallet == 0 && paymentCod == 0)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Text(
-                        "No payment methods available".tr,
-                        style: TextStyle(
-                          color: notifier.text,
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 14,
+                  if (_isLoadingMap)
+                    Positioned(
+                      top: 14,
+                      right: 14,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: notifier.getBgColor.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: linercolor,
+                          ),
                         ),
                       ),
                     ),
-                  )
-                else ...[
-                  // Cash Option (Top)
-                  if (paymentCod == 1) ...[
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedPaymentMethod = 2;
-                        });
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: selectedPaymentMethod == 2 ? notifier.darklinercolor.withOpacity(0.1) : notifier.getBgColor,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: selectedPaymentMethod == 2 ? notifier.darklinercolor : notifier.bordecolor,
-                            width: selectedPaymentMethod == 2 ? 2 : 1,
-                          ),
-                        ),
-                        child: Row(
+                ],
+              ),
+            ),
+
+            // ── BOTTOM SECTION: PAYMENT & CONFIRMATION PANEL ────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+              decoration: BoxDecoration(
+                color: notifier.getBgColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Drag Handle
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: greaycolor.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── FARE SUMMARY HEADER ROW ───────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: notifier.lightBgColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.money, color: notifier.darklinercolor),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                "Cash".tr,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Medium',
-                                ),
+                            Text(
+                              "Total Payable Fare",
+                              style: TextStyle(
+                                color: greaycolor,
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 12,
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            if (selectedPaymentMethod == 2)
-                              Icon(Icons.check_circle, color: notifier.darklinercolor),
+                            const SizedBox(height: 2),
+                            Text(
+                              "${widget.currency}${widget.deliveryFees.toStringAsFixed(2)}",
+                              style: TextStyle(
+                                color: linercolor,
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 20,
+                              ),
+                            ),
                           ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
 
-                  // Wallet Option (Bottom)
-                  if (paymentWallet == 1) ...[
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedPaymentMethod = 1;
-                        });
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: selectedPaymentMethod == 1 ? notifier.darklinercolor.withOpacity(0.1) : notifier.getBgColor,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: selectedPaymentMethod == 1 ? notifier.darklinercolor : notifier.bordecolor,
-                            width: selectedPaymentMethod == 1 ? 2 : 1,
+                        // View Breakup Pill Button
+                        InkWell(
+                          onTap: widget.onViewBreakup,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6.5),
+                            decoration: BoxDecoration(
+                              color: linercolor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: linercolor.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.info_outline_rounded, color: linercolor, size: 15),
+                                const SizedBox(width: 5),
+                                Text(
+                                  "View Breakup",
+                                  style: TextStyle(
+                                    color: linercolor,
+                                    fontFamily: 'Gilroy_Bold',
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.credit_card, color: notifier.darklinercolor),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                "Shifter Wallet (${widget.currency}${widget.walletBalance.toStringAsFixed(2)})".tr,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Medium',
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            // Show "ADD MONEY" button if wallet balance is low
-                            if (widget.walletBalance < widget.deliveryFees && selectedPaymentMethod == 1)
-                              GestureDetector(
-                                onTap: () {
-                                  Get.to(() => const WalletPage());
-                                },
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── PAYMENT METHODS SECTION ───────────────────────────────
+                  Text(
+                    "Select Payment Method",
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: notifier.text,
+                      fontFamily: 'Gilroy_Bold',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  if (_isLoadingPaymentSettings)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: CircularProgressIndicator(color: linercolor),
+                      ),
+                    )
+                  else if (_paymentWallet == 0 && _paymentCod == 0)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      child: Center(
+                        child: Text(
+                          "No payment methods available right now.",
+                          style: TextStyle(
+                            color: greaycolor,
+                            fontFamily: 'Gilroy_Medium',
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    )
+                  else ...[
+                    // 1. Cash On Delivery Option
+                    if (_paymentCod == 1)
+                      _buildPaymentOptionCard(
+                        isSelected: _selectedPaymentMethod == 2,
+                        icon: Icons.payments_rounded,
+                        title: "Cash on Delivery",
+                        subtitle: "Pay cash at pickup / drop location",
+                        onTap: () => setState(() => _selectedPaymentMethod = 2),
+                        trailing: null,
+                      ),
+
+                    if (_paymentCod == 1 && _paymentWallet == 1)
+                      const SizedBox(height: 9),
+
+                    // 2. Shifter Wallet Option
+                    if (_paymentWallet == 1)
+                      _buildPaymentOptionCard(
+                        isSelected: _selectedPaymentMethod == 1,
+                        icon: Icons.account_balance_wallet_rounded,
+                        title: "Shifter Wallet",
+                        subtitle: "Available: ${widget.currency}${widget.walletBalance.toStringAsFixed(2)}",
+                        onTap: () => setState(() => _selectedPaymentMethod = 1),
+                        trailing: isWalletInsufficient
+                            ? InkWell(
+                                onTap: () => Get.to(() => const WalletPage()),
+                                borderRadius: BorderRadius.circular(14),
                                 child: Container(
-                                  constraints: const BoxConstraints(minWidth: 80),
-                                  child: Text(
-                                    "ADD MONEY".tr,
-                                    style: TextStyle(
-                                      color: notifier.darklinercolor,
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 12,
-                                    ),
-                                    textAlign: TextAlign.right,
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+                                  decoration: BoxDecoration(
+                                    color: linercolor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: linercolor.withOpacity(0.5)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.add_rounded, color: linercolor, size: 14),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        "Add Money",
+                                        style: TextStyle(
+                                          color: linercolor,
+                                          fontFamily: 'Gilroy_Bold',
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               )
-                            else if (selectedPaymentMethod == 1)
-                              Icon(Icons.check_circle, color: notifier.darklinercolor),
-                          ],
+                            : null,
+                      ),
+                  ],
+
+                  const SizedBox(height: 14),
+
+                  // Terms & Notice
+                  Center(
+                    child: Text(
+                      "By booking, you agree to our Terms of Service & Cancellation Policy",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: greaycolor,
+                        fontFamily: 'Gilroy_Medium',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── CONFIRM & PLACE ORDER BUTTON ──────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: (_isProcessing ||
+                              (_paymentWallet == 0 && _paymentCod == 0) ||
+                              _selectedPaymentMethod == 0 ||
+                              (_selectedPaymentMethod == 1 && isWalletInsufficient))
+                          ? (_selectedPaymentMethod == 1 && isWalletInsufficient
+                              ? () => Get.to(() => const WalletPage())
+                              : null)
+                          : _handleConfirmOrder,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: (_selectedPaymentMethod == 1 && isWalletInsufficient)
+                            ? Colors.amber.shade800
+                            : linercolor,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                ],
-
-                Text(
-                  "By booking you agree to our new terms of service and privacy policy".tr,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: greaycolor,
-                    fontFamily: 'Gilroy_Medium',
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: (isProcessing || (paymentWallet == 0 && paymentCod == 0) || selectedPaymentMethod == 0) ? null : () {
-                      if (selectedPaymentMethod == 1 && paymentWallet == 1) {
-                        if (widget.walletBalance >= widget.deliveryFees) {
-                          setState(() { isProcessing = true; });
-                          widget.onConfirmPayment(-2, "Wallet");
-                          // Reset processing after 15 seconds in case of API failure timeout
-                          Future.delayed(const Duration(seconds: 15), () {
-                            if (mounted) setState(() { isProcessing = false; });
-                          });
-                        } else {
-                          ApiWrapper.showToastMessage("Insufficient wallet balance. Please add money to your wallet.".tr);
-                        }
-                      } else if (selectedPaymentMethod == 2 && paymentCod == 1) {
-                        setState(() { isProcessing = true; });
-                        widget.onConfirmPayment(1, "Cash");
-                        Future.delayed(const Duration(seconds: 15), () {
-                          if (mounted) setState(() { isProcessing = false; });
-                        });
-                      } else {
-                        ApiWrapper.showToastMessage("Please select a valid payment method.".tr);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ((paymentWallet == 0 && paymentCod == 0) || selectedPaymentMethod == 0 || (selectedPaymentMethod == 1 && widget.walletBalance < widget.deliveryFees))
-                          ? Colors.grey
-                          : notifier.darklinercolor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: isProcessing
-                        ? const SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                          )
-                        : Text(
-                            ((paymentWallet == 0 && paymentCod == 0) || selectedPaymentMethod == 0)
-                                ? "No Payment Method Available".tr
-                                : (selectedPaymentMethod == 1 && widget.walletBalance < widget.deliveryFees)
-                                    ? "Insufficient Balance".tr
-                                    : "Confirm\n Amount ${widget.currency}${widget.deliveryFees.toStringAsFixed(2)}".tr,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 16,
+                      child: _isProcessing
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.4,
+                              ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  (_selectedPaymentMethod == 1 && isWalletInsufficient)
+                                      ? "Add Money to Wallet"
+                                      : "Confirm & Place Order · ${widget.currency}${widget.deliveryFees.toStringAsFixed(2)}",
+                                  style: const TextStyle(
+                                    fontFamily: 'Gilroy_Bold',
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.arrow_forward_rounded, size: 18),
+                              ],
                             ),
-                          ),
-                  ),
-                ),
-               // const SizedBox(height: 10),
-                Center(
-                  child: TextButton(
-                    onPressed: widget.onViewBreakup,
-                    child: Text(
-                      "View Breakup".tr,
-                      style: TextStyle(
-                        color: notifier.darklinercolor,
-                        fontFamily: 'Gilroy_Bold',
-                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-              ],
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentOptionCard({
+    required bool isSelected,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    final notifier = Provider.of<ColorNotifier>(context, listen: false);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: isSelected ? linercolor.withOpacity(0.08) : notifier.getBgColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? linercolor : notifier.bordecolor.withOpacity(0.8),
+            width: isSelected ? 1.5 : 1,
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            // Icon in circle
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isSelected ? linercolor.withOpacity(0.18) : notifier.lightBgColor,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? linercolor : greaycolor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Title & Subtitle
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 13.5,
+                      color: notifier.text,
+                    ),
+                  ),
+                  const SizedBox(height: 1.5),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontFamily: 'Gilroy_Medium',
+                      fontSize: 11.5,
+                      color: isSelected ? linercolor : greaycolor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing,
+            ] else ...[
+              const SizedBox(width: 8),
+              Icon(
+                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: isSelected ? linercolor : greaycolor.withOpacity(0.6),
+                size: 21,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

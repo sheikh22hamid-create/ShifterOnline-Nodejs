@@ -13,6 +13,7 @@ router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);
 router.post("/driver-cancel", orderController.driverCancel);
 router.post("/rate", orderController.rateOrder);
+router.post("/next-day-eligibility", orderController.checkNextDayEligibility);
 router.post("/upload-photo", uploadController.uploadOrderPhoto);
 
 module.exports = router;

@@ -10,7 +10,9 @@ import 'package:http/http.dart' as http;
 
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
+import '../../bottombar.dart';
 import '../../utils/colors.dart';
+import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
 import 'waiting_screen.dart';
 
@@ -43,9 +45,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   List<LatLng> _route = [];
   double? _distanceKm;
   int? _durationMinutes;
-  // Nothing is selected until the customer taps an available vehicle.
-  // This keeps the vehicle-first flow explicit and prevents delivery models
-  // from appearing before a vehicle has been chosen.
+
+  late Map<String, dynamic> _pickupData;
+  late Map<String, dynamic> _dropData;
+  late List<Map<String, dynamic>> _stopsData;
+  late int _currentBookingType;
+
   int _selectedIndex = -1;
   int _selectedRadiusKm = 4;
   bool _loadingRoute = true;
@@ -57,34 +62,32 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   List<Map<String, dynamic>> _vehicles = [];
   List<Map<String, dynamic>> _models = [];
   int? _selectedModelIndex;
-  // Fare-estimate response fields that aren't per-package (used by the fare
-  // breakdown sheet): the road distance the backend actually priced against,
-  // and any active premium-plan discount applied to the quoted rates.
+
   double? _fareDistanceKm;
   bool _hasPlanDiscount = false;
   double _planDiscountPercent = 0;
 
   double _number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
-  LatLng get _pickup => LatLng(_number(widget.pickup['lat_map']), _number(widget.pickup['long_map']));
-  LatLng get _drop => LatLng(_number(widget.drop['lat_map']), _number(widget.drop['long_map']));
+  LatLng get _pickup => LatLng(_number(_pickupData['lat_map']), _number(_pickupData['long_map']));
+  LatLng get _drop => LatLng(_number(_dropData['lat_map']), _number(_dropData['long_map']));
+
   Map<String, dynamic>? get _selected =>
       _vehicles.isEmpty || _selectedIndex < 0 || _selectedIndex >= _vehicles.length
           ? null
           : _vehicles[_selectedIndex];
-  Map<String, dynamic>? get _selectedModel => _selectedModelIndex == null || _selectedModelIndex! >= _models.length ? null : _models[_selectedModelIndex!];
+  Map<String, dynamic>? get _selectedModel =>
+      _selectedModelIndex == null || _selectedModelIndex! >= _models.length ? null : _models[_selectedModelIndex!];
 
-  // available-vehicles API rows are actually per-package/model records (e.g.
-  // "Model 1", "Model 2" under the "4 wheeler" category), each carrying that
-  // package's own thumbnail in image/cat_img/img. The real vehicle-type icon
-  // only ever arrives once, via widget.vehicles' category data (sourced from
-  // the vehicle-category catalog on the home screen). Cache it per category
-  // id here so later availability refreshes can't clobber it with a package
-  // thumbnail.
   final Map<String, String> _catalogImageByCategoryId = {};
 
   @override
   void initState() {
     super.initState();
+    _currentBookingType = widget.bookingType;
+    _pickupData = Map<String, dynamic>.from(widget.pickup);
+    _dropData = Map<String, dynamic>.from(widget.drop);
+    _stopsData = widget.stops.map((s) => Map<String, dynamic>.from(s)).toList();
+
     _vehicles = widget.vehicles.map(Map<String, dynamic>.from).toList();
     _sortVehiclesByAvailability(_vehicles);
     _availabilityError = widget.availabilityError;
@@ -113,9 +116,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   String _vehicleName(Map<String, dynamic> option) {
     final category = _categoryOf(option);
     final availability = option['availability'];
-    // Category name (e.g. "Bike", "4 wheeler") is the real vehicle type.
-    // Availability rows are per-package records ("Model 1"...), so their
-    // name/title must only be used when no category name exists at all.
     return _text(category['cat_name'] ?? category['name'],
         _text(availability is Map ? (availability['name'] ?? availability['title'] ?? availability['vehicle_type']) : null, 'Delivery vehicle'));
   }
@@ -166,8 +166,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   Future<void> _loadRoute() async {
     final points = <LatLng>[];
     try {
-      final waypoints = widget.stops
+      final waypoints = _stopsData
           .map((stop) => '${stop['lat_map']},${stop['long_map']}')
+          .where((w) => w != '0.0,0.0' && w != ',')
           .join('|');
       final response = await http.get(Uri.parse(
         'https://maps.googleapis.com/maps/api/directions/json?'
@@ -210,7 +211,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     const p = math.pi / 180;
     final locations = <LatLng>[
       _pickup,
-      ...widget.stops.map((stop) => LatLng(
+      ..._stopsData.map((stop) => LatLng(
             _number(stop['lat_map']),
             _number(stop['long_map']),
           )),
@@ -268,11 +269,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       for (final category in categories) {
         final categoryId = _responseCategoryId(category);
         final categoryName = _responseCategoryName(category).toLowerCase();
-        // Prefer an available row if this category matches more than one
-        // (e.g. one model in stock, another not) — but keep the first
-        // matching row regardless, so a category with nobody currently free
-        // still shows up (disabled, with its own reason_unavailable) instead
-        // of disappearing entirely.
         Map<String, dynamic>? availableMatch;
         Map<String, dynamic>? anyMatch;
         for (final row in availabilityRows) {
@@ -298,9 +294,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       return options;
     }
 
-    // Fallback for deployments that omit category records. Prefer vehicle_type
-    // and category_name because name/title can be a package label like Model 1.
-    // Unavailable rows are kept too — rendered as disabled cards.
     for (final vehicle in availabilityRows) {
       final categoryId = _responseCategoryId(vehicle);
       final categoryName = _text(
@@ -341,7 +334,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         'pickup_lat': _pickup.latitude,
         'pickup_lng': _pickup.longitude,
         'radius_km': _selectedRadiusKm,
-        'booking_type': widget.bookingType == 3 ? 'next_day' : 'now',
+        'booking_type': _currentBookingType == 3 ? 'next_day' : 'now',
       };
       final uid = _storage.read('Uid');
       if (uid != null) body['uid'] = int.tryParse(uid.toString()) ?? uid;
@@ -366,10 +359,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       }
       final refreshed = _buildVehicleOptions(_mapList(vehicles), payload);
       if (!mounted) return;
-      // Never retain a selection that's gone unavailable on refresh — unlike
-      // before, unavailable options stay in the list (disabled, with their
-      // own reason) instead of just disappearing, so indexWhere alone would
-      // otherwise still "find" and keep the now-unavailable one selected.
       final retainedIndex = previousVehicleKey == null
           ? -1
           : refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey && _isAvailable(option['availability']));
@@ -412,9 +401,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   String _modelKey(Map<String, dynamic> model) =>
       _text(model['package_id'] ?? model['id'], _modelTitle(model).toLowerCase());
 
-  /// The UI intentionally keeps a single model selected, but dispatch accepts
-  /// a cumulative tier list. Selecting Model 3 therefore sends Models 1, 2,
-  /// and 3 while the screen continues to show only Model 3.
   int _modelOrder(Map<String, dynamic> model, int fallbackIndex) {
     final explicitOrder = int.tryParse(_text(model['sort_order'] ?? model['sortOrder']));
     if (explicitOrder != null) return explicitOrder;
@@ -432,8 +418,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final id = int.tryParse(_text(model['package_id'] ?? model['id'], '0')) ?? 0;
       if (id > 0 && !ids.contains(id)) ids.add(id);
     }
-    // Keep the tapped model in the payload even if an unusual API response
-    // omitted its sort metadata or returned models in a non-standard order.
     final selectedId = int.tryParse(_text(selectedModel['package_id'] ?? selectedModel['id'], '0')) ?? 0;
     if (selectedId > 0 && !ids.contains(selectedId)) ids.add(selectedId);
     return ids;
@@ -455,22 +439,21 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'cat_id': int.tryParse(categoryId.toString()) ?? categoryId,
       'plat': _pickup.latitude, 'plong': _pickup.longitude,
       'dlat': _drop.latitude, 'dlong': _drop.longitude,
-      'stops': widget.stops.map((stop) => {
+      'stops': _stopsData.map((stop) => {
         'lat': stop['lat_map'], 'lng': stop['long_map'], 'address': stop['address'],
         'hno': stop['hno'], 'landmark': stop['landmark'],
         'contact_name': stop['c_name'], 'contact_number': stop['c_number'],
       }).toList(),
-      // Customer's chosen search radius — the estimate is a disclosed
-      // "cost to search this far" preview and intentionally scales with it.
-      // Actual billing at order-creation/dispatch/accept never uses this;
-      // it reprices off whichever driver actually gets assigned.
       'radius_km': _selectedRadiusKm,
       if (uid != null) 'uid': int.tryParse(uid.toString()) ?? uid,
     });
     final rawModels = response is Map ? response['packages'] : null;
     if (!mounted) return;
     if (response is Map && (response['Result'] == true || response['Result'] == 'true') && rawModels is List) {
-      final models = rawModels.whereType<Map>().map(Map<String, dynamic>.from).where((model) => _modelFare(model) != null).toList();
+      var models = rawModels.whereType<Map>().map(Map<String, dynamic>.from).where((model) => _modelFare(model) != null).toList();
+      if (_currentBookingType == 3 && models.isNotEmpty) {
+        models = [models.first];
+      }
       final retainedModelIndex = preserveModelKey == null
           ? -1
           : models.indexWhere((model) => _modelKey(model) == preserveModelKey);
@@ -515,6 +498,61 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
   }
 
+  void _swapLocations() {
+    setState(() {
+      final temp = _pickupData;
+      _pickupData = _dropData;
+      _dropData = temp;
+      _stopsData = _stopsData.reversed.toList();
+    });
+    _storage.write("PickupAddress", [_pickupData]);
+    _storage.write("DropeAddress", [_dropData]);
+    _loadRoute();
+    _refreshAvailability();
+    if (_selectedIndex >= 0) {
+      _loadModelsForSelectedVehicle();
+    }
+  }
+
+  Future<void> _toggleNextDayDelivery() async {
+    final nextType = _currentBookingType == 3 ? 1 : 3;
+    setState(() {
+      _currentBookingType = nextType;
+    });
+
+    if (nextType == 3) {
+      ApiWrapper.showToastMessage("Next Day Saver Delivery Selected 🚚");
+    } else {
+      ApiWrapper.showToastMessage("Standard Instant Delivery Selected ⚡");
+    }
+
+    await _refreshAvailability();
+  }
+
+  Future<void> _openAddStopsScreen() async {
+    final result = await Get.to<Map<String, dynamic>>(
+      () => AddStopsScreen(
+        pickup: _pickupData,
+        drop: _dropData,
+        stops: _stopsData,
+        bookingType: _currentBookingType,
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _pickupData = Map<String, dynamic>.from(result['pickup']);
+        _dropData = Map<String, dynamic>.from(result['drop']);
+        _stopsData = List<Map<String, dynamic>>.from(result['stops'] ?? []);
+      });
+      _loadRoute();
+      _refreshAvailability();
+      if (_selectedIndex >= 0) {
+        _loadModelsForSelectedVehicle();
+      }
+    }
+  }
+
   Future<void> _bookSelected() async {
     final selected = _selected; final model = _selectedModel; final fee = model == null ? null : _modelFare(model);
     if (selected == null || model == null || fee == null || _booking) return;
@@ -523,7 +561,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final category = _categoryOf(selected);
     await Get.to(() => ConfirmOrderMap(
       startLat: _pickup.latitude, startLng: _pickup.longitude, endLat: _drop.latitude, endLng: _drop.longitude,
-      stops: widget.stops,
+      stops: _stopsData,
       deliveryFees: fee, walletBalance: walletBalance, currency: _text(model['currency'], '₹'),
       deliveryType: _text(model['package_id'] ?? model['id']),
       onConfirmPayment: (payValue, _) => _submitOrder(payValue, category, model, fee),
@@ -558,18 +596,16 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final response = await ApiWrapper.dataPostNode(Config.nodeOrderCreate, {
       'uid': int.tryParse(uid?.toString() ?? '') ?? 0,
       'category': _text(category['cat_name'] ?? category['name'], _vehicleName(_selected!)),
-      // The customer sees one selected model, while dispatch receives that
-      // model plus every lower tier as fallback options.
       'delivery_type': deliveryTypeIds,
-      'booking_type': widget.bookingType,
-      'plat': _pickup.latitude, 'plong': _pickup.longitude, 'paddress': _text(widget.pickup['address'], 'Pickup location'),
-      'pick_name': _text(widget.pickup['c_name'], 'Customer'), 'pmobile': _text(widget.pickup['c_number']), 'pick_type': _text(widget.pickup['type'], 'Other'),
-      'dlat': _drop.latitude, 'dlong': _drop.longitude, 'daddress': _text(widget.drop['address'], 'Drop location'),
-      'drop_name': _text(widget.drop['c_name'], 'Recipient'), 'dmobile': _text(widget.drop['c_number']), 'drop_type': _text(widget.drop['type'], 'Other'),
+      'booking_type': _currentBookingType,
+      'plat': _pickup.latitude, 'plong': _pickup.longitude, 'paddress': _text(_pickupData['address'], 'Pickup location'),
+      'pick_name': _text(_pickupData['c_name'], 'Customer'), 'pmobile': _text(_pickupData['c_number']), 'pick_type': _text(_pickupData['type'], 'Other'),
+      'dlat': _drop.latitude, 'dlong': _drop.longitude, 'daddress': _text(_dropData['address'], 'Drop location'),
+      'drop_name': _text(_dropData['c_name'], 'Recipient'), 'dmobile': _text(_dropData['c_number']), 'drop_type': _text(_dropData['type'], 'Other'),
       'package_weight': '0', 'package_cost': '0', 'description': 'No description provided', 'p_method_id': payValue,
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
       'extra_mile_charge': 0, 'cou_id': 0, 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
-      'stops': widget.stops.map((stop) => {
+      'stops': _stopsData.map((stop) => {
         'lat': stop['lat_map'], 'lng': stop['long_map'], 'address': stop['address'],
         'hno': stop['hno'], 'landmark': stop['landmark'],
         'contact_name': stop['c_name'], 'contact_number': stop['c_number'],
@@ -578,23 +614,185 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (!mounted) return;
     setState(() => _booking = false);
     if (response is Map && response['ResponseCode'].toString() == '200' && (response['Result'] == true || response['Result'] == 'true')) {
-      await _storage.write('OrderID', response['order_id']);
+      final orderId = response['order_id']?.toString() ?? '';
+      await _storage.write('OrderID', orderId);
       ApiWrapper.showToastMessage(_text(response['ResponseMsg'], 'Order placed successfully.'));
-      if (widget.bookingType == 3) {
-        Get.back();
+      if (_currentBookingType == 3) {
+        _showNextDayOrderSuccessDialog(orderId, fee, payValue);
       } else {
-        Get.off(() => WaitingScreen(orderId: response['order_id'].toString()));
+        Get.offAll(() => WaitingScreen(orderId: orderId));
       }
     } else {
       ApiWrapper.showToastMessage(_text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.'));
     }
   }
 
-  // Base fare, distance charge, and radius charge come straight from
-  // fare-estimate response fields (min_charge/per_km_charge/radius_charge).
-  // Night charge isn't a separate field — it's whatever remains between
-  // those three and the total, only surfaced when is_night is set, so
-  // sub-rupee rounding noise on a non-night fare never shows as a charge.
+  void _showNextDayOrderSuccessDialog(String orderId, double fee, int payValue) {
+    Get.dialog(
+      WillPopScope(
+        onWillPop: () async => false,
+        child: Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: const Color(0xff10B981).withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      color: Color(0xff10B981),
+                      size: 46,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Order Confirmed! 🎉",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontFamily: 'Gilroy_Bold',
+                    color: Color(0xff1E293B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: linercolor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: linercolor.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.local_shipping_rounded, color: linercolor, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Next Day Delivery",
+                        style: TextStyle(
+                          color: linercolor,
+                          fontFamily: 'Gilroy_Bold',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  "Your order #$orderId has been scheduled for tomorrow. A driver will be assigned for pickup in the morning.",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Gilroy_Medium',
+                    color: Color(0xff64748B),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: const Color(0xffF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xffE2E8F0)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Total Amount:",
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontFamily: 'Gilroy_Medium',
+                          color: Color(0xff64748B),
+                        ),
+                      ),
+                      Text(
+                        "₹${fee.toStringAsFixed(2)} (${payValue == -2 ? 'Wallet' : 'Cash'})",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Gilroy_Bold',
+                          color: linercolor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Get.offAll(() => const Bottombar(tabIndex: 1));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: linercolor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      "View My Orders",
+                      style: TextStyle(
+                        fontFamily: 'Gilroy_Bold',
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: TextButton(
+                    onPressed: () {
+                      Get.offAll(() => const Bottombar(tabIndex: 0));
+                    },
+                    child: const Text(
+                      "Back to Home",
+                      style: TextStyle(
+                        color: Color(0xff64748B),
+                        fontFamily: 'Gilroy_Bold',
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+    );
+  }
+
   void _showFareBreakdown(Map<String, dynamic> model, double fee) {
     final baseFare = _number(model['min_charge']);
     final perKmCharge = _number(model['per_km_charge']);
@@ -660,6 +858,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                 children: [
+                  _nextDayDeliveryBanner(),
                   _routeSummary(),
                   const SizedBox(height: 18),
                   Row(
@@ -722,34 +921,519 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
   }
 
+  Widget _nextDayDeliveryBanner() {
+    final isSelected = _currentBookingType == 3;
+    final isDark = notifier.isDark;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _toggleNextDayDelivery,
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: isSelected
+                  ? LinearGradient(
+                      colors: isDark
+                          ? [const Color(0xff2A160D), const Color(0xff1A0D07)]
+                          : [const Color(0xffFFF6F0), const Color(0xffFFEFE5)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                  : null,
+              color: isSelected ? null : notifier.getBgColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isSelected
+                    ? linercolor
+                    : notifier.bordecolor.withOpacity(0.8),
+                width: isSelected ? 1.6 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: isSelected
+                      ? linercolor.withOpacity(isDark ? 0.12 : 0.08)
+                      : Colors.black.withOpacity(0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? linercolor.withOpacity(0.18)
+                            : greaycolor.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.bolt_rounded,
+                        color: isSelected ? linercolor : greaycolor,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Next Day Saver Delivery 🚚',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: notifier.text,
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 1.5),
+                          Text(
+                            isSelected
+                                ? 'Selected · Tap to unselect for Instant'
+                                : 'Save up to 30% · Scheduled tomorrow',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isSelected ? linercolor : greaycolor,
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+
+                    // Toggle Button Badge (Selected / Select)
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 8.5, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: isSelected
+                            ? LinearGradient(
+                                colors: [linercolor, const Color(0xffFF8533)],
+                              )
+                            : null,
+                        color: isSelected ? null : notifier.lightBgColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: isSelected
+                            ? null
+                            : Border.all(color: linercolor.withOpacity(0.6)),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: linercolor.withOpacity(0.35),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                            color: isSelected ? Colors.white : linercolor,
+                            size: 13,
+                          ),
+                          const SizedBox(width: 3.5),
+                          Text(
+                            isSelected ? 'SELECTED' : 'SELECT',
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : linercolor,
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 10,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                if (isSelected) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7.5),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.black.withOpacity(0.25) : Colors.white.withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: notifier.bordecolor.withOpacity(0.4)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.schedule_rounded, color: linercolor, size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Delivery window: Tomorrow (10:00 AM – 8:00 PM)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: notifier.text,
+                                  fontFamily: 'Gilroy_Bold',
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4.5),
+                        Row(
+                          children: [
+                            const Icon(Icons.verified_rounded, color: Color(0xff10B981), size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Guaranteed Model 1 base pricing · Zero Advance',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: greaycolor,
+                                  fontFamily: 'Gilroy_Medium',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _loadingVehicles() => Container(height: 142, alignment: Alignment.center, decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(16)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: linercolor)), const SizedBox(width: 10), Text('Finding vehicles near pickup...', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 13))]));
 
-  Widget _routeCard(List<LatLng> points) => Container(height: 300, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: Colors.black.withOpacity(.06), blurRadius: 18, offset: const Offset(0, 6))]), child: Column(children: [SizedBox(height: 210, child: Stack(children: [GoogleMap(initialCameraPosition: CameraPosition(target: LatLng((_pickup.latitude + _drop.latitude) / 2, (_pickup.longitude + _drop.longitude) / 2), zoom: 11), markers: {Marker(markerId: const MarkerId('pickup'), position: _pickup), Marker(markerId: const MarkerId('drop'), position: _drop)}, polylines: {Polyline(polylineId: const PolylineId('route'), points: points, color: linercolor, width: 5)}, zoomControlsEnabled: false, myLocationButtonEnabled: false, onMapCreated: (controller) { _mapController = controller; if (_route.length > 1) _fitRoute(_route); }), if (_loadingRoute) const Positioned(top: 12, right: 12, child: Card(child: Padding(padding: EdgeInsets.all(8), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))))), Positioned(left: 14, top: 14, child: _mapLabel(Icons.my_location_rounded, Colors.green, 'Pickup', widget.pickup['address'])), Positioned(right: 14, bottom: 14, child: _mapLabel(Icons.location_on_rounded, Colors.red, 'Drop', widget.drop['address']))])), Expanded(child: Row(children: [_metric(Icons.route_rounded, _distanceKm == null ? '...' : '${_distanceKm!.toStringAsFixed(1)} km', 'Distance'), _metric(Icons.schedule_rounded, _durationMinutes == null ? '...' : '~$_durationMinutes min', 'Est. time'), _metric(Icons.currency_rupee_rounded, _selectedModel == null ? '—' : '₹${_modelFare(_selectedModel!)!.round()}', 'Fare estimate')]))]));
+  Widget _routeSummary() {
+    String contactLine(Map<String, dynamic> data, String fallback) {
+      final name = (data['c_name'] ?? '').toString().trim();
+      final mobile = (data['c_number'] ?? '').toString().trim();
+      if (name.isNotEmpty && mobile.isNotEmpty) {
+        return "$name · $mobile";
+      } else if (name.isNotEmpty) {
+        return name;
+      } else if (mobile.isNotEmpty) {
+        return mobile;
+      }
+      return fallback;
+    }
 
-  Widget _mapLabel(IconData icon, Color color, String title, dynamic value) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: Colors.white.withOpacity(.95), borderRadius: BorderRadius.circular(12)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: color, size: 18), const SizedBox(width: 6), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: TextStyle(color: color, fontSize: 10, fontFamily: 'Gilroy_Bold')), SizedBox(width: 105, child: Text(_text(value, 'Selected location'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87, fontSize: 11, fontFamily: 'Gilroy_Medium')))])]));
-  Widget _metric(IconData icon, String value, String label) => Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: greaycolor, size: 20), const SizedBox(height: 2), Text(value, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13)), Text(label, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 10))]));
+    String addressLine(Map<String, dynamic> data) {
+      final addr = (data['address'] ?? data['c_ddress'] ?? '').toString().trim();
+      if (addr.isNotEmpty) return addr;
+      final hno = (data['hno'] ?? '').toString().trim();
+      return hno.isNotEmpty ? hno : "Selected Location";
+    }
 
-  Widget _routeSummary() => Container(
-        padding: const EdgeInsets.fromLTRB(15, 14, 15, 10),
-        decoration: BoxDecoration(
-          color: notifier.getBgColor,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(.06), blurRadius: 18, offset: const Offset(0, 6))],
-        ),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 64,
-              child: Row(
-                children: [
-                  _metric(Icons.route_rounded, _distanceKm == null ? '...' : '${_distanceKm!.toStringAsFixed(1)} km', 'Distance'),
-                  _metric(Icons.schedule_rounded, _durationMinutes == null ? '...' : '~$_durationMinutes min', 'Est. time'),
-                ],
-              ),
+    return Container(
+      decoration: BoxDecoration(
+        color: notifier.getBgColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Left Column: Icons & Connector line
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Pickup Icon
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: const BoxDecoration(
+                        color: Color(0xff10B981),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 15),
+                    ),
+
+                    // Dashed / solid vertical line
+                    Container(
+                      width: 1.5,
+                      height: _stopsData.isEmpty ? 26 : 14,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      color: Colors.grey.shade300,
+                    ),
+
+                    // Intermediate Stops icons (if any)
+                    for (int i = 0; i < _stopsData.length; i++) ...[
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: linercolor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            "${i + 1}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 1.5,
+                        height: 14,
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        color: Colors.grey.shade300,
+                      ),
+                    ],
+
+                    // Drop Icon
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: const BoxDecoration(
+                        color: Color(0xffEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 15),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(width: 12),
+
+                // Middle: Text Details (Pickup, Intermediate Stops, Drop)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Pickup Text
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            contactLine(_pickupData, "Sender's Details"),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 13.5,
+                              color: notifier.text,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            addressLine(_pickupData),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 12,
+                              color: greaycolor,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // Intermediate Stops text
+                      for (int i = 0; i < _stopsData.length; i++) ...[
+                        const SizedBox(height: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              contactLine(_stopsData[i], "Stop ${i + 1}"),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 13,
+                                color: notifier.text,
+                              ),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              addressLine(_stopsData[i]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 11.5,
+                                color: greaycolor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      const SizedBox(height: 10),
+
+                      // Drop Text
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            contactLine(_dropData, "Receiver's Details"),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 13.5,
+                              color: notifier.text,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            addressLine(_dropData),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 12,
+                              color: greaycolor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Right Side: Swap Locations Button ⇅
+                InkWell(
+                  onTap: _swapLocations,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: notifier.lightBgColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.swap_vert_rounded,
+                        color: notifier.text,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      );
+          ),
+
+          const Divider(height: 1, thickness: 0.8),
+
+          // Bottom Action Row: Add Stop | Edit Locations
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                // 1. Add Stop Button
+                Expanded(
+                  child: InkWell(
+                    onTap: _openAddStopsScreen,
+                    borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(18)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_circle, color: linercolor, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Add Stop",
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 13.5,
+                              color: linercolor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Vertical Divider
+                Container(
+                  width: 1,
+                  height: 22,
+                  color: notifier.bordecolor.withOpacity(0.6),
+                ),
+
+                // 2. Edit Locations Button
+                Expanded(
+                  child: InkWell(
+                    onTap: _openAddStopsScreen,
+                    borderRadius: const BorderRadius.only(bottomRight: Radius.circular(18)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.edit, color: linercolor, size: 16),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Edit Locations",
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 13.5,
+                              color: linercolor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _vehicleCard(int index, Map<String, dynamic> option) {
     final available = _isAvailable(option['availability']);
@@ -809,14 +1493,14 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       Row(children: [Expanded(child: Text(_vehicleName(selected), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 19))), if (_loadingModels) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))]),
       if (capacity.isNotEmpty) ...[const SizedBox(height: 4), Text('Up to $capacity kg', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12))],
       if (driverCount.isNotEmpty || eta.isNotEmpty) ...[const SizedBox(height: 8), Row(children: [if (driverCount.isNotEmpty) const Icon(Icons.people_alt_outlined, color: Colors.green, size: 16), if (driverCount.isNotEmpty) Text(' $driverCount nearby', style: TextStyle(color: greaycolor, fontSize: 11)), if (driverCount.isNotEmpty && eta.isNotEmpty) const SizedBox(width: 12), if (eta.isNotEmpty) Icon(Icons.schedule_rounded, color: greaycolor, size: 15), if (eta.isNotEmpty) Text(' ~$eta min', style: TextStyle(color: greaycolor, fontSize: 11))])],
-      const SizedBox(height: 16), Text('Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
+      const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
-      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () => setState(() => _selectedModelIndex = index), child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
+      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () => setState(() => _selectedModelIndex = index), child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
       if (_selectedModel != null) ...[const SizedBox(height: 14), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]), Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12))))],
     ]));
   }
 
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
-  Widget _bottomCta() => Container(padding: EdgeInsets.fromLTRB(15, 12, 15, 12 + MediaQuery.of(context).padding.bottom), decoration: BoxDecoration(color: notifier.getBgColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 16, offset: const Offset(0, -5))]), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: notifier.text, fontSize: 17, fontFamily: 'Gilroy_Bold')), Text('${_vehicleName(_selected!)} · ${_modelTitle(_selectedModel!)}', style: TextStyle(color: greaycolor, fontSize: 12, fontFamily: 'Gilroy_Medium'))])), SizedBox(width: 145, height: 50, child: ElevatedButton.icon(onPressed: _booking ? null : _bookSelected, icon: const Icon(Icons.arrow_forward_rounded, size: 19), iconAlignment: IconAlignment.end, label: Text(_booking ? 'Booking...' : 'Book now'), style: ElevatedButton.styleFrom(backgroundColor: linercolor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))) ]));
+  Widget _bottomCta() => Container(padding: EdgeInsets.fromLTRB(15, 12, 15, 12 + MediaQuery.of(context).padding.bottom), decoration: BoxDecoration(color: notifier.getBgColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 16, offset: const Offset(0, -5))]), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: notifier.text, fontSize: 17, fontFamily: 'Gilroy_Bold')), Text('${_vehicleName(_selected!)} · ${_modelTitle(_selectedModel!)}', style: TextStyle(color: greaycolor, fontSize: 12, fontFamily: 'Gilroy_Medium'))])), SizedBox(width: 160, height: 50, child: ElevatedButton.icon(onPressed: _booking ? null : _bookSelected, icon: const Icon(Icons.arrow_forward_rounded, size: 19), iconAlignment: IconAlignment.end, label: Text(_booking ? 'Booking...' : (_currentBookingType == 3 ? 'Book Next Day' : 'Book now')), style: ElevatedButton.styleFrom(backgroundColor: linercolor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))) ]));
 }

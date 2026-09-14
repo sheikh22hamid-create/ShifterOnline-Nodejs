@@ -1,0 +1,580 @@
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const multer = require("multer");
+const prisma = require("../config/db");
+const logger = require("../utils/logger");
+const otpService = require("../services/otpService");
+const deviceSessionService = require("../services/deviceSessionService");
+
+// Node port of the legacy PHP driver endpoints under
+// Php Backend/production/admin/rider_api/*.php. Response shape kept
+// identical to the PHP originals so the driver app needs no parsing
+// changes beyond switching its base URL.
+//
+// Passwords stay plaintext to match existing tbl_rider data — same
+// explicit decision as customerAuthController.js.
+
+function fail(res, msg, code = 401) {
+  return res.status(200).json({ ResponseCode: String(code), Result: "false", ResponseMsg: msg });
+}
+
+function generateRefferCode(seed) {
+  const prefix = (seed || "RID")
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 3)
+    .padEnd(3, "X");
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let random = "";
+  for (let i = 0; i < 5; i++) random += chars[Math.floor(Math.random() * chars.length)];
+  return prefix + random;
+}
+
+async function uniqueRefferCode(seed) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateRefferCode(seed);
+    const exists = await prisma.tbl_rider.findFirst({ where: { reffer_code: code } });
+    if (!exists) return code;
+  }
+  return generateRefferCode(seed) + Date.now().toString(36).slice(-5).toUpperCase();
+}
+
+// Assigns every active package under this rider's vehicle's category as a
+// default enabled delivery type. Ported from
+// admin/include/Common.php::assignDefaultDeliveryTypes().
+async function assignDefaultDeliveryTypes(riderId) {
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { vehicle: true } });
+  if (!rider?.vehicle) return;
+
+  const cat = await prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
+  if (!cat) return;
+
+  const packages = await prisma.tbl_package.findMany({ where: { cat_id: cat.id, status: 1 } });
+  for (const pkg of packages) {
+    const exists = await prisma.tbl_rider_delivery_type.findFirst({
+      where: { rider_id: riderId, delivery_type: pkg.id },
+    });
+    if (!exists) {
+      await prisma.tbl_rider_delivery_type.create({ data: { rider_id: riderId, delivery_type: pkg.id, status: 1 } });
+    }
+  }
+}
+
+// --- mobile_check.php ---
+async function mobileCheck(req, res) {
+  try {
+    const mobile = String(req.body?.mobile || "").trim();
+    if (!mobile) return fail(res, "Something Went Wrong!");
+
+    const existing = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (existing) return fail(res, "Already Exist Mobile Number!");
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "New Number!" });
+  } catch (err) {
+    logger.error("riderAuthController.mobileCheck failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- send_otp.php --- (with TEST_DRIVER_MOBILES bypass)
+async function sendOtp(req, res) {
+  try {
+    const mobile = otpService.normalizeMobile(req.body?.mobile);
+    if (!mobile) return fail(res, "Mobile number is required.");
+    if (!otpService.isValidIndianMobile(mobile)) return fail(res, "Invalid Mobile Number.");
+
+    const result = await otpService.sendOtp(mobile, { allowTestBypass: true });
+    if (!result.ok) return fail(res, result.message);
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: result.message,
+      Details: result.sessionId,
+    });
+  } catch (err) {
+    logger.error("riderAuthController.sendOtp failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- verify_otp.php --- (with TEST_DRIVER_MOBILES bypass, returns existing driver or "new user" marker)
+async function verifyOtp(req, res) {
+  try {
+    const mobile = otpService.normalizeMobile(req.body?.mobile);
+    const otp = String(req.body?.otp || "").trim();
+    const deviceId = String(req.body?.device_id || "").trim();
+    const fcmToken = String(req.body?.fcm_token || "").trim();
+    if (!mobile || !otp) return fail(res, "Mobile and OTP are required.");
+    if (!otpService.isValidIndianMobile(mobile)) return fail(res, "Invalid Mobile Number.");
+
+    const result = await otpService.verifyOtp(mobile, otp, { allowTestBypass: true });
+    if (!result.ok) return fail(res, result.message);
+
+    const driver = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+
+    if (driver) {
+      if (fcmToken) {
+        await prisma.tbl_rider.update({ where: { id: driver.id }, data: { fcm_token: fcmToken, device_id: deviceId } });
+      }
+      await deviceSessionService.registerDevice({
+        uid: driver.id,
+        deviceId,
+        fcmToken,
+        platform: req.body?.platform,
+        deviceName: req.body?.device_name,
+        appVersion: req.body?.app_version,
+      });
+
+      const driverResponse = {
+        id: driver.id,
+        full_name: driver.full_name,
+        email: driver.email,
+        mobile: driver.fmobile,
+        account_name: driver.account_name,
+        account_number: driver.account_number,
+        ifsc: driver.ifsc,
+        vehicle: driver.vehicle,
+        profile_picture: driver.profile_picture,
+        verification_type: driver.verification_type,
+        verification_status: driver.verification_status,
+        status: driver.status,
+        wallet_balance: driver.wallet_balance?.toString?.() ?? driver.wallet_balance,
+        plan_type: driver.plan_type,
+        monthly_plan: driver.monthly_plan,
+        working_hours: driver.working_hours,
+        fcm_token: fcmToken || driver.fcm_token,
+        rdate: driver.rdate,
+      };
+
+      return res.status(200).json({
+        ResponseCode: "200",
+        Result: "true",
+        ResponseMsg: "Login Successfully.",
+        Is_New_User: "0",
+        DriverData: driverResponse,
+      });
+    }
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "OTP Verified. Continue Registration.",
+      Is_New_User: "1",
+      Mobile: mobile,
+    });
+  } catch (err) {
+    logger.error("riderAuthController.verifyOtp failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- rider_login.php --- (password login, alternative to OTP flow above)
+async function login(req, res) {
+  try {
+    const { mobile, password } = req.body || {};
+    const deviceId = String(req.body?.device_id || "").trim();
+    const fcmToken = String(req.body?.fcm_token || "").trim();
+    if (!mobile || !password) return fail(res, "Something Went Wrong!");
+
+    const anyActive = await prisma.tbl_rider.findFirst({ where: { status: 1 } });
+    if (!anyActive) return fail(res, "Your Status Deactivate!!!");
+
+    const rider = await prisma.tbl_rider.findFirst({
+      where: { fmobile: String(mobile), status: 1, password: String(password) },
+    });
+    if (!rider) return fail(res, "Invalid Email/Mobile No or Password!!!");
+
+    const data = {};
+    if (fcmToken) data.fcm_token = fcmToken;
+    if (deviceId) data.device_id = deviceId;
+    if (Object.keys(data).length) {
+      await prisma.tbl_rider.update({ where: { id: rider.id }, data });
+    }
+    if (deviceId) {
+      await deviceSessionService.registerDevice({
+        uid: rider.id,
+        deviceId,
+        fcmToken,
+        platform: req.body?.platform,
+        deviceName: req.body?.device_name,
+        appVersion: req.body?.app_version,
+      });
+    }
+
+    return res.status(200).json({
+      rider_data: { ...rider, ...data, wallet_balance: rider.wallet_balance?.toString?.() ?? rider.wallet_balance },
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Login successfully!",
+    });
+  } catch (err) {
+    logger.error("riderAuthController.login failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- logout.php ---
+async function logout(req, res) {
+  try {
+    const rid = Number(req.body?.rid || 0);
+    if (!rid) return fail(res, "Something Went Wrong! rid is required.");
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: rid } });
+    if (!rider) return fail(res, "Driver Not Found");
+
+    await prisma.tbl_rider.update({ where: { id: rid }, data: { fcm_token: "" } });
+    return res.status(200).json({ ResponseCode: "200", Result: true, ResponseMsg: "Logout successfully!" });
+  } catch (err) {
+    logger.error("riderAuthController.logout failed:", err);
+    return fail(res, "Logout Failed!", 500);
+  }
+}
+
+// ---------------------------------------------------------------------
+// reg_user.php - registration with document numbers + profile/UPI photo
+// upload. Ported field-for-field from the PHP version (duplicate-document
+// check across tbl_personal_doc, auto-approval when all 4 docs verified).
+// ---------------------------------------------------------------------
+
+const REG_DOCS_DIR = path.join(__dirname, "..", "..", "public", "images", "rider_docs");
+const REG_PROFILE_DIR = path.join(__dirname, "..", "..", "public", "images", "profile");
+fs.mkdirSync(REG_DOCS_DIR, { recursive: true });
+fs.mkdirSync(REG_PROFILE_DIR, { recursive: true });
+
+const IMAGE_EXT_BY_MIME = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+
+const registerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).fields([
+  { name: "profile_photo", maxCount: 1 },
+  { name: "upi_image", maxCount: 1 },
+]);
+
+const DOC_CONFIG = {
+  aadhar: { idCol: "aadhar_id", statusCol: "aadhar_status", label: "Aadhar Card" },
+  pan: { idCol: "pan_id", statusCol: "pan_status", label: "PAN Card" },
+  rc: { idCol: "residence_id", statusCol: "residence_status", label: "Vehicle RC" },
+  dl: { idCol: "lic_id", statusCol: "lic_status", label: "Driving License" },
+};
+
+function resolveDocKey(rawName) {
+  const clean = String(rawName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (clean.includes("adhar") || clean.includes("aadhar") || clean.includes("aadhaar")) return "aadhar";
+  if (clean.includes("pan")) return "pan";
+  if (clean.includes("rc") || clean.includes("residence")) return "rc";
+  if (clean.includes("dl") || clean.includes("lic") || clean.includes("license")) return "dl";
+  return clean;
+}
+
+function truthyFlag(v) {
+  return v === true || v === "true" || v === 1 || v === "1" || String(v).toLowerCase() === "approved";
+}
+
+function collectDocuments(body) {
+  const docs = [];
+  const pushIfPresent = (label, numberField, verifiedField) => {
+    const num = body[numberField];
+    if (num !== undefined && num !== "") {
+      docs.push({ name: label, number: String(num), verified: truthyFlag(body[verifiedField] ?? "true") });
+    }
+  };
+
+  const rawDocs = body.documents;
+  if (rawDocs) {
+    try {
+      const parsed = typeof rawDocs === "string" ? JSON.parse(rawDocs) : rawDocs;
+      if (Array.isArray(parsed)) {
+        for (const d of parsed) {
+          const name = d.DocumentName || d.document_name || d.name || "";
+          const number = d.DocumentNumber || d.document_number || d.number || "";
+          const isVer = d.isVerified ?? d.is_verified ?? d.status ?? true;
+          if (name) docs.push({ name: String(name), number: String(number), verified: truthyFlag(isVer) });
+        }
+      }
+    } catch {
+      // ignore malformed documents payload, fall through to flat keys
+    }
+  }
+
+  pushIfPresent("Aadhar", "aadhar_no", "aadhar_verified");
+  pushIfPresent("Aadhar", "aadhar_number", "aadhar_verified");
+  pushIfPresent("Pan", "pan_no", "pan_verified");
+  pushIfPresent("Pan", "pan_number", "pan_verified");
+  pushIfPresent("Rc", "rc_no", "rc_verified");
+  pushIfPresent("Rc", "rc_number", "rc_verified");
+  pushIfPresent("Dl", "dl_no", "dl_verified");
+  pushIfPresent("Dl", "dl_number", "dl_verified");
+
+  return docs;
+}
+
+function saveBufferedFile(file, destDir) {
+  const mime = (file.mimetype || "").toLowerCase();
+  const ext = IMAGE_EXT_BY_MIME[mime] || path.extname(file.originalname || "").replace(".", "") || "jpg";
+  const filename = `${Date.now()}_${crypto.randomBytes(8).toString("hex")}.${ext}`;
+  fs.writeFileSync(path.join(destDir, filename), file.buffer);
+  return filename;
+}
+
+async function registerHandler(req, res) {
+  try {
+    const body = req.body || {};
+    const required = ["email", "mobile", "account_name", "account_number", "ifsc", "vehicle", "vehicle_no", "device_id", "city_id"];
+    const missing = required.filter((k) => !String(body[k] || "").trim());
+    if (missing.length) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Missing Parameters", missing_params: missing });
+    }
+
+    const fullName = String(body.full_name || "").trim();
+    const email = String(body.email).trim();
+    const mobile = String(body.mobile).trim();
+    const accountName = String(body.account_name).trim();
+    const accountNumber = String(body.account_number).trim();
+    const ifsc = String(body.ifsc).trim().toUpperCase();
+    const vehicle = String(body.vehicle).trim();
+    const vehicleNo = String(body.vehicle_no).trim();
+    const deviceId = String(body.device_id).trim();
+    const cityId = Number(body.city_id) || 1;
+    const fcmToken = String(body.fcm_token || "").trim();
+
+    const refCodeRaw = body.referral_code || body.refferal_code || body.reffer_code || body.refer_code || "";
+    const refferalCode = String(refCodeRaw).trim().toUpperCase();
+
+    let referrerId = 0;
+    let referrerIsCustomer = false;
+    if (refferalCode) {
+      const refRider = await prisma.tbl_rider.findFirst({
+        where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }] },
+      });
+      if (refRider) {
+        referrerId = refRider.id;
+      } else {
+        const refUser = await prisma.tbl_user.findFirst({
+          where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }] },
+        });
+        if (refUser) {
+          referrerId = refUser.id;
+          referrerIsCustomer = true;
+        } else {
+          return fail(res, "Invalid Referral Code!");
+        }
+      }
+    }
+
+    const existingRider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    let riderId = 0;
+    let isExistingDraft = false;
+    if (existingRider) {
+      if (!existingRider.full_name) {
+        riderId = existingRider.id;
+        isExistingDraft = true;
+      } else {
+        return fail(res, "Mobile Number Already Used!");
+      }
+    }
+
+    // tbl_personal_doc has no declared FK relation to tbl_rider in this
+    // schema, so the "belongs to an existing rider" check from the PHP
+    // version (orphaned docs left after a rider delete shouldn't block
+    // re-registration) is done as a manual two-step lookup.
+    const documents = collectDocuments(body);
+    for (const doc of documents) {
+      const resolved = resolveDocKey(doc.name);
+      const cfg = DOC_CONFIG[resolved];
+      if (!cfg || !doc.number) continue;
+
+      const docRow = await prisma.tbl_personal_doc.findFirst({
+        where: { [cfg.idCol]: doc.number, ...(riderId > 0 ? { rider_id: { not: riderId } } : {}) },
+      });
+      if (docRow) {
+        const owner = await prisma.tbl_rider.findUnique({ where: { id: docRow.rider_id } });
+        if (owner) {
+          return fail(res, `${cfg.label} Number (${doc.number}) is already registered with another driver account!`);
+        }
+      }
+    }
+
+    const profilePhoto = req.files?.profile_photo?.[0];
+    if (!profilePhoto || !IMAGE_EXT_BY_MIME[(profilePhoto.mimetype || "").toLowerCase()] || profilePhoto.size > 5 * 1024 * 1024) {
+      return res.status(200).json({ ResponseCode: "415", Result: "false", ResponseMsg: "Invalid driver profile photo. Use JPG, PNG or WEBP up to 5 MB." });
+    }
+
+    const refferCode = await uniqueRefferCode(fullName || "RID");
+    const now = new Date();
+    const refTypeStr = referrerId > 0 ? (referrerIsCustomer ? "USER" : "DRIVER") : "";
+
+    if (isExistingDraft && riderId > 0) {
+      await prisma.tbl_rider.update({
+        where: { id: riderId },
+        data: {
+          full_name: fullName,
+          email,
+          account_name: accountName,
+          account_number: accountNumber,
+          ifsc,
+          vehicle,
+          vehicle_no: vehicleNo,
+          city_id: cityId,
+          device_id: deviceId,
+          fcm_token: fcmToken,
+          refferal_code: refferalCode,
+          reffer_code: refferCode,
+          referral_code: refferCode,
+          refer_by: referrerId,
+          referred_by: referrerId,
+          referred_by_type: refTypeStr,
+          status: 1,
+        },
+      });
+    } else {
+      const created = await prisma.tbl_rider.create({
+        data: {
+          full_name: fullName,
+          email,
+          password: "",
+          fmobile: mobile,
+          vehicle,
+          vehicle_no: vehicleNo,
+          account_name: accountName,
+          account_number: accountNumber,
+          ifsc,
+          city_id: cityId,
+          device_id: deviceId,
+          fcm_token: fcmToken,
+          rdate: now,
+          verification_type: "manual",
+          verification_status: "pending",
+          all_verify: 0,
+          a_status: 0,
+          status: 1,
+          profile_picture: "",
+          refferal_code: refferalCode,
+          reffer_code: refferCode,
+          referral_code: refferCode,
+          refer_by: referrerId,
+          referred_by: referrerId,
+          referred_by_type: refTypeStr,
+        },
+      });
+      riderId = created.id;
+    }
+
+    // Profile photo
+    const profileFilename = saveBufferedFile(profilePhoto, REG_PROFILE_DIR);
+    await prisma.tbl_rider.update({
+      where: { id: riderId },
+      data: { profile_picture: `images/profile/${profileFilename}` },
+    });
+
+    // Referral row
+    if (referrerId > 0 && riderId > 0) {
+      const refType = referrerIsCustomer ? "USER" : "DRIVER";
+      const existingRef = await prisma.tbl_referral.findFirst({
+        where: { referred_id: riderId, referred_type: "DRIVER" },
+      });
+      if (!existingRef) {
+        await prisma.tbl_referral.create({
+          data: {
+            referrer_id: referrerId,
+            referrer_type: refType,
+            referred_id: riderId,
+            referred_type: "DRIVER",
+            referral_code: refferalCode,
+            status: "pending",
+            points_awarded: 0,
+            ride_id: 0,
+            registered_at: now,
+          },
+        });
+        await prisma.tbl_rider.update({
+          where: { id: riderId },
+          data: { referred_by: referrerId, referred_by_type: refType, refer_by: referrerId },
+        });
+      }
+    }
+
+    // UPI image
+    const upiFile = req.files?.upi_image?.[0];
+    let upiImagePath = "";
+    if (upiFile) {
+      const allowedExt = ["jpg", "jpeg", "png", "webp", "pdf"];
+      let ext = path.extname(upiFile.originalname || "").replace(".", "").toLowerCase();
+      if (!allowedExt.includes(ext)) ext = "jpg";
+      const filename = `upi_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
+      fs.writeFileSync(path.join(REG_DOCS_DIR, filename), upiFile.buffer);
+      upiImagePath = `images/rider_docs/${filename}`;
+    }
+
+    // Personal doc row
+    let docRow = await prisma.tbl_personal_doc.findFirst({ where: { rider_id: riderId } });
+    if (!docRow) {
+      docRow = await prisma.tbl_personal_doc.create({ data: { rider_id: riderId, status: 0 } });
+    }
+
+    const docUpdate = {};
+    const verifiedSummary = [];
+    for (const doc of documents) {
+      const resolved = resolveDocKey(doc.name);
+      const cfg = DOC_CONFIG[resolved];
+      if (!cfg) continue;
+      if (doc.number) docUpdate[cfg.idCol] = doc.number;
+      docUpdate[cfg.statusCol] = doc.verified ? 1 : 0;
+      verifiedSummary.push({
+        document: cfg.label,
+        document_number: doc.number,
+        status: doc.verified ? "Approved" : "Pending",
+        is_verified: doc.verified,
+      });
+    }
+    if (upiImagePath) docUpdate.upi_image = upiImagePath;
+    if (Object.keys(docUpdate).length) {
+      await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: docUpdate });
+    }
+
+    const finalDoc = await prisma.tbl_personal_doc.findUnique({ where: { id: docRow.id } });
+    const aadharApproved = finalDoc?.aadhar_status === 1;
+    const panApproved = finalDoc?.pan_status === 1;
+    const residenceApproved = finalDoc?.residence_status === 1;
+    const licApproved = finalDoc?.lic_status === 1;
+    const isBicycle = finalDoc?.is_bycle === 1;
+    const isAllVerified = isBicycle
+      ? residenceApproved && (aadharApproved || panApproved)
+      : aadharApproved && panApproved && residenceApproved && licApproved;
+
+    if (isAllVerified) {
+      await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: { status: 1 } });
+      await prisma.tbl_rider.update({
+        where: { id: riderId },
+        data: { verification_status: "approved", all_verify: 1, a_status: 1, status: 1 },
+      });
+      await assignDefaultDeliveryTypes(riderId);
+    }
+
+    const riderData = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: isAllVerified ? "Registration successful and Driver profile approved!" : "Your account is under verification.",
+      is_all_verified: isAllVerified,
+      reffer_code: refferCode,
+      rider_data: { ...riderData, wallet_balance: riderData.wallet_balance?.toString?.() ?? riderData.wallet_balance },
+      verified_documents: verifiedSummary,
+    });
+  } catch (err) {
+    logger.error("riderAuthController.registerHandler failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: `Server Error: ${err.message}` });
+  }
+}
+
+function register(req, res) {
+  registerUpload(req, res, (err) => {
+    if (err) {
+      logger.error("riderAuthController.register upload failed:", err);
+      return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: err.message || "Upload failed" });
+    }
+    return registerHandler(req, res);
+  });
+}
+
+module.exports = { mobileCheck, sendOtp, verifyOtp, login, logout, register };

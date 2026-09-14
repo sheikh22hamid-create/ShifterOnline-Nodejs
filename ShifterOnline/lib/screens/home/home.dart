@@ -3,7 +3,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:app_links/app_links.dart';
 import 'package:goParcel/bottombar.dart';
+import 'package:goParcel/utils/location_intent_handler.dart';
 import 'package:goParcel/screens/authscreen/signin.dart';
 import 'package:goParcel/screens/home/buyanythingselect.dart';
 import 'package:goParcel/screens/home/chatscreen.dart';
@@ -12,6 +14,8 @@ import 'package:goParcel/screens/home/makewishlist.dart';
 import 'package:goParcel/screens/home/my_custom_orders.dart';
 import 'package:goParcel/screens/home/route_review.dart';
 import 'package:goParcel/screens/home/select_vehicle.dart';
+import 'package:goParcel/screens/home/location_search_screen.dart';
+import 'package:goParcel/screens/home/location_confirm_map_screen.dart';
 import 'package:goParcel/screens/home/trackingpoliyline.dart';
 import 'package:goParcel/screens/home/traking.dart';
 import 'package:goParcel/screens/home/trakingStore.dart';
@@ -19,6 +23,7 @@ import 'package:goParcel/screens/myorder/myorder.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/screens/notification/notification.dart';
 import 'package:goParcel/screens/profile/AddressList.dart';
+import 'package:goParcel/screens/profile/premium_plans_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -85,8 +90,12 @@ class _HomeState extends State<Home> {
   bool _homeOrderStatusChecked = false;
   final Map<String, String?> _verifiedHomeOrderStatuses = {};
 
+  // ── LOCATION INTENT (geo: / maps.google.com / goo.gl) ────────────────────
+  StreamSubscription<Uri>? _intentSubscription;
+
   @override
   void dispose() {
+    _intentSubscription?.cancel();
     _searchDebounce?.cancel();
     searchController.dispose();
     super.dispose();
@@ -153,16 +162,28 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _startDropSelection() async {
-    await Get.to(() => const Traking(type: "Drop", addressAdd: "0"));
-    final dropAddress = getdata.read("DropeAddress");
-    if (!mounted || dropAddress is! List || dropAddress.isEmpty) return;
-    final drop = dropAddress.first;
-    if (drop is! Map || _confirmedPickupData == null) return;
+    await _ensureCurrentPickup();
+    final selectedDrop = await Get.to<Map<String, dynamic>>(
+      () => LocationSearchScreen(
+        locationType: "Drop",
+        pickupData: _confirmedPickupData,
+      ),
+    );
+
+    Map<String, dynamic>? drop = selectedDrop;
+    if (drop == null) {
+      final dropAddress = getdata.read("DropeAddress");
+      if (dropAddress is List && dropAddress.isNotEmpty && dropAddress.first is Map) {
+        drop = Map<String, dynamic>.from(dropAddress.first as Map);
+      }
+    }
+
+    if (!mounted || drop == null || _confirmedPickupData == null) return;
 
     final pickup = _confirmedPickupData!;
     setState(() {
       _pickupConfirmed = true;
-      _confirmedDropAddress = drop["address"]?.toString();
+      _confirmedDropAddress = drop!["address"]?.toString();
       _confirmedDropData = Map<String, dynamic>.from(drop);
       _isLoadingVehicleAvailability = true;
       _vehicleAvailabilityError = null;
@@ -170,6 +191,8 @@ class _HomeState extends State<Home> {
     });
 
     await _loadVehicleAvailability(pickup);
+    if (!mounted) return;
+    await _openVehicleSelection();
   }
 
   Future<void> _loadSavedLocations() async {
@@ -218,10 +241,12 @@ class _HomeState extends State<Home> {
     });
 
     await _loadVehicleAvailability(_confirmedPickupData!);
+    if (!mounted) return;
+    await _openVehicleSelection();
   }
 
   Future<void> _addQuickLocation() async {
-    await Get.to(() => const Traking(type: "Drop", addressAdd: "0"));
+    await Get.to(() => const LocationSearchScreen(locationType: "Drop"));
     await _loadSavedLocations();
   }
 
@@ -404,30 +429,546 @@ class _HomeState extends State<Home> {
     getdata.remove("DropeAddress");
     _confirmedPickupData = null;
     _confirmedPickupAddress = null;
-    await Get.to(() => const Traking(type: "Pickup", addressAdd: "0"));
 
-    final pickupAddress = getdata.read("PickupAddress");
-    if (!mounted || pickupAddress is! List || pickupAddress.isEmpty) return;
+    final selectedPickup = await Get.to<Map<String, dynamic>>(
+      () => const LocationSearchScreen(locationType: "Pickup"),
+    );
 
-    final address = pickupAddress.first;
-    if (address is! Map) return;
+    if (!mounted || selectedPickup == null) {
+      final pickupAddress = getdata.read("PickupAddress");
+      if (pickupAddress is List && pickupAddress.isNotEmpty && pickupAddress.first is Map) {
+        final address = Map<String, dynamic>.from(pickupAddress.first as Map);
+        setState(() {
+          _confirmedPickupData = address;
+          _confirmedPickupAddress = address["address"]?.toString();
+        });
+        await _startDropSelection();
+      }
+      return;
+    }
 
     setState(() {
-      _confirmedPickupData = Map<String, dynamic>.from(address);
-      _confirmedPickupAddress = address["address"]?.toString();
+      _confirmedPickupData = Map<String, dynamic>.from(selectedPickup);
+      _confirmedPickupAddress = selectedPickup["address"]?.toString();
     });
     await _startDropSelection();
+  }
+
+  Future<Map<String, dynamic>> _checkNextDayEligibility() async {
+    final uid = getdata.read('Uid');
+    if (uid == null || uid.toString() == '0' || uid.toString().isEmpty) {
+      return {'is_eligible': false, 'ResponseMsg': 'Please login to use Next Day Delivery'};
+    }
+
+    // 1. Direct plan check via PHP backend API (which is always active and holds user plan subscriptions)
+    try {
+      final phpRes = await ApiWrapper.dataPost(Config.getPremiumPlans, {
+        'uid': uid.toString(),
+      });
+      debugPrint('Home: checkNextDayEligibility PHP response → $phpRes');
+
+      if (phpRes != null && (phpRes['ResponseCode'] == '200' || phpRes['Result'] == 'true' || phpRes['Result'] == true)) {
+        final activePlan = phpRes['ActivePlan'];
+        final List<dynamic> plansList = (phpRes['Plans'] is List) ? phpRes['Plans'] : [];
+
+        Map<String, dynamic>? userActivePlan;
+        if (activePlan is Map && activePlan.isNotEmpty) {
+          userActivePlan = Map<String, dynamic>.from(activePlan);
+        } else {
+          for (var p in plansList) {
+            if (p is Map && (p['is_active'] == true || p['is_active'] == 'true' || p['is_active'] == 1 || p['is_active'] == '1')) {
+              userActivePlan = Map<String, dynamic>.from(p);
+              break;
+            }
+          }
+        }
+
+        if (userActivePlan != null) {
+          final noAdv = userActivePlan['no_advance_payment'];
+          final isNoAdv = noAdv == 1 || noAdv == '1' || noAdv == true || noAdv == 'true';
+
+          bool hasNoAdvTag = false;
+          final tags = userActivePlan['ui_tags'];
+          if (tags is List) {
+            for (var t in tags) {
+              final tagStr = t.toString().toLowerCase();
+              if (tagStr.contains('advance') || tagStr.contains('zero advance') || tagStr.contains('no advance')) {
+                hasNoAdvTag = true;
+                break;
+              }
+            }
+          }
+
+          if (isNoAdv || hasNoAdvTag || userActivePlan.isNotEmpty) {
+            return {
+              'is_eligible': true,
+              'has_active_plan': true,
+              'plan_name': userActivePlan['plan_name']?.toString() ?? 'Premium Plan',
+              'no_advance_payment': true,
+              'ResponseMsg': 'User is eligible for Next Day Delivery',
+            };
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking active plan from PHP API: $e');
+    }
+
+    // 2. Fallback to Node backend endpoint
+    try {
+      final response = await ApiWrapper.dataPostNode(Config.nodeNextDayEligibility, {
+        'uid': int.tryParse(uid.toString()) ?? 0,
+      });
+      if (response is Map && (response['Result'] == true || response['Result'] == 'true' || response['ResponseCode'] == '200')) {
+        if (response['is_eligible'] == true || response['is_eligible'] == 'true') {
+          return Map<String, dynamic>.from(response);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking next day eligibility from Node: $e');
+    }
+
+    return {
+      'is_eligible': false,
+      'ResponseMsg': 'Next Day Delivery is exclusively available for users with an active Premium Plan having No Advance Payment privilege.',
+    };
+  }
+
+  void _showNextDayPremiumModal({String? message}) {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+        decoration: BoxDecoration(
+          color: notifier.getBgColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: greaycolor.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                height: 62,
+                width: 62,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xffFFB800), Color(0xffFF8C00)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xffFF8C00).withOpacity(0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 34),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                "Next Day Saver Delivery",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 20,
+                  color: notifier.text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xffFFF4E5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  "⭐ Premium Exclusive Feature",
+                  style: TextStyle(
+                    fontFamily: 'Gilroy_Bold',
+                    fontSize: 12,
+                    color: Color(0xffD97706),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                (message != null && !message.contains("Network") && !message.contains("Exception") && !message.contains("HTML") && !message.contains("500") && !message.contains("404"))
+                    ? message
+                    : "Next Day Delivery is exclusively available for users with an active Premium Plan having No Advance Payment privilege.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 13,
+                  color: greaycolor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: notifier.lightBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: notifier.bordecolor),
+                ),
+                child: Column(
+                  children: [
+                    _buildBenefitRow(Icons.money_off_csred_rounded, "Zero Advance Payment Required", "Book now without paying any advance upfront"),
+                    Divider(height: 16, color: notifier.bordecolor),
+                    _buildBenefitRow(Icons.local_offer_rounded, "Cheapest Super Saver Rates", "Guaranteed lowest base charges with no radius surge"),
+                    Divider(height: 16, color: notifier.bordecolor),
+                    _buildBenefitRow(Icons.schedule_rounded, "Next-Day Delivery Slot (10 AM - 8 PM)", "Package scheduled and delivered tomorrow smoothly"),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Get.back();
+                    Get.to(() => const PremiumPlansScreen());
+                  },
+                  icon: const Icon(Icons.star_rounded, color: Colors.white, size: 20),
+                  label: const Text(
+                    "Purchase Premium Plan",
+                    style: TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 15,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xfff26522),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => Get.back(),
+                child: Text(
+                  "Maybe Later",
+                  style: TextStyle(
+                    fontFamily: 'Gilroy_Medium',
+                    fontSize: 13,
+                    color: greaycolor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  Widget _buildBenefitRow(IconData icon, String title, String sub) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: const Color(0xfff26522).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: const Color(0xfff26522), size: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 13,
+                  color: notifier.text,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                sub,
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 11,
+                  color: greaycolor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeliveryOptionsRow() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Row(
+        children: [
+          // ── Next Day Delivery (Half width) ────────────────
+          Expanded(
+            child: InkWell(
+              onTap: _handleNextDayDeliveryTap,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                decoration: BoxDecoration(
+                  color: notifier.getBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xffFFB800).withOpacity(0.4),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      height: 38,
+                      width: 38,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xffFFB800), Color(0xfff26522)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 22),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  "Next Day",
+                                  style: TextStyle(
+                                    color: notifier.text,
+                                    fontFamily: 'Gilroy_Bold',
+                                    fontSize: 13,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xffFFF4E5),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  "⭐ VIP",
+                                  style: TextStyle(
+                                    fontFamily: 'Gilroy_Bold',
+                                    fontSize: 8.5,
+                                    color: Color(0xffD97706),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Tomorrow · Super Saver",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: greaycolor,
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // ── Schedule Booking (Half width) ─────────────────
+          Expanded(
+            child: InkWell(
+              onTap: _handleScheduleBookingTap,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                decoration: BoxDecoration(
+                  color: notifier.getBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xff3976d3).withOpacity(0.35),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      height: 38,
+                      width: 38,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xff4A90E2), Color(0xff3976d3)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            "Schedule",
+                            style: TextStyle(
+                              color: notifier.text,
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Pick Date & Time",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: greaycolor,
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleScheduleBookingTap() async {
+    setState(() {
+      _selectedBookingType = 2; // Schedule Booking
+    });
+
+    if (_confirmedDropData == null) {
+      await _ensureCurrentPickup();
+      await _startDropSelection();
+    } else {
+      await _openVehicleSelection();
+    }
+  }
+
+  Future<void> _handleNextDayDeliveryTap() async {
+    Get.dialog(
+      const Center(
+        child: CircularProgressIndicator(color: Color(0xfff26522)),
+      ),
+      barrierDismissible: false,
+    );
+
+    final res = await _checkNextDayEligibility();
+    if (Get.isDialogOpen ?? false) {
+      Get.back();
+    }
+
+    if (res == null || res['is_eligible'] != true) {
+      final msg = res?['ResponseMsg']?.toString();
+      _showNextDayPremiumModal(message: msg);
+      return;
+    }
+
+    setState(() {
+      _selectedBookingType = 3;
+    });
+
+    if (_confirmedDropData == null) {
+      await _ensureCurrentPickup();
+      await _startDropSelection();
+    } else {
+      await _openVehicleSelection();
+    }
   }
 
   Future<void> _openVehicleSelection() async {
     final pickup = _confirmedPickupData;
     final drop = _confirmedDropData;
     if (pickup == null || drop == null) return;
-    // Every category goes through, available or not — select_vehicle.dart
-    // renders unavailable ones as disabled, greyed-out cards with their
-    // reason_unavailable text instead of just hiding them, so the customer
-    // can see a bike/car exists at all even when nobody's currently free to
-    // take it.
+
+    if (_selectedBookingType == 3) {
+      Get.dialog(
+        const Center(child: CircularProgressIndicator(color: Color(0xfff26522))),
+        barrierDismissible: false,
+      );
+      final res = await _checkNextDayEligibility();
+      if (Get.isDialogOpen ?? false) Get.back();
+
+      if (res == null || res['is_eligible'] != true) {
+        _showNextDayPremiumModal(message: res?['ResponseMsg']?.toString());
+        setState(() => _selectedBookingType = 1);
+        return;
+      }
+    }
+
     final options = <Map<String, dynamic>>[];
     for (final category in pickupiteam.whereType<Map>()) {
       final availability = _availabilityForCategory(category);
@@ -451,14 +992,16 @@ class _HomeState extends State<Home> {
       ApiWrapper.showToastMessage('Maximum $_maxExtraStops extra stops allowed.');
       return;
     }
-    final currentDrop = _confirmedDropData;
-    await Get.to(() => const Traking(type: "Drop", addressAdd: "0"));
-    final selected = getdata.read("DropeAddress");
-    if (currentDrop != null) {
-      await getdata.write("DropeAddress", [currentDrop]);
-    }
-    if (!mounted || selected is! List || selected.isEmpty || selected.first is! Map) return;
-    final stop = Map<String, dynamic>.from(selected.first as Map);
+    final selected = await Get.to<Map<String, dynamic>>(
+      () => LocationSearchScreen(
+        locationType: "Stop",
+        stopIndex: _extraStops.length,
+        pickupData: _confirmedPickupData,
+      ),
+    );
+
+    if (!mounted || selected == null) return;
+    final stop = Map<String, dynamic>.from(selected);
 
     if (_isBeyondFinalDrop(stop)) {
       await _showStopBeyondDropDialog();
@@ -470,17 +1013,18 @@ class _HomeState extends State<Home> {
 
   Future<void> _editExtraStop(int index) async {
     if (index < 0 || index >= _extraStops.length) return;
-    final currentDrop = _confirmedDropData;
-    await getdata.remove('DropeAddress');
-    await Get.to(() => const Traking(type: 'Drop', addressAdd: '0'));
-    final selected = getdata.read('DropeAddress');
-    if (currentDrop != null) {
-      await getdata.write('DropeAddress', [currentDrop]);
-    }
-    if (!mounted || selected is! List || selected.isEmpty || selected.first is! Map) {
-      return;
-    }
-    final stop = Map<String, dynamic>.from(selected.first as Map);
+    final initialStop = _extraStops[index];
+    final selected = await Get.to<Map<String, dynamic>>(
+      () => LocationSearchScreen(
+        locationType: "Stop",
+        stopIndex: index,
+        pickupData: _confirmedPickupData,
+        initialData: initialStop,
+      ),
+    );
+
+    if (!mounted || selected == null) return;
+    final stop = Map<String, dynamic>.from(selected);
     if (_isBeyondFinalDrop(stop)) {
       await _showStopBeyondDropDialog();
       return;
@@ -627,23 +1171,16 @@ class _HomeState extends State<Home> {
     final saved = getdata.read(key);
     if (saved is! List || saved.isEmpty || saved.first is! Map) return;
     final address = Map<String, dynamic>.from(saved.first as Map);
-    await Get.to(() => Traking(
-          type: mode,
-          type2: "Edit",
-          addressAdd: "0",
-          elat: address["lat_map"]?.toString(),
-          elang: address["long_map"]?.toString(),
-          housenumber: address["hno"]?.toString(),
-          landmark: address["landmark"]?.toString(),
-          cname: address["c_name"]?.toString(),
-          cnumbere: address["c_number"]?.toString(),
-          addresstype: address["type"]?.toString(),
-        ));
+    final updated = await Get.to<Map<String, dynamic>>(
+      () => LocationSearchScreen(
+        locationType: mode,
+        pickupData: mode == "Drop" ? _confirmedPickupData : null,
+        initialData: address,
+      ),
+    );
     if (!mounted) return;
-    final updated = getdata.read(key);
-    if (updated is List && updated.isNotEmpty && updated.first is Map) {
-      final updatedData = Map<String, dynamic>.from(updated.first as Map);
-      // Keep the edited route and the task form on the same persisted address.
+    final updatedData = updated ?? (getdata.read(key) is List && (getdata.read(key) as List).isNotEmpty && (getdata.read(key) as List).first is Map ? Map<String, dynamic>.from((getdata.read(key) as List).first as Map) : null);
+    if (updatedData != null) {
       await getdata.write(key, [updatedData]);
       setState(() {
         if (mode == "Pickup") {
@@ -656,6 +1193,9 @@ class _HomeState extends State<Home> {
       });
       if (mode == "Pickup") {
         await _loadVehicleAvailability(updatedData);
+      } else {
+        await _loadVehicleAvailability(_confirmedPickupData ?? updatedData);
+        if (mounted) await _openVehicleSelection();
       }
     }
   }
@@ -1089,41 +1629,29 @@ class _HomeState extends State<Home> {
             ),
           ),
           if (drop != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _selectedBookingType,
-                    decoration: const InputDecoration(
-                      labelText: 'Booking',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 1, child: Text('Now')),
-                      DropdownMenuItem(value: 3, child: Text('Next Day')),
-                    ],
-                    onChanged: (value) => setState(
-                        () => _selectedBookingType = value ?? 1),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: _openVehicleSelection,
+                icon: const Icon(Icons.local_shipping_rounded, size: 20, color: Colors.white),
+                label: const Text(
+                  'View Vehicles',
+                  style: TextStyle(
+                    fontFamily: 'Gilroy_Bold',
+                    fontSize: 15,
+                    color: Colors.white,
                   ),
                 ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _openVehicleSelection,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xffff6a2a),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('View vehicles'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xfff26522),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-              ],
+              ),
             ),
           ],
         ],
@@ -1527,6 +2055,18 @@ class _HomeState extends State<Home> {
     _loadSavedLocations();
     debugPrint("======= currentLat ======== $currentLat");
     debugPrint("======= currentLong ======= $currentLong");
+
+    // ── LISTEN FOR INCOMING LOCATION INTENTS ─────────────────────────────────
+    final appLinks = AppLinks();
+    // Handle initial link (app was cold-started from a geo / maps link)
+    appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleIncomingLocationUri(uri);
+    }).catchError((e) => debugPrint('[AppLinks] getInitialLink error: $e'));
+    // Handle links while app is already running
+    _intentSubscription = appLinks.uriLinkStream.listen(
+      (uri) => _handleIncomingLocationUri(uri),
+      onError: (e) => debugPrint('[AppLinks] stream error: $e'),
+    );
   }
 
   sqlDBDelete() async {
@@ -1536,6 +2076,325 @@ class _HomeState extends State<Home> {
     sql.fetchitemlist();
     debugPrint("========== db ========= ${db.runtimeType}");
     setState(() {});
+  }
+
+  // ── LOCATION INTENT HANDLER ───────────────────────────────────────────────
+  Future<void> _handleIncomingLocationUri(Uri uri) async {
+    debugPrint('[AppLinks] Received URI: $uri');
+
+    // Show a resolving indicator (especially needed for goo.gl short links)
+    Get.dialog(
+      Center(
+        child: Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: linercolor),
+              const SizedBox(height: 14),
+              const Text(
+                "Loading Location...",
+                style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: false,
+    );
+
+    ParsedLocation? loc;
+    try {
+      loc = await parseLocationUri(uri);
+    } catch (e) {
+      debugPrint('[AppLinks] parseLocationUri error: $e');
+    }
+
+    if (Get.isDialogOpen ?? false) Get.back();
+
+    if (loc == null) {
+      debugPrint('[AppLinks] Could not parse location from URI: $uri');
+      ApiWrapper.showToastMessage('Could not read location from this link.');
+      return;
+    }
+
+    if (!mounted) return;
+    _showLocationIntentSheet(loc);
+  }
+
+  /// Shows a Pickup / Drop selection bottom sheet after receiving a geo intent.
+  void _showLocationIntentSheet(ParsedLocation loc) {
+    final label = loc.label?.isNotEmpty == true
+        ? loc.label!
+        : '${loc.lat.toStringAsFixed(5)}, ${loc.lng.toStringAsFixed(5)}';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            22,
+            20,
+            22 + MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(9),
+                    decoration: BoxDecoration(
+                      color: linercolor.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.location_on_rounded, color: linercolor, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Location Received",
+                          style: TextStyle(
+                            fontFamily: 'Gilroy_Bold',
+                            fontSize: 17,
+                            color: Color(0xff1E293B),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Gilroy_Medium',
+                            fontSize: 12.5,
+                            color: Color(0xff64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Divider
+              Container(height: 1, color: const Color(0xffF1F5F9)),
+              const SizedBox(height: 18),
+
+              const Text(
+                "Use this location as:",
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 14,
+                  color: Color(0xff475569),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Pickup Button
+              _locationIntentButton(
+                icon: Icons.arrow_upward_rounded,
+                color: const Color(0xff10B981),
+                title: "Pickup Location",
+                subtitle: "Set as your pickup point",
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  await _setLocationFromIntent(loc, isPickup: true);
+                },
+              ),
+              const SizedBox(height: 10),
+
+              // Drop Button
+              _locationIntentButton(
+                icon: Icons.arrow_downward_rounded,
+                color: linercolor,
+                title: "Drop Location",
+                subtitle: "Set as your delivery destination",
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  await _setLocationFromIntent(loc, isPickup: false);
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // Dismiss
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(
+                      color: Color(0xff94A3B8),
+                      fontFamily: 'Gilroy_Medium',
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _locationIntentButton({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 14.5,
+                      color: Color(0xff1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontFamily: 'Gilroy_Medium',
+                      fontSize: 12,
+                      color: Color(0xff64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: color, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Sets the incoming geo location as pickup or drop and navigates accordingly.
+  Future<void> _setLocationFromIntent(ParsedLocation loc, {required bool isPickup}) async {
+    final user = getdata.read("UserLogin");
+    final name = user is Map ? user["name"]?.toString() ?? "" : "";
+    final number = user is Map ? user["mobile"]?.toString() ?? "" : "";
+
+    // Build address string from lat/lng using geocoding
+    String address = '';
+    try {
+      final geocodeUrl = Uri.parse(
+        'https://maps.googleapis.com/maps/api/geocode/json'
+        '?latlng=${loc.lat},${loc.lng}'
+        '&key=${Config.googleApikey}',
+      );
+      final geocodeRes = await http.get(geocodeUrl).timeout(const Duration(seconds: 8));
+      final geocodeJson = jsonDecode(geocodeRes.body);
+      if (geocodeJson['status'] == 'OK' && geocodeJson['results'] is List && (geocodeJson['results'] as List).isNotEmpty) {
+        address = geocodeJson['results'][0]['formatted_address']?.toString() ?? '';
+      }
+    } catch (e) {
+      debugPrint('[LocationIntent] Geocoding failed: $e');
+    }
+    if (address.isEmpty && loc.label?.isNotEmpty == true) {
+      address = loc.label!;
+    }
+    if (address.isEmpty) {
+      address = '${loc.lat.toStringAsFixed(5)}, ${loc.lng.toStringAsFixed(5)}';
+    }
+
+    final locationData = {
+      "address": address,
+      "lat_map": loc.lat,
+      "long_map": loc.lng,
+      "c_name": name,
+      "c_number": number,
+      "hno": "",
+      "landmark": loc.label ?? "",
+      "type": isPickup ? "Pickup" : "Drop",
+    };
+
+    if (isPickup) {
+      await getdata.write("PickupAddress", [locationData]);
+      if (mounted) {
+        setState(() {
+          _confirmedPickupData = locationData;
+          _confirmedPickupAddress = address;
+        });
+      }
+      ApiWrapper.showToastMessage("Pickup location set! Now choose a drop location.");
+    } else {
+      // Ensure pickup is set first
+      await _ensureCurrentPickup();
+      await getdata.write("DropeAddress", [locationData]);
+      if (!mounted) return;
+      setState(() {
+        _pickupConfirmed = true;
+        _confirmedDropData = locationData;
+        _confirmedDropAddress = address;
+        _isLoadingVehicleAvailability = true;
+        _vehicleAvailabilityError = null;
+        _vehicleAvailabilityById.clear();
+      });
+      if (_confirmedPickupData != null) {
+        await _loadVehicleAvailability(_confirmedPickupData!);
+        if (mounted) await _openVehicleSelection();
+      }
+    }
   }
 
   List homeIcon = [
@@ -1710,6 +2569,7 @@ class _HomeState extends State<Home> {
 
                       const SizedBox(height: 4),
                       _buildActiveOrderCard(),
+                      _buildDeliveryOptionsRow(),
                       _buildRouteSelectionCard(),
                       _buildQuickLocations(),
                       const SizedBox(height: 4),

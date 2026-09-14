@@ -12,34 +12,16 @@ function isFiniteNumber(value) {
   return typeof value === "number" ? Number.isFinite(value) : Number.isFinite(Number(value));
 }
 
-// Next-day orders have no fixed pickup time (admin assigns a window
-// separately) — only the calendar DATE matters, and it must be "tomorrow"
-// on India's calendar, not the server's. Render runs UTC (see
-// pricingEngine.isNightNow's comment for the same class of bug already
-// hit once), so the IST offset is applied explicitly rather than trusting
-// server-local time.
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 function nextDayScheduleDateIST(now = new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
-  ist.setUTCDate(ist.getUTCDate() + 1);
+  const istHour = ist.getUTCHours();
+  // If order is placed at or after 10:00 PM IST (22:00), cutoff has passed -> schedule for day after tomorrow
+  const daysToAdd = istHour >= 22 ? 2 : 1;
+  ist.setUTCDate(ist.getUTCDate() + daysToAdd);
   return ist.toISOString().slice(0, 10);
 }
 
-/**
- * The legacy mobile app has a confirmed field-swap quirk: it sends the
- * package's per-km RATE in radius_range and the customer's actually
- * -selected search radius (km) in radius_charge — verified against a real
- * order (cust_api/last_order_debug.json: radius_range=6.75 [the rate],
- * radius_charge=1 [the real 1km radius]; the old PHP code that used to
- * live here computed radius_range_computed=1, confirming the swap).
- * Trusting radius_range blindly silently widens every customer's search
- * radius to whatever the package's per-km rate happens to be, offering
- * the ride to drivers far outside what the customer actually picked.
- *
- * radiusRangeRaw/radiusChargeRaw are the untouched values as received;
- * fallbackKm is used only when neither raw field resolves to anything
- * usable (e.g. a client that never had this quirk in the first place).
- */
 function resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, perKmCharge, fallbackKm) {
   const range = Number(radiusRangeRaw);
   const charge = Number(radiusChargeRaw);
@@ -256,6 +238,16 @@ async function createOrderCore({
     ? nextDayScheduleDateIST()
     : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
+  if (Number(bookingType) === 3) {
+    if (!planDiscount || !planDiscount.noAdvancePayment) {
+      return {
+        ok: false,
+        code: "PREMIUM_PLAN_REQUIRED",
+        msg: "Next Day Delivery is exclusively available for Premium Plan members with No Advance Payment benefits.",
+      };
+    }
+  }
+
   const stopCharge = validStops.length * stopSettings.extraStopCharge;
   const order = await prisma.pkg_order.create({
     data: {
@@ -353,6 +345,9 @@ async function createOrder(req, res) {
 
     if (!result.ok && result.code === "VALIDATION") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "PREMIUM_PLAN_REQUIRED") {
+      return res.status(403).json({ ResponseCode: "403", Result: "false", ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "INVALID_PACKAGES") {
       return res.status(400).json({
@@ -515,6 +510,7 @@ async function customerCancel(req, res) {
   }
 }
 
+
 async function driverCancel(req, res) {
   try {
     const { rider_id, order_id, reason } = req.body;
@@ -570,6 +566,47 @@ async function rateOrder(req, res) {
   }
 }
 
+async function checkNextDayEligibility(req, res) {
+  try {
+    const uid = req.body?.uid || req.query?.uid;
+    if (!uid) {
+      return res.status(400).json({
+        ResponseCode: "400",
+        Result: "false",
+        ResponseMsg: "uid is required",
+      });
+    }
+
+    const plan = await pricingEngine.getActiveCustomerPlan(Number(uid));
+    const isEligible = Boolean(
+      plan &&
+      (plan.noAdvancePayment === true ||
+       plan.noAdvancePayment === 1 ||
+       String(plan.noAdvancePayment) === "1" ||
+       String(plan.noAdvancePayment) === "true")
+    );
+    const scheduleDate = nextDayScheduleDateIST();
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: isEligible
+        ? "User is eligible for Next Day Delivery"
+        : "Next Day Delivery is exclusively available for Premium Plan members with No Advance Payment benefits.",
+      is_eligible: isEligible,
+      has_active_plan: Boolean(plan),
+      plan_name: plan?.planName || null,
+      no_advance_payment: Boolean(plan?.noAdvancePayment),
+      delivery_date: scheduleDate,
+      delivery_window: "Tomorrow between 10:00 AM – 8:00 PM",
+      cutoff_time: "10:00 PM",
+    });
+  } catch (err) {
+    logger.error("checkNextDayEligibility failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   getCategories,
   fareEstimate,
@@ -581,4 +618,5 @@ module.exports = {
   customerCancel,
   driverCancel,
   rateOrder,
+  checkNextDayEligibility,
 };
