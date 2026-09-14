@@ -26,8 +26,14 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 initSocket(server);
 
+const { initWhatsAppBot } = require("./whatsapp/client");
+
 server.listen(PORT, () => {
   logger.info(`Server running on port ${PORT} (REST + Socket.io)`);
+  // Initialize WhatsApp Bot Client
+  if (process.env.DISABLE_WHATSAPP_BOT !== "true") {
+    initWhatsAppBot().catch((err) => logger.error("WhatsApp Bot startup error:", err));
+  }
 });
 
 // Best-effort cleanup of whatever a previous crash/restart left behind.
@@ -42,3 +48,4 @@ setInterval(() => {
     logger.error("sweepOverduePickups interval failed:", err)
   );
 }, PICKUP_TIMEOUT_SWEEP_INTERVAL_MS);
+// WhatsApp session reset trigger

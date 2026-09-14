@@ -16,6 +16,9 @@ const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
 const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
+const adminBotFileController = require("../controllers/adminBotFileController");
+const multer = require("multer");
+const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const serviceZoneController = require("../controllers/serviceZoneController");
 const monthlyDriverController = require("../controllers/monthlyDriverController");
 const orderQueueController = require("../controllers/orderQueueController");
@@ -204,5 +207,10 @@ router.delete("/questions/:id", auth, authorize("superadmin"), questionControlle
 router.get("/questions/:id/options", auth, authorize("superadmin"), questionController.listOptions);
 router.post("/questions/:id/options", auth, authorize("superadmin"), questionController.createOption);
 router.delete("/questions/:id/options/:optionId", auth, authorize("superadmin"), questionController.deleteOption);
+
+// --- AI Bot Knowledge Base File Management ---------------------------------
+router.get("/bot-file", auth, authorize("superadmin", "admin"), adminBotFileController.getBotFile);
+router.put("/bot-file", auth, authorize("superadmin"), adminBotFileController.updateBotFile);
+router.post("/bot-file/upload", auth, authorize("superadmin"), memoryUpload.single("file"), adminBotFileController.uploadBotFile);
 
 module.exports = router;
