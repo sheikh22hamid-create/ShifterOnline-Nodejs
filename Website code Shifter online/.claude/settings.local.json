@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/**)",
+      "Read(//mnt/data/**)",
+      "Bash(find /tmp -iname \"*.png\" -newer /tmp 2>/dev/null | head -20; echo \"---scratchpad---\"; find \"/c/Users/HP/AppData/Local/Temp/claude\" -iname \"*.png\" 2>/dev/null | head -20)",
+      "Read(//c/Users/HP/AppData/Local/Temp/claude/**)",
+      "Bash(find \"/c/Users/HP/AppData/Local/Temp\" -iname \"*.png\" -mmin -120 2>/dev/null | head -50)",
+      "Read(//c/Users/HP/AppData/Local/Temp/**)",
+      "Bash(find \"/c/Users/HP/AppData/Local/Temp\" -type f \\\\\\( -iname \"*.png\" -o -iname \"*.jpg\" -o -iname \"*.jpeg\" -o -iname \"*.webp\" \\\\\\) -mmin -180 2>/dev/null | head -50 *)",
+      "Read(//c/Users/HP/AppData/Roaming/**)",
+      "Bash(find \"/c/Users/HP/AppData/Roaming/Code\" -type f \\\\\\( -iname \"*.png\" -o -iname \"*.jpg\" \\\\\\) -mmin -240 2>/dev/null | head -30 *)",
+      "Read(//c/Users/HP/AppData/Local/**)",
+      "Bash(npm run *)",
+      "Bash(magick -version)",
+      "Bash(convert -version)",
+      "Bash(python -c \"from PIL import Image; im=Image.open\\(r'C:\\\\Users\\\\HP\\\\Desktop\\\\Website code Shifter online\\\\Shifter-Online-Website\\\\public\\\\shifter-online-logo.png'\\); print\\(im.size, im.mode\\)\")",
+      "Bash(pip install *)"
+    ]
+  }
+}

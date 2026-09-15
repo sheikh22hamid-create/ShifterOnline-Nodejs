@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand palette */
+  --color-navy: #0b2a68;
+  --color-royal: #123f8c;
+  --color-orange: #ff5a1f;
+  --color-orange-light: #ff7a3d;
+  --color-offwhite: #f7f9fc;
+  --color-ink: #0b1736;
+  --color-muted: #53627a;
+  --color-line: #e5eaf2;
+
+  --shadow-soft: 0 1px 2px rgba(11, 23, 54, 0.04), 0 8px 24px -12px rgba(11, 23, 54, 0.1);
+  --shadow-card: 0 1px 2px rgba(11, 23, 54, 0.04), 0 16px 40px -16px rgba(11, 23, 54, 0.16);
+  --shadow-lift: 0 24px 48px -16px rgba(11, 23, 54, 0.22);
+  --shadow-nav: 0 8px 30px -12px rgba(11, 23, 54, 0.12);
+
+  --animate-marquee: marquee 28s linear infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  section[id] {
+    scroll-margin-top: 104px;
+  }
+
+  body {
+    margin: 0;
+    background-color: #ffffff;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-orange);
+    color: #ffffff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-orange);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .container-shifter {
+    width: 100%;
+    max-width: 1400px;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  @media (min-width: 768px) {
+    .container-shifter {
+      padding-inline: 2rem;
+    }
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .bg-grid-fade {
+    background-image:
+      linear-gradient(to bottom, rgba(11, 42, 104, 0.05) 1px, transparent 1px),
+      linear-gradient(to right, rgba(11, 42, 104, 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 60% 30%, black 40%, transparent 90%);
+    mask-image: radial-gradient(ellipse 70% 60% at 60% 30%, black 40%, transparent 90%);
+  }
+}

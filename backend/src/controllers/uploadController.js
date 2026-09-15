@@ -50,26 +50,4 @@ function uploadOrderPhoto(req, res) {
   });
 }
 
-async function uploadAdminImage(req, res) {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No image file uploaded" });
-  }
-  try {
-    const ext = path.extname(req.file.originalname || "").toLowerCase();
-    const safeExt = ALLOWED_EXTENSIONS.includes(ext) ? ext : ".png";
-    const folder = req.body?.folder ? req.body.folder.replace(/[^a-zA-Z0-9_-]/g, "") : "category";
-    const filename = `${Date.now()}_${crypto.randomBytes(6).toString("hex")}${safeExt}`;
-    const relativePath = await uploadBuffer(req.file.buffer, `images/${folder}/${filename}`);
-    return res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully",
-      path: relativePath,
-    });
-  } catch (uploadErr) {
-    logger.error("uploadAdminImage failed:", uploadErr);
-    return res.status(500).json({ success: false, message: "Image upload failed" });
-  }
-}
-
-module.exports = { generatePhotoFilename, buildUploadResponse, uploadOrderPhoto, uploadAdminImage };
-
+module.exports = { generatePhotoFilename, buildUploadResponse, uploadOrderPhoto };

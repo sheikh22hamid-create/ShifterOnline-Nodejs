@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Upload, Image, Loader2 } from 'lucide-react'
 import api from '../../services/api'
 import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
@@ -15,11 +14,14 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
+    // This modal stays mounted across open/close and across which category
+    // it targets — re-seeding the form when either changes is a real
+    // sync-to-props transition, not a first-render duplicate.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError('')
     setForm(
       category
@@ -27,29 +29,6 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
         : EMPTY_FORM
     )
   }, [open, category])
-
-  async function handleFileUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    setError('')
-    const formData = new FormData()
-    formData.append('image', file)
-    formData.append('folder', 'category')
-    try {
-      const res = await api.post('/upload-image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      if (res.data?.path) {
-        setForm((f) => ({ ...f, cat_img: res.data.path }))
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to upload image')
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
-  }
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -71,8 +50,8 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? `Edit ${category.cat_name}` : 'New Vehicle Category'}
-      width={440}
+      title={isEdit ? `Edit ${category.cat_name}` : 'New category'}
+      width={420}
       footer={
         <>
           <button type="button" onClick={onClose} className="rounded-lg border px-3 py-1.5 text-[13px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
@@ -80,7 +59,7 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
           </button>
           <button
             type="button"
-            disabled={submitting || uploading || !form.cat_name || !form.cat_img}
+            disabled={submitting || !form.cat_name || !form.cat_img}
             onClick={handleSubmit}
             className="rounded-lg px-3 py-1.5 text-[13px] font-semibold disabled:opacity-50"
             style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
@@ -96,80 +75,35 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
         </div>
       )}
 
-      {/* Category Name */}
-      <div className="mb-3">
-        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-name">
-          Category name
-        </label>
-        <input
-          id="cat-name"
-          value={form.cat_name}
-          onChange={(e) => setForm((f) => ({ ...f, cat_name: e.target.value }))}
-          className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
-          style={FIELD_STYLE}
-          placeholder="e.g. Bike, 3 Wheeler"
-        />
-      </div>
-
-      {/* Image / Icon Section */}
-      <div className="mb-3">
-        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
-          Vehicle Category Image / Icon
-        </label>
-        
-        <div className="flex items-start gap-3 rounded-xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
-          {/* Image Preview Box */}
-          <div className="relative flex h-16 w-16 shrink-0 flex-col items-center justify-center overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-            {previewUrl ? (
-              <img src={previewUrl} alt="Preview" className="h-full w-full object-contain p-1" onError={(e) => (e.currentTarget.style.display = 'none')} />
-            ) : (
-              <div className="flex flex-col items-center gap-1 text-[10px]" style={{ color: 'var(--ink-faint)' }}>
-                <Image size={18} />
-                <span>No icon</span>
-              </div>
-            )}
-            {uploading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-                <Loader2 size={18} className="animate-spin text-white" />
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 space-y-2">
-            {/* Upload Button */}
-            <div>
-              <label
-                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition ${
-                  uploading ? 'pointer-events-none opacity-50' : ''
-                }`}
-                style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-              >
-                {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                <span>{uploading ? 'Uploading image...' : 'Upload Image / Icon'}</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} disabled={uploading} />
-              </label>
-              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                Supports PNG, JPG, WEBP, SVG
-              </p>
-            </div>
-
-            {/* Manual URL Input Option */}
-            <div>
-              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }} htmlFor="cat-img">
-                Or enter Image URL / Path manually:
-              </label>
-              <input
-                id="cat-img"
-                value={form.cat_img}
-                onChange={(e) => setForm((f) => ({ ...f, cat_img: e.target.value }))}
-                className="w-full rounded-lg border px-2.5 py-1.5 text-[12px] outline-none"
-                style={FIELD_STYLE}
-                placeholder="images/category/bike.png or https://..."
-              />
-            </div>
-          </div>
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          {previewUrl ? (
+            <img src={previewUrl} alt="" className="h-full w-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+          ) : (
+            <span className="text-[10px]" style={{ color: 'var(--ink-faint)' }}>
+              No icon
+            </span>
+          )}
+        </div>
+        <div className="flex-1">
+          <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-img">
+            Icon path
+          </label>
+          <input
+            id="cat-img"
+            value={form.cat_img}
+            onChange={(e) => setForm((f) => ({ ...f, cat_img: e.target.value }))}
+            className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+            style={FIELD_STYLE}
+            placeholder="images/category/bike.png"
+          />
         </div>
       </div>
+
+      <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-name">
+        Category name
+      </label>
+      <input id="cat-name" value={form.cat_name} onChange={(e) => setForm((f) => ({ ...f, cat_name: e.target.value }))} className="mb-3 w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} placeholder="e.g. Bike" />
 
       <div className="mb-3 grid grid-cols-2 gap-3">
         <div>
@@ -207,4 +141,3 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
     </Modal>
   )
 }
-

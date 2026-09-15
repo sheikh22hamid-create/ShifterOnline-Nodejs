@@ -52,7 +52,7 @@ export default function Categories() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
-            Vehicle Categories
+            Package Categories
           </h1>
           <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
             Customer-app vehicle categories that rate cards attach to.

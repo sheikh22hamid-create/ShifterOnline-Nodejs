@@ -119,25 +119,17 @@ const uploadAddressDocument = uploadDocumentHandler("address");
 const uploadLicenseDocument = uploadDocumentHandler("license");
 const uploadResidenceDocument = uploadDocumentHandler("residence");
 
-// --- bank_account.php --- (BankAccountActivity's fields) and a second,
-// older screen (AccountActivity) that collects a different field set for
-// the same table - a_name/iban_num/vat_id, no IFSC/branch. Both map onto
-// tbl_bank_account fine: ifsc_code/branch_name are nullable in the schema,
-// so they're only required when the caller actually sends account__name
-// (BankAccountActivity's flow); AccountActivity's a_name/iban_num flow
-// only requires the fields its screen actually collects.
+// --- bank_account.php ---
 async function saveBankAccount(req, res) {
   try {
     const b = req.body || {};
     const riderId = Number(b.rider_id || 0);
-    const accountName = b.account__name || b.a_name;
-    const accountNumber = b.account_number || b.iban_num;
-    const ifscCode = b.ifsc_code || "";
+    const accountName = b.account__name;
+    const accountNumber = b.account_number;
+    const ifscCode = b.ifsc_code;
     const bankName = b.bank_name;
-    const branchName = b.branch_name || "";
-    const vatId = b.vat_id || "";
-    const requiresIfscAndBranch = !!b.account__name; // BankAccountActivity's flow collects these; AccountActivity's doesn't
-    if (!riderId || !accountName || !accountNumber || !bankName || (requiresIfscAndBranch && (!ifscCode || !branchName))) {
+    const branchName = b.branch_name;
+    if (!riderId || !accountName || !accountNumber || !ifscCode || !bankName || !branchName) {
       return fail(res, "Missing Parameters!");
     }
 
@@ -145,17 +137,7 @@ async function saveBankAccount(req, res) {
     if (existing) {
       await prisma.tbl_bank_account.update({
         where: { id: existing.id },
-        data: {
-          a_name: accountName,
-          iban_num: accountNumber,
-          // Don't blank out a previously-saved IFSC/branch/VAT just because
-          // this particular caller's screen doesn't collect that field.
-          ifsc_code: ifscCode || existing.ifsc_code,
-          bank_name: bankName,
-          branch_name: branchName || existing.branch_name,
-          vat_id: vatId || existing.vat_id,
-          status: 0,
-        },
+        data: { a_name: accountName, iban_num: accountNumber, ifsc_code: ifscCode, bank_name: bankName, branch_name: branchName, status: 0 },
       });
       return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Bank Details Updated Successfully!" });
     }
@@ -168,7 +150,7 @@ async function saveBankAccount(req, res) {
         ifsc_code: ifscCode,
         bank_name: bankName,
         branch_name: branchName,
-        vat_id: vatId,
+        vat_id: "",
       },
     });
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Bank Details Added Successfully!" });
@@ -239,22 +221,7 @@ async function updateRiderVehicle(req, res) {
 async function vehicleTypeList(req, res) {
   try {
     const banners = await prisma.tbl_banner.findMany({ where: { status: 1 } });
-    const rawCategories = await prisma.pkg_category.findMany({ where: { cat_status: 1 }, orderBy: { sort_order: "asc" } });
-    const categories = rawCategories.map((cat) => ({
-      id: cat.id,
-      cat_name: cat.cat_name,
-      cat_img: cat.cat_img,
-      other_image: cat.other_image || cat.cat_img,
-      cat_status: cat.cat_status,
-      img: cat.cat_img,
-      image: cat.cat_img,
-      icon: cat.cat_img,
-      cat_icon: cat.cat_img,
-      cat_image: cat.cat_img,
-      vehicle_img: cat.cat_img,
-      cat_title: cat.cat_name,
-      title: cat.cat_name,
-    }));
+    const categories = await prisma.pkg_category.findMany({ where: { cat_status: 1 } });
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResultData: categories, banner: banners.map((b) => ({ id: b.id, img: b.img })) });
   } catch (err) {
     logger.error("driverKycController.vehicleTypeList failed:", err);

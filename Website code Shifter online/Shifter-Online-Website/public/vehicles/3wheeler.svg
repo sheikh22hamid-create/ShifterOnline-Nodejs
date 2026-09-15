@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120">
+  <rect width="200" height="120" rx="16" fill="#EFF6FF"/>
+  
+  <!-- Wheels -->
+  <circle cx="45" cy="85" r="16" fill="#1E3A8A"/>
+  <circle cx="45" cy="85" r="8" fill="#BFDBFE"/>
+  <circle cx="140" cy="85" r="18" fill="#1E3A8A"/>
+  <circle cx="140" cy="85" r="10" fill="#BFDBFE"/>
+  
+  <!-- Cargo Bed (Navy Blue) -->
+  <rect x="75" y="36" width="95" height="42" rx="4" fill="#1D4ED8"/>
+  <rect x="79" y="40" width="87" height="34" rx="3" fill="#2563EB"/>
+  <path d="M100 40 V74 M125 40 V74 M150 40 V74" stroke="#1E40AF" stroke-width="2"/>
+  
+  <!-- Cabin Driver Front -->
+  <path d="M25 80 L35 40 C38 34, 52 34, 62 38 L75 40 V80 Z" fill="#1E3A8A"/>
+  <!-- Windshield -->
+  <path d="M38 42 C42 37, 52 37, 58 40 L68 44 V60 H36 Z" fill="#93C5FD" opacity="0.9"/>
+  
+  <!-- Shifter Logo Stripe -->
+  <rect x="80" y="52" width="85" height="10" fill="#F97316" rx="2"/>
+  <text x="122" y="60" font-family="system-ui, sans-serif" font-size="7" font-weight="900" fill="#FFFFFF" text-anchor="middle">SHIFTER</text>
+  
+  <!-- Headlight -->
+  <circle cx="26" cy="65" r="4" fill="#FDE047"/>
+  
+  <text x="100" y="110" font-family="system-ui, sans-serif" font-size="11" font-weight="800" fill="#1E3A8A" text-anchor="middle">3-WHEELER LOADER</text>
+</svg>
