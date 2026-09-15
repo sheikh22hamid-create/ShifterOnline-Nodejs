@@ -348,8 +348,10 @@ async function homeData(req, res) {
 
     let deviceMatch = false;
     if (deviceId) {
-      const device = await prisma.tbl_user_device.findFirst({ where: { uid }, orderBy: { id: "desc" } });
-      deviceMatch = !!(device && device.is_active && device.device_id === deviceId);
+      // is_active straight in the WHERE, not "latest by id" - see
+      // memory/device_match_query_bug.md for why ordering by id is wrong here.
+      const device = await prisma.tbl_user_device.findFirst({ where: { uid, is_active: true }, orderBy: { last_login_at: "desc" } });
+      deviceMatch = !!(device && device.device_id === deviceId);
     }
 
     const user = await prisma.tbl_user.findUnique({ where: { id: uid } });

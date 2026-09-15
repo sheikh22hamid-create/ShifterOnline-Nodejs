@@ -223,8 +223,12 @@ async function setStatus(req, res) {
     // elsewhere gets caught sooner rather than only on next app reopen.
     let deviceMatch = true;
     if (device_id) {
-      const device = await prisma.tbl_user_device.findFirst({ where: { uid: Number(rider_id) }, orderBy: { id: "desc" } });
-      deviceMatch = !!(device && device.is_active && device.device_id === device_id);
+      // is_active straight in the WHERE, not "latest by id" - a device that
+      // logged in long ago but was reactivated today keeps its old (lower)
+      // id, so ordering by id desc can surface a newer-but-since-logged-out
+      // device instead of the actually active one (see memory/device_match_query_bug.md).
+      const device = await prisma.tbl_user_device.findFirst({ where: { uid: Number(rider_id), is_active: true }, orderBy: { last_login_at: "desc" } });
+      deviceMatch = !!(device && device.device_id === device_id);
     }
 
     return res.status(200).json({ Result: true, msg: "Status updated", device_match: deviceMatch });
@@ -263,8 +267,8 @@ async function updateLocation(req, res) {
     // logged in elsewhere.
     let deviceMatch = true;
     if (device_id) {
-      const device = await prisma.tbl_user_device.findFirst({ where: { uid: Number(rider_id) }, orderBy: { id: "desc" } });
-      deviceMatch = !!(device && device.is_active && device.device_id === device_id);
+      const device = await prisma.tbl_user_device.findFirst({ where: { uid: Number(rider_id), is_active: true }, orderBy: { last_login_at: "desc" } });
+      deviceMatch = !!(device && device.device_id === device_id);
     }
 
     return res.status(200).json({ Result: true, msg: "Location updated", device_match: deviceMatch });
