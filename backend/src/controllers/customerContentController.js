@@ -288,7 +288,22 @@ async function homeData(req, res) {
     const banner = bannerRow ? [{ id: bannerRow.id, img: bannerRow.img }] : [];
 
     const categoryWhere = { cat_status: 1, ...(search ? { cat_name: { contains: search } } : {}) };
-    const categories = await prisma.pkg_category.findMany({ where: categoryWhere, orderBy: { sort_order: "asc" } });
+    const rawCategories = await prisma.pkg_category.findMany({ where: categoryWhere, orderBy: { sort_order: "asc" } });
+    const categories = rawCategories.map((cat) => ({
+      id: cat.id,
+      cat_name: cat.cat_name,
+      cat_img: cat.cat_img,
+      other_image: cat.other_image || cat.cat_img,
+      cat_status: cat.cat_status,
+      img: cat.cat_img,
+      image: cat.cat_img,
+      icon: cat.cat_img,
+      cat_icon: cat.cat_img,
+      cat_image: cat.cat_img,
+      vehicle_img: cat.cat_img,
+      cat_title: cat.cat_name,
+      title: cat.cat_name,
+    }));
 
     // Legacy pre-migration order (buy_order) - kept only for response-shape
     // parity; new orders never write here (see couponList comment above),

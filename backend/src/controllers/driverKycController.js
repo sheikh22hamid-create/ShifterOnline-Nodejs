@@ -221,7 +221,22 @@ async function updateRiderVehicle(req, res) {
 async function vehicleTypeList(req, res) {
   try {
     const banners = await prisma.tbl_banner.findMany({ where: { status: 1 } });
-    const categories = await prisma.pkg_category.findMany({ where: { cat_status: 1 } });
+    const rawCategories = await prisma.pkg_category.findMany({ where: { cat_status: 1 }, orderBy: { sort_order: "asc" } });
+    const categories = rawCategories.map((cat) => ({
+      id: cat.id,
+      cat_name: cat.cat_name,
+      cat_img: cat.cat_img,
+      other_image: cat.other_image || cat.cat_img,
+      cat_status: cat.cat_status,
+      img: cat.cat_img,
+      image: cat.cat_img,
+      icon: cat.cat_img,
+      cat_icon: cat.cat_img,
+      cat_image: cat.cat_img,
+      vehicle_img: cat.cat_img,
+      cat_title: cat.cat_name,
+      title: cat.cat_name,
+    }));
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResultData: categories, banner: banners.map((b) => ({ id: b.id, img: b.img })) });
   } catch (err) {
     logger.error("driverKycController.vehicleTypeList failed:", err);

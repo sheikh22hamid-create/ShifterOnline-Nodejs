@@ -49,12 +49,23 @@ function resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, perKmCharge, fal
 
 async function getCategories(req, res) {
   try {
-    const categories = await prisma.pkg_category.findMany({
+    const rawCategories = await prisma.pkg_category.findMany({
       where: { cat_status: 1 },
       orderBy: { sort_order: "asc" },
-      select: { id: true, cat_name: true },
+      select: { id: true, cat_name: true, cat_img: true, other_image: true, cat_status: true },
     });
-    return res.status(200).json({ Result: true, categories });
+    const categories = rawCategories.map((cat) => ({
+      ...cat,
+      img: cat.cat_img,
+      image: cat.cat_img,
+      icon: cat.cat_img,
+      cat_icon: cat.cat_img,
+      cat_image: cat.cat_img,
+      vehicle_img: cat.cat_img,
+      cat_title: cat.cat_name,
+      title: cat.cat_name,
+    }));
+    return res.status(200).json({ Result: true, categories, ResponseCode: "200", ResponseMsg: "Categories retrieved successfully" });
   } catch (err) {
     logger.error("getCategories failed:", err);
     return res.status(500).json({ Result: false, msg: "Internal server error" });
