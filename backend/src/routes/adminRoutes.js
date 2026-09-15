@@ -23,11 +23,16 @@ const serviceZoneController = require("../controllers/serviceZoneController");
 const monthlyDriverController = require("../controllers/monthlyDriverController");
 const orderQueueController = require("../controllers/orderQueueController");
 const adminSearchController = require("../controllers/adminSearchController");
+const uploadController = require("../controllers/uploadController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
 
 const router = express.Router();
+
+// General admin image upload (category icons, vehicle images, etc.)
+router.post("/upload-image", auth, memoryUpload.single("image"), uploadController.uploadAdminImage);
+
 
 // Define role whitelist for rider/fleet management before any route registrations
 const RIDER_ROLES = ["superadmin", "admin", "executive"];
