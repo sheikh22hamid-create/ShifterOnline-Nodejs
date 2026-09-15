@@ -134,7 +134,7 @@ function extractAllText(doc) {
 async function verifyAadharPdf({ aadharBase64, fullName, dob }) {
   const prefix = namePrefix(fullName);
   if (!aadharBase64 || !prefix) {
-    return { ok: false, reason: "aadhar_base64 and full_name are required.", field: "name" };
+    return { ok: false, reason: "aadhar_base64 and full_name are required." };
   }
 
   let buffer;

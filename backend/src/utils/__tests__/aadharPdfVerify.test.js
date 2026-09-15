@@ -94,7 +94,7 @@ describe("aadharPdfVerify", () => {
 
       const result = await aadharPdfVerify.verifyAadharPdf({ aadharBase64: Buffer.from("pdfbytes").toString("base64"), fullName: "Rahul Sharma" });
 
-      expect(result).toEqual({ ok: false, reason: "Aadhar details not matched." });
+      expect(result).toEqual({ ok: false, reason: "Name Mismatch. The name entered does not match your Aadhaar.", field: "name" });
     });
 
     it("fails when the PDF unlocks (right prefix+year) but the full name isn't actually in the text", async () => {
@@ -104,7 +104,35 @@ describe("aadharPdfVerify", () => {
 
       const result = await aadharPdfVerify.verifyAadharPdf({ aadharBase64: Buffer.from("pdfbytes").toString("base64"), fullName: "Rahul Sharma" });
 
-      expect(result).toEqual({ ok: false, reason: "Aadhar details not matched." });
+      expect(result).toEqual({ ok: false, reason: "Name Mismatch. The name entered does not match your Aadhaar.", field: "name" });
+    });
+
+    it("fails with a DOB-specific reason when the name matches but the entered DOB year doesn't", async () => {
+      const fakeDoc = makeFakeDoc({ correctPassword: "RAHU1990", pageText: "Government of India To Rahul Sharma DOB: 15/08/1990" });
+      mupdfMock.Document.openDocument.mockImplementation(() => fakeDoc);
+
+      const result = await aadharPdfVerify.verifyAadharPdf({
+        aadharBase64: Buffer.from("pdfbytes").toString("base64"),
+        fullName: "Rahul Sharma",
+        dob: "15/08/1992",
+      });
+
+      expect(result).toEqual({ ok: false, reason: "DOB Mismatch. The date of birth entered does not match your Aadhaar.", field: "dob" });
+      expect(fakeDoc.destroy).toHaveBeenCalled();
+    });
+
+    it("succeeds when both name and dob (year) match", async () => {
+      const fakeDoc = makeFakeDoc({ correctPassword: "RAHU1990", pageText: "Government of India To Rahul Sharma DOB: 15/08/1990" });
+      mupdfMock.Document.openDocument.mockImplementation(() => fakeDoc);
+
+      const result = await aadharPdfVerify.verifyAadharPdf({
+        aadharBase64: Buffer.from("pdfbytes").toString("base64"),
+        fullName: "Rahul Sharma",
+        dob: "15/08/1990",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.matchedYear).toBe(1990);
     });
 
     it("handles a corrupt/unreadable PDF without throwing", async () => {
