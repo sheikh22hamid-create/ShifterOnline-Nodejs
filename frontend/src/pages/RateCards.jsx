@@ -290,6 +290,7 @@ export default function RateCards() {
                   'Model / Title',
                   'Min Fare',
                   'Distance Pricing',
+                  'Pickup & Cancel',
                   'Night Surge',
                   'Driver Share',
                   'Wait Policy',
@@ -312,7 +313,7 @@ export default function RateCards() {
               {loading &&
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={9} className="px-4 py-3">
+                    <td colSpan={10} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
@@ -320,7 +321,7 @@ export default function RateCards() {
 
               {!loading && error && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={10} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
@@ -328,7 +329,7 @@ export default function RateCards() {
 
               {!loading && !error && filteredRateCards.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+                  <td colSpan={10} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-muted)' }}>
                     No rate cards match your selected vehicle filter or search query.
                   </td>
                 </tr>
@@ -392,9 +393,22 @@ export default function RateCards() {
                         </div>
                       </td>
 
+                      {/* Pickup & Cancellation Charges Column */}
+                      <td className="font-mono-data whitespace-nowrap px-4 py-3 text-[12px]">
+                        <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          Pickup: {formatCurrency(rc.pickup_per_km_charge || 0)}/km
+                        </div>
+                        <div className="text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+                          User Cancel: {formatCurrency(rc.cancellation_charge_customer || 0)}
+                        </div>
+                        <div className="text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                          Driver Fee: {formatCurrency(rc.cancellation_charge_driver || 0)}
+                        </div>
+                      </td>
+
                       {/* Night Surge */}
                       <td className="font-mono-data whitespace-nowrap px-4 py-3" style={{ color: 'var(--ink-muted)' }}>
-                        <div>{rc.night_charge_percent}%</div>
+                        <div>{formatCurrency(rc.night_charge_percent || 0)}</div>
                         {rc.start_time && rc.end_time && (
                           <div className="flex items-center gap-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
                             <Clock size={10} /> {rc.start_time} - {rc.end_time}

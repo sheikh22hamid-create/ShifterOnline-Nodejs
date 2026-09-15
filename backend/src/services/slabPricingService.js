@@ -183,12 +183,26 @@ async function getSlabPricingConfig() {
       prisma.app_settings.findUnique({ where: { setting_key: "pricing_model_multipliers" } }),
     ]);
 
-    cachedSlabRates = slabsSetting?.setting_value ? JSON.parse(slabsSetting.setting_value) : DEFAULT_SLAB_RATES;
-    cachedModelMultipliers = multipliersSetting?.setting_value
-      ? JSON.parse(multipliersSetting.setting_value)
-      : DEFAULT_MODEL_MULTIPLIERS;
+    if (slabsSetting?.setting_value) {
+      try {
+        cachedSlabRates = JSON.parse(slabsSetting.setting_value);
+      } catch (e) {
+        cachedSlabRates = DEFAULT_SLAB_RATES;
+      }
+    } else {
+      cachedSlabRates = DEFAULT_SLAB_RATES;
+    }
+
+    if (multipliersSetting?.setting_value) {
+      try {
+        cachedModelMultipliers = JSON.parse(multipliersSetting.setting_value);
+      } catch (e) {
+        cachedModelMultipliers = DEFAULT_MODEL_MULTIPLIERS;
+      }
+    } else {
+      cachedModelMultipliers = DEFAULT_MODEL_MULTIPLIERS;
+    }
   } catch (err) {
-    logger.error("Error loading slab pricing config from DB:", err);
     cachedSlabRates = DEFAULT_SLAB_RATES;
     cachedModelMultipliers = DEFAULT_MODEL_MULTIPLIERS;
   }
