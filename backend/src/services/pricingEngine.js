@@ -298,11 +298,11 @@ function commissionAmount(dCharge, commissionPercent) {
  * discount themselves (via getActivePlanDiscount) rather than this function
  * looking it up, to keep it free of DB access.
  */
-function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, discount = null) {
+function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, discount = null, slabConfig = null, modelMultipliers = null) {
   const discountedPkg = applyPlanDiscount(pkg, discount);
   const isNight = isNightNow(discountedPkg);
   const radiusCharge = roundMoney(calculateRadiusCharge(discountedPkg, radiusRangeKm));
-  const fare = calculateFare(discountedPkg, distanceKm, isNight, radiusRangeKm, extraMileCharge);
+  const fare = calculateFare(discountedPkg, distanceKm, isNight, radiusRangeKm, extraMileCharge, slabConfig, modelMultipliers);
   const driverEarning = calculateDriverEarning(discountedPkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
@@ -312,15 +312,18 @@ function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0
 }
 
 /** `uid`, when given, looks up that customer's active plan discount (if any) and applies it — see priceForPackage. */
-async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, uid = null) {
-  const [pkg, discount] = await Promise.all([
+async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, uid = null, slabConfig = null, modelMultipliers = null) {
+  const [pkg, discount, slabPricingConfig] = await Promise.all([
     getPackageById(packageId),
     getActivePlanDiscount(uid),
+    (!slabConfig || !modelMultipliers) ? getSlabPricingConfig() : null,
   ]);
   if (!pkg) {
     throw new Error(`tbl_package not found for id ${packageId}`);
   }
-  return priceForPackage(pkg, distanceKm, radiusRangeKm, extraMileCharge, discount);
+  const resolvedSlabConfig = slabConfig || (slabPricingConfig ? findVehicleSlabConfig(slabPricingConfig.slabRates, pkg.cat_id || pkg.category || pkg.category_id) : null);
+  const resolvedMultipliers = modelMultipliers || slabPricingConfig?.modelMultipliers || null;
+  return priceForPackage(pkg, distanceKm, radiusRangeKm, extraMileCharge, discount, resolvedSlabConfig, resolvedMultipliers);
 }
 
 /**
@@ -544,4 +547,6 @@ module.exports = {
   getDistanceEstimate,
   getPackageListForCategory,
   getAddStopSettings,
+  getSlabPricingConfig,
+  findVehicleSlabConfig,
 };

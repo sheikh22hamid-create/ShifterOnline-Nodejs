@@ -340,9 +340,10 @@ function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distance
  * Helper to match a vehicle category (by id or name) to its slab configuration.
  */
 function findVehicleSlabConfig(slabRates, catIdOrName) {
-  if (!slabRates) return null;
+  if (!slabRates || !catIdOrName) return null;
 
-  const input = String(catIdOrName || "").toLowerCase().trim();
+  const input = String(catIdOrName).toLowerCase().trim();
+  if (!input) return null;
   for (const key of Object.keys(slabRates)) {
     const cfg = slabRates[key];
     if (String(cfg.category_id) === input || cfg.vehicle_key.toLowerCase() === input) {

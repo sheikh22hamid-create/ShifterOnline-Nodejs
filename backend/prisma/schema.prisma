@@ -35,7 +35,7 @@ model admin {
 model app_settings {
   id            Int       @id @default(autoincrement())
   setting_key   String?   @unique(map: "setting_key") @db.VarChar(100)
-  setting_value String?   @db.VarChar(255)
+  setting_value String?   @db.Text
   updated_at    DateTime? @default(now()) @db.Timestamp(0)
 }
 

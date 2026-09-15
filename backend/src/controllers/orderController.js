@@ -175,11 +175,12 @@ async function createOrderCore({
     ? Promise.resolve({ distanceKm: clientDistance, durationMin: Math.round(clientDistance * 2), source: "client" })
     : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong));
 
-  const [validPackages, customer, distanceResult, planDiscount] = await Promise.all([
+  const [validPackages, customer, distanceResult, planDiscount, slabPricingConfig] = await Promise.all([
     prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
     cityId ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
     distancePromise,
     pricingEngine.getActivePlanDiscount(uid),
+    pricingEngine.getSlabPricingConfig(),
   ]);
 
   const packagesById = new Map(validPackages.map((p) => [p.id, p]));
@@ -215,19 +216,34 @@ async function createOrderCore({
     100
   );
 
+  const firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+    slabPricingConfig?.slabRates,
+    firstPkg?.cat_id || firstPkg?.category || firstPkg?.category_id
+  );
+
   // radiusRangeKm=1 (zero radius charge), not resolvedRadiusKm — no driver
   // is known yet at order-creation time, so there's no real pickup distance
   // to bill. resolvedRadiusKm remains the search-filter radius stored below
   // as radius_range; the actual radius charge is billed per-driver once
   // dispatch/accept knows who's actually being offered/assigned this order
   // (see dispatchManager.runBatchInner and tripLifecycle.acceptOrder).
-  const { fare, driverEarning, commission } = pricingEngine.priceForPackage(
-    firstPkg,
-    distanceKm,
-    1,
-    (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
-    planDiscount
-  );
+  const { fare, driverEarning, commission } = (firstVehicleSlabConfig || slabPricingConfig?.modelMultipliers)
+    ? pricingEngine.priceForPackage(
+        firstPkg,
+        distanceKm,
+        1,
+        (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
+        planDiscount,
+        firstVehicleSlabConfig,
+        slabPricingConfig?.modelMultipliers
+      )
+    : pricingEngine.priceForPackage(
+        firstPkg,
+        distanceKm,
+        1,
+        (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
+        planDiscount
+      );
 
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);
@@ -324,6 +340,8 @@ async function createOrderCore({
       // popup off their real pickup distance without a redundant re-fetch of
       // the package row/discount it already looked up for tier 0 above.
       pkg: firstPkg, discount: planDiscount,
+      ...(firstVehicleSlabConfig ? { slabConfig: firstVehicleSlabConfig } : {}),
+      ...(slabPricingConfig?.modelMultipliers ? { modelMultipliers: slabPricingConfig.modelMultipliers } : {}),
     }).catch((err) =>
       logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
     );

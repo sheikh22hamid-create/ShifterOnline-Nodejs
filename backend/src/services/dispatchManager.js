@@ -409,7 +409,7 @@ async function runBatchInner(orderId) {
 
   const distanceKm = Number(currentOrder.distance) || 0;
   const extraMileCharge = Number(currentOrder.extra_mile_charge) || 0;
-  let pkg, discount, packageTitle;
+  let pkg, discount, packageTitle, vehicleSlabConfig, modelMultipliers;
   if (precomputed && precomputed.pkg) {
     // orderController.createOrderCore already had the package row/discount in
     // hand when it priced tier 0's placeholder fare — reuse them instead of a
@@ -418,12 +418,22 @@ async function runBatchInner(orderId) {
     pkg = precomputed.pkg;
     discount = precomputed.discount || null;
     packageTitle = precomputed.packageTitle || pkg?.title || `Model ${packageId}`;
+    vehicleSlabConfig = precomputed.slabConfig || null;
+    modelMultipliers = precomputed.modelMultipliers || null;
   } else {
-    [pkg, discount] = await Promise.all([
+    const [pkgResult, discountResult, slabPricingConfig] = await Promise.all([
       pricingEngine.getPackageById(packageId),
       pricingEngine.getActivePlanDiscount(currentOrder.uid),
+      pricingEngine.getSlabPricingConfig(),
     ]);
+    pkg = pkgResult;
+    discount = discountResult;
     packageTitle = pkg?.title || `Model ${packageId}`;
+    vehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+      slabPricingConfig?.slabRates,
+      pkg?.cat_id || pkg?.category || pkg?.category_id
+    );
+    modelMultipliers = slabPricingConfig?.modelMultipliers || null;
 
     // Placeholder d_charge/total_dcharge (radiusRangeKm=1 -> zero radius
     // charge) so the order row has SOME fare before any driver-specific
@@ -431,12 +441,33 @@ async function runBatchInner(orderId) {
     // pickup distance instead, and the order's fare is finalized for real at
     // accept time off the accepting driver's actual distance (see
     // tripLifecycle.acceptOrder).
-    const basePriced = pricingEngine.priceForPackage(pkg, distanceKm, 1, extraMileCharge, discount);
+    const basePriced = pricingEngine.priceForPackage(
+      pkg,
+      distanceKm,
+      1,
+      extraMileCharge,
+      discount,
+      vehicleSlabConfig,
+      modelMultipliers
+    );
     // Asynchronous update so we don't block driver dispatch by 400-800ms of remote DB latency
     prisma.pkg_order.update({
       where: { id: orderId },
       data: { d_charge: basePriced.fare, total_dcharge: basePriced.fare, commission: basePriced.commission, delivery_type: Number(packageId) },
     }).catch((err) => logger.error("dispatchManager: async pkg_order update failed:", err));
+  }
+
+  if (!vehicleSlabConfig || !modelMultipliers) {
+    const slabPricingConfig = await pricingEngine.getSlabPricingConfig();
+    if (!vehicleSlabConfig) {
+      vehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+        slabPricingConfig?.slabRates,
+        pkg?.cat_id || pkg?.category || pkg?.category_id
+      );
+    }
+    if (!modelMultipliers) {
+      modelMultipliers = slabPricingConfig?.modelMultipliers || null;
+    }
   }
   if (!state.customerStats) {
     let customerRating = "5.0";
@@ -611,7 +642,9 @@ async function runBatchInner(orderId) {
             distanceKm,
             Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
             extraMileCharge,
-            discount
+            discount,
+            vehicleSlabConfig,
+            modelMultipliers
           );
           const payload = buildOrderRequestPayload(
             currentOrder, packageId, distanceKm.toFixed(1), fare, packageTitle,
