@@ -242,21 +242,23 @@ async function verifyRc(req, res) {
 // --- verify_aadhar.php equivalent (no PHP original - new endpoint) ---
 // Unlocks the driver's uploaded e-Aadhaar PDF using UIDAI's own documented
 // password scheme (first 4 letters of name + birth year, brute-forced since
-// the birth year isn't collected separately - see utils/aadharPdfVerify.js)
-// and confirms the name printed inside it matches what was submitted.
+// the exact year isn't known upfront - see utils/aadharPdfVerify.js), then
+// confirms both the name and (when dob is sent) date of birth printed
+// inside it match what was submitted - reporting which one failed.
 async function verifyAadhar(req, res) {
   try {
     const body = req.body || {};
     const aadharBase64 = body.aadhar_base64 || body.aadhar_pdf || body.aadharBase64;
     const fullName = body.full_name || body.fullName;
+    const dob = body.dob || body.date_of_birth || body.dateOfBirth;
 
     if (!aadharBase64 || !fullName) {
       return res.status(400).json({ status: false, ResponseCode: "400", message: "aadhar_base64 and full_name are required." });
     }
 
-    const result = await verifyAadharPdf({ aadharBase64, fullName });
+    const result = await verifyAadharPdf({ aadharBase64, fullName, dob });
     if (!result.ok) {
-      return res.status(200).json({ status: false, ResponseCode: "401", message: result.reason || "Aadhar details not matched." });
+      return res.status(200).json({ status: false, ResponseCode: "401", message: result.reason || "Aadhar details not matched.", field: result.field });
     }
     return res.status(200).json({ status: true, ResponseCode: "200", message: result.message || "Aadhar Verified Successfully" });
   } catch (err) {

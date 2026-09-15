@@ -46,6 +46,19 @@ function normalizeForMatch(text) {
     .toUpperCase();
 }
 
+// Pulls the 4-digit year out of a DOB string, whatever separator/order the
+// caller used (driver app sends DD/MM/YYYY; accept YYYY-MM-DD too).
+function parseYearFromDob(dobStr) {
+  const s = String(dobStr || "").trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})[/\-.]\d{1,2}[/\-.]\d{1,2}/);
+  if (iso) return Number(iso[1]);
+  const dmy = s.match(/\d{1,2}[/\-.]\d{1,2}[/\-.](\d{4})/);
+  if (dmy) return Number(dmy[1]);
+  const anyYear = s.match(/\d{4}/);
+  return anyYear ? Number(anyYear[0]) : null;
+}
+
 /** Tries every "PREFIX+year" password until one unlocks the PDF. Returns the authenticated mupdf Document, or null. */
 function unlockWithBruteForce(mupdf, buffer, prefix) {
   const currentYear = new Date().getFullYear();
@@ -113,12 +126,15 @@ function extractAllText(doc) {
  * @param {string} aadharBase64 - the e-Aadhaar PDF, base64-encoded (a data:
  *   URI prefix like "data:application/pdf;base64," is stripped if present).
  * @param {string} fullName - the name to verify the PDF against.
- * @returns {Promise<{ok: true, message: string, matchedYear: number|null} | {ok: false, reason: string}>}
+ * @param {string} [dob] - the date of birth to verify (any of DD/MM/YYYY,
+ *   DD-MM-YYYY, YYYY-MM-DD). Optional for backward compatibility - when
+ *   omitted, DOB is not checked.
+ * @returns {Promise<{ok: true, message: string, matchedYear: number|null} | {ok: false, reason: string, field?: "name"|"dob"}>}
  */
-async function verifyAadharPdf({ aadharBase64, fullName }) {
+async function verifyAadharPdf({ aadharBase64, fullName, dob }) {
   const prefix = namePrefix(fullName);
   if (!aadharBase64 || !prefix) {
-    return { ok: false, reason: "aadhar_base64 and full_name are required." };
+    return { ok: false, reason: "aadhar_base64 and full_name are required.", field: "name" };
   }
 
   let buffer;
@@ -146,8 +162,28 @@ async function verifyAadharPdf({ aadharBase64, fullName }) {
     return { ok: false, reason: "Could not read the Aadhar PDF." };
   }
   if (!unlocked) {
+    // The password is namePrefix+birthYear. Brute-forcing every plausible
+    // year (1900-current) with THIS prefix and finding no match means the
+    // prefix itself is wrong - no year would ever have worked - so this is
+    // conclusively a name problem, not a DOB one.
     logger.info(`aadharPdfVerify: PDF unlock failed (prefix="${prefix}") - no year 1900-${new Date().getFullYear()} matched the password.`);
-    return { ok: false, reason: "Aadhar details not matched." };
+    return { ok: false, reason: "Name Mismatch. The name entered does not match your Aadhaar.", field: "name" };
+  }
+
+  // Unlocking succeeded, which means the namePrefix was correct - so the
+  // password's matched year IS the true birth year (a decryption fact, not
+  // a text-extraction guess). Compare it against the caller's DOB directly
+  // instead of trying to regex a DOB out of the (bilingual, layout-varying)
+  // decrypted text.
+  if (dob) {
+    const inputYear = parseYearFromDob(dob);
+    if (inputYear && unlocked.year !== null && inputYear !== unlocked.year) {
+      logger.info(`aadharPdfVerify: DOB year mismatch - PDF password year=${unlocked.year}, entered dob="${dob}" (parsed year=${inputYear}).`);
+      if (unlocked.doc) {
+        try { unlocked.doc.destroy(); } catch (e) {}
+      }
+      return { ok: false, reason: "DOB Mismatch. The date of birth entered does not match your Aadhaar.", field: "dob" };
+    }
   }
 
   try {
@@ -169,7 +205,7 @@ async function verifyAadharPdf({ aadharBase64, fullName }) {
 
     if (!nameMatches) {
       logger.info(`aadharPdfVerify: PDF unlocked (prefix="${prefix}", year=${unlocked.year}) but no word of "${normalizedName}" found in PDF text.`);
-      return { ok: false, reason: "Aadhar details not matched." };
+      return { ok: false, reason: "Name Mismatch. The name entered does not match your Aadhaar.", field: "name" };
     }
     return { ok: true, message: "Aadhar Verified Successfully", matchedYear: unlocked.year };
   } catch (err) {
@@ -189,4 +225,5 @@ async function verifyAadharPdf({ aadharBase64, fullName }) {
 exports.verifyAadharPdf = verifyAadharPdf;
 exports.namePrefix = namePrefix;
 exports.normalizeForMatch = normalizeForMatch;
+exports.parseYearFromDob = parseYearFromDob;
 exports.loadMupdf = loadMupdf;
