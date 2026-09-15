@@ -1,4 +1,5 @@
 const logger = require("../utils/logger");
+const prisma = require("../config/db");
 const { verifyAadharPdf } = require("../utils/aadharPdfVerify");
 
 // Node port of rider_api/generate_captcha_dl.php + verify_dl.php (official
@@ -267,4 +268,73 @@ async function verifyAadhar(req, res) {
   }
 }
 
-module.exports = { generateCaptcha, verifyDrivingLicence, verifyRc, verifyAadhar };
+// --- dynamic_kyc_config (no PHP original - new endpoint) ---
+// The Acko RC lookup and Sarathi DL lookup are unofficial APIs the driver
+// app calls DIRECTLY from the device (not proxied through this backend) -
+// deliberately, so requests come from many different driver IPs instead of
+// this server's single IP, which is far more likely to get rate-limited or
+// blacklisted by Acko/Sarathi as scraping traffic. The session cookies those
+// calls need were previously hardcoded in the app itself, meaning a cookie
+// rotation needed a new APK release and the value sat in plaintext in every
+// installed app (visible to anyone who decompiles it). This endpoint lets
+// the app fetch the current values instead - admin updates them here
+// (PUT /admin/settings with flags.acko_session_cookie / flags.sarathi_state_id,
+// see settingsController.js) and every app picks up the change on its next
+// call, no release needed. Falls back to the same hardcoded values the app
+// used before, so nothing breaks before an admin ever sets these.
+const DEFAULT_ACKO_SESSION_COOKIE =
+  "trackerid=cfcfa1d2-1296-4f53-8c38-fba0e4191538; acko_visit=AUWiVoBxCYTuhC2CBMqKqw; __cf_bm=ocp4NsMUjDqtKtvue76PVxWP3f1Y2X0WW5FQRkpD7qY-1787159997.7578132-1.0.1.1-6E0aE.RQcYtyvCRMJDZic0orgE5Cah6dGKIjp_zDWiV_3zFceDFVAbrjpikpPZVvQ0eFqOov0z5lAIvFaBjJZsWd2s1L3KbBgFN4bMIwCvolbta9TBr0fa11Fz3xMmit";
+const DEFAULT_SARATHI_STATE_ID = "ZHlLVUxHYWtBbGVBZnM3cG5qdEFSdz09";
+
+async function getDynamicKycConfig(req, res) {
+  try {
+    const rows = await prisma.app_settings.findMany({
+      where: { setting_key: { in: ["acko_session_cookie", "sarathi_state_id"] } },
+    });
+    const byKey = Object.fromEntries(rows.map((r) => [r.setting_key, r.setting_value]));
+
+    const ackoCookie = byKey.acko_session_cookie || process.env.ACKO_SESSION_COOKIE || DEFAULT_ACKO_SESSION_COOKIE;
+    const sarathiStateId = byKey.sarathi_state_id || DEFAULT_SARATHI_STATE_ID;
+
+    // Self-seed: the admin Settings page ("Other Feature Flags") only renders
+    // keys that already exist in app_settings, with no way to create a brand
+    // new one from that UI. Creating these rows on first use (fire-and-forget,
+    // doesn't block the app's response) means admin sees them pre-populated
+    // and editable immediately, instead of needing a DB console the first time.
+    if (!byKey.acko_session_cookie || !byKey.sarathi_state_id) {
+      Promise.all([
+        !byKey.acko_session_cookie
+          ? prisma.app_settings.upsert({
+              where: { setting_key: "acko_session_cookie" },
+              create: { setting_key: "acko_session_cookie", setting_value: ackoCookie, updated_at: new Date() },
+              update: {},
+            })
+          : null,
+        !byKey.sarathi_state_id
+          ? prisma.app_settings.upsert({
+              where: { setting_key: "sarathi_state_id" },
+              create: { setting_key: "sarathi_state_id", setting_value: sarathiStateId, updated_at: new Date() },
+              update: {},
+            })
+          : null,
+      ]).catch((err) => logger.error("driverGovVerificationController.getDynamicKycConfig seed failed:", err));
+    }
+
+    return res.status(200).json({
+      status: true,
+      ResponseCode: "200",
+      data: { acko_session_cookie: ackoCookie, sarathi_state_id: sarathiStateId },
+    });
+  } catch (err) {
+    logger.error("driverGovVerificationController.getDynamicKycConfig failed:", err);
+    // Never block KYC on this lookup failing - hand back the same defaults
+    // the app already ships with so verification still works.
+    return res.status(200).json({
+      status: true,
+      ResponseCode: "200",
+      data: { acko_session_cookie: DEFAULT_ACKO_SESSION_COOKIE, sarathi_state_id: DEFAULT_SARATHI_STATE_ID },
+    });
+  }
+}
+
+module.exports = { generateCaptcha, verifyDrivingLicence, verifyRc, verifyAadhar, getDynamicKycConfig };

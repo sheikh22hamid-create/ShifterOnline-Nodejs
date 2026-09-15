@@ -105,6 +105,9 @@ router.get("/kyc/dl/captcha", driverGovVerificationController.generateCaptcha);
 router.post("/kyc/dl/verify", driverGovVerificationController.verifyDrivingLicence);
 router.post("/kyc/rc/verify", driverGovVerificationController.verifyRc);
 router.post("/kyc/aadhar/verify", driverGovVerificationController.verifyAadhar);
+// Lets the app fetch the Acko/Sarathi session cookies admin can rotate via
+// PUT /admin/settings instead of having them hardcoded in the APK.
+router.get("/kyc/dynamic-config", appKeyAuth, driverGovVerificationController.getDynamicKycConfig);
 
 module.exports = router;
 
