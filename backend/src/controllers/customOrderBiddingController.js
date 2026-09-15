@@ -75,6 +75,16 @@ async function listBids(req, res) {
     const orderId = Number(req.body?.order_id || 0);
     if (!orderId) return fail(res, "order_id is required");
 
+    // IDOR guard: same "trust but verify when given" pattern used elsewhere
+    // in this migration - enforce ownership whenever the caller sends a
+    // user_id (the freshly-migrated ShifterOnline call now does), without
+    // breaking any caller that doesn't yet.
+    const requestedUserId = Number(req.body?.user_id || 0);
+    if (requestedUserId) {
+      const order = await prisma.tbl_custom_order.findUnique({ where: { id: orderId }, select: { user_id: true } });
+      if (!order || order.user_id !== requestedUserId) return fail(res, "order_id is required");
+    }
+
     const bids = await prisma.tbl_custom_order_bid.findMany({
       where: { order_id: orderId },
       orderBy: { bid_amount: "asc" },

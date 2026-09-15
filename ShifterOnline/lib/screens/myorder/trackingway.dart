@@ -2306,7 +2306,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       "rider_id": "${orderProduc["rider_id"]}",
     };
     try {
-      final val = await ApiWrapper.dataPost(Config.addFavoriteDriver, data);
+      final val = await ApiWrapper.dataPostNode(Config.nodeFavoritesToggle, data);
       if (val != null && val.isNotEmpty) {
         if (val["Result"] == true) {
           setState(() {
@@ -2415,7 +2415,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           builder: (context, setStateDialog) {
             if (!hasFetched) {
               hasFetched = true;
-              ApiWrapper.dataPost(Config.cancelReason, {"type": "user"})!.then((val) {
+              ApiWrapper.dataPostNode(Config.nodeCancelReasons, {"type": "user"}).then((val) {
                 if (val != null && val['ResponseCode'] == "200" && val['reason_list'] != null) {
                   reasonList = val['reason_list'];
                 }
@@ -3260,7 +3260,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   PaymentGatwayApiModel? paymentGatwayApiModel;
 
   paymenrgatway() {
-    ApiWrapper.dataGet(Config.paymentgateway)!.then((val) {
+    ApiWrapper.dataGetNode(Config.nodePaymentGateways).then((val) {
       var data = jsonEncode(val);
       debugPrint("============ payment gateway =========== $val");
       if ((val != null) && (val.isNotEmpty)) {

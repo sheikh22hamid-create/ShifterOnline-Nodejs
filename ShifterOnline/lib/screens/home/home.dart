@@ -203,7 +203,7 @@ class _HomeState extends State<Home> {
     }
 
     try {
-      final response = await ApiWrapper.dataPost(Config.address, {"uid": uid});
+      final response = await ApiWrapper.dataPostNode(Config.nodeAddressList, {"uid": uid});
       final rawLocations = response is Map ? response["AddressList"] : null;
       final locations = rawLocations is List
           ? rawLocations
@@ -3320,7 +3320,7 @@ class _HomeState extends State<Home> {
 
     debugPrint("========= data -------- ${data}");
 
-    ApiWrapper.dataPost(Config.homeData, data).then((val) async {
+    ApiWrapper.dataPostNode(Config.nodeHome, data).then((val) async {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           // Check for DeviceMatch

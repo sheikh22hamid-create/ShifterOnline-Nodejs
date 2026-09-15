@@ -125,7 +125,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
   smsTypeApi() {
     controller.clear();
     setState(() {});
-    ApiWrapper.dataGet(Config.smaType)!.then((val) {
+    ApiWrapper.dataGetNode(Config.nodeAppConfig).then((val) {
       debugPrint("============ sms type =========== $val");
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
@@ -143,10 +143,10 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
   msgOtpApi(){
     var body = {"mobile": widget.ccode + widget.mobile};
     if (widget.ccode.isNotEmpty && widget.mobile.isNotEmpty) {
-      ApiWrapper.dataPost(Config.msgOtp, body).then((val) {
+      ApiWrapper.dataPostNode(Config.nodeSendOtp, body).then((val) {
         if ((val != null) && (val.isNotEmpty)) {
           if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
-            getotp = val['otp'].toString();
+            getotp = val['otp']?.toString();
             _start = 15;
             otpgetsms();
             startTimer();
@@ -387,10 +387,10 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                                 };
 
                                 debugPrint("======== VERIFY OTP REQUEST ========");
-                                debugPrint("URL: ${Config.verifyOtp}");
+                                debugPrint("URL: ${Config.nodeVerifyOtp}");
                                 debugPrint("Body: $verifyBody");
 
-                                ApiWrapper.dataPost(Config.verifyOtp, verifyBody).then((val) {
+                                ApiWrapper.dataPostNode(Config.nodeVerifyOtp, verifyBody).then((val) {
                                   debugPrint("======== VERIFY OTP RESPONSE ========");
                                   debugPrint("Response: $val");
                                   if ((val != null) && (val.isNotEmpty) && (val['ResponseCode'] == "200") && (val['Result'] == "true")) {
@@ -520,7 +520,7 @@ Future singUpApi(
       "device_id": deviceId,
     };
     debugPrint("SIGNUP request payload => $data");
-    ApiWrapper.dataPost(Config.reguser, data).then((value) {
+    ApiWrapper.dataPostNode(Config.nodeRegister, data).then((value) {
       log(value.toString(), name: "Register Api ");
       save("UserLogin", value["UserLogin"]);
       if ((value != null) && (value.isNotEmpty)) {

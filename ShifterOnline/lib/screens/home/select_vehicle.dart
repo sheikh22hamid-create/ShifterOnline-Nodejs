@@ -572,7 +572,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   Future<double> _fetchWalletBalance() async {
     final login = _storage.read('UserLogin');
     if (login is! Map) return 0;
-    final response = await ApiWrapper.dataPost(Config.walletHistory, {'mobile': login['mobile'], 'wallet_type': 'user'});
+    final response = await ApiWrapper.dataPostNode(Config.nodeWalletHistory, {'mobile': login['mobile'], 'wallet_type': 'user'});
     return _number(response is Map ? response['wallet_balance'] : 0);
   }
 
@@ -589,7 +589,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (payValue == -2 && login is Map) {
       final balance = await _fetchWalletBalance();
       if (balance < fee) { setState(() => _booking = false); ApiWrapper.showToastMessage('Insufficient wallet balance.'); return; }
-      final deducted = await ApiWrapper.dataPost(Config.withdrawWallet, {'mobile': login['mobile'], 'wallet_type': 'user', 'amount': fee.toStringAsFixed(2), 'remark': 'Delivery payment'});
+      final deducted = await ApiWrapper.dataPostNode(Config.nodeWalletWithdraw, {'mobile': login['mobile'], 'wallet_type': 'user', 'amount': fee.toStringAsFixed(2), 'remark': 'Delivery payment'});
       if (deducted is! Map || !(deducted['Result'] == true || deducted['Result'] == 'true')) { setState(() => _booking = false); ApiWrapper.showToastMessage('Wallet payment failed.'); return; }
     }
     final uid = _storage.read('Uid');

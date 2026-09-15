@@ -1903,7 +1903,7 @@ class _BuyAnythingSelectState extends State<BuyAnythingSelect> with SingleTicker
   PaymentGatwayApiModel? paymentGatwayApiModel;
 
   paymenrgatway() {
-    ApiWrapper.dataGet(Config.paymentgateway)!.then((val) {
+    ApiWrapper.dataGetNode(Config.nodePaymentGateways).then((val) {
       var data = jsonEncode(val);
       debugPrint("============ payment gateway =========== $val");
       if ((val != null) && (val.isNotEmpty)) {
@@ -1919,7 +1919,7 @@ class _BuyAnythingSelectState extends State<BuyAnythingSelect> with SingleTicker
     var uid = getdata.read("Uid") ?? "";
     var data = {"uid": uid};
     debugPrint(data.toString());
-    ApiWrapper.dataPost(Config.address, data).then((val) {
+    ApiWrapper.dataPostNode(Config.nodeAddressList, data).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           setState(() {});

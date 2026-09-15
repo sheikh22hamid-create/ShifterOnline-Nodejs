@@ -231,6 +231,14 @@ async function buyMapInfo(req, res) {
     const row = await prisma.buy_order.findUnique({ where: { id: orderId } });
     if (!row) return fail(res, "Something Went Wrong!");
 
+    // IDOR guard: same "trust but verify when given" pattern as
+    // buyOrderDetailDriver/orderController.getMapInfo - the shipped app
+    // (trackingway.dart's buyMapinfoget) only sends { orderid } today, so
+    // uid can't be made mandatory without breaking it. Enforce it whenever a
+    // caller does send one.
+    const requestedUid = Number(req.body?.uid || 0);
+    if (requestedUid && row.uid !== requestedUid) return fail(res, "Something Went Wrong!");
+
     let rider = null;
     if (row.rid) rider = await prisma.tbl_rider.findUnique({ where: { id: row.rid } });
 

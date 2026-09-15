@@ -256,12 +256,12 @@ async function verifyAadhar(req, res) {
 
     const result = await verifyAadharPdf({ aadharBase64, fullName });
     if (!result.ok) {
-      return res.status(200).json({ status: false, ResponseCode: "401", message: result.reason });
+      return res.status(200).json({ status: false, ResponseCode: "401", message: result.reason || "Aadhar details not matched." });
     }
-    return res.status(200).json({ status: true, ResponseCode: "200", message: result.message });
+    return res.status(200).json({ status: true, ResponseCode: "200", message: result.message || "Aadhar Verified Successfully" });
   } catch (err) {
     logger.error("driverGovVerificationController.verifyAadhar failed:", err);
-    return res.status(500).json({ status: false, ResponseCode: "500", message: "Internal server error" });
+    return res.status(200).json({ status: false, ResponseCode: "401", message: "Aadhar details not matched." });
   }
 }
 
