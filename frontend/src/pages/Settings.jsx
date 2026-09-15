@@ -18,6 +18,10 @@ function Input(props) {
   return <input {...props} className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none" style={FIELD_STYLE} />
 }
 
+function Textarea(props) {
+  return <textarea {...props} className="w-full rounded-lg border px-2.5 py-1.5 text-[12px] font-mono outline-none resize-y" style={FIELD_STYLE} />
+}
+
 function Section({ title, children }) {
   return (
     <section className="surface-card rounded-xl p-4">
@@ -298,7 +302,66 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
-        {Object.keys(flags).filter((k) => k !== 'training_video_url' && k !== 'training_video_title').length > 0 && (
+        <section className="surface-card rounded-xl p-4">
+          <div className="mb-3">
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+              KYC Verification Session Cookies
+            </h3>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+              Used by the Driver App to call Acko (Vehicle RC lookup) and Sarathi Parivahan (Driving Licence lookup) directly from
+              the device — deliberately not proxied through this server, so requests come from many driver IPs instead of one,
+              which keeps this server from getting rate-limited or blacklisted as scraping traffic. When a lookup starts failing
+              with an auth/session error, that provider's cookie below has likely expired — grab a fresh one from a real browser
+              session and paste it here. Every app picks up the new value on its next verification attempt, no app release needed.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="flag-acko_session_cookie">Acko session cookie (Vehicle RC lookup)</Label>
+              <Textarea
+                id="flag-acko_session_cookie"
+                rows={3}
+                placeholder="trackerid=...; acko_visit=...; __cf_bm=..."
+                value={flags.acko_session_cookie ?? ''}
+                onChange={(e) => setFlags((f) => ({ ...f, acko_session_cookie: e.target.value }))}
+              />
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                Copy the full Cookie header value from a signed-in browser session on acko.com's vehicle-info lookup page.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="flag-sarathi_state_id">Sarathi Parivahan STATEID cookie (Driving Licence lookup)</Label>
+              <Input
+                id="flag-sarathi_state_id"
+                placeholder="Base64-looking STATEID value"
+                value={flags.sarathi_state_id ?? ''}
+                onChange={(e) => setFlags((f) => ({ ...f, sarathi_state_id: e.target.value }))}
+              />
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                Rarely needs changing — Sarathi's actual session (JSESSIONID) is established fresh per verification attempt;
+                this is a static state-selector value.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+              These fields don't save on Enter (multi-line) — use the button.
+            </span>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Save size={14} /> {saving ? 'Saving…' : 'Save Cookies'}
+            </button>
+          </div>
+        </section>
+
+        {Object.keys(flags).filter((k) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id'].includes(k)).length > 0 && (
           <section className="surface-card rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
@@ -315,7 +378,7 @@ function SettingsForm({ data, onSaved }) {
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Object.entries(flags)
-                .filter(([key]) => key !== 'training_video_url' && key !== 'training_video_title')
+                .filter(([key]) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id'].includes(key))
                 .map(([key, value]) => (
                   <div key={key}>
                     <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
