@@ -146,6 +146,7 @@ async function verifyAadharPdf({ aadharBase64, fullName }) {
     return { ok: false, reason: "Could not read the Aadhar PDF." };
   }
   if (!unlocked) {
+    logger.info(`aadharPdfVerify: PDF unlock failed (prefix="${prefix}") - no year 1900-${new Date().getFullYear()} matched the password.`);
     return { ok: false, reason: "Aadhar details not matched." };
   }
 
@@ -167,6 +168,7 @@ async function verifyAadharPdf({ aadharBase64, fullName }) {
     const nameMatches = nameWords.length === 0 || matchedWords >= 1 || normalizedText.includes(normalizedName);
 
     if (!nameMatches) {
+      logger.info(`aadharPdfVerify: PDF unlocked (prefix="${prefix}", year=${unlocked.year}) but no word of "${normalizedName}" found in PDF text.`);
       return { ok: false, reason: "Aadhar details not matched." };
     }
     return { ok: true, message: "Aadhar Verified Successfully", matchedYear: unlocked.year };
