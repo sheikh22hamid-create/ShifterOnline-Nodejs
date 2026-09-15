@@ -14,6 +14,9 @@ const EMPTY_FORM = {
   city_id: '',
   min_charge: '',
   per_km_charge: '',
+  pickup_per_km_charge: '',
+  cancellation_charge_customer: '0',
+  cancellation_charge_driver: '0',
   free_waiting_time: '5',
   waiting_charge: '',
   start_time: '00:00',
@@ -64,6 +67,9 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             city_id: rateCard.city_id,
             min_charge: rateCard.min_charge,
             per_km_charge: rateCard.per_km_charge,
+            pickup_per_km_charge: rateCard.pickup_per_km_charge ?? '',
+            cancellation_charge_customer: rateCard.cancellation_charge_customer ?? '0',
+            cancellation_charge_driver: rateCard.cancellation_charge_driver ?? '0',
             free_waiting_time: rateCard.free_waiting_time,
             waiting_charge: rateCard.waiting_charge,
             start_time: rateCard.start_time,
@@ -216,8 +222,41 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             <Input id="min_charge" type="number" value={form.min_charge} onChange={(e) => set('min_charge', e.target.value)} />
           </div>
           <div>
-            <Label htmlFor="per_km_charge">Per km (₹)</Label>
+            <Label htmlFor="per_km_charge">Per km trip rate (₹)</Label>
             <Input id="per_km_charge" type="number" value={form.per_km_charge} onChange={(e) => set('per_km_charge', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label htmlFor="pickup_per_km_charge">Pickup Per-KM (₹)</Label>
+            <Input
+              id="pickup_per_km_charge"
+              type="number"
+              value={form.pickup_per_km_charge}
+              onChange={(e) => set('pickup_per_km_charge', e.target.value)}
+              placeholder="Same as trip per-km"
+            />
+          </div>
+          <div>
+            <Label htmlFor="cancellation_charge_customer">Customer Cancel Fee (₹)</Label>
+            <Input
+              id="cancellation_charge_customer"
+              type="number"
+              value={form.cancellation_charge_customer}
+              onChange={(e) => set('cancellation_charge_customer', e.target.value)}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <Label htmlFor="cancellation_charge_driver">Driver Cancel Fee (₹)</Label>
+            <Input
+              id="cancellation_charge_driver"
+              type="number"
+              value={form.cancellation_charge_driver}
+              onChange={(e) => set('cancellation_charge_driver', e.target.value)}
+              placeholder="0"
+            />
           </div>
         </div>
 
@@ -245,7 +284,7 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
 
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="night_charge_percent">Night surge %</Label>
+            <Label htmlFor="night_charge_percent">Night surge (₹)</Label>
             <Input id="night_charge_percent" type="number" value={form.night_charge_percent} onChange={(e) => set('night_charge_percent', e.target.value)} />
           </div>
           <div>

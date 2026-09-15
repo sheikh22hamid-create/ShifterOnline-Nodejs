@@ -337,8 +337,8 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
               vehicleCategory: parsed.vehicle || null,
             });
             replyText = `📍 *Pickup*: ${parsed.pickup}\n🎯 *Drop*: ${parsed.drop}\n\n` +
-                        `⭕ *Driver Search Radius*\n\n` +
-                        `Aapka driver search radius kitna hai? (1 km se 30 km ke beech enter karein, e.g. 1, 5, 10, 30):`;
+              `⭕ *Driver Search Radius*\n\n` +
+              `Aapka driver search radius kitna hai? (1 km se 30 km ke beech enter karein, e.g. 1, 5, 10, 30):`;
           } else {
             replyText = await customerHandler.handleFareCalculation(senderPhone, {}, session);
             sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_PICKUP");
@@ -405,8 +405,8 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
               vehicleCategory: parsed.vehicle || null,
             });
             replyText = `📍 *Pickup*: ${parsed.pickup}\n🎯 *Drop*: ${parsed.drop}\n\n` +
-                        `⭕ *Driver Search Radius*\n\n` +
-                        `Aapka driver search radius kitna hai? (1 km se 30 km ke beech enter karein, e.g. 1, 5, 10, 30):`;
+              `⭕ *Driver Search Radius*\n\n` +
+              `Aapka driver search radius kitna hai? (1 km se 30 km ke beech enter karein, e.g. 1, 5, 10, 30):`;
           } else {
             replyText = "📦 *Shifter Online Booking*\n\nAapka Pickup location specify karein:\n• Text address likhein (e.g. *Pickup: CP Delhi, Drop: Noida Sector 18*)\n• Ya WhatsApp me 📎 *(Paperclip / +)* ➔ *Location* ➔ *Send Location* map se pin share karein!";
             sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_PICKUP");
@@ -601,9 +601,9 @@ async function handleWizardSteps(senderPhone, text, session, fullMsg) {
         dropLng: lng,
       });
       return `🎯 *Drop Location Confirmed via Map Pin!*\n\n🏠 *Address*: ${verifiedAddress}\n📍 *Coordinates*: ${lat.toFixed(4)}, ${lng.toFixed(4)}\n\n` +
-             `⭕ *Driver Search Radius*\n\n` +
-             `Aapka driver search radius kitna hai?\n` +
-             `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
+        `⭕ *Driver Search Radius*\n\n` +
+        `Aapka driver search radius kitna hai?\n` +
+        `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
     } else {
       sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_DROP", {
         pickupAddress: verifiedAddress,
@@ -659,9 +659,9 @@ async function handleWizardSteps(senderPhone, text, session, fullMsg) {
           vehicleCategory: v || null,
         });
         return `📍 *Pickup*: ${verifiedPickup}\n🎯 *Drop*: ${verifiedDrop}\n\n` +
-               `⭕ *Driver Search Radius*\n\n` +
-               `Aapka driver search radius kitna hai?\n` +
-               `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
+          `⭕ *Driver Search Radius*\n\n` +
+          `Aapka driver search radius kitna hai?\n` +
+          `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
       }
 
       sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_DROP", {
@@ -693,9 +693,9 @@ async function handleWizardSteps(senderPhone, text, session, fullMsg) {
         vehicleCategory: v || session.data.vehicleCategory || null,
       });
       return `🎯 Drop address verified!\n*${verifiedDrop}*\n\n` +
-             `⭕ *Driver Search Radius*\n\n` +
-             `Aapka driver search radius kitna hai?\n` +
-             `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
+        `⭕ *Driver Search Radius*\n\n` +
+        `Aapka driver search radius kitna hai?\n` +
+        `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
     }
 
     case "BOOKING_AWAIT_RADIUS": {
@@ -704,8 +704,8 @@ async function handleWizardSteps(senderPhone, text, session, fullMsg) {
 
       if (isNaN(radiusVal) || radiusVal < 1 || radiusVal > 30) {
         return `⚠️ *Invalid Driver Search Radius!*\n\n` +
-               `Driver search radius *1 km se 30 km* ke beech hona chahiye.\n` +
-               `Kripya 1 se 30 ke beech ki value enter karein (e.g. 1, 5, 10, 30):`;
+          `Driver search radius *1 km se 30 km* ke beech hona chahiye.\n` +
+          `Kripya 1 se 30 ke beech ki value enter karein (e.g. 1, 5, 10, 30):`;
       }
 
       const validRadius = Math.round(radiusVal);
@@ -737,14 +737,14 @@ async function handleWizardSteps(senderPhone, text, session, fullMsg) {
 
       if (!selectedCat) {
         return `⚠️ Invalid selection! Kripya list me se sahi Category number ya naam reply karein.\n\n` +
-               customerHandler.formatCategoriesPrompt(categories, session.data.searchRadius || 5);
+          customerHandler.formatCategoriesPrompt(categories, session.data.searchRadius || 5);
       }
 
       const { distanceKm, models } = await customerHandler.getCategoryModels(selectedCat.id, session.data);
 
       if (!models || models.length === 0) {
         return `⚠️ *${selectedCat.cat_name}* category me abhi koi vehicle model active nahi hai.\nKripya koi doosri category choose karein:\n\n` +
-               customerHandler.formatCategoriesPrompt(categories, session.data.searchRadius || 5);
+          customerHandler.formatCategoriesPrompt(categories, session.data.searchRadius || 5);
       }
 
       sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_MODEL", {
@@ -775,7 +775,7 @@ async function handleWizardSteps(senderPhone, text, session, fullMsg) {
 
       if (!selectedModel) {
         return `⚠️ Invalid Model Selection! Kripya list me se valid Model Number reply karein (1 se ${models.length} ke beech).\n\n` +
-               customerHandler.formatModelsPrompt(session.data.vehicleCategory, models, session.data.distanceKm || 0);
+          customerHandler.formatModelsPrompt(session.data.vehicleCategory, models, session.data.distanceKm || 0);
       }
 
       const updatedSession = {

@@ -4,15 +4,11 @@ import { useAuth } from './AuthContext'
 
 const SocketContext = createContext(null)
 
-const PROD_SOCKET_URL = 'https://shifteronline-nodejs.onrender.com'
+const PROD_SOCKET_URL = 'https://shifteronline-nodejs-dev.onrender.com'
 
 function resolveSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) {
     return import.meta.env.VITE_SOCKET_URL
-  }
-  // In local browser dev, connect to backend port 5000 if running on Vite (5173)
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return window.location.port !== '5000' ? 'http://localhost:5000' : window.location.origin
   }
   return PROD_SOCKET_URL
 }

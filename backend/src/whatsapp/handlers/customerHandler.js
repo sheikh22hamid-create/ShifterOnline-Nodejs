@@ -114,7 +114,9 @@ function formatModelsPrompt(categoryName, models, distanceKm) {
 
   models.forEach((mod, idx) => {
     const radiusNote = mod.radius_charge > 0 ? ` (Radius Charge: ₹${mod.radius_charge})` : ` (1st km Free)`;
-    text += `${idx + 1}. *${mod.title}* — ₹${mod.estimated_fare}${radiusNote}\n`;
+    const hasCustomTitle = mod.user_title && mod.user_title !== mod.title && mod.user_title !== "undefined";
+    const displayName = hasCustomTitle ? `${mod.title} (${mod.user_title})` : mod.title;
+    text += `${idx + 1}. *${displayName}* — ₹${mod.estimated_fare}${radiusNote}\n`;
   });
 
   text += `\nKripya apne pasand ka *Model Number* select karne ke liye reply karein (e.g. 1, 2, 3):`;
@@ -136,7 +138,11 @@ async function getFareEstimateResult(bookingData) {
     } = bookingData;
 
     const radiusKm = parseInt(searchRadius, 10) || 5;
-    const modelTitle = selectedModel ? selectedModel.title : "Standard Model";
+    const hasCustomTitle = selectedModel?.user_title && selectedModel.user_title !== selectedModel.title && selectedModel.user_title !== "undefined";
+    const modelTitle = selectedModel
+      ? (hasCustomTitle ? `${selectedModel.title} (${selectedModel.user_title})` : selectedModel.title)
+      : "Standard Model";
+
     const fare = selectedModel ? parseFloat(selectedModel.estimated_fare || selectedModel.min_charge) : 0;
     const radiusCharge = selectedModel ? parseFloat(selectedModel.radius_charge || 0) : 0;
     const dist = distanceKm || bookingData.distanceKm || 0;
@@ -168,8 +174,8 @@ async function getFareEstimateResult(bookingData) {
     return text;
   } catch (err) {
     logger.error("getFareEstimateResult error:", err);
-    return `💰 *Your Estimated Fare is ₹150*\n\n` +
-           `ℹ️ WhatsApp par direct booking available nahi hai. Booking ke liye hamari official application download karein:\n` +
+    return `💰 *Fare Calculation Error*\n\n` +
+           `Kripya hamari official application download karke exact fare check karein:\n` +
            `🔗 https://play.google.com/store/apps/details?id=com.shifter.online`;
   }
 }
