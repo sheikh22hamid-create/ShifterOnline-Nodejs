@@ -28,6 +28,7 @@ router.post("/auth/logout", riderAuthController.logout);
 router.get("/test-drivers", riderController.listTestDrivers);
 router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);
 router.post("/delivery-type", riderController.setDeliveryType);
+router.post("/package-list", riderController.packageListForDriver);
 router.post("/status", riderController.setStatus);
 router.post("/location", riderController.updateLocation);
 router.post("/isolate-test-drivers", riderController.isolateTestDrivers);

@@ -86,147 +86,7 @@ async function pkgHistoryDriver(req, res) {
     }
     const benefitByOrder = Object.fromEntries(benefitLogs.map((b) => [Number(b.ride_id), b]));
 
-    const history = rows.map((row) => {
-      const timerInfo = getAdvancePaymentTimerInfo(row);
-      const isPaid = Number(row.payment_status || 0) === 1;
-      const isAdvRequired = isPaid ? false : timerInfo.is_advance_required;
-
-      const fare = Number(row.total_dcharge) > 0 ? Number(row.total_dcharge) : Number(row.d_charge || 0);
-
-      let commPct;
-      if (row.o_status === "Completed" && row.commission !== null && row.commission !== "") {
-        commPct = Number(row.commission);
-      } else if (row.commission != null && Number(row.commission) > 0) {
-        commPct = Number(row.commission);
-      } else {
-        commPct = globalComm;
-      }
-
-      let adminAmount = Number(row.admin_amount || 0);
-      if (adminAmount <= 0 && fare > 0) {
-        adminAmount = Math.round(((fare * commPct) / 100) * 100) / 100; // round(fare * commPct / 100, 2)
-      }
-
-      const advPay = Number(row.advance_payment || 0);
-      const transId = String(row.trans_id || "").toLowerCase();
-      const isCashOrder = transId.startsWith("cash");
-      const driverEarning = Math.max(0, Number((fare - adminAmount).toFixed(2)));
-      const cashCollect = Math.max(0, Number((fare - advPay).toFixed(2)));
-
-      const walletDiff = Number((driverEarning - cashCollect).toFixed(2));
-      let walletAction = "none";
-      let walletAdj = 0;
-      let adjNote;
-      if (walletDiff < 0) {
-        walletAction = "debit";
-        walletAdj = Math.abs(walletDiff);
-        adjNote = `Driver earning ₹${driverEarning.toFixed(2)}. Cash collected ₹${cashCollect.toFixed(2)}. ₹${walletAdj.toFixed(2)} debited from wallet.`;
-      } else if (walletDiff > 0) {
-        walletAction = "add";
-        walletAdj = walletDiff;
-        adjNote = `Driver earning ₹${driverEarning.toFixed(2)}. Cash collected ₹${cashCollect.toFixed(2)}. ₹${walletAdj.toFixed(2)} added to wallet.`;
-      } else {
-        adjNote = `Driver earning ₹${driverEarning.toFixed(2)} settled completely via cash collected.`;
-      }
-
-      const benefit = row.o_status === "Completed" ? benefitByOrder[Number(row.id)] : null;
-      const planName = benefit ? planNameCache[benefit.plan_id] : null;
-      const planDiscountApplied = benefit ? Number(benefit.discount_applied) : 0;
-      const planIncentiveEarned = benefit ? Number(benefit.incentive_earned) : 0;
-
-      return {
-        id: row.id,
-        order_user_id: row.uid,
-        status: row.o_status,
-        order_date: row.odate,
-        total: row.d_charge,
-        pick_name: row.pick_name,
-        drop_name: row.drop_name,
-        time_duration: row.time_duration,
-        order_flow_id: row.order_status,
-        advance_payment: timerInfo.advance_payment,
-        payment_status: isPaid ? 1 : 0,
-        is_advance_payment_required: isAdvRequired,
-        is_advance_required: isAdvRequired,
-        advance_payment_timer: isAdvRequired ? timerInfo.remaining_seconds : 0,
-        remaining_seconds: isAdvRequired ? timerInfo.remaining_seconds : 0,
-        advance_payment_msg: isAdvRequired ? "Customer advance payment is pending. Please wait for customer to complete the payment." : "",
-        accept_time: timerInfo.accept_time,
-        // Same defensive '' -> '0' coercion the PHP added for
-        // plat/plong/dlat/dlong - the driver app's model parses these as
-        // primitive doubles and throws on an empty string, which used to
-        // abort parsing the WHOLE OrderHistory array, not just this row.
-        plat: row.plat || "0",
-        plong: row.plong || "0",
-        dlat: row.dlat || "0",
-        dlong: row.dlong || "0",
-        stops: stopsByOrder[Number(row.id)] || [],
-        customer_paddress: row.paddress,
-        customer_pmobile: row.pmobile,
-        customer_daddress: row.daddress,
-        customer_dmobile: row.dmobile,
-        pick_type: row.pick_type,
-        drop_type: row.drop_type,
-        description: row.description,
-        distance: row.distance,
-        loading_charge: row.loading_charge,
-        unloading_charge: row.unloading_charge,
-        service_charge: row.service_charge,
-        wating_charge: row.wating_charge,
-        free_waiting_time: row.free_waiting_time,
-        radius_range: row.radius_range,
-        radius_charge: row.radius_charge,
-        final_fare_amount: fare,
-        driver_total_earning: driverEarning,
-        driver_earning: driverEarning,
-        commission: adminAmount,
-        commission_amount: adminAmount,
-        commission_percent: commPct,
-        per_trip_charge: 0,
-        total_deductions: adminAmount,
-        admin_amount: adminAmount,
-        total_amount_by_user: fare,
-        cash_to_collect: cashCollect,
-        cash_collected_from_user: cashCollect,
-        wallet_adjustment: walletAdj,
-        wallet_adjustment_note: adjNote,
-        plan_benefit_applied: planName !== null,
-        plan_name: planName,
-        plan_discount_applied: planDiscountApplied,
-        plan_incentive_earned: planIncentiveEarned,
-        trip_payment_summary: {
-          fare_breakdown: {
-            minimum_charge: Number(row.minimum_charge || 0),
-            actual_pickup_charge: Number(row.pickup_charge || 0),
-            pickup_to_drop_charge: Number(row.distance_charge || row.d_charge || 0),
-            add_stop_charge: 0,
-            extra_waiting_time_charge: Number(row.wating_charge || 0),
-            night_charge: Number(row.night_charge || 0),
-            loading_charge: Number(row.loading_charge || 0),
-            unloading_charge: Number(row.unloading_charge || 0),
-            service_charge: Number(row.service_charge || 0),
-            extra_mile_charge: Number(row.extra_mile_charge || 0),
-            plan_discount_applied: planDiscountApplied,
-            final_fare_amount: fare,
-          },
-          deductions: {
-            commission_percent: commPct,
-            commission: adminAmount,
-            per_trip_charge: 0,
-            total_deductions: adminAmount,
-            driver_total_earning: driverEarning,
-          },
-          payment_by_user: { total_amount_by_user: fare, advance_payment: advPay, cash_to_collect: cashCollect },
-          final_settlement: {
-            driver_total_earning: driverEarning,
-            cash_collected_from_user: cashCollect,
-            wallet_adjustment: walletAdj,
-            wallet_adjustment_action: walletAction,
-            note: adjNote,
-          },
-        },
-      };
-    });
+    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm }));
 
     return res.status(200).json({ OrderHistory: history, ResponseCode: "200", Result: "true", ResponseMsg: "Order History Get Successfully!!!" });
   } catch (err) {
@@ -235,4 +95,151 @@ async function pkgHistoryDriver(req, res) {
   }
 }
 
-module.exports = { pkgHistoryDriver };
+// Extracted from pkgHistoryDriver's row-mapping so driverContentController.homeData
+// can build the SAME shape for a single active order without re-deriving the
+// pricing math independently (see the file-header comment on why that math is
+// sensitive - orders #1620/#1621, #1784, #1819). ctx.stopsByOrder/benefitByOrder/
+// planNameCache are keyed the same way pkgHistoryDriver builds them (batch
+// queries above); a caller with just one row can pass single-entry maps.
+function formatPkgOrderForDriver(row, ctx) {
+  const { stopsByOrder, benefitByOrder, planNameCache, globalComm } = ctx;
+  const timerInfo = getAdvancePaymentTimerInfo(row);
+  const isPaid = Number(row.payment_status || 0) === 1;
+  const isAdvRequired = isPaid ? false : timerInfo.is_advance_required;
+
+  const fare = Number(row.total_dcharge) > 0 ? Number(row.total_dcharge) : Number(row.d_charge || 0);
+
+  let commPct;
+  if (row.o_status === "Completed" && row.commission !== null && row.commission !== "") {
+    commPct = Number(row.commission);
+  } else if (row.commission != null && Number(row.commission) > 0) {
+    commPct = Number(row.commission);
+  } else {
+    commPct = globalComm;
+  }
+
+  let adminAmount = Number(row.admin_amount || 0);
+  if (adminAmount <= 0 && fare > 0) {
+    adminAmount = Math.round(((fare * commPct) / 100) * 100) / 100; // round(fare * commPct / 100, 2)
+  }
+
+  const advPay = Number(row.advance_payment || 0);
+  const driverEarning = Math.max(0, Number((fare - adminAmount).toFixed(2)));
+  const cashCollect = Math.max(0, Number((fare - advPay).toFixed(2)));
+
+  const walletDiff = Number((driverEarning - cashCollect).toFixed(2));
+  let walletAction = "none";
+  let walletAdj = 0;
+  let adjNote;
+  if (walletDiff < 0) {
+    walletAction = "debit";
+    walletAdj = Math.abs(walletDiff);
+    adjNote = `Driver earning ₹${driverEarning.toFixed(2)}. Cash collected ₹${cashCollect.toFixed(2)}. ₹${walletAdj.toFixed(2)} debited from wallet.`;
+  } else if (walletDiff > 0) {
+    walletAction = "add";
+    walletAdj = walletDiff;
+    adjNote = `Driver earning ₹${driverEarning.toFixed(2)}. Cash collected ₹${cashCollect.toFixed(2)}. ₹${walletAdj.toFixed(2)} added to wallet.`;
+  } else {
+    adjNote = `Driver earning ₹${driverEarning.toFixed(2)} settled completely via cash collected.`;
+  }
+
+  const benefit = row.o_status === "Completed" ? benefitByOrder[Number(row.id)] : null;
+  const planName = benefit ? planNameCache[benefit.plan_id] : null;
+  const planDiscountApplied = benefit ? Number(benefit.discount_applied) : 0;
+  const planIncentiveEarned = benefit ? Number(benefit.incentive_earned) : 0;
+
+  return {
+    id: row.id,
+    order_user_id: row.uid,
+    status: row.o_status,
+    order_date: row.odate,
+    total: row.d_charge,
+    pick_name: row.pick_name,
+    drop_name: row.drop_name,
+    time_duration: row.time_duration,
+    order_flow_id: row.order_status,
+    advance_payment: timerInfo.advance_payment,
+    payment_status: isPaid ? 1 : 0,
+    is_advance_payment_required: isAdvRequired,
+    is_advance_required: isAdvRequired,
+    advance_payment_timer: isAdvRequired ? timerInfo.remaining_seconds : 0,
+    remaining_seconds: isAdvRequired ? timerInfo.remaining_seconds : 0,
+    advance_payment_msg: isAdvRequired ? "Customer advance payment is pending. Please wait for customer to complete the payment." : "",
+    accept_time: timerInfo.accept_time,
+    // Same defensive '' -> '0' coercion the PHP added for
+    // plat/plong/dlat/dlong - the driver app's model parses these as
+    // primitive doubles and throws on an empty string, which used to
+    // abort parsing the WHOLE OrderHistory array, not just this row.
+    plat: row.plat || "0",
+    plong: row.plong || "0",
+    dlat: row.dlat || "0",
+    dlong: row.dlong || "0",
+    stops: stopsByOrder[Number(row.id)] || [],
+    customer_paddress: row.paddress,
+    customer_pmobile: row.pmobile,
+    customer_daddress: row.daddress,
+    customer_dmobile: row.dmobile,
+    pick_type: row.pick_type,
+    drop_type: row.drop_type,
+    description: row.description,
+    distance: row.distance,
+    loading_charge: row.loading_charge,
+    unloading_charge: row.unloading_charge,
+    service_charge: row.service_charge,
+    wating_charge: row.wating_charge,
+    free_waiting_time: row.free_waiting_time,
+    radius_range: row.radius_range,
+    radius_charge: row.radius_charge,
+    final_fare_amount: fare,
+    driver_total_earning: driverEarning,
+    driver_earning: driverEarning,
+    commission: adminAmount,
+    commission_amount: adminAmount,
+    commission_percent: commPct,
+    per_trip_charge: 0,
+    total_deductions: adminAmount,
+    admin_amount: adminAmount,
+    total_amount_by_user: fare,
+    cash_to_collect: cashCollect,
+    cash_collected_from_user: cashCollect,
+    wallet_adjustment: walletAdj,
+    wallet_adjustment_note: adjNote,
+    plan_benefit_applied: planName !== null,
+    plan_name: planName,
+    plan_discount_applied: planDiscountApplied,
+    plan_incentive_earned: planIncentiveEarned,
+    trip_payment_summary: {
+      fare_breakdown: {
+        minimum_charge: Number(row.minimum_charge || 0),
+        actual_pickup_charge: Number(row.pickup_charge || 0),
+        pickup_to_drop_charge: Number(row.distance_charge || row.d_charge || 0),
+        add_stop_charge: 0,
+        extra_waiting_time_charge: Number(row.wating_charge || 0),
+        night_charge: Number(row.night_charge || 0),
+        loading_charge: Number(row.loading_charge || 0),
+        unloading_charge: Number(row.unloading_charge || 0),
+        service_charge: Number(row.service_charge || 0),
+        extra_mile_charge: Number(row.extra_mile_charge || 0),
+        plan_discount_applied: planDiscountApplied,
+        final_fare_amount: fare,
+      },
+      deductions: {
+        commission_percent: commPct,
+        commission: adminAmount,
+        per_trip_charge: 0,
+        total_deductions: adminAmount,
+        driver_total_earning: driverEarning,
+      },
+      payment_by_user: { total_amount_by_user: fare, advance_payment: advPay, cash_to_collect: cashCollect },
+      final_settlement: {
+        driver_total_earning: driverEarning,
+        cash_collected_from_user: cashCollect,
+        wallet_adjustment: walletAdj,
+        wallet_adjustment_action: walletAction,
+        note: adjNote,
+      },
+    },
+  };
+}
+
+module.exports = { pkgHistoryDriver, formatPkgOrderForDriver };

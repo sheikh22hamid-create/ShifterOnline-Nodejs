@@ -1,10 +1,12 @@
 const crypto = require("crypto");
+const multer = require("multer");
 const prisma = require("../config/db");
+const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const pricingEngine = require("../services/pricingEngine");
 const tripLifecycle = require("../services/tripLifecycle");
 const dispatchManager = require("../services/dispatchManager");
 const adminSocket = require("../sockets/adminSocket");
-const { getRoadDistanceKm, getMultiStopDistanceKm } = require("../utils/geoDistance");
+const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
 const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
@@ -576,6 +578,346 @@ async function driverCancel(req, res) {
   }
 }
 
+// Node port of rider_api/otp_check.php - the driver must ask the customer for
+// this order's pickup OTP (a fixed value already stored on pkg_order.otp,
+// shown to the customer separately - not generated/sent here) and enter it
+// before the app calls driverCancel's sibling status-update to "arrived".
+// Kept as its own endpoint (not folded into tripLifecycle.updateStatus)
+// because the check is a precondition the app runs client-side before
+// deciding to fire the status-update at all, same as the PHP split.
+async function verifyPickupOtp(req, res) {
+  try {
+    const { order_id, otp } = req.body;
+    if (!order_id) return res.status(400).json({ success: false, message: "Order id missing." });
+    if (!otp) return res.status(400).json({ success: false, message: "Please enter otp." });
+
+    const order = await prisma.pkg_order.findUnique({ where: { id: Number(order_id) } });
+    if (!order) return res.status(404).json({ success: false, message: "Order not found." });
+
+    const dbOtp = String(order.otp || "").trim();
+    const inOtp = String(otp).trim();
+    if (!dbOtp) return res.status(400).json({ success: false, message: "OTP not generated for this order." });
+    if (inOtp !== dbOtp) return res.status(400).json({ success: false, message: "Invalid OTP!!" });
+
+    return res.status(200).json({ success: true, message: "OTP Verified Successfully.", data: { order_id: Number(order_id) } });
+  } catch (err) {
+    logger.error("verifyPickupOtp failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+// Node port of rider_api/check_amount.php - extra distance charge for the
+// driver having to travel from wherever they were when they accepted the
+// order to the actual pickup point, billed to the driver (not the
+// customer's search-radius - see memory/pricing_radius_charge_per_driver.md
+// for that exact distinction). Straight-line haversine, same as the PHP
+// original (not the road-distance/Google Routes estimate used elsewhere in
+// this file), and the UPI payment URL is generated the same way, unchanged.
+async function checkPickupAmount(req, res) {
+  try {
+    const orderId = Number(req.body?.oid || req.body?.order_id || 0);
+    if (!orderId) return res.status(400).json({ success: false, message: "Something Went wrong  try again !" });
+
+    const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+    if (!order || !order.rid) return res.status(400).json({ success: false, message: "Something Went wrong  try again !" });
+
+    const riderId = order.rid;
+    const acceptData = await prisma.tbl_order_requests.findFirst({
+      where: { order_id: orderId, rider_id: riderId },
+      orderBy: { id: "desc" },
+    });
+
+    let pickupDistance = 0;
+    let totalCharge = 0;
+    const driverLat = acceptData?.lat ? Number(acceptData.lat) : null;
+    const driverLng = acceptData?.lng ? Number(acceptData.lng) : null;
+
+    if (order.plat != null && order.plong != null && driverLat !== null && driverLng !== null) {
+      pickupDistance = Math.round(haversineKm(driverLat, driverLng, Number(order.plat), Number(order.plong)) * 100) / 100;
+
+      const pkg = await prisma.tbl_package.findUnique({ where: { id: Number(order.delivery_type) || 0 } }).catch(() => null);
+      const perKmCharge = Number(pkg?.pickup_per_km_charge || 0);
+      totalCharge = Math.round(pickupDistance * perKmCharge * 100) / 100;
+    }
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    const upiId = rider?.upi_id || "";
+    const payeeName = rider?.full_name || "";
+    const trId = "TXN" + Date.now() + Math.floor(1000 + Math.random() * 9000);
+    const upiUrl =
+      `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payeeName)}` +
+      `&am=${encodeURIComponent(totalCharge)}&cu=INR&tr=${encodeURIComponent(trId)}` +
+      `&tn=${encodeURIComponent("Booking " + trId)}`;
+
+    return res.status(200).json({
+      success: true,
+      message: "Pickup distance & charge calculated successfully",
+      data: { pickup_distance: pickupDistance, pickup_charge: totalCharge, upi_url: upiUrl },
+    });
+  } catch (err) {
+    logger.error("checkPickupAmount failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+// Node port of rider_api/order_status_change.php - the ~2900-line PHP
+// original handles the FULL accept->arrived->pickup->arrived_drop->complete
+// progression plus its own from-scratch fare/wallet settlement math, but the
+// only screen still calling it (OrderAnyDetailsActivity's reject sheet) only
+// ever sends status "reject" or "cancle"/"cancel". The live accept->complete
+// progression already runs through tripLifecycle.js via the socket path
+// (see OrderDetailsActivity/NodeSocketManager), so this wrapper only needs
+// to cover what this one legacy REST call site actually sends - reusing
+// tripLifecycle.rejectOrder/driverCancel rather than re-deriving that
+// settlement math a second time.
+async function orderStatusChangeLegacy(req, res) {
+  try {
+    const oid = Number(req.body?.oid || 0);
+    const rid = Number(req.body?.rid || 0);
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    const comment = req.body?.comment || "";
+    if (!oid || !rid || !status) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went wrong try again!" });
+    }
+
+    if (status === "reject") {
+      await tripLifecycle.rejectOrder(oid, rid);
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order rejected successfully!" });
+    }
+
+    if (status === "cancle" || status === "cancel") {
+      try {
+        await tripLifecycle.driverCancel(oid, rid, comment);
+        return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order Cancelled Successfully!" });
+      } catch (err) {
+        const messages = {
+          ORDER_NOT_FOUND: "Order not found",
+          NOT_ASSIGNED_DRIVER: "You are not assigned to this order",
+          ORDER_NOT_CANCELLABLE: "Order can no longer be cancelled",
+        };
+        return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: messages[err.message] || "Failed to cancel order" });
+      }
+    }
+
+    return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: `Unsupported status: ${status}` });
+  } catch (err) {
+    logger.error("orderStatusChangeLegacy failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// Node port of rider_api/b_order_status_change.php - the buy_order ("Buy
+// Anything" custom item purchase) status machine. Much smaller than
+// order_status_change.php's pkg_order equivalent: no fare/wallet settlement
+// math, just status/flow_id writes + a customer notification row per step.
+// OneSignal push (the PHP original's curl calls) is dropped - this app's
+// live push path is FCM (fcm_token throughout this codebase), OneSignal
+// was never wired up on the Node side, and the tbl_notification row is what
+// actually drives the in-app notification center the customer app reads.
+async function bOrderStatusChangeLegacy(req, res) {
+  try {
+    const oid = Number(req.body?.oid || 0);
+    const rid = Number(req.body?.rid || 0);
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    if (!oid || !rid || !status) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went wrong try again!" });
+    }
+
+    const order = await prisma.buy_order.findUnique({ where: { id: oid } });
+    if (!order) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went wrong try again!" });
+    }
+    const uid = order.uid;
+
+    async function notifyCustomer(title, description) {
+      if (!uid) return;
+      await prisma.tbl_notification
+        .create({ data: { uid, datetime: new Date(), title, description } })
+        .catch((err) => logger.error("bOrderStatusChangeLegacy: notifyCustomer failed:", err));
+    }
+
+    if (status === "accept") {
+      const alreadyTaken = await prisma.buy_order.findFirst({ where: { id: oid, rid: { not: 0 } } });
+      if (alreadyTaken) {
+        return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Someone Already accepted!" });
+      }
+      await prisma.buy_order.update({ where: { id: oid }, data: { o_status: "Processing", flow_id: 1, rid } });
+      await notifyCustomer("Buy Anything - Order Processed!", `Your Buy Anything order #${oid} has been successfully processed.`);
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order accepted successfully!", Next_step: "pickup" });
+    }
+
+    if (status === "reject") {
+      const already = await prisma.reject_rider_list.findFirst({ where: { rid, order_id: oid, type: "buy" } });
+      if (already) {
+        return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "You Already Rejected This Order!!" });
+      }
+      await prisma.reject_rider_list.create({ data: { order_id: oid, rid, type: "buy" } });
+      return res.status(200).json({ ResponseCode: "200", Result: "false", ResponseMsg: "Order rejected successfully!" });
+    }
+
+    if (status === "reach_pickup") {
+      await prisma.buy_order.update({ where: { id: oid }, data: { flow_id: 3 } });
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order successfully reached the pickup location." });
+    }
+
+    if (status === "proceed_img") {
+      await prisma.buy_order.update({ where: { id: oid }, data: { flow_id: 5 } });
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Image Upload Successfully!!" });
+    }
+
+    if (status === "proceed") {
+      const itemAgg = await prisma.buy_order_item.aggregate({ where: { order_id: oid }, _sum: { item_total: true } });
+      const itemTotal = Number(itemAgg._sum.item_total || 0);
+      const setting = await prisma.setting.findFirst({ select: { service_charge: true } });
+      const serviceChargePercent = Number(setting?.service_charge || 0);
+      const serviceCharge = Math.round(((itemTotal * serviceChargePercent) / 100) * 100) / 100;
+      const totalAmt = Number(order.total_dcharge || 0) + itemTotal + serviceCharge;
+
+      await prisma.buy_order.update({
+        where: { id: oid },
+        data: { flow_id: 6, total_amt: totalAmt, item_total: itemTotal, service_charge: serviceCharge, service_charge_percentage: serviceChargePercent },
+      });
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Bill Upload Successfully!!!!!" });
+    }
+
+    if (status === "cancle" || status === "cancel") {
+      const comment = req.body?.comment || "";
+      await prisma.buy_order.update({ where: { id: oid }, data: { flow_id: 4, o_status: "Cancelled", comment_reject: comment } });
+      await notifyCustomer("Buy Anything Order Cancelled!!", `Buy Anything Order #${oid} Cancelled.`);
+      return res.status(200).json({ ResponseCode: "200", Result: "false", ResponseMsg: "Order cancelled successfully!" });
+    }
+
+    if (status === "pickup") {
+      await prisma.buy_order.update({ where: { id: oid }, data: { o_status: "On_Route", flow_id: 9 } });
+      await notifyCustomer("Buy Anything Order On Route!!", `Your Buy Anything order #${oid} is out for delivery.`);
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order Pickup Successfully!!!!!", Next_step: "Deliverey" });
+    }
+
+    if (status === "complete") {
+      await prisma.buy_order.update({ where: { id: oid }, data: { o_status: "Completed", flow_id: 10, delivery_date: new Date() } });
+      await notifyCustomer("Buy Anything - Order Delivered!", `Your Buy Anything order #${oid} has been delivered successfully.`);
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order delivered successfully!", Next_step: "complete" });
+    }
+
+    return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something went wrong. Please try again!" });
+  } catch (err) {
+    logger.error("bOrderStatusChangeLegacy failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// Node port of rider_api/item_list.php.
+async function buyOrderItemList(req, res) {
+  try {
+    const orderId = Number(req.body?.orderid || 0);
+    if (!orderId) return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went Wrong!" });
+
+    const items = await prisma.buy_order_item.findMany({ where: { order_id: orderId } });
+    const itemList = items.map((it) => ({
+      item_id: it.id,
+      item_title: it.item_title,
+      quantity: it.quantity,
+      item_img: it.item_img ? it.item_img.split("$;") : [],
+      item_total: it.item_total,
+      item_confirm: it.item_confirm,
+    }));
+
+    return res.status(200).json({
+      ItemList: { item_list: itemList },
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Order History  Get Successfully!!!",
+    });
+  } catch (err) {
+    logger.error("buyOrderItemList failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// Node port of rider_api/item_unavilable.php.
+async function markBuyOrderItemUnavailable(req, res) {
+  try {
+    const itemId = Number(req.body?.itmeid || 0);
+    const orderId = Number(req.body?.order_id || 0);
+    if (!itemId || !orderId) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went wrong try again !" });
+    }
+
+    const item = await prisma.buy_order_item.findFirst({ where: { id: itemId, order_id: orderId } });
+    if (!item) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "item not found!!!!" });
+    }
+
+    await prisma.buy_order_item.update({ where: { id: itemId }, data: { is_available: 0 } });
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "item status change Successfully!!!!!" });
+  } catch (err) {
+    logger.error("markBuyOrderItemUnavailable failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// Node port of rider_api/item_upload.php.
+const buyOrderItemUploadMulter = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).any();
+
+function buyOrderItemUpload(req, res) {
+  buyOrderItemUploadMulter(req, res, async (err) => {
+    if (err) {
+      logger.error("buyOrderItemUpload upload failed:", err);
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: err.message || "Upload failed" });
+    }
+    try {
+      const b = req.body || {};
+      const riderId = Number(b.rider_id || 0);
+      const itemId = Number(b.item_id || 0);
+      const orderId = Number(b.order_id || 0);
+      const itemTotal = b.item_total;
+      if (!riderId || !itemId || !orderId || !itemTotal) {
+        return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went Wrong!" });
+      }
+
+      const files = (req.files || []).filter((f) => /^image\d+$/.test(f.fieldname));
+      const paths = await Promise.all(
+        files.map((file) => {
+          const filename = `${Date.now()}${Math.floor(Math.random() * 1e6)}.jpg`;
+          return uploadBuffer(file.buffer, `images/item_list/${filename}`);
+        })
+      );
+
+      await prisma.buy_order_item.updateMany({
+        where: { id: itemId, order_id: orderId },
+        data: { item_img: paths.join("$;"), item_total: Number(itemTotal) },
+      });
+
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Item Upload Successfully!!!" });
+    } catch (e) {
+      logger.error("buyOrderItemUpload failed:", e);
+      return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+    }
+  });
+}
+
+// Node port of cust_api/cancel_reason.php - shared table (tbl_cancel_reason)
+// between customer and driver cancel-reason lists, filtered by `type`
+// ("driver" here, "user" for the customer app) plus rows marked "both".
+async function getCancelReasons(req, res) {
+  try {
+    const type = req.body?.type === "user" ? "user" : "driver";
+    const rows = await prisma.tbl_cancel_reason.findMany({
+      where: { status: true, OR: [{ type }, { type: "both" }] },
+      orderBy: { id: "asc" },
+    });
+    return res.status(200).json({
+      success: true,
+      Result: "true",
+      message: "Cancel reasons fetched successfully",
+      reason_list: rows.map((r) => ({ id: r.id, reason: r.reason })),
+    });
+  } catch (err) {
+    logger.error("getCancelReasons failed:", err);
+    return res.status(500).json({ success: false, Result: "false", message: "Internal server error" });
+  }
+}
+
 async function rateOrder(req, res) {
   try {
     const { uid, order_id, rider_id, star, comment } = req.body;
@@ -784,6 +1126,14 @@ module.exports = {
   getOrderDetails,
   customerCancel,
   driverCancel,
+  verifyPickupOtp,
+  checkPickupAmount,
+  getCancelReasons,
+  orderStatusChangeLegacy,
+  bOrderStatusChangeLegacy,
+  buyOrderItemList,
+  markBuyOrderItemUnavailable,
+  buyOrderItemUpload,
   rateOrder,
   checkNextDayEligibility,
   paymentMethodStatus,

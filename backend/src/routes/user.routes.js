@@ -30,6 +30,7 @@ router.post("/address/save", customerProfileController.saveAddress);
 router.post("/wallet/add", customerWalletController.addWallet);
 router.post("/wallet/history", customerWalletController.walletHistory);
 router.post("/wallet/withdraw", customerWalletController.withdrawWallet);
+router.post("/wallet/create-order", customerWalletController.createRazorpayOrder);
 
 // Favorites / coupons / notifications / static content / home
 router.post("/favorites/toggle", customerContentController.toggleFavoriteDriver);

@@ -50,6 +50,7 @@ import com.shifter.driver.model.PackageListResponse;
 import com.shifter.driver.model.RiderData;
 import com.shifter.driver.retrofit.APIClient;
 import com.shifter.driver.retrofit.GetResult;
+import com.shifter.driver.retrofit.NodeApiClient;
 import com.shifter.driver.utility.CustPrograssbar;
 import com.shifter.driver.utility.SessionManager;
 
@@ -99,7 +100,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         }
 
         RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        Call<JsonObject> call = APIClient.getInterface().getPackageList(bodyRequest);
+        Call<JsonObject> call = NodeApiClient.getInterface().getPackageList(bodyRequest);
         GetResult getResult = new GetResult();
         getResult.setMyListener(this);
         getResult.callForLogin(call, "2");
@@ -418,38 +419,37 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     }
 
     private void updateDriverStatusApi(boolean isOnline) {
-        JSONObject jsonObject = new JSONObject();
-        try {
-            jsonObject.put("rider_id", riderData.getId());
-            jsonObject.put("status", isOnline ? "1" : "0");
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-
-
-        RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        Call<JsonObject> call = APIClient.getInterface().riderStatus(bodyRequest);
-        GetResult getResult = new GetResult();
-        getResult.setMyListener(this);
-        getResult.callForLogin(call, "3");
-
-        // Also tell the Node dispatch backend — it reads the same
-        // tbl_rider.a_status column, but calling it directly (rather than
-        // relying solely on the legacy PHP write landing first) keeps this
-        // driver's online/offline state immediately consistent for Node's
-        // own dispatch queries. Fire-and-forget: the PHP call above is the
-        // one this screen's UI/session state actually depends on.
+        // Node's setStatus (riderController.js) now does the same
+        // multi-device-login check rider_status.php did (device_match in
+        // the response) - see backend/src/controllers/riderController.js -
+        // so this is a single authoritative call instead of a PHP call the
+        // UI depended on plus a Node fire-and-forget duplicate.
         java.util.Map<String, Object> nodeBody = new java.util.HashMap<>();
         nodeBody.put("rider_id", riderData.getId());
         nodeBody.put("a_status", isOnline ? 1 : 0);
-        com.shifter.driver.retrofit.NodeApiClient.getInterface().setStatus(nodeBody).enqueue(new retrofit2.Callback<JsonObject>() {
+        nodeBody.put("device_id", com.shifter.driver.utility.Utility.getDeviceId(getActivity()));
+
+        custPrograssbar.prograssCreate(getActivity());
+        NodeApiClient.getInterface().setStatus(nodeBody).enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
-                android.util.Log.d("HomeFragment", "Node rider status updated: " + response.code());
+                custPrograssbar.closePrograssBar();
+                if (response.isSuccessful() && response.body() != null) {
+                    JsonObject result = response.body();
+                    if (result.has("device_match") && !result.get("device_match").isJsonNull() && !result.get("device_match").getAsBoolean()) {
+                        Toast.makeText(getActivity(), "Logged in from another device", Toast.LENGTH_LONG).show();
+                        logoutUser();
+                        return;
+                    }
+                    if (result.has("msg") && !result.get("msg").isJsonNull()) {
+                        Toast.makeText(getActivity(), result.get("msg").getAsString(), Toast.LENGTH_SHORT).show();
+                    }
+                }
             }
 
             @Override
             public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
+                custPrograssbar.closePrograssBar();
                 android.util.Log.e("HomeFragment", "Node rider status update failed", t);
             }
         });
@@ -466,7 +466,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             e.printStackTrace();
         }
         RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        Call<JsonObject> call = APIClient.getInterface().homeData(bodyRequest);
+        Call<JsonObject> call = NodeApiClient.getInterface().homeData(bodyRequest);
         GetResult getResult = new GetResult();
         getResult.setMyListener(this);
         getResult.callForLogin(call, "1");
@@ -912,22 +912,33 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         return row;
     }
 
-    // API call method for status update
+    // API call method for status update - Node's setDeliveryType
+    // (riderController.js) takes {rider_id, package_id, enabled: boolean}
+    // and returns {Result, msg}, not the old {rider_id, delivery_type,
+    // status} / {Result, ResponseMsg} shape, so this bypasses the shared
+    // callback(result, "4") PHP-shape parsing rather than adapting it.
     private void updatePackageStatus(PackageData packageData) {
-        JSONObject jsonObject = new JSONObject();
         try {
-            jsonObject.put("rider_id", riderData.getId());
-            jsonObject.put("delivery_type", packageData.getId());
-            jsonObject.put("status", packageData.getStatus());
+            java.util.Map<String, Object> body = new java.util.HashMap<>();
+            body.put("rider_id", riderData.getId());
+            body.put("package_id", Integer.parseInt(packageData.getId()));
+            body.put("enabled", "1".equals(packageData.getStatus()));
 
+            NodeApiClient.getInterface().updateDeliveryType(body).enqueue(new retrofit2.Callback<JsonObject>() {
+                @Override
+                public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                    JsonObject result = response.body();
+                    if (result != null && result.has("msg") && !result.get("msg").isJsonNull()) {
+                        Toast.makeText(getActivity(), result.get("msg").getAsString(), Toast.LENGTH_SHORT).show();
+                    }
+                }
 
-            RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-            Call<JsonObject> call = APIClient.getInterface().updateDeliveryType(bodyRequest);
-            GetResult getResult = new GetResult();
-            getResult.setMyListener(this);
-            getResult.callForLogin(call, "4");
-
-        } catch (JSONException e) {
+                @Override
+                public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
+                    android.util.Log.e("HomeFragment", "updateDeliveryType failed", t);
+                }
+            });
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -1255,11 +1266,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
             if (riderData != null) {
                 try {
-                    JSONObject statusObj = new JSONObject();
-                    statusObj.put("rider_id", String.valueOf(riderData.getId()));
-                    statusObj.put("status", "0");
-                    RequestBody statusBody = RequestBody.create(MediaType.parse("application/json"), statusObj.toString());
-                    APIClient.getInterface().riderStatus(statusBody).enqueue(new retrofit2.Callback<JsonObject>() {
+                    java.util.Map<String, Object> statusBody = new java.util.HashMap<>();
+                    statusBody.put("rider_id", riderData.getId());
+                    statusBody.put("a_status", 0);
+                    NodeApiClient.getInterface().setStatus(statusBody).enqueue(new retrofit2.Callback<JsonObject>() {
                         @Override
                         public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {}
                         @Override

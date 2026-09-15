@@ -45,6 +45,7 @@ import com.shifter.driver.model.PDOrderItem;
 import com.shifter.driver.model.RestResponse;
 import com.shifter.driver.model.RiderData;
 import com.shifter.driver.retrofit.APIClient;
+import com.shifter.driver.retrofit.NodeApiClient;
 import com.shifter.driver.retrofit.GetResult;
 import com.shifter.driver.utility.CustPrograssbar;
 import com.shifter.driver.utility.SessionManager;
@@ -186,7 +187,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             jsonObject.put("rid", riderData.getId());
 
             RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-            Call<com.google.gson.JsonObject> call = com.shifter.driver.retrofit.APIClient.getInterface().pkgHistory(bodyRequest);
+            Call<com.google.gson.JsonObject> call = com.shifter.driver.retrofit.NodeApiClient.getInterface().pkgHistory(bodyRequest);
             call.enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
                 @Override
                 public void onResponse(Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
@@ -496,7 +497,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             jsonObject.put("rid", riderData.getId());
 
             RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-            Call<com.google.gson.JsonObject> call = com.shifter.driver.retrofit.APIClient.getInterface().pkgHistory(bodyRequest);
+            Call<com.google.gson.JsonObject> call = com.shifter.driver.retrofit.NodeApiClient.getInterface().pkgHistory(bodyRequest);
             call.enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
                 @Override
                 public void onResponse(Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
@@ -1178,18 +1179,14 @@ public class OrderDetailsActivity extends AppCompatActivity
                 return;
             }
 
-            // Call API
+            // Call API - Node's verify-pickup-otp (orderController.js), not a
+            // PHP port: {success, message, data} instead of {Result, ResponseMsg}.
             custPrograssbar.prograssCreate(this);
-            JSONObject jsonObject = new JSONObject();
-            try {
-                jsonObject.put("oid", orderItem.getId());
-                jsonObject.put("otp", otp);
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
+            java.util.Map<String, Object> body = new java.util.HashMap<>();
+            body.put("order_id", orderItem.getId());
+            body.put("otp", otp);
 
-            RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-            Call<JsonObject> call = APIClient.getInterface().checkArrivedOtp(bodyRequest);
+            Call<JsonObject> call = NodeApiClient.getInterface().verifyPickupOtp(body);
             android.os.Handler otpTimeoutHandler = new android.os.Handler(getMainLooper());
             Runnable otpTimeout = () -> {
                 if (!call.isCanceled()) {
@@ -1205,32 +1202,17 @@ public class OrderDetailsActivity extends AppCompatActivity
                 public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
                     otpTimeoutHandler.removeCallbacks(otpTimeout);
                     custPrograssbar.closePrograssBar();
-                    if (response.isSuccessful() && response.body() != null) {
-                        try {
-                            JsonObject jsonResponse = response.body();
-                            boolean isSuccess = false;
-                            if (jsonResponse.has("Result")) {
-                                com.google.gson.JsonElement resElem = jsonResponse.get("Result");
-                                if (resElem.isJsonPrimitive() && resElem.getAsJsonPrimitive().isBoolean()) {
-                                    isSuccess = resElem.getAsBoolean();
-                                } else {
-                                    isSuccess = "true".equalsIgnoreCase(resElem.getAsString());
-                                }
-                            }
-                            
-                            if (isSuccess) {
-                                dialog.dismiss();
-                                orderstatus(status, ""); // Proceed with arrived status
-                            } else {
-                                String msg = jsonResponse.has("ResponseMsg") ? jsonResponse.get("ResponseMsg").getAsString() : "Invalid OTP";
-                                Toast.makeText(OrderDetailsActivity.this, msg, Toast.LENGTH_SHORT).show();
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            Toast.makeText(OrderDetailsActivity.this, "Error processing response", Toast.LENGTH_SHORT).show();
-                        }
+                    JsonObject jsonResponse = response.body();
+                    boolean isSuccess = jsonResponse != null && jsonResponse.has("success")
+                            && !jsonResponse.get("success").isJsonNull() && jsonResponse.get("success").getAsBoolean();
+
+                    if (isSuccess) {
+                        dialog.dismiss();
+                        orderstatus(status, ""); // Proceed with arrived status
                     } else {
-                        Toast.makeText(OrderDetailsActivity.this, "Server error", Toast.LENGTH_SHORT).show();
+                        String msg = (jsonResponse != null && jsonResponse.has("message") && !jsonResponse.get("message").isJsonNull())
+                                ? jsonResponse.get("message").getAsString() : "Invalid OTP";
+                        Toast.makeText(OrderDetailsActivity.this, msg, Toast.LENGTH_SHORT).show();
                     }
                 }
 
@@ -1250,16 +1232,14 @@ public class OrderDetailsActivity extends AppCompatActivity
 
     private void checkPickupChargeAndShowDialog() {
         custPrograssbar.prograssCreate(this);
-        JSONObject jsonObject = new JSONObject();
-        try {
-            jsonObject.put("oid", orderItem.getId());
-            jsonObject.put("rid", riderData.getId());
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
+        // Node's check-pickup-amount (orderController.js) - {success, message,
+        // data:{pickup_distance, pickup_charge, upi_url}}, not the old
+        // {Result, ResponseMsg, pickup_charge} shape.
+        java.util.Map<String, Object> body = new java.util.HashMap<>();
+        body.put("oid", orderItem.getId());
+        body.put("rid", riderData.getId());
 
-        RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        Call<JsonObject> call = APIClient.getInterface().checkAmount(bodyRequest);
+        Call<JsonObject> call = NodeApiClient.getInterface().checkPickupAmount(body);
         call.enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
@@ -1267,21 +1247,17 @@ public class OrderDetailsActivity extends AppCompatActivity
                 if (response.isSuccessful() && response.body() != null) {
                     try {
                         JsonObject jsonResponse = response.body();
-                        boolean isSuccess = false;
-                        if (jsonResponse.has("Result")) {
-                            com.google.gson.JsonElement resElem = jsonResponse.get("Result");
-                            if (resElem.isJsonPrimitive() && resElem.getAsJsonPrimitive().isBoolean()) {
-                                isSuccess = resElem.getAsBoolean();
-                            } else {
-                                isSuccess = "true".equalsIgnoreCase(resElem.getAsString());
-                            }
-                        }
+                        boolean isSuccess = jsonResponse.has("success") && !jsonResponse.get("success").isJsonNull()
+                                && jsonResponse.get("success").getAsBoolean();
+                        JsonObject data = (isSuccess && jsonResponse.has("data") && jsonResponse.get("data").isJsonObject())
+                                ? jsonResponse.getAsJsonObject("data") : null;
 
-                        if (isSuccess && jsonResponse.has("pickup_charge")) {
-                            double charge = jsonResponse.get("pickup_charge").getAsDouble();
+                        if (isSuccess && data != null && data.has("pickup_charge")) {
+                            double charge = data.get("pickup_charge").getAsDouble();
                             showPickupConfirmationDialog(charge);
                         } else {
-                            String msg = jsonResponse.has("ResponseMsg") ? jsonResponse.get("ResponseMsg").getAsString() : "Failed to fetch charge";
+                            String msg = jsonResponse.has("message") && !jsonResponse.get("message").isJsonNull()
+                                    ? jsonResponse.get("message").getAsString() : "Failed to fetch charge";
                             Toast.makeText(OrderDetailsActivity.this, msg, Toast.LENGTH_SHORT).show();
                         }
                     } catch (Exception e) {
@@ -1608,23 +1584,61 @@ public class OrderDetailsActivity extends AppCompatActivity
         lastAction = status;
         custPrograssbar.prograssCreate(this);
 
-        JSONObject json = new JSONObject();
-        try {
-            json.put("order_id", orderItem.getId());
-            json.put("rider_id", riderData.getId());
-            json.put("comment", comment);
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
+        // Node's driverCancel (orderController.js / tripLifecycle.js) is a fresh
+        // rewrite, not a PHP port - {success, message, data} instead of
+        // {Result, ResponseMsg, order_status, device_match} - so this bypasses
+        // the shared callback(result, "1") PHP-shape parsing entirely rather
+        // than trying to make one handler understand both shapes.
+        java.util.Map<String, Object> body = new java.util.HashMap<>();
+        body.put("order_id", orderItem.getId());
+        body.put("rider_id", riderData.getId());
+        body.put("reason", comment);
 
-        RequestBody body = RequestBody.create(
-                MediaType.parse("application/json"), json.toString());
+        NodeApiClient.getInterface().driverCancel(body)
+                .enqueue(new retrofit2.Callback<JsonObject>() {
+                    @Override
+                    public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                        custPrograssbar.closePrograssBar();
+                        JsonObject result = response.body();
+                        boolean success = response.isSuccessful() && result != null
+                                && result.has("success") && !result.get("success").isJsonNull()
+                                && result.get("success").getAsBoolean();
 
-        Call<JsonObject> call = APIClient.getInterface().orderCancel(body);
+                        if (!success) {
+                            String msg = "Failed to cancel order";
+                            if (result != null && result.has("message") && !result.get("message").isJsonNull()) {
+                                msg = result.get("message").getAsString();
+                            }
+                            Toast.makeText(OrderDetailsActivity.this, msg, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
 
-        GetResult result = new GetResult();
-        result.setMyListener(this);
-        result.callForLogin(call, "1");
+                        HomeFragment.isUpdateHome = true;
+                        isUpdate = true;
+                        new SessionManager(OrderDetailsActivity.this).clearActiveOrder();
+                        if (orderItem != null && orderItem.getId() != null) {
+                            new SessionManager(OrderDetailsActivity.this).clearOrderStopStep(orderItem.getId());
+                        }
+                        new android.app.AlertDialog.Builder(OrderDetailsActivity.this)
+                                .setTitle("Order Canceled")
+                                .setMessage("Your order is canceled")
+                                .setCancelable(false)
+                                .setPositiveButton("OK", (dialog, which) -> {
+                                    dialog.dismiss();
+                                    Intent intent = new Intent(OrderDetailsActivity.this, HomeActivity.class);
+                                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                    startActivity(intent);
+                                    finish();
+                                })
+                                .show();
+                    }
+
+                    @Override
+                    public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
+                        custPrograssbar.closePrograssBar();
+                        Toast.makeText(OrderDetailsActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
 
@@ -1815,7 +1829,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             e.printStackTrace();
         }
         RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        retrofit2.Call<JsonObject> call = APIClient.getInterface().getCancelReasons(bodyRequest);
+        retrofit2.Call<JsonObject> call = NodeApiClient.getInterface().getCancelReasons(bodyRequest);
         call.enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
@@ -1964,7 +1978,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             jsonObject.put("rid", riderData.getId());
         } catch (JSONException ignored) {}
         RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        Call<JsonObject> call = APIClient.getInterface().pkgHistory(bodyRequest);
+        Call<JsonObject> call = NodeApiClient.getInterface().pkgHistory(bodyRequest);
         call.enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
@@ -2029,7 +2043,7 @@ public class OrderDetailsActivity extends AppCompatActivity
             e.printStackTrace();
         }
         RequestBody bodyRequest = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
-        Call<JsonObject> call = APIClient.getInterface().pkgHistory(bodyRequest);
+        Call<JsonObject> call = NodeApiClient.getInterface().pkgHistory(bodyRequest);
         call.enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {

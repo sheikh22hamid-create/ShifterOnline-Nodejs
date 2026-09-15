@@ -346,32 +346,38 @@ async function buyHistoryDriver(req, res) {
     const users = await prisma.tbl_user.findMany({ where: { id: { in: uids } }, select: { id: true, mobile: true } });
     const mobileByUid = Object.fromEntries(users.map((u) => [u.id, u.mobile]));
 
-    const list = rows.map((row) => ({
-      id: row.id,
-      status: row.o_status,
-      order_date: row.order_date,
-      total: row.total_dcharge,
-      pick_name: row.title,
-      drop_name: row.drop_name,
-      time_duration: row.time_duration,
-      order_flow_id: row.flow_id,
-      plat: row.pick_lat,
-      plong: row.pick_long,
-      dlat: row.drop_lat,
-      dlong: row.drop_long,
-      store_paddress: row.pick_address,
-      customer_daddress: row.drop_address,
-      customer_dmobile: mobileByUid[row.uid] ?? null,
-      pick_type: row.pick_type,
-      drop_type: row.drop_type,
-      distance: row.distance,
-    }));
+    const list = rows.map((row) => formatBuyOrderForDriver(row, mobileByUid[row.uid] ?? null));
 
     return res.status(200).json({ BuyOrderHistory: list, ResponseCode: "200", Result: "true", ResponseMsg: "Order History  Get Successfully!!!" });
   } catch (err) {
     logger.error("legacyOrderController.buyHistoryDriver failed:", err);
     return fail(res, "Internal server error", 500);
   }
+}
+
+// Extracted so driverContentController.homeData can build the same shape for
+// a single active buy_order without duplicating the field mapping.
+function formatBuyOrderForDriver(row, customerMobile) {
+  return {
+    id: row.id,
+    status: row.o_status,
+    order_date: row.order_date,
+    total: row.total_dcharge,
+    pick_name: row.title,
+    drop_name: row.drop_name,
+    time_duration: row.time_duration,
+    order_flow_id: row.flow_id,
+    plat: row.pick_lat,
+    plong: row.pick_long,
+    dlat: row.drop_lat,
+    dlong: row.drop_long,
+    store_paddress: row.pick_address,
+    customer_daddress: row.drop_address,
+    customer_dmobile: customerMobile,
+    pick_type: row.pick_type,
+    drop_type: row.drop_type,
+    distance: row.distance,
+  };
 }
 
 // --- rider_api/buy_order_list.php --- (driver's view of a single buy_order, incl. items)
@@ -513,4 +519,5 @@ module.exports = {
   buyHistoryDriver,
   buyOrderDetailDriver,
   billUpload,
+  formatBuyOrderForDriver,
 };

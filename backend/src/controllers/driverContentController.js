@@ -2,6 +2,8 @@ const multer = require("multer");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
+const { formatPkgOrderForDriver } = require("./driverOrderHistoryController");
+const { formatBuyOrderForDriver } = require("./legacyOrderController");
 
 // Node port of several rider_api/*.php endpoints confirmed still called by
 // the native Android driver app (ShifterDriver/app/src/main/java/.../UserService.java):
@@ -70,7 +72,7 @@ async function homeData(req, res) {
     const monthOrder = Number(pkgMonth.total_order || 0) + Number(buyMonth.total_order || 0);
     const monthEarning = Number(pkgMonth.earning || 0) + Number(buyMonth.earning || 0);
 
-    const setting = await prisma.setting.findFirst({ select: { reject_timer: true } });
+    const setting = await prisma.setting.findFirst({ select: { reject_timer: true, rider_commission: true } });
     const rider = await prisma.tbl_rider.findUnique({ where: { id: rid } });
     if (!rider) return fail(res, "Something Went Wrong!");
 
@@ -78,6 +80,49 @@ async function homeData(req, res) {
     if (deviceId) {
       const device = await prisma.tbl_user_device.findFirst({ where: { uid: rid }, orderBy: { id: "desc" } });
       deviceMatch = !!(device && device.is_active && device.device_id === deviceId);
+    }
+
+    // Active order (if any) - drives the driver app's auto-navigate-back-into
+    // OrderDetailsActivity behavior on app open/reopen. Reuses the same
+    // row-formatters pkg_history.php/buy_order_list.php's Node ports use so
+    // the pricing math (which has fixed real production bugs - see
+    // driverOrderHistoryController.js header) isn't re-derived here.
+    let activeOrderHistory = null;
+    const activePkgOrder = await prisma.$queryRaw`
+      SELECT * FROM pkg_order WHERE rid = ${rid} AND o_status NOT IN ('Completed', 'Cancelled') ORDER BY id DESC LIMIT 1
+    `;
+    if (activePkgOrder.length) {
+      const row = activePkgOrder[0];
+      const orderId = Number(row.id);
+      const stops = await prisma.pkg_order_stops.findMany({ where: { order_id: orderId }, orderBy: { sequence: "asc" } });
+      const stopsByOrder = {
+        [orderId]: stops.map((s) => ({
+          sequence: s.sequence,
+          lat: s.lat,
+          lng: s.lng,
+          address: s.address,
+          hno: s.hno,
+          landmark: s.landmark,
+          contact_name: s.contact_name,
+          contact_number: s.contact_number,
+        })),
+      };
+      activeOrderHistory = formatPkgOrderForDriver(row, {
+        stopsByOrder,
+        benefitByOrder: {}, // active orders are never "Completed" yet, so the benefit lookup formatPkgOrderForDriver does is a no-op anyway
+        planNameCache: {},
+        globalComm: Number(setting?.rider_commission ?? 10),
+      });
+    }
+
+    let activeBuyOrderHistory = null;
+    const activeBuyOrder = await prisma.buy_order.findFirst({
+      where: { rid, NOT: [{ o_status: "Completed" }, { o_status: "Cancelled" }] },
+      orderBy: { id: "desc" },
+    });
+    if (activeBuyOrder) {
+      const buyer = await prisma.tbl_user.findUnique({ where: { id: activeBuyOrder.uid }, select: { mobile: true } }).catch(() => null);
+      activeBuyOrderHistory = formatBuyOrderForDriver(activeBuyOrder, buyer?.mobile ?? null);
     }
 
     const referralCode = rider.reffer_code || rider.referral_code || "";
@@ -119,6 +164,8 @@ async function homeData(req, res) {
       device_match: deviceMatch,
       isHowUse: 1,
       Online: rider.a_status === 1,
+      OrderHistory: activeOrderHistory,
+      BuyOrderHistory: activeBuyOrderHistory,
       referral_code: referralCode,
       referral_points: rider.referral_points || 0,
       referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",

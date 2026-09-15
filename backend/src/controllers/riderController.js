@@ -117,6 +117,58 @@ async function getDeliveryTypes(req, res) {
   }
 }
 
+// Node port of cust_api/packagelist.php's type==="DRIVER" branch only (the
+// customer branch - geofence/night-charge/plan-discount pricing display -
+// lives in orderController.fareEstimate instead; this is just the driver
+// home screen's simple delivery-type toggle list, which only ever reads
+// id/title/driver_detail_image/driver_active - see HomeFragment.createPackageRow).
+// Same vehicle->category lookup as getDeliveryTypes above, kept as its own
+// endpoint since the response shape (PackageData array) and calling
+// convention (POST body with uid, not a path param) are both different.
+async function packageListForDriver(req, res) {
+  try {
+    const riderId = Number(req.body?.uid || 0);
+    if (!riderId) return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "uid and cat_id required" });
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { vehicle: true } });
+    if (!rider) return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Rider not found" });
+
+    const category = await prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
+    if (!category) {
+      return res.status(200).json({ PackageData: [], ResponseCode: "200", Result: "true", ResponseMsg: "Package List By Category Get Successfully!!" });
+    }
+
+    const packages = await prisma.tbl_package.findMany({
+      where: { cat_id: category.id, status: 1 },
+      orderBy: { sort_order: "asc" },
+      select: { id: true, title: true, driver_title: true, driver_detail_image: true },
+    });
+
+    const enabledRows = await prisma.tbl_rider_delivery_type.findMany({
+      where: { rider_id: riderId, delivery_type: { in: packages.map((p) => String(p.id)) }, status: 1 },
+    });
+    const enabledPackageIds = new Set(enabledRows.map((r) => Number(r.delivery_type)));
+
+    const packageData = packages.map((p) => ({
+      id: String(p.id),
+      title: p.driver_title || p.title,
+      driver_detail_image: p.driver_detail_image || "",
+      driver_active: enabledPackageIds.has(p.id) ? "1" : "0",
+      status: enabledPackageIds.has(p.id) ? "1" : "0",
+    }));
+
+    return res.status(200).json({
+      PackageData: packageData,
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Package List By Category Get Successfully!!",
+    });
+  } catch (err) {
+    logger.error("packageListForDriver failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 /** Toggles one rider's eligibility for one package tier (creates the tbl_rider_delivery_type row if it doesn't exist yet). */
 async function setDeliveryType(req, res) {
   try {
@@ -148,7 +200,7 @@ async function setDeliveryType(req, res) {
 
 async function setStatus(req, res) {
   try {
-    const { rider_id, a_status } = req.body;
+    const { rider_id, a_status, device_id } = req.body;
     if (!rider_id || ![0, 1].includes(Number(a_status))) {
       return res.status(400).json({ Result: false, msg: "rider_id and a_status (0 or 1) are required" });
     }
@@ -165,7 +217,17 @@ async function setStatus(req, res) {
       status: updated.status,
     });
 
-    return res.status(200).json({ Result: true, msg: "Status updated" });
+    // Same multi-device-login kickout check driverContentController.homeData
+    // does - the PHP rider_status.php this replaces did this on every
+    // online/offline toggle, not just on app-open, so a driver logged in
+    // elsewhere gets caught sooner rather than only on next app reopen.
+    let deviceMatch = true;
+    if (device_id) {
+      const device = await prisma.tbl_user_device.findFirst({ where: { uid: Number(rider_id) }, orderBy: { id: "desc" } });
+      deviceMatch = !!(device && device.is_active && device.device_id === device_id);
+    }
+
+    return res.status(200).json({ Result: true, msg: "Status updated", device_match: deviceMatch });
   } catch (err) {
     logger.error("riderController.setStatus failed:", err);
     return res.status(500).json({ Result: false, msg: "Internal server error" });
@@ -177,7 +239,7 @@ const dutyTrackingService = require("../services/dutyTrackingService");
 /** REST fallback for clients that can't hold a live socket for location updates. */
 async function updateLocation(req, res) {
   try {
-    const { rider_id, lat, lng } = req.body;
+    const { rider_id, lat, lng, device_id } = req.body;
     if (!rider_id || lat === undefined || lng === undefined) {
       return res.status(400).json({ Result: false, msg: "rider_id, lat and lng are required" });
     }
@@ -195,7 +257,17 @@ async function updateLocation(req, res) {
       logger.error(`dutyTrackingService.recordDutyLocationPing error for rider ${rider_id}:`, err);
     });
 
-    return res.status(200).json({ Result: true, msg: "Location updated" });
+    // Same multi-device-login kickout check as setStatus/homeData - this
+    // fires far more often than either (continuous background pings while
+    // online), so it's actually the most reliable place to catch a driver
+    // logged in elsewhere.
+    let deviceMatch = true;
+    if (device_id) {
+      const device = await prisma.tbl_user_device.findFirst({ where: { uid: Number(rider_id) }, orderBy: { id: "desc" } });
+      deviceMatch = !!(device && device.is_active && device.device_id === device_id);
+    }
+
+    return res.status(200).json({ Result: true, msg: "Location updated", device_match: deviceMatch });
   } catch (err) {
     logger.error("riderController.updateLocation failed:", err);
     return res.status(500).json({ Result: false, msg: "Internal server error" });
@@ -220,4 +292,4 @@ async function isolateTestDrivers(req, res) {
   }
 }
 
-module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, setStatus, updateLocation, isolateTestDrivers };
+module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, packageListForDriver, setStatus, updateLocation, isolateTestDrivers };

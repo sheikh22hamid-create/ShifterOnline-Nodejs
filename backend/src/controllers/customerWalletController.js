@@ -17,6 +17,57 @@ function fail(res, msg) {
   return res.status(200).json({ Result: false, msg });
 }
 
+// --- create_order.php --- (rider_api's Razorpay order-creation step, ahead
+// of add_wallet.php's verify-and-credit step above. No existing Node
+// endpoint created a Razorpay order server-side yet - addWallet only ever
+// verified a payment the client already completed - so this is new, not a
+// port of logic that lived elsewhere in this codebase. Uses the same raw
+// fetch()-based approach as razorpayVerify.js rather than pulling in the
+// Razorpay SDK for one call.)
+async function createRazorpayOrder(req, res) {
+  try {
+    const amount = Number(req.body?.amount || 0);
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ Result: false, msg: "Valid amount is required" });
+    }
+
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+      logger.error("createRazorpayOrder: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured.");
+      return res.status(200).json({ Result: false, msg: "Payment gateway is not configured. Try again later." });
+    }
+
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+    const resp = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: Math.round(amount * 100), // paise
+        currency: "INR",
+        receipt: `wallet_${Date.now()}`,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      logger.error("createRazorpayOrder: Razorpay API error:", data);
+      return res.status(200).json({ Result: false, msg: data?.error?.description || "Failed to create payment order" });
+    }
+
+    return res.status(200).json({
+      Result: true,
+      msg: "Order created",
+      OrderId: data.id,
+      order_id: data.id,
+      amount: data.amount,
+      currency: data.currency,
+    });
+  } catch (err) {
+    logger.error("createRazorpayOrder failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
 // --- add_wallet.php ---
 async function addWallet(req, res) {
   try {
@@ -179,4 +230,4 @@ async function withdrawWallet(req, res) {
   }
 }
 
-module.exports = { addWallet, walletHistory, withdrawWallet };
+module.exports = { addWallet, walletHistory, withdrawWallet, createRazorpayOrder };
