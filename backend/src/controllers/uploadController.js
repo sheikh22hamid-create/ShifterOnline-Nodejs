@@ -1,11 +1,8 @@
 const crypto = require("crypto");
-const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const logger = require("../utils/logger");
-
-const ORDER_PHOTOS_DIR = path.join(__dirname, "..", "..", "public", "images", "order_photos");
-fs.mkdirSync(ORDER_PHOTOS_DIR, { recursive: true });
+const { uploadBuffer } = require("../utils/cloudinaryStorage");
 
 const ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
@@ -25,26 +22,32 @@ function buildUploadResponse(file) {
   return { status: 200, body: { Result: true, path: `images/order_photos/${file.filename}` } };
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, ORDER_PHOTOS_DIR),
-  filename: (req, file, cb) => cb(null, generatePhotoFilename(file.originalname)),
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith("image/")),
 }).single("photo");
 
 function uploadOrderPhoto(req, res) {
-  upload(req, res, (err) => {
+  upload(req, res, async (err) => {
     if (err) {
       logger.error("uploadOrderPhoto failed:", err);
       return res.status(400).json({ Result: false, msg: err.message || "Upload failed" });
     }
-    const { status, body } = buildUploadResponse(req.file);
-    return res.status(status).json(body);
+    if (!req.file) {
+      const { status, body } = buildUploadResponse(undefined);
+      return res.status(status).json(body);
+    }
+    try {
+      const filename = generatePhotoFilename(req.file.originalname);
+      await uploadBuffer(req.file.buffer, `images/order_photos/${filename}`);
+      const { status, body } = buildUploadResponse({ filename });
+      return res.status(status).json(body);
+    } catch (uploadErr) {
+      logger.error("uploadOrderPhoto failed:", uploadErr);
+      return res.status(500).json({ Result: false, msg: "Upload failed" });
+    }
   });
 }
 
-module.exports = { generatePhotoFilename, buildUploadResponse, uploadOrderPhoto, ORDER_PHOTOS_DIR };
+module.exports = { generatePhotoFilename, buildUploadResponse, uploadOrderPhoto };

@@ -85,6 +85,37 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId) {
   );
 }
 
+/** See tripLifecycle.sweepExpiredAdvancePayments — customer never paid the advance within 2 minutes of the driver accepting. */
+async function notifyCustomerAdvancePaymentTimeoutCancel(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Order Cancelled",
+    `Order #${orderId} cancelled: the advance payment wasn't completed within 2 minutes.`,
+    { type: "advance_timeout_cancel", action: "order_cancelled", order_id: String(orderId) }
+  );
+}
+
+/** Driver-side counterpart of notifyCustomerAdvancePaymentTimeoutCancel — same event, told from the driver's side. */
+async function notifyDriverAdvancePaymentTimeoutCancel(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Order Cancelled",
+    `Customer did not pay the advance within 2 minutes. Order #${orderId} has been cancelled — you're free for new orders.`,
+    { type: "order_cancelled", order_id: String(orderId), reason: "advance_payment_timeout" },
+    "order_dismiss_channel_v1"
+  );
+}
+
+/** See tripLifecycle.sendScheduledOrderReminders — booking_type=2 order's schedule_date_time is ~10 minutes away. */
+async function notifyCustomerScheduleReminder(fcmToken, orderId, scheduleTimeLabel) {
+  return sendPushNotification(
+    fcmToken,
+    "Upcoming Scheduled Order",
+    `Your scheduled order #${orderId} will be picked up around ${scheduleTimeLabel} (10 minutes left).`,
+    { type: "schedule_reminder", order_id: String(orderId) }
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
@@ -92,4 +123,7 @@ module.exports = {
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,
   notifyDriverPickupTimeoutCancel,
+  notifyCustomerAdvancePaymentTimeoutCancel,
+  notifyDriverAdvancePaymentTimeoutCancel,
+  notifyCustomerScheduleReminder,
 };

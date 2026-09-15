@@ -1,4 +1,3 @@
-const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const multer = require("multer");
@@ -6,6 +5,8 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const otpService = require("../services/otpService");
 const deviceSessionService = require("../services/deviceSessionService");
+const { assignDefaultDeliveryTypes } = require("../utils/assignDefaultDeliveryTypes");
+const { uploadBuffer } = require("../utils/cloudinaryStorage");
 
 // Node port of the legacy PHP driver endpoints under
 // Php Backend/production/admin/rider_api/*.php. Response shape kept
@@ -38,27 +39,6 @@ async function uniqueRefferCode(seed) {
     if (!exists) return code;
   }
   return generateRefferCode(seed) + Date.now().toString(36).slice(-5).toUpperCase();
-}
-
-// Assigns every active package under this rider's vehicle's category as a
-// default enabled delivery type. Ported from
-// admin/include/Common.php::assignDefaultDeliveryTypes().
-async function assignDefaultDeliveryTypes(riderId) {
-  const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { vehicle: true } });
-  if (!rider?.vehicle) return;
-
-  const cat = await prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
-  if (!cat) return;
-
-  const packages = await prisma.tbl_package.findMany({ where: { cat_id: cat.id, status: 1 } });
-  for (const pkg of packages) {
-    const exists = await prisma.tbl_rider_delivery_type.findFirst({
-      where: { rider_id: riderId, delivery_type: pkg.id },
-    });
-    if (!exists) {
-      await prisma.tbl_rider_delivery_type.create({ data: { rider_id: riderId, delivery_type: pkg.id, status: 1 } });
-    }
-  }
 }
 
 // --- mobile_check.php ---
@@ -236,11 +216,6 @@ async function logout(req, res) {
 // check across tbl_personal_doc, auto-approval when all 4 docs verified).
 // ---------------------------------------------------------------------
 
-const REG_DOCS_DIR = path.join(__dirname, "..", "..", "public", "images", "rider_docs");
-const REG_PROFILE_DIR = path.join(__dirname, "..", "..", "public", "images", "profile");
-fs.mkdirSync(REG_DOCS_DIR, { recursive: true });
-fs.mkdirSync(REG_PROFILE_DIR, { recursive: true });
-
 const IMAGE_EXT_BY_MIME = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
 const registerUpload = multer({
@@ -309,12 +284,12 @@ function collectDocuments(body) {
   return docs;
 }
 
-function saveBufferedFile(file, destDir) {
+// folder: "profile" | "rider_docs" - returns the relative path to store in the DB (e.g. "images/profile/xxx.jpg")
+async function saveBufferedFile(file, folder) {
   const mime = (file.mimetype || "").toLowerCase();
   const ext = IMAGE_EXT_BY_MIME[mime] || path.extname(file.originalname || "").replace(".", "") || "jpg";
   const filename = `${Date.now()}_${crypto.randomBytes(8).toString("hex")}.${ext}`;
-  fs.writeFileSync(path.join(destDir, filename), file.buffer);
-  return filename;
+  return uploadBuffer(file.buffer, `images/${folder}/${filename}`);
 }
 
 async function registerHandler(req, res) {
@@ -329,6 +304,7 @@ async function registerHandler(req, res) {
     const fullName = String(body.full_name || "").trim();
     const email = String(body.email).trim();
     const mobile = String(body.mobile).trim();
+    const dob = String(body.dob || "").trim();
     const accountName = String(body.account_name).trim();
     const accountNumber = String(body.account_number).trim();
     const ifsc = String(body.ifsc).trim().toUpperCase();
@@ -410,6 +386,7 @@ async function registerHandler(req, res) {
         data: {
           full_name: fullName,
           email,
+          dob,
           account_name: accountName,
           account_number: accountNumber,
           ifsc,
@@ -432,6 +409,7 @@ async function registerHandler(req, res) {
         data: {
           full_name: fullName,
           email,
+          dob,
           password: "",
           fmobile: mobile,
           vehicle,
@@ -461,10 +439,10 @@ async function registerHandler(req, res) {
     }
 
     // Profile photo
-    const profileFilename = saveBufferedFile(profilePhoto, REG_PROFILE_DIR);
+    const profilePath = await saveBufferedFile(profilePhoto, "profile");
     await prisma.tbl_rider.update({
       where: { id: riderId },
-      data: { profile_picture: `images/profile/${profileFilename}` },
+      data: { profile_picture: profilePath },
     });
 
     // Referral row
@@ -502,8 +480,7 @@ async function registerHandler(req, res) {
       let ext = path.extname(upiFile.originalname || "").replace(".", "").toLowerCase();
       if (!allowedExt.includes(ext)) ext = "jpg";
       const filename = `upi_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
-      fs.writeFileSync(path.join(REG_DOCS_DIR, filename), upiFile.buffer);
-      upiImagePath = `images/rider_docs/${filename}`;
+      upiImagePath = await uploadBuffer(upiFile.buffer, `images/rider_docs/${filename}`);
     }
 
     // Personal doc row

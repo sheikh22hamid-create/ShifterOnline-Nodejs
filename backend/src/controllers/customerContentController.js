@@ -4,10 +4,66 @@ const logger = require("../utils/logger");
 // Node port of several small read-mostly cust_api/*.php endpoints:
 // add_favorite_driver.php, get_favorite_drivers.php, couponlist.php,
 // check_coupon.php, notification_list.php, city.php, pagelist.php,
-// faq.php, paymentgateway.php, home_data.php.
+// faq.php, paymentgateway.php, home_data.php, cancel_reason.php,
+// sms_type.php.
 
 function fail(res, msg, code = 401) {
   return res.status(200).json({ ResponseCode: String(code), Result: "false", ResponseMsg: msg });
+}
+
+// --- cancel_reason.php --- (customer-facing list; admin CRUD already lives in adminRoutes.js)
+async function cancelReasonList(req, res) {
+  try {
+    const type = req.body?.type;
+    if (!type || !["user", "driver"].includes(type)) {
+      return fail(res, "Invalid or Missing Type! (user/driver)");
+    }
+
+    const reasons = await prisma.tbl_cancel_reason.findMany({
+      where: { OR: [{ type }, { type: "both" }], status: true },
+      orderBy: { id: "asc" },
+      select: { id: true, reason: true, type: true },
+    });
+    if (!reasons.length) return fail(res, "No Cancel Reasons Found!");
+
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Cancel Reasons Fetched Successfully!!", reason_list: reasons });
+  } catch (err) {
+    logger.error("customerContentController.cancelReasonList failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- sms_type.php --- (app-level feature-flag/config echo, read from `setting`)
+// A handful of the PHP fields (admob, mode, slogin, banner_id, in_id,
+// coin_fun, ios_in_id, ios_banner_id, agora_app_id) don't exist as columns
+// on `setting` in this schema - they're returned as null rather than
+// silently dropped, so the app's existing null-handling for "feature off"
+// keeps working instead of the key vanishing outright.
+async function appConfig(req, res) {
+  try {
+    const setting = await prisma.setting.findFirst();
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "type Get Successfully!!",
+      SMS_TYPE: setting?.sms_type ?? null,
+      Admob_Enabled: null,
+      maintainance_Enabled: null,
+      Social_login_enabled: null,
+      banner_id: null,
+      in_id: null,
+      otp_auth: setting?.otp_auth ?? null,
+      gift_fun: null,
+      ios_in_id: null,
+      ios_banner_id: null,
+      agora_app_id: null,
+      one_key: setting?.one_key ?? null,
+      one_hash: setting?.one_hash ?? null,
+    });
+  } catch (err) {
+    logger.error("customerContentController.appConfig failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
 }
 
 // --- add_favorite_driver.php --- (toggle)
@@ -337,4 +393,6 @@ module.exports = {
   faqList,
   paymentGatewayList,
   homeData,
+  cancelReasonList,
+  appConfig,
 };

@@ -3,6 +3,8 @@ const customerAuthController = require("../controllers/customerAuthController");
 const customerProfileController = require("../controllers/customerProfileController");
 const customerWalletController = require("../controllers/customerWalletController");
 const customerContentController = require("../controllers/customerContentController");
+const customOrderBiddingController = require("../controllers/customOrderBiddingController");
+const customerPlanController = require("../controllers/customerPlanController");
 
 const router = express.Router();
 
@@ -40,5 +42,18 @@ router.get("/pages", customerContentController.pageList);
 router.post("/faqs", customerContentController.faqList);
 router.get("/payment-gateways", customerContentController.paymentGatewayList);
 router.post("/home", customerContentController.homeData);
+router.post("/cancel-reasons", customerContentController.cancelReasonList);
+router.get("/app-config", customerContentController.appConfig);
+
+// Custom-order bidding (customer side) - driver side is in riderRoutes.js,
+// admin side already exists in adminRoutes.js/customOrderController.js
+router.post("/custom-order/create", customOrderBiddingController.createCustomOrder);
+router.post("/custom-order/bids", customOrderBiddingController.listBids);
+
+// Customer premium plan purchase (Node port of get_premium_plans_api.php /
+// purchase_premium_plan_api.php's CUSTOMER_PREMIUM branch - see
+// customerPlanService.js header for what's out of scope)
+router.post("/premium-plans", customerPlanController.list);
+router.post("/premium-plans/purchase", customerPlanController.purchase);
 
 module.exports = router;

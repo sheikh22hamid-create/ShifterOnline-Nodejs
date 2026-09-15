@@ -15,21 +15,21 @@ model Pkg_tracking {
 }
 
 model admin {
-  id            Int         @id @default(autoincrement())
-  username      String      @db.LongText
-  password      String      @db.LongText
-  name          String?     @db.VarChar(150)
-  email         String?     @db.VarChar(150)
-  mobile        String?     @db.VarChar(20)
-  avatar        String?     @db.VarChar(255)
-  role          admin_role? @default(executive)
+  id            Int        @id @default(autoincrement())
+  username      String     @db.LongText
+  name          String?    @db.VarChar(150)
+  email         String?    @db.VarChar(150)
+  mobile        String?    @db.VarChar(20)
+  avatar        String?    @db.VarChar(255)
+  password      String     @db.LongText
+  role          admin_role @default(executive)
   city_id       Int?
-  status        Int         @default(1)
-  permissions   Json?
-  last_login_at DateTime?
-  created_by    Int?        @default(0)
-  created_at    DateTime?   @default(now())
-  updated_at    DateTime?   @default(now()) @updatedAt
+  status        Boolean    @default(true)
+  permissions   String?    @db.LongText
+  last_login_at DateTime?  @db.DateTime(0)
+  created_by    Int?       @default(0)
+  created_at    DateTime?  @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?  @default(now()) @updatedAt @db.Timestamp(0)
 }
 
 model app_settings {
@@ -107,16 +107,16 @@ model driver_activity {
 }
 
 model driver_training_progress {
-  id                        Int       @id @default(autoincrement())
-  rider_id                  Int       @unique
-  video_url                 String    @db.Text
-  current_position_seconds  Int       @default(0)
-  total_duration_seconds    Int       @default(0)
-  watch_progress            Float     @default(0)
-  is_completed              Boolean   @default(false)
-  completed_at              DateTime? @db.DateTime(0)
-  last_reminded_at          DateTime? @db.DateTime(0)
-  updated_at                DateTime  @default(now()) @updatedAt
+  id                       Int       @id @default(autoincrement())
+  rider_id                 Int       @unique(map: "rider_id")
+  video_url                String    @db.Text
+  current_position_seconds Int       @default(0)
+  total_duration_seconds   Int       @default(0)
+  watch_progress           Float     @default(0) @db.Float
+  is_completed             Boolean   @default(false)
+  completed_at             DateTime? @db.DateTime(0)
+  last_reminded_at         DateTime? @db.DateTime(0)
+  updated_at               DateTime  @default(now()) @updatedAt @db.DateTime(0)
 }
 
 model driver_withdraw_requests {
@@ -218,7 +218,6 @@ model pkg_order {
   current_package_step   Int?               @default(0)
   driver_earning         Decimal?           @db.Decimal(10, 2)
   booking_type           Int?
-  next_day_sequence      Int?
   city_id                Int?
   schedule_date_time     String?            @db.VarChar(255)
   allowed_delivery_types String?            @db.Text
@@ -236,6 +235,20 @@ model pkg_order {
   payment_status         Int?               @default(0)
   razorpay_payment_id    String?            @db.VarChar(255)
   gst_number             String?            @db.VarChar(255)
+  night_charge           String?            @db.VarChar(255)
+  advance_payment        String?            @db.VarChar(255)
+  pickup_distance_km     Decimal?           @default(0.00) @db.Decimal(10, 2)
+  pickup_duration_min    Int?               @default(0)
+  pickup_charge          Decimal?           @default(0.00) @db.Decimal(10, 2)
+  cancel_charge          Decimal?           @default(0.00) @db.Decimal(10, 2)
+  remaining_amount       Decimal?           @default(0.00) @db.Decimal(10, 2)
+  grand_total            Decimal?           @default(0.00) @db.Decimal(10, 2)
+  admin_amount           Decimal            @default(0.00) @db.Decimal(10, 2)
+  next_day_sequence      Int?
+  next_day_batch_id      String?            @db.VarChar(50)
+  scheduled_at           DateTime?          @db.DateTime(0)
+
+  @@index([rid, order_status], map: "idx_rid_status")
 }
 
 model pkg_order_stops {
@@ -250,6 +263,8 @@ model pkg_order_stops {
   contact_name   String?  @db.Text
   contact_number String?  @db.Text
   created_at     DateTime @default(now())
+
+  @@index([order_id, sequence], map: "idx_pkg_order_stops_order_sequence")
 }
 
 model pkg_order_wait_timer {
@@ -270,6 +285,7 @@ model pkg_order_wait_timer {
   total_distance      Decimal?  @db.Decimal(10, 2)
 
   @@unique([order_id, rid], map: "order_rid_unique")
+  @@unique([order_id, rid], map: "uniq_order_rid")
 }
 
 model reject_rider_list {
@@ -524,14 +540,18 @@ model tbl_order_items {
 }
 
 model tbl_order_requests {
-  id         Int       @id @default(autoincrement())
-  order_id   Int?
-  rider_id   Int?
-  status     String?   @db.VarChar(100)
-  lat        String?   @db.VarChar(255)
-  lng        String?   @db.VarChar(255)
-  created_at DateTime? @default(now()) @db.DateTime(0)
-  package_id Int       @default(0)
+  id            Int       @id @default(autoincrement())
+  order_id      Int?
+  rider_id      Int?
+  status        String?   @db.VarChar(100)
+  lat           String?   @db.VarChar(255)
+  lng           String?   @db.VarChar(255)
+  created_at    DateTime? @default(now()) @db.DateTime(0)
+  package_id    Int       @default(0)
+  batch_no      Int       @default(1)
+  expires_at    DateTime? @db.DateTime(0)
+  d_charge      Decimal   @default(0.00) @db.Decimal(10, 2)
+  total_dcharge Decimal   @default(0.00) @db.Decimal(10, 2)
 
   @@index([order_id], map: "idx_order_id")
 }
@@ -574,8 +594,16 @@ model tbl_package {
   premium_plan_id              Int?             @db.UnsignedInt
   sort_order                   Int              @default(0)
   pickup_per_km_charge         Decimal?         @db.Decimal(8, 2)
+  outside_min_charge           Decimal          @default(0.00) @db.Decimal(10, 2)
+  outside_per_km_charge        Decimal          @default(0.00) @db.Decimal(10, 2)
+  outside_surcharge            Decimal          @default(0.00) @db.Decimal(10, 2)
   cancellation_charge_customer Decimal          @default(0.00) @db.Decimal(10, 2)
   cancellation_charge_driver   Decimal          @default(0.00) @db.Decimal(10, 2)
+  admin_earning                Decimal          @default(0.00) @db.Decimal(10, 2)
+  driver_earning               Decimal          @default(0.00) @db.Decimal(10, 2)
+  driver_cancel_admin_earning  Decimal          @default(0.00) @db.Decimal(10, 2)
+  driver_cancel_user_earning   Decimal          @default(0.00) @db.Decimal(10, 2)
+  cancellation_charge          String?          @db.VarChar(512)
 
   @@index([premium_plan_id], map: "idx_premium_plan")
 }
@@ -657,64 +685,65 @@ model tbl_plan_payment {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model tbl_premium_plan {
-  id                           Int                                      @id @default(autoincrement()) @db.UnsignedInt
-  plan_name                    String                                   @db.VarChar(150)
-  plan_for                     tbl_premium_plan_plan_for                @default(USER)
-  plan_type                    String                                   @default("CUSTOMER_PREMIUM") @db.VarChar(30)
-  validity_days                Int                                      @default(30) @db.UnsignedInt
-  expire_date                  DateTime?                                @db.Date
-  price                        Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  description                  String?                                  @db.Text
-  plan_image                   String?                                  @db.VarChar(255)
-  discount_enabled             Boolean                                  @default(false)
-  discount_percent             Decimal                                  @default(0.00) @db.Decimal(5, 2)
-  discount_max_cap             Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  incentive_enabled            Boolean                                  @default(false)
-  incentive_type               tbl_premium_plan_incentive_type          @default(flat)
-  incentive_value              Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  incentive_min_fare           Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  incentive_monthly_cap        Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  guaranteed_enabled           Boolean                                  @default(false)
-  guaranteed_rides_per_month   Int                                      @default(0) @db.UnsignedInt
-  guaranteed_compensation      tbl_premium_plan_guaranteed_compensation @default(wallet_credit)
-  cancellation_enabled         Boolean                                  @default(false)
-  free_cancellations           Int                                      @default(0)
-  cancellation_window_min      Int                                      @default(5) @db.UnsignedInt
-  priority_enabled             Boolean                                  @default(false)
-  guarantee_driver             Boolean
-  wallet_bonus_enabled         Boolean                                  @default(false)
-  wallet_bonus_amount          Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  city                         String                                   @db.VarChar(50)
-  sort_order                   Int                                      @default(0)
-  is_popular                   Boolean                                  @default(false)
-  cumponsation_charge          String?                                  @db.VarChar(20)
-  status                       Boolean                                  @default(true)
-  created_at                   DateTime                                 @default(now()) @db.Timestamp(0)
-  updated_at                   DateTime                                 @default(now()) @db.Timestamp(0)
-  initial_price                Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  subscription_price           Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  commission_percent           Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  per_trip_charge              Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  referral_enabled             Boolean                                  @default(false)
-  referral_points_per_referral Int                                      @default(0)
-  referral_point_value         Decimal                                  @default(1.00) @db.Decimal(10, 2)
-  number_of_referrals          Int                                      @default(0)
-  auto_activate_on_referrals   Boolean                                  @default(false)
-  rides_carry_forward          Boolean                                  @default(true)
-  no_advance_payment           Boolean                                  @default(false)
-  priority_support             Boolean                                  @default(false)
-  special_offers               Boolean                                  @default(false)
-  compunsation_charge          Int?
-  lifetime_enabled             Boolean                                  @default(false)
-  activity_protection_enabled  Boolean                                  @default(false)
-  activity_protection_3m       Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  activity_protection_6m       Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  activity_protection_12m      Decimal                                  @default(0.00) @db.Decimal(10, 2)
-  activity_min_online_hours    Int                                      @default(10)
-  activity_require_model1      Boolean                                  @default(false)
-  activity_require_zero_requests Boolean                                @default(false)
-  activity_require_service_zone Boolean                                 @default(false)
-  activity_request_ends_day    Boolean                                  @default(true)
+  id                             Int                                      @id @default(autoincrement()) @db.UnsignedInt
+  plan_name                      String                                   @db.VarChar(150)
+  plan_for                       tbl_premium_plan_plan_for                @default(USER)
+  plan_type                      String                                   @default("CUSTOMER_PREMIUM") @db.VarChar(30)
+  validity_days                  Int                                      @default(30) @db.UnsignedInt
+  expire_date                    DateTime?                                @db.Date
+  price                          Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  description                    String?                                  @db.Text
+  plan_image                     String?                                  @db.VarChar(255)
+  discount_enabled               Boolean                                  @default(false)
+  discount_percent               Decimal                                  @default(0.00) @db.Decimal(5, 2)
+  discount_max_cap               Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  incentive_enabled              Boolean                                  @default(false)
+  incentive_type                 tbl_premium_plan_incentive_type          @default(flat)
+  incentive_value                Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  incentive_min_fare             Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  incentive_monthly_cap          Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  guaranteed_enabled             Boolean                                  @default(false)
+  guaranteed_rides_per_month     Int                                      @default(0) @db.UnsignedInt
+  guaranteed_compensation        tbl_premium_plan_guaranteed_compensation @default(wallet_credit)
+  cancellation_enabled           Boolean                                  @default(false)
+  free_cancellations             Int                                      @default(0)
+  cancellation_window_min        Int                                      @default(5) @db.UnsignedInt
+  priority_enabled               Boolean                                  @default(false)
+  guarantee_driver               Boolean
+  wallet_bonus_enabled           Boolean                                  @default(false)
+  wallet_bonus_amount            Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  city                           String                                   @db.VarChar(50)
+  duration_months                Int                                      @default(1) @db.TinyInt
+  sort_order                     Int                                      @default(0)
+  is_popular                     Boolean                                  @default(false)
+  cumponsation_charge            String?                                  @db.VarChar(20)
+  status                         Boolean                                  @default(true)
+  created_at                     DateTime                                 @default(now()) @db.Timestamp(0)
+  updated_at                     DateTime                                 @default(now()) @db.Timestamp(0)
+  initial_price                  Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  subscription_price             Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  commission_percent             Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  per_trip_charge                Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  referral_enabled               Boolean                                  @default(false)
+  referral_points_per_referral   Int                                      @default(0)
+  referral_point_value           Decimal                                  @default(1.00) @db.Decimal(10, 2)
+  number_of_referrals            Int                                      @default(0)
+  auto_activate_on_referrals     Boolean                                  @default(false)
+  rides_carry_forward            Boolean                                  @default(true)
+  no_advance_payment             Boolean                                  @default(false)
+  priority_support               Boolean                                  @default(false)
+  special_offers                 Boolean                                  @default(false)
+  compunsation_charge            Int?
+  lifetime_enabled               Boolean                                  @default(false)
+  activity_protection_enabled    Boolean                                  @default(false)
+  activity_protection_3m         Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  activity_protection_6m         Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  activity_protection_12m        Decimal                                  @default(0.00) @db.Decimal(10, 2)
+  activity_min_online_hours      Int                                      @default(10)
+  activity_require_model1        Boolean                                  @default(false)
+  activity_require_zero_requests Boolean                                  @default(false)
+  activity_require_service_zone  Boolean                                  @default(false)
+  activity_request_ends_day      Boolean                                  @default(true)
 
   @@index([expire_date], map: "idx_expire_date")
   @@index([plan_for], map: "idx_plan_for")
@@ -774,60 +803,57 @@ model tbl_referral_setting {
 }
 
 model tbl_rider {
-  id                  Int                            @id @default(autoincrement())
-  first_name          String?                        @db.Text
-  last_name           String?                        @db.Text
-  full_name           String?                        @db.VarChar(150)
-  email               String?                        @db.VarChar(150)
-  account_name        String?                        @db.VarChar(150)
-  account_number      String?                        @db.VarChar(50)
-  ifsc                String?                        @db.VarChar(20)
-  verification_type   tbl_rider_verification_type?   @default(manual)
-  verification_status tbl_rider_verification_status? @default(pending)
-  fmobile             String                         @db.Text
-  smobile             String?                        @db.Text
-  nationality         String?                        @db.Text
-  dob                 String?                        @db.Text
-  city_id             Int?                           @default(1)
-  full_address        String?                        @db.Text
-  know_language       String?                        @db.Text
-  profile_picture     String                         @db.Text
-  survey_status       Int                            @default(0)
-  status              Int                            @default(1)
-  a_status            Int                            @default(1)
-  rlats               String?                        @db.Text
-  rlongs              String?                        @db.Text
-  all_verify          Int                            @default(0)
-  rdate               DateTime                       @db.DateTime(0)
-  add_info            Int                            @default(0)
-  update_by           String?                        @db.Text
-  password            String?                        @db.Text
-  fcm_token           String                         @db.VarChar(2048)
-  vehicle             String                         @db.VarChar(1024)
-  driver_basic_type   Int?
-  wallet_balance      Decimal?                       @default(0.00) @db.Decimal(10, 2)
-  plan_type           tbl_rider_plan_type?           @default(general)
-  monthly_plan        Int?                           @default(0)
-  working_hours       Int?                           @default(0)
-  vehicle_no          String?                        @db.VarChar(255)
-  upi_id              String?                        @db.VarChar(255)
-  device_id           String                         @db.VarChar(255)
-  reffer_code         String?                        @unique(map: "uniq_reffer_code") @db.VarChar(20)
-  refferal_code       String?                        @db.VarChar(20)
-  refer_by            Int                            @default(0)
-  wallet_points       Int?
-  referral_code       String?                        @unique(map: "uniq_rider_ref_code") @db.VarChar(20)
-  referred_by         Int                            @default(0)
-  referred_by_type    String                         @default("") @db.VarChar(10)
-  referral_points     Int                            @default(0)
-  payment_complete    Int?
-  // Model 1 (cheapest tier) reliability tracking — see dispatchManager's
-  // recordModel1Outcome/isModel1Suspended: a rider with Model 1 enabled who
-  // misses (rejects or times out on) 5 Model-1 offers in a row is excluded
-  // from Model-1 offers for 24 hours, so keeping it toggled on isn't free if
-  // never actually taken.
-  model1_miss_streak     Int       @default(0)
-  model1_suspended_until DateTime? @db.DateTime(0)
+  id                     Int                            @id @default(autoincrement())
+  first_name             String?                        @db.Text
+  last_name              String?                        @db.Text
+  full_name              String?                        @db.VarChar(150)
+  email                  String?                        @db.VarChar(150)
+  account_name           String?                        @db.VarChar(150)
+  account_number         String?                        @db.VarChar(50)
+  ifsc                   String?                        @db.VarChar(20)
+  verification_type      tbl_rider_verification_type?   @default(manual)
+  verification_status    tbl_rider_verification_status? @default(pending)
+  fmobile                String                         @db.Text
+  smobile                String?                        @db.Text
+  nationality            String?                        @db.Text
+  dob                    String?                        @db.Text
+  city_id                Int?                           @default(1)
+  full_address           String?                        @db.Text
+  know_language          String?                        @db.Text
+  profile_picture        String                         @db.Text
+  survey_status          Int                            @default(0)
+  status                 Int                            @default(1)
+  a_status               Int                            @default(1)
+  rlats                  String?                        @db.Text
+  rlongs                 String?                        @db.Text
+  all_verify             Int                            @default(0)
+  rdate                  DateTime                       @db.DateTime(0)
+  add_info               Int                            @default(0)
+  update_by              String?                        @db.Text
+  password               String?                        @db.Text
+  fcm_token              String                         @db.VarChar(2048)
+  vehicle                String                         @db.VarChar(1024)
+  driver_basic_type      Int?
+  wallet_balance         Decimal?                       @default(0.00) @db.Decimal(10, 2)
+  plan_type              tbl_rider_plan_type?           @default(general)
+  monthly_plan           Int?                           @default(0)
+  working_hours          Int?                           @default(0)
+  vehicle_no             String?                        @db.VarChar(255)
+  upi_id                 String?                        @db.VarChar(255)
+  device_id              String                         @db.VarChar(255)
+  reffer_code            String?                        @unique(map: "uniq_reffer_code") @db.VarChar(20)
+  refferal_code          String?                        @db.VarChar(20)
+  refer_by               Int                            @default(0)
+  wallet_points          Int?
+  referral_code          String?                        @unique(map: "uniq_rider_ref_code") @db.VarChar(20)
+  referred_by            Int                            @default(0)
+  referred_by_type       String                         @default("") @db.VarChar(10)
+  referral_points        Int                            @default(0)
+  payment_complete       Int?
+  model1_miss_streak     Int                            @default(0)
+  model1_suspended_until DateTime?                      @db.DateTime(0)
+  training_completed_at  DateTime?                      @db.DateTime(0)
+  training_progress      Int?                           @default(0)
 }
 
 model tbl_rider_delivery_type {
@@ -841,7 +867,7 @@ model tbl_rider_delivery_type {
 
 model tbl_rider_location {
   id         Int       @id @default(autoincrement())
-  rider_id   Int
+  rider_id   Int       @unique(map: "unique_rider")
   lat        String?   @db.VarChar(50)
   lng        String?   @db.VarChar(50)
   updated_at DateTime? @db.DateTime(0)
@@ -986,16 +1012,26 @@ model tbl_vehicle_details {
 }
 
 model tbl_wallet_history {
-  id          Int                             @id @default(autoincrement())
-  user_id     Int
-  mobile      String?                         @db.VarChar(20)
-  amount      Decimal                         @db.Decimal(10, 2)
-  type        tbl_wallet_history_type
-  remark      String?                         @db.VarChar(255)
-  payment_id  String?                         @db.VarChar(255)
-  created_at  DateTime?                       @default(now()) @db.DateTime(0)
-  wallet_type tbl_wallet_history_wallet_type? @default(user)
-  order_id    Int?
+  id                  Int                             @id @default(autoincrement())
+  user_id             Int
+  mobile              String?                         @db.VarChar(20)
+  amount              Decimal                         @db.Decimal(10, 2)
+  type                tbl_wallet_history_type
+  remark              String?                         @db.VarChar(255)
+  payment_id          String?                         @db.VarChar(255)
+  created_at          DateTime?                       @default(now()) @db.DateTime(0)
+  wallet_type         tbl_wallet_history_wallet_type? @default(user)
+  order_id            Int?
+  // Dedicated idempotency key for Razorpay wallet-recharge credits only.
+  // `payment_id` above can't carry a unique constraint: it's reused
+  // (non-uniquely, by design) across debits/cash-order entries too - e.g.
+  // several rows legitimately share one "cash_payment_<ts>" reference, and
+  // many rows have payment_id = "". This column is populated only by
+  // customerWalletController.addWallet, one row per real Razorpay payment,
+  // so a unique index here (nullable - MySQL allows multiple NULLs) closes
+  // the double-credit race without touching the overloaded column's
+  // existing data or other flows.
+  razorpay_payment_id String?                         @unique @db.VarChar(255)
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
@@ -1010,6 +1046,103 @@ model user_referal_manage {
   status       Int
 
   @@ignore
+}
+
+model service_zone {
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(150)
+  city_id         Int?
+  center_lat      Float
+  center_lng      Float
+  radius_km       Float    @default(5)
+  polygon_geojson String?  @db.LongText
+  status          Int      @default(1)
+  created_at      DateTime @default(now()) @db.DateTime(0)
+  updated_at      DateTime @default(now()) @updatedAt @db.DateTime(0)
+}
+
+model monthly_driver_contract {
+  id                    Int      @id @default(autoincrement())
+  rider_id              Int      @unique(map: "rider_id")
+  assigned_zone_id      Int?
+  shift_start_time      String   @default("10:00:00") @db.VarChar(20)
+  shift_end_time        String   @default("20:00:00") @db.VarChar(20)
+  target_shift_hours    Float    @default(10)
+  monthly_base_salary   Decimal  @default(15000.00) @db.Decimal(10, 2)
+  overtime_hourly_rate  Decimal  @default(0.00) @db.Decimal(10, 2)
+  allowed_break_minutes Int      @default(45)
+  status                String   @default("active") @db.VarChar(20)
+  created_at            DateTime @default(now()) @db.DateTime(0)
+  updated_at            DateTime @default(now()) @updatedAt @db.DateTime(0)
+}
+
+model driver_duty_log {
+  id                      Int       @id @default(autoincrement())
+  rider_id                Int
+  duty_date               DateTime  @db.Date
+  punch_in_at             DateTime? @db.DateTime(0)
+  punch_out_at            DateTime? @db.DateTime(0)
+  total_online_minutes    Int       @default(0)
+  total_in_zone_minutes   Int       @default(0)
+  total_out_zone_minutes  Int       @default(0)
+  total_break_minutes     Int       @default(0)
+  orders_completed        Int       @default(0)
+  overtime_minutes        Int       @default(0)
+  overtime_pay            Decimal   @default(0.00) @db.Decimal(10, 2)
+  cash_collected          Decimal   @default(0.00) @db.Decimal(10, 2)
+  calculated_daily_salary Decimal   @default(0.00) @db.Decimal(10, 2)
+  status                  String    @default("completed") @db.VarChar(20)
+  created_at              DateTime  @default(now()) @db.DateTime(0)
+  updated_at              DateTime  @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([rider_id, duty_date], map: "idx_duty_rider_date")
+}
+
+model driver_order_queue {
+  id           Int       @id @default(autoincrement())
+  rider_id     Int
+  order_id     Int
+  queue_order  Int       @default(1)
+  status       String    @default("pending") @db.VarChar(20)
+  assigned_at  DateTime  @default(now()) @db.DateTime(0)
+  completed_at DateTime? @db.DateTime(0)
+
+  @@index([rider_id, status], map: "idx_queue_rider_status")
+}
+
+model monthly_driver_ledger {
+  id             Int       @id @default(autoincrement())
+  rider_id       Int
+  order_id       Int?
+  duty_date      DateTime? @db.Date
+  entry_type     String    @db.VarChar(50)
+  amount         Decimal   @default(0.00) @db.Decimal(10, 2)
+  balance_effect String    @db.VarChar(10)
+  notes          String?   @db.Text
+  created_at     DateTime  @default(now()) @db.DateTime(0)
+
+  @@index([rider_id, created_at], map: "idx_ledger_rider_created")
+}
+
+model tbl_geofence_zones {
+  id            Int                           @id @default(autoincrement())
+  city_id       Int                           @default(0)
+  zone_name     String                        @db.VarChar(255)
+  zone_type     tbl_geofence_zones_zone_type  @default(no_entry)
+  shape_type    tbl_geofence_zones_shape_type @default(polygon)
+  coordinates   String                        @db.LongText
+  center_lat    Decimal?                      @db.Decimal(11, 8)
+  center_lng    Decimal?                      @db.Decimal(11, 8)
+  radius_meters Int                           @default(0)
+  extra_charge  Decimal                       @default(0.00) @db.Decimal(10, 2)
+  description   String?                       @db.Text
+  status        Boolean                       @default(true)
+  created_at    DateTime?                     @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?                     @default(now()) @db.Timestamp(0)
+
+  @@index([city_id], map: "city_id")
+  @@index([status], map: "status")
+  @@index([zone_type], map: "zone_type")
 }
 
 enum tbl_user_plan_subscription_plan_for {
@@ -1119,15 +1252,6 @@ enum tbl_premium_plan_incentive_type {
   percent
 }
 
-enum pkg_order_o_status {
-  Pending
-  Processing
-  On_Route   @map("On Route")
-  Completed
-  Cancelled
-  Pickup
-}
-
 enum tbl_premium_plan_guaranteed_compensation {
   wallet_credit
   prorate_refund
@@ -1147,78 +1271,22 @@ enum tbl_rider_plan_type {
   premium
 }
 
-model service_zone {
-  id               Int       @id @default(autoincrement())
-  name             String    @db.VarChar(150)
-  city_id          Int?
-  center_lat       Float
-  center_lng       Float
-  radius_km        Float     @default(5.0)
-  polygon_geojson  String?   @db.LongText
-  status           Int       @default(1)
-  created_at       DateTime? @default(now()) @db.DateTime(0)
-  updated_at       DateTime? @default(now()) @updatedAt @db.DateTime(0)
+enum tbl_geofence_zones_zone_type {
+  city_boundary
+  no_entry
 }
 
-model monthly_driver_contract {
-  id                    Int       @id @default(autoincrement())
-  rider_id              Int       @unique
-  assigned_zone_id      Int?
-  shift_start_time      String    @default("10:00:00") @db.VarChar(20)
-  shift_end_time        String    @default("20:00:00") @db.VarChar(20)
-  target_shift_hours    Float     @default(10.0)
-  monthly_base_salary   Decimal   @default(15000.00) @db.Decimal(10, 2)
-  overtime_hourly_rate  Decimal   @default(0.00) @db.Decimal(10, 2)
-  allowed_break_minutes Int       @default(45)
-  status                String    @default("active") @db.VarChar(20)
-  created_at            DateTime? @default(now()) @db.DateTime(0)
-  updated_at            DateTime? @default(now()) @updatedAt @db.DateTime(0)
+enum tbl_geofence_zones_shape_type {
+  polygon
+  circle
 }
 
-model driver_duty_log {
-  id                      Int       @id @default(autoincrement())
-  rider_id                Int
-  duty_date               DateTime  @db.Date
-  punch_in_at             DateTime? @db.DateTime(0)
-  punch_out_at            DateTime? @db.DateTime(0)
-  total_online_minutes    Int       @default(0)
-  total_in_zone_minutes   Int       @default(0)
-  total_out_zone_minutes  Int       @default(0)
-  total_break_minutes     Int       @default(0)
-  orders_completed        Int       @default(0)
-  overtime_minutes        Int       @default(0)
-  overtime_pay            Decimal   @default(0.00) @db.Decimal(10, 2)
-  cash_collected          Decimal   @default(0.00) @db.Decimal(10, 2)
-  calculated_daily_salary Decimal   @default(0.00) @db.Decimal(10, 2)
-  status                  String    @default("completed") @db.VarChar(20)
-  created_at              DateTime? @default(now()) @db.DateTime(0)
-  updated_at              DateTime? @default(now()) @updatedAt @db.DateTime(0)
-
-  @@index([rider_id, duty_date], map: "idx_duty_rider_date")
-}
-
-model driver_order_queue {
-  id           Int       @id @default(autoincrement())
-  rider_id     Int
-  order_id     Int
-  queue_order  Int       @default(1)
-  status       String    @default("pending") @db.VarChar(20)
-  assigned_at  DateTime  @default(now()) @db.DateTime(0)
-  completed_at DateTime? @db.DateTime(0)
-
-  @@index([rider_id, status], map: "idx_queue_rider_status")
-}
-
-model monthly_driver_ledger {
-  id             Int       @id @default(autoincrement())
-  rider_id       Int
-  order_id       Int?
-  duty_date      DateTime? @db.Date
-  entry_type     String    @db.VarChar(50)
-  amount         Decimal   @db.Decimal(10, 2)
-  balance_effect String    @db.VarChar(10)
-  notes          String?   @db.Text
-  created_at     DateTime? @default(now()) @db.DateTime(0)
-
-  @@index([rider_id, created_at], map: "idx_ledger_rider_created")
+enum pkg_order_o_status {
+  Pending
+  Processing
+  On_Route     @map("On Route")
+  Completed
+  Cancelled
+  Pickup
+  Arrived_Drop @map("Arrived Drop")
 }

@@ -5,6 +5,7 @@ const tripLifecycle = require("../services/tripLifecycle");
 const dispatchManager = require("../services/dispatchManager");
 const adminSocket = require("../sockets/adminSocket");
 const { getRoadDistanceKm, getMultiStopDistanceKm } = require("../utils/geoDistance");
+const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 
@@ -302,7 +303,21 @@ async function createOrderCore({
   // Next-day orders (booking_type 3) are never auto-dispatched — admin
   // assigns them manually, individually or as a sequenced batch, from the
   // Next Day Orders admin panel. See docs/superpowers/specs/2026-09-10-next-day-booking-design.md §5.
-  if (Number(bookingType) !== 3) {
+  //
+  // Scheduled-for-later-today orders (booking_type 2) are ALSO never
+  // dispatched immediately here — ported from the legacy PHP's
+  // cron_schedule_order_notify.php, which held these until schedule_date_time
+  // actually arrived (dispatching a "6 PM delivery" order to drivers the
+  // moment it's placed at 2 PM defeats the point of scheduling it). Node's
+  // equivalent is tripLifecycle.dispatchDueScheduledOrders(), a periodic
+  // sweep wired into server.js — same pattern as sweepOverduePickups /
+  // sweepExpiredAdvancePayments above. (ShifterOnline's "Schedule Booking"
+  // button currently sends booking_type=2 with no actual date/time picker
+  // behind it yet — schedule_date_time ends up null — so the sweep treats a
+  // null schedule time as immediately due, meaning today this only adds a
+  // sweep-interval-sized delay vs the old instant dispatch. Once the app
+  // grows a real time picker for this button, the wait becomes meaningful.)
+  if (Number(bookingType) !== 3 && Number(bookingType) !== 2) {
     dispatchManager.startDispatch(order, {
       fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
       // Handed through so dispatchManager can price each eligible driver's own
@@ -607,6 +622,140 @@ async function checkNextDayEligibility(req, res) {
   }
 }
 
+// Node port of cust_api/payment_status.php - which payment methods (COD /
+// wallet / online) are currently enabled, read by confirm_order_map.dart
+// before showing payment options on the booking screen. Live endpoint, not
+// legacy - same hot path as availableVehicles.
+async function paymentMethodStatus(req, res) {
+  try {
+    const setting = await prisma.setting.findFirst({
+      where: { id: 1 },
+      select: { payment_cod: true, payment_wallet: true, payment_online: true },
+    });
+    if (!setting) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Settings Not Found!" });
+    }
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Settings Fetched Successfully!!", setting });
+  } catch (err) {
+    logger.error("paymentMethodStatus failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// Node port of cust_api/map_info.php - the customer's live order-tracking
+// screen (rider location/status + advance-payment countdown) for the
+// CURRENT pkg_order flow. Confirmed still actively called from
+// trackingpoliyline.dart and trackingway.dart - unlike the buy_order-tied
+// endpoints in legacyOrderController.js, this one is on the live tracking
+// path for every in-progress order today.
+const MAP_INFO_STATUS_COPY = {
+  Pending: {
+    withRider: ["Pending – Assigning a Delivery Partner", "A delivery partner has been assigned and is reviewing your order. This usually takes 1 to 2 minutes."],
+    noRider: ["Searching for an available delivery partner", "We are finding an available delivery partner for your order. This may take up to 5 minutes."],
+  },
+  Processing: ["Processing – Rider is Picking Up Your Order", "Your delivery partner is on the way to the pickup location to collect your order."],
+  // "Pickup" isn't in the PHP original - added here for the OTP-wait step
+  // tripLifecycle.js introduced after that file was written (driver at
+  // pickup location, waiting for the customer's OTP).
+  Pickup: ["Arrived at Pickup – Waiting for OTP", "Your delivery partner has arrived at the pickup location and is waiting for your OTP."],
+  On_Route: ["On Route – Order is on the Way", "Your order is on its way! The delivery partner is en route to your location."],
+  Completed: ["Completed – Order Delivered Successfully", "Your order has been successfully delivered! Thank you for choosing us."],
+};
+
+async function getMapInfo(req, res) {
+  try {
+    const orderId = Number(req.body?.orderid || 0);
+    if (!orderId) return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went Wrong!" });
+
+    const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went Wrong!" });
+
+    // IDOR guard: the shipped app (trackingway.dart / trackingpoliyline.dart)
+    // only ever sends { orderid } today, same as the PHP original it was
+    // ported from - so uid can't be made mandatory without breaking those
+    // screens. Enforce it whenever a caller does send one (new/updated
+    // clients), same "trust but verify when given" pattern already used for
+    // the other unauthenticated order/rider endpoints (see memory: order
+    // dispatch auth gap - deferred deliberately).
+    const requestedUid = Number(req.body?.uid || 0);
+    if (requestedUid && order.uid !== requestedUid) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went Wrong!" });
+    }
+
+    let rider = null;
+    if (order.rid) rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid } });
+
+    let orderStep = 0;
+    let restMsg = "";
+    let riderMsg = "";
+    if (order.o_status === "Pending") {
+      orderStep = 1;
+      const [r, m] = order.rid ? MAP_INFO_STATUS_COPY.Pending.withRider : MAP_INFO_STATUS_COPY.Pending.noRider;
+      restMsg = r;
+      riderMsg = m;
+    } else if (order.o_status === "Cancelled") {
+      orderStep = 5;
+      restMsg = "Cancelled – Order Could Not Be Delivered. Reason: ";
+      riderMsg = order.cancel_reason || order.comment_reject || "Order Cancelled";
+    } else {
+      const stepByStatus = { Processing: 2, Pickup: 2, On_Route: 3, Completed: 4 };
+      orderStep = stepByStatus[order.o_status] || 0;
+      const copy = MAP_INFO_STATUS_COPY[order.o_status];
+      if (copy) [restMsg, riderMsg] = copy;
+    }
+
+    const timerInfo = getAdvancePaymentTimerInfo(await (async () => {
+      // advance_payment isn't in this repo's Prisma schema for pkg_order
+      // (same gap tripLifecycle.js works around elsewhere) - read via raw
+      // query alongside the fields getAdvancePaymentTimerInfo needs.
+      const [raw] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId} LIMIT 1`;
+      return { ...order, advance_payment: raw?.advance_payment };
+    })());
+
+    const durationMinutes = Math.max(10, Math.round(Number(order.distance || 0) * 3));
+    const timeDuration = order.time_duration || `${durationMinutes} mins`;
+
+    const info = {
+      rider_id: rider?.id || "",
+      rider_name: rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "",
+      rider_img: rider?.profile_picture || "",
+      rider_lats: rider?.rlats ? Number(rider.rlats) : 0.0,
+      rider_longs: rider?.rlongs ? Number(rider.rlongs) : 0.0,
+      rider_mobile: rider?.fmobile || "",
+      order_step: orderStep,
+      rest_msg: restMsg,
+      rider_msg: riderMsg,
+      photos: (order.photos || "").split(","),
+      pick_type: order.pick_type,
+      drop_type: order.drop_type,
+      customer_paddress: order.paddress,
+      customer_pmobile: order.pmobile,
+      customer_daddress: order.daddress,
+      customer_dmobile: order.dmobile,
+      cust_address_plat: order.plat,
+      cust_address_plong: order.plong,
+      cust_address_dlat: order.dlat,
+      cust_address_dlong: order.dlong,
+      distance: order.distance,
+      time_duration: timeDuration,
+      estimated_time: timeDuration,
+      advance_payment: timerInfo.advance_payment,
+      payment_status: timerInfo.payment_status,
+      accept_time: timerInfo.accept_time,
+      advance_timeout_seconds: timerInfo.advance_timeout_seconds,
+      time_passed_seconds: timerInfo.time_passed_seconds,
+      remaining_seconds: timerInfo.remaining_seconds,
+      is_advance_payment_required: timerInfo.is_advance_payment_required,
+      is_advance_required: timerInfo.is_advance_required,
+    };
+
+    return res.status(200).json({ Mapinfo: info, ResponseCode: "200", Result: "true", ResponseMsg: "Order Information  Get Successfully!!!" });
+  } catch (err) {
+    logger.error("getMapInfo failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   getCategories,
   fareEstimate,
@@ -619,4 +768,6 @@ module.exports = {
   driverCancel,
   rateOrder,
   checkNextDayEligibility,
+  paymentMethodStatus,
+  getMapInfo,
 };

@@ -19,7 +19,7 @@ const app = require("./app");
 const { initSocket } = require("./sockets/socketServer");
 const dispatchManager = require("./services/dispatchManager");
 const tripLifecycle = require("./services/tripLifecycle");
-const { PICKUP_TIMEOUT_SWEEP_INTERVAL_MS } = require("./config/constants");
+const { PICKUP_TIMEOUT_SWEEP_INTERVAL_MS, ADVANCE_PAYMENT_SWEEP_INTERVAL_MS, SCHEDULED_ORDER_SWEEP_INTERVAL_MS } = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
 
@@ -48,4 +48,27 @@ setInterval(() => {
     logger.error("sweepOverduePickups interval failed:", err)
   );
 }, PICKUP_TIMEOUT_SWEEP_INTERVAL_MS);
+
+// Advance-payment timeout auto-cancel — see tripLifecycle.sweepExpiredAdvancePayments
+// doc comment. Same DB-anchored periodic-sweep pattern as sweepOverduePickups
+// above, just a shorter interval to match its much shorter (2 min) window.
+setInterval(() => {
+  tripLifecycle.sweepExpiredAdvancePayments().catch((err) =>
+    logger.error("sweepExpiredAdvancePayments interval failed:", err)
+  );
+}, ADVANCE_PAYMENT_SWEEP_INTERVAL_MS);
+
+// Scheduled ("later today", booking_type=2) orders — customer reminder +
+// due-time driver dispatch. Node port of cron_schedule_order_notify.php;
+// see tripLifecycle.sendScheduledOrderReminders/dispatchDueScheduledOrders
+// and orderController.createOrderCore's comment on why these orders skip
+// immediate dispatch at creation.
+setInterval(() => {
+  tripLifecycle.sendScheduledOrderReminders().catch((err) =>
+    logger.error("sendScheduledOrderReminders interval failed:", err)
+  );
+  tripLifecycle.dispatchDueScheduledOrders().catch((err) =>
+    logger.error("dispatchDueScheduledOrders interval failed:", err)
+  );
+}, SCHEDULED_ORDER_SWEEP_INTERVAL_MS);
 // WhatsApp session reset trigger

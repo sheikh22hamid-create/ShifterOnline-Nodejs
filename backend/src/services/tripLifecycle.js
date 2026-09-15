@@ -7,7 +7,7 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
-const { POPUP_TIMEOUT_MS, PICKUP_OTP_TIMEOUT_MS } = require("../config/constants");
+const { POPUP_TIMEOUT_MS, PICKUP_OTP_TIMEOUT_MS, ADVANCE_PAYMENT_TIMEOUT_MS, SCHEDULED_ORDER_REMINDER_LEAD_MS } = require("../config/constants");
 
 const whatsappNotifications = require("../whatsapp/notifications");
 
@@ -990,6 +990,203 @@ async function sweepOverduePickups() {
   }
 }
 
+/**
+ * Node port of the legacy PHP's checkAndCancelAdvancePaymentTimeout()
+ * (admin/include/advance_payment_helper.php) — a driver accepting an order
+ * that carries an advance_payment (a cancellation-charge/radius-charge
+ * hold, set in finalizeAcceptedOrder above) starts a 2-minute clock; if the
+ * customer hasn't paid it by then, the order auto-cancels and the driver is
+ * freed for new work. Distinct from sweepOverduePickups/cancelOverduePickup
+ * above, which handles a different timeout (no pickup OTP within 10
+ * minutes of arrival) — this one fires much earlier, right after accept,
+ * before the driver has even started toward pickup.
+ *
+ * advance_payment isn't in this repo's Prisma schema for pkg_order (same
+ * gap noted at finalizeAcceptedOrder/updateStatus above) — read via
+ * $queryRaw for that reason, same as those.
+ */
+async function cancelExpiredAdvancePayment(orderId) {
+  const [order] = await prisma.$queryRaw`
+    SELECT id, uid, rid, advance_payment, accept_time, order_status, payment_status
+    FROM pkg_order WHERE id = ${orderId} LIMIT 1
+  `;
+  if (!order) return;
+
+  const cutoff = new Date(Date.now() - ADVANCE_PAYMENT_TIMEOUT_MS);
+
+  // Atomic conditional update, same guard the PHP used (order_status still
+  // 1/"accepted", payment_status still unpaid, advance_payment > 0,
+  // accept_time old enough) — re-checked here in the same statement rather
+  // than trusted from the read above, so a payment or another cancel that
+  // lands between the read and this write can't be clobbered.
+  const affected = await prisma.$executeRaw`
+    UPDATE pkg_order
+    SET o_status = 'Cancelled', order_status = 4,
+        cancel_reason = 'Advance payment timeout (2 minutes exceeded)'
+    WHERE id = ${orderId}
+      AND order_status = 1
+      AND (payment_status = 0 OR payment_status IS NULL)
+      AND CAST(advance_payment AS DECIMAL(10,2)) > 0
+      AND accept_time IS NOT NULL
+      AND accept_time <= ${cutoff}
+  `;
+  if (affected === 0) return; // already paid, already cancelled another way, or not yet expired
+
+  const riderId = Number(order.rid) || null;
+
+  await prisma.order_status_history.create({
+    data: {
+      order_id: orderId,
+      rider_id: riderId,
+      status: "cancelled",
+      remark: "Auto-cancelled: Advance payment not received within 2 minutes",
+    },
+  });
+
+  if (riderId) {
+    await prisma.tbl_order_requests.updateMany({
+      where: { order_id: orderId, rider_id: riderId },
+      data: { status: "timeout" },
+    });
+  }
+
+  dispatchManager.emitCustomerEvent(order.uid, "order:status_changed", {
+    order_id: orderId,
+    order_status: 4,
+    o_status: "Cancelled",
+  });
+
+  const [customer, rider] = await Promise.all([
+    prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } }),
+    riderId ? prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { fcm_token: true } }) : Promise.resolve(null),
+  ]);
+  await pushNotifier.notifyCustomerAdvancePaymentTimeoutCancel(customer?.fcm_token, orderId);
+  if (rider) await pushNotifier.notifyDriverAdvancePaymentTimeoutCancel(rider.fcm_token, orderId);
+
+  notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
+
+  logger.warn(
+    `tripLifecycle: order ${orderId} auto-cancelled — advance payment not received within ${ADVANCE_PAYMENT_TIMEOUT_MS / 60000} minutes of driver accepting (rider ${riderId})`
+  );
+}
+
+/**
+ * Periodic sweep (see server.js) — same DB-anchored-timestamp reasoning as
+ * sweepOverduePickups: accept_time is a real column, so a sweep that runs
+ * late or resumes after a restart still finds and cancels every order
+ * that's actually expired, instead of relying on an in-memory timer armed
+ * at accept time that a redeploy would silently drop.
+ */
+async function sweepExpiredAdvancePayments() {
+  const cutoff = new Date(Date.now() - ADVANCE_PAYMENT_TIMEOUT_MS);
+  let expired;
+  try {
+    expired = await prisma.$queryRaw`
+      SELECT id FROM pkg_order
+      WHERE order_status = 1
+        AND (payment_status = 0 OR payment_status IS NULL)
+        AND CAST(advance_payment AS DECIMAL(10,2)) > 0
+        AND accept_time IS NOT NULL
+        AND accept_time <= ${cutoff}
+    `;
+  } catch (err) {
+    logger.error("sweepExpiredAdvancePayments: failed to query expired advance-payment orders:", err);
+    return;
+  }
+
+  for (const row of expired) {
+    try {
+      await cancelExpiredAdvancePayment(Number(row.id));
+    } catch (err) {
+      logger.error(`sweepExpiredAdvancePayments: failed cancelling order ${row.id}:`, err);
+    }
+  }
+}
+
+/**
+ * Node port of cron_schedule_order_notify.php's two jobs for booking_type=2
+ * ("schedule for later today") orders — see orderController.createOrderCore's
+ * comment on why these are never dispatched immediately at creation.
+ *
+ * schedule_date_time is a free-text VARCHAR column (not a proper DateTime
+ * column in this schema), same as pkg_order's other legacy string-typed
+ * columns — parsed defensively; anything that doesn't parse is treated as
+ * "already due" rather than silently never firing.
+ */
+
+// STEP 1 (PHP): reminder push to the customer ~10 minutes before schedule_date_time.
+async function sendScheduledOrderReminders() {
+  const leadMs = SCHEDULED_ORDER_REMINDER_LEAD_MS;
+  let candidates;
+  try {
+    candidates = await prisma.pkg_order.findMany({
+      where: { booking_type: 2, o_status: "Pending", user_reminder_sent: false, schedule_date_time: { not: null } },
+      select: { id: true, uid: true, schedule_date_time: true },
+    });
+  } catch (err) {
+    logger.error("sendScheduledOrderReminders: failed to query candidates:", err);
+    return;
+  }
+
+  const now = Date.now();
+  for (const row of candidates) {
+    const scheduleMs = Date.parse(row.schedule_date_time);
+    if (Number.isNaN(scheduleMs)) continue; // unparseable - let the dispatch sweep below treat it as due instead
+    const msUntil = scheduleMs - now;
+    if (msUntil > leadMs || msUntil < 0) continue; // not within the reminder window yet, or already past (dispatch sweep handles that)
+
+    try {
+      const customer = await prisma.tbl_user.findUnique({ where: { id: row.uid }, select: { name: true, fcm_token: true } });
+      const timeLabel = new Date(scheduleMs).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
+
+      await prisma.tbl_notification.create({
+        data: {
+          uid: row.uid,
+          datetime: new Date(),
+          title: "Upcoming Scheduled Order",
+          description: `${customer?.name || "Customer"}, your scheduled package order #${row.id} will be picked up around ${timeLabel} (10 minutes left).`,
+        },
+      });
+      if (customer?.fcm_token) {
+        await pushNotifier.notifyCustomerScheduleReminder(customer.fcm_token, row.id, timeLabel);
+      }
+      await prisma.pkg_order.update({ where: { id: row.id }, data: { user_reminder_sent: true } });
+    } catch (err) {
+      logger.error(`sendScheduledOrderReminders: failed for order ${row.id}:`, err);
+    }
+  }
+}
+
+// STEP 2 (PHP): actually dispatch to nearby drivers once schedule_date_time has arrived.
+async function dispatchDueScheduledOrders() {
+  let candidates;
+  try {
+    candidates = await prisma.pkg_order.findMany({
+      where: { booking_type: 2, o_status: "Pending", driver_notify_sent: false },
+    });
+  } catch (err) {
+    logger.error("dispatchDueScheduledOrders: failed to query candidates:", err);
+    return;
+  }
+
+  const now = Date.now();
+  for (const order of candidates) {
+    const scheduleMs = order.schedule_date_time ? Date.parse(order.schedule_date_time) : NaN;
+    const isDue = Number.isNaN(scheduleMs) || scheduleMs <= now; // no parseable time -> treat as immediately due
+    if (!isDue) continue;
+
+    try {
+      await prisma.pkg_order.update({ where: { id: order.id }, data: { driver_notify_sent: true } });
+      dispatchManager.startDispatch(order).catch((err) =>
+        logger.error(`dispatchDueScheduledOrders: dispatch failed to start for order ${order.id}:`, err)
+      );
+      logger.info(`dispatchDueScheduledOrders: order ${order.id} scheduled time reached — dispatch started`);
+    } catch (err) {
+      logger.error(`dispatchDueScheduledOrders: failed for order ${order.id}:`, err);
+    }
+  }
+}
+
 module.exports = {
   acceptOrder,
   claimOrderForRider,
@@ -1001,4 +1198,8 @@ module.exports = {
   rateOrder,
   cancelOverduePickup,
   sweepOverduePickups,
+  cancelExpiredAdvancePayment,
+  sweepExpiredAdvancePayments,
+  sendScheduledOrderReminders,
+  dispatchDueScheduledOrders,
 };

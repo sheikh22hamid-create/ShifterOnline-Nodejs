@@ -41,4 +41,24 @@ module.exports = {
   // other about what "arrived" means.
   PICKUP_OTP_TIMEOUT_MS: 10 * 60 * 1000,
   PICKUP_TIMEOUT_SWEEP_INTERVAL_MS: 60 * 1000,
+
+  // How long a customer has to pay the advance (shown on accept, e.g. a
+  // cancellation-charge/radius-charge hold) before the order auto-cancels —
+  // see tripLifecycle.sweepExpiredAdvancePayments. Node port of the legacy
+  // PHP's ADVANCE_PAYMENT_TIMEOUT_SECONDS (120s) in
+  // admin/include/advance_payment_helper.php. A 30s sweep interval keeps
+  // the worst-case lateness small relative to the 2-minute window itself
+  // (PICKUP_TIMEOUT_SWEEP_INTERVAL_MS's 60s would let a driver wait up to a
+  // full extra minute past an already-short window).
+  ADVANCE_PAYMENT_TIMEOUT_MS: 2 * 60 * 1000,
+  ADVANCE_PAYMENT_SWEEP_INTERVAL_MS: 30 * 1000,
+
+  // Scheduled (booking_type=2) "later today" orders — see
+  // tripLifecycle.dispatchDueScheduledOrders / sendScheduledOrderReminders,
+  // Node port of the legacy PHP's cron_schedule_order_notify.php (which
+  // polled every 60s). How long before schedule_date_time the customer gets
+  // a reminder push, and how often the sweep checks for orders whose
+  // reminder/dispatch is due.
+  SCHEDULED_ORDER_REMINDER_LEAD_MS: 10 * 60 * 1000,
+  SCHEDULED_ORDER_SWEEP_INTERVAL_MS: 30 * 1000,
 };

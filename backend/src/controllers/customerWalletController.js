@@ -1,6 +1,6 @@
-const crypto = require("crypto");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 
 // Node port of cust_api/add_wallet.php, wallet_history.php,
 // withdraw_wallet.php + rider_api equivalents (rider_api has no dedicated
@@ -8,15 +8,10 @@ const logger = require("../utils/logger");
 // branch of these same handlers in the PHP source, so one controller
 // serves both apps here too via the `wallet_type` field).
 //
-// Razorpay signature verification. Unlike the 2Factor OTP key (low blast
-// radius, send-only, already public across this repo's PHP source), this
-// key verifies that a wallet-credit request actually came from Razorpay —
-// anyone who reads a hardcoded copy of it can forge a valid signature and
-// mint free wallet balance. No fallback to the old hardcoded test key:
-// addWallet refuses each request instead if the env var isn't set. (Checked
-// lazily, not at module load, so the rest of the app - and every route that
-// isn't this one - still boots and runs tests fine without it configured.)
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+// Razorpay verification lives in utils/razorpayVerify.js (shared with
+// customerPlanService's premium-plan purchase, which needs the same
+// signature + amount/status check against Razorpay's API - see that file
+// for why signature-only verification isn't enough).
 
 function fail(res, msg) {
   return res.status(200).json({ Result: false, msg });
@@ -36,48 +31,59 @@ async function addWallet(req, res) {
     if (!mobile || !amount || !walletType || !razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
       return fail(res, "Missing Parameters");
     }
-    if (!RAZORPAY_KEY_SECRET) {
-      logger.error("addWallet: RAZORPAY_KEY_SECRET is not configured - refusing to credit any wallet.");
+
+    let verification;
+    try {
+      verification = await verifyRazorpayPayment({
+        paymentId: razorpayPaymentId,
+        orderId: razorpayOrderId,
+        signature: razorpaySignature,
+        expectedAmountRupees: amount,
+      });
+    } catch (e) {
+      logger.error("addWallet: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured - refusing to credit any wallet.", e);
       return res.status(200).json({ Result: false, msg: "Payment verification is not configured. Try again later." });
     }
+    if (!verification.ok) return fail(res, verification.reason);
 
-    const generatedSignature = crypto
-      .createHmac("sha256", RAZORPAY_KEY_SECRET)
-      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
-      .digest("hex");
-    if (generatedSignature !== razorpaySignature) {
-      return fail(res, "Payment Verification Failed!");
+    const account =
+      walletType === "user"
+        ? await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } })
+        : await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (!account) return fail(res, walletType === "user" ? "No user found with this mobile number!" : "No driver found with this mobile number!");
+
+    // Idempotency backed by a real DB unique constraint on
+    // razorpay_payment_id (see schema.prisma comment on that column) - two
+    // concurrent requests replaying the same payment_id can no longer both
+    // succeed, since the second insert hits the unique index and fails with
+    // P2002 regardless of what either request read beforehand.
+    try {
+      await prisma.tbl_wallet_history.create({
+        data: {
+          user_id: account.id,
+          mobile,
+          amount,
+          type: "credit",
+          remark: "Wallet Recharge",
+          payment_id: razorpayPaymentId,
+          razorpay_payment_id: razorpayPaymentId,
+          wallet_type: walletType,
+          created_at: new Date(),
+        },
+      });
+    } catch (e) {
+      if (e.code === "P2002") return fail(res, "This payment has already been credited.");
+      throw e;
     }
 
-    let userId;
     let newBalance;
-
     if (walletType === "user") {
-      const user = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
-      if (!user) return fail(res, "No user found with this mobile number!");
-      newBalance = Number(user.wallet) + amount;
-      await prisma.tbl_user.update({ where: { id: user.id }, data: { wallet: newBalance } });
-      userId = user.id;
+      const updated = await prisma.tbl_user.update({ where: { id: account.id }, data: { wallet: { increment: amount } } });
+      newBalance = Number(updated.wallet);
     } else {
-      const rider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
-      if (!rider) return fail(res, "No driver found with this mobile number!");
-      newBalance = Number(rider.wallet_balance || 0) + amount;
-      await prisma.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: newBalance } });
-      userId = rider.id;
+      const updated = await prisma.tbl_rider.update({ where: { id: account.id }, data: { wallet_balance: { increment: amount } } });
+      newBalance = Number(updated.wallet_balance);
     }
-
-    await prisma.tbl_wallet_history.create({
-      data: {
-        user_id: userId,
-        mobile,
-        amount,
-        type: "credit",
-        remark: "Wallet Recharge",
-        payment_id: razorpayPaymentId,
-        wallet_type: walletType,
-        created_at: new Date(),
-      },
-    });
 
     return res.status(200).json({ Result: true, msg: "Wallet Recharge Success", balance: newBalance });
   } catch (err) {

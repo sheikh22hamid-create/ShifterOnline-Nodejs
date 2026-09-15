@@ -1,8 +1,7 @@
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { uploadBuffer } = require("../utils/cloudinaryStorage");
 
 // Node port of cust_api/profile.php, pro_image.php, address_list.php,
 // address_user.php. Same { Result, ResponseCode, ResponseMsg } shape as the
@@ -54,9 +53,6 @@ async function updateProfile(req, res) {
 }
 
 // --- pro_image.php ---
-const PROFILE_IMG_DIR = path.join(__dirname, "..", "..", "public", "images", "profile");
-fs.mkdirSync(PROFILE_IMG_DIR, { recursive: true });
-
 async function updateProfileImage(req, res) {
   try {
     const uid = Number(req.body?.uid || 0);
@@ -65,9 +61,7 @@ async function updateProfileImage(req, res) {
 
     const base64 = String(img).replace(/^data:image\/\w+;base64,/, "").replace(/ /g, "+");
     const buffer = Buffer.from(base64, "base64");
-    const filename = `${crypto.randomUUID()}.png`;
-    fs.writeFileSync(path.join(PROFILE_IMG_DIR, filename), buffer);
-    const relPath = `images/profile/${filename}`;
+    const relPath = await uploadBuffer(buffer, `images/profile/${crypto.randomUUID()}.png`);
 
     const updated = await prisma.tbl_user.update({ where: { id: uid }, data: { r_img: relPath } });
     return res.status(200).json({ UserLogin: serializeUser(updated), ResponseCode: "200", Result: "true", ResponseMsg: "Profile Image Upload Successfully!!" });

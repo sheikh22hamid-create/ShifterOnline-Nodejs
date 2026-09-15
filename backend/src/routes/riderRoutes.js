@@ -3,6 +3,16 @@ const riderController = require("../controllers/riderController");
 const driverPlanController = require("../controllers/driverPlanController");
 const trainingController = require("../controllers/trainingController");
 const riderAuthController = require("../controllers/riderAuthController");
+const driverKycController = require("../controllers/driverKycController");
+const driverPayoutController = require("../controllers/driverPayoutController");
+const driverSurveyController = require("../controllers/driverSurveyController");
+const customOrderBiddingController = require("../controllers/customOrderBiddingController");
+const driverContentController = require("../controllers/driverContentController");
+const driverOrderHistoryController = require("../controllers/driverOrderHistoryController");
+const legacyOrderController = require("../controllers/legacyOrderController");
+const driverKycStatusController = require("../controllers/driverKycStatusController");
+const driverGovVerificationController = require("../controllers/driverGovVerificationController");
+const appKeyAuth = require("../middleware/appKeyAuth");
 
 const router = express.Router();
 
@@ -37,6 +47,64 @@ router.get("/duty/status/:riderId", monthlyDriverController.getDutyStatus);
 router.post("/duty/punch-in", monthlyDriverController.punchIn);
 router.post("/duty/punch-out", monthlyDriverController.punchOut);
 router.get("/queue/:riderId", orderQueueController.getDriverQueue);
+
+// KYC document uploads, bank account, vehicle details
+// (appKeyAuth = the static app-key header the PHP originals required)
+router.post("/kyc/address-document", appKeyAuth, driverKycController.uploadAddressDocument);
+router.post("/kyc/license-document", appKeyAuth, driverKycController.uploadLicenseDocument);
+router.post("/kyc/residence-document", appKeyAuth, driverKycController.uploadResidenceDocument);
+router.post("/kyc/bank-account", appKeyAuth, driverKycController.saveBankAccount);
+router.post("/kyc/vehicle-detail", appKeyAuth, driverKycController.saveVehicleDetail);
+router.post("/vehicle/update", driverKycController.updateRiderVehicle);
+router.post("/vehicle/type-list", driverKycController.vehicleTypeList);
+router.get("/vehicle/list", appKeyAuth, driverKycController.vehicleList);
+
+// Payouts / wallet withdrawal
+router.post("/payout/list", driverPayoutController.payoutList);
+router.post("/payout/request", driverPayoutController.requestPayout);
+router.post("/payout/withdraw-request", driverPayoutController.withdrawRequest);
+
+// Dynamic questions / onboarding survey
+router.get("/survey/dynamic-questions", appKeyAuth, driverSurveyController.dynamicQuestionList);
+router.post("/survey/dynamic-answer", appKeyAuth, driverSurveyController.saveDynamicAnswer);
+router.post("/survey/list", appKeyAuth, driverSurveyController.surveyList);
+router.post("/survey/answer", appKeyAuth, driverSurveyController.saveSurveyAnswers);
+
+// Custom-order bidding (driver side) - customer side is in user.routes.js
+router.post("/custom-order/open", customOrderBiddingController.listOpenOrdersForDriver);
+router.post("/custom-order/bid", customOrderBiddingController.placeBid);
+
+// Driver home/dashboard, static content, misc onboarding (Node port of the
+// remaining rider_api/*.php endpoints confirmed live in UserService.java)
+router.post("/home", driverContentController.homeData);
+router.get("/cities", appKeyAuth, driverContentController.cityList);
+router.get("/country-codes", appKeyAuth, driverContentController.countryCodeList);
+router.post("/pages", driverContentController.pageList);
+router.post("/notifications", appKeyAuth, driverContentController.notificationList);
+router.post("/emergency-contact", appKeyAuth, driverContentController.saveEmergencyContact);
+router.post("/is-bicycle", appKeyAuth, driverContentController.setIsBicycle);
+router.post("/registration-settings", driverContentController.registrationSettings);
+router.get("/joining-plan", appKeyAuth, driverContentController.joiningPlan);
+router.post("/kit-details", appKeyAuth, driverContentController.saveKitDetails);
+
+// Driver's own order history (rid-filtered - distinct from the uid-filtered
+// customer versions in orderRoutes.js/legacyOrderController.js)
+router.post("/orders/history", driverOrderHistoryController.pkgHistoryDriver);
+router.post("/orders/legacy/history", appKeyAuth, legacyOrderController.buyHistoryDriver);
+router.post("/orders/legacy/detail", appKeyAuth, legacyOrderController.buyOrderDetailDriver);
+router.post("/orders/legacy/bill-upload", appKeyAuth, legacyOrderController.billUpload);
+
+// KYC onboarding-progress dashboard + post-hoc document verification
+router.post("/kyc/document-check", appKeyAuth, driverKycStatusController.documentCheck);
+router.post("/kyc/verify-document", appKeyAuth, driverKycStatusController.verifyDriverDocument);
+
+// Government DL/RC verification proxies (see driverGovVerificationController.js
+// header - DL is the official Sarathi Parivahan portal; RC is an
+// unofficial Acko API call kept as-is per product decision)
+router.get("/kyc/dl/captcha", driverGovVerificationController.generateCaptcha);
+router.post("/kyc/dl/verify", driverGovVerificationController.verifyDrivingLicence);
+router.post("/kyc/rc/verify", driverGovVerificationController.verifyRc);
+router.post("/kyc/aadhar/verify", driverGovVerificationController.verifyAadhar);
 
 module.exports = router;
 
