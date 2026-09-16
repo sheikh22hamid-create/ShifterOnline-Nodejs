@@ -806,6 +806,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final distanceCharge = _number(model['distance_charge_amount']);
     final radiusCharge = _number(model['radius_charge']);
     final nightCharge = _number(model['night_charge_amount']);
+    final serviceCharge = _number(model['service_charge_amount']);
     final extraCharge = _number(model['extra_charge_amount']);
     final discountSaved = _number(model['discount_amount']);
     final distance = _fareDistanceKm ?? _distanceKm ?? 0;
@@ -838,6 +839,14 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       row('Distance charge (${distance.toStringAsFixed(1)} km × ₹${perKmCharge.toStringAsFixed(2)}/km)', '₹${distanceCharge.toStringAsFixed(2)}'),
       if (radiusCharge > 0) row('Search radius charge ($_selectedRadiusKm km)', '₹${radiusCharge.toStringAsFixed(2)}'),
       if (nightCharge > 0) row('Night charge', '₹${nightCharge.toStringAsFixed(2)}'),
+      // Was silently missing — pkg.service_charge_percent is added into
+      // estimated_fare by the backend (calculateFareBreakdown) whenever a
+      // package has one set, but this sheet never had a row for it, so the
+      // total included money none of the rows above it accounted for
+      // (confirmed live: user 9770798272 — base ₹37 + distance ₹0.17 +
+      // radius ₹28 − discount ₹4.60 = ₹60.57, but the real total was ₹64;
+      // the missing ₹3.43 was exactly this package's service charge).
+      if (serviceCharge > 0) row('Service charge', '₹${serviceCharge.toStringAsFixed(2)}'),
       if (extraCharge > 0) row('Extra charge', '₹${extraCharge.toStringAsFixed(2)}'),
       if (_hasPlanDiscount && discountSaved > 0)
         row(
