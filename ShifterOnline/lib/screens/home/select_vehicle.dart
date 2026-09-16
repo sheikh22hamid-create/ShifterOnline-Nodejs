@@ -1462,7 +1462,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             Expanded(
               child: image.isEmpty
                   ? Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)
-                  : FadeInImage.assetNetwork(placeholder: 'assets/loading.gif', image: '${Config.imageURLPath}$image', fit: BoxFit.contain, imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)),
+                  : FadeInImage.assetNetwork(placeholder: 'assets/loading.gif', image: '${Config.nodeImageURLPath}$image', fit: BoxFit.contain, imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)),
             ),
             Row(children: [
               Expanded(child: Text(_vehicleName(option), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: notifier.text, fontSize: 12, fontFamily: 'Gilroy_Bold'))),

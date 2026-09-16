@@ -2842,7 +2842,7 @@ class _HomeState extends State<Home> {
                                                                                         imageErrorBuilder: (context, error, stackTrace) {
                                                                                           return Center(child: Icon(Icons.image_not_supported, color: Colors.white, size: 50));
                                                                                         },
-                                                                                        image: "${Config.imageURLPath}$otherImage",
+                                                                                        image: "${Config.nodeImageURLPath}$otherImage",
                                                                                         placeholder: "assets/ezgif.com-crop.gif",
                                                                                       ),
                                                                                     ),
@@ -2936,7 +2936,7 @@ class _HomeState extends State<Home> {
                                                                             );
                                                                           },
                                                                           image:
-                                                                              "${Config.imageURLPath}${wheelerImages[i]}",
+                                                                              "${Config.nodeImageURLPath}${wheelerImages[i]}",
                                                                           placeholder:
                                                                               "assets/ezgif.com-crop.gif",
                                                                         ),

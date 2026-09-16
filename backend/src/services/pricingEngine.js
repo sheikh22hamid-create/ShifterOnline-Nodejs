@@ -158,34 +158,45 @@ async function getPackageById(packageId) {
 async function getActiveCustomerPlan(uid) {
   if (!uid) return null;
   const rows = await prisma.$queryRaw`
-    SELECT ups.id AS subscription_id, ups.cancellations_used,
-           pp.id AS plan_id, pp.plan_name, pp.no_advance_payment,
+    SELECT ups.id AS subscription_id, ups.cancellations_used, ups.plan_id, ups.plan_snapshot,
+           pp.plan_name, pp.no_advance_payment,
            pp.cancellation_enabled, pp.free_cancellations, pp.cancellation_window_min,
            pp.discount_enabled, pp.discount_percent, pp.discount_max_cap
     FROM tbl_user_plan_subscription ups
-    JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
+    LEFT JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
     WHERE ups.user_id = ${Number(uid)}
       AND ups.status = 'active'
       AND ups.plan_for = 'USER'
       AND CURDATE() BETWEEN ups.start_date AND ups.end_date
-      AND pp.status = 1
     ORDER BY ups.id DESC
     LIMIT 1
   `;
   if (!rows.length) return null;
   const row = rows[0];
+  let snapshot = {};
+  if (row.plan_snapshot) {
+    try {
+      snapshot = typeof row.plan_snapshot === "string" ? JSON.parse(row.plan_snapshot) : row.plan_snapshot;
+    } catch (e) {}
+  }
   return {
     subscriptionId: Number(row.subscription_id),
     cancellationsUsed: Number(row.cancellations_used) || 0,
     planId: Number(row.plan_id),
-    planName: row.plan_name || "",
-    noAdvancePayment: Boolean(row.no_advance_payment),
-    cancellationEnabled: Boolean(row.cancellation_enabled),
-    freeCancellations: Number(row.free_cancellations) || 0,
-    cancellationWindowMin: Number(row.cancellation_window_min) || 5,
-    discountEnabled: Boolean(row.discount_enabled),
-    discountPercent: Number(row.discount_percent) || 0,
-    discountMaxCap: Number(row.discount_max_cap) || 0,
+    planName: row.plan_name || snapshot.plan_name || "Premium Plan",
+    noAdvancePayment: row.no_advance_payment !== null && row.no_advance_payment !== undefined
+      ? Boolean(row.no_advance_payment)
+      : Boolean(snapshot.no_advance_payment),
+    cancellationEnabled: row.cancellation_enabled !== null && row.cancellation_enabled !== undefined
+      ? Boolean(row.cancellation_enabled)
+      : Boolean(snapshot.cancellation_enabled),
+    freeCancellations: Number(row.free_cancellations ?? snapshot.free_cancellations) || 0,
+    cancellationWindowMin: Number(row.cancellation_window_min ?? snapshot.cancellation_window_min) || 5,
+    discountEnabled: row.discount_enabled !== null && row.discount_enabled !== undefined
+      ? Boolean(row.discount_enabled)
+      : (Boolean(snapshot.discount_enabled) || (Number(snapshot.discount_percent) || 0) > 0),
+    discountPercent: Number(row.discount_percent ?? snapshot.discount_percent) || 0,
+    discountMaxCap: Number(row.discount_max_cap ?? snapshot.discount_max_cap) || 0,
   };
 }
 
@@ -210,24 +221,33 @@ async function getActiveCustomerPlan(uid) {
 async function getActivePlanDiscount(uid) {
   if (!uid) return null;
   const rows = await prisma.$queryRaw`
-    SELECT pp.discount_percent, pp.discount_max_cap, pp.plan_name
+    SELECT ups.plan_snapshot, pp.discount_percent, pp.discount_max_cap, pp.plan_name, pp.discount_enabled
     FROM tbl_user_plan_subscription ups
-    JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
+    LEFT JOIN tbl_premium_plan pp ON pp.id = ups.plan_id
     WHERE ups.user_id = ${Number(uid)}
       AND ups.status = 'active'
       AND ups.plan_for = 'USER'
       AND CURDATE() BETWEEN ups.start_date AND ups.end_date
-      AND pp.discount_enabled = 1
-    ORDER BY pp.discount_percent DESC
+    ORDER BY ups.id DESC
     LIMIT 1
   `;
   if (!rows.length) return null;
-  const percent = Number(rows[0].discount_percent) || 0;
-  if (percent <= 0) return null;
+  const row = rows[0];
+  let snapshot = {};
+  if (row.plan_snapshot) {
+    try {
+      snapshot = typeof row.plan_snapshot === "string" ? JSON.parse(row.plan_snapshot) : row.plan_snapshot;
+    } catch (e) {}
+  }
+  const percent = Number(row.discount_percent ?? snapshot.discount_percent) || 0;
+  const discountEnabled = row.discount_enabled !== null && row.discount_enabled !== undefined
+    ? Number(row.discount_enabled) === 1
+    : (Number(snapshot.discount_enabled) === 1 || percent > 0);
+  if (!discountEnabled || percent <= 0) return null;
   return {
     percent,
-    maxCap: Number(rows[0].discount_max_cap) || 0,
-    planName: rows[0].plan_name || "",
+    maxCap: Number(row.discount_max_cap ?? snapshot.discount_max_cap) || 0,
+    planName: row.plan_name || snapshot.plan_name || "",
   };
 }
 
