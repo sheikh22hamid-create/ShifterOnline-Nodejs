@@ -814,17 +814,29 @@ async function driverCancel(orderId, riderId, reason) {
     `;
     const order = rows[0];
     if (!order) throw new Error("ORDER_NOT_FOUND");
-    if (Number(order.rid) !== Number(riderId)) throw new Error("NOT_ASSIGNED_DRIVER");
-
-    // Refunds are exclusively for an accepted driver cancellation.  Keep the
-    // eligibility check strict: a completed order must never be treated as a
-    // cancellable order just because a legacy status field is stale/malformed.
+    // Eligibility check:
     const normalizedStatus = String(order.o_status || "").trim().toLowerCase();
     const isCompleted = normalizedStatus === "completed" || Number(order.order_status) === 5;
     const isCancelled = normalizedStatus === "cancelled" || Number(order.order_status) === 4;
+
+    // Idempotency: If the order is already cancelled, return success so the driver app
+    // can dismiss the screen and return to Home without showing "Failed to cancel order"
+    if (isCancelled) {
+      cancelledOrder = { ...order, rid: 0, order_status: 4, o_status: "Cancelled", uid: Number(order.uid) };
+      refundStatus = "already_cancelled";
+      return;
+    }
+
+    if (Number(order.rid) !== Number(riderId)) throw new Error("NOT_ASSIGNED_DRIVER");
+
+    if (isCompleted) {
+      throw new Error("ORDER_NOT_CANCELLABLE");
+    }
+
+    const isPending = Number(order.order_status) === 0 || normalizedStatus === "pending";
     const isActiveTrip = [1, 2, 3].includes(Number(order.order_status)) &&
       ["processing", "pickup", "on_route", "on route"].includes(normalizedStatus);
-    if (isCompleted || isCancelled || !isActiveTrip) {
+    if (!isActiveTrip && !isPending) {
       throw new Error("ORDER_NOT_CANCELLABLE");
     }
 
@@ -883,7 +895,7 @@ async function driverCancel(orderId, riderId, reason) {
       refundStatus = "payment_not_captured";
     }
 
-    if (order.delivery_type) {
+    if (order.delivery_type && !isPending) {
       const pkg = await pricingEngine.getPackageById(order.delivery_type);
       const driverFee = Number(pkg?.cancellation_charge_driver) || 0;
       if (driverFee > 0) {
@@ -950,7 +962,7 @@ async function driverCancel(orderId, riderId, reason) {
   });
 
   const freshOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
-  if (freshOrder) {
+  if (freshOrder && refundStatus !== "already_cancelled") {
     // Driver cancellation is terminal for this booking. Do not silently put
     // a paid order back into dispatch/reassignment after refunding it.
     dispatchManager.stopDispatch(orderId, "driver_cancelled");
