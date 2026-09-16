@@ -66,6 +66,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   double? _fareDistanceKm;
   bool _hasPlanDiscount = false;
   double _planDiscountPercent = 0;
+  double _planDiscountMaxCap = 0;
 
   double _number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
   LatLng get _pickup => LatLng(_number(_pickupData['lat_map']), _number(_pickupData['long_map']));
@@ -466,6 +467,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _fareDistanceKm = distance > 0 ? distance : null;
         _hasPlanDiscount = response['has_plan_discount'] == true;
         _planDiscountPercent = _number(response['plan_discount_percent']);
+        _planDiscountMaxCap = _number(response['plan_discount_max_cap']);
       });
     } else {
       setState(() { _loadingModels = false; _modelsError = _text(response is Map ? response['ResponseMsg'] : null, 'Could not load delivery options.'); });
@@ -837,7 +839,14 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (radiusCharge > 0) row('Search radius charge ($_selectedRadiusKm km)', '₹${radiusCharge.toStringAsFixed(2)}'),
       if (nightCharge > 0) row('Night charge', '₹${nightCharge.toStringAsFixed(2)}'),
       if (extraCharge > 0) row('Extra charge', '₹${extraCharge.toStringAsFixed(2)}'),
-      if (_hasPlanDiscount && discountSaved > 0) row('Plan discount (${_planDiscountPercent.toStringAsFixed(0)}% off)', '-₹${discountSaved.toStringAsFixed(2)}', color: Colors.green),
+      if (_hasPlanDiscount && discountSaved > 0)
+        row(
+          _planDiscountMaxCap > 0
+              ? 'Plan discount (${_planDiscountPercent.toStringAsFixed(0)}% off, max ₹${_planDiscountMaxCap.toStringAsFixed(0)})'
+              : 'Plan discount (${_planDiscountPercent.toStringAsFixed(0)}% off)',
+          '-₹${discountSaved.toStringAsFixed(2)}',
+          color: Colors.green,
+        ),
       const Divider(height: 24),
       row('Estimated total', '₹${fee.toStringAsFixed(2)}', bold: true, color: linercolor),
     ]))));
