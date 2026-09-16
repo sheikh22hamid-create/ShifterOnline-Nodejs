@@ -89,7 +89,7 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
  * is priced off the identical number instead of a different, Node-only
  * formula that used to diverge from what the customer saw.
  */
-function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null) {
+function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
   const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
@@ -109,7 +109,19 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
     const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
     const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
 
-    const baseFare = baseCalc.rawFare * effectiveMultiplier;
+    // A slab-priced vehicle's base fare comes from calculateBaseSlabFare, not
+    // pkg.min_charge/per_km_charge — the two fields applyPlanDiscount (see
+    // priceForPackage's discountedPkg) actually discounts. Apply discountPercent
+    // directly, respecting maxDiscountCap if set.
+    const rawBaseFare = baseCalc.rawFare * effectiveMultiplier;
+    let discountAmt = 0;
+    if (discountPercent > 0) {
+      discountAmt = (rawBaseFare * discountPercent) / 100;
+      if (maxDiscountCap > 0 && discountAmt > maxDiscountCap) {
+        discountAmt = maxDiscountCap;
+      }
+    }
+    const baseFare = rawBaseFare - discountAmt;
     dCharge = baseFare + radiusCharge;
   } else {
     const minCharge = Number(pkg.min_charge) || 0;
@@ -131,16 +143,9 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
  * just the final rounded total — for the customer-facing fare-breakdown
  * display only (getFareEstimate). Only the final total is rounded (matching
  * calculateFare's own roundMoney(total)); components are 2-decimal so a UI
- * summing them lands on the same total calculateFare itself would produce,
- * instead of a client re-deriving "base fare" from pkg.min_charge/
- * per_km_charge directly — which, for a slab-priced vehicle (the
- * calculateFare branch below that ignores those two fields entirely), never
- * matched the real total at all (confirmed live: a slab-priced Priority
- * model showed "Base fare ₹50 + distance ₹0.06 - discount ₹5.45" summing to
- * ~₹45 while the actual quoted total was ₹65 — pkg.min_charge/per_km_charge
- * simply aren't inputs to that model's real fare).
+ * summing them lands on the same total calculateFare itself would produce.
  */
-function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null) {
+function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
   const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
@@ -160,8 +165,19 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
     const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
     const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
 
-    baseFare = baseCalc.minCharge * effectiveMultiplier;
-    distanceCharge = baseCalc.totalDistanceCharge * effectiveMultiplier;
+    const rawBase = baseCalc.minCharge * effectiveMultiplier;
+    const rawDist = baseCalc.totalDistanceCharge * effectiveMultiplier;
+    const rawTotal = rawBase + rawDist;
+    let discountAmt = 0;
+    if (discountPercent > 0) {
+      discountAmt = (rawTotal * discountPercent) / 100;
+      if (maxDiscountCap > 0 && discountAmt > maxDiscountCap) {
+        discountAmt = maxDiscountCap;
+      }
+    }
+    const factor = rawTotal > 0 ? (rawTotal - discountAmt) / rawTotal : 1;
+    baseFare = rawBase * factor;
+    distanceCharge = rawDist * factor;
   } else {
     baseFare = Number(pkg.min_charge) || 0;
     distanceCharge = (Number(pkg.per_km_charge) || 0) * distanceKm;
@@ -385,7 +401,12 @@ function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0
   const discountedPkg = applyPlanDiscount(pkg, discount);
   const isNight = isNightNow(discountedPkg);
   const radiusCharge = roundMoney(calculateRadiusCharge(discountedPkg, radiusRangeKm));
-  const fare = calculateFare(discountedPkg, distanceKm, isNight, radiusRangeKm, extraMileCharge, slabConfig, modelMultipliers);
+  // discountedPkg's min_charge/per_km_charge already carry the discount for
+  // the linear branch (applyPlanDiscount, above) — discount?.percent is
+  // passed through too so the slab branch, which never reads those two
+  // fields, can apply the same discount to its own base/distance charge
+  // instead of silently ignoring it (see calculateFare's comment).
+  const fare = calculateFare(discountedPkg, distanceKm, isNight, radiusRangeKm, extraMileCharge, slabConfig, modelMultipliers, discount?.percent || 0, discount?.maxCap || 0);
   const driverEarning = calculateDriverEarning(discountedPkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
@@ -483,13 +504,13 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
         vehicleSlabConfig, slabPricingConfig.modelMultipliers
       );
-      // Net (actually-charged) total — 0 discount for a slab-priced vehicle,
-      // since applyPlanDiscount only touches min_charge/per_km_charge, fields
-      // the slab formula never reads; a real ₹ difference only for a
-      // linear-priced package, where discountedPkg's min_charge/per_km_charge
-      // genuinely differ from pkg's.
+      // Net (actually-charged) total. discountedPkg's min_charge/per_km_charge
+      // already carry the discount for a linear-priced package; discount.percent
+      // is passed through too so a slab-priced package's base/distance charge
+      // (which never reads those two fields — see calculateFareBreakdown's own
+      // comment) gets the same real discount instead of showing 0 every time.
       const netBreakdown = discount
-        ? calculateFareBreakdown(discountedPkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers)
+        ? calculateFareBreakdown(discountedPkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap)
         : grossBreakdown;
 
       return {
