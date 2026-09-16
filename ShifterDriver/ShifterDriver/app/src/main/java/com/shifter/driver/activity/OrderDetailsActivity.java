@@ -140,12 +140,22 @@ public class OrderDetailsActivity extends AppCompatActivity
             com.shifter.driver.socket.NodeSocketManager.getInstance().connectDriver(riderData.getId());
         }
 
-        if (!isAdvancePaymentRequired(orderItem)) {
-            new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
-            initOrderDetailsScreen();
-        } else if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
+        if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
+            // orderItem here is the placeholder OrderDialogHelper.startOrderDetailsActivity
+            // built straight from the order:request popup payload, which never carries
+            // advance_payment/payment_status (those are computed by finalizeAcceptedOrder
+            // asynchronously, after the accept ack) — it defaults payment_status to "1" and
+            // advance_payment to "0", so isAdvancePaymentRequired(orderItem) always reads as
+            // "not required" right after accept regardless of the real amount. Trusting that
+            // here let the driver fall straight through to the order screen (and from there to
+            // "arrived") while the customer's real advance-payment requirement was still
+            // pending. Show the waiting screen unconditionally instead and let the poll below
+            // (which reads the real DB row) decide once the real values are in.
             showWaitingForPaymentScreen(null, null);
             pollPaymentStatusFromApi();
+        } else if (!isAdvancePaymentRequired(orderItem)) {
+            new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
+            initOrderDetailsScreen();
         } else {
             checkPaymentStatusFromApi();
         }

@@ -794,16 +794,20 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }
 
   void _showFareBreakdown(Map<String, dynamic> model, double fee) {
-    final baseFare = _number(model['min_charge']);
-    final perKmCharge = _number(model['per_km_charge']);
-    final distance = _fareDistanceKm ?? _distanceKm ?? 0;
-    final distanceCharge = perKmCharge * distance;
+    // These components come straight from the backend's calculateFareBreakdown
+    // (same formula/inputs that produced `fee` itself — see pricingEngine.js),
+    // not re-derived here from min_charge/per_km_charge: for a slab-priced
+    // vehicle those two fields aren't even inputs to the real fare, so
+    // reconstructing "base fare" and "distance charge" from them summed to a
+    // completely different number than the actual quoted total.
+    final baseFare = _number(model['base_fare_charge']);
+    final distanceCharge = _number(model['distance_charge_amount']);
     final radiusCharge = _number(model['radius_charge']);
-    final isNight = model['is_night'] == 1 || model['is_night'] == true || model['is_night']?.toString() == '1';
-    final nightCharge = isNight ? (fee - baseFare - distanceCharge - radiusCharge).clamp(0, fee) : 0.0;
-    final originalMin = _number(model['original_min_charge']);
-    final originalPerKm = _number(model['original_per_km_charge']);
-    final discountSaved = _hasPlanDiscount ? (originalMin - baseFare) + (originalPerKm - perKmCharge) * distance : 0.0;
+    final nightCharge = _number(model['night_charge_amount']);
+    final extraCharge = _number(model['extra_charge_amount']);
+    final discountSaved = _number(model['discount_amount']);
+    final distance = _fareDistanceKm ?? _distanceKm ?? 0;
+    final perKmCharge = _number(model['per_km_charge']);
 
     Widget row(String label, String value, {bool bold = false, Color? color}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -822,6 +826,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       row('Distance charge (${distance.toStringAsFixed(1)} km × ₹${perKmCharge.toStringAsFixed(2)}/km)', '₹${distanceCharge.toStringAsFixed(2)}'),
       if (radiusCharge > 0) row('Search radius charge ($_selectedRadiusKm km)', '₹${radiusCharge.toStringAsFixed(2)}'),
       if (nightCharge > 0) row('Night charge', '₹${nightCharge.toStringAsFixed(2)}'),
+      if (extraCharge > 0) row('Extra charge', '₹${extraCharge.toStringAsFixed(2)}'),
       if (_hasPlanDiscount && discountSaved > 0) row('Plan discount (${_planDiscountPercent.toStringAsFixed(0)}% off)', '-₹${discountSaved.toStringAsFixed(2)}', color: Colors.green),
       const Divider(height: 24),
       row('Estimated total', '₹${fee.toStringAsFixed(2)}', bold: true, color: linercolor),

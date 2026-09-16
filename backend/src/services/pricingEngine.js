@@ -123,6 +123,61 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
 }
 
 /**
+ * Same formula as calculateFare, but returns every component instead of
+ * just the final rounded total — for the customer-facing fare-breakdown
+ * display only (getFareEstimate). Only the final total is rounded (matching
+ * calculateFare's own roundMoney(total)); components are 2-decimal so a UI
+ * summing them lands on the same total calculateFare itself would produce,
+ * instead of a client re-deriving "base fare" from pkg.min_charge/
+ * per_km_charge directly — which, for a slab-priced vehicle (the
+ * calculateFare branch below that ignores those two fields entirely), never
+ * matched the real total at all (confirmed live: a slab-priced Priority
+ * model showed "Base fare ₹50 + distance ₹0.06 - discount ₹5.45" summing to
+ * ~₹45 while the actual quoted total was ₹65 — pkg.min_charge/per_km_charge
+ * simply aren't inputs to that model's real fare).
+ */
+function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null) {
+  const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
+  const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
+  const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
+
+  let baseFare, distanceCharge;
+  if (vehicleConfig && pkg?.use_linear_pricing !== true) {
+    const baseCalc = calculateBaseSlabFare(vehicleConfig, distanceKm);
+    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMultiplier = 1 + anchorMarkup / 100;
+
+    const pkgTitle = String(pkg.title || "").toLowerCase();
+    const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+    const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
+    const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
+
+    baseFare = baseCalc.minCharge * effectiveMultiplier;
+    distanceCharge = baseCalc.totalDistanceCharge * effectiveMultiplier;
+  } else {
+    baseFare = Number(pkg.min_charge) || 0;
+    distanceCharge = (Number(pkg.per_km_charge) || 0) * distanceKm;
+  }
+
+  const dCharge = baseFare + distanceCharge + radiusCharge;
+  const servicePercent = parseFloat(pkg.service_charge_percent) || 0;
+  const serviceCharge = (dCharge * servicePercent) / 100;
+  const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
+  const extraCharge = Number(extraMileCharge) || 0;
+  const total = roundMoney(dCharge + serviceCharge + nightCharge + extraCharge);
+
+  return {
+    baseFare: round2(baseFare),
+    distanceCharge: round2(distanceCharge),
+    radiusCharge: round2(radiusCharge),
+    serviceCharge: round2(serviceCharge),
+    nightCharge: round2(nightCharge),
+    extraCharge: round2(extraCharge),
+    total,
+  };
+}
+
+/**
  * driver_per_trip / driver_per_percent are legacy VarChar columns on the
  * live schema — never assume they parse cleanly. Flat per-trip amount wins
  * over percentage when both are present and > 0.
@@ -393,6 +448,29 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     packages: packages.map((pkg) => {
       const discountedPkg = applyPlanDiscount(pkg, discount);
       const isNight = isNightNow(discountedPkg);
+      const combinedExtraCharge = resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge;
+
+      // Breakdown computed from the SAME formula/inputs estimated_fare itself
+      // uses (slab-based for most vehicles — see calculateFare/
+      // calculateFareBreakdown), not re-derived client-side from
+      // min_charge/per_km_charge, which for a slab-priced vehicle aren't
+      // even inputs to the real fare and previously left the customer-facing
+      // "Fare breakdown" sheet summing to a completely different number than
+      // the total it was itemizing.
+      const breakdown = calculateFareBreakdown(
+        discountedPkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
+        vehicleSlabConfig, slabPricingConfig.modelMultipliers
+      );
+      // Same breakdown run against the UNDISCOUNTED package, so the discount
+      // line shown is the real ₹ difference this formula produces — which is
+      // 0 for a slab-priced vehicle (applyPlanDiscount only touches
+      // min_charge/per_km_charge, fields the slab formula never reads) rather
+      // than a plan-discount-percent-of-min-charge figure that doesn't
+      // actually come off the quoted total.
+      const undiscountedBreakdown = discount
+        ? calculateFareBreakdown(pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers)
+        : breakdown;
+
       return {
         package_id: pkg.id,
         title: pkg.title,
@@ -407,15 +485,16 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         // can itemize it instead of leaving it as an unexplained gap between
         // min_charge + per_km_charge*distance and estimated_fare.
         radius_charge: roundMoney(calculateRadiusCharge(discountedPkg, resolvedRadiusKm)),
-        estimated_fare: calculateFare(
-          discountedPkg,
-          distanceKm,
-          isNight,
-          resolvedRadiusKm,
-          resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge,
-          vehicleSlabConfig,
-          slabPricingConfig.modelMultipliers
-        ),
+        // Itemized components — sum to estimated_fare (± a paisa from the
+        // single final rounding), for the client to display directly instead
+        // of recomputing.
+        base_fare_charge: breakdown.baseFare,
+        distance_charge_amount: breakdown.distanceCharge,
+        service_charge_amount: breakdown.serviceCharge,
+        night_charge_amount: breakdown.nightCharge,
+        extra_charge_amount: breakdown.extraCharge,
+        discount_amount: round2(Math.max(0, undiscountedBreakdown.total - breakdown.total)),
+        estimated_fare: breakdown.total,
         is_night: isNight,
       };
     }),
@@ -553,6 +632,7 @@ async function getAddStopSettings() {
 module.exports = {
   isNightNow,
   calculateFare,
+  calculateFareBreakdown,
   calculateDriverEarning,
   calculateCommissionPercent,
   commissionAmount,

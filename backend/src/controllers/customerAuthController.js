@@ -105,9 +105,11 @@ async function login(req, res) {
     const fcmToken = String(req.body?.fcm_token || "").trim();
     if (!mobile || !password) return fail(res, "Something Went Wrong!");
 
-    const anyActive = await prisma.tbl_user.findFirst({ where: { status: 1 } });
-    if (!anyActive) return fail(res, "Your Status Deactivate!!!");
-
+    // Note: legacy user_login.php ran an equally pointless "does ANY user
+    // in the whole table have status=1" gate before the real lookup below
+    // (and even ran the real lookup's own query twice) - not a real
+    // per-user check, just wasted round trips on a DB that's a WAN hop away
+    // from this backend, so it's dropped here rather than ported as-is.
     const user = await prisma.tbl_user.findFirst({
       where: { mobile: Number(mobile), ccode: String(ccode || ""), status: 1, password: String(password) },
     });
@@ -116,20 +118,21 @@ async function login(req, res) {
     const data = {};
     if (fcmToken) data.fcm_token = fcmToken;
     if (deviceId) data.device_id = deviceId;
-    if (Object.keys(data).length) {
-      await prisma.tbl_user.update({ where: { id: user.id }, data });
-    }
 
-    await deviceSessionService.registerDevice({
-      uid: user.id,
-      deviceId,
-      fcmToken,
-      platform: req.body?.platform,
-      deviceName: req.body?.device_name,
-      appVersion: req.body?.app_version,
-    });
-
-    const addressCount = await prisma.tbl_address.count({ where: { uid: user.id } });
+    // These three don't depend on each other's results - only on user.id -
+    // so they run concurrently instead of stacking their round trips.
+    const [, , addressCount] = await Promise.all([
+      Object.keys(data).length ? prisma.tbl_user.update({ where: { id: user.id }, data }) : Promise.resolve(),
+      deviceSessionService.registerDevice({
+        uid: user.id,
+        deviceId,
+        fcmToken,
+        platform: req.body?.platform,
+        deviceName: req.body?.device_name,
+        appVersion: req.body?.app_version,
+      }),
+      prisma.tbl_address.count({ where: { uid: user.id } }),
+    ]);
 
     return res.status(200).json({
       UserLogin: { ...user, ...data, wallet: user.wallet?.toString?.() ?? user.wallet },
