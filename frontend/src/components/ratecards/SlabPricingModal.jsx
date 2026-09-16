@@ -181,6 +181,11 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
   const [simVehicle, setSimVehicle] = useState('Bike')
   const [simDistance, setSimDistance] = useState(20)
 
+  // Vehicle-wise Anchor and preview state
+  const [previewVehicleKey, setPreviewVehicleKey] = useState('bike')
+  const [quickAnchor, setQuickAnchor] = useState(3)
+  const [quickMarkup, setQuickMarkup] = useState(10)
+
   // Fetch slab pricing config
   const fetchSlabConfig = useCallback(async () => {
     setLoading(true)
@@ -188,13 +193,21 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
       const res = await api.get('/rate-cards/slabs')
       const data = res.data?.data || {}
       if (Array.isArray(data.vehicle_slabs) && data.vehicle_slabs.length > 0) {
-        setVehicleSlabs(data.vehicle_slabs)
+        setVehicleSlabs(
+          data.vehicle_slabs.map((v) => ({
+            ...v,
+            anchor_model: Number(v.anchor_model) || (typeof v.anchor_model === 'string' ? parseInt(v.anchor_model.replace(/\D/g, ''), 10) : 3) || 3,
+            markup_percent: v.markup_percent !== undefined && v.markup_percent !== null ? Number(v.markup_percent) : (data.anchor_model?.markup_percent ?? 10),
+          }))
+        )
       }
       if (Array.isArray(data.model_multipliers) && data.model_multipliers.length > 0) {
         setModelMultipliers(data.model_multipliers)
       }
       if (data.anchor_model) {
         setAnchorModel(data.anchor_model)
+        setQuickAnchor(data.anchor_model.model_number || 3)
+        setQuickMarkup(data.anchor_model.markup_percent ?? 10)
       }
     } catch (err) {
       console.warn('Could not load remote slab config, using defaults:', err)
@@ -236,6 +249,50 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
     })
   }
 
+  // Handlers for Vehicle-wise Anchor Model & Markup editing
+  function handleVehicleAnchorModelChange(vehicleIndex, value) {
+    const num = parseInt(value, 10) || 3
+    setVehicleSlabs((prev) => {
+      const copy = [...prev]
+      copy[vehicleIndex] = {
+        ...copy[vehicleIndex],
+        anchor_model: num,
+      }
+      return copy
+    })
+  }
+
+  function handleVehicleMarkupChange(vehicleIndex, value) {
+    const val = parseFloat(value) || 0
+    setVehicleSlabs((prev) => {
+      const copy = [...prev]
+      copy[vehicleIndex] = {
+        ...copy[vehicleIndex],
+        markup_percent: val,
+      }
+      return copy
+    })
+  }
+
+  function handleApplyAllVehicles(anchorNum, markupPct) {
+    const num = parseInt(anchorNum, 10) || 3
+    const pct = parseFloat(markupPct) || 0
+    setVehicleSlabs((prev) =>
+      prev.map((v) => ({
+        ...v,
+        anchor_model: num,
+        markup_percent: pct,
+      }))
+    )
+    setAnchorModel((prev) => ({
+      ...prev,
+      model_number: num,
+      name: `Model ${num}`,
+      markup_percent: pct,
+    }))
+    toastRef.current?.success(`Applied Model ${num} (+${pct}%) to all vehicles!`)
+  }
+
   // Handlers for Multiplier editing
   function handleModelChange(modelIndex, key, value) {
     setModelMultipliers((prev) => {
@@ -273,7 +330,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
         model_multipliers: modelMultipliers,
         anchor_model: anchorModel,
       })
-      toastRef.current?.success('Distance slab pricing and multipliers saved successfully!')
+      toastRef.current?.success('Distance slab pricing and vehicle-wise multipliers saved successfully!')
     } catch (err) {
       toastRef.current?.error(err.response?.data?.message || 'Failed to save slab pricing.')
     } finally {
@@ -306,7 +363,8 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
   // Live Local Simulation Calculation (for immediate reactivity without network lag)
   const simulationResult = useMemo(() => {
     const vConfig = vehicleSlabs.find(
-      (v) => (v.vehicle_type || '').toLowerCase() === simVehicle.toLowerCase()
+      (v) => (v.vehicle_type || '').toLowerCase() === simVehicle.toLowerCase() ||
+             (v.vehicle_key || '').toLowerCase() === simVehicle.toLowerCase()
     ) || vehicleSlabs[0]
 
     if (!vConfig) return null
@@ -342,13 +400,14 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
     }
 
     const rawBaseFare = minCharge + accumulatedSlabCost
-    const anchorMarkupPct = anchorModel?.markup_percent ?? 10
-    const anchorFactor = 1 + anchorMarkupPct / 100
+    const vAnchorNum = Number(vConfig.anchor_model) || (anchorModel?.model_number ?? 3)
+    const vMarkupPct = vConfig.markup_percent !== undefined ? Number(vConfig.markup_percent) : (anchorModel?.markup_percent ?? 10)
+    const anchorFactor = 1 + vMarkupPct / 100
     const anchorFare = rawBaseFare * anchorFactor
 
     const models = (modelMultipliers || []).map((m) => {
       const offsetPct = m.percent_offset || 0
-      const isAnchor = m.model_number === anchorModel?.model_number
+      const isAnchor = m.model_number === vAnchorNum
       const calculatedFare = Math.round(anchorFare * (1 + offsetPct / 100))
       return {
         ...m,
@@ -365,7 +424,8 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
       accumulated_slab_cost: Math.round(accumulatedSlabCost * 100) / 100,
       raw_base_fare: Math.round(rawBaseFare * 100) / 100,
       anchor_fare: Math.round(anchorFare * 100) / 100,
-      anchor_markup_pct: anchorMarkupPct,
+      anchor_markup_pct: vMarkupPct,
+      anchor_model_num: vAnchorNum,
       slab_breakdown: slabBreakdown,
       models,
     }
@@ -492,7 +552,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                 </span>{' '}
                 <span style={{ color: 'var(--ink-muted)' }}>
                   <code className="rounded bg-black/5 dark:bg-white/10 px-1 py-0.5 font-mono text-[11px]">Final Fare = Minimum Charge + Σ (km in each slab × slab rate)</code>.
-                  Each kilometer is charged strictly within its respective distance bracket. Anchor model (Model 3) automatically adds +{anchorModel.markup_percent}% to this base sum.
+                  Each kilometer is charged strictly within its respective distance bracket. Anchor model and baseline markup % are configured per vehicle in Tab 2.
                 </span>
               </div>
             </div>
@@ -566,159 +626,272 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
         )}
 
         {/* TAB 2: Model Offsets & Titles */}
-        {activeTab === 'multipliers' && (
-          <div className="space-y-4">
-            {/* Anchor Setting Card */}
-            <div className="surface-card rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                    <TrendingUp size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
-                      Anchor Model & Baseline Markup
-                    </h3>
-                    <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
-                      Raw slab rates have a default +{anchorModel.markup_percent}% baseline markup applied for the anchor model ({anchorModel.name}). All other models offset from this baseline.
-                    </p>
-                  </div>
-                </div>
+        {activeTab === 'multipliers' && (() => {
+          const previewVehicle = vehicleSlabs.find(
+            (v) => (v.vehicle_key || v.vehicle_type) === previewVehicleKey
+          ) || vehicleSlabs[0];
+          const previewAnchorNum = Number(previewVehicle?.anchor_model) || 3;
+          const previewMarkupPct = previewVehicle?.markup_percent !== undefined ? Number(previewVehicle.markup_percent) : 10;
 
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Anchor:</span>
+          return (
+            <div className="space-y-4">
+              {/* Vehicle-wise Anchor Model & Baseline Markup Card */}
+              <div className="surface-card rounded-xl border p-4 space-y-3.5" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                      <TrendingUp size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                        Anchor Model & Baseline Markup (Vehicle-wise)
+                      </h3>
+                      <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+                        Configure the anchor model and baseline markup percentage for each vehicle individually. Raw slab rates have this baseline markup applied to the designated anchor model.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Quick Apply All Helper */}
+                  <div className="flex items-center gap-2 rounded-lg border p-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+                    <span className="text-[11.5px] font-medium" style={{ color: 'var(--ink-muted)' }}>Apply All:</span>
                     <select
-                      value={anchorModel.model_number}
-                      onChange={(e) => handleAnchorModelNumberChange(e.target.value)}
-                      className="rounded-lg border px-2.5 py-1 text-[12px] font-semibold outline-none"
-                      style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                      value={quickAnchor}
+                      onChange={(e) => setQuickAnchor(parseInt(e.target.value, 10) || 3)}
+                      className="rounded border px-2 py-1 text-[11.5px] font-semibold outline-none"
+                      style={{ borderColor: 'var(--border)', background: 'var(--surface)', color: 'var(--ink)' }}
                     >
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <option key={n} value={n}>
-                          Model {n}
-                        </option>
+                        <option key={n} value={n}>Model {n}</option>
                       ))}
                     </select>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Markup %:</span>
-                    <div className="relative w-20">
+                    <div className="relative w-16">
                       <input
                         type="number"
                         step="any"
-                        value={anchorModel.markup_percent}
-                        onChange={(e) => handleAnchorMarkupChange(e.target.value)}
-                        className="w-full rounded-lg border py-1 pl-2 pr-5 font-mono-data text-[12px] font-semibold outline-none text-right"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                        value={quickMarkup}
+                        onChange={(e) => setQuickMarkup(parseFloat(e.target.value) || 0)}
+                        className="w-full rounded border py-1 pl-1.5 pr-5 text-[11.5px] font-mono-data font-semibold outline-none text-right"
+                        style={{ borderColor: 'var(--border)', background: 'var(--surface)', color: 'var(--ink)' }}
                       />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                        %
-                      </span>
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">%</span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyAllVehicles(quickAnchor, quickMarkup)}
+                      className="rounded px-2.5 py-1 text-[11.5px] font-semibold transition-opacity hover:opacity-90"
+                      style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+                    >
+                      Set All
+                    </button>
                   </div>
+                </div>
+
+                {/* Vehicle Table */}
+                <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+                  <table className="w-full text-left text-[12px]">
+                    <thead>
+                      <tr style={{ background: 'var(--bg)' }}>
+                        <th className="px-3.5 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Vehicle</th>
+                        <th className="px-3 py-2.5 font-semibold text-center" style={{ color: 'var(--brand)' }}>Min Charge</th>
+                        <th className="px-3 py-2.5 font-semibold text-center" style={{ color: 'var(--ink)' }}>Anchor Model</th>
+                        <th className="px-3 py-2.5 font-semibold text-center" style={{ color: 'var(--ink)' }}>Baseline Markup %</th>
+                        <th className="px-3.5 py-2.5 font-semibold text-right" style={{ color: 'var(--ink)' }}>Effective Anchor Multiplier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vehicleSlabs.map((v, vIdx) => {
+                        const vAnchor = Number(v.anchor_model) || 3;
+                        const vMarkup = v.markup_percent !== undefined ? Number(v.markup_percent) : 10;
+                        const anchorFactor = 1 + vMarkup / 100;
+                        return (
+                          <tr
+                            key={v.vehicle_key || v.vehicle_type}
+                            className="border-t transition-colors hover:bg-black/2 dark:hover:bg-white/2"
+                            style={{ borderColor: 'var(--border)' }}
+                          >
+                            <td className="px-3.5 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>
+                              <div className="flex items-center gap-1.5 text-[12.5px]">
+                                {getVehicleIcon(v.vehicle_type)}
+                                {v.vehicle_type}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-mono-data font-semibold" style={{ color: 'var(--brand)' }}>
+                              ₹{v.min_charge}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <select
+                                value={vAnchor}
+                                onChange={(e) => handleVehicleAnchorModelChange(vIdx, e.target.value)}
+                                className="rounded-lg border px-2.5 py-1 text-[12px] font-semibold outline-none focus:border-brand"
+                                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                              >
+                                {[1, 2, 3, 4, 5].map((n) => (
+                                  <option key={n} value={n}>Model {n}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <div className="relative inline-block w-24">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={vMarkup}
+                                  onChange={(e) => handleVehicleMarkupChange(vIdx, e.target.value)}
+                                  className="w-full rounded-lg border py-1 pl-2 pr-6 text-center font-mono-data text-[12px] font-semibold outline-none focus:border-brand"
+                                  style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                  %
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-right font-mono-data font-semibold" style={{ color: 'var(--ink)' }}>
+                              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                +{vMarkup}% ({anchorFactor.toFixed(2)}x)
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Model 1-5 Configuration Table */}
+              <div className="space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-1">
+                  <div>
+                    <h4 className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+                      Model Offsets & Display Titles (Model 1–5)
+                    </h4>
+                    <p className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                      Customer & driver app titles and relative percentage offsets vs the anchor model tier.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[12px]">
+                    <span className="text-[11.5px] font-medium" style={{ color: 'var(--ink-muted)' }}>Preview Offsets For:</span>
+                    <select
+                      value={previewVehicleKey}
+                      onChange={(e) => setPreviewVehicleKey(e.target.value)}
+                      className="rounded-lg border px-2.5 py-1 text-[12px] font-semibold outline-none focus:border-brand"
+                      style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                    >
+                      {vehicleSlabs.map((v) => {
+                        const key = v.vehicle_key || v.vehicle_type;
+                        const aNum = Number(v.anchor_model) || 3;
+                        const mPct = v.markup_percent !== undefined ? Number(v.markup_percent) : 10;
+                        return (
+                          <option key={key} value={key}>
+                            {v.vehicle_type} (Anchor: Model {aNum}, +{mPct}%)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+                  <table className="w-full text-left text-[12.5px]">
+                    <thead>
+                      <tr style={{ background: 'var(--bg)' }}>
+                        <th className="px-4 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Model Tier</th>
+                        <th className="px-4 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Customer App Title (user_title)</th>
+                        <th className="px-4 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Driver App Title (driver_title)</th>
+                        <th className="px-4 py-2.5 font-semibold text-center" style={{ color: 'var(--ink)' }}>Offset % (vs Anchor)</th>
+                        <th className="px-4 py-2.5 font-semibold text-right" style={{ color: 'var(--ink)' }}>
+                          Effective Factor ({previewVehicle?.vehicle_type || 'Vehicle'})
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modelMultipliers.map((m, mIdx) => {
+                        const isAnchor = m.model_number === previewAnchorNum;
+                        const effectiveFactor = (1 + previewMarkupPct / 100) * (1 + (m.percent_offset || 0) / 100);
+                        
+                        return (
+                          <tr
+                            key={m.model_number}
+                            className={`border-t transition-colors ${
+                              isAnchor ? 'bg-amber-500/5' : 'hover:bg-black/2 dark:hover:bg-white/2'
+                            }`}
+                            style={{ borderColor: 'var(--border)' }}
+                          >
+                            {/* Model Name & Badge */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                                  {m.name || `Model ${m.model_number}`}
+                                </span>
+                                {isAnchor && (
+                                  <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10.5px] font-bold text-amber-600 dark:text-amber-400">
+                                    ANCHOR ({previewVehicle?.vehicle_type || 'Selected'})
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* User Title */}
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                value={m.user_title || ''}
+                                onChange={(e) => handleModelChange(mIdx, 'user_title', e.target.value)}
+                                placeholder="e.g. Super Saver"
+                                className="w-full rounded-lg border px-2.5 py-1 text-[12.5px] outline-none focus:border-brand"
+                                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                              />
+                            </td>
+
+                            {/* Driver Title */}
+                            <td className="px-4 py-3">
+                              <input
+                                type="text"
+                                value={m.driver_title || ''}
+                                onChange={(e) => handleModelChange(mIdx, 'driver_title', e.target.value)}
+                                placeholder="e.g. Earning Beast"
+                                className="w-full rounded-lg border px-2.5 py-1 text-[12.5px] outline-none focus:border-brand"
+                                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                              />
+                            </td>
+
+                            {/* Offset Percentage */}
+                            <td className="px-4 py-3 text-center">
+                              <div className="relative inline-block w-24">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={m.percent_offset}
+                                  onChange={(e) => handleModelChange(mIdx, 'percent_offset', e.target.value)}
+                                  className="w-full rounded-lg border py-1 pl-2 pr-6 text-center font-mono-data text-[12px] font-semibold outline-none focus:border-brand"
+                                  style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-brand">
+                                  %
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Effective Factor Display */}
+                            <td className="px-4 py-3 text-right">
+                              <span className="font-mono-data text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
+                                {(effectiveFactor * 100).toFixed(1)}%
+                              </span>
+                              <div className="text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+                                {effectiveFactor >= 1 ? `+${((effectiveFactor - 1) * 100).toFixed(1)}% vs Raw` : `${((effectiveFactor - 1) * 100).toFixed(1)}% vs Raw`}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
-
-            {/* Model 1-5 Configuration Table */}
-            <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)' }}>
-              <table className="w-full text-left text-[12.5px]">
-                <thead>
-                  <tr style={{ background: 'var(--bg)' }}>
-                    <th className="px-4 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Model Tier</th>
-                    <th className="px-4 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Customer App Title (user_title)</th>
-                    <th className="px-4 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>Driver App Title (driver_title)</th>
-                    <th className="px-4 py-2.5 font-semibold text-center" style={{ color: 'var(--ink)' }}>Offset % (vs Anchor)</th>
-                    <th className="px-4 py-2.5 font-semibold text-right" style={{ color: 'var(--ink)' }}>Effective Factor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modelMultipliers.map((m, mIdx) => {
-                    const isAnchor = m.model_number === anchorModel.model_number
-                    const effectiveFactor = (1 + (anchorModel.markup_percent || 0) / 100) * (1 + (m.percent_offset || 0) / 100)
-                    
-                    return (
-                      <tr
-                        key={m.model_number}
-                        className={`border-t transition-colors ${
-                          isAnchor ? 'bg-amber-500/5' : 'hover:bg-black/2 dark:hover:bg-white/2'
-                        }`}
-                        style={{ borderColor: 'var(--border)' }}
-                      >
-                        {/* Model Name & Badge */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold" style={{ color: 'var(--ink)' }}>
-                              {m.name || `Model ${m.model_number}`}
-                            </span>
-                            {isAnchor && (
-                              <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10.5px] font-bold text-amber-600 dark:text-amber-400">
-                                ANCHOR
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* User Title */}
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={m.user_title || ''}
-                            onChange={(e) => handleModelChange(mIdx, 'user_title', e.target.value)}
-                            placeholder="e.g. Super Saver"
-                            className="w-full rounded-lg border px-2.5 py-1 text-[12.5px] outline-none focus:border-brand"
-                            style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-                          />
-                        </td>
-
-                        {/* Driver Title */}
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={m.driver_title || ''}
-                            onChange={(e) => handleModelChange(mIdx, 'driver_title', e.target.value)}
-                            placeholder="e.g. Earning Beast"
-                            className="w-full rounded-lg border px-2.5 py-1 text-[12.5px] outline-none focus:border-brand"
-                            style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-                          />
-                        </td>
-
-                        {/* Offset Percentage */}
-                        <td className="px-4 py-3 text-center">
-                          <div className="relative inline-block w-24">
-                            <input
-                              type="number"
-                              step="any"
-                              value={m.percent_offset}
-                              onChange={(e) => handleModelChange(mIdx, 'percent_offset', e.target.value)}
-                              className="w-full rounded-lg border py-1 pl-2 pr-6 text-center font-mono-data text-[12px] font-semibold outline-none focus:border-brand"
-                              style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-                            />
-                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-brand">
-                              %
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Effective Factor Display */}
-                        <td className="px-4 py-3 text-right">
-                          <span className="font-mono-data text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
-                            {(effectiveFactor * 100).toFixed(1)}%
-                          </span>
-                          <div className="text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
-                            {effectiveFactor >= 1 ? `+${((effectiveFactor - 1) * 100).toFixed(1)}% vs Raw` : `${((effectiveFactor - 1) * 100).toFixed(1)}% vs Raw`}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 3: Interactive Fare Simulator */}
         {activeTab === 'simulator' && simulationResult && (
