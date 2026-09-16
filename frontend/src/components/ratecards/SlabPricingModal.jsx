@@ -35,6 +35,8 @@ const DEFAULT_VEHICLES = [
     vehicle_key: 'bike',
     vehicle_type: 'Bike',
     min_charge: 42,
+    anchor_model: 3,
+    markup_percent: 10,
     slabs: [
       { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 1.0 },
       { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 4.0 },
@@ -52,6 +54,8 @@ const DEFAULT_VEHICLES = [
     vehicle_key: 'scooter',
     vehicle_type: 'Scooter',
     min_charge: 48,
+    anchor_model: 3,
+    markup_percent: 10,
     slabs: [
       { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 2.0 },
       { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 4.5 },
@@ -69,6 +73,8 @@ const DEFAULT_VEHICLES = [
     vehicle_key: 'mini_3w',
     vehicle_type: 'Mini 3 Wheeler',
     min_charge: 103,
+    anchor_model: 3,
+    markup_percent: 10,
     slabs: [
       { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 5.0 },
       { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 8.5 },
@@ -86,6 +92,8 @@ const DEFAULT_VEHICLES = [
     vehicle_key: 'e_loader',
     vehicle_type: 'E Loader',
     min_charge: 143,
+    anchor_model: 3,
+    markup_percent: 10,
     slabs: [
       { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 8.0 },
       { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 10.75 },
@@ -103,6 +111,8 @@ const DEFAULT_VEHICLES = [
     vehicle_key: 'three_wheeler',
     vehicle_type: '3 Wheeler',
     min_charge: 195,
+    anchor_model: 3,
+    markup_percent: 10,
     slabs: [
       { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 10.0 },
       { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 21.5 },
@@ -120,6 +130,8 @@ const DEFAULT_VEHICLES = [
     vehicle_key: 'four_wheeler',
     vehicle_type: 'Tata Ace / 4 Wheeler',
     min_charge: 287,
+    anchor_model: 3,
+    markup_percent: 10,
     slabs: [
       { key: '0_1', from_km: 0, to_km: 1, label: '0–1 km', rate: 10.0 },
       { key: '1_5', from_km: 1, to_km: 5, label: '1–5 km', rate: 25.5 },

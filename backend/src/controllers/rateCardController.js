@@ -290,6 +290,8 @@ async function getSlabs(req, res) {
         vehicle_type: v.vehicle_name || v.vehicle_type,
         category_id: v.category_id,
         min_charge: Number(v.min_charge) || 0,
+        anchor_model: Number(v.anchor_model) || (typeof v.anchor_model === "string" ? parseInt(v.anchor_model.replace(/\D/g, ""), 10) : 3) || 3,
+        markup_percent: v.markup_percent !== undefined && v.markup_percent !== null ? Number(v.markup_percent) : (Number(modelMultipliers.anchor_markup_percent) || 10),
         slabs,
       };
     });
@@ -344,6 +346,8 @@ async function updateSlabs(req, res) {
           vehicle_name: v.vehicle_type || v.vehicle_name,
           category_id: v.category_id,
           min_charge: Number(v.min_charge) || 0,
+          anchor_model: Number(v.anchor_model) || 3,
+          markup_percent: v.markup_percent !== undefined && v.markup_percent !== null ? Number(v.markup_percent) : 10,
           rates,
         };
       }
@@ -413,6 +417,13 @@ async function syncModelsFromSlabs(req, res) {
     for (const category of categories) {
       const vehicleConfig = findVehicleSlabConfig(config.slabRates, category.id);
       if (!vehicleConfig) continue;
+
+      const categoryAnchorMarkup = Number(
+        vehicleConfig.markup_percent ??
+        vehicleConfig.anchor_markup_percent ??
+        multipliers.anchor_markup_percent
+      ) || 10;
+      const anchorMultiplier = 1 + categoryAnchorMarkup / 100;
 
       const packages = await prisma.tbl_package.findMany({
         where: { cat_id: category.id },

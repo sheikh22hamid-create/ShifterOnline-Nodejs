@@ -21,6 +21,8 @@ const DEFAULT_SLAB_RATES = {
     vehicle_name: "Bike",
     category_id: 8,
     min_charge: 42,
+    anchor_model: 3,
+    markup_percent: 10,
     rates: {
       "0_1": 1.0,
       "1_5": 4.0,
@@ -40,6 +42,8 @@ const DEFAULT_SLAB_RATES = {
     vehicle_name: "Scooter",
     category_id: 16,
     min_charge: 48,
+    anchor_model: 3,
+    markup_percent: 10,
     rates: {
       "0_1": 2.0,
       "1_5": 4.5,
@@ -59,6 +63,8 @@ const DEFAULT_SLAB_RATES = {
     vehicle_name: "Mini 3W",
     category_id: 9,
     min_charge: 103,
+    anchor_model: 3,
+    markup_percent: 10,
     rates: {
       "0_1": 5.0,
       "1_5": 8.5,
@@ -78,6 +84,8 @@ const DEFAULT_SLAB_RATES = {
     vehicle_name: "E-Loader",
     category_id: 23,
     min_charge: 143,
+    anchor_model: 3,
+    markup_percent: 10,
     rates: {
       "0_1": 8.0,
       "1_5": 10.75,
@@ -97,6 +105,8 @@ const DEFAULT_SLAB_RATES = {
     vehicle_name: "3 Wheeler",
     category_id: 24,
     min_charge: 195,
+    anchor_model: 3,
+    markup_percent: 10,
     rates: {
       "0_1": 10.0,
       "1_5": 21.5,
@@ -116,6 +126,8 @@ const DEFAULT_SLAB_RATES = {
     vehicle_name: "Tata Ace / 4W",
     category_id: 25,
     min_charge: 287,
+    anchor_model: 3,
+    markup_percent: 10,
     rates: {
       "0_1": 10.0,
       "1_5": 25.5,
@@ -301,15 +313,22 @@ function calculateBaseSlabFare(vehicleSlabConfig, distanceKm) {
  */
 function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distanceKm) {
   const baseCalc = calculateBaseSlabFare(vehicleSlabConfig, distanceKm);
-  const anchorMarkup = Number(modelMultipliersConfig?.anchor_markup_percent) || 10;
+  const anchorMarkup = Number(
+    vehicleSlabConfig?.markup_percent ??
+    vehicleSlabConfig?.anchor_markup_percent ??
+    modelMultipliersConfig?.anchor_markup_percent
+  ) || 10;
   const anchorMultiplier = 1 + anchorMarkup / 100;
+  const anchorModelNum = Number(vehicleSlabConfig?.anchor_model) || (parseInt(String(modelMultipliersConfig?.anchor_model || "").replace(/\D/g, ""), 10) || 3);
 
-  const modelResults = (modelMultipliersConfig?.models || DEFAULT_MODEL_MULTIPLIERS.models).map((m) => {
+  const modelResults = (modelMultipliersConfig?.models || DEFAULT_MODEL_MULTIPLIERS.models).map((m, idx) => {
+    const mNum = parseInt(String(m.model || "").replace(/\D/g, ""), 10) || (idx + 1);
+    const isAnchor = mNum === anchorModelNum;
     const offset = Number(m.offset_percent) || 0;
     const offsetMultiplier = 1 + offset / 100;
 
-    // Model 3 is raw * anchorMultiplier.
-    // Other models scale relative to Model 3.
+    // Anchor model is raw * anchorMultiplier.
+    // Other models scale relative to Anchor model.
     const effectiveMultiplier = anchorMultiplier * offsetMultiplier;
 
     const modelMinCharge = Math.round(baseCalc.minCharge * effectiveMultiplier * 100) / 100;
@@ -325,6 +344,7 @@ function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distance
       min_charge: modelMinCharge,
       distance_charge: modelDistanceCharge,
       fare: calculatedFare,
+      is_anchor: isAnchor,
     };
   });
 
@@ -332,6 +352,7 @@ function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distance
     distanceKm,
     baseCalculation: baseCalc,
     anchorMarkupPercent: anchorMarkup,
+    anchorModelNumber: anchorModelNum,
     models: modelResults,
   };
 }

@@ -97,7 +97,11 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
   let dCharge;
   if (vehicleConfig && pkg?.use_linear_pricing !== true) {
     const baseCalc = calculateBaseSlabFare(vehicleConfig, distanceKm);
-    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMarkup = Number(
+      vehicleConfig?.markup_percent ??
+      vehicleConfig?.anchor_markup_percent ??
+      multipliers.anchor_markup_percent
+    ) || 10;
     const anchorMultiplier = 1 + anchorMarkup / 100;
 
     const pkgTitle = String(pkg.title || "").toLowerCase();
@@ -144,7 +148,11 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
   let baseFare, distanceCharge;
   if (vehicleConfig && pkg?.use_linear_pricing !== true) {
     const baseCalc = calculateBaseSlabFare(vehicleConfig, distanceKm);
-    const anchorMarkup = Number(multipliers.anchor_markup_percent) || 10;
+    const anchorMarkup = Number(
+      vehicleConfig?.markup_percent ??
+      vehicleConfig?.anchor_markup_percent ??
+      multipliers.anchor_markup_percent
+    ) || 10;
     const anchorMultiplier = 1 + anchorMarkup / 100;
 
     const pkgTitle = String(pkg.title || "").toLowerCase();
