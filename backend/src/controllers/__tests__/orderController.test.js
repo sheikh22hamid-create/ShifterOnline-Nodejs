@@ -168,8 +168,8 @@ describe("orderController.createOrderCore", () => {
     });
   });
 
-  it("rejects next-day booking (booking_type 3) when user has no active plan with noAdvancePayment", async () => {
-    pricingEngine.getActivePlanDiscount.mockResolvedValueOnce(null);
+  it("rejects next-day booking (booking_type 3) when user has no active plan", async () => {
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
 
     const result = await createOrderCore({ ...baseInput, bookingType: 3 });
 
@@ -179,7 +179,7 @@ describe("orderController.createOrderCore", () => {
   });
 
   it("does not start automatic dispatch for a next-day booking (booking_type 3) with eligible plan", async () => {
-    pricingEngine.getActivePlanDiscount.mockResolvedValueOnce({ noAdvancePayment: true, planName: "Gold" });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({ subscriptionId: 1, noAdvancePayment: true, planName: "Gold" });
 
     const result = await createOrderCore({ ...baseInput, bookingType: 3 });
 
@@ -195,7 +195,7 @@ describe("orderController.createOrderCore", () => {
   });
 
   it("auto-computes tomorrow's date (IST) as schedule_date_time for a next-day booking, ignoring any client-sent value", async () => {
-    pricingEngine.getActivePlanDiscount.mockResolvedValueOnce({ noAdvancePayment: true, planName: "Gold" });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({ subscriptionId: 1, noAdvancePayment: true, planName: "Gold" });
 
     await createOrderCore({ ...baseInput, bookingType: 3, scheduleDateTime: "should be ignored" });
 

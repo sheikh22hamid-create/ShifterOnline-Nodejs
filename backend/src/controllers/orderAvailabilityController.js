@@ -252,7 +252,7 @@ async function availableVehicles(req, res) {
       let available = false;
       let reasonUnavailable = "No drivers nearby";
 
-      if (bookingType === "scheduled") {
+      if (bookingType === "scheduled" || bookingType === "next_day" || bookingType === "nextday" || bookingType === "3") {
         liveSupply = "good";
         estimatedPickupMinutes = 15;
         available = true;
