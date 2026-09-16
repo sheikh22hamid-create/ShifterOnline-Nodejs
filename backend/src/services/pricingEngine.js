@@ -457,19 +457,32 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
       // even inputs to the real fare and previously left the customer-facing
       // "Fare breakdown" sheet summing to a completely different number than
       // the total it was itemizing.
-      const breakdown = calculateFareBreakdown(
-        discountedPkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
+      //
+      // Always run against the UNDISCOUNTED pkg (the "sticker price" line
+      // items), never discountedPkg — a first version of this itemized the
+      // discountedPkg's own (already net-of-discount) components and THEN
+      // also subtracted discount_amount from them, double-applying the
+      // discount: displayed rows summed correctly to net_total - discount,
+      // not to estimated_fare (confirmed live: components 33+2318+22 with a
+      // shown "-587" discount landing on 694, when 33+2318+22-587=1786, not
+      // 694 — the 33/2318/22 were themselves already post-discount, and 587
+      // was gross-to-net delta on the FULL total, not just those two
+      // fields). Gross components here always sum to grossBreakdown.total;
+      // grossBreakdown.total - discount_amount == netBreakdown.total ==
+      // estimated_fare, so the UI's own "sum rows, subtract discount, get
+      // total" arithmetic actually holds.
+      const grossBreakdown = calculateFareBreakdown(
+        pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
         vehicleSlabConfig, slabPricingConfig.modelMultipliers
       );
-      // Same breakdown run against the UNDISCOUNTED package, so the discount
-      // line shown is the real ₹ difference this formula produces — which is
-      // 0 for a slab-priced vehicle (applyPlanDiscount only touches
-      // min_charge/per_km_charge, fields the slab formula never reads) rather
-      // than a plan-discount-percent-of-min-charge figure that doesn't
-      // actually come off the quoted total.
-      const undiscountedBreakdown = discount
-        ? calculateFareBreakdown(pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers)
-        : breakdown;
+      // Net (actually-charged) total — 0 discount for a slab-priced vehicle,
+      // since applyPlanDiscount only touches min_charge/per_km_charge, fields
+      // the slab formula never reads; a real ₹ difference only for a
+      // linear-priced package, where discountedPkg's min_charge/per_km_charge
+      // genuinely differ from pkg's.
+      const netBreakdown = discount
+        ? calculateFareBreakdown(discountedPkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers)
+        : grossBreakdown;
 
       return {
         package_id: pkg.id,
@@ -480,21 +493,20 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         per_km_charge: Number(discountedPkg.per_km_charge),
         original_min_charge: Number(pkg.min_charge),
         original_per_km_charge: Number(pkg.per_km_charge),
-        // Search-radius preview charge (see getFareEstimate's radiusRangeKm
-        // doc above) — surfaced separately so the customer-facing breakdown
-        // can itemize it instead of leaving it as an unexplained gap between
-        // min_charge + per_km_charge*distance and estimated_fare.
-        radius_charge: roundMoney(calculateRadiusCharge(discountedPkg, resolvedRadiusKm)),
-        // Itemized components — sum to estimated_fare (± a paisa from the
-        // single final rounding), for the client to display directly instead
-        // of recomputing.
-        base_fare_charge: breakdown.baseFare,
-        distance_charge_amount: breakdown.distanceCharge,
-        service_charge_amount: breakdown.serviceCharge,
-        night_charge_amount: breakdown.nightCharge,
-        extra_charge_amount: breakdown.extraCharge,
-        discount_amount: round2(Math.max(0, undiscountedBreakdown.total - breakdown.total)),
-        estimated_fare: breakdown.total,
+        // Gross (pre-discount) search-radius charge — matches the other
+        // itemized components below, which are all gross; the discount on
+        // this, if any, is folded into discount_amount same as the rest.
+        radius_charge: roundMoney(calculateRadiusCharge(pkg, resolvedRadiusKm)),
+        // Itemized GROSS components — sum to estimated_fare + discount_amount
+        // (± a paisa from the single final rounding), for the client to
+        // display directly instead of recomputing.
+        base_fare_charge: grossBreakdown.baseFare,
+        distance_charge_amount: grossBreakdown.distanceCharge,
+        service_charge_amount: grossBreakdown.serviceCharge,
+        night_charge_amount: grossBreakdown.nightCharge,
+        extra_charge_amount: grossBreakdown.extraCharge,
+        discount_amount: round2(Math.max(0, grossBreakdown.total - netBreakdown.total)),
+        estimated_fare: netBreakdown.total,
         is_night: isNight,
       };
     }),

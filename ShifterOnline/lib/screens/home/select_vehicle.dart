@@ -807,7 +807,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final extraCharge = _number(model['extra_charge_amount']);
     final discountSaved = _number(model['discount_amount']);
     final distance = _fareDistanceKm ?? _distanceKm ?? 0;
-    final perKmCharge = _number(model['per_km_charge']);
+    // base_fare_charge/distance_charge_amount above are the GROSS (pre-discount)
+    // components (see pricingEngine.js) — original_per_km_charge is the matching
+    // gross rate; model['per_km_charge'] is the already-discounted rate and would
+    // no longer match distanceCharge / distance here.
+    final perKmCharge = _number(model['original_per_km_charge']);
 
     Widget row(String label, String value, {bool bold = false, Color? color}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
