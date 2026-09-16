@@ -46,7 +46,45 @@ async function activeSubscription(userId, client = prisma) {
   });
   if (!subscription) return null;
   const plan = await client.tbl_premium_plan.findUnique({ where: { id: subscription.plan_id } });
-  return plan ? { ...subscription, tbl_premium_plan: plan } : null;
+  if (plan) return { ...subscription, tbl_premium_plan: plan };
+
+  // Fallback to snapshot if plan was deleted from tbl_premium_plan by admin
+  let snapshot = {};
+  if (subscription.plan_snapshot) {
+    try {
+      snapshot = typeof subscription.plan_snapshot === "string" ? JSON.parse(subscription.plan_snapshot) : subscription.plan_snapshot;
+    } catch (e) {}
+  }
+  const fallbackPlan = {
+    id: subscription.plan_id,
+    plan_name: snapshot.plan_name || "Premium Plan",
+    plan_for: "USER",
+    plan_type: "CUSTOMER_PREMIUM",
+    validity_days: 30,
+    expire_date: subscription.end_date,
+    price: String(snapshot.price ?? subscription.amount_paid ?? "0"),
+    description: snapshot.description || "",
+    plan_image: null,
+    discount_enabled: Boolean(snapshot.discount_enabled || (Number(snapshot.discount_percent) || 0) > 0),
+    discount_percent: String(snapshot.discount_percent || 0),
+    discount_max_cap: String(snapshot.discount_max_cap || 0),
+    cancellation_enabled: Boolean(snapshot.cancellation_enabled),
+    free_cancellations: Number(snapshot.free_cancellations) || 0,
+    cancellation_window_min: Number(snapshot.cancellation_window_min) || 5,
+    no_advance_payment: Boolean(snapshot.no_advance_payment),
+    guarantee_driver: Boolean(snapshot.guarantee_driver),
+    priority_support: Boolean(snapshot.priority_support),
+    special_offers: Boolean(snapshot.special_offers),
+    priority_enabled: Boolean(snapshot.priority_enabled || snapshot.priority_matching),
+    wallet_bonus_enabled: Boolean(snapshot.wallet_bonus_enabled),
+    wallet_bonus_amount: String(snapshot.wallet_bonus_amount || 0),
+    referral_enabled: Boolean(snapshot.referral_enabled),
+    referral_points_per_referral: Number(snapshot.referral_points_per_referral) || 0,
+    referral_point_value: String(snapshot.referral_point_value || 1),
+    number_of_referrals: Number(snapshot.number_of_referrals) || 0,
+    auto_activate_on_referrals: Boolean(snapshot.auto_activate_on_referrals),
+  };
+  return { ...subscription, tbl_premium_plan: fallbackPlan };
 }
 
 function daysLeft(expireDate, validityDays, today = new Date()) {
@@ -151,6 +189,7 @@ function buildActivePayload(subscription, today = new Date()) {
     start_date: subscription.start_date.toISOString().slice(0, 10),
     end_date: subscription.end_date.toISOString().slice(0, 10),
     days_left: daysLeft(subscription.end_date, 0, today),
+    validity_label: `Valid till ${subscription.end_date.toISOString().slice(0, 10)} (${daysLeft(subscription.end_date, 0, today)} days left)`,
     purchased_at: subscription.created_at,
     amount_paid: Number(subscription.amount_paid),
     payment_method: subscription.payment_method,
