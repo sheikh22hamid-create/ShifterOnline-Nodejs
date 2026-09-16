@@ -339,6 +339,32 @@ async function updateStatus(orderId, riderId, status) {
     return { success: false, msg: "Not authorized for this order" };
   }
 
+  if (status === "accept" || status === "confirm") {
+    await prisma.pkg_order.update({
+      where: { id: orderId },
+      data: {
+        order_status: 1,
+        o_status: "Processing",
+        accept_time: istNow(),
+      },
+    });
+    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 1, o_status: "Processing", rid: riderId });
+    return { success: true, order_status: 1, o_status: "Processing" };
+  }
+
+  if (status === "reject" || status === "decline") {
+    await prisma.pkg_order.update({
+      where: { id: orderId },
+      data: {
+        rid: 0,
+        order_status: 0,
+        o_status: "Pending",
+      },
+    });
+    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 0, o_status: "Pending", rid: 0 });
+    return { success: true, order_status: 0, o_status: "Pending" };
+  }
+
   if (status === "arrived") {
     const now = new Date();
     await prisma.pkg_order.update({

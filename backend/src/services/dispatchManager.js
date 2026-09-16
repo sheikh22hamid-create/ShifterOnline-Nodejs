@@ -121,7 +121,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       AND r.id NOT IN (${Prisma.join(exclude)})
       AND r.id NOT IN (
         SELECT rid FROM pkg_order
-        WHERE order_status IN (1, 2, 3) AND rid > 0
+        WHERE rid > 0
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
       AND (
