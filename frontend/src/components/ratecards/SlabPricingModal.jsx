@@ -28,6 +28,13 @@ const SLAB_INTERVALS = [
   { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km' },
   { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km' },
   { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km' },
+  // Open-ended — every km beyond 60 is billed at this one rate. Previously
+  // missing here (and from every vehicle's `slabs` below), which meant this
+  // editor never showed or sent a 60+ rate at all; saving via this modal
+  // rebuilt each vehicle's rates from exactly this list, so any save wiped
+  // the real backend 60+ rate to 0 — every trip over 60km stopped
+  // accumulating distance charge beyond the 60km mark (confirmed live).
+  { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km' },
 ]
 
 const DEFAULT_VEHICLES = [
@@ -48,6 +55,7 @@ const DEFAULT_VEHICLES = [
       { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 14.1 },
       { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 14.1 },
       { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 14.1 },
+      { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km', rate: 14.1 },
     ],
   },
   {
@@ -67,6 +75,7 @@ const DEFAULT_VEHICLES = [
       { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 16.4 },
       { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 16.3 },
       { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 16.3 },
+      { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km', rate: 16.3 },
     ],
   },
   {
@@ -86,6 +95,7 @@ const DEFAULT_VEHICLES = [
       { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 18.8 },
       { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 18.8 },
       { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 18.8 },
+      { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km', rate: 18.8 },
     ],
   },
   {
@@ -105,6 +115,7 @@ const DEFAULT_VEHICLES = [
       { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 18.3 },
       { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 18.3 },
       { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 18.3 },
+      { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km', rate: 18.3 },
     ],
   },
   {
@@ -124,6 +135,7 @@ const DEFAULT_VEHICLES = [
       { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 22.9 },
       { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 22.8 },
       { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 22.8 },
+      { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km', rate: 22.8 },
     ],
   },
   {
@@ -143,6 +155,7 @@ const DEFAULT_VEHICLES = [
       { key: '30_40', from_km: 30, to_km: 40, label: '30–40 km', rate: 36.7 },
       { key: '40_50', from_km: 40, to_km: 50, label: '40–50 km', rate: 36.5 },
       { key: '50_60', from_km: 50, to_km: 60, label: '50–60 km', rate: 36.5 },
+      { key: '60_plus', from_km: 60, to_km: Infinity, label: '60+ km', rate: 36.5 },
     ],
   },
 ]
@@ -198,6 +211,12 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
             ...v,
             anchor_model: Number(v.anchor_model) || (typeof v.anchor_model === 'string' ? parseInt(v.anchor_model.replace(/\D/g, ''), 10) : 3) || 3,
             markup_percent: v.markup_percent !== undefined && v.markup_percent !== null ? Number(v.markup_percent) : (data.anchor_model?.markup_percent ?? 10),
+            // The open-ended 60+ km slab's to_km is Infinity server-side, which
+            // JSON has no representation for and serializes as null — restore
+            // it here so the simulator's Math.min(dist, to) below treats it as
+            // unbounded instead of "ends at 0km" (which would zero that slab
+            // out again on the very next save).
+            slabs: (v.slabs || []).map((s) => ({ ...s, to_km: s.to_km === null ? Infinity : s.to_km })),
           }))
         )
       }
@@ -373,11 +392,16 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
     const minCharge = vConfig.min_charge || 0
     let accumulatedSlabCost = 0
     const slabBreakdown = []
+    const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '50_60')?.rate || 0
 
     for (const slab of vConfig.slabs || []) {
       const from = slab.from_km
       const to = slab.to_km
-      const rate = slab.rate || 0
+      // 60+ mirrors 50-60km live (matches the table's read-only cell and the
+      // real backend formula) instead of its own stored `rate`, which only
+      // reflects whatever was loaded/saved last and would go stale the
+      // moment 50-60km is edited without saving first.
+      const rate = (slab.derived || slab.key === '60_plus') ? lastFiniteRate : (slab.rate || 0)
 
       if (dist > from) {
         const kmInSlab = Math.min(dist, to) - from
@@ -602,21 +626,46 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                         </div>
                       </td>
 
-                      {/* Slab Rates Inputs */}
-                      {(v.slabs || []).map((slab, sIdx) => (
-                        <td key={sIdx} className="px-1.5 py-2 text-center">
-                          <div className="relative inline-block w-16">
-                            <input
-                              type="number"
-                              step="any"
-                              value={slab.rate}
-                              onChange={(e) => handleSlabRateChange(vIdx, sIdx, e.target.value)}
-                              className="w-full rounded-lg border py-1 px-1 text-center font-mono-data text-[11.5px] outline-none focus:border-brand"
-                              style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-                            />
-                          </div>
-                        </td>
-                      ))}
+                      {/* Slab Rates Inputs — the 60+ km band (key: '60_plus')
+                          has no rate of its own: it always bills at whatever
+                          the last finite band (50-60km) is set to (see
+                          slabPricingService.calculateBaseSlabFare), so it's
+                          shown read-only here instead of as an editable
+                          input a save could silently disconnect from reality
+                          again. Reads the LIVE 50-60km value out of this same
+                          vehicle's slabs (not slab.rate, which is only a
+                          snapshot from the last fetch), so editing 50-60km
+                          updates this cell immediately too. */}
+                      {(v.slabs || []).map((slab, sIdx) => {
+                        if (slab.derived || slab.key === '60_plus') {
+                          const mirroredRate = (v.slabs || []).find((s) => s.key === '50_60')?.rate ?? slab.rate
+                          return (
+                            <td key={sIdx} className="px-1.5 py-2 text-center">
+                              <div
+                                className="inline-flex w-16 items-center justify-center rounded-lg border py-1 px-1 font-mono-data text-[11.5px]"
+                                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }}
+                                title="Same as 50–60 km — always mirrors that rate automatically"
+                              >
+                                {mirroredRate}
+                              </div>
+                            </td>
+                          )
+                        }
+                        return (
+                          <td key={sIdx} className="px-1.5 py-2 text-center">
+                            <div className="relative inline-block w-16">
+                              <input
+                                type="number"
+                                step="any"
+                                value={slab.rate}
+                                onChange={(e) => handleSlabRateChange(vIdx, sIdx, e.target.value)}
+                                className="w-full rounded-lg border py-1 px-1 text-center font-mono-data text-[11.5px] outline-none focus:border-brand"
+                                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                              />
+                            </div>
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -937,7 +986,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                       Trip Distance: <span className="font-mono-data font-bold text-[13px]" style={{ color: 'var(--ink)' }}>{simDistance} km</span>
                     </label>
                     <div className="flex items-center gap-1">
-                      {[5, 12, 20, 35, 50].map((preset) => (
+                      {[5, 12, 20, 35, 50, 100].map((preset) => (
                         <button
                           key={preset}
                           type="button"
@@ -954,7 +1003,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                     <input
                       type="range"
                       min="0.5"
-                      max="60"
+                      max="150"
                       step="0.5"
                       value={simDistance}
                       onChange={(e) => setSimDistance(parseFloat(e.target.value) || 0)}

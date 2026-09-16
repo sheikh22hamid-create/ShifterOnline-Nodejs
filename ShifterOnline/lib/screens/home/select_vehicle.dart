@@ -807,11 +807,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final extraCharge = _number(model['extra_charge_amount']);
     final discountSaved = _number(model['discount_amount']);
     final distance = _fareDistanceKm ?? _distanceKm ?? 0;
-    // base_fare_charge/distance_charge_amount above are the GROSS (pre-discount)
-    // components (see pricingEngine.js) — original_per_km_charge is the matching
-    // gross rate; model['per_km_charge'] is the already-discounted rate and would
-    // no longer match distanceCharge / distance here.
-    final perKmCharge = _number(model['original_per_km_charge']);
+    // NOT model['original_per_km_charge'] — that's a single flat rate off the
+    // package row, but most vehicles are priced via distance SLABS with a
+    // different ₹/km rate per band (0-1km, 1-5km, 5-10km, ...), so no single
+    // per_km_charge field actually produced distanceCharge above (confirmed
+    // live: a 311.2 km trip labelled "× ₹9.82/km" implying ₹3055, while the
+    // real slab-blended distance charge shown next to it was ₹675 — totally
+    // different numbers under the same row). Deriving the label's rate FROM
+    // distanceCharge instead keeps the label internally consistent — its own
+    // "km × rate" always multiplies back out to the amount shown beside it,
+    // whether the real pricing was linear or slab-blended.
+    final perKmCharge = distance > 0 ? distanceCharge / distance : 0.0;
 
     Widget row(String label, String value, {bool bold = false, Color? color}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),

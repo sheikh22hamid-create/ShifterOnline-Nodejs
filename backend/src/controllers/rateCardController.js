@@ -276,14 +276,33 @@ async function getSlabs(req, res) {
     const slabRates = config.slabRates || DEFAULT_SLAB_RATES;
     const modelMultipliers = config.modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
 
-    // Build vehicle_slabs array for clean frontend UI
+    // Build vehicle_slabs array for clean frontend UI. Every interval,
+    // including the open-ended 60+ km one (previously filtered out here) —
+    // dropping it meant the admin UI never showed that band at all, and
+    // updateSlabs below rebuilt a vehicle's whole `rates` object from
+    // exactly this array on save, so every save silently wiped the real
+    // 60+ km rate to 0 (confirmed live: a 60km-vs-100km trip on the same
+    // vehicle produced an identical fare after any admin save). `to:
+    // Infinity` serializes over JSON as `null` — the frontend must treat a
+    // null to_km as unbounded, not as "ends at 0km".
+    //
+    // The 60+ band no longer has an independent stored rate at all (see
+    // slabPricingService.calculateBaseSlabFare's rateForInterval) — it
+    // always mirrors the last finite band (50-60km) automatically, so
+    // there's nothing left to go missing or drift out of sync. `derived:
+    // true` tells the admin UI to render it as read-only instead of an
+    // editable rate.
+    const lastFiniteInterval = SLAB_INTERVALS.filter((i) => i.to !== Infinity).slice(-1)[0];
     const vehicle_slabs = Object.values(slabRates).map((v) => {
-      const slabs = SLAB_INTERVALS.filter((i) => i.to !== Infinity).map((interval) => ({
+      const slabs = SLAB_INTERVALS.map((interval) => ({
         key: interval.key,
         from_km: interval.from,
-        to_km: interval.to,
+        to_km: interval.to === Infinity ? null : interval.to,
         label: interval.label,
-        rate: Number(v.rates?.[interval.key] ?? v.rates?.[interval.label] ?? 0),
+        rate: interval.to === Infinity
+          ? Number(v.rates?.[lastFiniteInterval.key] ?? 0)
+          : Number(v.rates?.[interval.key] ?? v.rates?.[interval.label] ?? 0),
+        derived: interval.to === Infinity,
       }));
       return {
         vehicle_key: v.vehicle_key,
@@ -333,11 +352,29 @@ async function updateSlabs(req, res) {
 
     let savedSlabRates = slabRates;
     if (!savedSlabRates && Array.isArray(vehicle_slabs)) {
+      // Merge onto the EXISTING persisted rates rather than replacing each
+      // vehicle's whole `rates` object outright — a caller (the admin UI's
+      // own slab-editing table, or any older cached build of it) that omits
+      // a slab key entirely must not silently delete that band's real rate.
+      // This is exactly how the 60+ km band went to 0 for every vehicle:
+      // the UI never rendered or sent that interval, and this endpoint used
+      // to rebuild `rates` from nothing but what it received (see getSlabs'
+      // own comment on the matching read-side gap).
+      const existingConfig = await getSlabPricingConfig();
+      const existingSlabRates = existingConfig?.slabRates || DEFAULT_SLAB_RATES;
+
       savedSlabRates = {};
       for (const v of vehicle_slabs) {
         const key = v.vehicle_key || String(v.vehicle_type).toLowerCase().replace(/[^a-z0-9]/g, "_");
-        const rates = {};
+        const rates = { ...(existingSlabRates[key]?.rates || {}) };
         for (const s of v.slabs || []) {
+          // The 60+ band (see getSlabs' `derived: true`) has no rate of its
+          // own to persist — it always mirrors the last finite band at read
+          // time (slabPricingService.calculateBaseSlabFare), so writing
+          // whatever the (read-only, mirrored) value the client echoed back
+          // would just be redundant/stale data sitting in `rates` doing
+          // nothing. Skipped rather than written.
+          if (s.key === "60_plus") continue;
           const sKey = s.key || `${s.from_km}_${s.to_km}`;
           rates[sKey] = Number(s.rate) || 0;
         }

@@ -267,6 +267,23 @@ async function saveSlabPricingConfig({ slabRates, modelMultipliers }) {
  *   Distance Charge = sum(charge)
  *   Raw Total = Min Charge + Distance Charge
  */
+// The open-ended final interval (60+ km) always bills at the same rate as
+// the last FINITE band (50-60 km) — it has no rate of its own in `rates` to
+// look up. Deriving it here, rather than reading a separately-stored
+// `rates['60_plus']`, is deliberate: a distinct stored rate for this band
+// is exactly what went to 0 in production (the admin UI never showed or
+// saved it, so a save silently wiped it) — mirroring the adjacent band
+// instead means there is nothing left to go missing or drift out of sync;
+// whatever the last band is configured to costs, so does every km past it.
+const LAST_FINITE_INTERVAL = SLAB_INTERVALS.filter((i) => i.to !== Infinity).slice(-1)[0];
+
+function rateForInterval(rates, interval) {
+  if (interval.to === Infinity) {
+    return Number(rates[LAST_FINITE_INTERVAL.key]) || 0;
+  }
+  return Number(rates[interval.key]) || 0;
+}
+
 function calculateBaseSlabFare(vehicleSlabConfig, distanceKm) {
   const minCharge = Number(vehicleSlabConfig?.min_charge) || 0;
   const rates = vehicleSlabConfig?.rates || {};
@@ -277,7 +294,7 @@ function calculateBaseSlabFare(vehicleSlabConfig, distanceKm) {
 
   for (const interval of SLAB_INTERVALS) {
     const kmInSlab = Math.max(0, Math.min(dist, interval.to) - interval.from);
-    const rate = Number(rates[interval.key]) || 0;
+    const rate = rateForInterval(rates, interval);
     const charge = kmInSlab * rate;
 
     if (kmInSlab > 0) {
