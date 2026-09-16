@@ -71,7 +71,11 @@ function isNightNow(pkg, now = new Date()) {
  * PHP's own search-radius value. */
 function calculateRadiusCharge(pkg, radiusRangeKm) {
   const perKmCharge = Number(pkg.per_km_charge) || 0;
-  const pickupPerKm = Number(pkg.pickup_per_km_charge) > 0 ? Number(pkg.pickup_per_km_charge) : perKmCharge;
+  const hasExplicitPickupRate = pkg?.pickup_per_km_charge !== null &&
+                                pkg?.pickup_per_km_charge !== undefined &&
+                                pkg?.pickup_per_km_charge !== "" &&
+                                !isNaN(Number(pkg?.pickup_per_km_charge));
+  const pickupPerKm = hasExplicitPickupRate ? Number(pkg.pickup_per_km_charge) : perKmCharge;
   const chargeableRadius = Math.max(0, (Number(radiusRangeKm) || 0) - 1);
   return chargeableRadius * pickupPerKm;
 }
