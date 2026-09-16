@@ -50,6 +50,7 @@ router.get("/app-config", customerContentController.appConfig);
 // admin side already exists in adminRoutes.js/customOrderController.js
 router.post("/custom-order/create", customOrderBiddingController.createCustomOrder);
 router.post("/custom-order/bids", customOrderBiddingController.listBids);
+router.post("/custom-order/convert", customOrderBiddingController.convertOrder);
 
 // Customer premium plan purchase (Node port of get_premium_plans_api.php /
 // purchase_premium_plan_api.php's CUSTOMER_PREMIUM branch - see

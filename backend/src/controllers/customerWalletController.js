@@ -25,17 +25,22 @@ function fail(res, msg) {
 // fetch()-based approach as razorpayVerify.js rather than pulling in the
 // Razorpay SDK for one call.)
 async function createRazorpayOrder(req, res) {
+  // Always resolve with HTTP 200 + a ResponseCode/Result envelope, never a
+  // non-2xx status - ApiWrapper.dataPostNode (ShifterOnline) only decodes the
+  // JSON body when statusCode == 200, discarding it (and any ResponseMsg)
+  // otherwise. Same "200 always, logical status in the body" convention the
+  // rest of this codebase's cust_api/rider_api ports already use.
   try {
     const amount = Number(req.body?.amount || 0);
     if (!amount || amount <= 0) {
-      return res.status(400).json({ Result: false, msg: "Valid amount is required" });
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Valid amount is required" });
     }
 
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keyId || !keySecret) {
       logger.error("createRazorpayOrder: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured.");
-      return res.status(200).json({ Result: false, msg: "Payment gateway is not configured. Try again later." });
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Payment gateway is not configured. Try again later." });
     }
 
     const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
@@ -51,12 +56,13 @@ async function createRazorpayOrder(req, res) {
     const data = await resp.json();
     if (!resp.ok) {
       logger.error("createRazorpayOrder: Razorpay API error:", data);
-      return res.status(200).json({ Result: false, msg: data?.error?.description || "Failed to create payment order" });
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: data?.error?.description || "Failed to create payment order" });
     }
 
     return res.status(200).json({
-      Result: true,
-      msg: "Order created",
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Order created",
       OrderId: data.id,
       order_id: data.id,
       amount: data.amount,
@@ -64,7 +70,7 @@ async function createRazorpayOrder(req, res) {
     });
   } catch (err) {
     logger.error("createRazorpayOrder failed:", err);
-    return res.status(500).json({ Result: false, msg: "Internal server error" });
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
 

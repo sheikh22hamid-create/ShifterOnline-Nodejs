@@ -33,16 +33,20 @@ async function activeSubscriptions(driverId, client = prisma) {
       plan_for: "DRIVER",
       status: "active",
       start_date: { lte: end },
-      end_date: { gte: start },
     },
     orderBy: { id: "desc" },
   });
-  if (!subscriptions.length) return [];
+  const eligible = subscriptions.filter((sub) => {
+    const withinValidity = sub.end_date >= start;
+    const hasUnmetGuarantee = Number(sub.guaranteed_target) > 0 && Number(sub.rides_completed) < Number(sub.guaranteed_target);
+    return withinValidity || hasUnmetGuarantee;
+  });
+  if (!eligible.length) return [];
   const plans = await client.tbl_premium_plan.findMany({
-    where: { id: { in: subscriptions.map((subscription) => subscription.plan_id) } },
+    where: { id: { in: eligible.map((subscription) => subscription.plan_id) } },
   });
   const byId = new Map(plans.map((plan) => [plan.id, plan]));
-  return subscriptions
+  return eligible
     .filter((subscription) => byId.has(subscription.plan_id))
     .map((subscription) => ({ ...subscription, tbl_premium_plan: byId.get(subscription.plan_id) }));
 }
@@ -158,6 +162,23 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
       monthly_cap: Number(plan.incentive_monthly_cap),
     };
   }
+  if (plan.min_ride_guarantee_enabled && Number(plan.min_ride_guarantee) > 0) {
+    const target = Number(plan.min_ride_guarantee);
+    const completed = active ? Number(active.rides_completed) || 0 : 0;
+    const remaining = Math.max(0, target - completed);
+    const isExtended = Boolean(active && active.end_date < todayRange().start && completed < target);
+    payload.min_ride_guarantee = {
+      enabled: true,
+      target_rides: target,
+      rides_completed: completed,
+      rides_remaining: remaining,
+      is_extended: isExtended,
+    };
+    tags.push(`Min ${target} rides guaranteed`);
+    if (isExtended) {
+      payload.validity_label = `Extended (${remaining} rides left)`;
+    }
+  }
   if (plan.activity_protection_enabled) {
     payload.activity_protection = {
       after_3_months: Number(plan.activity_protection_3m) || 0,
@@ -230,7 +251,11 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
       where: { user_id: Number(driverId), plan_for: "DRIVER", plan_type: type, status: "active" },
       orderBy: { id: "desc" },
     });
-    if (existing && existing.end_date >= today) throw new Error("You already have an active plan of this type");
+    const isStillActive = existing && (
+      existing.end_date >= today ||
+      (Number(existing.guaranteed_target) > 0 && Number(existing.rides_completed) < Number(existing.guaranteed_target))
+    );
+    if (isStillActive) throw new Error("You already have an active plan of this type");
 
     const prior = await tx.tbl_user_plan_subscription.findFirst({
       where: { user_id: Number(driverId), plan_for: "DRIVER", plan_type: type },
@@ -248,7 +273,9 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
 
     const planValidityDays = plan.lifetime_enabled ? 36500 : Math.max(1, plan.validity_days);
     const endDate = plan.expire_date || new Date(today.getFullYear(), today.getMonth(), today.getDate() + planValidityDays);
-    const target = type === "DRIVER_SECOND" ? Number(plan.guaranteed_rides_per_month) || 0 : 0;
+    const target = plan.min_ride_guarantee_enabled && Number(plan.min_ride_guarantee) > 0
+      ? Number(plan.min_ride_guarantee)
+      : (type === "DRIVER_SECOND" ? Number(plan.guaranteed_rides_per_month) || 0 : 0);
     const snapshot = JSON.stringify({
       plan_name: plan.plan_name, plan_type: type, commission_percent: Number(plan.commission_percent),
       per_trip_charge: Number(plan.per_trip_charge), incentive_enabled: plan.incentive_enabled,
@@ -256,6 +283,8 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
       incentive_min_fare: Number(plan.incentive_min_fare), incentive_monthly_cap: Number(plan.incentive_monthly_cap),
       priority_enabled: plan.priority_enabled,
       lifetime_enabled: plan.lifetime_enabled,
+      min_ride_guarantee_enabled: Boolean(plan.min_ride_guarantee_enabled),
+      min_ride_guarantee: Number(plan.min_ride_guarantee) || 0,
       activity_protection_enabled: plan.activity_protection_enabled,
       activity_protection_3m: Number(plan.activity_protection_3m),
       activity_protection_6m: Number(plan.activity_protection_6m),
@@ -289,16 +318,24 @@ async function recordCompletedRide({ driverId, orderId, fare, baseCommissionPerc
   const chosen = chosenBenefit || await resolveBestBenefit(driverId, fare, baseCommissionPercent, basePerTripCharge, client);
   if (!chosen || chosen.benefit <= 0) return null;
   const { subscription, plan } = chosen;
+  const today = todayRange().start;
+  const newRidesCompleted = (Number(subscription.rides_completed) || 0) + 1;
+  const target = Number(subscription.guaranteed_target) || 0;
   const secondPlanIsComplete = chosen.planType === "DRIVER_SECOND"
-    && Number(subscription.guaranteed_target) > 0
-    && Number(subscription.guaranteed_used) + 1 >= Number(subscription.guaranteed_target);
+    && target > 0
+    && (Number(subscription.guaranteed_used) || 0) + 1 >= target;
+  const guaranteeFulfilledInExtendedPeriod = target > 0
+    && newRidesCompleted >= target
+    && subscription.end_date < today;
+  const shouldExpire = secondPlanIsComplete || guaranteeFulfilledInExtendedPeriod;
+
   await client.tbl_user_plan_subscription.update({
     where: { id: subscription.id },
     data: {
       rides_completed: { increment: 1 },
       ...(chosen.incentive > 0 ? { incentive_earned: { increment: chosen.incentive } } : {}),
       ...(chosen.planType === "DRIVER_SECOND" ? { guaranteed_used: { increment: 1 } } : {}),
-      ...(secondPlanIsComplete ? { status: "expired" } : {}),
+      ...(shouldExpire ? { status: "expired" } : {}),
     },
   });
   await client.tbl_plan_benefit_log.create({
@@ -327,5 +364,5 @@ module.exports = {
   resolveBestBenefit,
   recordCompletedRide,
   hasPriorityPlan,
-  __private: { candidateForFare },
+  __private: { candidateForFare, activeSubscriptions, buildPlanPayload },
 };

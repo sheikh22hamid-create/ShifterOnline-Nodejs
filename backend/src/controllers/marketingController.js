@@ -218,6 +218,8 @@ const PLAN_FIELDS = [
   "activity_require_zero_requests",
   "activity_require_service_zone",
   "activity_request_ends_day",
+  "min_ride_guarantee_enabled",
+  "min_ride_guarantee",
   "city",
   "sort_order",
   "status",
@@ -245,11 +247,13 @@ const PLAN_BOOL_FIELDS = new Set([
   "activity_require_zero_requests",
   "activity_require_service_zone",
   "activity_request_ends_day",
+  "min_ride_guarantee_enabled",
 ]);
 
 const PLAN_INT_FIELDS = new Set([
   "validity_days",
   "guaranteed_rides_per_month",
+  "min_ride_guarantee",
   "free_cancellations",
   "cancellation_window_min",
   "referral_points_per_referral",

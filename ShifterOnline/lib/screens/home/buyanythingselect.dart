@@ -1985,7 +1985,7 @@ class _BuyAnythingSelectState extends State<BuyAnythingSelect> with SingleTicker
       ]
     };
     debugPrint("buy order api Call  Data------------------------- : ${body.toString()}");
-    ApiWrapper.dataPost(Config.buyOrder, body)!.then(
+    ApiWrapper.dataPostNode(Config.nodeBuyOrderCreate, body).then(
       (val) {
         if ((val != null) && (val.isNotEmpty)) {
           if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {

@@ -159,6 +159,11 @@ export default function PremiumPlans() {
                         Priority
                       </span>
                     )}
+                    {Boolean(p.min_ride_guarantee_enabled) && Number(p.min_ride_guarantee) > 0 && (
+                      <span className="rounded-md border px-1.5 py-0.5 text-[10.5px] font-medium" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)', color: 'var(--brand)' }}>
+                        Min {p.min_ride_guarantee} rides
+                      </span>
+                    )}
                   </>
                 )}
               </div>

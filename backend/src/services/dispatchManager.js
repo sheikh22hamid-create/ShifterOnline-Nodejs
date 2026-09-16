@@ -100,7 +100,11 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         WHERE ups.user_id = r.id
           AND ups.plan_for = 'DRIVER'
           AND ups.status = 'active'
-          AND CURDATE() BETWEEN ups.start_date AND ups.end_date
+          AND CURDATE() >= ups.start_date
+          AND (
+            CURDATE() <= ups.end_date
+            OR (ups.guaranteed_target > 0 AND ups.rides_completed < ups.guaranteed_target)
+          )
           AND pp.priority_enabled = 1
       ) THEN 1 ELSE 0 END AS has_priority_plan
     FROM tbl_rider r

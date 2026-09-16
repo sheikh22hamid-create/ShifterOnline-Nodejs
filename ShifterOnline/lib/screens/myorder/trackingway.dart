@@ -562,20 +562,25 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 ),
                 SizedBox(width: 10),
               ],
-              Expanded(
-                child: appButton1(
-                  tital: isInvoiceLoading
-                      ? "Please wait...".tr
-                      : "Order Invoice".tr,
-                  buttonbgColor: greencolor,
-                  bordecolor: greencolor,
-                  onTap: () {
-                    if (!isInvoiceLoading) {
-                      downloadInvoice();
-                    }
-                  },
+              if (widget.type == "Pickup")
+                // generateInvoiceUrl only ever looks up pkg_order - "Buy
+                // Anything" orders live in buy_order and have no invoice
+                // generation on the backend, so this button would always
+                // fail with "Order not found!" for that flow.
+                Expanded(
+                  child: appButton1(
+                    tital: isInvoiceLoading
+                        ? "Please wait...".tr
+                        : "Order Invoice".tr,
+                    buttonbgColor: greencolor,
+                    bordecolor: greencolor,
+                    onTap: () {
+                      if (!isInvoiceLoading) {
+                        downloadInvoice();
+                      }
+                    },
+                  ),
                 ),
-              ),
             ],
           )
               : orderProduc["Order_Status"] == "Cancelled"
@@ -2238,7 +2243,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     isLoading = true;
     var data = {"uid": uid, "order_id": orderid};
     log(data.toString(), name: "data Api");
-    ApiWrapper.dataPost(Config.buyorderlist, data)!.then((val) {
+    ApiWrapper.dataPostNode(Config.nodeBuyOrderDetail, data).then((val) {
       log(val.toString(), name: "Api Response");
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
@@ -2286,7 +2291,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       "order_id": orderid,
       "comment": commit.text.trim()
     };
-    ApiWrapper.dataPost(Config.buyrate, data)!.then((val) {
+    ApiWrapper.dataPostNode(Config.nodeBuyRate, data).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           Get.back();
@@ -2347,9 +2352,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     var orderid = getdata.read("OrderID") ?? "0";
     var data = {"orderid": orderid};
 
-    debugPrint("========== buymapinfo url ============ ${Config.baseurl + Config.buymapinfo}");
+    debugPrint("========== buymapinfo url ============ ${Config.nodeBaseUrl}/${Config.nodeBuyMapInfo}");
     debugPrint("========== buymapinfo data =========== $data");
-    ApiWrapper.dataPost(Config.buymapinfo, data)!.then(
+    ApiWrapper.dataPostNode(Config.nodeBuyMapInfo, data).then(
           (val) {
         if ((val != null) && (val.isNotEmpty)) {
           if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
@@ -2388,7 +2393,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       "order_id": orderid,
       "status": "3"
     };
-    ApiWrapper.dataPost(Config.confirmitem, data).then((val) {
+    ApiWrapper.dataPostNode(Config.nodeConfirmItem, data).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           log(val.toString(), name: "Item Confirm : ");
@@ -2615,7 +2620,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       "order_id": orderid,
       "comment": comment ?? "",
     };
-    ApiWrapper.dataPost(Config.buycancle, data)!.then((val) {
+    ApiWrapper.dataPostNode(Config.nodeBuyCancel, data).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           log(val.toString(), name: "BuyMapinfo : ");
@@ -2656,7 +2661,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       "comment": comment ?? "",
     };
     debugPrint("========== data ========= $data");
-    ApiWrapper.dataPost(Config.itemRemove, data)!.then(
+    ApiWrapper.dataPostNode(Config.nodeItemRemove, data).then(
       (val) {
         if ((val != null) && (val.isNotEmpty)) {
           if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
@@ -3243,7 +3248,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       "trans_id": otid,
       "amt": grandTotal
     };
-    ApiWrapper.dataPost(Config.paybill, body)!.then((val) {
+    ApiWrapper.dataPostNode(Config.nodePayBill, body).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         log(val.toString(), name: "Pay Bill Api =====>>>>> : ");
 
@@ -3323,7 +3328,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     isLoading = true;
     var orderid = getdata.read("OrderID") ?? "0";
     var data = {"orderid": orderid};
-    ApiWrapper.dataPost(Config.mapinfo, data)!.then((val) {
+    ApiWrapper.dataPostNode(Config.nodeMapInfo, data).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           buyMapinfo = val["Mapinfo"];
@@ -3423,7 +3428,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       orderIdToUse = (getdata.read("OrderID") ?? "0").toString();
     }
 
-    Map body = {
+    Map<String, dynamic> body = {
       "order_id": orderIdToUse,
       "uid": uid,
     };
@@ -3433,7 +3438,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     });
 
     try {
-      var value = await ApiWrapper.dataPost(Config.generateInvoiceUrl, body);
+      var value = await ApiWrapper.dataPostNode(Config.nodeInvoiceUrl, body);
       setState(() {
         isInvoiceLoading = false;
       });
@@ -3931,7 +3936,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
     debugPrint("======== Creating Order Data for Advance Payment ======== $data");
 
-    ApiWrapper.dataPost(Config.createOrder, data).then((val) {
+    ApiWrapper.dataPostNode(Config.nodeCreateOrder, data).then((val) {
       if ((val != null) && (val.isNotEmpty)) {
         debugPrint("======== Order Response ======== $val");
 
@@ -4008,7 +4013,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     debugPrint("======== Calling Advance Payment API ========");
     debugPrint("Body: $body");
 
-    ApiWrapper.dataPost(Config.advancedPayment, body)!.then((val) async {
+    ApiWrapper.dataPostNode(Config.nodeAdvancePayment, body).then((val) async {
       if ((val != null) && (val.isNotEmpty)) {
         debugPrint("======== Advance Payment Response ======== $val");
         if ((val['ResponseCode'] == "200") &&

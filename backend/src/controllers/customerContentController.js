@@ -373,6 +373,7 @@ async function homeData(req, res) {
       has_plan_discount: hasPlanDiscount,
       plan_discount_percent: planDiscountPercent,
       plan_name: planName,
+      isHowUse: 1,
     };
 
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Home Data Get Successfully!", ResultData: resultData });

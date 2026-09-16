@@ -739,6 +739,25 @@ async function customerCancel(uid, orderId, comment) {
           created_at: istNow(),
         },
       });
+
+      const driverEarning = Number(pkg?.driver_earning) || 0;
+      if (driverEarning > 0) {
+        await prisma.tbl_rider.update({
+          where: { id: Number(orderBefore.rid) },
+          data: { wallet_balance: { increment: driverEarning } },
+        });
+        await prisma.tbl_wallet_history.create({
+          data: {
+            user_id: Number(orderBefore.rid),
+            amount: driverEarning,
+            type: "credit",
+            remark: `Cancellation compensation for order #${orderId}`,
+            wallet_type: "driver",
+            order_id: orderId,
+            created_at: istNow(),
+          },
+        });
+      }
     }
   } else {
     dispatchManager.stopDispatch(orderId, "cancelled_by_user");
@@ -762,7 +781,7 @@ async function driverCancel(orderId, riderId, reason) {
   await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw`
       SELECT id, uid, rid, order_status, o_status, advance_payment,
-             payment_status, razorpay_payment_id
+             payment_status, razorpay_payment_id, delivery_type
       FROM pkg_order
       WHERE id = ${orderId}
       FOR UPDATE
@@ -836,6 +855,55 @@ async function driverCancel(orderId, riderId, reason) {
       }
     } else if (amount > 0) {
       refundStatus = "payment_not_captured";
+    }
+
+    if (order.delivery_type) {
+      const pkg = await pricingEngine.getPackageById(order.delivery_type);
+      const driverFee = Number(pkg?.cancellation_charge_driver) || 0;
+      if (driverFee > 0) {
+        const driverFeeKey = `driver_cancel_fee:${orderId}:${riderId}`;
+        const alreadyDebited = await tx.tbl_wallet_history.findFirst({
+          where: { payment_id: driverFeeKey, type: "debit", wallet_type: "driver" },
+        });
+        if (!alreadyDebited) {
+          await tx.tbl_rider.update({
+            where: { id: Number(riderId) },
+            data: { wallet_balance: { decrement: driverFee } },
+          });
+          await tx.tbl_wallet_history.create({
+            data: {
+              user_id: Number(riderId),
+              amount: driverFee,
+              type: "debit",
+              wallet_type: "driver",
+              order_id: orderId,
+              payment_id: driverFeeKey,
+              remark: `Cancellation fee for cancelling order #${orderId}`,
+              created_at: istNow(),
+            },
+          });
+
+          const userComp = Number(pkg?.driver_cancel_user_earning) || 0;
+          if (userComp > 0) {
+            await tx.tbl_user.update({
+              where: { id: Number(order.uid) },
+              data: { wallet: { increment: userComp } },
+            });
+            await tx.tbl_wallet_history.create({
+              data: {
+                user_id: Number(order.uid),
+                amount: userComp,
+                type: "credit",
+                wallet_type: "user",
+                order_id: orderId,
+                payment_id: `driver_cancel_comp:${orderId}:${riderId}`,
+                remark: `Compensation for driver cancelling order #${orderId}`,
+                created_at: istNow(),
+              },
+            });
+          }
+        }
+      }
     }
 
     await tx.tbl_order_requests.updateMany({

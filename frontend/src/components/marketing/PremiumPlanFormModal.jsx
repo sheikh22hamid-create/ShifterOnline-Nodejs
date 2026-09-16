@@ -41,6 +41,8 @@ const EMPTY_FORM = {
   incentive_enabled: false,
   incentive_type: 'flat',
   incentive_value: '0',
+  min_ride_guarantee_enabled: false,
+  min_ride_guarantee: '0',
   lifetime_enabled: false,
   activity_protection_enabled: false,
   activity_protection_3m: '0',
@@ -61,6 +63,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
 
   useEffect(() => {
     if (!open) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError('')
     setForm(
       plan
@@ -82,6 +85,8 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             subscription_price: String(plan.subscription_price ?? 0),
             guaranteed_rides_per_month: String(plan.guaranteed_rides_per_month ?? 0),
             incentive_value: String(plan.incentive_value ?? 0),
+            min_ride_guarantee_enabled: Boolean(plan.min_ride_guarantee_enabled),
+            min_ride_guarantee: String(plan.min_ride_guarantee ?? 0),
             activity_protection_3m: String(plan.activity_protection_3m ?? 0),
             activity_protection_6m: String(plan.activity_protection_6m ?? 0),
             activity_protection_12m: String(plan.activity_protection_12m ?? 0),
@@ -574,6 +579,14 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
+                checked={form.min_ride_guarantee_enabled}
+                onChange={(e) => setForm((f) => ({ ...f, min_ride_guarantee_enabled: e.target.checked }))}
+              />{' '}
+              Minimum ride guarantee
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
                 checked={form.lifetime_enabled}
                 onChange={(e) =>
                   setForm((f) => ({
@@ -594,6 +607,32 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
               Activity protection
             </label>
           </div>
+          {form.min_ride_guarantee_enabled && (
+            <div className="space-y-2 rounded-lg border p-3" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)' }}>
+              <div>
+                <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  Minimum Ride Guarantee
+                </p>
+                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Plan will NOT expire until driver receives this many completed rides (even after validity duration passes).
+                </p>
+              </div>
+              <div className="w-56">
+                <label className="block text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+                  Guaranteed Rides (Count)
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 20"
+                    value={form.min_ride_guarantee}
+                    onChange={(e) => setForm((f) => ({ ...f, min_ride_guarantee: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border px-3 py-1.5 text-[13px] outline-none"
+                    style={FIELD_STYLE}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
           {form.activity_protection_enabled && (
             <div className="space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)' }}>
               <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>

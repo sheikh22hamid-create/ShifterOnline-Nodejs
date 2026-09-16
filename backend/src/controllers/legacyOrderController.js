@@ -508,6 +508,153 @@ async function payBill(req, res) {
   }
 }
 
+// --- buy_order.php --- (customer places a "Buy Anything" order). Skips the
+// PHP version's OneSignal broadcast-to-all-riders push and its
+// notify-all-riders-of-new-order call - same "not worth a second push
+// stack" reasoning as payBill above. rid stays 0 (unassigned) exactly as
+// the legacy version left it; nothing in this codebase currently assigns a
+// rider to a buy_order (see memory on the Buy Anything accept-step gap).
+async function buyOrderCreate(req, res) {
+  try {
+    const b = req.body || {};
+    const uid = Number(b.uid || 0);
+    const title = b.title;
+    const pickAddress = b.pick_address;
+    const pickLat = b.pick_lat;
+    const pickLong = b.pick_long;
+    const dropAddress = b.drop_address;
+    const dropLat = b.drop_lat;
+    const dropLong = b.drop_long;
+    const dCharge = b.d_charge;
+    const pMethodId = b.p_method_id;
+    const transactionId = b.transaction_id;
+    if (
+      !uid || !title || !pickAddress || !pickLat || !pickLong || !dropAddress || !dropLat || !dropLong ||
+      dCharge === undefined || dCharge === "" || pMethodId === undefined || pMethodId === "" || !transactionId
+    ) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went Wrong!" });
+    }
+
+    const setting = await prisma.setting.findFirst({ select: { rider_commission: true } });
+    const productData = Array.isArray(b.ProductData) ? b.ProductData : [];
+
+    const created = await prisma.buy_order.create({
+      data: {
+        uid,
+        title,
+        pick_type: b.pick_type || "",
+        drop_type: b.drop_type || "",
+        pick_address: pickAddress,
+        pick_lat: pickLat,
+        pick_long: pickLong,
+        drop_address: dropAddress,
+        drop_lat: dropLat,
+        drop_long: dropLong,
+        drop_name: b.drop_name || "",
+        drop_mobile: b.drop_mobile || "",
+        d_charge: dCharge,
+        total_dcharge: b.total_dcharge ?? dCharge,
+        p_method_id: Number(pMethodId),
+        transaction_id: String(transactionId),
+        cou_id: Number(b.cou_id || 0),
+        cou_amt: Number(b.cou_amt || 0),
+        extra_mile_charge: Number(b.extra_mile_charge || 0),
+        distance: Number(b.distance || 0),
+        time_duration: Number(b.time_duration || 0),
+        commission: Number(setting?.rider_commission ?? 0),
+        order_date: new Date(),
+        rid: 0,
+      },
+    });
+
+    if (productData.length) {
+      await prisma.buy_order_item.createMany({
+        data: productData.map((p) => ({
+          order_id: created.id,
+          item_title: String(p.item_title || ""),
+          quantity: Number(p.quantity || 0),
+        })),
+      });
+    }
+
+    const user = await prisma.tbl_user.findUnique({ where: { id: uid }, select: { name: true } });
+    const description = `${user?.name || ""}, Your Buy Anything Order #${created.id} Has Been Received.`;
+    await prisma.tbl_notification.create({
+      data: { uid, datetime: new Date(), title: "Buy Anything Order Received!!", description },
+    });
+
+    return res.status(200).json({ order_id: created.id, ResponseCode: "200", Result: "true", ResponseMsg: "Buy Anything Order Placed Successfully!!!" });
+  } catch (err) {
+    logger.error("legacyOrderController.buyOrderCreate failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// --- confirm_item.php --- (customer confirms a store-substituted item).
+// Skips the PHP version's "all items confirmed" push to the driver - same
+// reasoning as buyOrderCreate/payBill above.
+async function confirmItem(req, res) {
+  try {
+    const b = req.body || {};
+    const uid = Number(b.uid || 0);
+    const itemId = Number(b.itmeid || 0);
+    const orderId = Number(b.order_id || 0);
+    if (!uid || !itemId || !orderId) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went wrong  try again !" });
+    }
+
+    // IDOR guard: same "trust but verify when given" pattern as
+    // buyOrderDetail/getMapInfo elsewhere in this file - uid IS sent here
+    // (unlike itemRemove/buyOrderCreate, which have no owner to check
+    // against or no session to check it with), so cheaply confirm this
+    // order actually belongs to the caller before mutating its items.
+    const order = await prisma.buy_order.findUnique({ where: { id: orderId }, select: { uid: true } });
+    if (!order || order.uid !== uid) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something Went wrong  try again !" });
+    }
+
+    await prisma.buy_order_item.updateMany({ where: { id: itemId, order_id: orderId }, data: { item_confirm: 1 } });
+
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Item Confirm Successfully!!" });
+  } catch (err) {
+    logger.error("legacyOrderController.confirmItem failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// --- item_remove.php --- (customer removes an unavailable item; cancels
+// the order outright once no items remain, same as the legacy PHP).
+async function itemRemove(req, res) {
+  try {
+    const b = req.body || {};
+    const itemId = Number(b.itmeid || 0);
+    const orderId = Number(b.order_id || 0);
+    if (!itemId || !orderId) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Something went wrong, try again!" });
+    }
+
+    const deleted = await prisma.buy_order_item.deleteMany({ where: { id: itemId, order_id: orderId } });
+    const remaining = await prisma.buy_order_item.count({ where: { order_id: orderId } });
+
+    if (remaining === 0) {
+      await prisma.buy_order.updateMany({ where: { id: orderId }, data: { o_status: "Cancelled" } });
+      const msg = deleted.count > 0
+        ? "Item removed successfully, and order cancelled as no items remain."
+        : "Item not found, but order has been cancelled as it has no items.";
+      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: msg });
+    }
+
+    if (deleted.count === 0) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Item not found!" });
+    }
+
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Item removed successfully." });
+  } catch (err) {
+    logger.error("legacyOrderController.itemRemove failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   pkgHistory,
   buyHistory,
@@ -520,4 +667,7 @@ module.exports = {
   buyOrderDetailDriver,
   billUpload,
   formatBuyOrderForDriver,
+  buyOrderCreate,
+  confirmItem,
+  itemRemove,
 };

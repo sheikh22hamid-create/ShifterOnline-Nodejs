@@ -71,7 +71,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
 
   Future<void> _fetchPaymentStatus() async {
     try {
-      final response = await ApiWrapper.dataGet(Config.paymentStatus);
+      final response = await ApiWrapper.dataPostNode(Config.nodePaymentStatus, {});
       if (response != null && response is Map<String, dynamic>) {
         if (response["ResponseCode"] == "200" && response["setting"] != null) {
           final setting = response["setting"];

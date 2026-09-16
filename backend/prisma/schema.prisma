@@ -744,6 +744,8 @@ model tbl_premium_plan {
   activity_require_zero_requests Boolean                                  @default(false)
   activity_require_service_zone  Boolean                                  @default(false)
   activity_request_ends_day      Boolean                                  @default(true)
+  min_ride_guarantee_enabled     Boolean                                  @default(false)
+  min_ride_guarantee             Int                                      @default(0) @db.UnsignedInt
 
   @@index([expire_date], map: "idx_expire_date")
   @@index([plan_for], map: "idx_plan_for")

@@ -127,4 +127,42 @@ async function listOpenOrdersForDriver(req, res) {
   }
 }
 
-module.exports = { createCustomOrder, placeBid, listBids, listOpenOrdersForDriver };
+// --- custom_order_convert.php --- (customer accepts a specific driver's bid).
+// The legacy PHP inserted a pkg_order row straight from tbl_custom_order at
+// this point, using placeholder pick/drop_type values and no real lat/lng -
+// tbl_custom_order only stores free-text addresses, while pkg_order requires
+// real coordinates NOT NULL. customOrderController.convert (the admin-facing
+// equivalent, already on Node) deliberately does NOT create that pkg_order
+// row for the same reason - it only marks the quotation accepted, since full
+// trip creation needs a geocoding step this codebase doesn't have. This
+// customer-facing version does the same: accept the winning bid, reject the
+// rest, no fake trip.
+async function convertOrder(req, res) {
+  try {
+    const b = req.body || {};
+    const orderId = Number(b.order_id || 0);
+    const riderId = Number(b.rider_id || 0);
+    if (!orderId || !riderId) return fail(res, "order_id and rider_id are required");
+
+    const order = await prisma.tbl_custom_order.findUnique({ where: { id: orderId } });
+    if (!order) return fail(res, "Order not found");
+    if (order.status !== "open") return fail(res, "Order not accepted yet");
+
+    const bids = await prisma.tbl_custom_order_bid.findMany({ where: { order_id: orderId } });
+    const winningBid = bids.find((bid) => bid.rider_id === riderId);
+    if (!winningBid) return fail(res, "No driver selected");
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.tbl_custom_order.update({ where: { id: orderId }, data: { status: "accepted", base_price: winningBid.bid_amount } }),
+      prisma.tbl_custom_order_bid.update({ where: { id: winningBid.id }, data: { status: "accepted" } }),
+      ...bids.filter((bid) => bid.id !== winningBid.id).map((bid) => prisma.tbl_custom_order_bid.update({ where: { id: bid.id }, data: { status: "rejected" } })),
+    ]);
+
+    return res.status(200).json({ Result: true, msg: "Converted to normal order", new_order_id: updatedOrder.id });
+  } catch (err) {
+    logger.error("customOrderBiddingController.convertOrder failed:", err);
+    return fail(res, "Internal server error");
+  }
+}
+
+module.exports = { createCustomOrder, placeBid, listBids, listOpenOrdersForDriver, convertOrder };

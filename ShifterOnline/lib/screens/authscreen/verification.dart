@@ -130,10 +130,14 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
       if ((val != null) && (val.isNotEmpty)) {
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           setState(() {});
-          if (val["SMS_TYPE"] == "Msg91") {
+          // Same otp_auth gate forgot_password.dart/signup.dart enforce
+          // before sending a real OTP - this resend button skipped it.
+          if (val["otp_auth"] == "Yes" &&
+              (val["SMS_TYPE"] == "Msg91" || val["SMS_TYPE"] == "Twilio")) {
+            // Twilio branch retired - production always runs Msg91/2Factor
+            // (see Config.nodeSendOtp), and the old twilio_otp.php path has
+            // no Node port. Both branches now go through the same OTP flow.
             msgOtpApi();
-          } else if (val["SMS_TYPE"] == "Twilio") {
-            twilioOtpApi();
           }
         }
       }
@@ -153,28 +157,6 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
             resendotp = false;
             setState(() {});
             debugPrint("=========== get otp ========= $getotp");
-          } else {
-            log(val.toString());
-            tostmsg(val["ResponseMsg"].toString());
-          }
-        } else {}
-      });
-    }
-  }
-
-  twilioOtpApi(){
-    var body = {"mobile": widget.ccode + widget.mobile};
-    if (widget.ccode.isNotEmpty && widget.mobile.isNotEmpty) {
-      ApiWrapper.dataPost(Config.twilioOtp, body).then((val) {
-        if ((val != null) && (val.isNotEmpty)) {
-          if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
-            getotp = val['otp'].toString();
-            _start = 15;
-            otpgetsms();
-            startTimer();
-            resendotp = false;
-            setState(() {});
-            debugPrint("============= get otp ========== $getotp");
           } else {
             log(val.toString());
             tostmsg(val["ResponseMsg"].toString());

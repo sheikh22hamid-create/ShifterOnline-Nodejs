@@ -397,6 +397,41 @@ describe("tripLifecycle.customerCancel", () => {
       44
     );
   });
+
+  it("credits driver compensation when driver_earning is configured", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+    pricingEngine.getPackageById.mockResolvedValueOnce({
+      cancellation_charge_customer: 50,
+      admin_earning: 20,
+      driver_earning: 30,
+    });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+    const result = await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 7,
+        amount: 50,
+        type: "debit",
+        wallet_type: "user",
+      }),
+    });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { increment: 30 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 1,
+        amount: 30,
+        type: "credit",
+        wallet_type: "driver",
+      }),
+    });
+  });
 });
 
 describe("tripLifecycle.driverCancel", () => {
@@ -469,6 +504,54 @@ describe("tripLifecycle.driverCancel", () => {
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
+  it("debits driver fee and credits customer compensation when driver cancels", async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{
+      id: 297,
+      uid: 7,
+      rid: 11,
+      order_status: 1,
+      o_status: "Processing",
+      advance_payment: "0",
+      payment_status: 0,
+      razorpay_payment_id: null,
+      delivery_type: 6,
+    }]);
+    pricingEngine.getPackageById.mockResolvedValueOnce({
+      cancellation_charge_driver: 40,
+      driver_cancel_admin_earning: 15,
+      driver_cancel_user_earning: 25,
+    });
+    prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
+
+    const result = await tripLifecycle.driverCancel(297, 11, "personal emergency");
+
+    expect(result).toMatchObject({ success: true });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: { wallet_balance: { decrement: 40 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        user_id: 11,
+        amount: 40,
+        type: "debit",
+        wallet_type: "driver",
+      }),
+    }));
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { wallet: { increment: 25 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        user_id: 7,
+        amount: 25,
+        type: "credit",
+        wallet_type: "user",
+      }),
+    }));
   });
 });
 

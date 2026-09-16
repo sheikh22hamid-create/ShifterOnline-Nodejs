@@ -400,9 +400,15 @@ export default function RateCards() {
                         </div>
                         <div className="text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
                           User Cancel: {formatCurrency(rc.cancellation_charge_customer || 0)}
+                          {Number(rc.admin_earning) > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400"> (Admin: {formatCurrency(rc.admin_earning)})</span>
+                          )}
                         </div>
                         <div className="text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
                           Driver Fee: {formatCurrency(rc.cancellation_charge_driver || 0)}
+                          {Number(rc.driver_cancel_admin_earning) > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400"> (Admin: {formatCurrency(rc.driver_cancel_admin_earning)})</span>
+                          )}
                         </div>
                       </td>
 

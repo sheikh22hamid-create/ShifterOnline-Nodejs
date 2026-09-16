@@ -35,17 +35,24 @@ router.post("/payment-status", orderController.paymentMethodStatus);
 router.post("/invoice-url", orderInvoiceController.generateInvoiceUrl);
 router.get("/invoice", orderInvoiceController.renderInvoice);
 router.post("/map-info", orderController.getMapInfo);
+router.post("/advance-payment", orderController.advancePayment);
 
 // My-orders list (was missing entirely - see legacyOrderController.js header)
 router.post("/history", legacyOrderController.pkgHistory);
 
-// Pre-migration buy_order history/tracking - read-mostly, no new rows are
-// ever created here (order creation is createOrder above, writes pkg_order)
+// buy_order history/tracking, plus (as of the cust_api/buy_order.php,
+// confirm_item.php, item_remove.php ports below) the "Buy Anything" create
+// and item-confirm/remove write paths too - a deliberate decision to keep
+// buy_order as the live table for this feature rather than redesigning it
+// onto pkg_order (which has no item-list/confirm-item/pay-bill concept).
 router.post("/legacy/history", legacyOrderController.buyHistory);
 router.post("/legacy/detail", legacyOrderController.buyOrderDetail);
 router.post("/legacy/map-info", legacyOrderController.buyMapInfo);
 router.post("/legacy/rate", legacyOrderController.buyRate);
 router.post("/legacy/cancel", legacyOrderController.buyCancel);
 router.post("/legacy/pay-bill", legacyOrderController.payBill);
+router.post("/legacy/create", legacyOrderController.buyOrderCreate);
+router.post("/legacy/confirm-item", legacyOrderController.confirmItem);
+router.post("/legacy/item-remove", legacyOrderController.itemRemove);
 
 module.exports = router;

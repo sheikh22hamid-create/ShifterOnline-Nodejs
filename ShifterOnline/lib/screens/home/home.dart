@@ -462,7 +462,7 @@ class _HomeState extends State<Home> {
 
     // 1. Direct plan check via PHP backend API (which is always active and holds user plan subscriptions)
     try {
-      final phpRes = await ApiWrapper.dataPost(Config.getPremiumPlans, {
+      final phpRes = await ApiWrapper.dataPostNode(Config.nodePremiumPlans, {
         'uid': uid.toString(),
       });
       debugPrint('Home: checkNextDayEligibility PHP response → $phpRes');
@@ -1787,7 +1787,7 @@ class _HomeState extends State<Home> {
 
       try {
         final response = key == 'BuyOrderHistory'
-            ? await ApiWrapper.dataPost(Config.buyorderlist, {
+            ? await ApiWrapper.dataPostNode(Config.nodeBuyOrderDetail, {
                 'uid': getdata.read('Uid') ?? '0',
                 'order_id': orderId,
               })

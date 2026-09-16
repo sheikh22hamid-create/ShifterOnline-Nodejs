@@ -16,7 +16,11 @@ const EMPTY_FORM = {
   per_km_charge: '',
   pickup_per_km_charge: '',
   cancellation_charge_customer: '0',
+  admin_earning: '0',
+  driver_earning: '0',
   cancellation_charge_driver: '0',
+  driver_cancel_admin_earning: '0',
+  driver_cancel_user_earning: '0',
   free_waiting_time: '5',
   waiting_charge: '',
   start_time: '00:00',
@@ -59,9 +63,8 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
     setForm(
       rateCard
         ? {
-            title: rateCard.title || '',
-            user_title: rateCard.user_title || '',
-            driver_title: rateCard.driver_title || '',
+            ...EMPTY_FORM,
+            ...rateCard,
             type: rateCard.type,
             cat_id: rateCard.cat_id,
             city_id: rateCard.city_id,
@@ -69,7 +72,11 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             per_km_charge: rateCard.per_km_charge,
             pickup_per_km_charge: rateCard.pickup_per_km_charge ?? '',
             cancellation_charge_customer: rateCard.cancellation_charge_customer ?? '0',
+            admin_earning: rateCard.admin_earning ?? '0',
+            driver_earning: rateCard.driver_earning ?? '0',
             cancellation_charge_driver: rateCard.cancellation_charge_driver ?? '0',
+            driver_cancel_admin_earning: rateCard.driver_cancel_admin_earning ?? '0',
+            driver_cancel_user_earning: rateCard.driver_cancel_user_earning ?? '0',
             free_waiting_time: rateCard.free_waiting_time,
             waiting_charge: rateCard.waiting_charge,
             start_time: rateCard.start_time,
@@ -227,7 +234,7 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="pickup_per_km_charge">Pickup Per-KM (₹)</Label>
             <Input
@@ -239,24 +246,88 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             />
           </div>
           <div>
-            <Label htmlFor="cancellation_charge_customer">Customer Cancel Fee (₹)</Label>
+            <Label htmlFor="free_waiting_time">Free wait (min)</Label>
             <Input
-              id="cancellation_charge_customer"
+              id="free_waiting_time"
               type="number"
-              value={form.cancellation_charge_customer}
-              onChange={(e) => set('cancellation_charge_customer', e.target.value)}
-              placeholder="0"
+              value={form.free_waiting_time}
+              onChange={(e) => set('free_waiting_time', e.target.value)}
+              placeholder="5"
             />
           </div>
-          <div>
-            <Label htmlFor="cancellation_charge_driver">Driver Cancel Fee (₹)</Label>
-            <Input
-              id="cancellation_charge_driver"
-              type="number"
-              value={form.cancellation_charge_driver}
-              onChange={(e) => set('cancellation_charge_driver', e.target.value)}
-              placeholder="0"
-            />
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}>
+          <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
+            Customer Cancellation Fee & Split
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="cancellation_charge_customer">Total Fee (₹)</Label>
+              <Input
+                id="cancellation_charge_customer"
+                type="number"
+                value={form.cancellation_charge_customer}
+                onChange={(e) => set('cancellation_charge_customer', e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label htmlFor="admin_earning">Admin Commission (₹)</Label>
+              <Input
+                id="admin_earning"
+                type="number"
+                value={form.admin_earning}
+                onChange={(e) => set('admin_earning', e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label htmlFor="driver_earning">Driver Comp. (₹)</Label>
+              <Input
+                id="driver_earning"
+                type="number"
+                value={form.driver_earning}
+                onChange={(e) => set('driver_earning', e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <p className="text-[12px] font-semibold pt-1 border-t" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>
+            Driver Cancellation Fee & Split
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="cancellation_charge_driver">Total Fee (₹)</Label>
+              <Input
+                id="cancellation_charge_driver"
+                type="number"
+                value={form.cancellation_charge_driver}
+                onChange={(e) => set('cancellation_charge_driver', e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label htmlFor="driver_cancel_admin_earning">Admin Commission (₹)</Label>
+              <Input
+                id="driver_cancel_admin_earning"
+                type="number"
+                value={form.driver_cancel_admin_earning}
+                onChange={(e) => set('driver_cancel_admin_earning', e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label htmlFor="driver_cancel_user_earning">Customer Comp. (₹)</Label>
+              <Input
+                id="driver_cancel_user_earning"
+                type="number"
+                value={form.driver_cancel_user_earning}
+                onChange={(e) => set('driver_cancel_user_earning', e.target.value)}
+                placeholder="0"
+              />
+            </div>
           </div>
         </div>
 

@@ -6,6 +6,8 @@ const dispatchManager = require("../services/dispatchManager");
 const adminSocket = require("../sockets/adminSocket");
 const { getRoadDistanceKm, getMultiStopDistanceKm } = require("../utils/geoDistance");
 const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
+const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
+const { sendPushNotification } = require("../config/firebase");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 
@@ -513,6 +515,7 @@ async function getOrderDetails(req, res) {
           plat: order.plat,
           plong: order.plong,
           dlat: order.dlat,
+          dlong: order.dlong,
           drop_mobile: order.dmobile,
           stops,
         },
@@ -774,6 +777,103 @@ async function getMapInfo(req, res) {
   }
 }
 
+// --- cust_api/advanced_payment.php --- (customer pays the pre-computed
+// advance amount online, ahead of the trip). Credits the amount straight
+// into the customer's wallet - this looks like a bug (a free top-up) but
+// tripLifecycle.applyFinalSettlement deliberately debits the same amount
+// back out at order completion (see its own comment on advancePaymentCollected),
+// so the net wallet effect across a completed ride is zero. Kept identical
+// to the legacy PHP behavior this compensates for - do not "fix" the credit
+// here without also updating that debit logic.
+async function advancePayment(req, res) {
+  const b = req.body || {};
+  const orderId = Number(b.order_id || 0);
+  const amount = Number(b.amount || 0);
+  const remark = b.remark || "Advance Payment";
+  const paymentId = b.razorpay_payment_id;
+  const razorpayOrderId = b.razorpay_order_id;
+  const signature = b.razorpay_signature;
+
+  if (!orderId || amount <= 0 || !paymentId || !razorpayOrderId || !signature) {
+    return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Missing Parameters" });
+  }
+
+  try {
+    let verification;
+    try {
+      verification = await verifyRazorpayPayment({ paymentId, orderId: razorpayOrderId, signature, expectedAmountRupees: amount });
+    } catch (e) {
+      logger.error("advancePayment: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured - refusing to credit any wallet.", e);
+      return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Payment verification is not configured. Try again later." });
+    }
+    if (!verification.ok) {
+      return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: verification.reason });
+    }
+
+    const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+    if (!order) return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Order Not Found" });
+    if (order.o_status === "Cancelled" || Number(order.order_status) === 4) {
+      return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Order is already cancelled." });
+    }
+    if (Number(order.payment_status) === 1) {
+      return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Order Already Paid" });
+    }
+
+    const user = await prisma.tbl_user.findUnique({ where: { id: order.uid } });
+    if (!user) return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "User Not Found" });
+
+    // Idempotency backed by the same DB unique constraint addWallet relies
+    // on (razorpay_payment_id) - a retried/duplicated client call can't
+    // double-credit even under a race.
+    try {
+      await prisma.tbl_wallet_history.create({
+        data: {
+          user_id: user.id,
+          mobile: String(user.mobile ?? ""),
+          amount,
+          type: "credit",
+          remark,
+          payment_id: paymentId,
+          razorpay_payment_id: paymentId,
+          wallet_type: "user",
+          order_id: orderId,
+          created_at: new Date(),
+        },
+      });
+    } catch (e) {
+      if (e.code === "P2002") return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Payment already processed" });
+      throw e;
+    }
+
+    const updatedUser = await prisma.tbl_user.update({ where: { id: user.id }, data: { wallet: { increment: amount } } });
+    await prisma.pkg_order.update({ where: { id: orderId }, data: { payment_status: 1, razorpay_payment_id: paymentId } });
+
+    if (order.rid) {
+      const rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { fcm_token: true } });
+      if (rider?.fcm_token) {
+        await sendPushNotification(
+          rider.fcm_token,
+          "Advance Payment Received",
+          `Customer has paid advance payment of ₹${amount} for order #${orderId}`,
+          { type: "advance_payment", order_id: String(orderId) }
+        );
+      }
+    }
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: true,
+      ResponseMsg: "Advance Payment Success",
+      order_id: orderId,
+      payment_status: 1,
+      user_wallet_balance: Number(updatedUser.wallet),
+    });
+  } catch (err) {
+    logger.error("advancePayment failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: false, ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   getCategories,
   fareEstimate,
@@ -788,4 +888,5 @@ module.exports = {
   checkNextDayEligibility,
   paymentMethodStatus,
   getMapInfo,
+  advancePayment,
 };
