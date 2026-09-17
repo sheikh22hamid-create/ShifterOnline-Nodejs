@@ -42,27 +42,59 @@ const SETTING_PUBLIC_FIELDS = [
   "user_cancellation",
 ];
 
+const DEFAULT_SETTING_DATA = {
+  d_title: "Shifter Online",
+  d_s_title: "Shifter",
+  currency: "₹",
+  timezone: "Asia/Kolkata",
+  one_key: "",
+  one_hash: "",
+  r_key: "",
+  r_hash: "",
+  ukms: 0,
+  utprice: 0,
+  afprice: 0,
+  bkms: 0,
+  bprice: 0,
+  abprice: 0,
+  itemlimit: 10,
+  itemkg: 50,
+  mile_charge: 0,
+  service_charge: 0,
+  rider_commission: 0,
+  kilo_limit: 0,
+  is_wether_bad: 0,
+  sms_type: "",
+  auth_key: "",
+  otp_id: "",
+  acc_id: "",
+  auth_token: "",
+  twilio_number: "",
+  otp_auth: "",
+  payment_cod: 1,
+  payment_wallet: 1,
+  payment_online: 1,
+};
+
 async function getSettings(req, res) {
   try {
-    const [setting, appSettings] = await Promise.all([
+    let [setting, appSettings] = await Promise.all([
       prisma.setting.findFirst(),
       prisma.app_settings.findMany(),
     ]);
 
-    const publicSetting = {};
-    if (setting) {
-      for (const field of SETTING_PUBLIC_FIELDS) publicSetting[field] = setting[field];
-      publicSetting.id = setting.id;
+    if (!setting) {
+      setting = await prisma.setting.create({ data: DEFAULT_SETTING_DATA });
     }
+
+    const publicSetting = {};
+    for (const field of SETTING_PUBLIC_FIELDS) publicSetting[field] = setting[field];
+    publicSetting.id = setting.id;
 
     return res.status(200).json({
       success: true,
       data: {
         ...publicSetting,
-        // Feature-flag-style overrides (auto_verification, manual_registration,
-        // etc.) — this codebase has no dedicated columns for Google Maps/
-        // Firebase keys; those are environment variables (see backend/.env),
-        // deliberately not exposed over HTTP.
         flags: Object.fromEntries(appSettings.map((s) => [s.setting_key, s.setting_value])),
       },
     });
@@ -73,9 +105,9 @@ async function getSettings(req, res) {
 
 async function updateSettings(req, res) {
   try {
-    const existing = await prisma.setting.findFirst();
+    let existing = await prisma.setting.findFirst();
     if (!existing) {
-      return res.status(404).json({ success: false, message: "No settings row exists to update" });
+      existing = await prisma.setting.create({ data: DEFAULT_SETTING_DATA });
     }
 
     const data = {};
@@ -84,7 +116,7 @@ async function updateSettings(req, res) {
     }
 
     const updates = [];
-    if (Object.keys(data).length > 0) {
+    if (existing && Object.keys(data).length > 0) {
       updates.push(prisma.setting.update({ where: { id: existing.id }, data }));
     }
 
@@ -101,11 +133,9 @@ async function updateSettings(req, res) {
       }
     }
 
-    if (updates.length === 0) {
-      return res.status(400).json({ success: false, message: "No recognized fields to update" });
+    if (updates.length > 0) {
+      await prisma.$transaction(updates);
     }
-
-    await prisma.$transaction(updates);
 
     return res.status(200).json({ success: true, message: "Settings updated" });
   } catch (err) {
