@@ -28,6 +28,15 @@ const logger = require("./logger");
 // every existing caller (old app binaries included) keeps working
 // unmodified, whether the file was uploaded before or after this change.
 
+// Optional folder prefix so a non-production deployment (e.g. the dev VPS
+// site) uploads under its own Cloudinary folder instead of mixing into the
+// same paths production uses. Left unset in production, so its public_ids
+// stay exactly as before (already-uploaded assets keep resolving).
+const FOLDER_PREFIX = (process.env.CLOUDINARY_FOLDER_PREFIX || "").replace(/^\/+|\/+$/g, "");
+function withPrefix(publicId) {
+  return FOLDER_PREFIX ? `${FOLDER_PREFIX}/${publicId}` : publicId;
+}
+
 let configured = false;
 function ensureConfigured() {
   if (configured) return true;
@@ -75,7 +84,7 @@ async function uploadBuffer(buffer, relativePath) {
     const resourceType = resourceTypeFor(format);
     const mime = resourceType === "image" ? `image/${format || "jpeg"}` : "application/octet-stream";
     await cloudinary.uploader.upload(`data:${mime};base64,${buffer.toString("base64")}`, {
-      public_id: publicId,
+      public_id: withPrefix(publicId),
       format: format || undefined,
       resource_type: resourceType,
       overwrite: true,
@@ -96,7 +105,7 @@ function urlForRelativePath(relativePath) {
   if (!ensureConfigured()) return null;
   const { publicId, format } = splitPath(relativePath);
   if (!format) return null;
-  return cloudinary.url(publicId, { secure: true, format, resource_type: resourceTypeFor(format) });
+  return cloudinary.url(withPrefix(publicId), { secure: true, format, resource_type: resourceTypeFor(format) });
 }
 
 /**
