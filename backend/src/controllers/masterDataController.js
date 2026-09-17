@@ -163,7 +163,10 @@ async function listCategories(req, res) {
 
 async function createCategory(req, res) {
   try {
-    const { cat_name, cat_img, cat_status, city_id, sort_order, other_image } = req.body;
+    const {
+      cat_name, cat_img, cat_status, city_id, sort_order, other_image,
+      max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
+    } = req.body;
     if (!cat_name || !cat_img) {
       return res.status(400).json({ success: false, message: "cat_name and cat_img are required" });
     }
@@ -175,6 +178,12 @@ async function createCategory(req, res) {
         cat_status: cat_status === undefined ? 1 : Number(cat_status),
         city_id: city_id ? parseInt(city_id, 10) : null,
         sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : 0,
+        max_load_kg: max_load_kg !== undefined && max_load_kg !== "" ? Number(max_load_kg) : null,
+        dim_length: dim_length !== undefined && dim_length !== "" ? Number(dim_length) : null,
+        dim_width: dim_width !== undefined && dim_width !== "" ? Number(dim_width) : null,
+        dim_height: dim_height !== undefined && dim_height !== "" ? Number(dim_height) : null,
+        dim_unit: dim_unit || null,
+        detail_image: detail_image || null,
       },
     });
     return res.status(201).json({ success: true, message: "Category created", data: created });
@@ -190,7 +199,10 @@ async function updateCategory(req, res) {
     if (!existing) {
       return res.status(404).json({ success: false, message: "Category not found" });
     }
-    const { cat_name, cat_img, cat_status, city_id, sort_order, other_image } = req.body;
+    const {
+      cat_name, cat_img, cat_status, city_id, sort_order, other_image,
+      max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
+    } = req.body;
     const data = {};
     if (cat_name !== undefined) data.cat_name = cat_name;
     if (cat_img !== undefined) data.cat_img = cat_img;
@@ -198,6 +210,12 @@ async function updateCategory(req, res) {
     if (cat_status !== undefined) data.cat_status = Number(cat_status);
     if (city_id !== undefined) data.city_id = city_id ? parseInt(city_id, 10) : null;
     if (sort_order !== undefined) data.sort_order = parseInt(sort_order, 10);
+    if (max_load_kg !== undefined) data.max_load_kg = max_load_kg === "" ? null : Number(max_load_kg);
+    if (dim_length !== undefined) data.dim_length = dim_length === "" ? null : Number(dim_length);
+    if (dim_width !== undefined) data.dim_width = dim_width === "" ? null : Number(dim_width);
+    if (dim_height !== undefined) data.dim_height = dim_height === "" ? null : Number(dim_height);
+    if (dim_unit !== undefined) data.dim_unit = dim_unit || null;
+    if (detail_image !== undefined) data.detail_image = detail_image || null;
 
     const updated = await prisma.pkg_category.update({ where: { id }, data });
     return res.status(200).json({ success: true, message: "Category updated", data: updated });
