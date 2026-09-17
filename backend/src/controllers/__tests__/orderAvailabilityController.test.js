@@ -6,6 +6,7 @@ jest.mock("../../config/db", () => ({
   tbl_package: { findMany: jest.fn() },
   pkg_category: { findMany: jest.fn() },
   setting: { findFirst: jest.fn() },
+  app_settings: { findFirst: jest.fn() },
   $queryRaw: jest.fn(),
 }));
 jest.mock("../../services/geofenceService", () => ({ isInsideZone: jest.fn() }));
@@ -29,6 +30,7 @@ function stubCommonLookups() {
   ]);
   prisma.pkg_category.findMany.mockResolvedValue([{ id: 1, cat_name: "Bike", cat_img: null }]);
   prisma.setting.findFirst.mockResolvedValue({ currency: "INR" });
+  prisma.app_settings.findFirst.mockResolvedValue(null);
 }
 
 describe("orderAvailabilityController.availableVehicles radius_suggestion", () => {
@@ -91,5 +93,72 @@ describe("orderAvailabilityController.availableVehicles radius_suggestion", () =
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
     const payload = res.json.mock.calls[0][0];
     expect(payload.radius_suggestion).toBeNull();
+  });
+});
+
+describe("orderAvailabilityController.availableVehicles vehicle detail specs/notes", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("reads max load/dimensions from the category row instead of a hardcoded table", async () => {
+    stubCommonLookups();
+    prisma.pkg_category.findMany.mockResolvedValue([{
+      id: 1, cat_name: "Bike", cat_img: null,
+      max_load_kg: 20, dim_length: 1.5, dim_width: 1, dim_height: 1, dim_unit: "ft",
+      detail_image: "images/category/bike_detail.png",
+    }]);
+    prisma.$queryRaw.mockResolvedValueOnce([{ rider_id: 1, distance_km: 1.2 }]);
+
+    const req = { body: { pickup_lat: 22.7, pickup_lng: 75.8, radius_km: 4, booking_type: "now" } };
+    const res = makeRes();
+    await availableVehicles(req, res);
+
+    const payload = res.json.mock.calls[0][0];
+    const category = payload.categories[0];
+    expect(category.max_load_kg).toBe(20);
+    expect(category.max_dimensions).toBe("1.5 x 1 x 1 ft");
+    expect(category.detail_image).toBe("images/category/bike_detail.png");
+  });
+
+  it("omits max_dimensions when any dimension is unset, without fabricating a value", async () => {
+    stubCommonLookups();
+    prisma.pkg_category.findMany.mockResolvedValue([{
+      id: 1, cat_name: "Bike", cat_img: null,
+      max_load_kg: null, dim_length: null, dim_width: null, dim_height: null, dim_unit: null,
+      detail_image: null,
+    }]);
+    prisma.$queryRaw.mockResolvedValueOnce([{ rider_id: 1, distance_km: 1.2 }]);
+
+    const req = { body: { pickup_lat: 22.7, pickup_lng: 75.8, radius_km: 4, booking_type: "now" } };
+    const res = makeRes();
+    await availableVehicles(req, res);
+
+    const category = res.json.mock.calls[0][0].categories[0];
+    expect(category.max_load_kg).toBeNull();
+    expect(category.max_dimensions).toBeNull();
+  });
+
+  it("surfaces the global vehicle_detail_notes list from app_settings", async () => {
+    stubCommonLookups();
+    prisma.app_settings.findFirst.mockResolvedValue({ setting_key: "vehicle_detail_notes", setting_value: "Note one.\nNote two." });
+    prisma.$queryRaw.mockResolvedValueOnce([{ rider_id: 1, distance_km: 1.2 }]);
+
+    const req = { body: { pickup_lat: 22.7, pickup_lng: 75.8, radius_km: 4, booking_type: "now" } };
+    const res = makeRes();
+    await availableVehicles(req, res);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.vehicle_detail_notes).toEqual(["Note one.", "Note two."]);
+    expect(payload.data.vehicle_detail_notes).toEqual(["Note one.", "Note two."]);
+  });
+
+  it("returns an empty notes list when the setting is unset", async () => {
+    stubCommonLookups();
+    prisma.$queryRaw.mockResolvedValueOnce([{ rider_id: 1, distance_km: 1.2 }]);
+
+    const req = { body: { pickup_lat: 22.7, pickup_lng: 75.8, radius_km: 4, booking_type: "now" } };
+    const res = makeRes();
+    await availableVehicles(req, res);
+
+    expect(res.json.mock.calls[0][0].vehicle_detail_notes).toEqual([]);
   });
 });

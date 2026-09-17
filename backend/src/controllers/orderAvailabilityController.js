@@ -34,27 +34,29 @@ function timeToSeconds(date) {
   return date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds();
 }
 
-function getVehicleSpecs(catName) {
-  const c = String(catName || "").toLowerCase();
-  if (c.includes("bike") || c.includes("two") || c.includes("motorcycle")) {
-    return { max_weight_kg: 10, max_dimensions: "40 x 40 x 40 cm" };
-  }
-  if (c.includes("scooter")) {
-    return { max_weight_kg: 15, max_dimensions: "45 x 45 x 45 cm" };
-  }
-  if (c.includes("auto") || c.includes("three") || c.includes("3")) {
-    return { max_weight_kg: 100, max_dimensions: "100 x 100 x 100 cm" };
-  }
-  if (c.includes("loader") || c.includes("electric")) {
-    return { max_weight_kg: 350, max_dimensions: "150 x 100 x 100 cm" };
-  }
-  if (c.includes("ace") || c.includes("tata") || c.includes("chota") || c.includes("four") || c.includes("4")) {
-    return { max_weight_kg: 750, max_dimensions: "210 x 140 x 140 cm" };
-  }
-  if (c.includes("pickup") || c.includes("8ft") || c.includes("bolero")) {
-    return { max_weight_kg: 1200, max_dimensions: "250 x 150 x 150 cm" };
-  }
-  return { max_weight_kg: 20, max_dimensions: "50 x 50 x 50 cm" };
+// Admin-configured per-category specs (pkg_category.max_load_kg/dim_*),
+// not derived or guessed - a category with any dimension unset shows no
+// dimensions at all rather than fabricating one (see Global Constraints).
+function formatVehicleSpecs(category) {
+  const maxLoadKg = category.max_load_kg !== null && category.max_load_kg !== undefined ? Number(category.max_load_kg) : null;
+  const { dim_length, dim_width, dim_height, dim_unit } = category;
+  const hasAllDims = dim_length !== null && dim_length !== undefined
+    && dim_width !== null && dim_width !== undefined
+    && dim_height !== null && dim_height !== undefined;
+  const maxDimensions = hasAllDims
+    ? `${Number(dim_length)} x ${Number(dim_width)} x ${Number(dim_height)} ${dim_unit || "ft"}`
+    : null;
+  return { max_weight_kg: maxLoadKg, max_dimensions: maxDimensions, detail_image: category.detail_image || null };
+}
+
+// One global list, admin-edited under Settings > "Vehicle Detail Notes"
+// (Task 5) — stored via the existing generic app_settings key/value
+// mechanism settingsController already exposes as `flags`, newline-
+// separated rather than JSON since the admin UI is a single textarea.
+async function getVehicleDetailNotes() {
+  const row = await prisma.app_settings.findFirst({ where: { setting_key: "vehicle_detail_notes" } });
+  if (!row?.setting_value) return [];
+  return row.setting_value.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 // A package's city_id is a free-text column (comma-separated ids in some
@@ -222,7 +224,10 @@ async function availableVehicles(req, res) {
     const categoryReqLower = categoryReq.toLowerCase();
     const filterByCategory = categoryReq && !["all", "parcel"].includes(categoryReqLower);
 
-    const settingRow = await prisma.setting.findFirst();
+    const [settingRow, vehicleDetailNotes] = await Promise.all([
+      prisma.setting.findFirst(),
+      getVehicleDetailNotes(),
+    ]);
     const currency = settingRow?.currency || "INR";
 
     const vehicles = [];
@@ -272,7 +277,7 @@ async function availableVehicles(req, res) {
         }
       }
 
-      const specs = getVehicleSpecs(catName);
+      const specs = formatVehicleSpecs(category);
 
       vehicles.push({
         id: pkg.id,
@@ -299,6 +304,7 @@ async function availableVehicles(req, res) {
         currency,
         max_weight_kg: specs.max_weight_kg,
         max_dimensions: specs.max_dimensions,
+        detail_image: specs.detail_image,
         reason_unavailable: reasonUnavailable,
       });
     }
@@ -315,6 +321,9 @@ async function availableVehicles(req, res) {
           vehicle_type: v.cat_name,
           cat_img: v.cat_img,
           image: v.image,
+          max_load_kg: v.max_weight_kg,
+          max_dimensions: v.max_dimensions,
+          detail_image: v.detail_image,
           available: false,
           is_available: 0,
           live_supply: "none",
@@ -384,6 +393,7 @@ async function availableVehicles(req, res) {
       vehicle_categories: categoriesSummary,
       pkgc: categoriesSummary,
       radius_suggestion: radiusSuggestion,
+      vehicle_detail_notes: vehicleDetailNotes,
       data: {
         serviceable: true,
         search_radius_km: radiusKm,
@@ -391,6 +401,7 @@ async function availableVehicles(req, res) {
         vehicles,
         categories: categoriesSummary,
         radius_suggestion: radiusSuggestion,
+        vehicle_detail_notes: vehicleDetailNotes,
       },
     });
   } catch (err) {
