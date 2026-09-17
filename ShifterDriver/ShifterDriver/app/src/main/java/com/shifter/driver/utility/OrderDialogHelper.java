@@ -451,7 +451,7 @@ public class OrderDialogHelper {
                 getMapValue(data, "status",            ""),
                 getMapValue(data, "order_user_id",     ""),
                 "0.00", "0.00", "0.00", "0.00", "0.00", "0", "0.00",
-                getMapValue(data, "payment_status", "1")
+                getMapValue(data, "payment_status", "0")
         );
         orderItem.setAdvancePayment(getMapValue(data, "advance_payment", "0"));
         // The socket dispatch payload carries stops as a JSON string.

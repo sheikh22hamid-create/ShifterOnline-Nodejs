@@ -184,24 +184,13 @@ public class OrderDetailsActivity extends AppCompatActivity
 
         registerOrderCancelledReceiver();
 
-        if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
-            // orderItem here is the placeholder OrderDialogHelper.startOrderDetailsActivity
-            // built straight from the order:request popup payload, which never carries
-            // advance_payment/payment_status (those are computed by finalizeAcceptedOrder
-            // asynchronously, after the accept ack) — it defaults payment_status to "1" and
-            // advance_payment to "0", so isAdvancePaymentRequired(orderItem) always reads as
-            // "not required" right after accept regardless of the real amount. Trusting that
-            // here let the driver fall straight through to the order screen (and from there to
-            // "arrived") while the customer's real advance-payment requirement was still
-            // pending. Show the waiting screen unconditionally instead and let the poll below
-            // (which reads the real DB row) decide once the real values are in.
+        if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false) || isAdvancePaymentRequired(orderItem)) {
+            // Show waiting for advance payment screen and start polling server
             showWaitingForPaymentScreen(null, null);
             pollPaymentStatusFromApi();
-        } else if (!isAdvancePaymentRequired(orderItem)) {
+        } else {
             new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
             initOrderDetailsScreen();
-        } else {
-            checkPaymentStatusFromApi();
         }
     }
 
@@ -215,22 +204,34 @@ public class OrderDetailsActivity extends AppCompatActivity
         String bookingType = item.getBookingType();
         if ("2".equals(bookingType) || "3".equals(bookingType)) return false;
 
-        String pMethod = item.getPMethodId();
-        if ("1".equals(pMethod)) return false; // Cash on delivery
-
         String paymentStatus = item.getPaymentStatus();
         if ("1".equals(paymentStatus)) return false; // Already paid / exempt
 
-        String adv = item.getAdvancePayment();
-        if (adv == null || "0".equals(adv.trim()) || "0.00".equals(adv.trim()) || adv.trim().isEmpty()) {
-            return false;
+        // If order has already progressed past initial/acceptance step (e.g. Arrived, Picked Up, Delivered)
+        String flowId = item.getOrderFlowId();
+        if (flowId != null && !flowId.trim().isEmpty()) {
+            try {
+                int flow = Integer.parseInt(flowId.trim());
+                if (flow > 1) return false;
+            } catch (Exception ignored) {}
         }
-        try {
-            double advAmt = Double.parseDouble(adv.trim());
-            if (advAmt <= 0) return false;
-        } catch (Exception ignored) {}
 
-        return true;
+        // Check advance payment amount if present
+        String adv = item.getAdvancePayment();
+        if (adv != null && !adv.trim().isEmpty()) {
+            try {
+                double advAmt = Double.parseDouble(adv.trim());
+                if (advAmt > 0) return true;
+                if (advAmt == 0 && "1".equals(paymentStatus)) return false;
+            } catch (Exception ignored) {}
+        }
+
+        // If paymentStatus is 0 (unpaid) or null/empty and order is at initial step (flow <= 1), advance is pending
+        if ("0".equals(paymentStatus) || paymentStatus == null || paymentStatus.trim().isEmpty()) {
+            return true;
+        }
+
+        return false;
     }
 
     private void checkPaymentStatusFromApi() {

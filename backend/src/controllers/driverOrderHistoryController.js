@@ -158,6 +158,8 @@ function formatPkgOrderForDriver(row, ctx) {
     drop_name: row.drop_name,
     time_duration: row.time_duration,
     order_flow_id: row.order_status,
+    p_method_id: row.p_method_id != null ? String(row.p_method_id) : "0",
+    booking_type: row.booking_type != null ? String(row.booking_type) : "1",
     advance_payment: timerInfo.advance_payment,
     payment_status: isPaid ? 1 : 0,
     is_advance_payment_required: isAdvRequired,
