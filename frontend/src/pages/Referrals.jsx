@@ -194,15 +194,31 @@ export default function Referrals() {
                 rows.map((r) => (
                   <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
-                      {r.referrer?.name || `#${r.referrer.id}`}
-                      <div className="font-mono-data text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                        {r.referrer.type}
+                      <div className="font-medium text-[13px]">
+                        {r.referrer?.name || `ID #${r.referrer?.id}`}
+                      </div>
+                      <div className="font-mono-data text-[11px] flex items-center gap-1.5 mt-0.5" style={{ color: 'var(--ink-faint)' }}>
+                        {r.referrer?.mobile && (
+                          <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>
+                            {r.referrer.mobile}
+                          </span>
+                        )}
+                        {r.referrer?.mobile && <span>·</span>}
+                        <span>{r.referrer?.type}</span>
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
-                      {r.referred?.name || `#${r.referred.id}`}
-                      <div className="font-mono-data text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                        {r.referred.type}
+                      <div className="font-medium text-[13px]">
+                        {r.referred?.name || `ID #${r.referred?.id}`}
+                      </div>
+                      <div className="font-mono-data text-[11px] flex items-center gap-1.5 mt-0.5" style={{ color: 'var(--ink-faint)' }}>
+                        {r.referred?.mobile && (
+                          <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>
+                            {r.referred.mobile}
+                          </span>
+                        )}
+                        {r.referred?.mobile && <span>·</span>}
+                        <span>{r.referred?.type}</span>
                       </div>
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>

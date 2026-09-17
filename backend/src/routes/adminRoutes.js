@@ -167,6 +167,7 @@ router.delete("/marketing/premium-plans/:id", auth, authorize("superadmin"), mar
 router.get("/referrals/settings", auth, referralController.getSettings);
 router.put("/referrals/settings", auth, authorize("superadmin"), referralController.updateSettings);
 router.get("/referrals/users", auth, authorize(...RIDER_ROLES), scopeFilter, referralController.listUserReferrals);
+router.get("/referrals/search-target", auth, authorize("superadmin", "admin"), scopeFilter, referralController.searchTarget);
 router.post("/referrals/adjust-points", auth, authorize("superadmin", "admin"), referralController.adjustPoints);
 
 // --- Platform Master Settings & Payment Gateways -----------------------------

@@ -66,7 +66,7 @@ async function listUserReferrals(req, res) {
 
     const [users, drivers] = await Promise.all([
       prisma.tbl_user.findMany({ where: { id: { in: [...new Set([...userIds, ...referredUserIds])] } }, select: { id: true, name: true, mobile: true, city_id: true } }),
-      prisma.tbl_rider.findMany({ where: { id: { in: [...new Set([...driverIds, ...referredDriverIds])] } }, select: { id: true, full_name: true, first_name: true, last_name: true, fmobile: true, city_id: true } }),
+      prisma.tbl_rider.findMany({ where: { id: { in: [...new Set([...driverIds, ...referredDriverIds])] } }, select: { id: true, full_name: true, first_name: true, last_name: true, account_name: true, fmobile: true, city_id: true } }),
     ]);
     const userById = Object.fromEntries(users.map((u) => [u.id, u]));
     const driverById = Object.fromEntries(drivers.map((d) => [d.id, d]));
@@ -76,9 +76,15 @@ async function listUserReferrals(req, res) {
     }
     function describe(entity, type) {
       if (!entity) return null;
-      return type === "USER"
-        ? { name: entity.name, mobile: String(entity.mobile) }
-        : { name: entity.full_name || `${entity.first_name || ""} ${entity.last_name || ""}`.trim(), mobile: entity.fmobile };
+      if (type === "USER") {
+        const mobile = entity.mobile ? String(entity.mobile).replace(/\.0$/, "") : "";
+        const name = (entity.name && entity.name.trim()) || (mobile ? `Customer (${mobile})` : `Customer #${entity.id}`);
+        return { name, mobile };
+      }
+      const riderName = entity.full_name || `${entity.first_name || ""} ${entity.last_name || ""}`.trim() || entity.account_name;
+      const mobile = entity.fmobile || "";
+      const name = (riderName && riderName.trim()) || (mobile ? `Driver (${mobile})` : `Driver #${entity.id}`);
+      return { name, mobile };
     }
 
     let scopedRows = allRows;
@@ -110,6 +116,101 @@ async function listUserReferrals(req, res) {
   }
 }
 
+async function searchTarget(req, res) {
+  try {
+    const { type, query } = req.query;
+    const entityType = type === "DRIVER" ? "DRIVER" : "USER";
+    const q = (query || "").trim();
+    if (!q) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    if (entityType === "DRIVER") {
+      const isNum = /^\d+$/.test(q);
+      const orConditions = [
+        { full_name: { contains: q } },
+        { first_name: { contains: q } },
+        { last_name: { contains: q } },
+        { fmobile: { contains: q } },
+      ];
+      if (isNum) {
+        orConditions.push({ id: parseInt(q, 10) });
+      }
+      const where = { OR: orConditions };
+      if (req.scopedCityId) where.city_id = req.scopedCityId;
+
+      const rows = await prisma.tbl_rider.findMany({
+        where,
+        take: 10,
+        select: {
+          id: true,
+          full_name: true,
+          first_name: true,
+          last_name: true,
+          account_name: true,
+          fmobile: true,
+          city_id: true,
+          referral_points: true,
+        },
+      });
+
+      const data = rows.map((r) => {
+        const rawName = r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.account_name;
+        const mobile = r.fmobile || "";
+        const name = (rawName && rawName.trim()) || (mobile ? `Driver (${mobile})` : `Driver #${r.id}`);
+        return {
+          id: r.id,
+          name,
+          mobile,
+          type: "DRIVER",
+          points: r.referral_points || 0,
+        };
+      });
+      return res.status(200).json({ success: true, data });
+    } else {
+      const isNum = /^\d+$/.test(q);
+      const orConditions = [
+        { name: { contains: q } },
+        { email: { contains: q } },
+      ];
+      if (isNum) {
+        orConditions.push({ id: parseInt(q, 10) });
+        orConditions.push({ mobile: Number(q) });
+      }
+      const where = { OR: orConditions };
+      if (req.scopedCityId) where.city_id = req.scopedCityId;
+
+      const rows = await prisma.tbl_user.findMany({
+        where,
+        take: 10,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          mobile: true,
+          city_id: true,
+          referral_points: true,
+        },
+      });
+
+      const data = rows.map((u) => {
+        const mobile = u.mobile ? String(u.mobile).replace(/\.0$/, "") : "";
+        const name = (u.name && u.name.trim()) || (mobile ? `Customer (${mobile})` : `Customer #${u.id}`);
+        return {
+          id: u.id,
+          name,
+          mobile,
+          type: "USER",
+          points: u.referral_points || 0,
+        };
+      });
+      return res.status(200).json({ success: true, data });
+    }
+  } catch (err) {
+    return internalError(res, err, "referrals.searchTarget");
+  }
+}
+
 async function adjustPoints(req, res) {
   try {
     const { user_id, user_type, points, type, reason } = req.body;
@@ -117,14 +218,42 @@ async function adjustPoints(req, res) {
       return res.status(400).json({ success: false, message: "user_id, points, and type (credit|debit) are required" });
     }
     const entityType = user_type === "DRIVER" ? "DRIVER" : "USER";
-    const id = parseInt(user_id, 10);
     const pts = Math.abs(Number(points));
     const model = entityType === "DRIVER" ? prisma.tbl_rider : prisma.tbl_user;
 
-    const entity = await model.findUnique({ where: { id } });
+    let entity = null;
+    const parsedId = parseInt(user_id, 10);
+    if (!isNaN(parsedId)) {
+      entity = await model.findUnique({ where: { id: parsedId } });
+    }
+    if (!entity) {
+      if (entityType === "DRIVER") {
+        entity = await prisma.tbl_rider.findFirst({
+          where: {
+            OR: [
+              { fmobile: String(user_id).trim() },
+              { fmobile: { contains: String(user_id).trim() } },
+            ],
+          },
+        });
+      } else {
+        const num = Number(user_id);
+        entity = await prisma.tbl_user.findFirst({
+          where: {
+            OR: [
+              ...(Number.isFinite(num) ? [{ mobile: num }] : []),
+              { name: { contains: String(user_id).trim() } },
+            ],
+          },
+        });
+      }
+    }
+
     if (!entity) {
       return res.status(404).json({ success: false, message: `${entityType === "DRIVER" ? "Driver" : "Customer"} not found` });
     }
+
+    const id = entity.id;
     if (req.user.role !== "superadmin" && entity.city_id !== parseInt(req.user.city_id, 10)) {
       return res.status(403).json({ success: false, message: `Forbidden: ${entityType === "DRIVER" ? "driver" : "customer"} is outside your assigned city` });
     }
@@ -157,4 +286,4 @@ async function adjustPoints(req, res) {
   }
 }
 
-module.exports = { getSettings, updateSettings, listUserReferrals, adjustPoints };
+module.exports = { getSettings, updateSettings, listUserReferrals, searchTarget, adjustPoints };
