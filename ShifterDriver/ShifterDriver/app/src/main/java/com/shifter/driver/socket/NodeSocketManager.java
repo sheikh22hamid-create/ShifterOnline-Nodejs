@@ -54,6 +54,11 @@ public class NodeSocketManager {
         void onRoleChanged(JSONObject data);
     }
 
+    /** order:customer_cancelled — the customer cancelled an order this driver already accepted. */
+    public interface OrderCancelledListener {
+        void onOrderCancelledByCustomer(JSONObject data);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -62,6 +67,7 @@ public class NodeSocketManager {
     private NextDayAssignmentListener nextDayAssignmentListener;
     private QueueUpdateListener queueUpdateListener;
     private RoleChangeListener roleChangeListener;
+    private OrderCancelledListener orderCancelledListener;
 
     private NodeSocketManager() {}
 
@@ -167,6 +173,13 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("order:customer_cancelled", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderCancelledListener != null) {
+                orderCancelledListener.onOrderCancelledByCustomer(data);
+            }
+        }));
+
         socket.connect();
     }
 
@@ -188,6 +201,11 @@ public class NodeSocketManager {
     /** Listener for driver role shifts (e.g. Monthly -> Freelance or vice versa). */
     public void setRoleChangeListener(RoleChangeListener listener) {
         this.roleChangeListener = listener;
+    }
+
+    /** Listener for a customer cancelling an order this driver already accepted. */
+    public void setOrderCancelledListener(OrderCancelledListener listener) {
+        this.orderCancelledListener = listener;
     }
 
     public void emitAccept(JSONObject data, AckListener ackListener) {

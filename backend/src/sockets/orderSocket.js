@@ -1,5 +1,6 @@
 const tripLifecycle = require("../services/tripLifecycle");
 const logger = require("../utils/logger");
+const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
 
 function registerOrderHandlers(io, socket) {
   socket.on("order:accept", async ({ rider_id, order_id }) => {
@@ -34,6 +35,13 @@ function registerOrderHandlers(io, socket) {
     tripLifecycle
       .finalizeAcceptedOrder(Number(order_id), Number(rider_id), claim.acceptedPackageId)
       .then(({ order, rider }) => {
+        // Same computation the driver's pkgHistory poll and the customer's
+        // own mapinfo re-fetch both use (getAdvancePaymentTimerInfo) — this
+        // event fires right after accept_time is written, so remaining_seconds
+        // is effectively the full timeout, but deriving it here instead of a
+        // hardcoded 120 keeps this one value from ever drifting out of sync
+        // with what every later re-fetch on either app computes.
+        const timerInfo = getAdvancePaymentTimerInfo(order);
         io.to(`customer_${order.uid}`).emit("order:assigned", {
           order_id: order.id,
           rider_id: rider.id,
@@ -53,7 +61,10 @@ function registerOrderHandlers(io, socket) {
           total_Delivery_charge: String(order.total_dcharge),
           advance_payment: order.advance_payment,
           payment_status: (order.advance_payment === "0" || order.advance_payment === 0) ? 1 : (order.payment_status ?? 0),
-          advance_payment_timer: 120,
+          advance_payment_timer: timerInfo.remaining_seconds,
+          advance_payment_msg: timerInfo.is_advance_payment_required
+            ? "Please complete the advance payment to confirm your order. Kindly note that if the payment is not completed within 2 minutes, your order will be automatically cancelled."
+            : "",
         });
       })
       .catch((err) => {

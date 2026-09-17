@@ -1,7 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { isInsideZone } = require("../services/geofenceService");
-const { SEARCH_RADIUS_KM, RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
+const { SEARCH_RADIUS_KM, RIDER_LOCATION_FRESHNESS_MS, RADIUS_SUGGESTION_MAX_KM } = require("../config/constants");
 
 // Node port of cust_api/available_vehicles.php - THE endpoint every current
 // order still depends on: ShifterOnline's select_vehicle.dart / home.dart
@@ -341,6 +341,32 @@ async function availableVehicles(req, res) {
     }
     const categoriesSummary = [...catMap.values()];
 
+    // Nothing available at the requested radius - before telling the
+    // customer "no drivers", check whether a wider radius would actually
+    // help. Only the categories they were just shown are worth re-checking;
+    // reuses countNearbyOnlineDrivers (same freshness/online filters) with a
+    // fixed wider cap so the suggested radius is never a shot in the dark.
+    let radiusSuggestion = null;
+    const anyAvailable = categoriesSummary.some((c) => c.available);
+    if (!anyAvailable && categoriesSummary.length > 0 && radiusKm < RADIUS_SUGGESTION_MAX_KM) {
+      let nearestKm = null;
+      for (const cat of categoriesSummary) {
+        const wider = await countNearbyOnlineDrivers(cat.cat_name, pickupLat, pickupLng, RADIUS_SUGGESTION_MAX_KM);
+        if (wider.nearestKm !== null && (nearestKm === null || wider.nearestKm < nearestKm)) {
+          nearestKm = wider.nearestKm;
+        }
+      }
+      if (nearestKm !== null) {
+        const suggestedRadiusKm = Math.min(RADIUS_SUGGESTION_MAX_KM, Math.max(radiusKm + 1, Math.ceil(nearestKm)));
+        radiusSuggestion = {
+          shown: true,
+          current_radius_km: radiusKm,
+          suggested_radius_km: suggestedRadiusKm,
+          message: `No drivers found within ${radiusKm} km. Try increasing your search radius to ${suggestedRadiusKm} km for a better chance of finding a driver.`,
+        };
+      }
+    }
+
     return res.status(200).json({
       success: true,
       serviceable: true,
@@ -354,7 +380,15 @@ async function availableVehicles(req, res) {
       categories: categoriesSummary,
       vehicle_categories: categoriesSummary,
       pkgc: categoriesSummary,
-      data: { serviceable: true, search_radius_km: radiusKm, pickup_area: pickupArea, vehicles, categories: categoriesSummary },
+      radius_suggestion: radiusSuggestion,
+      data: {
+        serviceable: true,
+        search_radius_km: radiusKm,
+        pickup_area: pickupArea,
+        vehicles,
+        categories: categoriesSummary,
+        radius_suggestion: radiusSuggestion,
+      },
     });
   } catch (err) {
     logger.error("orderAvailabilityController.availableVehicles failed:", err);

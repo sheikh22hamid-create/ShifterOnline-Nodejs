@@ -58,6 +58,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _loadingModels = false;
   bool _booking = false;
   String? _availabilityError;
+  int? _radiusSuggestionShownFor;
   String? _modelsError;
   List<Map<String, dynamic>> _vehicles = [];
   List<Map<String, dynamic>> _models = [];
@@ -363,12 +364,20 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final retainedIndex = previousVehicleKey == null
           ? -1
           : refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey && _isAvailable(option['availability']));
+      final rawSuggestion = decoded['radius_suggestion'];
+      final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
+          ? Map<String, dynamic>.from(rawSuggestion)
+          : null;
       setState(() {
         _vehicles = refreshed;
         _availabilityError = decoded['serviceable'] == true || refreshed.isNotEmpty ? null : "We couldn't find an available vehicle near your pickup location right now.";
         _selectedIndex = retainedIndex >= 0 ? retainedIndex : -1;
         _selectedModelIndex = null;
       });
+      if (radiusSuggestion != null && _radiusSuggestionShownFor != _selectedRadiusKm) {
+        _radiusSuggestionShownFor = _selectedRadiusKm;
+        _showRadiusSuggestionDialog(radiusSuggestion);
+      }
       if (_vehicles.isNotEmpty && retainedIndex >= 0) {
         await _loadModelsForSelectedVehicle(preserveModelKey: retainedIndex >= 0 ? previousModelKey : null);
       } else if (mounted) {
@@ -474,6 +483,31 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     }
   }
 
+  Future<void> _showRadiusSuggestionDialog(Map<String, dynamic> suggestion) async {
+    final suggestedRadius = int.tryParse(_text(suggestion['suggested_radius_km'])) ?? (_selectedRadiusKm + 1);
+    final message = _text(suggestion['message'],
+        'No drivers found within $_selectedRadiusKm km. Try increasing your search radius to $suggestedRadius km for a better chance of finding a driver.');
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('No drivers nearby'),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not now')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              setState(() => _selectedRadiusKm = suggestedRadius.clamp(1, 20));
+              _refreshAvailability();
+            },
+            child: Text('Search within $suggestedRadius km'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openSearchAreaSheet() async {
     var pendingRadius = _selectedRadiusKm;
     await showModalBottomSheet<void>(
@@ -490,8 +524,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             Text('Find available drivers within the selected distance from your pickup location.', style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium', fontSize: 13)),
           ])), IconButton(onPressed: () => Navigator.pop(sheetContext), icon: Icon(Icons.close_rounded, color: notifier.text))]),
           const SizedBox(height: 14),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('1 km', style: TextStyle(color: greaycolor, fontSize: 12)), Text('10 km', style: TextStyle(color: greaycolor, fontSize: 12))]),
-          Slider(value: pendingRadius.toDouble(), min: 1, max: 10, divisions: 9, activeColor: linercolor, label: '$pendingRadius km', onChanged: (value) => setSheetState(() => pendingRadius = value.round())),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('1 km', style: TextStyle(color: greaycolor, fontSize: 12)), Text('20 km', style: TextStyle(color: greaycolor, fontSize: 12))]),
+          Slider(value: pendingRadius.toDouble(), min: 1, max: 20, divisions: 19, activeColor: linercolor, label: '$pendingRadius km', onChanged: (value) => setSheetState(() => pendingRadius = value.round())),
           Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(14), border: Border.all(color: notifier.bordecolor)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Current search area', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium')), Text('$pendingRadius km', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16))])),
           const SizedBox(height: 16),
           SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: () { Navigator.pop(sheetContext); if (pendingRadius != _selectedRadiusKm) { setState(() => _selectedRadiusKm = pendingRadius); _refreshAvailability(); } }, style: ElevatedButton.styleFrom(backgroundColor: linercolor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: const Text('Apply', style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16)))),

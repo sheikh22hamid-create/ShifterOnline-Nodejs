@@ -45,6 +45,19 @@ function emitCustomerEvent(userId, event, payload) {
 }
 
 /**
+ * Driver-side counterpart of emitCustomerEvent — same reasoning (keeps
+ * tripLifecycle decoupled from the Socket.IO singleton). driver_${riderId}
+ * is the room every driver socket joins on driver:join and re-joins on
+ * reconnect (see socketServer.js), so this reaches them even if they aren't
+ * currently sitting in this order's own order_<id> room.
+ */
+function emitDriverEvent(riderId, event, payload) {
+  if (!ioRef || !riderId) return false;
+  ioRef.to(`driver_${riderId}`).emit(event, payload);
+  return true;
+}
+
+/**
  * Riders who explicitly rejected this order (tbl_order_requests status
  * "10"), in any tier — excluded for the rest of this order's cascade
  * regardless of which model they reject. A rider whose offer merely timed
@@ -1106,6 +1119,7 @@ function _resetForTests() {
 module.exports = {
   init,
   emitCustomerEvent,
+  emitDriverEvent,
   emitDirectAssign,
   emitQueueUpdate,
   startDispatch,

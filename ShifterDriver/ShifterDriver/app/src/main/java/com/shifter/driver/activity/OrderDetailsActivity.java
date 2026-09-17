@@ -91,6 +91,13 @@ public class OrderDetailsActivity extends AppCompatActivity
     private Runnable pickupWaitingTimerRunnable;
     private long arrivalTimestamp = 0;
 
+    // order:customer_cancelled — see SocketOrderRouter.handleOrderCancelledByCustomer.
+    // Registered/unregistered alongside this Activity's other onCreate/onDestroy-scoped
+    // state (no onStart/onStop elsewhere in this file) rather than a tighter
+    // window, so a cancel landing while the screen is merely backgrounded
+    // (not destroyed) still reaches it.
+    private android.content.BroadcastReceiver orderCancelledReceiver;
+
     // Set only by OrderDialogHelper.startOrderDetailsActivity — the single
     // funnel both accept paths (foreground dialog, background overlay) use
     // right after a driver taps Accept. In that case we already know the
@@ -115,6 +122,37 @@ public class OrderDetailsActivity extends AppCompatActivity
             paymentCountDownTimer = null;
         }
         stopAndClearPickupWaitingTimer();
+        if (orderCancelledReceiver != null) {
+            try {
+                unregisterReceiver(orderCancelledReceiver);
+            } catch (Exception ignored) {}
+            orderCancelledReceiver = null;
+        }
+    }
+
+    private void registerOrderCancelledReceiver() {
+        orderCancelledReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context context, Intent intent) {
+                String cancelledOrderId = intent.getStringExtra("order_id");
+                if (orderItem == null || cancelledOrderId == null || !cancelledOrderId.equals(orderItem.getId())) {
+                    return;
+                }
+                String reason = intent.getStringExtra("reason");
+                new android.app.AlertDialog.Builder(OrderDetailsActivity.this)
+                        .setTitle("Order Cancelled")
+                        .setMessage((reason == null || reason.isEmpty())
+                                ? "This order was cancelled by the customer."
+                                : "This order was cancelled by the customer: " + reason)
+                        .setCancelable(false)
+                        .setPositiveButton("OK", (dialog, which) -> navigateToHomeAndFinish(null))
+                        .show();
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter(
+                com.shifter.driver.socket.SocketOrderRouter.ACTION_ORDER_CANCELLED);
+        androidx.core.content.ContextCompat.registerReceiver(
+                this, orderCancelledReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     @Override
@@ -139,6 +177,8 @@ public class OrderDetailsActivity extends AppCompatActivity
         if (riderData != null) {
             com.shifter.driver.socket.NodeSocketManager.getInstance().connectDriver(riderData.getId());
         }
+
+        registerOrderCancelledReceiver();
 
         if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false)) {
             // orderItem here is the placeholder OrderDialogHelper.startOrderDetailsActivity

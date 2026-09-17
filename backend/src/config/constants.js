@@ -29,6 +29,13 @@ module.exports = {
   // the case of an app killed in the background without ever going offline.
   RIDER_LOCATION_FRESHNESS_MS: 2 * 60 * 1000,
 
+  // When no vehicle is available at the customer's chosen search_radius_km,
+  // orderAvailabilityController checks once more out to this cap before
+  // suggesting "widen your search radius" - so the suggestion is never shown
+  // for a driver that isn't actually there to find (see
+  // memory/radius_no_driver_suggestion.md).
+  RADIUS_SUGGESTION_MAX_KM: 20,
+
   // Model 1 reliability suspension — see dispatchManager's
   // recordModel1Outcome/isModel1Suspended.
   MODEL_1_PACKAGE_ID: 6,

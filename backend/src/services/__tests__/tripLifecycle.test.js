@@ -15,6 +15,7 @@ jest.mock("../dispatchManager", () => ({
   stopDispatch: jest.fn(),
   recordModel1Outcome: jest.fn(),
   emitCustomerEvent: jest.fn(),
+  emitDriverEvent: jest.fn(),
   startDispatch: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
@@ -356,6 +357,33 @@ describe("tripLifecycle.customerCancel", () => {
     const result = await tripLifecycle.customerCancel(7, 297, "too late");
 
     expect(result).toEqual({ success: false, msg: "Order cannot be cancelled" });
+    expect(dispatchManager.emitDriverEvent).not.toHaveBeenCalled();
+  });
+
+  it("notifies the assigned driver in real time when the customer cancels", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 42, delivery_type: 6 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+    pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 0 });
+    pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+    const result = await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+    expect(result).toEqual({ success: true });
+    expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(42, "order:customer_cancelled", expect.objectContaining({
+      order_id: 297,
+      reason: "changed my mind",
+      order_status: 4,
+      o_status: "Cancelled",
+    }));
+  });
+
+  it("does not notify a driver when the order was never assigned", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+
+    await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+    expect(dispatchManager.emitDriverEvent).not.toHaveBeenCalled();
   });
 
   it("debits wallet when cancelling an assigned order without a free cancellation plan", async () => {

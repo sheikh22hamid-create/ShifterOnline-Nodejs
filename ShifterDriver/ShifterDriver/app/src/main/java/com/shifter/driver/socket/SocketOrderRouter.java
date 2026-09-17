@@ -32,6 +32,9 @@ public class SocketOrderRouter {
     /** Foreground counterpart of OrderOverlayService's own dismiss handling — see BaseActivity's receiver. */
     public static final String ACTION_ORDER_DISMISS = "com.shifter.driver.ORDER_DISMISS";
 
+    /** order:customer_cancelled for an order already accepted — see OrderDetailsActivity's receiver. */
+    public static final String ACTION_ORDER_CANCELLED = "com.shifter.driver.ORDER_CANCELLED_BY_CUSTOMER";
+
     public static void handleOrderRequest(Context context, JSONObject data) {
         Map<String, String> mapped = mapOrderRequestData(data);
         String title = "New Order";
@@ -85,6 +88,29 @@ public class SocketOrderRouter {
         } catch (Exception e) {
             Log.e(TAG, "Failed to deliver dismiss to OrderOverlayService", e);
         }
+    }
+
+    /**
+     * order:customer_cancelled — the customer cancelled an order this driver
+     * already accepted (see backend tripLifecycle.customerCancel). Previously
+     * nothing notified the driver at all: the active-order screen
+     * (OrderDetailsActivity) has no polling once past the advance-payment
+     * step, so the order stayed on screen as if still active indefinitely
+     * (confirmed live). Same broadcast shape as handleOrderDismiss above —
+     * OrderDetailsActivity's own receiver checks the order id matches before
+     * acting, so this is a harmless no-op if that screen isn't open for it.
+     */
+    public static void handleOrderCancelledByCustomer(Context context, JSONObject data) {
+        String orderId = data.optString("order_id", null);
+        if (orderId == null) return;
+
+        Log.d(TAG, "order:customer_cancelled for order " + orderId);
+
+        Intent cancelBroadcast = new Intent(ACTION_ORDER_CANCELLED);
+        cancelBroadcast.putExtra("order_id", orderId);
+        cancelBroadcast.putExtra("reason", data.optString("reason", ""));
+        cancelBroadcast.setPackage(context.getPackageName());
+        context.sendBroadcast(cancelBroadcast);
     }
 
     private static Map<String, String> mapOrderRequestData(JSONObject data) {

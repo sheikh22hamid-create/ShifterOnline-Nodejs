@@ -789,6 +789,21 @@ async function customerCancel(uid, orderId, comment) {
     dispatchManager.stopDispatch(orderId, "cancelled_by_user");
   }
 
+  // The driver has no other real-time signal that the customer cancelled
+  // after accepting — their app doesn't poll once past the advance-payment
+  // screen (see OrderDetailsActivity), and nothing else in this function
+  // notified them at all until now (confirmed live: order stayed on the
+  // driver's "Arrived Order" screen indefinitely after a customer cancel).
+  // Mirrors driverCancel's own emitCustomerEvent call the other direction.
+  if (orderBefore.rid !== 0) {
+    dispatchManager.emitDriverEvent(orderBefore.rid, "order:customer_cancelled", {
+      order_id: orderId,
+      reason: comment || "Customer cancelled the ride",
+      order_status: 4,
+      o_status: "Cancelled",
+    });
+  }
+
   return { success: true };
 }
 
