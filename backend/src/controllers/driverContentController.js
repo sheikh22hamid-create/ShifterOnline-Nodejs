@@ -289,7 +289,11 @@ async function registrationSettings(req, res) {
   try {
     const rid = Number(req.body?.rid || 0);
     const rows = await prisma.app_settings.findMany();
-    const settings = Object.fromEntries(rows.map((r) => [r.setting_key, Number(r.setting_value)]));
+    const rawMap = Object.fromEntries(rows.map((r) => [r.setting_key, r.setting_value]));
+    const num = (k, def = 0) => {
+      const v = Number(rawMap[k]);
+      return Number.isFinite(v) ? v : def;
+    };
 
     let pendingPayment = false;
     if (rid) {
@@ -301,13 +305,13 @@ async function registrationSettings(req, res) {
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "Success",
-      manual_registration: settings.manual_registration ?? 0,
-      auto_verification_msg: settings.auto_verification_msg ?? 0,
-      auto_verification_charge: settings.auto_verification_charge ?? 0,
-      auto_verification_charge_old: settings.auto_verification_charge_old ?? 0,
+      manual_registration: num("manual_registration", 0),
+      auto_verification_msg: rawMap.auto_verification_msg || "",
+      auto_verification_charge: num("auto_verification_charge", 0),
+      auto_verification_charge_old: num("auto_verification_charge_old", 0),
       pending_payment: pendingPayment,
-      auto_verification: settings.auto_verification ?? 0,
-      digilocker_verification: settings.digilocker_verification ?? 0,
+      auto_verification: num("auto_verification", 0),
+      digilocker_verification: num("digilocker_verification", 0),
     });
   } catch (err) {
     logger.error("driverContentController.registrationSettings failed:", err);
