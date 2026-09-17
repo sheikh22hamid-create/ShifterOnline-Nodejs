@@ -7,14 +7,20 @@ on:
       - "backend/**"
       - ".github/workflows/deploy-backend.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: SSH and deploy
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_DEPLOY_KEY }}
+          # Pins the exact host key so this never silently trusts a
+          # different/spoofed host (SHA256:6U0Q8b...ydnXw, ED25519).
+          fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
           script: /home/shifter/deploy.sh
