@@ -14,6 +14,7 @@ import '../../bottombar.dart';
 import '../../utils/colors.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
+import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
@@ -64,6 +65,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   List<Map<String, dynamic>> _models = [];
   int? _selectedModelIndex;
 
+  List<String> _vehicleDetailNotes = [];
   double? _fareDistanceKm;
   bool _hasPlanDiscount = false;
   double _planDiscountPercent = 0;
@@ -372,19 +374,18 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           retainedIndex = refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey);
         }
       }
-      if (retainedIndex < 0 && _selectedIndex < 0 && refreshed.isNotEmpty) {
-        final firstAvailable = refreshed.indexWhere((option) => _isAvailable(option['availability']));
-        retainedIndex = firstAvailable >= 0 ? firstAvailable : 0;
-      }
       final rawSuggestion = decoded['radius_suggestion'];
       final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
           ? Map<String, dynamic>.from(rawSuggestion)
           : null;
+      final rawNotes = decoded['vehicle_detail_notes'];
+      final notes = rawNotes is List ? rawNotes.map((n) => n.toString()).where((n) => n.trim().isNotEmpty).toList() : <String>[];
       setState(() {
         _vehicles = refreshed;
         _availabilityError = decoded['serviceable'] == true || refreshed.isNotEmpty ? null : "We couldn't find an available vehicle near your pickup location right now.";
         _selectedIndex = retainedIndex >= 0 ? retainedIndex : -1;
         _selectedModelIndex = null;
+        _vehicleDetailNotes = notes;
       });
       if (radiusSuggestion != null && _radiusSuggestionShownFor != _selectedRadiusKm) {
         _radiusSuggestionShownFor = _selectedRadiusKm;
@@ -1516,7 +1517,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Widget _vehicleCard(int index, Map<String, dynamic> option) {
     final available = _isAvailable(option['availability']);
-    final selected = index == _selectedIndex;
+    final selected = available && index == _selectedIndex;
     final image = _image(option);
     return Opacity(
       opacity: available ? 1 : 0.45,
@@ -1569,7 +1570,16 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final eta = _availabilityValue(selected, ['estimated_pickup_minutes', 'eta_minutes', 'eta']);
     final driverCount = _availabilityValue(selected, ['driver_count', 'nearby_driver_count']);
     return Container(padding: const EdgeInsets.fromLTRB(14, 15, 14, 12), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18), border: Border.all(color: notifier.bordecolor)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Expanded(child: Text(_vehicleName(selected), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 19))), if (_loadingModels) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))]),
+      Row(children: [
+        Expanded(child: Text(_vehicleName(selected), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 19))),
+        if (_loadingModels) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+        TextButton.icon(
+          onPressed: () => Get.to(() => VehicleDetailsScreen(category: _categoryOf(selected), notes: _vehicleDetailNotes)),
+          icon: Icon(Icons.info_outline_rounded, color: linercolor, size: 16),
+          label: Text('Details', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12)),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        ),
+      ]),
       if (capacity.isNotEmpty) ...[const SizedBox(height: 4), Text('Up to $capacity kg', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12))],
       if (driverCount.isNotEmpty || eta.isNotEmpty) ...[const SizedBox(height: 8), Row(children: [if (driverCount.isNotEmpty) const Icon(Icons.people_alt_outlined, color: Colors.green, size: 16), if (driverCount.isNotEmpty) Text(' $driverCount nearby', style: TextStyle(color: greaycolor, fontSize: 11)), if (driverCount.isNotEmpty && eta.isNotEmpty) const SizedBox(width: 12), if (eta.isNotEmpty) Icon(Icons.schedule_rounded, color: greaycolor, size: 15), if (eta.isNotEmpty) Text(' ~$eta min', style: TextStyle(color: greaycolor, fontSize: 11))])],
       const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
