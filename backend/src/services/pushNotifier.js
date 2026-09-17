@@ -80,7 +80,7 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId) {
     fcmToken,
     "Trip Cancelled",
     "Customer did not provide the OTP within 10 minutes. This trip has been cancelled and you're free for new orders.",
-    { type: "order_cancelled", order_id: String(orderId), reason: "pickup_otp_timeout" },
+    { type: "order_dismiss", order_id: String(orderId), reason: "pickup_otp_timeout" },
     "order_dismiss_channel_v1"
   );
 }
@@ -101,7 +101,7 @@ async function notifyDriverAdvancePaymentTimeoutCancel(fcmToken, orderId) {
     fcmToken,
     "Order Cancelled",
     `Customer did not pay the advance within 2 minutes. Order #${orderId} has been cancelled — you're free for new orders.`,
-    { type: "order_cancelled", order_id: String(orderId), reason: "advance_payment_timeout" },
+    { type: "order_dismiss", order_id: String(orderId), reason: "advance_payment_timeout" },
     "order_dismiss_channel_v1"
   );
 }
