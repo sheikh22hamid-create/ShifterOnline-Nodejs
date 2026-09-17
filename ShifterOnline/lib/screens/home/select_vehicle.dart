@@ -374,6 +374,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           retainedIndex = refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey);
         }
       }
+      if (retainedIndex < 0 && _selectedIndex < 0 && refreshed.isNotEmpty) {
+        final firstAvailable = refreshed.indexWhere((option) => _isAvailable(option['availability']));
+        retainedIndex = firstAvailable >= 0 ? firstAvailable : 0;
+      }
       final rawSuggestion = decoded['radius_suggestion'];
       final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
           ? Map<String, dynamic>.from(rawSuggestion)
@@ -1517,7 +1521,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Widget _vehicleCard(int index, Map<String, dynamic> option) {
     final available = _isAvailable(option['availability']);
-    final selected = available && index == _selectedIndex;
+    final selected = index == _selectedIndex;
     final image = _image(option);
     return Opacity(
       opacity: available ? 1 : 0.45,
