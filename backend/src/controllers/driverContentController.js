@@ -41,7 +41,7 @@ async function homeData(req, res) {
         FROM pkg_order
         WHERE rid = ${rid}
           AND (LOWER(TRIM(o_status)) = 'completed' OR order_status = 4 OR order_status = 5)
-          AND COALESCE(NULLIF(ddate, ''), odate) BETWEEN ${from} AND ${to}
+          AND COALESCE(ddate, odate) BETWEEN ${from} AND ${to}
       `;
       return rows[0] || { total_order: 0, earning: 0 };
     }
