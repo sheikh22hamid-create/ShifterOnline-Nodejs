@@ -828,6 +828,7 @@ model tbl_rider {
   a_status               Int                            @default(1)
   rlats                  String?                        @db.Text
   rlongs                 String?                        @db.Text
+  rloc_updated_at        DateTime?                      @db.DateTime(0)
   all_verify             Int                            @default(0)
   rdate                  DateTime                       @db.DateTime(0)
   add_info               Int                            @default(0)

@@ -23,6 +23,11 @@ module.exports = {
   ROAD_DISTANCE_FUDGE_FACTOR: 1.3,
   ASSUMED_URBAN_SPEED_KMH: 30,
   RIDER_LOCATION_WRITE_THROTTLE_MS: 5000,
+  // A driver's rlats/rlongs older than this are treated as stale and
+  // excluded from dispatch/availability, rather than trusted as-is - covers
+  // the gap between "went online" and the first fresh GPS ping landing, and
+  // the case of an app killed in the background without ever going offline.
+  RIDER_LOCATION_FRESHNESS_MS: 2 * 60 * 1000,
 
   // Model 1 reliability suspension — see dispatchManager's
   // recordModel1Outcome/isModel1Suspended.

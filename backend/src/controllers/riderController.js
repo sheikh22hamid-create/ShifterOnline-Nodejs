@@ -205,9 +205,16 @@ async function setStatus(req, res) {
       return res.status(400).json({ Result: false, msg: "rider_id and a_status (0 or 1) are required" });
     }
 
+    // Going offline blanks the last-known fix so it can never be read back as
+    // "current" once the driver goes online again elsewhere - see
+    // memory/driver_stale_location_dispatch.md. Going online leaves location
+    // untouched; the freshness check in dispatch/availability queries is what
+    // keeps a driver ineligible until their app sends a real ping.
+    const locationReset = Number(a_status) === 0 ? { rlats: null, rlongs: null, rloc_updated_at: null } : {};
+
     const updated = await prisma.tbl_rider.update({
       where: { id: Number(rider_id) },
-      data: { a_status: Number(a_status) },
+      data: { a_status: Number(a_status), ...locationReset },
       select: { id: true, city_id: true, a_status: true, status: true },
     });
 
@@ -250,7 +257,7 @@ async function updateLocation(req, res) {
 
     const updated = await prisma.tbl_rider.update({
       where: { id: Number(rider_id) },
-      data: { rlats: String(lat), rlongs: String(lng) },
+      data: { rlats: String(lat), rlongs: String(lng), rloc_updated_at: new Date() },
       select: { id: true, city_id: true },
     });
 

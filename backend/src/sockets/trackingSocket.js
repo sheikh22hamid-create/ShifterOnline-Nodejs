@@ -42,7 +42,7 @@ function registerTrackingHandlers(io, socket) {
 
     lastDbWriteAt.set(riderId, now);
     prisma.tbl_rider
-      .update({ where: { id: riderId }, data: { rlats: String(parsedLat), rlongs: String(parsedLng) } })
+      .update({ where: { id: riderId }, data: { rlats: String(parsedLat), rlongs: String(parsedLng), rloc_updated_at: new Date() } })
       .catch((err) => logger.error(`driver:location_ping: failed persisting location for rider ${riderId}:`, err));
   });
 }

@@ -1,7 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { isInsideZone } = require("../services/geofenceService");
-const { SEARCH_RADIUS_KM } = require("../config/constants");
+const { SEARCH_RADIUS_KM, RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 
 // Node port of cust_api/available_vehicles.php - THE endpoint every current
 // order still depends on: ShifterOnline's select_vehicle.dart / home.dart
@@ -69,6 +69,7 @@ function packageMatchesCity(pkgCityId, matchedCityId) {
 }
 
 async function countNearbyOnlineDrivers(vehicleCategory, pickupLat, pickupLng, radiusKm) {
+  const freshSince = new Date(Date.now() - RIDER_LOCATION_FRESHNESS_MS);
   const rows = await prisma.$queryRaw`
     SELECT r.id AS rider_id,
       (6371 * ACOS(
@@ -84,6 +85,7 @@ async function countNearbyOnlineDrivers(vehicleCategory, pickupLat, pickupLng, r
       AND r.vehicle = ${vehicleCategory}
       AND r.rlats IS NOT NULL AND r.rlats != '' AND r.rlats != '0'
       AND r.rlongs IS NOT NULL AND r.rlongs != '' AND r.rlongs != '0'
+      AND r.rloc_updated_at IS NOT NULL AND r.rloc_updated_at >= ${freshSince}
       AND r.id NOT IN (
         SELECT rid FROM pkg_order
         WHERE order_status IN (1, 2, 3) AND rid > 0

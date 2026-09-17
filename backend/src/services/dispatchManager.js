@@ -15,6 +15,7 @@ const {
   MODEL_1_PACKAGE_ID,
   MODEL1_MISS_LIMIT,
   MODEL1_SUSPENSION_HOURS,
+  RIDER_LOCATION_FRESHNESS_MS,
 } = require("../config/constants");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
@@ -78,6 +79,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   const excludeSet = new Set(excludeRiderIds.map(Number));
   const exclude = excludeSet.size > 0 ? [...excludeSet] : [0];
   const radiusKm = Number(order.radius_range) || SEARCH_RADIUS_KM;
+  const freshSince = new Date(Date.now() - RIDER_LOCATION_FRESHNESS_MS);
 
   const rows = await prisma.$queryRaw`
     SELECT
@@ -118,6 +120,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       AND (dt.status = 1 OR dt.status IS NULL)
       AND r.rlats IS NOT NULL AND r.rlats != ''
       AND r.rlongs IS NOT NULL AND r.rlongs != ''
+      AND r.rloc_updated_at IS NOT NULL AND r.rloc_updated_at >= ${freshSince}
       AND r.id NOT IN (${Prisma.join(exclude)})
       AND r.id NOT IN (
         SELECT rid FROM pkg_order
