@@ -161,13 +161,19 @@ model payout_setting {
 }
 
 model pkg_category {
-  cat_img     String  @db.Text
-  other_image String? @db.VarChar(255)
-  id          Int     @id @default(autoincrement())
-  cat_status  Int
-  cat_name    String  @db.Text
-  city_id     Int?
-  sort_order  Int?
+  cat_img       String   @db.Text
+  other_image   String?  @db.VarChar(255)
+  id            Int      @id @default(autoincrement())
+  cat_status    Int
+  cat_name      String   @db.Text
+  city_id       Int?
+  sort_order    Int?
+  max_load_kg   Decimal? @db.Decimal(10, 2)
+  dim_length    Decimal? @db.Decimal(10, 2)
+  dim_width     Decimal? @db.Decimal(10, 2)
+  dim_height    Decimal? @db.Decimal(10, 2)
+  dim_unit      String?  @db.VarChar(4)
+  detail_image  String?  @db.Text
 }
 
 model pkg_order {
