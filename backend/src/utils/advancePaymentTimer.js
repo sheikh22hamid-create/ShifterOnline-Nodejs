@@ -22,8 +22,14 @@ function getAdvancePaymentTimerInfo(order) {
     isAdvanceRequired = true;
     const refTime = acceptTime || (order.odate ? new Date(order.odate) : null);
     if (refTime && !Number.isNaN(refTime.getTime())) {
-      const diffSec = Math.floor((Date.now() - refTime.getTime()) / 1000);
-      timePassed = diffSec >= 0 && diffSec < 86400 ? diffSec : 0;
+      let refMs = refTime.getTime();
+      // Defensive normalization: if accept_time was stored with +330 min (IST offset)
+      // into a UTC DATETIME column, refMs appears ~5.5 hours in the future.
+      if (refMs - Date.now() > 4 * 3600 * 1000) {
+        refMs -= 330 * 60 * 1000;
+      }
+      const diffSec = Math.floor((Date.now() - refMs) / 1000);
+      timePassed = Math.max(0, diffSec);
       remainingSeconds = Math.max(0, timeoutSeconds - timePassed);
     } else {
       remainingSeconds = timeoutSeconds;

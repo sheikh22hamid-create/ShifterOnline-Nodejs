@@ -489,6 +489,15 @@ async function getOrderDetails(req, res) {
       return String(raw).split(",").map((s) => s.trim()).filter(Boolean);
     };
 
+    const orderWithAdvance = { ...order, advance_payment: advancePayment };
+    const timerInfo = getAdvancePaymentTimerInfo(orderWithAdvance);
+
+    if (timerInfo.is_advance_payment_required && timerInfo.remaining_seconds === 0) {
+      tripLifecycle.cancelExpiredAdvancePayment(order.id).catch((err) => {
+        logger.error(`Error auto-cancelling expired advance order ${order.id} in orderDetails:`, err);
+      });
+    }
+
     return res.status(200).json({
       ResponseCode: "200",
       Result: "true",
@@ -511,7 +520,7 @@ async function getOrderDetails(req, res) {
           Delivery_charge: String(order.d_charge),
           advance_payment: advancePayment == null ? "0" : String(advancePayment),
           payment_status: (advancePayment == null || advancePayment === "0" || Number(advancePayment) === 0) ? 1 : (order.payment_status ?? 0),
-          advance_payment_timer: 120,
+          advance_payment_timer: timerInfo.remaining_seconds,
           is_rate: order.is_rate,
           distance: order.distance,
           extra_mile_charge: order.extra_mile_charge,
@@ -1104,6 +1113,14 @@ async function getMapInfo(req, res) {
       const [raw] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId} LIMIT 1`;
       return { ...order, advance_payment: raw?.advance_payment };
     })());
+
+    if (timerInfo.is_advance_payment_required && timerInfo.remaining_seconds === 0) {
+      tripLifecycle.cancelExpiredAdvancePayment(orderId).catch((err) => {
+        logger.error(`Error auto-cancelling expired advance order ${orderId} in mapInfo:`, err);
+      });
+      orderStep = "4";
+      restMsg = "Delivery Canceled";
+    }
 
     const durationMinutes = Math.max(10, Math.round(Number(order.distance || 0) * 3));
     const timeDuration = order.time_duration || `${durationMinutes} mins`;

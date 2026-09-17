@@ -3628,11 +3628,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     Navigator.of(dialogContext, rootNavigator: true).pop();
                   }
 
-                  // Return to the current app shell; the latest booking flow
-                  // is available from Home and the old PickUpDrop flow is no
-                  // longer an entry point.
-                  Get.offAll(() => const Bottombar());
-                  Get.to(() => const WalletPage());
+                  // Auto-cancel order on advance payment timeout
+                  pksCancleOrder(comment: "Advance payment timeout (2 minutes exceeded)");
                 }
               });
             }

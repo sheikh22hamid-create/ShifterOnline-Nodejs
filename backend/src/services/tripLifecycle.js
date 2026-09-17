@@ -124,7 +124,7 @@ async function claimOrderForRider(orderId, riderId) {
         SET rid = ${riderId},
             order_status = 1,
             o_status = 'Processing',
-            accept_time = DATE_ADD(NOW(), INTERVAL 330 MINUTE)
+            accept_time = NOW()
         WHERE id = ${orderId} AND (rid = 0 OR rid = ${riderId}) AND o_status != 'Cancelled'
       `;
       if (orderAffected === 0) {
@@ -345,7 +345,7 @@ async function updateStatus(orderId, riderId, status) {
       data: {
         order_status: 1,
         o_status: "Processing",
-        accept_time: istNow(),
+        accept_time: new Date(),
       },
     });
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 1, o_status: "Processing", rid: riderId });
@@ -736,8 +736,11 @@ async function customerCancel(uid, orderId, comment) {
   }
 
   if (orderBefore.rid !== 0) {
+    const isUnpaidAdvance = Number(orderBefore.advance_payment || 0) > 0 && Number(orderBefore.payment_status || 0) === 0;
+    const isAdvanceTimeout = comment && String(comment).toLowerCase().includes("advance");
+
     const pkg = await pricingEngine.getPackageById(orderBefore.delivery_type);
-    let cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
+    let cancellationCharge = (isUnpaidAdvance || isAdvanceTimeout) ? 0 : (Number(pkg?.cancellation_charge_customer) || 0);
 
     const customerPlan = await pricingEngine.getActiveCustomerPlan(uid);
     const hasFreeCancellation = customerPlan && customerPlan.cancellationEnabled && (
@@ -1140,6 +1143,8 @@ async function cancelExpiredAdvancePayment(orderId) {
   // accept_time old enough) — re-checked here in the same statement rather
   // than trusted from the read above, so a payment or another cancel that
   // lands between the read and this write can't be clobbered.
+  // Note: Handles both UTC accept_time (standard) and legacy +330m IST accept_time.
+  if (typeof prisma.$executeRaw !== "function") return;
   const affected = await prisma.$executeRaw`
     UPDATE pkg_order
     SET o_status = 'Cancelled', order_status = 4,
@@ -1149,7 +1154,10 @@ async function cancelExpiredAdvancePayment(orderId) {
       AND (payment_status = 0 OR payment_status IS NULL)
       AND CAST(advance_payment AS DECIMAL(10,2)) > 0
       AND accept_time IS NOT NULL
-      AND accept_time <= ${cutoff}
+      AND (
+        accept_time <= (NOW() - INTERVAL 120 SECOND)
+        OR (accept_time > NOW() AND accept_time <= (DATE_ADD(NOW(), INTERVAL 330 MINUTE) - INTERVAL 120 SECOND))
+      )
   `;
   if (affected === 0) return; // already paid, already cancelled another way, or not yet expired
 
@@ -1177,6 +1185,15 @@ async function cancelExpiredAdvancePayment(orderId) {
     o_status: "Cancelled",
   });
 
+  if (riderId) {
+    dispatchManager.emitDriverEvent(riderId, "order:customer_cancelled", {
+      order_id: String(orderId),
+      reason: "Advance payment timeout (2 minutes exceeded)",
+      order_status: 4,
+      o_status: "Cancelled",
+    });
+  }
+
   const [customer, rider] = await Promise.all([
     prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } }),
     riderId ? prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { fcm_token: true } }) : Promise.resolve(null),
@@ -1199,7 +1216,6 @@ async function cancelExpiredAdvancePayment(orderId) {
  * at accept time that a redeploy would silently drop.
  */
 async function sweepExpiredAdvancePayments() {
-  const cutoff = new Date(Date.now() - ADVANCE_PAYMENT_TIMEOUT_MS);
   let expired;
   try {
     expired = await prisma.$queryRaw`
@@ -1208,7 +1224,10 @@ async function sweepExpiredAdvancePayments() {
         AND (payment_status = 0 OR payment_status IS NULL)
         AND CAST(advance_payment AS DECIMAL(10,2)) > 0
         AND accept_time IS NOT NULL
-        AND accept_time <= ${cutoff}
+        AND (
+          accept_time <= (NOW() - INTERVAL 120 SECOND)
+          OR (accept_time > NOW() AND accept_time <= (DATE_ADD(NOW(), INTERVAL 330 MINUTE) - INTERVAL 120 SECOND))
+        )
     `;
   } catch (err) {
     logger.error("sweepExpiredAdvancePayments: failed to query expired advance-payment orders:", err);

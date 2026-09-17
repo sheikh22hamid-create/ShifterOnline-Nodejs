@@ -105,7 +105,17 @@ function formatPkgOrderForDriver(row, ctx) {
   const { stopsByOrder, benefitByOrder, planNameCache, globalComm } = ctx;
   const timerInfo = getAdvancePaymentTimerInfo(row);
   const isPaid = Number(row.payment_status || 0) === 1;
-  const isAdvRequired = isPaid ? false : timerInfo.is_advance_required;
+  let isAdvRequired = isPaid ? false : timerInfo.is_advance_required;
+
+  if (isAdvRequired && timerInfo.remaining_seconds === 0) {
+    const tripLifecycle = require("../services/tripLifecycle");
+    tripLifecycle.cancelExpiredAdvancePayment(Number(row.id)).catch((err) => {
+      logger.error(`Error auto-cancelling expired advance payment for order ${row.id}:`, err);
+    });
+    row.o_status = "Cancelled";
+    row.order_status = 4;
+    isAdvRequired = false;
+  }
 
   const fare = Number(row.total_dcharge) > 0 ? Number(row.total_dcharge) : Number(row.d_charge || 0);
 

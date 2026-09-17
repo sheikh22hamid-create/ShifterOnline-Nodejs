@@ -474,15 +474,20 @@ public class OrderDetailsActivity extends AppCompatActivity
                 } catch (Exception ignored) {}
             }
         }
-        return seconds > 0 ? seconds : 120;
+        return seconds >= 0 ? seconds : 0;
     }
 
     private void startPaymentCountDown(long totalSeconds) {
         if (paymentCountDownTimer != null) {
             paymentCountDownTimer.cancel();
         }
-        remainingPaymentSeconds = totalSeconds > 0 ? totalSeconds : 120;
+        remainingPaymentSeconds = Math.max(0, totalSeconds);
         updateTimerText(remainingPaymentSeconds);
+
+        if (remainingPaymentSeconds <= 0) {
+            pollPaymentStatusFromApi();
+            return;
+        }
 
         paymentCountDownTimer = new android.os.CountDownTimer(remainingPaymentSeconds * 1000L, 1000) {
             @Override
@@ -526,8 +531,19 @@ public class OrderDetailsActivity extends AppCompatActivity
         String msg = extractAdvancePaymentMsg(rootObj, pdOrder);
         updateWaitingMessage(msg);
 
+        long timerSecs = extractAdvancePaymentTimer(rootObj, pdOrder);
+        if (timerSecs <= 0) {
+            if (paymentCountDownTimer != null) {
+                paymentCountDownTimer.cancel();
+                paymentCountDownTimer = null;
+            }
+            remainingPaymentSeconds = 0;
+            updateTimerText(0);
+            pollPaymentStatusFromApi();
+            return;
+        }
+
         if (paymentCountDownTimer == null) {
-            long timerSecs = extractAdvancePaymentTimer(rootObj, pdOrder);
             startPaymentCountDown(timerSecs);
         }
     }

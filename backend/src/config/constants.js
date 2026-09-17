@@ -63,7 +63,7 @@ module.exports = {
   // (PICKUP_TIMEOUT_SWEEP_INTERVAL_MS's 60s would let a driver wait up to a
   // full extra minute past an already-short window).
   ADVANCE_PAYMENT_TIMEOUT_MS: 2 * 60 * 1000,
-  ADVANCE_PAYMENT_SWEEP_INTERVAL_MS: 30 * 1000,
+  ADVANCE_PAYMENT_SWEEP_INTERVAL_MS: 5 * 1000,
 
   // Scheduled (booking_type=2) "later today" orders — see
   // tripLifecycle.dispatchDueScheduledOrders / sendScheduledOrderReminders,
