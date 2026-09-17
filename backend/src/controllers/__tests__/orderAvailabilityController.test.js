@@ -161,4 +161,22 @@ describe("orderAvailabilityController.availableVehicles vehicle detail specs/not
 
     expect(res.json.mock.calls[0][0].vehicle_detail_notes).toEqual([]);
   });
+
+  it("omits max_dimensions when dim_unit is missing, even if all three dims are set", async () => {
+    stubCommonLookups();
+    prisma.pkg_category.findMany.mockResolvedValue([{
+      id: 1, cat_name: "Bike", cat_img: null,
+      max_load_kg: 20, dim_length: 1.5, dim_width: 1, dim_height: 1, dim_unit: null,
+      detail_image: null,
+    }]);
+    prisma.$queryRaw.mockResolvedValueOnce([{ rider_id: 1, distance_km: 1.2 }]);
+
+    const req = { body: { pickup_lat: 22.7, pickup_lng: 75.8, radius_km: 4, booking_type: "now" } };
+    const res = makeRes();
+    await availableVehicles(req, res);
+
+    const category = res.json.mock.calls[0][0].categories[0];
+    expect(category.max_load_kg).toBe(20);
+    expect(category.max_dimensions).toBeNull();
+  });
 });

@@ -42,9 +42,10 @@ function formatVehicleSpecs(category) {
   const { dim_length, dim_width, dim_height, dim_unit } = category;
   const hasAllDims = dim_length !== null && dim_length !== undefined
     && dim_width !== null && dim_width !== undefined
-    && dim_height !== null && dim_height !== undefined;
+    && dim_height !== null && dim_height !== undefined
+    && dim_unit;
   const maxDimensions = hasAllDims
-    ? `${Number(dim_length)} x ${Number(dim_width)} x ${Number(dim_height)} ${dim_unit || "ft"}`
+    ? `${Number(dim_length)} x ${Number(dim_width)} x ${Number(dim_height)} ${dim_unit}`
     : null;
   return { max_weight_kg: maxLoadKg, max_dimensions: maxDimensions, detail_image: category.detail_image || null };
 }

@@ -58,4 +58,48 @@ describe("masterDataController category detail specs", () => {
     expect(data).not.toHaveProperty("dim_length");
     expect(data).not.toHaveProperty("detail_image");
   });
+
+  it("createCategory persists explicit null for numeric fields as null, not 0", async () => {
+    prisma.pkg_category.create.mockResolvedValue({ id: 1 });
+    const req = {
+      body: {
+        cat_name: "Bike", cat_img: "images/category/bike.png",
+        max_load_kg: null, dim_length: null, dim_width: null, dim_height: null,
+        dim_unit: null, detail_image: null,
+      },
+    };
+
+    await createCategory(req, makeRes());
+
+    const data = prisma.pkg_category.create.mock.calls[0][0].data;
+    expect(data.max_load_kg).toBe(null);
+    expect(data.max_load_kg).not.toBe(0);
+    expect(data.dim_length).toBe(null);
+    expect(data.dim_length).not.toBe(0);
+    expect(data.dim_width).toBe(null);
+    expect(data.dim_width).not.toBe(0);
+    expect(data.dim_height).toBe(null);
+    expect(data.dim_height).not.toBe(0);
+  });
+
+  it("updateCategory persists explicit null for numeric fields as null, not 0", async () => {
+    prisma.pkg_category.findUnique.mockResolvedValue({ id: 1, cat_name: "Bike" });
+    prisma.pkg_category.update.mockResolvedValue({ id: 1 });
+    const req = {
+      params: { id: "1" },
+      body: { max_load_kg: null, dim_length: null, dim_width: null, dim_height: null },
+    };
+
+    await updateCategory(req, makeRes());
+
+    const data = prisma.pkg_category.update.mock.calls[0][0].data;
+    expect(data.max_load_kg).toBe(null);
+    expect(data.max_load_kg).not.toBe(0);
+    expect(data.dim_length).toBe(null);
+    expect(data.dim_length).not.toBe(0);
+    expect(data.dim_width).toBe(null);
+    expect(data.dim_width).not.toBe(0);
+    expect(data.dim_height).toBe(null);
+    expect(data.dim_height).not.toBe(0);
+  });
 });

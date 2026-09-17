@@ -178,10 +178,10 @@ async function createCategory(req, res) {
         cat_status: cat_status === undefined ? 1 : Number(cat_status),
         city_id: city_id ? parseInt(city_id, 10) : null,
         sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : 0,
-        max_load_kg: max_load_kg !== undefined && max_load_kg !== "" ? Number(max_load_kg) : null,
-        dim_length: dim_length !== undefined && dim_length !== "" ? Number(dim_length) : null,
-        dim_width: dim_width !== undefined && dim_width !== "" ? Number(dim_width) : null,
-        dim_height: dim_height !== undefined && dim_height !== "" ? Number(dim_height) : null,
+        max_load_kg: (max_load_kg === undefined || max_load_kg === null || max_load_kg === "") ? null : Number(max_load_kg),
+        dim_length: (dim_length === undefined || dim_length === null || dim_length === "") ? null : Number(dim_length),
+        dim_width: (dim_width === undefined || dim_width === null || dim_width === "") ? null : Number(dim_width),
+        dim_height: (dim_height === undefined || dim_height === null || dim_height === "") ? null : Number(dim_height),
         dim_unit: dim_unit || null,
         detail_image: detail_image || null,
       },
@@ -210,10 +210,10 @@ async function updateCategory(req, res) {
     if (cat_status !== undefined) data.cat_status = Number(cat_status);
     if (city_id !== undefined) data.city_id = city_id ? parseInt(city_id, 10) : null;
     if (sort_order !== undefined) data.sort_order = parseInt(sort_order, 10);
-    if (max_load_kg !== undefined) data.max_load_kg = max_load_kg === "" ? null : Number(max_load_kg);
-    if (dim_length !== undefined) data.dim_length = dim_length === "" ? null : Number(dim_length);
-    if (dim_width !== undefined) data.dim_width = dim_width === "" ? null : Number(dim_width);
-    if (dim_height !== undefined) data.dim_height = dim_height === "" ? null : Number(dim_height);
+    if (max_load_kg !== undefined) data.max_load_kg = (max_load_kg === null || max_load_kg === "") ? null : Number(max_load_kg);
+    if (dim_length !== undefined) data.dim_length = (dim_length === null || dim_length === "") ? null : Number(dim_length);
+    if (dim_width !== undefined) data.dim_width = (dim_width === null || dim_width === "") ? null : Number(dim_width);
+    if (dim_height !== undefined) data.dim_height = (dim_height === null || dim_height === "") ? null : Number(dim_height);
     if (dim_unit !== undefined) data.dim_unit = dim_unit || null;
     if (detail_image !== undefined) data.detail_image = detail_image || null;
 
