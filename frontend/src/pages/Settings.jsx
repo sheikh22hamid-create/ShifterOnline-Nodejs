@@ -361,7 +361,39 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
-        {Object.keys(flags).filter((k) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id'].includes(k)).length > 0 && (
+        <section className="surface-card rounded-xl p-4">
+          <div className="mb-3">
+            <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+              Vehicle Detail Notes
+            </h3>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+              One note per line. Shown as a numbered list on every vehicle category's Details screen in the customer app —
+              this text is the same for every vehicle, only its dimensions/max load (set per category above) differ.
+            </p>
+          </div>
+          <Textarea
+            id="flag-vehicle_detail_notes"
+            rows={5}
+            placeholder={"Fare doesn't include labour charges for loading & unloading.\nThe amount shown to you right now is an estimate. The actual amount will be shown based on waiting time or location changes.\nParking charges to be paid by customer.\nFare doesn't include toll and permit charges."}
+            value={flags.vehicle_detail_notes ?? ''}
+            onChange={(e) => setFlags((f) => ({ ...f, vehicle_detail_notes: e.target.value }))}
+          />
+          <div className="mt-4 flex items-center justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+              Multi-line — use the button, Enter won't save this field.
+            </span>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Save size={14} /> {saving ? 'Saving…' : 'Save Notes'}
+            </button>
+          </div>
+        </section>
+
+        {Object.keys(flags).filter((k) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes'].includes(k)).length > 0 && (
           <section className="surface-card rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
@@ -378,7 +410,7 @@ function SettingsForm({ data, onSaved }) {
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Object.entries(flags)
-                .filter(([key]) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id'].includes(key))
+                .filter(([key]) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes'].includes(key))
                 .map(([key, value]) => (
                   <div key={key}>
                     <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
