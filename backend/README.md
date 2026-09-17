@@ -2,7 +2,7 @@
 
 Node.js + Express + Prisma (MySQL) API.
 
-Deployed on a Hostinger VPS via CloudPanel; pushes to `backend/**` on `main` auto-deploy through `.github/workflows/deploy-backend.yml`.
+Deployed on a Hostinger VPS via CloudPanel. Deploy manually by SSHing in and running `deploy.sh` (`~/deploy.sh` for the `shifter`/`shifterdev` site users), which does `git pull` + `npm ci` + `prisma generate` + a PM2 restart in place.
 
 ## Setup
 
