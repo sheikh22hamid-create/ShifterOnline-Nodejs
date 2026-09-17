@@ -29,7 +29,7 @@ public class NodeSocketManager {
 
     // Same backend the customer app points at — see
     // backend/API_INTEGRATION_GUIDE.md.
-    private static final String BASE_URL = "http://201.18.193.211:5002";
+    private static final String BASE_URL = "https://dev-api.shifteronline.com";
 
     private static NodeSocketManager instance;
 
