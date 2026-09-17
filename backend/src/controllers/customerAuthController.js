@@ -125,6 +125,7 @@ async function login(req, res) {
       Object.keys(data).length ? prisma.tbl_user.update({ where: { id: user.id }, data }) : Promise.resolve(),
       deviceSessionService.registerDevice({
         uid: user.id,
+        userType: "customer",
         deviceId,
         fcmToken,
         platform: req.body?.platform,

@@ -936,8 +936,15 @@ model tbl_user {
 }
 
 model tbl_user_device {
-  id            Int       @id @default(autoincrement())
+  id            Int                     @id @default(autoincrement())
   uid           Int
+  // Distinguishes which entity `uid` refers to (tbl_user.id vs tbl_rider.id)
+  // - these are independent autoincrement sequences, so the same numeric id
+  // can belong to a customer AND a rider at once. Without this, registering
+  // a device for one force-logged-out the other's sessions whenever their
+  // ids happened to collide. Every read/write here must filter by this
+  // field, not uid alone.
+  user_type     tbl_user_device_user_type @default(customer)
   device_id     String
   fcm_token     String?   @db.Text
   platform      String?   @db.VarChar(20)
@@ -950,7 +957,12 @@ model tbl_user_device {
   logged_out_at DateTime? @db.DateTime(0)
   created_at    DateTime  @db.DateTime(0)
 
-  @@index([uid, is_active], map: "idx_uid_active")
+  @@index([uid, user_type, is_active], map: "idx_uid_type_active")
+}
+
+enum tbl_user_device_user_type {
+  customer
+  rider
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

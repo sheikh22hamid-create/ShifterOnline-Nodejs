@@ -7,8 +7,14 @@ const { sendPushNotification } = require("../config/firebase");
 // OTHER active device for the same account (single-device-login), and push
 // a force-logout notification to whatever FCM tokens those old devices had
 // so their app sessions drop immediately instead of silently going stale.
-async function registerDevice({ uid, deviceId, fcmToken, platform, deviceName, appVersion }) {
-  if (!uid || !deviceId) return [];
+//
+// userType ("customer" or "rider") scopes every lookup/write below - tbl_user.id
+// and tbl_rider.id are independent autoincrement sequences, so the same
+// numeric uid can belong to a customer AND a rider at once. Without this
+// scope, registering one force-logged-out the other whenever their ids
+// happened to collide (see memory/... or PR that added user_type).
+async function registerDevice({ uid, deviceId, fcmToken, platform, deviceName, appVersion, userType }) {
+  if (!uid || !deviceId || !userType) return [];
 
   try {
     // The "other devices" lookup/deactivate and "this device" lookup/upsert
@@ -18,16 +24,16 @@ async function registerDevice({ uid, deviceId, fcmToken, platform, deviceName, a
     // comment on the same issue).
     const [oldDevices, existing] = await Promise.all([
       prisma.tbl_user_device.findMany({
-        where: { uid, device_id: { not: deviceId }, is_active: true },
+        where: { uid, user_type: userType, device_id: { not: deviceId }, is_active: true },
         select: { fcm_token: true },
       }),
-      prisma.tbl_user_device.findFirst({ where: { uid, device_id: deviceId } }),
+      prisma.tbl_user_device.findFirst({ where: { uid, user_type: userType, device_id: deviceId } }),
     ]);
     const oldTokens = oldDevices.map((d) => d.fcm_token).filter(Boolean);
 
     await Promise.all([
       prisma.tbl_user_device.updateMany({
-        where: { uid, device_id: { not: deviceId }, is_active: true },
+        where: { uid, user_type: userType, device_id: { not: deviceId }, is_active: true },
         data: { is_active: false, logged_out_at: new Date() },
       }),
       existing
@@ -47,6 +53,7 @@ async function registerDevice({ uid, deviceId, fcmToken, platform, deviceName, a
         : prisma.tbl_user_device.create({
             data: {
               uid,
+              user_type: userType,
               device_id: deviceId,
               fcm_token: fcmToken || null,
               platform: platform || null,

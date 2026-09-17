@@ -217,7 +217,7 @@ async function remove(req, res) {
     }
 
     await prisma.$transaction([
-      prisma.tbl_user_device.deleteMany({ where: { uid: id } }),
+      prisma.tbl_user_device.deleteMany({ where: { uid: id, user_type: "customer" } }),
       prisma.tbl_fav_driver.deleteMany({ where: { uid: id } }),
       prisma.tbl_favorite_driver.deleteMany({ where: { user_id: id } }),
       prisma.tbl_address.deleteMany({ where: { uid: id } }),

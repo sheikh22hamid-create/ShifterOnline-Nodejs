@@ -98,6 +98,7 @@ async function verifyOtp(req, res) {
       }
       await deviceSessionService.registerDevice({
         uid: driver.id,
+        userType: "rider",
         deviceId,
         fcmToken,
         platform: req.body?.platform,
@@ -173,6 +174,7 @@ async function login(req, res) {
     if (deviceId) {
       await deviceSessionService.registerDevice({
         uid: rider.id,
+        userType: "rider",
         deviceId,
         fcmToken,
         platform: req.body?.platform,
