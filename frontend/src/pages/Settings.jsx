@@ -197,6 +197,120 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
+        {/* ── Driver Verification Payment ── */}
+        <section className="surface-card rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                Driver Verification Payment
+              </h3>
+              <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                One-time eKYC verification fee charged to drivers during registration. Set to 0 to make it free.
+              </p>
+            </div>
+            {Number(flags.auto_verification ?? 0) === 1 ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
+                ● Auto KYC Enabled
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium" style={{ background: 'var(--surface-muted)', color: 'var(--ink-faint)' }}>
+                ○ Auto KYC Disabled
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              {/* Toggle */}
+              <Toggle
+                label="Enable Automatic eKYC Verification"
+                checked={Number(flags.auto_verification ?? 0) === 1}
+                onChange={(v) => setFlags((f) => ({ ...f, auto_verification: v ? '1' : '0' }))}
+              />
+
+              {/* Charge */}
+              <div>
+                <Label htmlFor="flag-auto_verification_charge">Verification Charge (₹)</Label>
+                <Input
+                  id="flag-auto_verification_charge"
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 99  (set 0 for free)"
+                  value={flags.auto_verification_charge ?? '0'}
+                  onChange={(e) => setFlags((f) => ({ ...f, auto_verification_charge: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Amount driver pays via Razorpay. Set to <strong>0</strong> to skip payment screen entirely.
+                </p>
+              </div>
+
+              {/* Old / strikethrough price */}
+              <div>
+                <Label htmlFor="flag-auto_verification_charge_old">Original Price — Strikethrough (₹)</Label>
+                <Input
+                  id="flag-auto_verification_charge_old"
+                  type="number"
+                  min="0"
+                  placeholder="e.g. 199  (set 0 to hide)"
+                  value={flags.auto_verification_charge_old ?? '0'}
+                  onChange={(e) => setFlags((f) => ({ ...f, auto_verification_charge_old: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Shown with a strikethrough above the actual charge (like a discount display). Leave 0 to hide.
+                </p>
+              </div>
+
+              {/* Message */}
+              <div>
+                <Label htmlFor="flag-auto_verification_msg">Payment Screen Message (optional)</Label>
+                <Input
+                  id="flag-auto_verification_msg"
+                  placeholder="e.g. Limited time offer — get verified at just ₹99!"
+                  value={flags.auto_verification_msg ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, auto_verification_msg: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Optional promo text shown below the price on the driver's payment screen. Leave blank to hide.
+                </p>
+              </div>
+            </div>
+
+            {/* Live preview */}
+            <div className="flex flex-col justify-center rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <div className="text-[11.5px] font-medium mb-3" style={{ color: 'var(--ink-muted)' }}>Live Preview — Driver Payment Screen</div>
+              <div className="rounded-xl border p-4 space-y-2 text-center" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>
+                <div className="text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>Complete Verification Payment</div>
+                {Number(flags.auto_verification_charge_old ?? 0) > 0 && (
+                  <div className="text-[13px] line-through" style={{ color: 'var(--ink-faint)' }}>₹{flags.auto_verification_charge_old}</div>
+                )}
+                <div className="text-[28px] font-bold" style={{ color: 'var(--success)' }}>
+                  ₹{flags.auto_verification_charge ?? '0'}
+                </div>
+                {flags.auto_verification_msg?.trim() && (
+                  <div className="text-[11px] italic" style={{ color: 'var(--brand)' }}>{flags.auto_verification_msg}</div>
+                )}
+                <div className="mt-2 rounded-lg px-3 py-2 text-[12px] font-semibold" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>
+                  {Number(flags.auto_verification_charge ?? 0) === 0 ? 'Proceed (Free)' : `Pay ₹${flags.auto_verification_charge} via Razorpay`}
+                </div>
+              </div>
+              {Number(flags.auto_verification_charge ?? 0) === 0 && (
+                <p className="mt-2 text-[11px] text-center" style={{ color: 'var(--success)' }}>✓ Payment screen will be skipped — driver goes directly to Home.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Save size={14} /> {saving ? 'Saving…' : 'Save Verification Settings'}
+            </button>
+          </div>
+        </section>
+
         <section className="surface-card rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -393,7 +507,7 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
-        {Object.keys(flags).filter((k) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes'].includes(k)).length > 0 && (
+        {Object.keys(flags).filter((k) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes', 'auto_verification', 'auto_verification_charge', 'auto_verification_charge_old', 'auto_verification_msg', 'manual_registration'].includes(k)).length > 0 && (
           <section className="surface-card rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
@@ -410,7 +524,7 @@ function SettingsForm({ data, onSaved }) {
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Object.entries(flags)
-                .filter(([key]) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes'].includes(key))
+                .filter(([key]) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes', 'auto_verification', 'auto_verification_charge', 'auto_verification_charge_old', 'auto_verification_msg', 'manual_registration'].includes(key))
                 .map(([key, value]) => (
                   <div key={key}>
                     <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>

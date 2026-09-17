@@ -123,14 +123,11 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         // Debug binding
 
         riderData = sessionManager.getUserDetails();
-        binding.txtTitle.setText(getString(R.string.welcome) + " " + riderData.getFullName()+ " " + riderData.getVehicle());
-
-        // Node order/dispatch backend — connects (or re-confirms) this
-        // driver's socket every time Home loads, covering both a fresh
-        // login and an app relaunch while already logged in. Safe to call
-        // repeatedly with the same rider_id (see NodeSocketManager).
         if (riderData != null) {
+            binding.txtTitle.setText(getString(R.string.welcome) + " " + riderData.getFullName() + " " + riderData.getVehicle());
             NodeSocketManager.getInstance().connectDriver(riderData.getId());
+        } else {
+            binding.txtTitle.setText(getString(R.string.welcome));
         }
 
         // Initialize AudioManager for volume control
