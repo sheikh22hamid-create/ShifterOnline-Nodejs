@@ -70,12 +70,14 @@ function isNightNow(pkg, now = new Date()) {
  * chargeable_radius * rate), but fed a real per-driver distance instead of
  * PHP's own search-radius value. */
 function calculateRadiusCharge(pkg, radiusRangeKm) {
-  const perKmCharge = Number(pkg.per_km_charge) || 0;
-  const hasExplicitPickupRate = pkg?.pickup_per_km_charge !== null &&
-                                pkg?.pickup_per_km_charge !== undefined &&
-                                pkg?.pickup_per_km_charge !== "" &&
-                                !isNaN(Number(pkg?.pickup_per_km_charge));
-  const pickupPerKm = hasExplicitPickupRate ? Number(pkg.pickup_per_km_charge) : perKmCharge;
+  const perKmCharge = Number(pkg?.per_km_charge) || 0;
+  const rawPickup = pkg?.pickup_per_km_charge;
+  const hasExplicitPickupRate = rawPickup !== null &&
+                                rawPickup !== undefined &&
+                                rawPickup !== "" &&
+                                !isNaN(Number(rawPickup)) &&
+                                Number(rawPickup) > 0;
+  const pickupPerKm = hasExplicitPickupRate ? Number(rawPickup) : (perKmCharge > 0 ? perKmCharge : 4);
   const chargeableRadius = Math.max(0, (Number(radiusRangeKm) || 0) - 1);
   return chargeableRadius * pickupPerKm;
 }
@@ -665,6 +667,7 @@ module.exports = {
   applyPlanDiscount,
   getPackagesForCategory,
   getPackageById,
+  calculateRadiusCharge,
   priceForPackage,
   priceForPackageId,
   getFareEstimate,

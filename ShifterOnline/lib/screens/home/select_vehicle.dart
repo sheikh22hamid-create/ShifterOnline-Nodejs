@@ -85,6 +85,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   @override
   void initState() {
     super.initState();
+    final savedRadius = int.tryParse(_storage.read('default_search_radius')?.toString() ?? '');
+    if (savedRadius != null && savedRadius > 0) {
+      _selectedRadiusKm = savedRadius;
+    }
     _currentBookingType = widget.bookingType;
     _pickupData = Map<String, dynamic>.from(widget.pickup);
     _dropData = Map<String, dynamic>.from(widget.drop);
@@ -361,9 +365,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       }
       final refreshed = _buildVehicleOptions(_mapList(vehicles), payload);
       if (!mounted) return;
-      final retainedIndex = previousVehicleKey == null
-          ? -1
-          : refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey && _isAvailable(option['availability']));
+      int retainedIndex = -1;
+      if (previousVehicleKey != null) {
+        retainedIndex = refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey && _isAvailable(option['availability']));
+        if (retainedIndex < 0) {
+          retainedIndex = refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey);
+        }
+      }
+      if (retainedIndex < 0 && _selectedIndex < 0 && refreshed.isNotEmpty) {
+        final firstAvailable = refreshed.indexWhere((option) => _isAvailable(option['availability']));
+        retainedIndex = firstAvailable >= 0 ? firstAvailable : 0;
+      }
       final rawSuggestion = decoded['radius_suggestion'];
       final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
           ? Map<String, dynamic>.from(rawSuggestion)
@@ -1504,7 +1516,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Widget _vehicleCard(int index, Map<String, dynamic> option) {
     final available = _isAvailable(option['availability']);
-    final selected = available && index == _selectedIndex;
+    final selected = index == _selectedIndex;
     final image = _image(option);
     return Opacity(
       opacity: available ? 1 : 0.45,

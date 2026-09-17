@@ -514,7 +514,7 @@ Future singUpApi(
           initPlatformState();
           var sendTags = {'userid': '${value["UserLogin"]["id"]}'};
           OneSignal.User.addTags(sendTags);
-          authService.singUpAndStore(name: getdata.read("UserLogin")["name"], uid: getdata.read("UserLogin")["id"], proPicPath: getdata.read("UserLogin")["r_img"] ?? "");
+          authService.singUpAndStore(name: getdata.read("UserLogin")["name"], uid: getdata.read("UserLogin")["id"].toString(), proPicPath: getdata.read("UserLogin")["r_img"] ?? "");
           successfullBottomSheets(
             context,
             tital: "Registered Successfully".tr,

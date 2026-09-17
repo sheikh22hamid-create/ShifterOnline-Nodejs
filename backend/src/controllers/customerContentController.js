@@ -378,6 +378,16 @@ async function homeData(req, res) {
       }
     }
 
+    const stopSetting = await prisma.app_settings.findUnique({ where: { setting_key: "max_extra_stops" } });
+    const maxExtraStops = stopSetting && Number(stopSetting.setting_value) >= 0
+      ? Math.floor(Number(stopSetting.setting_value))
+      : 2;
+
+    const radiusSetting = await prisma.app_settings.findUnique({ where: { setting_key: "default_search_radius" } });
+    const defaultSearchRadius = radiusSetting && Number(radiusSetting.setting_value) > 0
+      ? Math.floor(Number(radiusSetting.setting_value))
+      : 4;
+
     const resultData = {
       PriceData: mainData,
       Package_Category: categories,
@@ -390,6 +400,8 @@ async function homeData(req, res) {
       has_plan_discount: hasPlanDiscount,
       plan_discount_percent: planDiscountPercent,
       plan_name: planName,
+      max_extra_stops: maxExtraStops,
+      default_search_radius: defaultSearchRadius,
       isHowUse: 1,
     };
 

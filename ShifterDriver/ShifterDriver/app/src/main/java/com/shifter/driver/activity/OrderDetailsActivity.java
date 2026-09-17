@@ -2,6 +2,8 @@ package com.shifter.driver.activity;
 
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -11,6 +13,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.Gravity;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -25,6 +28,7 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
@@ -1391,8 +1395,17 @@ public class OrderDetailsActivity extends AppCompatActivity
 
         LatLng pickupLoc = new LatLng(orderItem.getPlat(), orderItem.getPlong());
         LatLng dropLoc = new LatLng(orderItem.getDlat(), orderItem.getDlong());
+        boolean isPostPickup = "2".equals(orderItem.getOrderFlowId())
+                || "3".equals(orderItem.getOrderFlowId())
+                || "4".equals(orderItem.getOrderFlowId());
+
         List<LatLng> routePoints = new ArrayList<>();
-        routePoints.add(pickupLoc);
+        if (driverLat != 0.0 && driverLng != 0.0) {
+            routePoints.add(new LatLng(driverLat, driverLng));
+        }
+        if (!isPostPickup && pickupLoc.latitude != 0.0 && pickupLoc.longitude != 0.0) {
+            routePoints.add(pickupLoc);
+        }
 
         // Stops are part of the order route. Keep their sequence from the API
         // and include them in both the map markers and Directions waypoints.
@@ -1408,11 +1421,8 @@ public class OrderDetailsActivity extends AppCompatActivity
                 // Ignore malformed stop coordinates and keep the base route usable.
             }
         }
-        routePoints.add(dropLoc);
-        // The driver should see the full approach route as well: current GPS
-        // position -> pickup -> customer stops -> final drop.
-        if (driverLat != 0.0 && driverLng != 0.0) {
-            routePoints.add(0, new LatLng(driverLat, driverLng));
+        if (dropLoc.latitude != 0.0 && dropLoc.longitude != 0.0) {
+            routePoints.add(dropLoc);
         }
 
         switch (orderItem.getOrderFlowId()) {
@@ -1467,25 +1477,27 @@ public class OrderDetailsActivity extends AppCompatActivity
                 break;
         }
 
-        // 1. Always add Pickup Marker (Green)
+        // 1. Always add Pickup Marker (Green with Box icon and PICKUP label)
         if (pickupLoc.latitude != 0.0 && pickupLoc.longitude != 0.0) {
             MarkerOptions p1 = new MarkerOptions()
                     .position(pickupLoc)
                     .title("Pickup: " + (orderItem.getPickName() != null ? orderItem.getPickName() : "Pickup Location"))
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+                    .icon(createCustomMarker("PICKUP", Color.parseColor("#16A34A"), R.drawable.ic_box_package))
+                    .anchor(0.5f, 1.0f);
             mMap.addMarker(p1);
         }
 
-        // 2. Always add Drop Marker (Red)
+        // 2. Always add Drop Marker (Red with Pin icon and DROP label)
         if (dropLoc.latitude != 0.0 && dropLoc.longitude != 0.0) {
             MarkerOptions p2 = new MarkerOptions()
                     .position(dropLoc)
                     .title("Drop: " + (orderItem.getDropType() != null ? orderItem.getDropType() : "Drop Location"))
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+                    .icon(createCustomMarker("DROP", Color.parseColor("#DC2626"), R.drawable.baseline_location_pin_24))
+                    .anchor(0.5f, 1.0f);
             mMap.addMarker(p2);
         }
 
-        // Show every customer-added stop between pickup and final drop.
+        // Show every customer-added stop between pickup and final drop with STOP labels.
         int stopNumber = 0;
         for (com.shifter.driver.model.OrderStop stop : stops) {
             try {
@@ -1496,23 +1508,22 @@ public class OrderDetailsActivity extends AppCompatActivity
                 MarkerOptions stopMarker = new MarkerOptions()
                         .position(new LatLng(lat, lng))
                         .title("Stop " + stopNumber + ": " + stop.displayAddress())
-                        .icon(BitmapDescriptorFactory.defaultMarker(
-                                stopNumber % 2 == 1
-                                        ? BitmapDescriptorFactory.HUE_ORANGE
-                                        : BitmapDescriptorFactory.HUE_AZURE));
+                        .icon(createCustomMarker("STOP " + stopNumber, Color.parseColor("#EA580C"), R.drawable.baseline_location_pin_24))
+                        .anchor(0.5f, 1.0f);
                 mMap.addMarker(stopMarker);
             } catch (Exception ignored) {
                 // Marker is optional; the pickup/drop route should still render.
             }
         }
 
-        // 3. Add Driver Live Location Marker (Blue) if available
+        // 3. Add Driver Live Location Marker (Blue with Scooter icon and YOU label) if available
         if (driverLat != 0.0 && driverLng != 0.0) {
             LatLng driverLoc = new LatLng(driverLat, driverLng);
             MarkerOptions driverMarker = new MarkerOptions()
                     .position(driverLoc)
                     .title("Current Location")
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
+                    .icon(createCustomMarker("YOU", Color.parseColor("#2563EB"), R.drawable.ic_scooter))
+                    .anchor(0.5f, 1.0f);
             mMap.addMarker(driverMarker);
         }
 
@@ -1555,6 +1566,50 @@ public class OrderDetailsActivity extends AppCompatActivity
         }
     }
 
+    private BitmapDescriptor createCustomMarker(String label, int bgColor, int iconRes) {
+        try {
+            View view = getLayoutInflater().inflate(R.layout.custom_map_marker, null);
+            TextView txt = view.findViewById(R.id.txt_marker_label);
+            ImageView img = view.findViewById(R.id.img_marker_icon);
+            View pill = view.findViewById(R.id.marker_pill);
+            ImageView arrow = view.findViewById(R.id.marker_arrow);
+
+            txt.setText(label);
+            if (iconRes != 0) {
+                img.setImageResource(iconRes);
+                img.setVisibility(View.VISIBLE);
+            } else {
+                img.setVisibility(View.GONE);
+            }
+
+            GradientDrawable pillBg = new GradientDrawable();
+            pillBg.setShape(GradientDrawable.RECTANGLE);
+            pillBg.setCornerRadius(dpToPx(14));
+            pillBg.setColor(bgColor);
+            pillBg.setStroke(dpToPx(1.5f), Color.WHITE);
+            pill.setBackground(pillBg);
+
+            arrow.setColorFilter(bgColor);
+
+            view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+            view.layout(0, 0, view.getMeasuredWidth(), view.getMeasuredHeight());
+
+            Bitmap bitmap = Bitmap.createBitmap(view.getMeasuredWidth(), view.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            view.draw(canvas);
+
+            return BitmapDescriptorFactory.fromBitmap(bitmap);
+        } catch (Exception e) {
+            Log.e("OrderDetailsActivity", "Error creating custom marker: " + e.getMessage());
+            return BitmapDescriptorFactory.defaultMarker();
+        }
+    }
+
+    private int dpToPx(float dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
     private String getUrl(LatLng o, LatLng d, String mode) {
         return "https://maps.googleapis.com/maps/api/directions/json?"
                 + "origin=" + o.latitude + "," + o.longitude
@@ -1582,10 +1637,16 @@ public class OrderDetailsActivity extends AppCompatActivity
     }
 
     private boolean hasDifferentRoutePoints(List<LatLng> points) {
+        if (points == null || points.size() < 2) return false;
         LatLng first = points.get(0);
-        LatLng last = points.get(points.size() - 1);
-        return Math.abs(first.latitude - last.latitude) > 0.0001
-                || Math.abs(first.longitude - last.longitude) > 0.0001;
+        for (int i = 1; i < points.size(); i++) {
+            LatLng p = points.get(i);
+            if (Math.abs(first.latitude - p.latitude) > 0.00001
+                    || Math.abs(first.longitude - p.longitude) > 0.00001) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ------------------------------------------------ API

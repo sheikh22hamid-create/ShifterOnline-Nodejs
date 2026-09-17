@@ -79,7 +79,7 @@ class _HomeState extends State<Home> {
   Map<String, dynamic>? _confirmedDropData;
   final List<Map<String, dynamic>> _extraStops = [];
   int _selectedBookingType = 1; // 1 = now, 3 = next day
-  int _maxExtraStops = 2;
+  int _maxExtraStops = int.tryParse(getdata.read("max_extra_stops")?.toString() ?? "2") ?? 2;
   bool _isLoadingVehicleAvailability = false;
   // Kept as a guarded compatibility block while older task-entry behavior is retired.
   final bool _showLegacyVehicleSection = false;
@@ -1612,7 +1612,7 @@ class _HomeState extends State<Home> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'You can add up to 2 stops',
+                          'You can add up to $_maxExtraStops ${_maxExtraStops == 1 ? 'stop' : 'stops'}',
                           style: TextStyle(
                             color: greaycolor,
                             fontSize: 12,
@@ -3347,6 +3347,23 @@ class _HomeState extends State<Home> {
                 val["ResultData"]["referral_code"]?.toString() ?? "");
             save("referral_msg",
                 val["ResultData"]["referral_msg"]?.toString() ?? "");
+
+            // Sync max extra stops from admin settings
+            if (val["ResultData"]["max_extra_stops"] != null) {
+              final parsedMax = int.tryParse(val["ResultData"]["max_extra_stops"].toString());
+              if (parsedMax != null && parsedMax >= 0) {
+                _maxExtraStops = parsedMax;
+                save("max_extra_stops", parsedMax.toString());
+              }
+            }
+
+            // Sync default search radius from admin settings
+            if (val["ResultData"]["default_search_radius"] != null) {
+              final parsedRadius = int.tryParse(val["ResultData"]["default_search_radius"].toString());
+              if (parsedRadius != null && parsedRadius > 0) {
+                save("default_search_radius", parsedRadius.toString());
+              }
+            }
           }
 
           pickupiteam = (val["ResultData"] != null &&

@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { isInsideZone } = require("../services/geofenceService");
+const { calculateRadiusCharge } = require("../services/pricingEngine");
 const { SEARCH_RADIUS_KM, RIDER_LOCATION_FRESHNESS_MS, RADIUS_SUGGESTION_MAX_KM } = require("../config/constants");
 
 // Node port of cust_api/available_vehicles.php - THE endpoint every current
@@ -244,8 +245,10 @@ async function availableVehicles(req, res) {
       const appliedNightCharge = isNight ? nightChargePercent : 0;
 
       const minCharge = Number(pkg.min_charge);
+      const radiusCharge = calculateRadiusCharge(pkg, radiusKm);
       const servicePercent = Number(pkg.service_charge_percent || 0);
-      let startingFare = minCharge + (minCharge * servicePercent) / 100 + appliedNightCharge;
+      const subtotal = minCharge + radiusCharge;
+      let startingFare = subtotal + (subtotal * servicePercent) / 100 + appliedNightCharge;
       if (hasPlanDiscount) startingFare *= (100 - planDiscountPercent) / 100;
       startingFare = Math.round(startingFare);
 
