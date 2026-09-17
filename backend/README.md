@@ -2,6 +2,8 @@
 
 Node.js + Express + Prisma (MySQL) API.
 
+Deployed on a Hostinger VPS via CloudPanel; pushes to `backend/**` on `main` auto-deploy through `.github/workflows/deploy-backend.yml`.
+
 ## Setup
 
 1. Create a MySQL database and update `DATABASE_URL` in `.env`.
