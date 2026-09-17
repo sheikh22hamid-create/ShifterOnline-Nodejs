@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const PROD_API_BASE = 'https://shifteronline-nodejs-dev.onrender.com/api/v1/admin'
+const PROD_API_BASE = 'https://dev-api.shifteronline.com/api/v1/admin'
 
 function getBaseUrl() {
   if (import.meta.env.VITE_API_BASE_URL) {

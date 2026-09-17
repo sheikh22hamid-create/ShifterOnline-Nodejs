@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext'
 
 const SocketContext = createContext(null)
 
-const PROD_SOCKET_URL = 'https://shifteronline-nodejs-dev.onrender.com'
+const PROD_SOCKET_URL = 'https://dev-api.shifteronline.com'
 
 function resolveSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) {
