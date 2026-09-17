@@ -5,7 +5,10 @@ import Modal from '../common/Modal'
 import { resolveImageUrl } from '../../utils/imageUrl'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
-const EMPTY_FORM = { cat_name: '', cat_img: '', city_id: '', sort_order: '0', cat_status: 1 }
+const EMPTY_FORM = {
+  cat_name: '', cat_img: '', city_id: '', sort_order: '0', cat_status: 1,
+  max_load_kg: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '',
+}
 
 export default function CategoryFormModal({ open, category, onClose, onSaved }) {
   const isEdit = Boolean(category)
@@ -25,7 +28,13 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
     setError('')
     setForm(
       category
-        ? { cat_name: category.cat_name, cat_img: category.cat_img, city_id: category.city_id ?? '', sort_order: String(category.sort_order ?? 0), cat_status: category.cat_status }
+        ? {
+            cat_name: category.cat_name, cat_img: category.cat_img, city_id: category.city_id ?? '',
+            sort_order: String(category.sort_order ?? 0), cat_status: category.cat_status,
+            max_load_kg: category.max_load_kg ?? '', dim_length: category.dim_length ?? '',
+            dim_width: category.dim_width ?? '', dim_height: category.dim_height ?? '',
+            dim_unit: category.dim_unit || 'ft', detail_image: category.detail_image ?? '',
+          }
         : EMPTY_FORM
     )
   }, [open, category])
@@ -124,6 +133,52 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
             Sort order
           </label>
           <input id="cat-sort" type="number" value={form.sort_order} onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} />
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-detail-img">
+          Detail photo path (shown on the customer app's vehicle Details screen)
+        </label>
+        <input
+          id="cat-detail-img"
+          value={form.detail_image}
+          onChange={(e) => setForm((f) => ({ ...f, detail_image: e.target.value }))}
+          className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+          style={FIELD_STYLE}
+          placeholder="images/category/bike_detail.png (falls back to the icon above if left blank)"
+        />
+      </div>
+
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+          Max load capacity
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            value={form.max_load_kg}
+            onChange={(e) => setForm((f) => ({ ...f, max_load_kg: e.target.value }))}
+            className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+            style={FIELD_STYLE}
+            placeholder="e.g. 20"
+          />
+          <span className="text-[13px]" style={{ color: 'var(--ink-muted)' }}>kg</span>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+          Dimensions (shown on the Details screen; leave any blank to hide this section)
+        </label>
+        <div className="grid grid-cols-4 gap-2">
+          <input type="number" value={form.dim_length} onChange={(e) => setForm((f) => ({ ...f, dim_length: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} placeholder="Length" />
+          <input type="number" value={form.dim_width} onChange={(e) => setForm((f) => ({ ...f, dim_width: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} placeholder="Width" />
+          <input type="number" value={form.dim_height} onChange={(e) => setForm((f) => ({ ...f, dim_height: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} placeholder="Height" />
+          <select value={form.dim_unit} onChange={(e) => setForm((f) => ({ ...f, dim_unit: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE}>
+            <option value="ft">ft</option>
+            <option value="cm">cm</option>
+          </select>
         </div>
       </div>
 
