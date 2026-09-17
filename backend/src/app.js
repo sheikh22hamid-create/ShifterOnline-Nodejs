@@ -16,13 +16,6 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// The dispatch simulator lives at "/" (public/index.html) — a dev/testing
-// tool with no auth of its own (it can create real orders and toggle real
-// riders online/offline). Deliberately served in every environment,
-// including production, per explicit product decision (2026-08-26) — see
-// memory/order_dispatch_auth_gap.md.
-app.use(express.static(path.join(__dirname, "..", "public")));
-
 // Every uploaded file (KYC docs, vehicle/bank photos, bill uploads, kit
 // images, order photos, profile pictures) now lives in Cloudinary, not on
 // this server's disk (Render's disk is ephemeral — see
