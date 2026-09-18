@@ -268,6 +268,40 @@ async function register(req, res) {
       }
     }
 
+    // A driver-submitted, admin-verified lead for this phone number takes
+    // the same path as a manually-entered referral code once the number
+    // signs up on its own - one tbl_referral row, source:"lead" so
+    // referralRewardService can pick a different point setting, and the
+    // same immediate favorite-driver add the manual-code path does above
+    // (dispatchManager's existing is_favorite boost handles the rest).
+    const normalizedPhone = mobile.replace(/\D/g, "");
+    const matchedLead = await prisma.tbl_driver_lead.findFirst({
+      where: { phone: normalizedPhone, status: "verified", expires_at: { gte: now } },
+    });
+    if (matchedLead) {
+      await prisma.tbl_referral.create({
+        data: {
+          referrer_id: matchedLead.driver_id,
+          referrer_type: "DRIVER",
+          referred_id: newUser.id,
+          referred_type: "USER",
+          referral_code: "",
+          status: "pending",
+          source: "lead",
+          points_awarded: 0,
+          ride_id: 0,
+          registered_at: now,
+        },
+      });
+      await prisma.tbl_driver_lead.update({
+        where: { id: matchedLead.id },
+        data: { status: "converted", converted_user_id: newUser.id, converted_at: now },
+      });
+      await prisma.tbl_favorite_driver.create({
+        data: { user_id: newUser.id, rider_id: matchedLead.driver_id, status: 1 },
+      });
+    }
+
     const created = await prisma.tbl_user.findUnique({ where: { id: newUser.id } });
     return res.status(200).json({
       UserLogin: { ...created, wallet: created.wallet?.toString?.() ?? created.wallet },
