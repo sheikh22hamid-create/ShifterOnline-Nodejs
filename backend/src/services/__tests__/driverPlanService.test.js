@@ -220,3 +220,41 @@ describe("driver plan minimum ride guarantee", () => {
     );
   });
 });
+
+describe("driver plan package category filtering", () => {
+  const { matchesPackageCategory } = __private;
+
+  it("allows all vehicles when plan package_categories is 'all', null, or empty", () => {
+    expect(matchesPackageCategory("all", "Bike", 1)).toBe(true);
+    expect(matchesPackageCategory(null, "Bike", 1)).toBe(true);
+    expect(matchesPackageCategory("", "Auto", 2)).toBe(true);
+    expect(matchesPackageCategory("*", "Tata Ace", 3)).toBe(true);
+  });
+
+  it("matches category by exact vehicle name (case-insensitive)", () => {
+    expect(matchesPackageCategory("Bike,Auto", "bike", 1)).toBe(true);
+    expect(matchesPackageCategory("Bike,Auto", "AUTO", 2)).toBe(true);
+    expect(matchesPackageCategory("Bike", "Tata Ace", 3)).toBe(false);
+  });
+
+  it("matches category by category ID", () => {
+    expect(matchesPackageCategory("1,2", "Unknown Vehicle", 1)).toBe(true);
+    expect(matchesPackageCategory("1,2", "Unknown Vehicle", 2)).toBe(true);
+    expect(matchesPackageCategory("1,2", "Unknown Vehicle", 3)).toBe(false);
+  });
+
+  it("includes package_categories and vehicle tag in buildPlanPayload", () => {
+    const plan = {
+      id: 10,
+      plan_name: "Bike Rider Saver",
+      plan_type: "DRIVER_PREMIUM",
+      validity_days: 30,
+      price: "199",
+      commission_percent: "5",
+      package_categories: "Bike",
+    };
+    const payload = __private.buildPlanPayload(plan, [], 0);
+    expect(payload.package_categories).toBe("Bike");
+    expect(payload.ui_tags).toContain("Vehicle: Bike");
+  });
+});

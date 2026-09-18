@@ -220,6 +220,7 @@ const PLAN_FIELDS = [
   "activity_request_ends_day",
   "min_ride_guarantee_enabled",
   "min_ride_guarantee",
+  "package_categories",
   "city",
   "duration_months",
   "compunsation_charge",
@@ -332,6 +333,7 @@ async function createPremiumPlan(req, res) {
     data.price = price !== undefined ? String(price) : "0.00";
     if (data.guarantee_driver === undefined) data.guarantee_driver = false;
     if (data.city === undefined) data.city = "indore";
+    if (!data.package_categories || String(data.package_categories).trim() === "") data.package_categories = "all";
 
     const created = await prisma.tbl_premium_plan.create({ data });
     return res.status(201).json({ success: true, message: "Premium plan created", data: created });
@@ -349,6 +351,9 @@ async function updatePremiumPlan(req, res) {
     }
 
     const data = cleanPlanPayload(req.body);
+    if (data.package_categories !== undefined && (!data.package_categories || String(data.package_categories).trim() === "")) {
+      data.package_categories = "all";
+    }
     const updated = await prisma.tbl_premium_plan.update({ where: { id }, data });
     return res.status(200).json({ success: true, message: "Premium plan updated", data: updated });
   } catch (err) {

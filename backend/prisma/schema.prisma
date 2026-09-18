@@ -760,6 +760,7 @@ model tbl_premium_plan {
   activity_request_ends_day      Boolean                                  @default(true)
   min_ride_guarantee_enabled     Boolean                                  @default(false)
   min_ride_guarantee             Int                                      @default(0) @db.UnsignedInt
+  package_categories             String                                   @default("all") @db.VarChar(255)
 
   @@index([expire_date], map: "idx_expire_date")
   @@index([plan_for], map: "idx_plan_for")

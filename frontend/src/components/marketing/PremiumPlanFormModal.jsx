@@ -55,13 +55,25 @@ const EMPTY_FORM = {
   activity_require_zero_requests: false,
   activity_require_service_zone: false,
   activity_request_ends_day: true,
+  package_categories: 'all',
 }
 
 export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
   const isEdit = Boolean(plan)
+  const [categories, setCategories] = useState([])
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    api
+      .get('/categories')
+      .then((res) => {
+        const data = res.data?.data || res.data || []
+        setCategories(Array.isArray(data) ? data : [])
+      })
+      .catch(() => setCategories([]))
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -72,6 +84,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
         ? {
             ...EMPTY_FORM,
             ...plan,
+            package_categories: plan.package_categories || 'all',
             price: String(plan.price ?? ''),
             validity_days: String(plan.validity_days ?? 30),
             duration_months: String(plan.duration_months ?? 1),
@@ -472,6 +485,110 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
       {/* ───────────────────────────────────────────────────────────── */}
       {form.plan_for === 'DRIVER' && (
         <div className="mb-3 space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}>
+          {/* Package Category Wise Configuration */}
+          <div className="rounded-lg border p-2.5" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  Applicable Vehicle / Package Categories
+                </label>
+                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Control which vehicle drivers can view and purchase this plan.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, package_categories: 'all' }))}
+                  className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    form.package_categories === 'all'
+                      ? 'bg-blue-600 text-white'
+                      : 'border hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  style={form.package_categories !== 'all' ? { borderColor: 'var(--border)', color: 'var(--ink-muted)' } : {}}
+                >
+                  All Categories
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (form.package_categories === 'all') {
+                      setForm((f) => ({ ...f, package_categories: categories[0]?.cat_name || '' }))
+                    }
+                  }}
+                  className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                    form.package_categories !== 'all'
+                      ? 'bg-blue-600 text-white'
+                      : 'border hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  style={form.package_categories === 'all' ? { borderColor: 'var(--border)', color: 'var(--ink-muted)' } : {}}
+                >
+                  Specific Categories
+                </button>
+              </div>
+            </div>
+
+            {form.package_categories !== 'all' && (
+              <div className="mt-2.5 flex flex-wrap gap-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                {categories.length === 0 ? (
+                  <span className="text-[11.5px] italic" style={{ color: 'var(--ink-muted)' }}>
+                    Loading vehicle categories...
+                  </span>
+                ) : (
+                  categories.map((cat) => {
+                    const selectedList = form.package_categories
+                      ? form.package_categories.split(',').map((s) => s.trim().toLowerCase())
+                      : []
+                    const isSelected =
+                      selectedList.includes(cat.cat_name.toLowerCase()) || selectedList.includes(String(cat.id))
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          let current = form.package_categories
+                            ? form.package_categories
+                                .split(',')
+                                .map((s) => s.trim())
+                                .filter((s) => s && s.toLowerCase() !== 'all')
+                            : []
+                          const name = cat.cat_name
+                          if (isSelected) {
+                            current = current.filter(
+                              (c) => c.toLowerCase() !== name.toLowerCase() && c !== String(cat.id)
+                            )
+                            if (current.length === 0) current = ['all']
+                          } else {
+                            current.push(name)
+                          }
+                          setForm((f) => ({ ...f, package_categories: current.join(',') }))
+                        }}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-all ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                        style={
+                          !isSelected
+                            ? { borderColor: 'var(--border)', color: 'var(--ink-muted)' }
+                            : {}
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="pointer-events-none rounded"
+                        />
+                        <span>{cat.cat_name}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
               Driver plan type

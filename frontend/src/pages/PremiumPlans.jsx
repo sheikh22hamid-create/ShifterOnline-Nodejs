@@ -94,7 +94,21 @@ export default function PremiumPlans() {
                   <div className="text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>
                     {p.plan_name}
                   </div>
-                  <Badge tone={p.plan_for === 'USER' ? 'info' : 'success'}>{p.plan_for === 'USER' ? 'Customer' : 'Driver'}</Badge>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                    <Badge tone={p.plan_for === 'USER' ? 'info' : 'success'}>{p.plan_for === 'USER' ? 'Customer' : 'Driver'}</Badge>
+                    {p.plan_for === 'DRIVER' && (
+                      <span
+                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium border"
+                        style={{
+                          background: p.package_categories && p.package_categories !== 'all' ? 'var(--brand-soft)' : 'var(--surface-raised)',
+                          borderColor: p.package_categories && p.package_categories !== 'all' ? 'var(--brand-soft-border)' : 'var(--border)',
+                          color: p.package_categories && p.package_categories !== 'all' ? 'var(--brand)' : 'var(--ink-muted)',
+                        }}
+                      >
+                        {p.package_categories && p.package_categories !== 'all' ? p.package_categories : 'All Vehicles'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="font-mono-data mt-3 text-[24px] font-bold" style={{ color: 'var(--ink)' }}>

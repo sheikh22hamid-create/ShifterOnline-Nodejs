@@ -21,6 +21,24 @@ function todayRange(now = new Date()) {
   return { start, end };
 }
 
+function matchesPackageCategory(planCategories, driverVehicleName, driverCategoryId) {
+  if (!planCategories) return true;
+  const raw = String(planCategories).trim();
+  if (!raw || raw.toLowerCase() === "all" || raw === "*") return true;
+
+  const list = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (!list.length || list.includes("all") || list.includes("*")) return true;
+
+  const vehicleLower = driverVehicleName ? String(driverVehicleName).trim().toLowerCase() : "";
+  if (vehicleLower && list.includes(vehicleLower)) return true;
+
+  if (driverCategoryId !== undefined && driverCategoryId !== null && list.includes(String(driverCategoryId).toLowerCase())) {
+    return true;
+  }
+
+  return false;
+}
+
 async function activeSubscriptions(driverId, client = prisma) {
   // Older unit-test fixtures (and an incomplete Prisma deployment during a
   // rolling migration) may not expose the subscription delegate yet. In that
@@ -125,6 +143,9 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
     plan.incentive_type === "percent" ? `${plan.incentive_value}% bonus per trip` : `₹${plan.incentive_value} bonus per trip`
   );
   if (plan.wallet_bonus_enabled && Number(plan.wallet_bonus_amount) > 0) tags.push(`₹${plan.wallet_bonus_amount} wallet bonus on purchase`);
+  if (plan.package_categories && plan.package_categories !== "all") {
+    tags.push(`Vehicle: ${plan.package_categories}`);
+  }
 
   const price = type === "DRIVER_SECOND" ? Number(plan.initial_price) : Number(plan.price);
   const payload = {
@@ -133,6 +154,7 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
     plan_type: type,
     plan_type_label: type === "DRIVER_SECOND" ? "Guaranteed Rides Plan" : "Driver Premium",
     plan_for: "DRIVER",
+    package_categories: plan.package_categories || "all",
     description: plan.description || "",
     validity_label: plan.lifetime_enabled ? "Lifetime" : `${plan.validity_days} days`,
     days_left: plan.validity_days,
@@ -211,8 +233,21 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
 }
 
 async function listDriverPlans(driverId, cityId) {
-  const driver = await prisma.tbl_rider.findUnique({ where: { id: Number(driverId) }, select: { referral_points: true } });
+  const driver = await prisma.tbl_rider.findUnique({
+    where: { id: Number(driverId) },
+    select: { referral_points: true, vehicle: true, city_id: true },
+  });
   if (!driver) throw new Error("Driver not found");
+
+  let driverCategory = null;
+  if (driver.vehicle && prisma.pkg_category) {
+    try {
+      driverCategory = await prisma.pkg_category.findFirst({
+        where: { cat_name: driver.vehicle, cat_status: 1 },
+      });
+    } catch (_) {}
+  }
+
   const { start } = todayRange();
   const [plans, subscriptions] = await Promise.all([
     prisma.tbl_premium_plan.findMany({
@@ -225,7 +260,15 @@ async function listDriverPlans(driverId, cityId) {
     }),
     activeSubscriptions(driverId),
   ]);
-  const filtered = cityId ? plans.filter((plan) => !plan.city || plan.city === "all" || plan.city.split(",").includes(String(cityId))) : plans;
+
+  let filtered = cityId
+    ? plans.filter((plan) => !plan.city || plan.city === "all" || plan.city.split(",").includes(String(cityId)))
+    : plans;
+
+  filtered = filtered.filter((plan) =>
+    matchesPackageCategory(plan.package_categories, driver.vehicle, driverCategory?.id)
+  );
+
   return {
     ResponseCode: "200",
     Result: "true",
@@ -245,6 +288,19 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
     ]);
     if (!driver) throw new Error("Driver not found");
     if (!plan || (plan.expire_date && plan.expire_date < today)) throw new Error("Plan is not available for drivers");
+
+    let driverCategory = null;
+    if (driver.vehicle && tx.pkg_category) {
+      try {
+        driverCategory = await tx.pkg_category.findFirst({
+          where: { cat_name: driver.vehicle, cat_status: 1 },
+        });
+      } catch (_) {}
+    }
+
+    if (!matchesPackageCategory(plan.package_categories, driver.vehicle, driverCategory?.id)) {
+      throw new Error("This plan is not available for your vehicle category");
+    }
 
     const type = planType(plan);
     const existing = await tx.tbl_user_plan_subscription.findFirst({
@@ -364,5 +420,5 @@ module.exports = {
   resolveBestBenefit,
   recordCompletedRide,
   hasPriorityPlan,
-  __private: { candidateForFare, activeSubscriptions, buildPlanPayload },
+  __private: { candidateForFare, activeSubscriptions, buildPlanPayload, matchesPackageCategory },
 };

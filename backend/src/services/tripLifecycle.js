@@ -3,6 +3,7 @@ const dispatchManager = require("./dispatchManager");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
+const referralRewardService = require("./referralRewardService");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
@@ -646,6 +647,14 @@ async function updateStatus(orderId, riderId, status) {
     // Check & cascade next queued order if rider is a Monthly Driver
     processNextQueuedOrder(riderId, orderId).catch((err) => {
       logger.error(`processNextQueuedOrder error for rider ${riderId}:`, err);
+    });
+
+    // Fire-and-forget like processNextQueuedOrder above - pays out a
+    // pending referral (for the customer and/or the driver on this order)
+    // once their first-ever completed order lands. Never block order
+    // completion on this.
+    referralRewardService.processReferralRewardsForCompletedOrder({ uid: order.uid, riderId, orderId }).catch((err) => {
+      logger.error(`processReferralRewardsForCompletedOrder error for order ${orderId}:`, err);
     });
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
