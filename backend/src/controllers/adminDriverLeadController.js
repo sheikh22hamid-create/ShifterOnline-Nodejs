@@ -73,12 +73,15 @@ async function verifyLead(req, res) {
       data: { status: "verified", verified_at: verifiedAt, expires_at: expiresAt, verified_by_admin_id: req.user?.id },
     });
 
-    // Auto-send WhatsApp & SMS invite to the customer
-    leadInviteNotifier.sendLeadInvite(id).catch((err) => {
-      logger.warn(`Auto invite delivery notice for lead #${id}:`, err.message);
-    });
+    // Auto-send WhatsApp invite to the customer via WhatsApp Bot
+    let inviteResult = null;
+    try {
+      inviteResult = await leadInviteNotifier.sendLeadInvite(id);
+    } catch (inviteErr) {
+      logger.warn(`Auto invite delivery notice for lead #${id}:`, inviteErr.message);
+    }
 
-    return res.status(200).json({ success: true, data: updated });
+    return res.status(200).json({ success: true, data: updated, invite: inviteResult });
   } catch (err) {
     return internalError(res, err, "adminDriverLeads.verifyLead");
   }

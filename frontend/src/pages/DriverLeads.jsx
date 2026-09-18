@@ -83,8 +83,16 @@ export default function DriverLeads() {
   async function handleVerify(lead) {
     setActionBusy(true)
     try {
-      await api.post(`/driver-leads/${lead.id}/verify`)
-      toast.success(`Lead for ${lead.name || lead.phone} verified successfully!`)
+      const res = await api.post(`/driver-leads/${lead.id}/verify`)
+      const invite = res.data?.invite
+      if (invite?.whatsapp) {
+        toast.success(`Verified & WhatsApp invite sent automatically to ${lead.phone}! 🚀`)
+      } else {
+        toast.success(`Lead for ${lead.name || lead.phone} verified successfully!`)
+        if (invite && !invite.whatsapp) {
+          toast.info(`WhatsApp Bot is offline. Click the green 'WA' button to send invite manually.`)
+        }
+      }
       setVerifyTarget(null)
       refetch()
     } catch (err) {
@@ -109,16 +117,16 @@ export default function DriverLeads() {
     }
   }
 
-  // Manually trigger WhatsApp & SMS invite
+  // Manually trigger WhatsApp invite via WhatsApp Bot
   async function handleSendInvite(lead) {
     setActionBusy(true)
     try {
       const res = await api.post(`/driver-leads/${lead.id}/send-invite`)
-      const isOk = res.data?.data?.whatsapp || res.data?.data?.sms
+      const isOk = res.data?.data?.whatsapp
       if (isOk) {
-        toast.success(`Invite sent to ${lead.phone} via ${res.data?.data?.whatsapp ? 'WhatsApp' : ''} ${res.data?.data?.sms ? '& SMS' : ''}!`)
+        toast.success(`WhatsApp invite sent automatically to ${lead.phone}! 🚀`)
       } else {
-        toast.warning(res.data?.message || 'Could not send automated message. You can use direct WhatsApp button.')
+        toast.warning(res.data?.message || 'WhatsApp Bot is offline. Use the green WA button to send directly.')
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send invite.')
@@ -576,8 +584,8 @@ export default function DriverLeads() {
             </div>
             <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
               Once verified, the lead will remain active for 45 days. An automated
-              welcome invite with the app download link will also be dispatched via
-              <strong> WhatsApp &amp; SMS</strong> to this customer.
+              welcome invite with the app download link will be dispatched via
+              <strong> WhatsApp Bot</strong> to this customer.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button

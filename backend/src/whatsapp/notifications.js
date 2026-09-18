@@ -43,11 +43,22 @@ async function sendWhatsAppNotification(phoneNumber, messageText) {
     }
 
     const cleanPhone = `91${phone10}`;
-    const formattedJid = `${cleanPhone}@s.whatsapp.net`;
+    let targetJid = `${cleanPhone}@s.whatsapp.net`;
+
+    if (typeof whatsappClientRef.onWhatsApp === "function") {
+      try {
+        const checkResults = await whatsappClientRef.onWhatsApp(cleanPhone);
+        if (checkResults && checkResults.length > 0 && checkResults[0]?.jid) {
+          targetJid = checkResults[0].jid;
+        }
+      } catch (chkErr) {
+        logger.warn(`onWhatsApp check fallback for ${cleanPhone}:`, chkErr.message);
+      }
+    }
 
     if (whatsappClientRef.sendMessage) {
-      await whatsappClientRef.sendMessage(formattedJid, { text: messageText });
-      logger.info(`Outbound WhatsApp notification successfully sent to ${cleanPhone}`);
+      await whatsappClientRef.sendMessage(targetJid, { text: messageText });
+      logger.info(`Outbound WhatsApp notification successfully sent to ${targetJid}`);
       return true;
     }
   } catch (err) {

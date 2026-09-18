@@ -118,7 +118,9 @@ async function sendLeadInvite(leadId) {
     whatsapp: whatsappSent,
     sms: smsSent,
     phone,
-    message: whatsappSent || smsSent ? "Invite sent successfully" : "Could not deliver invite (check gateway/WhatsApp connection)",
+    message: whatsappSent
+      ? "Invite sent successfully to customer via WhatsApp Bot! 🚀"
+      : "WhatsApp Bot is offline. Please link WhatsApp in Admin -> WhatsApp Account or click the green 'WA' button.",
   };
 }
 
