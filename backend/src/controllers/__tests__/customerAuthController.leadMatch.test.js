@@ -49,6 +49,35 @@ describe("customerAuthController.register — lead match", () => {
     });
   });
 
+  it("matches a lead stored as a bare 10-digit number when signup mobile has a country-code prefix", async () => {
+    prisma.tbl_driver_lead.findFirst.mockResolvedValue({ id: 9, driver_id: 55, phone: "9998887771", status: "verified" });
+
+    const res = mockRes();
+    await register(
+      { body: { fname: "Ravi", email: "r@x.com", mobile: "919998887771", password: "pw123456" } },
+      res
+    );
+
+    expect(prisma.tbl_driver_lead.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ phone: "9998887771" }),
+      })
+    );
+    expect(prisma.tbl_referral.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        referrer_id: 55,
+        referrer_type: "DRIVER",
+        referred_id: 42,
+        referred_type: "USER",
+        status: "pending",
+        source: "lead",
+      }),
+    });
+    expect(prisma.tbl_favorite_driver.create).toHaveBeenCalledWith({
+      data: { user_id: 42, rider_id: 55, status: 1 },
+    });
+  });
+
   it("does nothing extra when no lead matches the phone", async () => {
     prisma.tbl_driver_lead.findFirst.mockResolvedValue(null);
 

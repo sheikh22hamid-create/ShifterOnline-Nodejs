@@ -1,12 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
-
-function normalizePhone(raw) {
-  const digitsOnly = String(raw || "").replace(/\D/g, "");
-  // Take last 10 digits to normalize away country code prefix (+91 etc)
-  // This app serves only Indian 10-digit mobile numbers
-  return digitsOnly.slice(-10);
-}
+const { normalizeToLast10Digits } = require("../utils/phone");
 
 /** Driver bulk-submits phone contacts as referral leads (POST /rider/leads) */
 async function submitLeads(req, res) {
@@ -23,7 +17,7 @@ async function submitLeads(req, res) {
 
     for (const contact of contacts) {
       const name = String(contact?.name || "").trim();
-      const phone = normalizePhone(contact?.phone);
+      const phone = normalizeToLast10Digits(contact?.phone);
       if (!phone || phone.length < 6) {
         skipped.push({ phone: contact?.phone || "", reason: "invalid_phone" });
         continue;

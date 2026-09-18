@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const otpService = require("../services/otpService");
 const deviceSessionService = require("../services/deviceSessionService");
+const { normalizeToLast10Digits } = require("../utils/phone");
 
 // Node port of the legacy PHP customer endpoints under
 // Php Backend/production/admin/cust_api/*.php. Response shape
@@ -274,7 +275,7 @@ async function register(req, res) {
     // referralRewardService can pick a different point setting, and the
     // same immediate favorite-driver add the manual-code path does above
     // (dispatchManager's existing is_favorite boost handles the rest).
-    const normalizedPhone = mobile.replace(/\D/g, "");
+    const normalizedPhone = normalizeToLast10Digits(mobile);
     const matchedLead = await prisma.tbl_driver_lead.findFirst({
       where: { phone: normalizedPhone, status: "verified", expires_at: { gte: now } },
     });
