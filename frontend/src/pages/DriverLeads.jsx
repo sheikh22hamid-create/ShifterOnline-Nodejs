@@ -465,6 +465,7 @@ export default function DriverLeads() {
       {/* Verify Modal */}
       {verifyTarget && (
         <Modal
+          open={Boolean(verifyTarget)}
           title="Verify Contact Lead"
           onClose={() => !actionBusy && setVerifyTarget(null)}
         >
@@ -526,6 +527,7 @@ export default function DriverLeads() {
       {/* Reject Modal */}
       {rejectTarget && (
         <Modal
+          open={Boolean(rejectTarget)}
           title="Reject Contact Lead"
           onClose={() => !actionBusy && setRejectTarget(null)}
         >
