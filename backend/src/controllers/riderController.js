@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const { uniqueRefferCode } = require("./riderAuthController");
 
 /**
  * Dummy/seed rider accounts recognizable by naming convention
@@ -312,12 +313,26 @@ async function getProfile(req, res) {
     const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
     if (!rider) return res.status(200).json({ Result: "false", ResponseCode: "404", ResponseMsg: "Driver not found" });
 
+    // Auto-generate referral code if not already present
+    let refferCode = rider.reffer_code || rider.referral_code;
+    if (!refferCode) {
+      refferCode = await uniqueRefferCode(rider.full_name || "RID");
+      await prisma.tbl_rider.update({
+        where: { id: riderId },
+        data: { reffer_code: refferCode, referral_code: refferCode },
+      }).catch((e) => logger.error("getProfile: failed to persist reffer_code:", e));
+      rider.reffer_code = refferCode;
+      rider.referral_code = refferCode;
+    }
+
     return res.status(200).json({
       Result: "true",
       ResponseCode: "200",
       ResponseMsg: "Profile fetched successfully",
       rider_data: {
         ...rider,
+        reffer_code: refferCode,
+        referral_code: refferCode,
         mobile: rider.fmobile,
         fmobile: rider.fmobile,
         dob: rider.dob || "",
@@ -361,6 +376,8 @@ async function updateProfile(req, res) {
       ResponseMsg: "Profile updated successfully!",
       rider_data: {
         ...updated,
+        reffer_code: updated.reffer_code || updated.referral_code || "",
+        referral_code: updated.referral_code || updated.reffer_code || "",
         mobile: updated.fmobile,
         fmobile: updated.fmobile,
         dob: updated.dob || "",
@@ -378,4 +395,152 @@ async function updateProfile(req, res) {
   }
 }
 
-module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, packageListForDriver, setStatus, updateLocation, isolateTestDrivers, getProfile, updateProfile };
+/** Check if referral code is valid in real time */
+async function checkReferral(req, res) {
+  try {
+    const refCodeRaw = req.body?.referral_code || req.body?.refferal_code || req.body?.reffer_code || req.query?.code || "";
+    const refferalCode = String(refCodeRaw).trim().toUpperCase();
+    if (!refferalCode) {
+      return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Referral code is required." });
+    }
+
+    const refRider = await prisma.tbl_rider.findFirst({
+      where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }, { refferal_code: refferalCode }] },
+      select: { id: true, full_name: true },
+    });
+    if (refRider) {
+      return res.status(200).json({
+        Result: "true",
+        ResponseCode: "200",
+        ResponseMsg: `Valid Driver referral code (${refRider.full_name || "Driver Partner"})`,
+        referrer_name: refRider.full_name || "Driver Partner",
+        referrer_type: "DRIVER",
+      });
+    }
+
+    const refUser = await prisma.tbl_user.findFirst({
+      where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }, { refferal_code: refferalCode }] },
+      select: { id: true, name: true },
+    });
+    if (refUser) {
+      return res.status(200).json({
+        Result: "true",
+        ResponseCode: "200",
+        ResponseMsg: `Valid Customer referral code (${refUser.name || "Customer"})`,
+        referrer_name: refUser.name || "Customer",
+        referrer_type: "USER",
+      });
+    }
+
+    return res.status(200).json({ Result: "false", ResponseCode: "404", ResponseMsg: "Invalid Referral Code!" });
+  } catch (err) {
+    logger.error("riderController.checkReferral failed:", err);
+    return res.status(200).json({ Result: "false", ResponseCode: "500", ResponseMsg: "Internal server error" });
+  }
+}
+
+/** Apply referral code for an active driver account */
+async function applyReferral(req, res) {
+  try {
+    const riderId = Number(req.body?.rider_id || req.body?.rid || 0);
+    const refCodeRaw = req.body?.referral_code || req.body?.refferal_code || req.body?.reffer_code || "";
+    const refferalCode = String(refCodeRaw).trim().toUpperCase();
+
+    if (!riderId) return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Driver ID is required." });
+    if (!refferalCode) return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Please enter a valid referral code." });
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) return res.status(200).json({ Result: "false", ResponseCode: "404", ResponseMsg: "Driver not found." });
+
+    // Cannot apply own referral code
+    const ownCode = (rider.reffer_code || rider.referral_code || "").toUpperCase();
+    if (ownCode && ownCode === refferalCode) {
+      return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "You cannot apply your own referral code!" });
+    }
+
+    // Check if referral is already applied
+    if (rider.referred_by && Number(rider.referred_by) > 0) {
+      return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Referral code already applied for this account." });
+    }
+    const existingRef = await prisma.tbl_referral.findFirst({
+      where: { referred_id: riderId, referred_type: "DRIVER" },
+    });
+    if (existingRef) {
+      return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Referral code already applied for this account." });
+    }
+
+    // Lookup referrer
+    let referrerId = 0;
+    let referrerType = "DRIVER";
+    const refRider = await prisma.tbl_rider.findFirst({
+      where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }, { refferal_code: refferalCode }] },
+    });
+    if (refRider) {
+      if (refRider.id === riderId) {
+        return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "You cannot apply your own referral code!" });
+      }
+      referrerId = refRider.id;
+      referrerType = "DRIVER";
+    } else {
+      const refUser = await prisma.tbl_user.findFirst({
+        where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }, { refferal_code: refferalCode }] },
+      });
+      if (refUser) {
+        referrerId = refUser.id;
+        referrerType = "USER";
+      } else {
+        return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Invalid Referral Code! Please check and try again." });
+      }
+    }
+
+    // Create referral log
+    const now = new Date();
+    await prisma.tbl_referral.create({
+      data: {
+        referrer_id: referrerId,
+        referrer_type: referrerType,
+        referred_id: riderId,
+        referred_type: "DRIVER",
+        referral_code: refferalCode,
+        status: "pending",
+        points_awarded: 0,
+        ride_id: 0,
+        registered_at: now,
+      },
+    });
+
+    await prisma.tbl_rider.update({
+      where: { id: riderId },
+      data: {
+        referred_by: referrerId,
+        referred_by_type: referrerType,
+        refer_by: referrerId,
+        refferal_code: refferalCode,
+      },
+    });
+
+    return res.status(200).json({
+      Result: "true",
+      ResponseCode: "200",
+      ResponseMsg: "Referral code applied successfully!",
+      referral_code: refferalCode,
+    });
+  } catch (err) {
+    logger.error("riderController.applyReferral failed:", err);
+    return res.status(200).json({ Result: "false", ResponseCode: "500", ResponseMsg: "Internal server error" });
+  }
+}
+
+module.exports = {
+  listTestDrivers,
+  getDeliveryTypes,
+  setDeliveryType,
+  packageListForDriver,
+  setStatus,
+  updateLocation,
+  isolateTestDrivers,
+  getProfile,
+  updateProfile,
+  checkReferral,
+  applyReferral,
+};

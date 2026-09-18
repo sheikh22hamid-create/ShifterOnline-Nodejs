@@ -43,6 +43,8 @@ router.post("/premium-plans/purchase", driverPlanController.purchase);
 // Driver profile view and update
 router.post("/profile", riderController.getProfile);
 router.post("/profile/update", riderController.updateProfile);
+router.post("/check-referral", riderController.checkReferral);
+router.post("/apply-referral", riderController.applyReferral);
 
 // Driver mandatory training video gate endpoints
 router.post("/training/status", trainingController.getStatus);

@@ -5,6 +5,7 @@ const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const { formatPkgOrderForDriver } = require("./driverOrderHistoryController");
 const { formatBuyOrderForDriver } = require("./legacyOrderController");
 const deviceSessionService = require("../services/deviceSessionService");
+const { uniqueRefferCode } = require("./riderAuthController");
 
 // Node port of several rider_api/*.php endpoints confirmed still called by
 // the native Android driver app (ShifterDriver/app/src/main/java/.../UserService.java):
@@ -135,7 +136,14 @@ async function homeData(req, res) {
       activeBuyOrderHistory = formatBuyOrderForDriver(activeBuyOrder, buyer?.mobile ?? null);
     }
 
-    const referralCode = rider.reffer_code || rider.referral_code || "";
+    let referralCode = rider.reffer_code || rider.referral_code || "";
+    if (!referralCode) {
+      referralCode = await uniqueRefferCode(rider.full_name || "RID");
+      await prisma.tbl_rider.update({
+        where: { id: rid },
+        data: { reffer_code: referralCode, referral_code: referralCode },
+      }).catch(() => {});
+    }
     const todayOrderStr = String(todayOrder);
     const todayEarningStr = todayEarning.toFixed(2);
     const monthOrderStr = String(monthOrder);
@@ -218,15 +226,28 @@ async function pageList(req, res) {
     const rid = Number(req.body?.rid || 0);
     const rows = await prisma.tbl_page.findMany({ where: { status: 1 } });
     const list = rows.map((r) => ({ title: r.title, description: r.description }));
-    if (!list.length) return res.status(200).json({ pagelist: [], ResponseCode: "200", Result: "false", ResponseMsg: "Pages Not Founded!" });
 
-    const rider = rid ? await prisma.tbl_rider.findUnique({ where: { id: rid } }) : null;
+    let referralCode = "";
+    if (rid) {
+      const rider = await prisma.tbl_rider.findUnique({ where: { id: rid } });
+      if (rider) {
+        referralCode = rider.reffer_code || rider.referral_code || "";
+        if (!referralCode) {
+          referralCode = await uniqueRefferCode(rider.full_name || "RID");
+          await prisma.tbl_rider.update({
+            where: { id: rid },
+            data: { reffer_code: referralCode, referral_code: referralCode },
+          }).catch(() => {});
+        }
+      }
+    }
+
     return res.status(200).json({
       pagelist: list,
       ResponseCode: "200",
       Result: "true",
-      ResponseMsg: "Pages List Founded!",
-      referral_code: rider?.reffer_code || "",
+      ResponseMsg: list.length ? "Pages List Founded!" : "Pages list empty",
+      referral_code: referralCode,
       referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
     });
   } catch (err) {

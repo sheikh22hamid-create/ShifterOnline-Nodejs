@@ -36,10 +36,16 @@ function generateRefferCode(seed) {
 async function uniqueRefferCode(seed) {
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = generateRefferCode(seed);
-    const exists = await prisma.tbl_rider.findFirst({ where: { reffer_code: code } });
-    if (!exists) return code;
+    const existsRider = await prisma.tbl_rider.findFirst({
+      where: { OR: [{ reffer_code: code }, { referral_code: code }, { refferal_code: code }] },
+    });
+    if (existsRider) continue;
+    const existsUser = await prisma.tbl_user.findFirst({
+      where: { OR: [{ reffer_code: code }, { referral_code: code }, { refferal_code: code }] },
+    });
+    if (!existsUser) return code;
   }
-  return generateRefferCode(seed) + Date.now().toString(36).slice(-5).toUpperCase();
+  return generateRefferCode(seed) + Date.now().toString(36).slice(-4).toUpperCase();
 }
 
 // --- mobile_check.php ---
@@ -118,6 +124,15 @@ async function verifyOtp(req, res) {
         verificationCharge = await getAutoVerificationSettings();
       }
 
+      let driverRefferCode = driver.reffer_code || driver.referral_code;
+      if (!driverRefferCode) {
+        driverRefferCode = await uniqueRefferCode(driver.full_name || "RID");
+        await prisma.tbl_rider.update({
+          where: { id: driver.id },
+          data: { reffer_code: driverRefferCode, referral_code: driverRefferCode },
+        }).catch(() => {});
+      }
+
       const driverResponse = {
         id: driver.id,
         full_name: driver.full_name,
@@ -143,6 +158,9 @@ async function verifyOtp(req, res) {
         working_hours: driver.working_hours,
         fcm_token: fcmToken || driver.fcm_token,
         rdate: driver.rdate,
+        reffer_code: driverRefferCode,
+        referral_code: driverRefferCode,
+        refferal_code: driver.refferal_code || "",
         payment_complete: paymentComplete ? 1 : 0,
         auto_verification_charge: verificationCharge.charge,
         auto_verification_charge_old: verificationCharge.chargeOld,
@@ -356,13 +374,13 @@ async function registerHandler(req, res) {
     let referrerIsCustomer = false;
     if (refferalCode) {
       const refRider = await prisma.tbl_rider.findFirst({
-        where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }] },
+        where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }, { refferal_code: refferalCode }] },
       });
       if (refRider) {
         referrerId = refRider.id;
       } else {
         const refUser = await prisma.tbl_user.findFirst({
-          where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }] },
+          where: { OR: [{ reffer_code: refferalCode }, { referral_code: refferalCode }, { refferal_code: refferalCode }] },
         });
         if (refUser) {
           referrerId = refUser.id;
@@ -633,4 +651,4 @@ function register(req, res) {
   });
 }
 
-module.exports = { mobileCheck, sendOtp, verifyOtp, login, logout, register };
+module.exports = { mobileCheck, sendOtp, verifyOtp, login, logout, register, uniqueRefferCode };
