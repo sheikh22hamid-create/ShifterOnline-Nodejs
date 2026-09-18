@@ -453,6 +453,12 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     }
 
     private void getHome() {
+        if (riderData == null && sessionManager != null) {
+            riderData = sessionManager.getUserDetails();
+        }
+        if (riderData == null || riderData.getId() <= 0) {
+            return;
+        }
         custPrograssbar.prograssCreate(getActivity());
         JSONObject jsonObject = new JSONObject();
         try {

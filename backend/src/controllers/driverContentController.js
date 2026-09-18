@@ -4,6 +4,7 @@ const logger = require("../utils/logger");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const { formatPkgOrderForDriver } = require("./driverOrderHistoryController");
 const { formatBuyOrderForDriver } = require("./legacyOrderController");
+const deviceSessionService = require("../services/deviceSessionService");
 
 // Node port of several rider_api/*.php endpoints confirmed still called by
 // the native Android driver app (ShifterDriver/app/src/main/java/.../UserService.java):
@@ -76,12 +77,19 @@ async function homeData(req, res) {
     const rider = await prisma.tbl_rider.findUnique({ where: { id: rid } });
     if (!rider) return fail(res, "Something Went Wrong!");
 
-    let deviceMatch = false;
+    let deviceMatch = true;
     if (deviceId) {
       // is_active straight in the WHERE, not "latest by id" - see
       // memory/device_match_query_bug.md for why ordering by id is wrong here.
       const device = await prisma.tbl_user_device.findFirst({ where: { uid: rid, user_type: "rider", is_active: true }, orderBy: { last_login_at: "desc" } });
-      deviceMatch = !!(device && device.device_id === deviceId);
+      if (device) {
+        deviceMatch = (device.device_id === deviceId);
+      } else {
+        // No active device on file yet (e.g. freshly registered/paid driver) —
+        // auto-register this device so they are not falsely logged out on first open
+        await deviceSessionService.registerDevice({ uid: rid, userType: "rider", deviceId });
+        deviceMatch = true;
+      }
     }
 
     // Active order (if any) - drives the driver app's auto-navigate-back-into

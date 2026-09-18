@@ -3,6 +3,7 @@ const logger = require("../utils/logger");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 const { getAutoVerificationSettings } = require("../utils/driverVerificationSettings");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
+const deviceSessionService = require("../services/deviceSessionService");
 
 // New endpoints for the driver-registration auto-verification charge
 // (AutoPaymentActivity in the driver app). There was previously no
@@ -38,7 +39,28 @@ async function createOrder(req, res) {
     const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
     if (!rider) return fail(res, "Driver not found");
     if (Number(rider.payment_complete) === 1) {
-      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Payment already completed", already_paid: true });
+      const { isAllVerified } = await evaluateDriverApproval(riderId);
+      const { charge } = await getAutoVerificationSettings();
+      return res.status(200).json({
+        ResponseCode: "200",
+        Result: "true",
+        ResponseMsg: "Payment already completed",
+        already_paid: true,
+        is_all_verified: isAllVerified,
+        rider_data: {
+          ...rider,
+          mobile: rider.fmobile,
+          fmobile: rider.fmobile,
+          dob: rider.dob || "",
+          nationality: rider.nationality || "Indian",
+          full_address: rider.full_address || "",
+          know_language: rider.know_language || "Hindi, English",
+          vehicle_no: rider.vehicle_no || "",
+          wallet_balance: rider.wallet_balance?.toString?.() ?? rider.wallet_balance,
+          payment_complete: 1,
+          auto_verification_charge: charge,
+        },
+      });
     }
 
     const { charge } = await getAutoVerificationSettings();
@@ -158,6 +180,16 @@ async function verifyPayment(req, res) {
 
     await prisma.tbl_rider.update({ where: { id: riderId }, data: { payment_complete: 1 } });
     const { isAllVerified } = await evaluateDriverApproval(riderId);
+
+    const deviceId = req.body?.device_id;
+    if (deviceId) {
+      await deviceSessionService.registerDevice({
+        uid: riderId,
+        userType: "rider",
+        deviceId,
+        fcmToken: req.body?.fcm_token,
+      });
+    }
 
     const updated = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
     return res.status(200).json({
