@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Save, ExternalLink, PlayCircle } from 'lucide-react'
+import { Save, ExternalLink, PlayCircle, Plus, Trash2 } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
@@ -42,7 +42,29 @@ function Toggle({ label, checked, onChange }) {
   )
 }
 
-const SETTING_FIELDS = ['currency', 'd_title', 'd_s_title', 'timezone', 'service_charge', 'rider_commission', 'admin_earning', 'driver_pay', 'drive_cancellation', 'user_cancellation', 'reject_timer', 'refer_amount', 'refer_join_amount']
+const SETTING_FIELDS = [
+  'currency', 'd_title', 'd_s_title', 'timezone', 'service_charge', 'rider_commission', 'admin_earning', 'driver_pay',
+  'drive_cancellation', 'user_cancellation', 'reject_timer', 'refer_amount', 'refer_join_amount',
+  // Legacy pre-migration pricing columns - not read by the current pricing
+  // engine (Rate Cards / distance slabs handle live fares now), but they're
+  // real columns on the `setting` table with no other way to view/edit them.
+  'bkms', 'bprice', 'abprice', 'ukms', 'utprice', 'afprice', 'itemlimit', 'itemkg', 'mile_charge', 'kilo_limit', 'is_wether_bad',
+]
+
+// Keys already surfaced by a dedicated section above - excluded from the
+// generic "Other Feature Flags" editor so they don't show twice.
+const HANDLED_FLAG_KEYS = [
+  'training_video_url',
+  'training_video_title',
+  'acko_session_cookie',
+  'sarathi_state_id',
+  'vehicle_detail_notes',
+  'auto_verification',
+  'auto_verification_charge',
+  'auto_verification_charge_old',
+  'auto_verification_msg',
+  'manual_registration',
+]
 
 function PaymentGateways() {
   const fetcher = useCallback(() => api.get('/settings/payment-gateways').then((res) => res.data.data), [])
@@ -89,6 +111,50 @@ function SettingsForm({ data, onSaved }) {
     payment_online: data.payment_online,
   }))
   const [saving, setSaving] = useState(false)
+  const [newFlagKey, setNewFlagKey] = useState('')
+  const [newFlagValue, setNewFlagValue] = useState('')
+  const [deletingFlagKey, setDeletingFlagKey] = useState(null)
+
+  function handleAddFlag(e) {
+    e.preventDefault()
+    const key = newFlagKey.trim().toLowerCase().replace(/\s+/g, '_')
+    if (!key) return
+    if (key in flags) {
+      toast.error(`"${key}" already exists below.`)
+      return
+    }
+    setFlags((f) => ({ ...f, [key]: newFlagValue }))
+    setNewFlagKey('')
+    setNewFlagValue('')
+    toast.success(`Added "${key}" — click Save to persist it.`)
+  }
+
+  async function handleDeleteFlag(key) {
+    // A key added locally but never saved yet doesn't exist in the DB -
+    // just drop it from state instead of calling an API that would 404.
+    if (!(key in (data.flags ?? {}))) {
+      setFlags((f) => {
+        const next = { ...f }
+        delete next[key]
+        return next
+      })
+      return
+    }
+    setDeletingFlagKey(key)
+    try {
+      await api.delete(`/settings/flags/${encodeURIComponent(key)}`)
+      setFlags((f) => {
+        const next = { ...f }
+        delete next[key]
+        return next
+      })
+      toast.success(`Deleted "${key}".`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not delete this setting.')
+    } finally {
+      setDeletingFlagKey(null)
+    }
+  }
 
   async function handleSave(e, overridePayload) {
     if (e && e.preventDefault) e.preventDefault()
@@ -186,6 +252,71 @@ function SettingsForm({ data, onSaved }) {
             <Input id="refer_join_amount" type="number" value={form.refer_join_amount} onChange={(e) => setForm((f) => ({ ...f, refer_join_amount: e.target.value }))} />
           </div>
         </Section>
+
+        <section className="surface-card rounded-xl p-4">
+          <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+            Legacy pricing fields
+          </h3>
+          <p className="mb-3 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+            Columns kept from the pre-migration pricing model. Live fares now come from Rate Cards & distance slabs — changing
+            these has no effect on current pricing, but they're editable here since they're real DB values with no other UI.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <Label htmlFor="bkms">Bike base KM</Label>
+              <Input id="bkms" type="number" value={form.bkms} onChange={(e) => setForm((f) => ({ ...f, bkms: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="bprice">Bike base price</Label>
+              <Input id="bprice" type="number" value={form.bprice} onChange={(e) => setForm((f) => ({ ...f, bprice: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="abprice">Auto base price</Label>
+              <Input id="abprice" type="number" value={form.abprice} onChange={(e) => setForm((f) => ({ ...f, abprice: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="ukms">User base KM</Label>
+              <Input id="ukms" type="number" value={form.ukms} onChange={(e) => setForm((f) => ({ ...f, ukms: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="utprice">User trip price</Label>
+              <Input id="utprice" type="number" value={form.utprice} onChange={(e) => setForm((f) => ({ ...f, utprice: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="afprice">Additional fare price</Label>
+              <Input id="afprice" type="number" value={form.afprice} onChange={(e) => setForm((f) => ({ ...f, afprice: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="itemlimit">Item limit</Label>
+              <Input id="itemlimit" type="number" value={form.itemlimit} onChange={(e) => setForm((f) => ({ ...f, itemlimit: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="itemkg">Item weight limit (kg)</Label>
+              <Input id="itemkg" type="number" value={form.itemkg} onChange={(e) => setForm((f) => ({ ...f, itemkg: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="mile_charge">Per-mile charge</Label>
+              <Input id="mile_charge" type="number" value={form.mile_charge} onChange={(e) => setForm((f) => ({ ...f, mile_charge: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="kilo_limit">KM limit</Label>
+              <Input id="kilo_limit" type="number" value={form.kilo_limit} onChange={(e) => setForm((f) => ({ ...f, kilo_limit: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor="is_wether_bad">Bad weather surcharge flag</Label>
+              <select
+                id="is_wether_bad"
+                value={form.is_wether_bad || '0'}
+                onChange={(e) => setForm((f) => ({ ...f, is_wether_bad: e.target.value }))}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+                style={FIELD_STYLE}
+              >
+                <option value="0">Off</option>
+                <option value="1">On</option>
+              </select>
+            </div>
+          </div>
+        </section>
 
         <section className="surface-card rounded-xl p-4">
           <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
@@ -656,46 +787,89 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </section>
 
-        {Object.keys(flags).filter((k) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes', 'auto_verification', 'auto_verification_charge', 'auto_verification_charge_old', 'auto_verification_msg', 'manual_registration'].includes(k)).length > 0 && (
-          <section className="surface-card rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+        <section className="surface-card rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
               <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                 Other Feature Flags
               </h3>
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
-                style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-              >
-                <Save size={13} /> {saving ? 'Saving…' : 'Save Flags'}
-              </button>
+              <p className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                Raw key-value config (app_settings table). Add any key the apps read that has no dedicated section above —
+                e.g. <code className="font-mono text-[10.5px]">max_extra_stops</code>, <code className="font-mono text-[10.5px]">default_search_radius</code>.
+              </p>
             </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Save size={13} /> {saving ? 'Saving…' : 'Save Flags'}
+            </button>
+          </div>
+
+          <form onSubmit={handleAddFlag} className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border p-2.5" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+            <div className="min-w-[160px] flex-1">
+              <Label htmlFor="new-flag-key">New setting key</Label>
+              <Input id="new-flag-key" placeholder="e.g. max_extra_stops" value={newFlagKey} onChange={(e) => setNewFlagKey(e.target.value)} />
+            </div>
+            <div className="min-w-[160px] flex-1">
+              <Label htmlFor="new-flag-value">Value</Label>
+              <Input id="new-flag-value" placeholder="e.g. 2" value={newFlagValue} onChange={(e) => setNewFlagValue(e.target.value)} />
+            </div>
+            <button
+              type="submit"
+              disabled={!newFlagKey.trim()}
+              className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Plus size={13} /> Add
+            </button>
+          </form>
+
+          {Object.keys(flags).filter((k) => !HANDLED_FLAG_KEYS.includes(k)).length === 0 ? (
+            <p className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
+              No other settings yet — add one above.
+            </p>
+          ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Object.entries(flags)
-                .filter(([key]) => !['training_video_url', 'training_video_title', 'acko_session_cookie', 'sarathi_state_id', 'vehicle_detail_notes', 'auto_verification', 'auto_verification_charge', 'auto_verification_charge_old', 'auto_verification_msg', 'manual_registration'].includes(key))
+                .filter(([key]) => !HANDLED_FLAG_KEYS.includes(key))
                 .map(([key, value]) => (
                   <div key={key}>
-                    <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <Label htmlFor={`flag-${key}`}>{key.replace(/_/g, ' ')}</Label>
+                      <button
+                        type="button"
+                        disabled={deletingFlagKey === key}
+                        onClick={() => handleDeleteFlag(key)}
+                        aria-label={`Delete ${key}`}
+                        style={{ color: 'var(--danger)' }}
+                        className="disabled:opacity-50"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                     <Input id={`flag-${key}`} value={value} onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))} />
                   </div>
                 ))}
             </div>
-            <div className="mt-4 flex items-center justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
-              <span className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
-                💡 Press <kbd className="rounded border px-1 py-0.5 font-mono text-[10.5px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>Enter</kbd> in any field to save immediately
-              </span>
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
-                style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-              >
-                <Save size={14} /> {saving ? 'Saving…' : 'Save Feature Flags'}
-              </button>
-            </div>
-          </section>
-        )}
+          )}
+
+          <div className="mt-4 flex items-center justify-between border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+              💡 Press <kbd className="rounded border px-1 py-0.5 font-mono text-[10.5px]" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>Enter</kbd> in any field to save immediately
+            </span>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Save size={14} /> {saving ? 'Saving…' : 'Save Feature Flags'}
+            </button>
+          </div>
+        </section>
 
         <PaymentGateways />
 

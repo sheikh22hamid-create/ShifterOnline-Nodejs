@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   plan_type: 'CUSTOMER_PREMIUM',
   price: '',
   validity_days: '30',
+  duration_months: '1',
   description: '',
   is_popular: false,
   status: true,
@@ -38,6 +39,7 @@ const EMPTY_FORM = {
   subscription_price: '0',
   guaranteed_enabled: false,
   guaranteed_rides_per_month: '0',
+  compunsation_charge: '0',
   incentive_enabled: false,
   incentive_type: 'flat',
   incentive_value: '0',
@@ -72,6 +74,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             ...plan,
             price: String(plan.price ?? ''),
             validity_days: String(plan.validity_days ?? 30),
+            duration_months: String(plan.duration_months ?? 1),
             discount_percent: String(plan.discount_percent ?? 0),
             discount_max_cap: String(plan.discount_max_cap ?? 0),
             referral_points_per_referral: String(plan.referral_points_per_referral ?? 0),
@@ -84,6 +87,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             initial_price: String(plan.initial_price ?? 0),
             subscription_price: String(plan.subscription_price ?? 0),
             guaranteed_rides_per_month: String(plan.guaranteed_rides_per_month ?? 0),
+            compunsation_charge: String(plan.compunsation_charge ?? 0),
             incentive_value: String(plan.incentive_value ?? 0),
             min_ride_guarantee_enabled: Boolean(plan.min_ride_guarantee_enabled),
             min_ride_guarantee: String(plan.min_ride_guarantee ?? 0),
@@ -221,6 +225,20 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             value={form.lifetime_enabled ? 'Lifetime' : form.validity_days}
             onChange={(e) => setForm((f) => ({ ...f, validity_days: e.target.value }))}
             className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none disabled:opacity-50"
+            style={FIELD_STYLE}
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="plan-duration-months">
+            Duration (months)
+          </label>
+          <input
+            id="plan-duration-months"
+            type="number"
+            min="1"
+            value={form.duration_months}
+            onChange={(e) => setForm((f) => ({ ...f, duration_months: e.target.value }))}
+            className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
             style={FIELD_STYLE}
           />
         </div>
@@ -499,7 +517,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             </label>
           </div>
           {form.plan_type === 'DRIVER_SECOND' && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
                 Initial price (₹)
                 <input
@@ -529,6 +547,17 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
                   min="0"
                   value={form.guaranteed_rides_per_month}
                   onChange={(e) => setForm((f) => ({ ...f, guaranteed_rides_per_month: e.target.value }))}
+                  className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+                  style={FIELD_STYLE}
+                />
+              </label>
+              <label className="block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+                Compensation/shortfall ride (₹)
+                <input
+                  type="number"
+                  min="0"
+                  value={form.compunsation_charge}
+                  onChange={(e) => setForm((f) => ({ ...f, compunsation_charge: e.target.value }))}
                   className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
                   style={FIELD_STYLE}
                 />

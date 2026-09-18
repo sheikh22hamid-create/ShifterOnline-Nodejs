@@ -253,4 +253,23 @@ async function updatePaymentGateway(req, res) {
   }
 }
 
-module.exports = { getSettings, updateSettings, listPaymentGateways, updatePaymentGateway };
+// Lets an admin remove an app_settings row entirely (distinct from
+// updateSettings' flags upsert, which can only create/update - never
+// delete). Used by the "Other Feature Flags" generic editor so a key that's
+// no longer needed doesn't linger forever with a stale value.
+async function deleteFlag(req, res) {
+  try {
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ success: false, message: "key is required" });
+
+    const existing = await prisma.app_settings.findFirst({ where: { setting_key: key } });
+    if (!existing) return res.status(404).json({ success: false, message: "Setting not found" });
+
+    await prisma.app_settings.delete({ where: { id: existing.id } });
+    return res.status(200).json({ success: true, message: "Setting deleted" });
+  } catch (err) {
+    return internalError(res, err, "settings.deleteFlag");
+  }
+}
+
+module.exports = { getSettings, updateSettings, listPaymentGateways, updatePaymentGateway, deleteFlag };

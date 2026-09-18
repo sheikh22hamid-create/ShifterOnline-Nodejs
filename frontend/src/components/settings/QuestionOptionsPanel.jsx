@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Pencil, Check } from 'lucide-react'
 import api from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import useApiQuery from '../../hooks/useApiQuery'
@@ -13,6 +13,9 @@ export default function QuestionOptionsPanel({ questionId, onOptionCountChange }
   const [newOption, setNewOption] = useState('')
   const [adding, setAdding] = useState(false)
   const [removingId, setRemovingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [saving, setSaving] = useState(false)
 
   async function handleAdd() {
     if (!newOption.trim()) return
@@ -26,6 +29,20 @@ export default function QuestionOptionsPanel({ questionId, onOptionCountChange }
       toast.error(err.response?.data?.message || 'Could not add this option.')
     } finally {
       setAdding(false)
+    }
+  }
+
+  async function handleSaveEdit(optionId) {
+    if (!editingTitle.trim()) return
+    setSaving(true)
+    try {
+      await api.put(`/questions/${questionId}/options/${optionId}`, { title: editingTitle.trim() })
+      setEditingId(null)
+      refetch()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not update this option.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -56,21 +73,53 @@ export default function QuestionOptionsPanel({ questionId, onOptionCountChange }
 
       {!loading && !error && options.length > 0 && (
         <ul className="mb-2 space-y-1">
-          {options.map((o) => (
-            <li key={o.id} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[12.5px]" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>
-              <span>{o.title}</span>
-              <button
-                type="button"
-                disabled={removingId === o.id}
-                onClick={() => handleRemove(o.id)}
-                aria-label={`Remove option ${o.title}`}
-                style={{ color: 'var(--ink-faint)' }}
-                className="disabled:opacity-50"
-              >
-                <X size={13} />
-              </button>
-            </li>
-          ))}
+          {options.map((o) =>
+            editingId === o.id ? (
+              <li key={o.id} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12.5px]" style={{ borderColor: 'var(--border)' }}>
+                <input
+                  autoFocus
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(o.id)}
+                  className="flex-1 rounded border px-1.5 py-0.5 text-[12.5px] outline-none"
+                  style={{ borderColor: 'var(--border)', background: 'var(--surface)', color: 'var(--ink)' }}
+                />
+                <button type="button" disabled={saving} onClick={() => handleSaveEdit(o.id)} aria-label="Save" style={{ color: 'var(--success)' }} className="disabled:opacity-50">
+                  <Check size={13} />
+                </button>
+                <button type="button" onClick={() => setEditingId(null)} aria-label="Cancel" style={{ color: 'var(--ink-faint)' }}>
+                  <X size={13} />
+                </button>
+              </li>
+            ) : (
+              <li key={o.id} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[12.5px]" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>
+                <span>{o.title}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(o.id)
+                      setEditingTitle(o.title)
+                    }}
+                    aria-label={`Edit option ${o.title}`}
+                    style={{ color: 'var(--ink-faint)' }}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={removingId === o.id}
+                    onClick={() => handleRemove(o.id)}
+                    aria-label={`Remove option ${o.title}`}
+                    style={{ color: 'var(--ink-faint)' }}
+                    className="disabled:opacity-50"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              </li>
+            )
+          )}
         </ul>
       )}
 

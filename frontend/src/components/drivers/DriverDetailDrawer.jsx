@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { ShieldBan, ShieldCheck, Trash2, UserMinus } from 'lucide-react'
+import { ShieldBan, ShieldCheck, Trash2, UserMinus, Pencil } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -33,11 +33,51 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [demoteModalOpen, setDemoteModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editForm, setEditForm] = useState(null)
   const [busy, setBusy] = useState(false)
   const [togglingModelId, setTogglingModelId] = useState(null)
 
   const fetcher = useCallback(() => api.get(`/riders/${riderId}`).then((res) => res.data.data), [riderId])
   const { data: rider, setData, loading, refetch } = useApiQuery(fetcher)
+
+  function openEditModal() {
+    setEditForm({
+      full_name: rider.full_name || '',
+      email: rider.email || '',
+      fmobile: rider.fmobile || '',
+      smobile: rider.smobile || '',
+      dob: rider.dob || '',
+      nationality: rider.nationality || '',
+      full_address: rider.full_address || '',
+      vehicle: rider.vehicle || '',
+      vehicle_no: rider.vehicle_no || '',
+      account_name: rider.account_name || '',
+      account_number: rider.account_number || '',
+      ifsc: rider.ifsc || '',
+      upi_id: rider.upi_id || '',
+      working_hours: rider.working_hours ?? '',
+      plan_type: rider.plan_type || 'general',
+      rc_owner_name: rider.personal_doc?.rc_owner_name || '',
+      rc_owner_aadhar_number: rider.personal_doc?.rc_owner_aadhar_number || '',
+    })
+    setEditModalOpen(true)
+  }
+
+  async function handleSaveProfile() {
+    setBusy(true)
+    try {
+      await api.patch(`/riders/${riderId}/profile`, editForm)
+      toast.success('Driver profile updated.')
+      setEditModalOpen(false)
+      refetch()
+      onChanged?.()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not update profile.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleDemote() {
     setBusy(true)
@@ -178,6 +218,14 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
 
             {canModerate && (
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={openEditModal}
+                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium"
+                  style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+                >
+                  <Pencil size={13} /> Edit Profile
+                </button>
                 <button
                   type="button"
                   disabled={busy}
@@ -554,6 +602,94 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
           </div>
         </div>
       </Modal>
+
+      <Modal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        title="Edit driver profile"
+        footer={
+          <>
+            <button type="button" onClick={() => setEditModalOpen(false)} className="rounded-lg border px-3 py-1.5 text-[13px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
+              Cancel
+            </button>
+            <button type="button" disabled={busy} onClick={handleSaveProfile} className="rounded-lg px-3 py-1.5 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>
+              {busy ? 'Saving…' : 'Save changes'}
+            </button>
+          </>
+        }
+      >
+        {editForm && (
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+            <EditSection title="Basic info">
+              <EditField label="Full name" value={editForm.full_name} onChange={(v) => setEditForm((f) => ({ ...f, full_name: v }))} />
+              <EditField label="Email" value={editForm.email} onChange={(v) => setEditForm((f) => ({ ...f, email: v }))} />
+              <EditField label="Mobile" value={editForm.fmobile} onChange={(v) => setEditForm((f) => ({ ...f, fmobile: v }))} />
+              <EditField label="Alternate mobile" value={editForm.smobile} onChange={(v) => setEditForm((f) => ({ ...f, smobile: v }))} />
+              <EditField label="Date of birth" value={editForm.dob} onChange={(v) => setEditForm((f) => ({ ...f, dob: v }))} />
+              <EditField label="Nationality" value={editForm.nationality} onChange={(v) => setEditForm((f) => ({ ...f, nationality: v }))} />
+              <EditField label="Address" value={editForm.full_address} onChange={(v) => setEditForm((f) => ({ ...f, full_address: v }))} full />
+            </EditSection>
+
+            <EditSection title="Vehicle">
+              <EditField label="Vehicle type" value={editForm.vehicle} onChange={(v) => setEditForm((f) => ({ ...f, vehicle: v }))} />
+              <EditField label="Plate number" value={editForm.vehicle_no} onChange={(v) => setEditForm((f) => ({ ...f, vehicle_no: v }))} />
+            </EditSection>
+
+            <EditSection title="Bank & UPI">
+              <EditField label="Account holder name" value={editForm.account_name} onChange={(v) => setEditForm((f) => ({ ...f, account_name: v }))} />
+              <EditField label="Account number" value={editForm.account_number} onChange={(v) => setEditForm((f) => ({ ...f, account_number: v }))} />
+              <EditField label="IFSC" value={editForm.ifsc} onChange={(v) => setEditForm((f) => ({ ...f, ifsc: v }))} />
+              <EditField label="UPI ID" value={editForm.upi_id} onChange={(v) => setEditForm((f) => ({ ...f, upi_id: v }))} />
+            </EditSection>
+
+            <EditSection title="Plan">
+              <div>
+                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Plan type</div>
+                <select
+                  value={editForm.plan_type}
+                  onChange={(e) => setEditForm((f) => ({ ...f, plan_type: e.target.value }))}
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+                  style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                >
+                  <option value="general">General</option>
+                  <option value="super">Super</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
+              <EditField label="Working hours/day" type="number" value={editForm.working_hours} onChange={(v) => setEditForm((f) => ({ ...f, working_hours: v }))} />
+            </EditSection>
+
+            <EditSection title="RC owner correction (only if RC isn't self-owned)">
+              <EditField label="Owner name" value={editForm.rc_owner_name} onChange={(v) => setEditForm((f) => ({ ...f, rc_owner_name: v }))} />
+              <EditField label="Owner Aadhaar number" value={editForm.rc_owner_aadhar_number} onChange={(v) => setEditForm((f) => ({ ...f, rc_owner_aadhar_number: v }))} />
+            </EditSection>
+          </div>
+        )}
+      </Modal>
     </>
+  )
+}
+
+function EditSection({ title, children }) {
+  return (
+    <section>
+      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>{title}</h4>
+      <div className="grid grid-cols-2 gap-3">{children}</div>
+    </section>
+  )
+}
+
+function EditField({ label, value, onChange, type = 'text', full = false }) {
+  return (
+    <div className={full ? 'col-span-2' : ''}>
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>{label}</div>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+      />
+    </div>
   )
 }

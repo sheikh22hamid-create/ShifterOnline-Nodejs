@@ -173,6 +173,11 @@ async function getOne(req, res) {
         verification_type: rider.verification_type,
         payment_complete: Number(rider.payment_complete) === 1,
         wallet_balance: rider.wallet_balance,
+        account_name: rider.account_name,
+        account_number: rider.account_number,
+        ifsc: rider.ifsc,
+        upi_id: rider.upi_id,
+        working_hours: rider.working_hours,
         plan_type: rider.plan_type,
         monthly_plan: rider.monthly_plan || 0,
         monthly_contract: monthlyContract,
@@ -199,6 +204,82 @@ async function getOne(req, res) {
     });
   } catch (err) {
     return internalError(res, err, "riders.getOne");
+  }
+}
+
+// Editable driver-profile fields - deliberately excludes status/verification
+// columns (those go through toggleStatus/kycDecision/setPaymentComplete so
+// they stay audited + trigger the right side effects), wallet_balance (would
+// bypass customerWalletController-style audit trail), and system-managed
+// columns (device_id, fcm_token, referral codes, model1_miss_streak, etc).
+const PROFILE_FIELDS = [
+  "full_name",
+  "email",
+  "fmobile",
+  "smobile",
+  "dob",
+  "nationality",
+  "full_address",
+  "city_id",
+  "vehicle",
+  "vehicle_no",
+  "account_name",
+  "account_number",
+  "ifsc",
+  "upi_id",
+  "plan_type",
+  "monthly_plan",
+  "working_hours",
+];
+const PROFILE_INT_FIELDS = new Set(["city_id", "monthly_plan", "working_hours"]);
+
+async function updateProfile(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const rider = await prisma.tbl_rider.findUnique({ where: { id } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+
+    const data = {};
+    for (const field of PROFILE_FIELDS) {
+      if (req.body[field] === undefined) continue;
+      const val = req.body[field];
+      if (PROFILE_INT_FIELDS.has(field)) {
+        data[field] = val === "" || val === null ? null : parseInt(val, 10);
+      } else {
+        data[field] = val === null ? null : String(val).trim();
+      }
+    }
+
+    // RC owner details live on tbl_personal_doc, not tbl_rider - see the
+    // eKYC owner-verification flow (driverAuthController.registerHandler /
+    // AutoVerificationManager on the driver app) that first populated them.
+    const rcOwnerName = req.body.rc_owner_name;
+    const rcOwnerAadhaarNumber = req.body.rc_owner_aadhar_number;
+    if (rcOwnerName !== undefined || rcOwnerAadhaarNumber !== undefined) {
+      const docRow = await prisma.tbl_personal_doc.findFirst({ where: { rider_id: id } });
+      const docData = {};
+      if (rcOwnerName !== undefined) docData.rc_owner_name = rcOwnerName === null ? null : String(rcOwnerName).trim();
+      if (rcOwnerAadhaarNumber !== undefined) docData.rc_owner_aadhar_number = rcOwnerAadhaarNumber === null ? null : String(rcOwnerAadhaarNumber).trim();
+      if (docRow) {
+        await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: docData });
+      } else {
+        await prisma.tbl_personal_doc.create({ data: { rider_id: id, status: 0, ...docData } });
+      }
+    }
+
+    if (Object.keys(data).length === 0 && rcOwnerName === undefined && rcOwnerAadhaarNumber === undefined) {
+      return res.status(400).json({ success: false, message: "No editable fields provided" });
+    }
+
+    const updated = Object.keys(data).length ? await prisma.tbl_rider.update({ where: { id }, data }) : rider;
+    return res.status(200).json({ success: true, message: "Driver profile updated", data: { id: updated.id, full_name: riderName(updated) } });
+  } catch (err) {
+    return internalError(res, err, "riders.updateProfile");
   }
 }
 
@@ -472,4 +553,4 @@ async function toggleModel(req, res) {
   }
 }
 
-module.exports = { list, getOne, kycDecision, toggleStatus, remove, toggleModel, setPaymentComplete };
+module.exports = { list, getOne, kycDecision, toggleStatus, remove, toggleModel, setPaymentComplete, updateProfile };

@@ -221,6 +221,8 @@ const PLAN_FIELDS = [
   "min_ride_guarantee_enabled",
   "min_ride_guarantee",
   "city",
+  "duration_months",
+  "compunsation_charge",
   "sort_order",
   "status",
 ];
@@ -261,6 +263,7 @@ const PLAN_INT_FIELDS = new Set([
   "compunsation_charge",
   "activity_min_online_hours",
   "sort_order",
+  "duration_months",
 ]);
 
 function cleanPlanPayload(body) {

@@ -102,6 +102,7 @@ router.delete("/rate-cards/:id", auth, authorize("superadmin"), rateCardControll
 // --- Drivers & KYC Verification ---------------------------------------------
 router.get("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.list);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
+router.patch("/riders/:id/profile", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.updateProfile);
 router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);
 router.patch("/riders/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleStatus);
@@ -174,6 +175,7 @@ router.post("/referrals/adjust-points", auth, authorize("superadmin", "admin"), 
 // --- Platform Master Settings & Payment Gateways -----------------------------
 router.get("/settings", auth, authorize("superadmin"), settingsController.getSettings);
 router.put("/settings", auth, authorize("superadmin"), settingsController.updateSettings);
+router.delete("/settings/flags/:key", auth, authorize("superadmin"), settingsController.deleteFlag);
 router.get("/settings/payment-gateways", auth, authorize("superadmin"), settingsController.listPaymentGateways);
 router.put("/settings/payment-gateways/:id", auth, authorize("superadmin"), settingsController.updatePaymentGateway);
 
@@ -212,6 +214,7 @@ router.delete("/questions/:id", auth, authorize("superadmin"), questionControlle
 
 router.get("/questions/:id/options", auth, authorize("superadmin"), questionController.listOptions);
 router.post("/questions/:id/options", auth, authorize("superadmin"), questionController.createOption);
+router.put("/questions/:id/options/:optionId", auth, authorize("superadmin"), questionController.updateOption);
 router.delete("/questions/:id/options/:optionId", auth, authorize("superadmin"), questionController.deleteOption);
 
 // --- AI Bot Knowledge Base File Management ---------------------------------

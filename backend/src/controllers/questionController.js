@@ -120,6 +120,25 @@ async function createOption(req, res) {
   }
 }
 
+async function updateOption(req, res) {
+  try {
+    const questionId = parseInt(req.params.id, 10);
+    const optionId = parseInt(req.params.optionId, 10);
+    const existing = await prisma.tbl_option.findFirst({ where: { id: optionId, question_id: questionId } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Option not found" });
+    }
+    const { title, status } = req.body;
+    const data = {};
+    if (title !== undefined) data.title = title;
+    if (status !== undefined) data.status = Number(status);
+    const updated = await prisma.tbl_option.update({ where: { id: optionId }, data });
+    return res.status(200).json({ success: true, message: "Option updated", data: updated });
+  } catch (err) {
+    return internalError(res, err, "questions.updateOption");
+  }
+}
+
 async function deleteOption(req, res) {
   try {
     const questionId = parseInt(req.params.id, 10);
@@ -142,5 +161,6 @@ module.exports = {
   deleteQuestion,
   listOptions,
   createOption,
+  updateOption,
   deleteOption,
 };

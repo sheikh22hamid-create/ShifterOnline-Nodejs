@@ -21,6 +21,10 @@ const EMPTY_FORM = {
   cancellation_charge_driver: '0',
   driver_cancel_admin_earning: '0',
   driver_cancel_user_earning: '0',
+  outside_min_charge: '0',
+  outside_per_km_charge: '0',
+  outside_surcharge: '0',
+  cancellation_charge: '',
   free_waiting_time: '5',
   waiting_charge: '',
   start_time: '00:00',
@@ -77,6 +81,10 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             cancellation_charge_driver: rateCard.cancellation_charge_driver ?? '0',
             driver_cancel_admin_earning: rateCard.driver_cancel_admin_earning ?? '0',
             driver_cancel_user_earning: rateCard.driver_cancel_user_earning ?? '0',
+            outside_min_charge: rateCard.outside_min_charge ?? '0',
+            outside_per_km_charge: rateCard.outside_per_km_charge ?? '0',
+            outside_surcharge: rateCard.outside_surcharge ?? '0',
+            cancellation_charge: rateCard.cancellation_charge ?? '',
             free_waiting_time: rateCard.free_waiting_time,
             waiting_charge: rateCard.waiting_charge,
             start_time: rateCard.start_time,
@@ -339,6 +347,30 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
           <div>
             <Label htmlFor="waiting_charge">Waiting charge (₹/min)</Label>
             <Input id="waiting_charge" type="number" value={form.waiting_charge} onChange={(e) => set('waiting_charge', e.target.value)} />
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}>
+          <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
+            Outside service-zone pricing
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="outside_min_charge">Min fare (₹)</Label>
+              <Input id="outside_min_charge" type="number" value={form.outside_min_charge} onChange={(e) => set('outside_min_charge', e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <Label htmlFor="outside_per_km_charge">Per km (₹)</Label>
+              <Input id="outside_per_km_charge" type="number" value={form.outside_per_km_charge} onChange={(e) => set('outside_per_km_charge', e.target.value)} placeholder="0" />
+            </div>
+            <div>
+              <Label htmlFor="outside_surcharge">Surcharge (₹)</Label>
+              <Input id="outside_surcharge" type="number" value={form.outside_surcharge} onChange={(e) => set('outside_surcharge', e.target.value)} placeholder="0" />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="cancellation_charge">Cancellation policy note (legacy text field)</Label>
+            <Input id="cancellation_charge" value={form.cancellation_charge} onChange={(e) => set('cancellation_charge', e.target.value)} placeholder="Optional free-text note" />
           </div>
         </div>
 
