@@ -68,10 +68,19 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  // Temporary flag to hide the "Schedule Booking" (pick date & time) entry
+  // point from the home screen while the feature is paused. Flip back to
+  // true to restore it - _handleScheduleBookingTap and its booking-type flow
+  // are left intact.
+  static const bool _scheduleBookingEnabled = false;
+
   final sql = Additemlist();
   TextEditingController searchController = TextEditingController();
   Timer? _searchDebounce;
-  bool isHowUse = true;
+  bool isHowUse = false;
+  String howToUseUrl = "https://www.youtube.com/shorts/h7KMfS0IrI8";
+  String howToUseTitle = "How To Use";
+  bool showHowToUse = true;
   bool _pickupConfirmed = false;
   String? _confirmedPickupAddress;
   String? _confirmedDropAddress;
@@ -827,10 +836,10 @@ class _HomeState extends State<Home> {
             ),
           ),
 
-          const SizedBox(width: 10),
+          if (_scheduleBookingEnabled) const SizedBox(width: 10),
 
           // ── Schedule Booking (Half width) ─────────────────
-          Expanded(
+          if (_scheduleBookingEnabled) Expanded(
             child: InkWell(
               onTap: _handleScheduleBookingTap,
               borderRadius: BorderRadius.circular(16),
@@ -2520,16 +2529,19 @@ class _HomeState extends State<Home> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!isHowUse)
+                      if (showHowToUse && howToUseUrl.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 15.0),
                           child: InkWell(
                             onTap: () async {
-                              final Uri url = Uri.parse(
-                                  "https://www.youtube.com/shorts/h7KMfS0IrI8");
-                              if (!await launchUrl(url,
-                                  mode: LaunchMode.externalApplication)) {
-                                debugPrint('Could not launch $url');
+                              try {
+                                final Uri url = Uri.parse(howToUseUrl.trim());
+                                if (!await launchUrl(url,
+                                    mode: LaunchMode.externalApplication)) {
+                                  debugPrint('Could not launch $url');
+                                }
+                              } catch (e) {
+                                debugPrint('Could not parse/launch url $howToUseUrl: $e');
                               }
                             },
                             child: Container(
@@ -2554,7 +2566,7 @@ class _HomeState extends State<Home> {
                                       color: Colors.white, size: 28),
                                   SizedBox(width: 10),
                                   Text(
-                                    "How To Use".tr,
+                                    howToUseTitle.tr,
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 18,
@@ -3337,10 +3349,39 @@ class _HomeState extends State<Home> {
           }
 
           if (val["ResultData"] != null) {
-            var howUseVal =
-                val["ResultData"]["isHowUse"] ?? val["ResultData"]["isHowUse "];
-            if (howUseVal != null) {
-              isHowUse = howUseVal == true || howUseVal.toString() == "true";
+            // Dynamic How To Use Bar configuration from Admin Settings
+            if (val["ResultData"]["how_to_use_url"] != null &&
+                val["ResultData"]["how_to_use_url"].toString().trim().isNotEmpty) {
+              howToUseUrl = val["ResultData"]["how_to_use_url"].toString().trim();
+            }
+            if (val["ResultData"]["how_to_use_title"] != null &&
+                val["ResultData"]["how_to_use_title"].toString().trim().isNotEmpty) {
+              howToUseTitle = val["ResultData"]["how_to_use_title"].toString().trim();
+            }
+            if (val["ResultData"]["how_to_use_enabled"] != null) {
+              var enabledVal = val["ResultData"]["how_to_use_enabled"];
+              showHowToUse = enabledVal == 1 ||
+                  enabledVal == true ||
+                  enabledVal.toString() == "1" ||
+                  enabledVal.toString() == "true";
+              isHowUse = !showHowToUse;
+            } else {
+              var howUseVal =
+                  val["ResultData"]["isHowUse"] ?? val["ResultData"]["isHowUse "];
+              if (howUseVal != null) {
+                isHowUse = howUseVal == true || howUseVal.toString() == "true";
+                showHowToUse = !isHowUse;
+              }
+            }
+
+            // Double check completed orders count threshold
+            if (val["ResultData"]["completed_orders_count"] != null) {
+              final completedOrders = int.tryParse(val["ResultData"]["completed_orders_count"].toString()) ?? 0;
+              final maxOrders = int.tryParse(val["ResultData"]["how_to_use_max_orders"]?.toString() ?? "5") ?? 5;
+              if (maxOrders > 0 && completedOrders >= maxOrders) {
+                showHowToUse = false;
+                isHowUse = true;
+              }
             }
             // Save Referral Info
             save("referral_code",

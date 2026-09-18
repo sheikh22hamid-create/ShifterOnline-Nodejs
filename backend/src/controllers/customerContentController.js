@@ -388,6 +388,35 @@ async function homeData(req, res) {
       ? Math.floor(Number(radiusSetting.setting_value))
       : 4;
 
+    const [completedPkgOrders, completedBuyOrders, howToUseSettings] = await Promise.all([
+      prisma.pkg_order.count({ where: { uid, o_status: "Completed" } }),
+      prisma.buy_order.count({ where: { uid, o_status: "Completed" } }),
+      prisma.app_settings.findMany({
+        where: {
+          setting_key: {
+            in: ["how_to_use_video_url", "how_to_use_enabled", "how_to_use_title", "how_to_use_max_orders"],
+          },
+        },
+      }),
+    ]);
+    const completedOrdersCount = completedPkgOrders + completedBuyOrders;
+
+    const howToUseMap = Object.fromEntries(howToUseSettings.map((s) => [s.setting_key, s.setting_value]));
+    const howToUseUrl = howToUseMap.how_to_use_video_url || "https://www.youtube.com/shorts/h7KMfS0IrI8";
+    const howToUseTitle = howToUseMap.how_to_use_title || "How To Use";
+    const maxOrdersThreshold = howToUseMap.how_to_use_max_orders !== undefined && howToUseMap.how_to_use_max_orders !== ""
+      ? Number(howToUseMap.how_to_use_max_orders)
+      : 5;
+
+    let isHowUseEnabled = howToUseMap.how_to_use_enabled !== undefined
+      ? (howToUseMap.how_to_use_enabled === "1" || howToUseMap.how_to_use_enabled === "true")
+      : true;
+
+    // Automatically hide How To Use bar if user has reached/exceeded the completed orders threshold (default: 5 orders)
+    if (maxOrdersThreshold > 0 && completedOrdersCount >= maxOrdersThreshold) {
+      isHowUseEnabled = false;
+    }
+
     const resultData = {
       PriceData: mainData,
       Package_Category: categories,
@@ -402,12 +431,67 @@ async function homeData(req, res) {
       plan_name: planName,
       max_extra_stops: maxExtraStops,
       default_search_radius: defaultSearchRadius,
-      isHowUse: 1,
+      isHowUse: isHowUseEnabled ? 1 : "true",
+      how_to_use_url: howToUseUrl,
+      how_to_use_title: howToUseTitle,
+      how_to_use_enabled: isHowUseEnabled ? 1 : 0,
+      completed_orders_count: completedOrdersCount,
+      how_to_use_max_orders: maxOrdersThreshold,
     };
 
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Home Data Get Successfully!", ResultData: resultData });
   } catch (err) {
     logger.error("customerContentController.homeData failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- cust_api/pkg_history.php --- (the customer app's "My Orders" screen).
+// This was never ported when the order flow moved to Node - the Flutter app
+// (p_d_order_histroy_api_controller.dart) was still calling the legacy PHP
+// pkg_history.php via Config.baseurl, which has no visibility into orders
+// created through this backend's pkg_order table, so Pending/Completed/
+// Cancelled orders never showed up. Mirrors
+// driverOrderHistoryController.pkgHistoryDriver's recent/past split (uid
+// instead of rid), using $queryRaw so o_status comes back as the raw DB
+// string ("On Route", not the enum key "On_Route") to match what the app's
+// orderlistBox() switch-case already expects.
+async function pkgHistoryCustomer(req, res) {
+  try {
+    const uid = Number(req.body?.uid || 0);
+    const type = req.body?.type;
+    if (!uid) return fail(res, "Something Went Wrong!");
+
+    let rows;
+    if (type === "past") {
+      rows = await prisma.$queryRaw`
+        SELECT * FROM pkg_order WHERE uid = ${uid} AND (o_status = 'Completed' OR o_status = 'Cancelled') ORDER BY id DESC
+      `;
+    } else {
+      rows = await prisma.$queryRaw`
+        SELECT * FROM pkg_order WHERE uid = ${uid} AND o_status NOT IN ('Completed', 'Cancelled') ORDER BY id DESC
+      `;
+    }
+
+    const orderHistory = rows.map((row) => ({
+      id: String(row.id),
+      status: row.o_status,
+      order_date: row.odate,
+      total: String(row.total_dcharge > 0 ? row.total_dcharge : row.d_charge),
+      is_rate: String(row.is_rate ?? 0),
+      pick_address: row.paddress,
+      drop_address: row.daddress,
+      flow_msg: FLOW_MESSAGES_PKG_ORDER[row.order_status] ?? "",
+    }));
+
+    return res.status(200).json({
+      OrderHistory: orderHistory,
+      ResponseCode: "200",
+      Result: orderHistory.length ? "true" : "false",
+      ResponseMsg: orderHistory.length ? "Order History Get Successfully!!!" : "No Order History Found!",
+    });
+  } catch (err) {
+    logger.error("customerContentController.pkgHistoryCustomer failed:", err);
     return fail(res, "Internal server error", 500);
   }
 }
@@ -425,4 +509,5 @@ module.exports = {
   homeData,
   cancelReasonList,
   appConfig,
+  pkgHistoryCustomer,
 };

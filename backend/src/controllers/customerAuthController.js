@@ -217,6 +217,23 @@ async function register(req, res) {
       },
     });
 
+    // login() registers this device in tbl_user_device so home_data.php's
+    // DeviceMatch check finds an active row - register() never did, so a
+    // brand-new signup had no active device row at all. The very first
+    // /home call right after registration then saw DeviceMatch: false and
+    // the app force-logged the new user straight back to the sign-in
+    // screen ("Session expired! Logged in from another device.") before
+    // they ever reached the home screen.
+    await deviceSessionService.registerDevice({
+      uid: newUser.id,
+      userType: "customer",
+      deviceId,
+      fcmToken,
+      platform: req.body?.platform,
+      deviceName: req.body?.device_name,
+      appVersion: req.body?.app_version,
+    });
+
     if (referrerId > 0) {
       const refType = referrerIsDriver ? "DRIVER" : "USER";
       await prisma.tbl_referral.create({

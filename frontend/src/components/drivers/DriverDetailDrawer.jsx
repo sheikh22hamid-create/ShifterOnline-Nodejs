@@ -92,6 +92,21 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
     }
   }
 
+  async function handleTogglePayment() {
+    const nextValue = rider.payment_complete ? 0 : 1
+    setBusy(true)
+    try {
+      await api.patch(`/riders/${riderId}/payment`, { payment_complete: nextValue })
+      toast.success(nextValue ? 'Verification payment marked complete.' : 'Verification payment reset to pending.')
+      refetch()
+      onChanged?.()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not update payment status.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleUnblock() {
     setBusy(true)
     try {
@@ -151,6 +166,9 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
               <Badge tone={approvalTone(rider.status)}>{approvalLabel(rider.status)}</Badge>
               <Badge tone={onlineTone(rider.a_status)}>{onlineLabel(rider.a_status)}</Badge>
               <Badge tone={verificationTone(rider.verification_status)}>KYC: {rider.verification_status}</Badge>
+              <Badge tone={rider.payment_complete ? 'success' : 'warning'}>
+                Verification payment: {rider.payment_complete ? 'Paid' : 'Pending'}
+              </Badge>
               {rider.monthly_plan === 1 ? (
                 <Badge tone="info">💼 Monthly Dedicated</Badge>
               ) : (
@@ -160,6 +178,19 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
 
             {canModerate && (
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleTogglePayment}
+                  className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
+                  style={
+                    rider.payment_complete
+                      ? { borderColor: 'var(--border)', color: 'var(--ink-muted)' }
+                      : { borderColor: 'var(--success-soft-border)', color: 'var(--success)', background: 'var(--success-soft)' }
+                  }
+                >
+                  {rider.payment_complete ? 'Mark payment pending' : 'Mark payment complete'}
+                </button>
                 {rider.monthly_plan === 1 && (
                   <button
                     type="button"
@@ -394,6 +425,21 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                   <div className="flex justify-between">
                     <span style={{ color: 'var(--ink-muted)' }}>Kit</span>
                     <span>{rider.kit.kit_status === 1 ? 'Approved' : 'Pending'}</span>
+                  </div>
+                )}
+                {rider.personal_doc?.rc_owner_aadhar_number && (
+                  <div className="border-t pt-2" style={{ borderColor: 'var(--border)' }}>
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                      RC registered to a different owner
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--ink-muted)' }}>Owner name</span>
+                      <span>{rider.personal_doc.rc_owner_name || '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--ink-muted)' }}>Owner Aadhaar</span>
+                      <span className="font-mono-data">{rider.personal_doc.rc_owner_aadhar_number}</span>
+                    </div>
                   </div>
                 )}
               </div>

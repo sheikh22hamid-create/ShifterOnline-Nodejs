@@ -12,6 +12,7 @@ const driverOrderHistoryController = require("../controllers/driverOrderHistoryC
 const legacyOrderController = require("../controllers/legacyOrderController");
 const driverKycStatusController = require("../controllers/driverKycStatusController");
 const driverGovVerificationController = require("../controllers/driverGovVerificationController");
+const driverVerificationPaymentController = require("../controllers/driverVerificationPaymentController");
 const appKeyAuth = require("../middleware/appKeyAuth");
 
 const router = express.Router();
@@ -24,6 +25,10 @@ router.post("/auth/verify-otp", riderAuthController.verifyOtp);
 router.post("/auth/login", riderAuthController.login);
 router.post("/auth/register", riderAuthController.register);
 router.post("/auth/logout", riderAuthController.logout);
+
+// Driver-registration auto-verification charge (Razorpay order + verify)
+router.post("/verification-payment/create-order", driverVerificationPaymentController.createOrder);
+router.post("/verification-payment/verify", driverVerificationPaymentController.verifyPayment);
 
 router.get("/test-drivers", riderController.listTestDrivers);
 router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);

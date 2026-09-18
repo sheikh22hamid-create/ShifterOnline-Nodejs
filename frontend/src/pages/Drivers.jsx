@@ -153,7 +153,7 @@ export default function Drivers() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Driver', 'Vehicle', 'City', 'Status', 'KYC', 'Wallet', ''].map((h) => (
+                {['Driver', 'Vehicle', 'City', 'Status', 'KYC', 'Payment', 'Wallet', ''].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -164,21 +164,21 @@ export default function Drivers() {
               {loading &&
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={7} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={8} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
               )}
               {!loading && !error && pageRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+                  <td colSpan={8} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                     No drivers match this filter.
                   </td>
                 </tr>
@@ -215,6 +215,9 @@ export default function Drivers() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       <Badge tone={verificationTone(d.verification_status)}>{d.verification_status}</Badge>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5">
+                      <Badge tone={d.payment_complete ? 'success' : 'warning'}>{d.payment_complete ? 'Paid' : 'Pending'}</Badge>
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
                       {formatCurrency(d.wallet_balance)}

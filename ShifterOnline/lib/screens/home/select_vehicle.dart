@@ -375,8 +375,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         }
       }
       if (retainedIndex < 0 && _selectedIndex < 0 && refreshed.isNotEmpty) {
-        final firstAvailable = refreshed.indexWhere((option) => _isAvailable(option['availability']));
-        retainedIndex = firstAvailable >= 0 ? firstAvailable : 0;
+        // Only auto-select a vehicle that actually has drivers nearby - falling
+        // back to index 0 when NONE are available pre-selected an unavailable
+        // vehicle (e.g. "Bike - No drivers nearby") and still let the user see
+        // "Choose delivery option" / "Book now" for it, as if it were bookable.
+        retainedIndex = refreshed.indexWhere((option) => _isAvailable(option['availability']));
       }
       final rawSuggestion = decoded['radius_suggestion'];
       final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
@@ -1546,7 +1549,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             Expanded(
               child: image.isEmpty
                   ? Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)
-                  : FadeInImage.assetNetwork(placeholder: 'assets/loading.gif', image: '${Config.nodeImageURLPath}$image', fit: BoxFit.contain, imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)),
+                  : FadeInImage.assetNetwork(placeholder: 'assets/loading.gif', image: Config.resolveImageUrl(image), fit: BoxFit.contain, imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)),
             ),
             Row(children: [
               Expanded(child: Text(_vehicleName(option), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: notifier.text, fontSize: 12, fontFamily: 'Gilroy_Bold'))),

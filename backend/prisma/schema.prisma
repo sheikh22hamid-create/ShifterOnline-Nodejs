@@ -658,6 +658,14 @@ model tbl_personal_doc {
   aadhar_back      String? @db.Text
   aadhaar_back     String? @db.VarChar(255)
   upi_image        String? @db.VarChar(255)
+  // Populated only when the vehicle's RC owner isn't the driver themselves -
+  // the app runs a separate UIDAI eKYC OTP verification against the RTO's
+  // registered owner name before letting the driver proceed (see
+  // AutoVerificationManager.startOwnerAadhaarVerification on the driver
+  // app), but that result was previously discarded after the in-app check
+  // and never reached the backend at all.
+  rc_owner_name          String? @db.VarChar(255)
+  rc_owner_aadhar_number String? @db.VarChar(20)
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Save } from 'lucide-react'
+import { Save, ExternalLink, PlayCircle } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
@@ -90,10 +90,12 @@ function SettingsForm({ data, onSaved }) {
   }))
   const [saving, setSaving] = useState(false)
 
-  async function handleSave() {
+  async function handleSave(e, overridePayload) {
+    if (e && e.preventDefault) e.preventDefault()
     setSaving(true)
     try {
-      await api.put('/settings', { ...form, ...paymentMethods, flags })
+      const payload = overridePayload || { ...form, ...paymentMethods, flags }
+      await api.put('/settings', payload)
       toast.success('Settings saved.')
       onSaved()
     } catch (err) {
@@ -106,8 +108,7 @@ function SettingsForm({ data, onSaved }) {
   return (
     <form
       onSubmit={(e) => {
-        e.preventDefault()
-        handleSave()
+        handleSave(e)
       }}
     >
       <div className="flex items-start justify-between">
@@ -301,9 +302,10 @@ function SettingsForm({ data, onSaved }) {
 
           <div className="mt-4 flex justify-end border-t pt-3" style={{ borderColor: 'var(--border)' }}>
             <button
-              type="submit"
+              type="button"
               disabled={saving}
-              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              onClick={(e) => handleSave(e, { flags })}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
               style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
             >
               <Save size={14} /> {saving ? 'Saving…' : 'Save Verification Settings'}
@@ -410,6 +412,153 @@ function SettingsForm({ data, onSaved }) {
                 <div className="flex h-32 flex-col items-center justify-center rounded border border-dashed p-4 text-center text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-faint)' }}>
                   <span>No video URL configured.</span>
                   <span className="text-[11px] mt-0.5">Enter a valid direct video link above to preview.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="surface-card rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                User App "How To Use" Tutorial Bar
+              </h3>
+              <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                Configure the top tutorial button/banner shown on the customer mobile app home screen.
+              </p>
+            </div>
+            {flags.how_to_use_enabled !== '0' && flags.how_to_use_enabled !== false ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
+                ● Active on App
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium" style={{ background: 'var(--surface-muted)', color: 'var(--ink-faint)' }}>
+                ○ Hidden
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="how_to_use_enabled">Tutorial Bar Status</Label>
+                <select
+                  id="how_to_use_enabled"
+                  value={flags.how_to_use_enabled === '0' || flags.how_to_use_enabled === false ? '0' : '1'}
+                  onChange={(e) => setFlags((f) => ({ ...f, how_to_use_enabled: e.target.value }))}
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+                  style={FIELD_STYLE}
+                >
+                  <option value="1">Enabled (Visible on user app)</option>
+                  <option value="0">Disabled (Hidden on user app)</option>
+                </select>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Toggle whether the How To Use button appears at the top of the user app home page.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="how_to_use_title">Button Title</Label>
+                <Input
+                  id="how_to_use_title"
+                  placeholder="How To Use"
+                  value={flags.how_to_use_title ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, how_to_use_title: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Default is "How To Use". You can customize it (e.g. "Watch App Tutorial", "How It Works").
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="how_to_use_video_url">Video / Tutorial URL</Label>
+                <Input
+                  id="how_to_use_video_url"
+                  placeholder="https://www.youtube.com/shorts/h7KMfS0IrI8"
+                  value={flags.how_to_use_video_url ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, how_to_use_video_url: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  YouTube Shorts, YouTube video, or any external link opened when the user clicks the button.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="how_to_use_max_orders">Auto-Hide After Completed Orders (Threshold)</Label>
+                <Input
+                  id="how_to_use_max_orders"
+                  type="number"
+                  min="0"
+                  placeholder="5"
+                  value={flags.how_to_use_max_orders ?? '5'}
+                  onChange={(e) => setFlags((f) => ({ ...f, how_to_use_max_orders: e.target.value }))}
+                />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Automatically hides the How To Use button if the user has completed <strong>{flags.how_to_use_max_orders ?? '5'}</strong> or more orders. (Set 0 to never auto-hide).
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFlags((f) => ({
+                      ...f,
+                      how_to_use_video_url: 'https://www.youtube.com/shorts/h7KMfS0IrI8',
+                      how_to_use_title: 'How To Use',
+                      how_to_use_enabled: '1',
+                    }))
+                  }
+                  className="rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:bg-white/5"
+                  style={{ borderColor: 'var(--border)', color: 'var(--brand)' }}
+                >
+                  Reset Default YouTube Shorts
+                </button>
+                {flags.how_to_use_video_url && (
+                  <a
+                    href={flags.how_to_use_video_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition-colors hover:bg-white/5"
+                    style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+                  >
+                    <ExternalLink size={12} /> Test Link in New Tab
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col justify-center rounded-lg border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <div className="text-[11.5px] font-medium mb-3" style={{ color: 'var(--ink-muted)' }}>
+                Live Preview — User App Home Screen Bar
+              </div>
+              {flags.how_to_use_enabled === '0' || flags.how_to_use_enabled === false ? (
+                <div className="rounded-xl border border-dashed p-6 text-center text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-faint)' }}>
+                  Button is currently <strong>Hidden</strong>. It will not be shown on the user app home screen.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div
+                    className="flex items-center justify-center gap-2.5 rounded-2xl py-3 px-4 shadow-lg cursor-pointer transition-transform hover:scale-[1.01]"
+                    style={{
+                      backgroundColor: '#FF0000',
+                      boxShadow: '0 5px 15px rgba(255, 0, 0, 0.35)',
+                    }}
+                    onClick={() => {
+                      if (flags.how_to_use_video_url) {
+                        window.open(flags.how_to_use_video_url, '_blank')
+                      }
+                    }}
+                  >
+                    <PlayCircle size={26} color="#ffffff" />
+                    <span className="text-[17px] font-bold text-white tracking-wide">
+                      {flags.how_to_use_title?.trim() || 'How To Use'}
+                    </span>
+                  </div>
+                  <p className="text-center text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                    Target: <code className="font-mono text-[10.5px]">{flags.how_to_use_video_url || 'https://www.youtube.com/shorts/h7KMfS0IrI8'}</code>
+                  </p>
                 </div>
               )}
             </div>

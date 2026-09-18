@@ -5,8 +5,9 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const otpService = require("../services/otpService");
 const deviceSessionService = require("../services/deviceSessionService");
-const { assignDefaultDeliveryTypes } = require("../utils/assignDefaultDeliveryTypes");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
+const { getAutoVerificationSettings } = require("../utils/driverVerificationSettings");
+const { evaluateDriverApproval } = require("../utils/driverApproval");
 
 // Node port of the legacy PHP driver endpoints under
 // Php Backend/production/admin/rider_api/*.php. Response shape kept
@@ -106,6 +107,17 @@ async function verifyOtp(req, res) {
         appVersion: req.body?.app_version,
       });
 
+      // payment_complete/auto_verification_* let the app route a driver whose
+      // docs are already verified but who never paid the auto-verification
+      // charge straight back to the payment screen on re-login, instead of
+      // stuck on a "Mobile Number Already Used!" resubmit of the registration
+      // form (see registerHandler - full_name is already set for these rows).
+      const paymentComplete = Number(driver.payment_complete) === 1;
+      let verificationCharge = { charge: 0, chargeOld: 0, msg: "" };
+      if (!paymentComplete) {
+        verificationCharge = await getAutoVerificationSettings();
+      }
+
       const driverResponse = {
         id: driver.id,
         full_name: driver.full_name,
@@ -125,6 +137,10 @@ async function verifyOtp(req, res) {
         working_hours: driver.working_hours,
         fcm_token: fcmToken || driver.fcm_token,
         rdate: driver.rdate,
+        payment_complete: paymentComplete ? 1 : 0,
+        auto_verification_charge: verificationCharge.charge,
+        auto_verification_charge_old: verificationCharge.chargeOld,
+        auto_verification_msg: verificationCharge.msg,
       };
 
       return res.status(200).json({
@@ -382,6 +398,13 @@ async function registerHandler(req, res) {
     const now = new Date();
     const refTypeStr = referrerId > 0 ? (referrerIsCustomer ? "USER" : "DRIVER") : "";
 
+    // The one-time auto-verification charge (if any) is priced at
+    // registration time - a driver with no charge due is marked paid
+    // immediately, otherwise approval stays gated until the verification
+    // payment actually clears (see evaluateDriverApproval).
+    const { charge: autoVerificationCharge } = await getAutoVerificationSettings();
+    const initialPaymentComplete = autoVerificationCharge > 0 ? 0 : 1;
+
     if (isExistingDraft && riderId > 0) {
       await prisma.tbl_rider.update({
         where: { id: riderId },
@@ -404,6 +427,7 @@ async function registerHandler(req, res) {
           referred_by: referrerId,
           referred_by_type: refTypeStr,
           status: 1,
+          payment_complete: initialPaymentComplete,
         },
       });
     } else {
@@ -435,10 +459,28 @@ async function registerHandler(req, res) {
           refer_by: referrerId,
           referred_by: referrerId,
           referred_by_type: refTypeStr,
+          payment_complete: initialPaymentComplete,
         },
       });
       riderId = created.id;
     }
+
+    // verifyOtp/login register this device in tbl_rider_device (via
+    // deviceSessionService) so home.php's DeviceMatch check finds an active
+    // row - registration never did, so a brand-new driver had no active
+    // device row until their next login. Their very first post-registration
+    // /home call then saw DeviceMatch: false and got force-logged-out back
+    // to sign-in (see the same bug just fixed for the customer app's
+    // register()).
+    await deviceSessionService.registerDevice({
+      uid: riderId,
+      userType: "rider",
+      deviceId,
+      fcmToken,
+      platform: req.body?.platform,
+      deviceName: req.body?.device_name,
+      appVersion: req.body?.app_version,
+    });
 
     // Profile photo
     const profilePath = await saveBufferedFile(profilePhoto, "profile");
@@ -507,35 +549,41 @@ async function registerHandler(req, res) {
       });
     }
     if (upiImagePath) docUpdate.upi_image = upiImagePath;
+
+    // Only populated when the RC's registered owner isn't the driver -
+    // the app runs its own UIDAI eKYC OTP check against this name before
+    // letting the driver proceed, but previously threw the result away
+    // instead of ever sending it here.
+    const rcOwnerName = String(body.rc_owner_name || "").trim();
+    const rcOwnerAadhaarNumber = String(body.rc_owner_aadhar_number || "").trim();
+    if (rcOwnerName) docUpdate.rc_owner_name = rcOwnerName;
+    if (rcOwnerAadhaarNumber) docUpdate.rc_owner_aadhar_number = rcOwnerAadhaarNumber;
+
     if (Object.keys(docUpdate).length) {
       await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: docUpdate });
     }
 
-    const finalDoc = await prisma.tbl_personal_doc.findUnique({ where: { id: docRow.id } });
-    const aadharApproved = finalDoc?.aadhar_status === 1;
-    const panApproved = finalDoc?.pan_status === 1;
-    const residenceApproved = finalDoc?.residence_status === 1;
-    const licApproved = finalDoc?.lic_status === 1;
-    const isBicycle = finalDoc?.is_bycle === 1;
-    const isAllVerified = isBicycle
-      ? residenceApproved && (aadharApproved || panApproved)
-      : aadharApproved && panApproved && residenceApproved && licApproved;
-
-    if (isAllVerified) {
-      await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: { status: 1 } });
-      await prisma.tbl_rider.update({
-        where: { id: riderId },
-        data: { verification_status: "approved", all_verify: 1, a_status: 1, status: 1 },
-      });
-      await assignDefaultDeliveryTypes(riderId);
-    }
+    // Approval now also requires the verification payment to have cleared
+    // (see evaluateDriverApproval) - docsVerified alone used to be enough,
+    // which let a driver skip the Razorpay charge entirely by force-quitting
+    // the app right after eKYC succeeded.
+    const { isAllVerified, docsVerified } = await evaluateDriverApproval(riderId);
 
     const riderData = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    const paymentComplete = Number(riderData.payment_complete) === 1;
+    const responseMsg = isAllVerified
+      ? "Registration successful and Driver profile approved!"
+      : docsVerified && !paymentComplete
+        ? `Documents verified! Complete the ₹${autoVerificationCharge} verification payment to activate your account.`
+        : "Your account is under verification.";
+
     return res.status(200).json({
       ResponseCode: "200",
       Result: "true",
-      ResponseMsg: isAllVerified ? "Registration successful and Driver profile approved!" : "Your account is under verification.",
+      ResponseMsg: responseMsg,
       is_all_verified: isAllVerified,
+      payment_complete: paymentComplete ? 1 : 0,
+      auto_verification_charge: autoVerificationCharge,
       reffer_code: refferCode,
       rider_data: { ...riderData, wallet_balance: riderData.wallet_balance?.toString?.() ?? riderData.wallet_balance },
       verified_documents: verifiedSummary,

@@ -46,7 +46,7 @@ class VehicleDetailsScreen extends StatelessWidget {
               decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(16)),
               child: FadeInImage.assetNetwork(
                 placeholder: 'assets/loading.gif',
-                image: '${Config.nodeImageURLPath}$detailImage',
+                image: Config.resolveImageUrl(detailImage),
                 fit: BoxFit.contain,
                 imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 56),
               ),

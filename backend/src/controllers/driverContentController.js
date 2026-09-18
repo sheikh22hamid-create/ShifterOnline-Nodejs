@@ -287,6 +287,11 @@ async function setIsBicycle(req, res) {
 // --- get_registration_settings.php ---
 async function registrationSettings(req, res) {
   try {
+    // The app only ever knows the driver's mobile at this point (rider_id
+    // doesn't exist yet for a brand-new registration, and isn't looked up
+    // for a returning one) - resolve by mobile first. `rid` is kept as a
+    // fallback for any other caller that already has the numeric id.
+    const mobile = String(req.body?.mobile || "").trim();
     const rid = Number(req.body?.rid || 0);
     const rows = await prisma.app_settings.findMany();
     const rawMap = Object.fromEntries(rows.map((r) => [r.setting_key, r.setting_value]));
@@ -296,10 +301,12 @@ async function registrationSettings(req, res) {
     };
 
     let pendingPayment = false;
-    if (rid) {
-      const rider = await prisma.tbl_rider.findUnique({ where: { id: rid }, select: { payment_complete: true } });
-      pendingPayment = rider ? Number(rider.payment_complete) === 0 : false;
-    }
+    const rider = mobile
+      ? await prisma.tbl_rider.findFirst({ where: { fmobile: mobile }, select: { payment_complete: true } })
+      : rid
+        ? await prisma.tbl_rider.findUnique({ where: { id: rid }, select: { payment_complete: true } })
+        : null;
+    if (rider) pendingPayment = Number(rider.payment_complete) !== 1;
 
     return res.status(200).json({
       ResponseCode: "200",

@@ -105,6 +105,7 @@ router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRid
 router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);
 router.patch("/riders/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleStatus);
+router.patch("/riders/:id/payment", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.setPaymentComplete);
 router.delete("/riders/:id", auth, authorize("superadmin"), adminRiderController.remove);
 
 // --- Driver Training Video & Progress ---------------------------------------

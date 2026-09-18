@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const { evaluateDriverApproval } = require("../utils/driverApproval");
 
 // Legacy convention shared by every doc-status column touched here
 // (tbl_personal_doc.*_status, tbl_vehicle_details.status, tbl_bank_account.status,
@@ -79,6 +80,7 @@ async function list(req, res) {
       wallet_balance: r.wallet_balance,
       verification_status: r.verification_status,
       all_verify: r.all_verify,
+      payment_complete: Number(r.payment_complete) === 1,
       active_categories: categoriesByRider[r.id] || [],
     }));
 
@@ -169,6 +171,7 @@ async function getOne(req, res) {
         all_verify: rider.all_verify,
         verification_status: rider.verification_status,
         verification_type: rider.verification_type,
+        payment_complete: Number(rider.payment_complete) === 1,
         wallet_balance: rider.wallet_balance,
         plan_type: rider.plan_type,
         monthly_plan: rider.monthly_plan || 0,
@@ -328,6 +331,66 @@ async function toggleStatus(req, res) {
   }
 }
 
+// Manual override for the driver-registration auto-verification charge -
+// lets an admin mark a driver's payment_complete directly (e.g. they paid
+// by another channel, or a Razorpay webhook was missed) without the driver
+// having to redo anything in the app. Re-runs the same approval check the
+// payment-verify endpoint uses, so a driver whose docs were already
+// verified flips to "approved" immediately once marked paid.
+async function setPaymentComplete(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { payment_complete } = req.body;
+    if (payment_complete !== 0 && payment_complete !== 1) {
+      return res.status(400).json({ success: false, message: "payment_complete must be 0 or 1" });
+    }
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+
+    await prisma.tbl_rider.update({ where: { id }, data: { payment_complete } });
+    const { isAllVerified } = await evaluateDriverApproval(id);
+
+    await prisma.tbl_rnoti.create({
+      data: {
+        rid: id,
+        title: payment_complete ? "Verification payment confirmed" : "Verification payment reset",
+        msg: payment_complete
+          ? "Your verification payment has been confirmed."
+          : "Your verification payment status was reset to pending.",
+        type: "account_status",
+        date: new Date(),
+      },
+    });
+
+    const updated = await prisma.tbl_rider.findUnique({ where: { id } });
+    adminSocket.notifyDriverStatusUpdate(id, rider.city_id, {
+      status: updated.status,
+      a_status: updated.a_status,
+      online: updated.a_status === 1,
+      active: updated.status === 1,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment status updated",
+      data: {
+        id: updated.id,
+        payment_complete: Number(updated.payment_complete) === 1,
+        verification_status: updated.verification_status,
+        is_all_verified: isAllVerified,
+      },
+    });
+  } catch (err) {
+    return internalError(res, err, "riders.setPaymentComplete");
+  }
+}
+
 async function remove(req, res) {
   try {
     const id = parseInt(req.params.id, 10);
@@ -409,4 +472,4 @@ async function toggleModel(req, res) {
   }
 }
 
-module.exports = { list, getOne, kycDecision, toggleStatus, remove, toggleModel };
+module.exports = { list, getOne, kycDecision, toggleStatus, remove, toggleModel, setPaymentComplete };

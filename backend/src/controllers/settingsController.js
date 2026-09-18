@@ -103,6 +103,44 @@ async function getSettings(req, res) {
   }
 }
 
+const INT_FIELDS = new Set([
+  "bkms",
+  "bprice",
+  "abprice",
+  "itemlimit",
+  "itemkg",
+  "mile_charge",
+  "service_charge",
+  "rider_commission",
+  "kilo_limit",
+  "is_wether_bad",
+  "reject_timer",
+  "payment_cod",
+  "payment_wallet",
+  "payment_online",
+  "admin_earning",
+  "driver_pay",
+  "drive_cancellation",
+  "user_cancellation",
+]);
+
+const NULLABLE_INT_FIELDS = new Set([
+  "reject_timer",
+  "payment_cod",
+  "payment_wallet",
+  "payment_online",
+  "admin_earning",
+  "driver_pay",
+  "drive_cancellation",
+  "user_cancellation",
+]);
+
+const FLOAT_FIELDS = new Set(["ukms", "utprice", "afprice"]);
+
+const DECIMAL_FIELDS = new Set(["refer_amount", "refer_join_amount"]);
+
+const BOOLEAN_FIELDS = new Set(["refer_type", "status"]);
+
 async function updateSettings(req, res) {
   try {
     let existing = await prisma.setting.findFirst();
@@ -112,34 +150,73 @@ async function updateSettings(req, res) {
 
     const data = {};
     for (const field of SETTING_PUBLIC_FIELDS) {
-      if (req.body[field] !== undefined) data[field] = req.body[field];
+      if (req.body[field] === undefined) continue;
+
+      const val = req.body[field];
+      if (INT_FIELDS.has(field)) {
+        if (val === "" || val === null) {
+          data[field] = NULLABLE_INT_FIELDS.has(field) ? null : 0;
+        } else {
+          const parsed = parseInt(val, 10);
+          data[field] = Number.isNaN(parsed) ? (NULLABLE_INT_FIELDS.has(field) ? null : 0) : parsed;
+        }
+      } else if (FLOAT_FIELDS.has(field)) {
+        if (val === "" || val === null) {
+          data[field] = 0;
+        } else {
+          const parsed = parseFloat(val);
+          data[field] = Number.isNaN(parsed) ? 0 : parsed;
+        }
+      } else if (DECIMAL_FIELDS.has(field)) {
+        if (val === "" || val === null) {
+          data[field] = null;
+        } else {
+          const parsed = parseFloat(val);
+          data[field] = Number.isNaN(parsed) ? null : parsed;
+        }
+      } else if (BOOLEAN_FIELDS.has(field)) {
+        data[field] = val === true || val === 1 || val === "true" || val === "1";
+      } else {
+        data[field] = String(val ?? "").trim();
+      }
     }
 
-    const updates = [];
     if (existing && Object.keys(data).length > 0) {
-      updates.push(prisma.setting.update({ where: { id: existing.id }, data }));
+      await prisma.setting.update({ where: { id: existing.id }, data });
     }
 
     const flags = req.body.flags;
     if (flags && typeof flags === "object") {
       for (const [key, value] of Object.entries(flags)) {
-        updates.push(
-          prisma.app_settings.upsert({
+        if (!key || typeof key !== "string") continue;
+        const valStr = value === undefined || value === null ? "" : String(value).trim();
+        try {
+          await prisma.app_settings.upsert({
             where: { setting_key: key },
-            create: { setting_key: key, setting_value: String(value), updated_at: new Date() },
-            update: { setting_value: String(value), updated_at: new Date() },
-          })
-        );
+            create: { setting_key: key, setting_value: valStr, updated_at: new Date() },
+            update: { setting_value: valStr, updated_at: new Date() },
+          });
+        } catch (upsertErr) {
+          // Fallback if unique constraint is missing or has duplicate records
+          const existingRow = await prisma.app_settings.findFirst({ where: { setting_key: key } });
+          if (existingRow) {
+            await prisma.app_settings.update({
+              where: { id: existingRow.id },
+              data: { setting_value: valStr, updated_at: new Date() },
+            });
+          } else {
+            await prisma.app_settings.create({
+              data: { setting_key: key, setting_value: valStr, updated_at: new Date() },
+            });
+          }
+        }
       }
-    }
-
-    if (updates.length > 0) {
-      await prisma.$transaction(updates);
     }
 
     return res.status(200).json({ success: true, message: "Settings updated" });
   } catch (err) {
-    return internalError(res, err, "settings.updateSettings");
+    logger.error("settingsController.updateSettings failed:", err);
+    return res.status(500).json({ success: false, message: err.message || "Internal server error" });
   }
 }
 
