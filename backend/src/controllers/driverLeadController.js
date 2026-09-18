@@ -2,7 +2,10 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 
 function normalizePhone(raw) {
-  return String(raw || "").replace(/\D/g, "");
+  const digitsOnly = String(raw || "").replace(/\D/g, "");
+  // Take last 10 digits to normalize away country code prefix (+91 etc)
+  // This app serves only Indian 10-digit mobile numbers
+  return digitsOnly.slice(-10);
 }
 
 /** Driver bulk-submits phone contacts as referral leads (POST /rider/leads) */

@@ -60,13 +60,31 @@ describe("driverLeadController.submitLeads", () => {
     expect(payload.skipped[0]).toEqual(expect.objectContaining({ phone: "9998887771", reason: "already_submitted" }));
   });
 
-  it("strips non-digit characters from phone before matching/storing", async () => {
+  it("strips non-digit characters and takes last 10 digits to normalize country code", async () => {
     const res = mockRes();
     await submitLeads({ body: { rider_id: 55, contacts: [{ name: "Ravi", phone: "+91 999-888-7771" }] } }, res);
 
     expect(prisma.tbl_driver_lead.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ phone: "919998887771" }) })
+      expect.objectContaining({ data: expect.objectContaining({ phone: "9998887771" }) })
     );
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.accepted).toBe(1);
+  });
+
+  it("matches +91-prefixed contact against existing bare 10-digit user (cross-format dedup)", async () => {
+    // Simulates: contact submitted as "+91 9998887771", existing user stored as bare "9998887771"
+    prisma.tbl_user.findFirst.mockResolvedValue({ id: 123, mobile: 9998887771 });
+    const res = mockRes();
+    await submitLeads({ body: { rider_id: 55, contacts: [{ name: "Ravi", phone: "+91 9998887771" }] } }, res);
+
+    // Should find the user via normalized 10-digit lookup
+    expect(prisma.tbl_user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { mobile: 9998887771 } })
+    );
+    // Should NOT create a lead (already registered)
+    expect(prisma.tbl_driver_lead.create).not.toHaveBeenCalled();
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.skipped[0]).toEqual(expect.objectContaining({ phone: "9998887771", reason: "already_registered" }));
   });
 });
 
