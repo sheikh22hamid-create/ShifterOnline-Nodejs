@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import api from '../../services/api'
 import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
-import { resolveImageUrl } from '../../utils/imageUrl'
+import ImageUploadField from '../common/ImageUploadField'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
 const EMPTY_FORM = {
@@ -53,8 +53,6 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
     }
   }
 
-  const previewUrl = resolveImageUrl(form.cat_img)
-
   return (
     <Modal
       open={open}
@@ -84,29 +82,14 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
         </div>
       )}
 
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          {previewUrl ? (
-            <img src={previewUrl} alt="" className="h-full w-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
-          ) : (
-            <span className="text-[10px]" style={{ color: 'var(--ink-faint)' }}>
-              No icon
-            </span>
-          )}
-        </div>
-        <div className="flex-1">
-          <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-img">
-            Icon path
-          </label>
-          <input
-            id="cat-img"
-            value={form.cat_img}
-            onChange={(e) => setForm((f) => ({ ...f, cat_img: e.target.value }))}
-            className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
-            style={FIELD_STYLE}
-            placeholder="images/category/bike.png"
-          />
-        </div>
+      <div className="mb-3">
+        <ImageUploadField
+          label="Icon"
+          value={form.cat_img}
+          onChange={(v) => setForm((f) => ({ ...f, cat_img: v }))}
+          folder="category"
+          placeholder="images/category/bike.png"
+        />
       </div>
 
       <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-name">
@@ -137,15 +120,11 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
       </div>
 
       <div className="mb-3">
-        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="cat-detail-img">
-          Detail photo path (shown on the customer app's vehicle Details screen)
-        </label>
-        <input
-          id="cat-detail-img"
+        <ImageUploadField
+          label="Detail photo (shown on the customer app's vehicle Details screen)"
           value={form.detail_image}
-          onChange={(e) => setForm((f) => ({ ...f, detail_image: e.target.value }))}
-          className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
-          style={FIELD_STYLE}
+          onChange={(v) => setForm((f) => ({ ...f, detail_image: v }))}
+          folder="category"
           placeholder="images/category/bike_detail.png (falls back to the icon above if left blank)"
         />
       </div>
