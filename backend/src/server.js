@@ -19,7 +19,13 @@ const app = require("./app");
 const { initSocket } = require("./sockets/socketServer");
 const dispatchManager = require("./services/dispatchManager");
 const tripLifecycle = require("./services/tripLifecycle");
-const { PICKUP_TIMEOUT_SWEEP_INTERVAL_MS, ADVANCE_PAYMENT_SWEEP_INTERVAL_MS, SCHEDULED_ORDER_SWEEP_INTERVAL_MS } = require("./config/constants");
+const driverLeadService = require("./services/driverLeadService");
+const {
+  PICKUP_TIMEOUT_SWEEP_INTERVAL_MS,
+  ADVANCE_PAYMENT_SWEEP_INTERVAL_MS,
+  SCHEDULED_ORDER_SWEEP_INTERVAL_MS,
+  LEAD_EXPIRY_SWEEP_INTERVAL_MS,
+} = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
 
@@ -71,4 +77,12 @@ setInterval(() => {
     logger.error("dispatchDueScheduledOrders interval failed:", err)
   );
 }, SCHEDULED_ORDER_SWEEP_INTERVAL_MS);
+
+// Expire stale verified driver leads past their verification window
+setInterval(() => {
+  driverLeadService.expireStaleLeads().catch((err) =>
+    logger.error("expireStaleLeads interval failed:", err)
+  );
+}, LEAD_EXPIRY_SWEEP_INTERVAL_MS);
+
 // WhatsApp session reset trigger

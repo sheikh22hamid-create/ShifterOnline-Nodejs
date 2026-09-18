@@ -73,4 +73,7 @@ module.exports = {
   // reminder/dispatch is due.
   SCHEDULED_ORDER_REMINDER_LEAD_MS: 10 * 60 * 1000,
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS: 30 * 1000,
+
+  // Hourly sweep to expire verified leads that reached their expiry window
+  LEAD_EXPIRY_SWEEP_INTERVAL_MS: 60 * 60 * 1000,
 };
