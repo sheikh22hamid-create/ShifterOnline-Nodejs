@@ -3,7 +3,7 @@ const logger = require("../utils/logger");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
-  return res.status(500).json({ success: false, message: "Internal server error" });
+  return res.status(500).json({ success: false, message: err?.message || "Internal server error" });
 }
 
 // ---------------------------------------------------------------------------

@@ -303,4 +303,79 @@ async function isolateTestDrivers(req, res) {
   }
 }
 
-module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, packageListForDriver, setStatus, updateLocation, isolateTestDrivers };
+/** Get full driver profile */
+async function getProfile(req, res) {
+  try {
+    const riderId = Number(req.body?.rider_id || req.query?.rider_id || req.params?.riderId || 0);
+    if (!riderId) return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Driver ID is required" });
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) return res.status(200).json({ Result: "false", ResponseCode: "404", ResponseMsg: "Driver not found" });
+
+    return res.status(200).json({
+      Result: "true",
+      ResponseCode: "200",
+      ResponseMsg: "Profile fetched successfully",
+      rider_data: {
+        ...rider,
+        mobile: rider.fmobile,
+        fmobile: rider.fmobile,
+        dob: rider.dob || "",
+        nationality: rider.nationality || "Indian",
+        full_address: rider.full_address || "",
+        know_language: rider.know_language || "Hindi, English",
+        vehicle_no: rider.vehicle_no || "",
+        wallet_balance: rider.wallet_balance?.toString?.() ?? rider.wallet_balance,
+        payment_complete: Number(rider.payment_complete) === 1 ? 1 : 0,
+      },
+    });
+  } catch (err) {
+    logger.error("riderController.getProfile failed:", err);
+    return res.status(200).json({ Result: "false", ResponseCode: "500", ResponseMsg: "Internal server error" });
+  }
+}
+
+/** Update editable driver profile fields */
+async function updateProfile(req, res) {
+  try {
+    const riderId = Number(req.body?.rider_id || 0);
+    if (!riderId) return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Driver ID is required" });
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
+    if (!rider) return res.status(200).json({ Result: "false", ResponseCode: "404", ResponseMsg: "Driver not found" });
+
+    const data = {};
+    if (req.body.full_name !== undefined) data.full_name = String(req.body.full_name).trim();
+    if (req.body.email !== undefined) data.email = String(req.body.email).trim();
+    if (req.body.dob !== undefined) data.dob = String(req.body.dob).trim();
+    if (req.body.nationality !== undefined) data.nationality = String(req.body.nationality).trim();
+    if (req.body.full_address !== undefined) data.full_address = String(req.body.full_address).trim();
+    if (req.body.know_language !== undefined) data.know_language = String(req.body.know_language).trim();
+    if (req.body.vehicle_no !== undefined) data.vehicle_no = String(req.body.vehicle_no).trim();
+
+    const updated = Object.keys(data).length ? await prisma.tbl_rider.update({ where: { id: riderId }, data }) : rider;
+
+    return res.status(200).json({
+      Result: "true",
+      ResponseCode: "200",
+      ResponseMsg: "Profile updated successfully!",
+      rider_data: {
+        ...updated,
+        mobile: updated.fmobile,
+        fmobile: updated.fmobile,
+        dob: updated.dob || "",
+        nationality: updated.nationality || "Indian",
+        full_address: updated.full_address || "",
+        know_language: updated.know_language || "Hindi, English",
+        vehicle_no: updated.vehicle_no || "",
+        wallet_balance: updated.wallet_balance?.toString?.() ?? updated.wallet_balance,
+        payment_complete: Number(updated.payment_complete) === 1 ? 1 : 0,
+      },
+    });
+  } catch (err) {
+    logger.error("riderController.updateProfile failed:", err);
+    return res.status(200).json({ Result: "false", ResponseCode: "500", ResponseMsg: "Internal server error" });
+  }
+}
+
+module.exports = { listTestDrivers, getDeliveryTypes, setDeliveryType, packageListForDriver, setStatus, updateLocation, isolateTestDrivers, getProfile, updateProfile };

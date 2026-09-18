@@ -234,7 +234,13 @@ async function notificationList(req, res) {
     if (!rid) return fail(res, "Something Went Wrong!");
 
     const rows = await prisma.tbl_rnoti.findMany({ where: { rid }, orderBy: { id: "desc" } });
-    return res.status(200).json({ NotificationData: rows, ResponseCode: "200", Result: "true", ResponseMsg: "Notification List Get Successfully!!" });
+    // Android app expects "yyyy-MM-dd HH:mm:ss" (legacy PHP format), not the ISO string
+    // JSON.stringify would produce from the native Prisma DateTime.
+    const notificationData = rows.map((r) => ({
+      ...r,
+      date: r.date ? r.date.toISOString().slice(0, 19).replace("T", " ") : r.date,
+    }));
+    return res.status(200).json({ NotificationData: notificationData, ResponseCode: "200", Result: "true", ResponseMsg: "Notification List Get Successfully!!" });
   } catch (err) {
     logger.error("driverContentController.notificationList failed:", err);
     return fail(res, "Internal server error", 500);

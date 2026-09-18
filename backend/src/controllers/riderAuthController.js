@@ -123,6 +123,12 @@ async function verifyOtp(req, res) {
         full_name: driver.full_name,
         email: driver.email,
         mobile: driver.fmobile,
+        fmobile: driver.fmobile,
+        dob: driver.dob || "",
+        nationality: driver.nationality || "Indian",
+        full_address: driver.full_address || "",
+        know_language: driver.know_language || "Hindi, English",
+        vehicle_no: driver.vehicle_no || "",
         account_name: driver.account_name,
         account_number: driver.account_number,
         ifsc: driver.ifsc,
@@ -200,7 +206,18 @@ async function login(req, res) {
     }
 
     return res.status(200).json({
-      rider_data: { ...rider, ...data, wallet_balance: rider.wallet_balance?.toString?.() ?? rider.wallet_balance },
+      rider_data: {
+        ...rider,
+        ...data,
+        mobile: rider.fmobile,
+        fmobile: rider.fmobile,
+        dob: rider.dob || "",
+        nationality: rider.nationality || "Indian",
+        full_address: rider.full_address || "",
+        know_language: rider.know_language || "Hindi, English",
+        vehicle_no: rider.vehicle_no || "",
+        wallet_balance: rider.wallet_balance?.toString?.() ?? rider.wallet_balance,
+      },
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "Login successfully!",
@@ -585,7 +602,19 @@ async function registerHandler(req, res) {
       payment_complete: paymentComplete ? 1 : 0,
       auto_verification_charge: autoVerificationCharge,
       reffer_code: refferCode,
-      rider_data: { ...riderData, wallet_balance: riderData.wallet_balance?.toString?.() ?? riderData.wallet_balance },
+      rider_data: {
+        ...riderData,
+        mobile: riderData.fmobile,
+        fmobile: riderData.fmobile,
+        dob: riderData.dob || "",
+        nationality: riderData.nationality || "Indian",
+        full_address: riderData.full_address || "",
+        know_language: riderData.know_language || "Hindi, English",
+        vehicle_no: riderData.vehicle_no || "",
+        wallet_balance: riderData.wallet_balance?.toString?.() ?? riderData.wallet_balance,
+        payment_complete: paymentComplete ? 1 : 0,
+        auto_verification_charge: autoVerificationCharge,
+      },
       verified_documents: verifiedSummary,
     });
   } catch (err) {

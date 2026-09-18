@@ -40,6 +40,10 @@ router.post("/isolate-test-drivers", riderController.isolateTestDrivers);
 router.post("/premium-plans", driverPlanController.list);
 router.post("/premium-plans/purchase", driverPlanController.purchase);
 
+// Driver profile view and update
+router.post("/profile", riderController.getProfile);
+router.post("/profile/update", riderController.updateProfile);
+
 // Driver mandatory training video gate endpoints
 router.post("/training/status", trainingController.getStatus);
 router.post("/training/progress", trainingController.saveProgress);

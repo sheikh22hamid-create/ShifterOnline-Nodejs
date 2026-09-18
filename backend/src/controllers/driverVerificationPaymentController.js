@@ -104,7 +104,27 @@ async function verifyPayment(req, res) {
     if (!rider) return fail(res, "Driver not found");
     if (Number(rider.payment_complete) === 1) {
       const { isAllVerified } = await evaluateDriverApproval(riderId);
-      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Payment already verified", already_paid: true, is_all_verified: isAllVerified });
+      const { charge } = await getAutoVerificationSettings();
+      return res.status(200).json({
+        ResponseCode: "200",
+        Result: "true",
+        ResponseMsg: "Payment already verified",
+        already_paid: true,
+        is_all_verified: isAllVerified,
+        rider_data: {
+          ...rider,
+          mobile: rider.fmobile,
+          fmobile: rider.fmobile,
+          dob: rider.dob || "",
+          nationality: rider.nationality || "Indian",
+          full_address: rider.full_address || "",
+          know_language: rider.know_language || "Hindi, English",
+          vehicle_no: rider.vehicle_no || "",
+          wallet_balance: rider.wallet_balance?.toString?.() ?? rider.wallet_balance,
+          payment_complete: 1,
+          auto_verification_charge: charge,
+        },
+      });
     }
 
     // Confirm this order was actually priced for THIS rider before trusting
@@ -145,7 +165,19 @@ async function verifyPayment(req, res) {
       Result: "true",
       ResponseMsg: isAllVerified ? "Payment verified! Your driver profile is now approved." : "Payment verified. Your documents are still under review.",
       is_all_verified: isAllVerified,
-      rider_data: { ...updated, wallet_balance: updated.wallet_balance?.toString?.() ?? updated.wallet_balance },
+      rider_data: {
+        ...updated,
+        mobile: updated.fmobile,
+        fmobile: updated.fmobile,
+        dob: updated.dob || "",
+        nationality: updated.nationality || "Indian",
+        full_address: updated.full_address || "",
+        know_language: updated.know_language || "Hindi, English",
+        vehicle_no: updated.vehicle_no || "",
+        wallet_balance: updated.wallet_balance?.toString?.() ?? updated.wallet_balance,
+        payment_complete: 1,
+        auto_verification_charge: charge,
+      },
     });
   } catch (err) {
     logger.error("driverVerificationPaymentController.verifyPayment failed:", err);
