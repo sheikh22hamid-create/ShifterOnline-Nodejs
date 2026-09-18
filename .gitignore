@@ -24,4 +24,4 @@ skills-lock.json
 # opaque embedded repo and cannot track individual files inside it via
 # .gitignore negation. Changes to the PHP bridge files (Tasks 13-18) must
 # be committed inside that inner repo directly, not tracked from here.
-php backend
+php backend.worktrees/
