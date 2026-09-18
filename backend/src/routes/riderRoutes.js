@@ -45,6 +45,7 @@ router.post("/profile", riderController.getProfile);
 router.post("/profile/update", riderController.updateProfile);
 router.post("/check-referral", riderController.checkReferral);
 router.post("/apply-referral", riderController.applyReferral);
+router.post("/claim-referral-reward", riderController.claimReferralReward);
 
 // Driver mandatory training video gate endpoints
 router.post("/training/status", trainingController.getStatus);
