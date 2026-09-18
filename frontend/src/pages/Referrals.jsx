@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
-import { Coins, Save } from 'lucide-react'
+import { Coins, Save, PhoneCall } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -38,6 +39,8 @@ export default function Referrals() {
       await api.put('/referrals/settings', {
         user_point: editable.user_points_per_referral,
         driver_point: editable.driver_points_per_referral,
+        lead_referral_points: editable.lead_referral_points,
+        lead_verification_window_days: editable.lead_verification_window_days,
         point_value: editable.point_value,
         referral_enabled: editable.referral_enabled,
         share_message: editable.share_message,
@@ -54,12 +57,23 @@ export default function Referrals() {
 
   return (
     <div>
-      <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
-        Referral Network
-      </h1>
-      <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Reward settings, referral tree, and manual point adjustments.
-      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
+            Referral Network
+          </h1>
+          <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+            Reward settings, referral tree, and manual point adjustments.
+          </p>
+        </div>
+        <Link
+          to="/driver-leads"
+          className="flex items-center gap-1.5 self-start rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:bg-[var(--bg-hover)] sm:self-auto"
+          style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+        >
+          <PhoneCall size={13} /> Driver Leads Queue
+        </Link>
+      </div>
 
       {editable && (
         <div className="surface-card mt-4 rounded-xl p-4">
@@ -102,6 +116,32 @@ export default function Referrals() {
                 disabled={!isSuperadmin}
                 value={editable.driver_points_per_referral}
                 onChange={(e) => setForm({ ...editable, driver_points_per_referral: Number(e.target.value) })}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                style={FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>
+                Lead points (Driver)
+              </label>
+              <input
+                type="number"
+                disabled={!isSuperadmin}
+                value={editable.lead_referral_points ?? 100}
+                onChange={(e) => setForm({ ...editable, lead_referral_points: Number(e.target.value) })}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                style={FIELD_STYLE}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>
+                Lead validity (Days)
+              </label>
+              <input
+                type="number"
+                disabled={!isSuperadmin}
+                value={editable.lead_verification_window_days ?? 45}
+                onChange={(e) => setForm({ ...editable, lead_verification_window_days: Number(e.target.value) })}
                 className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
                 style={FIELD_STYLE}
               />

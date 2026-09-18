@@ -32,6 +32,7 @@ import {
   Bot,
   Sunrise,
   Smartphone,
+  PhoneCall,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -51,6 +52,7 @@ export const NAV_GROUPS = [
       { to: '/monthly-drivers', label: 'Monthly Drivers', icon: UserCheck, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },
+      { to: '/driver-leads', label: 'Driver Leads Queue', icon: PhoneCall, roles: ALL_STAFF, built: true },
       { to: '/kyc', label: 'KYC Approval Dock', icon: ShieldCheck, roles: ALL_STAFF, built: true },
       { to: '/customers', label: 'Customers', icon: UserCircle, roles: ALL_STAFF, built: true },
     ],

@@ -26,6 +26,8 @@ async function updateSettings(req, res) {
     const data = {};
     if (user_point !== undefined) data.user_points_per_referral = Number(user_point);
     if (driver_point !== undefined) data.driver_points_per_referral = Number(driver_point);
+    if (req.body.lead_referral_points !== undefined) data.lead_referral_points = Number(req.body.lead_referral_points);
+    if (req.body.lead_verification_window_days !== undefined) data.lead_verification_window_days = Number(req.body.lead_verification_window_days);
     if (point_value !== undefined) data.point_value = point_value;
     if (referral_enabled !== undefined) data.referral_enabled = Boolean(referral_enabled);
     if (share_message !== undefined) data.share_message = share_message;

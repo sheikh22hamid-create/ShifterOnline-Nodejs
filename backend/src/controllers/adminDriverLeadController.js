@@ -9,12 +9,46 @@ function internalError(res, err, label) {
 /** Admin queue of leads awaiting a verification call (GET /admin/driver-leads) */
 async function listLeads(req, res) {
   try {
-    const status = req.query?.status || "pending";
+    const status = req.query?.status !== undefined ? req.query.status : "pending";
+    const where = status && status !== "all" ? { status } : {};
     const leads = await prisma.tbl_driver_lead.findMany({
-      where: { status },
-      orderBy: { submitted_at: "asc" },
+      where,
+      orderBy: { submitted_at: "desc" },
     });
-    return res.status(200).json({ success: true, data: leads });
+
+    const driverIds = [...new Set((leads || []).map((l) => l.driver_id).filter(Boolean))];
+    let driverMap = new Map();
+    if (driverIds.length > 0 && typeof prisma.tbl_rider?.findMany === "function") {
+      const drivers = await prisma.tbl_rider.findMany({
+        where: { id: { in: driverIds } },
+        select: { id: true, full_name: true, first_name: true, last_name: true, fmobile: true },
+      });
+      for (const d of drivers) {
+        const name = d.full_name || [d.first_name, d.last_name].filter(Boolean).join(" ") || `Driver #${d.id}`;
+        driverMap.set(d.id, { id: d.id, name, mobile: d.fmobile || "" });
+      }
+    }
+
+    const enrichedLeads = (leads || []).map((l) => ({
+      ...l,
+      driver: driverMap.get(l.driver_id) || { id: l.driver_id, name: `Driver #${l.driver_id}`, mobile: "" },
+    }));
+
+    // Quick counts across all statuses for dashboard badges
+    let counts = { pending: 0, verified: 0, converted: 0, rejected: 0, expired: 0, total: 0 };
+    if (typeof prisma.tbl_driver_lead.groupBy === "function") {
+      const allCounts = await prisma.tbl_driver_lead.groupBy({
+        by: ["status"],
+        _count: { id: true },
+      });
+      for (const c of allCounts) {
+        const cnt = c._count?.id || 0;
+        counts[c.status] = cnt;
+        counts.total += cnt;
+      }
+    }
+
+    return res.status(200).json({ success: true, data: enrichedLeads, counts });
   } catch (err) {
     return internalError(res, err, "adminDriverLeads.listLeads");
   }

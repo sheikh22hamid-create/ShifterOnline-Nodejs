@@ -29,6 +29,7 @@ const PremiumPlans = lazy(() => import('./pages/PremiumPlans'))
 const Coupons = lazy(() => import('./pages/Coupons'))
 const Banners = lazy(() => import('./pages/Banners'))
 const Referrals = lazy(() => import('./pages/Referrals'))
+const DriverLeads = lazy(() => import('./pages/DriverLeads'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Faqs = lazy(() => import('./pages/Faqs'))
 const LegalPages = lazy(() => import('./pages/LegalPages'))
@@ -96,6 +97,7 @@ function App() {
             <Route path="/marketing/coupons" element={<Coupons />} />
             <Route path="/marketing/banners" element={<Banners />} />
             <Route path="/referrals" element={<Referrals />} />
+            <Route path="/driver-leads" element={<DriverLeads />} />
 
             {/* CMS & System Settings */}
             <Route path="/reports" element={<Gated roles={['superadmin', 'admin']}><Reports /></Gated>} />
