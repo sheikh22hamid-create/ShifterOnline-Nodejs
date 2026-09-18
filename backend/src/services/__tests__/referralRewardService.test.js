@@ -5,10 +5,10 @@
 // completed order, exactly once, and leaves everything else alone.
 
 jest.mock("../../config/db", () => ({
-  tbl_referral: { findFirst: jest.fn(), updateMany: jest.fn() },
+  tbl_referral: { findFirst: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), create: jest.fn() },
   tbl_referral_setting: { findFirst: jest.fn() },
   tbl_referral_point_log: { create: jest.fn() },
-  pkg_order: { count: jest.fn() },
+  pkg_order: { count: jest.fn(), findFirst: jest.fn() },
   tbl_user: { findUnique: jest.fn(), update: jest.fn() },
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   $transaction: jest.fn((ops) => Promise.all(ops)),
@@ -61,9 +61,9 @@ describe("referralRewardService.processReferralRewardsForCompletedOrder", () => 
     );
   });
 
-  it("does nothing when this is NOT the referred user's first completed order", async () => {
+  it("does nothing when the referred user has NO completed orders", async () => {
     prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
-    prisma.pkg_order.count.mockResolvedValue(3); // already had prior completed orders
+    prisma.pkg_order.count.mockResolvedValue(0); // no completed orders yet
 
     await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
 
@@ -116,5 +116,34 @@ describe("referralRewardService.processReferralRewardsForCompletedOrder", () => 
     await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
 
     expect(prisma.tbl_referral.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("syncPendingReferralRewardsForDriver credits referrer if referred driver completed an order", async () => {
+    const { syncPendingReferralRewardsForDriver } = require("../referralRewardService");
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 15, referred_by: 11, refer_by: 11, referred_by_type: "DRIVER" });
+    prisma.pkg_order.count.mockResolvedValue(1);
+    prisma.tbl_referral.findFirst.mockResolvedValue({
+      id: 505,
+      referrer_id: 11,
+      referrer_type: "DRIVER",
+      referred_id: 15,
+      referred_type: "DRIVER",
+      status: "pending",
+    });
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, driver_points_per_referral: 100 });
+    prisma.tbl_referral.findMany.mockResolvedValue([]);
+    prisma.tbl_rider.findUnique.mockImplementation(({ where }) => {
+      if (where.id === 15) return Promise.resolve({ id: 15, referred_by: 11, refer_by: 11, referred_by_type: "DRIVER" });
+      if (where.id === 11) return Promise.resolve({ id: 11, referral_points: 0 });
+      return Promise.resolve(null);
+    });
+
+    const res = await syncPendingReferralRewardsForDriver(15);
+    expect(res.success).toBe(true);
+    expect(res.awardedToReferrer).toBe(100);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: { referral_points: 100 },
+    });
   });
 });

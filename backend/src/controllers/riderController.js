@@ -325,6 +325,18 @@ async function getProfile(req, res) {
       rider.referral_code = refferCode;
     }
 
+    // Auto-sync any pending referral rewards for this driver (e.g. if referred driver completed first order)
+    try {
+      const referralRewardService = require("../services/referralRewardService");
+      await referralRewardService.syncPendingReferralRewardsForDriver(riderId);
+      const refreshed = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { referral_points: true } });
+      if (refreshed) {
+        rider.referral_points = refreshed.referral_points;
+      }
+    } catch (syncErr) {
+      logger.error("getProfile: syncPendingReferralRewardsForDriver error:", syncErr);
+    }
+
     return res.status(200).json({
       Result: "true",
       ResponseCode: "200",
@@ -531,6 +543,37 @@ async function applyReferral(req, res) {
   }
 }
 
+/** Explicitly claim / sync pending referral reward for a driver */
+async function claimReferralReward(req, res) {
+  try {
+    const riderId = Number(req.body?.rider_id || req.body?.rid || req.query?.rider_id || 0);
+    if (!riderId) return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Driver ID is required" });
+
+    const referralRewardService = require("../services/referralRewardService");
+    const result = await referralRewardService.syncPendingReferralRewardsForDriver(riderId);
+
+    const rider = await prisma.tbl_rider.findUnique({
+      where: { id: riderId },
+      select: { id: true, full_name: true, fmobile: true, referral_points: true, refer_by: true, referred_by: true },
+    });
+
+    return res.status(200).json({
+      Result: "true",
+      ResponseCode: "200",
+      ResponseMsg: "Referral reward sync completed successfully",
+      data: {
+        rider_id: riderId,
+        awarded_to_this_driver: result.awardedToThisDriver || 0,
+        awarded_to_referrer: result.awardedToReferrer || 0,
+        current_referral_points: rider?.referral_points || 0,
+      },
+    });
+  } catch (err) {
+    logger.error("riderController.claimReferralReward failed:", err);
+    return res.status(200).json({ Result: "false", ResponseCode: "500", ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   listTestDrivers,
   getDeliveryTypes,
@@ -543,4 +586,5 @@ module.exports = {
   updateProfile,
   checkReferral,
   applyReferral,
+  claimReferralReward,
 };

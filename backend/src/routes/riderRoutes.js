@@ -46,6 +46,7 @@ router.post("/profile", riderController.getProfile);
 router.post("/profile/update", riderController.updateProfile);
 router.post("/check-referral", riderController.checkReferral);
 router.post("/apply-referral", riderController.applyReferral);
+router.post("/claim-referral-reward", riderController.claimReferralReward);
 router.post("/leads", driverLeadController.submitLeads);
 router.get("/leads", driverLeadController.listMyLeads);
 
