@@ -19,13 +19,21 @@ async function awardReferralReward({ referral, referredId, referredType, orderId
   try {
     let settings = await prisma.tbl_referral_setting.findFirst();
     if (!settings) {
-      settings = { referral_enabled: true, driver_points_per_referral: 100, user_points_per_referral: 100 };
+      settings = {
+        referral_enabled: true,
+        driver_points_per_referral: 100,
+        user_points_per_referral: 100,
+        lead_referral_points: 100,
+      };
     }
     if (!settings.referral_enabled) return 0;
 
-    const pointsToAward = referredType === "DRIVER"
-      ? (settings.driver_points_per_referral || 100)
-      : (settings.user_points_per_referral || 100);
+    const pointsToAward =
+      referral.source === "lead"
+        ? (settings.lead_referral_points || 100)
+        : referredType === "DRIVER"
+          ? (settings.driver_points_per_referral || 100)
+          : (settings.user_points_per_referral || 100);
 
     if (!pointsToAward || pointsToAward <= 0) return 0;
 

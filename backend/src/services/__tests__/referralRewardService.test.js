@@ -108,6 +108,26 @@ describe("referralRewardService.processReferralRewardsForCompletedOrder", () => 
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 10 }, data: { referral_points: 300 } });
   });
 
+  it("uses lead_referral_points instead of user_points_per_referral when the referral source is 'lead'", async () => {
+    prisma.tbl_referral.findFirst.mockImplementation(({ where }) =>
+      where.referred_type === "USER" ? Promise.resolve(baseReferral({ source: "lead" })) : Promise.resolve(null)
+    );
+    prisma.pkg_order.count.mockResolvedValue(1);
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({
+      referral_enabled: true,
+      user_points_per_referral: 100,
+      driver_points_per_referral: 250,
+      lead_referral_points: 400,
+    });
+
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+
+    expect(prisma.tbl_referral.updateMany).toHaveBeenCalledWith({
+      where: { id: 501, status: "pending" },
+      data: expect.objectContaining({ points_awarded: 400 }),
+    });
+  });
+
   it("skips payout when referrals are disabled in settings", async () => {
     prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
     prisma.pkg_order.count.mockResolvedValue(1);
