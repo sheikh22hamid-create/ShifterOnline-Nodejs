@@ -17,6 +17,7 @@ const cmsController = require("../controllers/cmsController");
 const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
+const adminDriverLeadController = require("../controllers/adminDriverLeadController");
 const multer = require("multer");
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const serviceZoneController = require("../controllers/serviceZoneController");
@@ -171,6 +172,11 @@ router.put("/referrals/settings", auth, authorize("superadmin"), referralControl
 router.get("/referrals/users", auth, authorize(...RIDER_ROLES), scopeFilter, referralController.listUserReferrals);
 router.get("/referrals/search-target", auth, authorize("superadmin", "admin"), scopeFilter, referralController.searchTarget);
 router.post("/referrals/adjust-points", auth, authorize("superadmin", "admin"), referralController.adjustPoints);
+
+// --- Driver Lead Verification Queue ------------------------------------------
+router.get("/driver-leads", auth, authorize(...RIDER_ROLES), adminDriverLeadController.listLeads);
+router.post("/driver-leads/:id/verify", auth, authorize(...RIDER_ROLES), adminDriverLeadController.verifyLead);
+router.post("/driver-leads/:id/reject", auth, authorize(...RIDER_ROLES), adminDriverLeadController.rejectLead);
 
 // --- Platform Master Settings & Payment Gateways -----------------------------
 router.get("/settings", auth, authorize("superadmin"), settingsController.getSettings);
