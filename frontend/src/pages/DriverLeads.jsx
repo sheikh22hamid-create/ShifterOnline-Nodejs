@@ -12,6 +12,8 @@ import {
   ExternalLink,
   ShieldCheck,
   AlertTriangle,
+  Send,
+  MessageCircle,
 } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
@@ -105,6 +107,40 @@ export default function DriverLeads() {
     } finally {
       setActionBusy(false)
     }
+  }
+
+  // Manually trigger WhatsApp & SMS invite
+  async function handleSendInvite(lead) {
+    setActionBusy(true)
+    try {
+      const res = await api.post(`/driver-leads/${lead.id}/send-invite`)
+      const isOk = res.data?.data?.whatsapp || res.data?.data?.sms
+      if (isOk) {
+        toast.success(`Invite sent to ${lead.phone} via ${res.data?.data?.whatsapp ? 'WhatsApp' : ''} ${res.data?.data?.sms ? '& SMS' : ''}!`)
+      } else {
+        toast.warning(res.data?.message || 'Could not send automated message. You can use direct WhatsApp button.')
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send invite.')
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  function getWhatsAppWebLink(item) {
+    const leadName = item.name || ''
+    const driverName = item.driver?.name || ''
+    const greeting = leadName ? `Namaste ${leadName} ji! 🙏` : `Namaste! 🙏`
+    const referrer = driverName ? `Aapke dost *${driverName}* (Shifter Partner)` : `Shifter Partner`
+    const text =
+      `${greeting}\n\n` +
+      `${referrer} ne aapko *Shifter Online* recommend kiya hai. 🚚\n\n` +
+      `Ab kisi bhi saman ko bhejna, mini-truck ya tempo book karna hua behad aasan aur kifayati!\n\n` +
+      `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
+      `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
+      `Helpline: +91 9999908008\n` +
+      `— *Team Shifter Online*`
+    return `https://wa.me/91${item.phone}?text=${encodeURIComponent(text)}`
   }
 
   function getStatusBadge(status) {
@@ -409,12 +445,13 @@ export default function DriverLeads() {
                     {/* Actions */}
                     <td className="whitespace-nowrap px-4 py-3">
                       {item.status === 'pending' ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => setVerifyTarget(item)}
                             className="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11.5px] font-semibold text-white transition-opacity hover:opacity-90"
                             style={{ background: 'var(--success)' }}
+                            title="Verify lead after phone call"
                           >
                             <CheckCircle2 size={13} />
                             Verify
@@ -427,18 +464,62 @@ export default function DriverLeads() {
                               borderColor: 'var(--danger-soft-border)',
                               color: 'var(--danger)',
                             }}
+                            title="Reject lead"
                           >
                             <XCircle size={13} />
                             Reject
                           </button>
+                          <a
+                            href={getWhatsAppWebLink(item)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-medium transition-colors hover:bg-[#25D366]/10"
+                            style={{
+                              borderColor: '#25D366',
+                              color: '#25D366',
+                            }}
+                            title="Open WhatsApp Web to chat/send link"
+                          >
+                            <MessageCircle size={13} />
+                            WA
+                          </a>
                         </div>
                       ) : item.status === 'verified' ? (
-                        <span
-                          className="text-[11.5px]"
-                          style={{ color: 'var(--info)' }}
-                        >
-                          Awaiting 1st Ride
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[11.5px]"
+                            style={{ color: 'var(--info)' }}
+                          >
+                            Awaiting Ride
+                          </span>
+                          <button
+                            type="button"
+                            disabled={actionBusy}
+                            onClick={() => handleSendInvite(item)}
+                            className="flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-[var(--brand-soft)] disabled:opacity-50"
+                            style={{
+                              borderColor: 'var(--brand)',
+                              color: 'var(--brand)',
+                            }}
+                            title="Send/Resend invite SMS & WhatsApp"
+                          >
+                            <Send size={11} />
+                            Send Invite
+                          </button>
+                          <a
+                            href={getWhatsAppWebLink(item)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[11px] font-medium"
+                            style={{
+                              borderColor: '#25D366',
+                              color: '#25D366',
+                            }}
+                            title="Open WhatsApp Web"
+                          >
+                            <MessageCircle size={11} />
+                          </a>
+                        </div>
                       ) : item.status === 'converted' ? (
                         <span
                           className="text-[11.5px] font-medium"
@@ -494,10 +575,9 @@ export default function DriverLeads() {
               </div>
             </div>
             <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
-              Once verified, the lead will remain active for 45 days. When this
-              person installs the app and completes their first ride, the
-              referring driver will receive 100 Reward Points and become their
-              Favorite Driver.
+              Once verified, the lead will remain active for 45 days. An automated
+              welcome invite with the app download link will also be dispatched via
+              <strong> WhatsApp &amp; SMS</strong> to this customer.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button

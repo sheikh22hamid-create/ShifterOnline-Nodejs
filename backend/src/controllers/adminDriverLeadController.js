@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const leadInviteNotifier = require("../services/leadInviteNotifier");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -71,6 +72,12 @@ async function verifyLead(req, res) {
       where: { id },
       data: { status: "verified", verified_at: verifiedAt, expires_at: expiresAt, verified_by_admin_id: req.user?.id },
     });
+
+    // Auto-send WhatsApp & SMS invite to the customer
+    leadInviteNotifier.sendLeadInvite(id).catch((err) => {
+      logger.warn(`Auto invite delivery notice for lead #${id}:`, err.message);
+    });
+
     return res.status(200).json({ success: true, data: updated });
   } catch (err) {
     return internalError(res, err, "adminDriverLeads.verifyLead");
@@ -95,4 +102,15 @@ async function rejectLead(req, res) {
   }
 }
 
-module.exports = { listLeads, verifyLead, rejectLead };
+/** Admin triggers sending WhatsApp + SMS invite to a lead (POST /admin/driver-leads/:id/send-invite) */
+async function sendInvite(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const result = await leadInviteNotifier.sendLeadInvite(id);
+    return res.status(200).json({ success: true, data: result, message: result.message });
+  } catch (err) {
+    return internalError(res, err, "adminDriverLeads.sendInvite");
+  }
+}
+
+module.exports = { listLeads, verifyLead, rejectLead, sendInvite };

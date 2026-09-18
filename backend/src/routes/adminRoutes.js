@@ -177,6 +177,7 @@ router.post("/referrals/adjust-points", auth, authorize("superadmin", "admin"), 
 router.get("/driver-leads", auth, authorize(...RIDER_ROLES), adminDriverLeadController.listLeads);
 router.post("/driver-leads/:id/verify", auth, authorize(...RIDER_ROLES), adminDriverLeadController.verifyLead);
 router.post("/driver-leads/:id/reject", auth, authorize(...RIDER_ROLES), adminDriverLeadController.rejectLead);
+router.post("/driver-leads/:id/send-invite", auth, authorize(...RIDER_ROLES), adminDriverLeadController.sendInvite);
 
 // --- Platform Master Settings & Payment Gateways -----------------------------
 router.get("/settings", auth, authorize("superadmin"), settingsController.getSettings);
