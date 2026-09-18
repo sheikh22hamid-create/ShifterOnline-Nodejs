@@ -783,6 +783,7 @@ model tbl_referral {
   referred_type  String    @default("USER") @db.VarChar(10)
   referral_code  String    @db.VarChar(20)
   status         String    @default("pending") @db.VarChar(15)
+  source         String    @default("code") @db.VarChar(10)
   points_awarded Int       @default(0)
   ride_id        Int       @default(0)
   registered_at  DateTime  @db.DateTime(0)
@@ -809,14 +810,33 @@ model tbl_referral_point_log {
   @@index([user_id, user_type], map: "idx_user")
 }
 
+model tbl_driver_lead {
+  id                    Int       @id @default(autoincrement())
+  driver_id             Int
+  name                  String    @db.VarChar(150)
+  phone                 String    @unique(map: "uniq_lead_phone") @db.VarChar(20)
+  status                String    @default("pending") @db.VarChar(15)
+  submitted_at          DateTime  @db.DateTime(0)
+  verified_at           DateTime? @db.DateTime(0)
+  verified_by_admin_id  Int?
+  expires_at            DateTime? @db.DateTime(0)
+  converted_user_id     Int?
+  converted_at          DateTime? @db.DateTime(0)
+
+  @@index([driver_id], map: "idx_lead_driver")
+  @@index([status], map: "idx_lead_status")
+}
+
 model tbl_referral_setting {
-  id                         Int       @id @default(autoincrement())
-  user_points_per_referral   Int       @default(100)
-  driver_points_per_referral Int       @default(100)
-  point_value                Decimal   @default(1.00) @db.Decimal(10, 2)
-  referral_enabled           Boolean   @default(true)
-  share_message              String?   @db.Text
-  updated_at                 DateTime? @db.DateTime(0)
+  id                            Int       @id @default(autoincrement())
+  user_points_per_referral      Int       @default(100)
+  driver_points_per_referral    Int       @default(100)
+  lead_referral_points          Int       @default(100)
+  lead_verification_window_days Int       @default(45)
+  point_value                   Decimal   @default(1.00) @db.Decimal(10, 2)
+  referral_enabled              Boolean   @default(true)
+  share_message                 String?   @db.Text
+  updated_at                    DateTime? @db.DateTime(0)
 }
 
 model tbl_rider {
