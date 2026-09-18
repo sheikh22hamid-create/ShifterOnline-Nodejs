@@ -13,6 +13,7 @@ const legacyOrderController = require("../controllers/legacyOrderController");
 const driverKycStatusController = require("../controllers/driverKycStatusController");
 const driverGovVerificationController = require("../controllers/driverGovVerificationController");
 const driverVerificationPaymentController = require("../controllers/driverVerificationPaymentController");
+const driverLeadController = require("../controllers/driverLeadController");
 const appKeyAuth = require("../middleware/appKeyAuth");
 
 const router = express.Router();
@@ -45,6 +46,8 @@ router.post("/profile", riderController.getProfile);
 router.post("/profile/update", riderController.updateProfile);
 router.post("/check-referral", riderController.checkReferral);
 router.post("/apply-referral", riderController.applyReferral);
+router.post("/leads", driverLeadController.submitLeads);
+router.get("/leads", driverLeadController.listMyLeads);
 
 // Driver mandatory training video gate endpoints
 router.post("/training/status", trainingController.getStatus);
