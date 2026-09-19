@@ -482,23 +482,15 @@ describe("tripLifecycle.driverCancel", () => {
     prisma.tbl_user.update.mockResolvedValue({ id: 7, wallet: 250 });
   });
 
-  it("credits a captured advance exactly once and terminally cancels the order", async () => {
+  it("does not re-credit a captured advance already sitting in the wallet", async () => {
     const result = await tripLifecycle.driverCancel(297, 11, "vehicle breakdown");
 
-    expect(result).toMatchObject({ success: true, refund_amount: 250, refund_status: "refunded_to_wallet" });
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 250 } } });
-    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        order_id: 297,
-        amount: 250,
-        type: "credit",
-        wallet_type: "user",
-        payment_id: "advance_refund:297:pay_123",
-      }),
-    }));
+    expect(result).toMatchObject({ success: true, refund_amount: 250, refund_status: "already_in_wallet" });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
     expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:driver_cancelled", expect.objectContaining({
       order_id: 297,
-      refund_status: "refunded_to_wallet",
+      refund_status: "already_in_wallet",
       order_status: 4,
       o_status: "Cancelled",
       searching_for_new_driver: false,

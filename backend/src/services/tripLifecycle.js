@@ -884,40 +884,17 @@ async function driverCancel(orderId, riderId, reason) {
     // Legacy payment paths have historically persisted the gateway payment id
     // before updating the numeric flag, so accept either marker as captured.
     const paymentCaptured = Number(order.payment_status) === 1 || Boolean(order.razorpay_payment_id);
-    const refundKey = `advance_refund:${orderId}:${order.razorpay_payment_id || "advance"}`;
 
-    // `payment_status=1` is the existing project's captured/success state.
-    // Do not credit an un-captured payment; its gateway callback can safely
-    // settle against the now-cancelled order later.
+    // advancePayment() (orderController.js) already credits this exact amount
+    // into the customer's wallet the moment they pay it — see that function's
+    // own comment. So a captured advance is already sitting in the wallet by
+    // the time a driver cancels; crediting it again here double-pays the
+    // customer (confirmed: customer wallet was getting +2x the advance on a
+    // driver cancel). Nothing to do but report it — the money never left the
+    // wallet, so there's nothing to refund back into it.
     if (paymentCaptured && amount > 0) {
-      const alreadyRefunded = await tx.tbl_wallet_history.findFirst({
-        where: { payment_id: refundKey, type: "credit", wallet_type: "user" },
-        select: { id: true, amount: true },
-      });
-
-      if (alreadyRefunded) {
-        refundAmount = Number(alreadyRefunded.amount) || amount;
-        refundStatus = "refunded_to_wallet";
-      } else {
-        await tx.tbl_user.update({
-          where: { id: Number(order.uid) },
-          data: { wallet: { increment: amount } },
-        });
-        await tx.tbl_wallet_history.create({
-          data: {
-            user_id: Number(order.uid),
-            amount,
-            type: "credit",
-            wallet_type: "user",
-            order_id: orderId,
-            payment_id: refundKey,
-            remark: `Advance payment refunded to wallet — driver cancelled order #${orderId}`,
-            created_at: istNow(),
-          },
-        });
-        refundAmount = amount;
-        refundStatus = "refunded_to_wallet";
-      }
+      refundAmount = amount;
+      refundStatus = "already_in_wallet";
     } else if (amount > 0) {
       refundStatus = "payment_not_captured";
     }
