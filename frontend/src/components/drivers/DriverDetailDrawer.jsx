@@ -1,5 +1,15 @@
 import { useCallback, useState } from 'react'
-import { ShieldBan, ShieldCheck, Trash2, UserMinus, Pencil } from 'lucide-react'
+import {
+  ShieldBan,
+  ShieldCheck,
+  Trash2,
+  UserMinus,
+  Pencil,
+  Copy,
+  Check,
+  Eye,
+  ImageOff,
+} from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -7,18 +17,157 @@ import useApiQuery from '../../hooks/useApiQuery'
 import Drawer from '../common/Drawer'
 import Badge from '../common/Badge'
 import Modal from '../common/Modal'
+import DocumentImageViewer from '../kyc/DocumentImageViewer'
 import { approvalTone, approvalLabel, onlineTone, onlineLabel, verificationTone } from '../../utils/driverStatus'
 import { formatCurrency, formatDateTime } from '../../utils/format'
+import { resolveImageUrl } from '../../utils/imageUrl'
+import { splitVehiclePics } from '../../utils/kycDoc'
 
-function Field({ label, value }) {
+function Field({ label, value, copyable = false, rawCopyValue = null }) {
+  const [copied, setCopied] = useState(false)
+  const toast = useToast()
+
+  function handleCopy(e) {
+    e.stopPropagation()
+    const text = rawCopyValue ?? (typeof value === 'string' ? value : '')
+    if (!text) return
+    navigator.clipboard.writeText(String(text).trim())
+    setCopied(true)
+    toast.success(`${label} copied`)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <div>
-      <div className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-        {label}
+      <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+        <span>{label}</span>
+        {copyable && value && value !== '—' && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            title={`Copy ${label}`}
+            className="inline-flex items-center gap-0.5 hover:text-[var(--ink)] text-[10px] lowercase transition-colors"
+            style={{ color: 'var(--ink-faint)' }}
+          >
+            {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+            <span>{copied ? 'copied' : 'copy'}</span>
+          </button>
+        )}
       </div>
-      <div className="mt-0.5 text-[13px]" style={{ color: 'var(--ink)' }}>
+      <div className="mt-0.5 text-[13px] break-words" style={{ color: 'var(--ink)' }}>
         {value ?? '—'}
       </div>
+    </div>
+  )
+}
+
+function DocThumbnail({ label, src, onPreview }) {
+  const resolved = resolveImageUrl(src)
+  const [imgError, setImgError] = useState(false)
+
+  if (!src) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center rounded-lg border border-dashed p-2 text-center text-[11px]"
+        style={{ borderColor: 'var(--border)', color: 'var(--ink-faint)', minHeight: '68px' }}
+      >
+        <ImageOff size={15} className="mb-0.5 opacity-40" />
+        <span className="truncate max-w-[120px]">{label}: Not uploaded</span>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onPreview(label, src)}
+      className="group relative flex flex-col items-center overflow-hidden rounded-lg border text-left transition hover:border-[var(--brand)] focus:outline-none"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
+      title={`Click to view ${label}`}
+    >
+      <div className="relative h-20 w-full overflow-hidden bg-black/20">
+        {!imgError ? (
+          <img
+            src={resolved}
+            alt={label}
+            onError={() => setImgError(true)}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-center p-2" style={{ color: 'var(--ink-faint)' }}>
+            <ImageOff size={16} />
+          </div>
+        )}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="flex items-center gap-1 rounded bg-black/75 px-2 py-0.5 text-[11px] font-medium text-white shadow">
+            <Eye size={12} /> View Full
+          </span>
+        </div>
+      </div>
+      <div className="w-full px-2 py-1 text-[11px] font-medium truncate" style={{ color: 'var(--ink-muted)' }}>
+        {label}
+      </div>
+    </button>
+  )
+}
+
+function DocumentCard({ title, docNumber, status, photos = [], onPreview, note }) {
+  const statusTone = status === 1 ? 'success' : status === 2 ? 'danger' : status === 0 ? 'warning' : 'neutral'
+  const statusText = status === 1 ? 'Approved' : status === 2 ? 'Rejected' : status === 0 ? 'Pending' : 'Not submitted'
+
+  return (
+    <div className="surface-card rounded-xl border p-3.5 space-y-2.5" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center justify-between">
+        <div className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+          {title}
+        </div>
+        <Badge tone={statusTone}>{statusText}</Badge>
+      </div>
+
+      <Field
+        label={`${title} Number`}
+        value={
+          docNumber ? (
+            <span className="font-mono-data font-semibold text-[13.5px] text-[var(--ink)] tracking-wide">
+              {docNumber}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--ink-faint)' }}>Not provided</span>
+          )
+        }
+        copyable={Boolean(docNumber)}
+        rawCopyValue={docNumber}
+      />
+
+      {note && (
+        <div
+          className="text-[11.5px] rounded-lg p-2.5 border"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }}
+        >
+          {note}
+        </div>
+      )}
+
+      {photos.length > 0 && (
+        <div className="pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+            <span>Photos</span>
+            <span>
+              {photos.filter((p) => Boolean(p.src)).length}/{photos.length} uploaded
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {photos.map((p, idx) => (
+              <DocThumbnail
+                key={idx}
+                label={p.label}
+                src={p.src}
+                onPreview={(lbl, src) => onPreview(title ? `${title} (${lbl})` : lbl, src)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -35,6 +184,7 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
   const [demoteModalOpen, setDemoteModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editForm, setEditForm] = useState(null)
+  const [previewDoc, setPreviewDoc] = useState(null)
   const [busy, setBusy] = useState(false)
   const [togglingModelId, setTogglingModelId] = useState(null)
 
@@ -58,6 +208,10 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
       upi_id: rider.upi_id || '',
       working_hours: rider.working_hours ?? '',
       plan_type: rider.plan_type || 'general',
+      aadhar_id: rider.personal_doc?.aadhar_id || '',
+      pan_id: rider.personal_doc?.pan_id || '',
+      lic_id: rider.personal_doc?.lic_id || '',
+      rc_number: rider.vehicle_details?.[0]?.reg_num || rider.personal_doc?.residence_id || rider.vehicle_no || '',
       rc_owner_name: rider.personal_doc?.rc_owner_name || '',
       rc_owner_aadhar_number: rider.personal_doc?.rc_owner_aadhar_number || '',
     })
@@ -284,15 +438,53 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
 
             <section>
               <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-                Profile
+                Profile & Contact Details
               </h3>
               <div className="surface-card grid grid-cols-2 gap-3 rounded-xl p-3.5">
-                <Field label="Mobile" value={<span className="font-mono-data">{rider.fmobile}</span>} />
-                <Field label="Email" value={rider.email} />
-                <Field label="Vehicle" value={rider.vehicle} />
-                <Field label="Plate no." value={<span className="font-mono-data">{rider.vehicle_no}</span>} />
-                <Field label="Wallet" value={<span className="font-mono-data">{formatCurrency(rider.wallet_balance)}</span>} />
+                <Field
+                  label="Mobile"
+                  value={<span className="font-mono-data">{rider.fmobile}</span>}
+                  copyable
+                  rawCopyValue={rider.fmobile}
+                />
+                <Field
+                  label="Alternate mobile"
+                  value={rider.smobile ? <span className="font-mono-data">{rider.smobile}</span> : '—'}
+                  copyable={Boolean(rider.smobile)}
+                  rawCopyValue={rider.smobile}
+                />
+                <Field label="Email" value={rider.email} copyable={Boolean(rider.email)} rawCopyValue={rider.email} />
+                <Field
+                  label="Date of birth (DOB)"
+                  value={
+                    rider.dob ? (
+                      <span className="font-semibold" style={{ color: 'var(--brand)' }}>
+                        {rider.dob}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  }
+                />
+                <Field label="Nationality" value={rider.nationality || 'Indian'} />
+                <Field label="Vehicle type" value={rider.vehicle} />
+                <Field
+                  label="Plate number"
+                  value={<span className="font-mono-data font-semibold">{rider.vehicle_no}</span>}
+                  copyable={Boolean(rider.vehicle_no)}
+                  rawCopyValue={rider.vehicle_no}
+                />
+                <Field
+                  label="City"
+                  value={rider.city_name || (rider.city_id ? `City #${rider.city_id}` : '—')}
+                />
+                <Field label="Wallet balance" value={<span className="font-mono-data">{formatCurrency(rider.wallet_balance)}</span>} />
                 <Field label="Joined" value={formatDateTime(rider.rdate)} />
+                {rider.full_address && (
+                  <div className="col-span-2 border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
+                    <Field label="Full Address" value={rider.full_address} copyable rawCopyValue={rider.full_address} />
+                  </div>
+                )}
               </div>
             </section>
 
@@ -443,57 +635,173 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
               </div>
             </section>
 
-            <section>
-              <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-                KYC document status
-              </h3>
-              <div className="surface-card space-y-2 rounded-xl p-3.5 text-[12.5px]">
-                {rider.personal_doc ? (
-                  <>
-                    <div className="flex justify-between"><span style={{ color: 'var(--ink-muted)' }}>Address proof</span><span>{['Pending', 'Approved', 'Rejected'][rider.personal_doc.address_status]}</span></div>
-                    <div className="flex justify-between"><span style={{ color: 'var(--ink-muted)' }}>Residence proof</span><span>{['Pending', 'Approved', 'Rejected'][rider.personal_doc.residence_status]}</span></div>
-                    <div className="flex justify-between"><span style={{ color: 'var(--ink-muted)' }}>License</span><span>{['Pending', 'Approved', 'Rejected'][rider.personal_doc.lic_status]}</span></div>
-                  </>
-                ) : (
-                  <span style={{ color: 'var(--ink-faint)' }}>No personal documents on file yet.</span>
-                )}
-                {rider.vehicle_details?.length > 0 && (
-                  <div className="flex justify-between border-t pt-2" style={{ borderColor: 'var(--border)' }}>
-                    <span style={{ color: 'var(--ink-muted)' }}>Vehicle/RC docs</span>
-                    <span>{rider.vehicle_details.filter((v) => v.status === 1).length}/{rider.vehicle_details.length} approved</span>
-                  </div>
-                )}
-                {rider.bank_accounts?.length > 0 && (
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--ink-muted)' }}>Bank account</span>
-                    <span>{rider.bank_accounts[0].status === 1 ? 'Approved' : 'Pending'}</span>
-                  </div>
-                )}
-                {rider.kit && (
-                  <div className="flex justify-between">
-                    <span style={{ color: 'var(--ink-muted)' }}>Kit</span>
-                    <span>{rider.kit.kit_status === 1 ? 'Approved' : 'Pending'}</span>
-                  </div>
-                )}
-                {rider.personal_doc?.rc_owner_aadhar_number && (
-                  <div className="border-t pt-2" style={{ borderColor: 'var(--border)' }}>
-                    <div className="mb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-                      RC registered to a different owner
+            {/* Comprehensive Identity & Government KYC Documents Section */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                  Identity & Verification Documents
+                </h3>
+                <span className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                  Click photo to zoom
+                </span>
+              </div>
+
+              {/* Aadhaar Card */}
+              <DocumentCard
+                title="Aadhaar Card"
+                docNumber={rider.personal_doc?.aadhar_id || rider.personal_doc?.address_id}
+                status={rider.personal_doc?.aadhar_status ?? rider.personal_doc?.address_status}
+                photos={[
+                  { label: 'Front Photo', src: rider.personal_doc?.aadhar_front || rider.personal_doc?.address_front },
+                  { label: 'Back Photo', src: rider.personal_doc?.aadhar_back || rider.personal_doc?.aadhaar_back || rider.personal_doc?.address_back },
+                ]}
+                onPreview={(title, src) => setPreviewDoc({ title, src })}
+              />
+
+              {/* PAN Card */}
+              <DocumentCard
+                title="PAN Card"
+                docNumber={rider.personal_doc?.pan_id}
+                status={rider.personal_doc?.pan_status}
+                photos={[
+                  { label: 'Front Photo', src: rider.personal_doc?.pan_front },
+                  { label: 'Back Photo', src: rider.personal_doc?.pan_back },
+                ]}
+                onPreview={(title, src) => setPreviewDoc({ title, src })}
+              />
+
+              {/* Driving License (DL) */}
+              <DocumentCard
+                title="Driving License (DL)"
+                docNumber={rider.personal_doc?.lic_id}
+                status={rider.personal_doc?.lic_status}
+                photos={[
+                  { label: 'Front Photo', src: rider.personal_doc?.lic_front },
+                  { label: 'Back Photo', src: rider.personal_doc?.lic_back },
+                ]}
+                onPreview={(title, src) => setPreviewDoc({ title, src })}
+              />
+
+              {/* Vehicle RC */}
+              <DocumentCard
+                title="Vehicle RC"
+                docNumber={rider.vehicle_details?.[0]?.reg_num || rider.personal_doc?.residence_id || rider.vehicle_no}
+                status={rider.vehicle_details?.[0]?.status ?? rider.personal_doc?.residence_status}
+                note={
+                  rider.personal_doc?.rc_owner_aadhar_number ? (
+                    <div>
+                      <span className="font-semibold text-[var(--ink)]">Third-party RC Owner:</span>{' '}
+                      {rider.personal_doc.rc_owner_name || 'Owner'} ·{' '}
+                      <span className="font-mono-data">Aadhaar: {rider.personal_doc.rc_owner_aadhar_number}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span style={{ color: 'var(--ink-muted)' }}>Owner name</span>
-                      <span>{rider.personal_doc.rc_owner_name || '—'}</span>
+                  ) : null
+                }
+                photos={[
+                  ...splitVehiclePics(rider.vehicle_details?.[0]?.v_pic),
+                  ...(rider.personal_doc?.residence_front ? [{ label: 'RC / Residence Front', src: rider.personal_doc.residence_front }] : []),
+                  ...(rider.personal_doc?.residence_back ? [{ label: 'RC / Residence Back', src: rider.personal_doc.residence_back }] : []),
+                ]}
+                onPreview={(title, src) => setPreviewDoc({ title, src })}
+              />
+
+              {/* Bank & Payout Account */}
+              <div className="surface-card rounded-xl border p-3.5 space-y-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+                    Bank & Payout Account
+                  </div>
+                  <Badge tone={rider.bank_accounts?.[0]?.status === 1 ? 'success' : 'warning'}>
+                    {rider.bank_accounts?.[0]?.status === 1 ? 'Approved' : 'Pending'}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Account Holder"
+                    value={rider.account_name || rider.bank_accounts?.[0]?.a_name}
+                  />
+                  <Field
+                    label="Account Number"
+                    value={
+                      (rider.account_number || rider.bank_accounts?.[0]?.iban_num) ? (
+                        <span className="font-mono-data font-semibold text-[var(--ink)]">
+                          {rider.account_number || rider.bank_accounts?.[0]?.iban_num}
+                        </span>
+                      ) : null
+                    }
+                    copyable={Boolean(rider.account_number || rider.bank_accounts?.[0]?.iban_num)}
+                    rawCopyValue={rider.account_number || rider.bank_accounts?.[0]?.iban_num}
+                  />
+                  <Field
+                    label="IFSC Code"
+                    value={
+                      (rider.ifsc || rider.bank_accounts?.[0]?.ifsc_code) ? (
+                        <span className="font-mono-data font-semibold text-[var(--ink)]">
+                          {rider.ifsc || rider.bank_accounts?.[0]?.ifsc_code}
+                        </span>
+                      ) : null
+                    }
+                    copyable={Boolean(rider.ifsc || rider.bank_accounts?.[0]?.ifsc_code)}
+                    rawCopyValue={rider.ifsc || rider.bank_accounts?.[0]?.ifsc_code}
+                  />
+                  <Field
+                    label="UPI ID"
+                    value={
+                      rider.upi_id ? (
+                        <span className="font-mono-data">{rider.upi_id}</span>
+                      ) : null
+                    }
+                    copyable={Boolean(rider.upi_id)}
+                    rawCopyValue={rider.upi_id}
+                  />
+                  {rider.bank_accounts?.[0]?.bank_name && (
+                    <div className="col-span-2">
+                      <Field
+                        label="Bank & Branch"
+                        value={`${rider.bank_accounts[0].bank_name}${rider.bank_accounts[0].branch_name ? ` · ${rider.bank_accounts[0].branch_name}` : ''}`}
+                      />
                     </div>
-                    <div className="flex justify-between">
-                      <span style={{ color: 'var(--ink-muted)' }}>Owner Aadhaar</span>
-                      <span className="font-mono-data">{rider.personal_doc.rc_owner_aadhar_number}</span>
+                  )}
+                </div>
+
+                {rider.personal_doc?.upi_image && (
+                  <div className="border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
+                    <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                      UPI QR / Passbook Image
+                    </div>
+                    <div className="w-1/2">
+                      <DocThumbnail
+                        label="UPI QR / Passbook"
+                        src={rider.personal_doc.upi_image}
+                        onPreview={(lbl, src) => setPreviewDoc({ title: 'Bank / UPI Document', src })}
+                      />
                     </div>
                   </div>
                 )}
               </div>
-              <p className="mt-2 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
-                Approve or reject documents from the KYC Approval screen.
-              </p>
+
+              {/* Delivery Kit */}
+              {rider.kit && (
+                <div className="surface-card rounded-xl border p-3.5 space-y-2.5" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+                      Delivery Kit
+                    </div>
+                    <Badge tone={rider.kit.kit_status === 1 ? 'success' : 'warning'}>
+                      {rider.kit.kit_status === 1 ? 'Approved' : 'Pending'}
+                    </Badge>
+                  </div>
+                  {rider.kit.img && (
+                    <div className="w-1/2 pt-1">
+                      <DocThumbnail
+                        label="Kit Photo"
+                        src={rider.kit.img}
+                        onPreview={(lbl, src) => setPreviewDoc({ title: 'Delivery Kit Photo', src })}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             {rider.emergency_contact && (
@@ -607,6 +915,7 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
         open={editModalOpen}
         onClose={() => setEditModalOpen(false)}
         title="Edit driver profile"
+        width={560}
         footer={
           <>
             <button type="button" onClick={() => setEditModalOpen(false)} className="rounded-lg border px-3 py-1.5 text-[13px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
@@ -619,15 +928,22 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
         }
       >
         {editForm && (
-          <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
             <EditSection title="Basic info">
               <EditField label="Full name" value={editForm.full_name} onChange={(v) => setEditForm((f) => ({ ...f, full_name: v }))} />
               <EditField label="Email" value={editForm.email} onChange={(v) => setEditForm((f) => ({ ...f, email: v }))} />
               <EditField label="Mobile" value={editForm.fmobile} onChange={(v) => setEditForm((f) => ({ ...f, fmobile: v }))} />
               <EditField label="Alternate mobile" value={editForm.smobile} onChange={(v) => setEditForm((f) => ({ ...f, smobile: v }))} />
-              <EditField label="Date of birth" value={editForm.dob} onChange={(v) => setEditForm((f) => ({ ...f, dob: v }))} />
+              <EditField label="Date of birth (DOB)" value={editForm.dob} onChange={(v) => setEditForm((f) => ({ ...f, dob: v }))} placeholder="e.g. 1995-08-15" />
               <EditField label="Nationality" value={editForm.nationality} onChange={(v) => setEditForm((f) => ({ ...f, nationality: v }))} />
               <EditField label="Address" value={editForm.full_address} onChange={(v) => setEditForm((f) => ({ ...f, full_address: v }))} full />
+            </EditSection>
+
+            <EditSection title="Identity & Government IDs">
+              <EditField label="Aadhaar number" value={editForm.aadhar_id} onChange={(v) => setEditForm((f) => ({ ...f, aadhar_id: v }))} />
+              <EditField label="PAN number" value={editForm.pan_id} onChange={(v) => setEditForm((f) => ({ ...f, pan_id: v }))} />
+              <EditField label="Driving license (DL)" value={editForm.lic_id} onChange={(v) => setEditForm((f) => ({ ...f, lic_id: v }))} />
+              <EditField label="Vehicle RC number" value={editForm.rc_number} onChange={(v) => setEditForm((f) => ({ ...f, rc_number: v }))} />
             </EditSection>
 
             <EditSection title="Vehicle">
@@ -663,6 +979,35 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
               <EditField label="Owner name" value={editForm.rc_owner_name} onChange={(v) => setEditForm((f) => ({ ...f, rc_owner_name: v }))} />
               <EditField label="Owner Aadhaar number" value={editForm.rc_owner_aadhar_number} onChange={(v) => setEditForm((f) => ({ ...f, rc_owner_aadhar_number: v }))} />
             </EditSection>
+          </div>
+        )}
+      </Modal>
+
+      {/* Interactive Document Image Viewer Modal */}
+      <Modal
+        open={Boolean(previewDoc)}
+        onClose={() => setPreviewDoc(null)}
+        title={previewDoc?.title || 'Document Preview'}
+        width={720}
+        footer={
+          <div className="flex w-full items-center justify-between">
+            <span className="text-[12px]" style={{ color: 'var(--ink-faint)' }}>
+              Use mouse wheel to zoom in/out, drag to pan the document.
+            </span>
+            <button
+              type="button"
+              onClick={() => setPreviewDoc(null)}
+              className="rounded-lg border px-3.5 py-1.5 text-[13px] font-medium"
+              style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        {previewDoc && (
+          <div className="h-[520px] w-full">
+            <DocumentImageViewer src={previewDoc.src} label={previewDoc.title} />
           </div>
         )}
       </Modal>

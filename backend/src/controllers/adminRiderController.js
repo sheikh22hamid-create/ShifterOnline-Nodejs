@@ -255,24 +255,50 @@ async function updateProfile(req, res) {
       }
     }
 
-    // RC owner details live on tbl_personal_doc, not tbl_rider - see the
-    // eKYC owner-verification flow (driverAuthController.registerHandler /
-    // AutoVerificationManager on the driver app) that first populated them.
+    // Documents and RC details live on tbl_personal_doc and tbl_vehicle_details
     const rcOwnerName = req.body.rc_owner_name;
     const rcOwnerAadhaarNumber = req.body.rc_owner_aadhar_number;
-    if (rcOwnerName !== undefined || rcOwnerAadhaarNumber !== undefined) {
+    const aadharId = req.body.aadhar_id;
+    const panId = req.body.pan_id;
+    const licId = req.body.lic_id;
+    const rcNumber = req.body.rc_number !== undefined ? req.body.rc_number : req.body.reg_num;
+
+    const hasDocFields =
+      rcOwnerName !== undefined ||
+      rcOwnerAadhaarNumber !== undefined ||
+      aadharId !== undefined ||
+      panId !== undefined ||
+      licId !== undefined ||
+      rcNumber !== undefined;
+
+    if (hasDocFields) {
       const docRow = await prisma.tbl_personal_doc.findFirst({ where: { rider_id: id } });
       const docData = {};
       if (rcOwnerName !== undefined) docData.rc_owner_name = rcOwnerName === null ? null : String(rcOwnerName).trim();
       if (rcOwnerAadhaarNumber !== undefined) docData.rc_owner_aadhar_number = rcOwnerAadhaarNumber === null ? null : String(rcOwnerAadhaarNumber).trim();
+      if (aadharId !== undefined) docData.aadhar_id = aadharId === null ? null : String(aadharId).trim();
+      if (panId !== undefined) docData.pan_id = panId === null ? null : String(panId).trim();
+      if (licId !== undefined) docData.lic_id = licId === null ? null : String(licId).trim();
+      if (rcNumber !== undefined) docData.residence_id = rcNumber === null ? null : String(rcNumber).trim();
+
       if (docRow) {
         await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: docData });
       } else {
         await prisma.tbl_personal_doc.create({ data: { rider_id: id, status: 0, ...docData } });
       }
+
+      if (rcNumber !== undefined) {
+        const vDetail = await prisma.tbl_vehicle_details.findFirst({ where: { rider_id: id } });
+        if (vDetail) {
+          await prisma.tbl_vehicle_details.update({
+            where: { id: vDetail.id },
+            data: { reg_num: rcNumber === null ? "" : String(rcNumber).trim() },
+          });
+        }
+      }
     }
 
-    if (Object.keys(data).length === 0 && rcOwnerName === undefined && rcOwnerAadhaarNumber === undefined) {
+    if (Object.keys(data).length === 0 && !hasDocFields) {
       return res.status(400).json({ success: false, message: "No editable fields provided" });
     }
 
@@ -284,6 +310,8 @@ async function updateProfile(req, res) {
 }
 
 const DOC_TYPE_HANDLERS = {
+  aadhar: { table: "tbl_personal_doc", statusField: "aadhar_status", keyedByRider: true },
+  pan: { table: "tbl_personal_doc", statusField: "pan_status", keyedByRider: true },
   address: { table: "tbl_personal_doc", statusField: "address_status", keyedByRider: true },
   residence: { table: "tbl_personal_doc", statusField: "residence_status", keyedByRider: true },
   license: { table: "tbl_personal_doc", statusField: "lic_status", keyedByRider: true },

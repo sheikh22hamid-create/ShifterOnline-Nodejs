@@ -1,10 +1,11 @@
 // tbl_vehicle_details.v_pic is a legacy multi-value-in-one-field column —
 // real data shows multiple paths joined with "$;" (confirmed live, e.g.
 // "images/vehicle/x.jpg$;images/vehicle/y.jpg") rather than one path per row.
-function splitVehiclePics(vPic) {
-  if (!vPic) return [{ label: 'Vehicle photo', src: null }]
+export function splitVehiclePics(vPic) {
+  if (!vPic) return []
   return vPic
     .split('$;')
+    .flatMap((s) => s.split('$|'))
     .filter(Boolean)
     .map((src, i, arr) => ({ label: arr.length > 1 ? `Photo ${i + 1}` : 'Vehicle photo', src }))
 }
