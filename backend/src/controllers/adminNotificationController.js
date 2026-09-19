@@ -16,6 +16,7 @@ async function send(req, res) {
       target_type = "all_everyone",
       city_id,
       target_id,
+      target_identifier,
       title,
       message,
       image_url,
@@ -46,8 +47,24 @@ async function send(req, res) {
 
     if (shouldTargetDrivers) {
       const driverWhere = { status: 1 };
-      if (target_type === "specific_driver" && target_id) {
-        driverWhere.id = parseInt(target_id, 10);
+      const identifier = target_identifier || target_id;
+      if (target_type === "specific_driver" && identifier) {
+        const raw = String(identifier).trim();
+        const digits = raw.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          const last10 = digits.slice(-10);
+          driverWhere.OR = [
+            { fmobile: { contains: last10 } },
+            { smobile: { contains: last10 } },
+          ];
+        } else if (/^\d+$/.test(raw)) {
+          driverWhere.OR = [
+            { id: parseInt(raw, 10) },
+            { fmobile: { contains: raw } },
+          ];
+        } else {
+          driverWhere.fmobile = { contains: raw };
+        }
       } else if (target_type === "city_drivers" && (city_id || req.scopedCityId)) {
         driverWhere.city_id = parseInt(city_id || req.scopedCityId, 10);
       } else if (req.scopedCityId) {
@@ -58,6 +75,13 @@ async function send(req, res) {
         where: driverWhere,
         select: { id: true, full_name: true, fmobile: true, fcm_token: true },
       });
+
+      if (target_type === "specific_driver" && drivers.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `No active driver found with mobile number or ID "${identifier}".`,
+        });
+      }
     }
 
     // 2. Gather targeted Customers
@@ -69,14 +93,36 @@ async function send(req, res) {
 
     if (shouldTargetCustomers) {
       const customerWhere = { status: 1 };
-      if (target_type === "specific_customer" && target_id) {
-        customerWhere.id = parseInt(target_id, 10);
+      const identifier = target_identifier || target_id;
+      if (target_type === "specific_customer" && identifier) {
+        const raw = String(identifier).trim();
+        const digits = raw.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          const last10 = digits.slice(-10);
+          customerWhere.OR = [
+            { mobile: { contains: last10 } },
+          ];
+        } else if (/^\d+$/.test(raw)) {
+          customerWhere.OR = [
+            { id: parseInt(raw, 10) },
+            { mobile: { contains: raw } },
+          ];
+        } else {
+          customerWhere.mobile = { contains: raw };
+        }
       }
 
       customers = await prisma.tbl_user.findMany({
         where: customerWhere,
         select: { id: true, name: true, mobile: true, fcm_token: true },
       });
+
+      if (target_type === "specific_customer" && customers.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `No active customer found with mobile number or ID "${identifier}".`,
+        });
+      }
     }
 
     const totalTargeted = drivers.length + customers.length;

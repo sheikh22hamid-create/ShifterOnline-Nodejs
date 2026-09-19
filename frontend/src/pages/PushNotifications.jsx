@@ -124,7 +124,8 @@ export default function PushNotifications() {
         message: message.trim(),
         image_url: imageUrl.trim() || undefined,
         city_id: cityId ? parseInt(cityId, 10) : undefined,
-        target_id: targetId ? parseInt(targetId, 10) : undefined,
+        target_identifier: targetId ? targetId.trim() : undefined,
+        target_id: targetId ? targetId.trim() : undefined,
       }
 
       const res = await api.post('/notifications/send', payload)
@@ -235,8 +236,8 @@ export default function PushNotifications() {
                   { id: 'all_drivers', label: 'All Drivers', icon: Truck },
                   { id: 'all_customers', label: 'All Customers', icon: UserCheck },
                   { id: 'city_drivers', label: 'Drivers by City', icon: Truck },
-                  { id: 'specific_driver', label: 'Specific Driver', icon: Zap },
-                  { id: 'specific_customer', label: 'Specific User', icon: Zap },
+                  { id: 'specific_driver', label: 'Driver (Mobile / ID)', icon: Zap },
+                  { id: 'specific_customer', label: 'Customer (Mobile / ID)', icon: Zap },
                 ].map((item) => {
                   const Icon = item.icon
                   const isSelected = targetType === item.id
@@ -287,15 +288,15 @@ export default function PushNotifications() {
               </div>
             )}
 
-            {/* Specific ID input */}
+            {/* Specific Mobile Number / ID input */}
             {(targetType === 'specific_driver' || targetType === 'specific_customer') && (
               <div>
                 <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink)' }}>
-                  {targetType === 'specific_driver' ? 'Driver ID (e.g. 102)' : 'Customer / User ID (e.g. 45)'}
+                  {targetType === 'specific_driver' ? 'Driver Mobile Number (or ID)' : 'Customer Mobile Number (or ID)'}
                 </label>
                 <input
-                  type="number"
-                  placeholder="Enter ID number"
+                  type="text"
+                  placeholder="Enter 10-digit mobile number (e.g. 9876543210) or ID"
                   value={targetId}
                   onChange={(e) => setTargetId(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
@@ -306,6 +307,9 @@ export default function PushNotifications() {
                   }}
                   required
                 />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Enter {targetType === 'specific_driver' ? 'driver' : 'customer'}&apos;s 10-digit mobile number (or their system ID).
+                </p>
               </div>
             )}
 

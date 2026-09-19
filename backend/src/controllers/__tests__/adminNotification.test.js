@@ -155,6 +155,65 @@ describe("adminNotificationController", () => {
         })
       );
     });
+
+    it("successfully targets a driver by 10-digit mobile number", async () => {
+      prisma.tbl_rider.findMany.mockResolvedValue([
+        { id: 42, full_name: "Rahul Driver", fmobile: "9876543210", fcm_token: "mock_fcm_token_rahul_9876" },
+      ]);
+      prisma.tbl_rnoti.createMany.mockResolvedValue({ count: 1 });
+
+      const req = {
+        body: {
+          title: "Personal Alert",
+          message: "Please submit your renewed RC document.",
+          target_type: "specific_driver",
+          target_identifier: "9876543210",
+        },
+        user: { id: 1 },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+      await send(req, res);
+
+      expect(prisma.tbl_rider.findMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          status: 1,
+          OR: [
+            { fmobile: { contains: "9876543210" } },
+            { smobile: { contains: "9876543210" } },
+          ],
+        }),
+        select: expect.anything(),
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({ drivers_count: 1, customers_count: 0 }),
+        })
+      );
+    });
+
+    it("returns 404 if specific driver mobile number is not found", async () => {
+      prisma.tbl_rider.findMany.mockResolvedValue([]);
+
+      const req = {
+        body: {
+          title: "Alert",
+          message: "Hello",
+          target_type: "specific_driver",
+          target_identifier: "9999999999",
+        },
+        user: { id: 1 },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+      await send(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, message: expect.stringContaining("9999999999") })
+      );
+    });
   });
 
   describe("history", () => {
