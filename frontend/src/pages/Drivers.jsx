@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Search, Eye, Users, Radio, Navigation, ShieldAlert } from 'lucide-react'
+import { Search, Eye, Users, Radio, Navigation, ShieldAlert, Plus } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import useApiQuery from '../hooks/useApiQuery'
@@ -8,6 +8,7 @@ import KpiCard from '../components/common/KpiCard'
 import Badge from '../components/common/Badge'
 import Pagination from '../components/common/Pagination'
 import DriverDetailDrawer from '../components/drivers/DriverDetailDrawer'
+import CreateDriverModal from '../components/drivers/CreateDriverModal'
 import { approvalTone, approvalLabel, onlineTone, onlineLabel, verificationTone } from '../utils/driverStatus'
 import { formatCurrency } from '../utils/format'
 import useDebouncedValue from '../hooks/useDebouncedValue'
@@ -26,6 +27,7 @@ export default function Drivers() {
   const [vehicle, setVehicle] = useState('')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState(null)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
 
   const citiesFetcher = useCallback(() => (isSuperadmin ? api.get('/cities').then((res) => res.data.data) : Promise.resolve([])), [isSuperadmin])
   const { data: cities } = useApiQuery(citiesFetcher)
@@ -68,12 +70,25 @@ export default function Drivers() {
 
   return (
     <div>
-      <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
-        Drivers Fleet
-      </h1>
-      <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Fleet directory with live status.
-      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
+            Drivers Fleet
+          </h1>
+          <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+            Fleet directory with live status.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setCreateModalOpen(true)}
+          className="flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:opacity-95 active:scale-[0.99]"
+          style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+        >
+          <Plus size={15} /> Add Driver
+        </button>
+      </div>
 
       {meta && (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:max-w-2xl sm:grid-cols-4">
@@ -234,6 +249,19 @@ export default function Drivers() {
       </div>
 
       {selectedId && <DriverDetailDrawer key={selectedId} riderId={selectedId} onClose={() => setSelectedId(null)} onChanged={refetch} />}
+
+      <CreateDriverModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        cities={cities || []}
+        vehicles={vehicles || []}
+        onSuccess={(createdDriver) => {
+          refetch()
+          if (createdDriver?.id) {
+            setSelectedId(createdDriver.id)
+          }
+        }}
+      />
     </div>
   )
 }

@@ -103,6 +103,7 @@ router.delete("/rate-cards/:id", auth, authorize("superadmin"), rateCardControll
 
 // --- Drivers & KYC Verification ---------------------------------------------
 router.get("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.list);
+router.post("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.create);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
 router.patch("/riders/:id/profile", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.updateProfile);
 router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);

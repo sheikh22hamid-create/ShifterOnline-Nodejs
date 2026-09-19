@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
+const { uniqueRefferCode } = require("./riderAuthController");
 
 // Legacy convention shared by every doc-status column touched here
 // (tbl_personal_doc.*_status, tbl_vehicle_details.status, tbl_bank_account.status,
@@ -581,4 +582,205 @@ async function toggleModel(req, res) {
   }
 }
 
-module.exports = { list, getOne, kycDecision, toggleStatus, remove, toggleModel, setPaymentComplete, updateProfile };
+async function create(req, res) {
+  try {
+    const {
+      full_name,
+      fmobile,
+      smobile,
+      email,
+      dob,
+      nationality = "Indian",
+      full_address,
+      city_id,
+      vehicle,
+      vehicle_no,
+      aadhar_id,
+      pan_id,
+      lic_id,
+      rc_number,
+      rc_owner_name,
+      rc_owner_aadhar_number,
+      account_name,
+      account_number,
+      ifsc,
+      bank_name,
+      branch_name,
+      upi_id,
+      working_hours,
+      plan_type = "general",
+      verification_status = "approved",
+      payment_complete = 1,
+      status = 1,
+    } = req.body;
+
+    const trimmedName = String(full_name || "").trim();
+    const trimmedMobile = String(fmobile || "").trim();
+    const trimmedVehicle = String(vehicle || "").trim();
+    const trimmedPlate = String(vehicle_no || "").trim().toUpperCase();
+    const targetCityId = parseInt(city_id || req.scopedCityId, 10);
+
+    if (!trimmedName) {
+      return res.status(400).json({ success: false, message: "Driver full name is required" });
+    }
+    if (!trimmedMobile) {
+      return res.status(400).json({ success: false, message: "Mobile number is required" });
+    }
+    if (!trimmedVehicle) {
+      return res.status(400).json({ success: false, message: "Vehicle category is required" });
+    }
+    if (!trimmedPlate) {
+      return res.status(400).json({ success: false, message: "Vehicle plate number is required" });
+    }
+    if (!targetCityId || isNaN(targetCityId)) {
+      return res.status(400).json({ success: false, message: "City is required" });
+    }
+    if (isScopedOut(req, targetCityId)) {
+      return res.status(403).json({ success: false, message: "Forbidden: cannot create driver outside your assigned city" });
+    }
+
+    // Check duplicate mobile
+    const existing = await prisma.tbl_rider.findFirst({
+      where: { fmobile: trimmedMobile },
+    });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: `A driver with mobile number ${trimmedMobile} already exists (#${existing.id} - ${riderName(existing)})`,
+      });
+    }
+
+    const isApproved = String(verification_status).toLowerCase() === "approved";
+    const initialDocStatus = isApproved ? 1 : 0;
+    const isPaymentPaid = payment_complete === 1 || payment_complete === true || isApproved;
+    const refCode = await uniqueRefferCode(trimmedName || "RID");
+    const now = new Date();
+
+    // Find matching vehicle category for package enablements
+    const categories = await prisma.pkg_category.findMany();
+    const matchedCategory = categories.find((c) => {
+      const cName = String(c.cat_name || "").toLowerCase().trim();
+      const vName = trimmedVehicle.toLowerCase().trim();
+      return cName === vName || cName.includes(vName) || vName.includes(cName);
+    });
+
+    const newRider = await prisma.$transaction(async (tx) => {
+      // 1. tbl_rider
+      const rider = await tx.tbl_rider.create({
+        data: {
+          full_name: trimmedName,
+          fmobile: trimmedMobile,
+          smobile: smobile ? String(smobile).trim() : null,
+          email: email ? String(email).trim() : null,
+          dob: dob ? String(dob).trim() : null,
+          nationality: nationality ? String(nationality).trim() : "Indian",
+          full_address: full_address ? String(full_address).trim() : null,
+          city_id: targetCityId,
+          vehicle: trimmedVehicle,
+          vehicle_no: trimmedPlate,
+          account_name: account_name ? String(account_name).trim() : null,
+          account_number: account_number ? String(account_number).trim() : null,
+          ifsc: ifsc ? String(ifsc).trim().toUpperCase() : null,
+          upi_id: upi_id ? String(upi_id).trim() : null,
+          working_hours: working_hours ? parseInt(working_hours, 10) : null,
+          plan_type: plan_type || "general",
+          verification_type: "manual",
+          verification_status: isApproved ? "approved" : "pending",
+          all_verify: isApproved ? 1 : 0,
+          a_status: 0,
+          status: status !== undefined ? parseInt(status, 10) : 1,
+          payment_complete: isPaymentPaid ? 1 : 0,
+          password: "",
+          rdate: now,
+          referral_code: refCode,
+          reffer_code: refCode,
+          refferal_code: refCode,
+        },
+      });
+
+      // 2. tbl_personal_doc
+      const finalRc = rc_number ? String(rc_number).trim() : trimmedPlate;
+      await tx.tbl_personal_doc.create({
+        data: {
+          rider_id: rider.id,
+          aadhar_id: aadhar_id ? String(aadhar_id).trim() : null,
+          aadhar_status: aadhar_id ? initialDocStatus : 0,
+          pan_id: pan_id ? String(pan_id).trim() : null,
+          pan_status: pan_id ? initialDocStatus : 0,
+          lic_id: lic_id ? String(lic_id).trim() : null,
+          lic_status: lic_id ? initialDocStatus : 0,
+          residence_id: finalRc,
+          residence_status: initialDocStatus,
+          status: initialDocStatus,
+          address_status: initialDocStatus,
+          rc_owner_name: rc_owner_name ? String(rc_owner_name).trim() : null,
+          rc_owner_aadhar_number: rc_owner_aadhar_number ? String(rc_owner_aadhar_number).trim() : null,
+        },
+      });
+
+      // 3. tbl_vehicle_details
+      await tx.tbl_vehicle_details.create({
+        data: {
+          rider_id: rider.id,
+          type_id: matchedCategory?.id || 0,
+          reg_num: finalRc,
+          v_pic: "",
+          status: initialDocStatus,
+        },
+      });
+
+      // 4. tbl_bank_account
+      if (account_number || account_name || ifsc) {
+        await tx.tbl_bank_account.create({
+          data: {
+            rider_id: rider.id,
+            a_name: account_name ? String(account_name).trim() : trimmedName,
+            iban_num: account_number ? String(account_number).trim() : "",
+            ifsc_code: ifsc ? String(ifsc).trim().toUpperCase() : null,
+            bank_name: bank_name ? String(bank_name).trim() : null,
+            branch_name: branch_name ? String(branch_name).trim() : null,
+            status: initialDocStatus,
+          },
+        });
+      }
+
+      // 5. Auto-enable vehicle models / delivery types
+      if (matchedCategory) {
+        const packages = await tx.tbl_package.findMany({
+          where: { cat_id: matchedCategory.id, status: 1 },
+          select: { id: true },
+        });
+        if (packages.length > 0) {
+          await tx.tbl_rider_delivery_type.createMany({
+            data: packages.map((pkg) => ({
+              rider_id: rider.id,
+              delivery_type: String(pkg.id),
+              status: 1,
+            })),
+          });
+        }
+      }
+
+      return rider;
+    });
+
+    logger.info(`adminRiderController.create: created driver #${newRider.id} (${newRider.full_name}) by admin #${req.user.id}`);
+
+    return res.status(201).json({
+      success: true,
+      message: `Driver ${newRider.full_name} created successfully`,
+      data: {
+        id: newRider.id,
+        full_name: riderName(newRider),
+        fmobile: newRider.fmobile,
+        vehicle: newRider.vehicle,
+        vehicle_no: newRider.vehicle_no,
+        verification_status: newRider.verification_status,
+      },
+    });
+  } catch (err) {
+    return internalError(res, err, "riders.create");
+  }
+}
+
+module.exports = { list, getOne, create, kycDecision, toggleStatus, remove, toggleModel, setPaymentComplete, updateProfile };
