@@ -397,9 +397,9 @@ function findVehicleSlabConfig(slabRates, catIdOrName) {
   if (input.includes("bike") || input.includes("two") || input === "8") return slabRates.bike;
   if (input.includes("scooter") || input === "16") return slabRates.scooter;
   if (input.includes("mini") || input === "9") return slabRates.mini_3w;
-  if (input.includes("loader") || input.includes("electric") || input === "23") return slabRates.e_loader;
-  if (input.includes("3 wheeler") || input.includes("three") || input === "24") return slabRates.three_wheeler;
-  if (input.includes("4 wheeler") || input.includes("four") || input.includes("ace") || input.includes("tata") || input === "25" || input === "11" || input === "17")
+  if (input.includes("loader") || input.includes("electric") || input === "23" || input === "22") return slabRates.e_loader;
+  if (input.includes("3 wheeler") || input.includes("three") || input.includes("3w") || input === "24" || input === "15") return slabRates.three_wheeler;
+  if (input.includes("4 wheeler") || input.includes("four") || input.includes("ace") || input.includes("tata") || input.includes("4w") || input === "25" || input === "11" || input === "17")
     return slabRates.four_wheeler;
 
   return null;

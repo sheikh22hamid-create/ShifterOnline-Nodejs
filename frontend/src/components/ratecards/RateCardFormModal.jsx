@@ -61,51 +61,139 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+// Helper to match category id or name to vehicle slab config
+function matchVehicleSlab(vehicleSlabs, catId, catName = '') {
+  if (!vehicleSlabs || !vehicleSlabs.length) return null
+  const strId = String(catId || '').trim()
+  const rawName = String(catName || '').toLowerCase().trim()
+  const normName = rawName.replace(/[^a-z0-9]/g, '_')
+
+  // 1. Direct category ID match
+  let matched = vehicleSlabs.find((v) => String(v.category_id) === strId)
+  if (matched) return matched
+
+  // 2. Direct vehicle_key or vehicle_type match
+  matched = vehicleSlabs.find((v) => {
+    const vk = (v.vehicle_key || '').toLowerCase()
+    const vt = (v.vehicle_type || '').toLowerCase()
+    return (
+      vk === normName ||
+      vt === rawName ||
+      (vt && rawName.includes(vt)) ||
+      (rawName && vt.includes(rawName))
+    )
+  })
+  if (matched) return matched
+
+  // 3. 4-Wheeler categories (catId 25, 11, 17, or "4 wheeler", "four", "ace", "tata", "4w")
+  if (
+    rawName.includes('4') ||
+    rawName.includes('four') ||
+    rawName.includes('ace') ||
+    rawName.includes('4w') ||
+    ['25', '11', '17'].includes(strId)
+  ) {
+    return vehicleSlabs.find(
+      (v) =>
+        v.vehicle_key === 'four_wheeler' ||
+        (v.vehicle_type || '').toLowerCase().includes('4w') ||
+        (v.vehicle_type || '').toLowerCase().includes('tata') ||
+        (v.vehicle_type || '').toLowerCase().includes('4 wheeler')
+    )
+  }
+
+  // 4. 3-Wheeler categories (catId 24, 15, 9, or "3 wheeler", "three", "3w")
+  if (
+    rawName.includes('3') ||
+    rawName.includes('three') ||
+    rawName.includes('3w') ||
+    ['24', '15', '9'].includes(strId)
+  ) {
+    return vehicleSlabs.find(
+      (v) =>
+        v.vehicle_key === 'three_wheeler' ||
+        v.vehicle_key === 'mini_3w' ||
+        (v.vehicle_type || '').toLowerCase().includes('3 wheeler')
+    )
+  }
+
+  // 5. E-Loader categories (catId 23, 22, or "loader", "electric")
+  if (
+    rawName.includes('loader') ||
+    rawName.includes('electric') ||
+    ['23', '22'].includes(strId)
+  ) {
+    return vehicleSlabs.find(
+      (v) => v.vehicle_key === 'e_loader' || (v.vehicle_type || '').toLowerCase().includes('loader')
+    )
+  }
+
+  // 6. Scooter (catId 16, or "scooter")
+  if (rawName.includes('scooter') || strId === '16') {
+    return vehicleSlabs.find((v) => v.vehicle_key === 'scooter' || (v.vehicle_type || '').toLowerCase().includes('scooter'))
+  }
+
+  // 7. Bike (catId 8, or "bike", "two")
+  if (rawName.includes('bike') || rawName.includes('two') || strId === '8') {
+    return vehicleSlabs.find((v) => v.vehicle_key === 'bike' || (v.vehicle_type || '').toLowerCase().includes('bike'))
+  }
+
+  return null
+}
+
+function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
+  if (!vConfig) return null
+
+  const rawBaseMin = Number(vConfig.min_charge) || 0
+  const lastFiniteRate =
+    (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate ||
+    (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate ||
+    10
+  const anchorMarkup =
+    Number(vConfig.markup_percent) || Number(slabConfig?.anchor_model?.markup_percent) || 10
+  const anchorMultiplier = 1 + anchorMarkup / 100
+
+  const title = String(modelTitle || '').trim().toLowerCase()
+  const modelMatch =
+    (slabConfig?.model_multipliers || []).find((m) => {
+      const mName = String(m.name || m.model || '').toLowerCase()
+      return title.includes(mName) || title.includes(`model ${m.model_number}`)
+    }) || {
+      model_number: 1,
+      name: modelTitle,
+      percent_offset: 0,
+      user_title: 'Super Saver',
+      driver_title: 'Standard Tier',
+    }
+
+  const offset = Number(modelMatch.percent_offset) || 0
+  const effectiveMultiplier = anchorMultiplier * (1 + offset / 100)
+
+  const calcMin = Math.round(rawBaseMin * effectiveMultiplier * 100) / 100
+  const calcPerKm = Math.round(lastFiniteRate * effectiveMultiplier * 100) / 100
+  const calcPickup = Math.round(calcPerKm * 0.5 * 100) / 100
+
+  return {
+    vConfig,
+    vehicleName: vConfig.vehicle_type || vConfig.vehicle_name || 'Vehicle',
+    modelMatch,
+    modelTitle: modelMatch.name || modelMatch.model || modelTitle,
+    offset,
+    calcMin,
+    calcPerKm,
+    calcPickup,
+    user_title: modelMatch.user_title || 'Super Saver',
+    driver_title: modelMatch.driver_title || 'Standard Tier',
+  }
+}
+
   // Slab calculation helper based on selected category and model
   const slabCalculation = useMemo(() => {
     if (!form.cat_id || !slabConfig) return null
     const cat = categories.find((c) => String(c.id) === String(form.cat_id))
     const catName = cat?.cat_name || ''
-    const vehicleSlabs = slabConfig.vehicle_slabs || []
-    const vConfig = vehicleSlabs.find(
-      (v) =>
-        String(v.category_id) === String(form.cat_id) ||
-        v.vehicle_key?.toLowerCase() === catName.toLowerCase().replace(/[^a-z0-9]/g, '_') ||
-        (v.vehicle_type || '').toLowerCase().includes(catName.toLowerCase()) ||
-        catName.toLowerCase().includes((v.vehicle_type || '').toLowerCase())
-    )
-    if (!vConfig) return null
-
-    const rawBaseMin = Number(vConfig.min_charge) || 0
-    const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate || (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate || 10
-    const anchorMarkup = Number(vConfig.markup_percent) || Number(slabConfig.anchor_model?.markup_percent) || 10
-    const anchorMultiplier = 1 + anchorMarkup / 100
-
-    const title = String(form.title || '').trim().toLowerCase()
-    const modelMatch = (slabConfig.model_multipliers || []).find((m) => {
-      const mName = String(m.name || m.model || '').toLowerCase()
-      return title.includes(mName) || title.includes(`model ${m.model_number}`)
-    }) || { model_number: 3, name: 'Model 3', percent_offset: 0, user_title: 'Comfort', driver_title: 'Prime Tier' }
-
-    const offset = Number(modelMatch.percent_offset) || 0
-    const effectiveMultiplier = anchorMultiplier * (1 + offset / 100)
-
-    const calcMin = Math.round(rawBaseMin * effectiveMultiplier * 100) / 100
-    const calcPerKm = Math.round(lastFiniteRate * effectiveMultiplier * 100) / 100
-    const calcPickup = Math.round(calcPerKm * 0.5 * 100) / 100
-
-    return {
-      vConfig,
-      vehicleName: vConfig.vehicle_type || catName,
-      modelMatch,
-      modelTitle: modelMatch.name || modelMatch.model || form.title || 'Model 3',
-      offset,
-      calcMin,
-      calcPerKm,
-      calcPickup,
-      user_title: modelMatch?.user_title || 'Super Saver',
-      driver_title: modelMatch?.driver_title || 'Standard Tier',
-    }
+    const vConfig = matchVehicleSlab(slabConfig.vehicle_slabs || [], form.cat_id, catName)
+    return computeSlabRateValues(vConfig, form.title || 'Model 1', slabConfig)
   }, [form.cat_id, form.title, categories, slabConfig])
 
   function applySlabAutofill(calc = slabCalculation) {
@@ -121,77 +209,67 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
   }
 
   function handleCategoryChange(newCatId) {
-    set('cat_id', newCatId)
-    // If creating new rate card, auto-apply slab rates
-    if (!isEdit && newCatId) {
-      setTimeout(() => {
-        const cat = categories.find((c) => String(c.id) === String(newCatId))
-        const catName = cat?.cat_name || ''
-        const vehicleSlabs = slabConfig?.vehicle_slabs || []
-        const vConfig = vehicleSlabs.find(
-          (v) =>
-            String(v.category_id) === String(newCatId) ||
-            v.vehicle_key?.toLowerCase() === catName.toLowerCase().replace(/[^a-z0-9]/g, '_') ||
-            (v.vehicle_type || '').toLowerCase().includes(catName.toLowerCase()) ||
-            catName.toLowerCase().includes((v.vehicle_type || '').toLowerCase())
-        )
-        if (vConfig) {
-          const rawBaseMin = Number(vConfig.min_charge) || 0
-          const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate || (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate || 10
-          const anchorMarkup = Number(vConfig.markup_percent) || Number(slabConfig?.anchor_model?.markup_percent) || 10
-          const anchorMultiplier = 1 + anchorMarkup / 100
-          const calcMin = Math.round(rawBaseMin * anchorMultiplier * 100) / 100
-          const calcPerKm = Math.round(lastFiniteRate * anchorMultiplier * 100) / 100
-          setForm((f) => ({
-            ...f,
-            cat_id: newCatId,
-            min_charge: String(calcMin),
-            per_km_charge: String(calcPerKm),
-            pickup_per_km_charge: String(Math.round(calcPerKm * 0.5 * 100) / 100),
-            user_title: f.user_title || 'Comfort',
-            driver_title: f.driver_title || 'Prime Tier',
-          }))
-        }
-      }, 0)
+    const cat = categories.find((c) => String(c.id) === String(newCatId))
+    const catName = cat?.cat_name || ''
+    const vConfig = matchVehicleSlab(slabConfig?.vehicle_slabs || [], newCatId, catName)
+    const currentModelTitle = form.title || 'Model 1'
+    const computed = computeSlabRateValues(vConfig, currentModelTitle, slabConfig)
+
+    if (computed && !isEdit) {
+      setForm((f) => ({
+        ...f,
+        cat_id: newCatId,
+        min_charge: String(computed.calcMin),
+        per_km_charge: String(computed.calcPerKm),
+        pickup_per_km_charge: String(computed.calcPickup),
+        user_title: f.user_title || computed.user_title,
+        driver_title: f.driver_title || computed.driver_title,
+      }))
+    } else {
+      setForm((f) => ({ ...f, cat_id: newCatId }))
     }
   }
 
   function handleModelSelect(mTitle) {
-    set('title', mTitle)
-    if (!form.cat_id || !slabConfig) return
     const cat = categories.find((c) => String(c.id) === String(form.cat_id))
     const catName = cat?.cat_name || ''
-    const vehicleSlabs = slabConfig.vehicle_slabs || []
-    const vConfig = vehicleSlabs.find(
-      (v) =>
-        String(v.category_id) === String(form.cat_id) ||
-        v.vehicle_key?.toLowerCase() === catName.toLowerCase().replace(/[^a-z0-9]/g, '_') ||
-        (v.vehicle_type || '').toLowerCase().includes(catName.toLowerCase()) ||
-        catName.toLowerCase().includes((v.vehicle_type || '').toLowerCase())
-    )
-    if (vConfig) {
-      const rawBaseMin = Number(vConfig.min_charge) || 0
-      const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate || (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate || 10
-      const anchorMarkup = Number(vConfig.markup_percent) || Number(slabConfig.anchor_model?.markup_percent) || 10
-      const anchorMultiplier = 1 + anchorMarkup / 100
-      const modelMatch = (slabConfig.model_multipliers || []).find((m) =>
-        mTitle.toLowerCase().includes(String(m.name || m.model || '').toLowerCase())
-      )
-      const offset = modelMatch ? Number(modelMatch.percent_offset) || 0 : 0
-      const effectiveMultiplier = anchorMultiplier * (1 + offset / 100)
-      const calcMin = Math.round(rawBaseMin * effectiveMultiplier * 100) / 100
-      const calcPerKm = Math.round(lastFiniteRate * effectiveMultiplier * 100) / 100
+    const vConfig = matchVehicleSlab(slabConfig?.vehicle_slabs || [], form.cat_id, catName)
+    const computed = computeSlabRateValues(vConfig, mTitle, slabConfig)
+
+    if (computed) {
       setForm((f) => ({
         ...f,
         title: mTitle,
-        min_charge: String(calcMin),
-        per_km_charge: String(calcPerKm),
-        pickup_per_km_charge: String(Math.round(calcPerKm * 0.5 * 100) / 100),
-        user_title: modelMatch?.user_title || f.user_title,
-        driver_title: modelMatch?.driver_title || f.driver_title,
+        min_charge: String(computed.calcMin),
+        per_km_charge: String(computed.calcPerKm),
+        pickup_per_km_charge: String(computed.calcPickup),
+        user_title: computed.user_title || f.user_title,
+        driver_title: computed.driver_title || f.driver_title,
       }))
+    } else {
+      setForm((f) => ({ ...f, title: mTitle }))
     }
   }
+
+  // If creating new rate card and category is selected, auto-fill if fields are empty
+  useEffect(() => {
+    if (!isEdit && open && form.cat_id && slabConfig && (!form.min_charge || !form.per_km_charge)) {
+      const cat = categories.find((c) => String(c.id) === String(form.cat_id))
+      const catName = cat?.cat_name || ''
+      const vConfig = matchVehicleSlab(slabConfig.vehicle_slabs || [], form.cat_id, catName)
+      const computed = computeSlabRateValues(vConfig, form.title || 'Model 1', slabConfig)
+      if (computed) {
+        setForm((f) => ({
+          ...f,
+          min_charge: f.min_charge || String(computed.calcMin),
+          per_km_charge: f.per_km_charge || String(computed.calcPerKm),
+          pickup_per_km_charge: f.pickup_per_km_charge || String(computed.calcPickup),
+          user_title: f.user_title || computed.user_title,
+          driver_title: f.driver_title || computed.driver_title,
+        }))
+      }
+    }
+  }, [isEdit, open, form.cat_id, form.title, form.min_charge, form.per_km_charge, slabConfig, categories])
 
   useEffect(() => {
     if (!open) return
