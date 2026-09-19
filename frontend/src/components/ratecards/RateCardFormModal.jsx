@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Sparkles } from 'lucide-react'
 import api from '../../services/api'
 import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
@@ -6,7 +7,7 @@ import Modal from '../common/Modal'
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
 
 const EMPTY_FORM = {
-  title: '',
+  title: 'Model 3',
   user_title: '',
   driver_title: '',
   type: 'USER',
@@ -53,9 +54,144 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
   const { data: rawCategories } = useApiQuery(categoriesFetcher)
   const categories = Array.isArray(rawCategories) ? rawCategories : (Array.isArray(rawCategories?.data) ? rawCategories.data : [])
 
+  const slabsFetcher = useCallback(() => api.get('/rate-cards/slabs').then((res) => res.data?.data || {}), [])
+  const { data: slabConfig } = useApiQuery(slabsFetcher)
+
   const [form, setForm] = useState(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // Slab calculation helper based on selected category and model
+  const slabCalculation = useMemo(() => {
+    if (!form.cat_id || !slabConfig) return null
+    const cat = categories.find((c) => String(c.id) === String(form.cat_id))
+    const catName = cat?.cat_name || ''
+    const vehicleSlabs = slabConfig.vehicle_slabs || []
+    const vConfig = vehicleSlabs.find(
+      (v) =>
+        String(v.category_id) === String(form.cat_id) ||
+        v.vehicle_key?.toLowerCase() === catName.toLowerCase().replace(/[^a-z0-9]/g, '_') ||
+        (v.vehicle_type || '').toLowerCase().includes(catName.toLowerCase()) ||
+        catName.toLowerCase().includes((v.vehicle_type || '').toLowerCase())
+    )
+    if (!vConfig) return null
+
+    const rawBaseMin = Number(vConfig.min_charge) || 0
+    const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate || (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate || 10
+    const anchorMarkup = Number(vConfig.markup_percent) || Number(slabConfig.anchor_model?.markup_percent) || 10
+    const anchorMultiplier = 1 + anchorMarkup / 100
+
+    const title = String(form.title || '').trim().toLowerCase()
+    const modelMatch = (slabConfig.model_multipliers || []).find((m) => {
+      const mName = String(m.name || m.model || '').toLowerCase()
+      return title.includes(mName) || title.includes(`model ${m.model_number}`)
+    }) || { model_number: 3, name: 'Model 3', percent_offset: 0, user_title: 'Comfort', driver_title: 'Prime Tier' }
+
+    const offset = Number(modelMatch.percent_offset) || 0
+    const effectiveMultiplier = anchorMultiplier * (1 + offset / 100)
+
+    const calcMin = Math.round(rawBaseMin * effectiveMultiplier * 100) / 100
+    const calcPerKm = Math.round(lastFiniteRate * effectiveMultiplier * 100) / 100
+    const calcPickup = Math.round(calcPerKm * 0.5 * 100) / 100
+
+    return {
+      vConfig,
+      vehicleName: vConfig.vehicle_type || catName,
+      modelMatch,
+      modelTitle: modelMatch.name || modelMatch.model || form.title || 'Model 3',
+      offset,
+      calcMin,
+      calcPerKm,
+      calcPickup,
+      user_title: modelMatch?.user_title || 'Super Saver',
+      driver_title: modelMatch?.driver_title || 'Standard Tier',
+    }
+  }, [form.cat_id, form.title, categories, slabConfig])
+
+  function applySlabAutofill(calc = slabCalculation) {
+    if (!calc) return
+    setForm((f) => ({
+      ...f,
+      min_charge: String(calc.calcMin),
+      per_km_charge: String(calc.calcPerKm),
+      pickup_per_km_charge: f.pickup_per_km_charge && isEdit ? f.pickup_per_km_charge : String(calc.calcPickup),
+      user_title: f.user_title && isEdit ? f.user_title : calc.user_title,
+      driver_title: f.driver_title && isEdit ? f.driver_title : calc.driver_title,
+    }))
+  }
+
+  function handleCategoryChange(newCatId) {
+    set('cat_id', newCatId)
+    // If creating new rate card, auto-apply slab rates
+    if (!isEdit && newCatId) {
+      setTimeout(() => {
+        const cat = categories.find((c) => String(c.id) === String(newCatId))
+        const catName = cat?.cat_name || ''
+        const vehicleSlabs = slabConfig?.vehicle_slabs || []
+        const vConfig = vehicleSlabs.find(
+          (v) =>
+            String(v.category_id) === String(newCatId) ||
+            v.vehicle_key?.toLowerCase() === catName.toLowerCase().replace(/[^a-z0-9]/g, '_') ||
+            (v.vehicle_type || '').toLowerCase().includes(catName.toLowerCase()) ||
+            catName.toLowerCase().includes((v.vehicle_type || '').toLowerCase())
+        )
+        if (vConfig) {
+          const rawBaseMin = Number(vConfig.min_charge) || 0
+          const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate || (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate || 10
+          const anchorMarkup = Number(vConfig.markup_percent) || Number(slabConfig?.anchor_model?.markup_percent) || 10
+          const anchorMultiplier = 1 + anchorMarkup / 100
+          const calcMin = Math.round(rawBaseMin * anchorMultiplier * 100) / 100
+          const calcPerKm = Math.round(lastFiniteRate * anchorMultiplier * 100) / 100
+          setForm((f) => ({
+            ...f,
+            cat_id: newCatId,
+            min_charge: String(calcMin),
+            per_km_charge: String(calcPerKm),
+            pickup_per_km_charge: String(Math.round(calcPerKm * 0.5 * 100) / 100),
+            user_title: f.user_title || 'Comfort',
+            driver_title: f.driver_title || 'Prime Tier',
+          }))
+        }
+      }, 0)
+    }
+  }
+
+  function handleModelSelect(mTitle) {
+    set('title', mTitle)
+    if (!form.cat_id || !slabConfig) return
+    const cat = categories.find((c) => String(c.id) === String(form.cat_id))
+    const catName = cat?.cat_name || ''
+    const vehicleSlabs = slabConfig.vehicle_slabs || []
+    const vConfig = vehicleSlabs.find(
+      (v) =>
+        String(v.category_id) === String(form.cat_id) ||
+        v.vehicle_key?.toLowerCase() === catName.toLowerCase().replace(/[^a-z0-9]/g, '_') ||
+        (v.vehicle_type || '').toLowerCase().includes(catName.toLowerCase()) ||
+        catName.toLowerCase().includes((v.vehicle_type || '').toLowerCase())
+    )
+    if (vConfig) {
+      const rawBaseMin = Number(vConfig.min_charge) || 0
+      const lastFiniteRate = (vConfig.slabs || []).find((s) => s.key === '5_10')?.rate || (vConfig.slabs || []).find((s) => s.key === '1_5')?.rate || 10
+      const anchorMarkup = Number(vConfig.markup_percent) || Number(slabConfig.anchor_model?.markup_percent) || 10
+      const anchorMultiplier = 1 + anchorMarkup / 100
+      const modelMatch = (slabConfig.model_multipliers || []).find((m) =>
+        mTitle.toLowerCase().includes(String(m.name || m.model || '').toLowerCase())
+      )
+      const offset = modelMatch ? Number(modelMatch.percent_offset) || 0 : 0
+      const effectiveMultiplier = anchorMultiplier * (1 + offset / 100)
+      const calcMin = Math.round(rawBaseMin * effectiveMultiplier * 100) / 100
+      const calcPerKm = Math.round(lastFiniteRate * effectiveMultiplier * 100) / 100
+      setForm((f) => ({
+        ...f,
+        title: mTitle,
+        min_charge: String(calcMin),
+        per_km_charge: String(calcPerKm),
+        pickup_per_km_charge: String(Math.round(calcPerKm * 0.5 * 100) / 100),
+        user_title: modelMatch?.user_title || f.user_title,
+        driver_title: modelMatch?.driver_title || f.driver_title,
+      }))
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -181,7 +317,13 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="cat_id">Vehicle Category</Label>
-            <select id="cat_id" value={form.cat_id} onChange={(e) => set('cat_id', e.target.value)} className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none" style={FIELD_STYLE}>
+            <select
+              id="cat_id"
+              value={form.cat_id}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={FIELD_STYLE}
+            >
               <option value="">Select Vehicle (Bike, 3 Wheeler...)</option>
               {categories?.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -193,6 +335,25 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
           <div>
             <Label htmlFor="title">Admin Model Title</Label>
             <Input id="title" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Model 1" />
+            <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+              {['Model 1', 'Model 2', 'Model 3', 'Model 4', 'Model 5'].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleModelSelect(m)}
+                  className={`rounded px-1.5 py-0.5 text-[10.5px] font-semibold border transition-all ${
+                    String(form.title).toLowerCase() === m.toLowerCase()
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-600 dark:text-amber-400'
+                      : 'opacity-70 hover:opacity-100'
+                  }`}
+                  style={{
+                    borderColor: String(form.title).toLowerCase() === m.toLowerCase() ? 'var(--brand)' : 'var(--border)',
+                  }}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -230,6 +391,32 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
             </select>
           </div>
         </div>
+
+        {/* Distance Slabs Auto-Calculation & Autofill Helper Banner */}
+        {slabCalculation && (
+          <div
+            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border p-2.5 text-[12px]"
+            style={{ borderColor: 'rgba(234, 88, 12, 0.35)', background: 'rgba(234, 88, 12, 0.07)' }}
+          >
+            <div className="flex items-center gap-1.5" style={{ color: 'var(--brand)' }}>
+              <Sparkles size={14} className="shrink-0" />
+              <span>
+                Slabs Rate ({slabCalculation.vehicleName} - {slabCalculation.modelTitle}): <strong>Min ₹{slabCalculation.calcMin}</strong> | <strong>₹{slabCalculation.calcPerKm}/km</strong>
+                <span className="ml-1 text-[11px] opacity-80">
+                  ({slabCalculation.offset > 0 ? `+${slabCalculation.offset}%` : `${slabCalculation.offset}%`} vs Anchor)
+                </span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => applySlabAutofill(slabCalculation)}
+              className="self-start sm:self-auto rounded px-2.5 py-1 text-[11px] font-semibold shadow-xs transition-opacity hover:opacity-90 flex items-center gap-1 shrink-0"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Sparkles size={11} /> Autofill Slabs
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>

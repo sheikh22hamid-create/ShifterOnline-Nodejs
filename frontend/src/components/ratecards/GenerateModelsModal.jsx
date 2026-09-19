@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, Plus, Trash2, CheckCircle2, Award } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Sparkles, Plus, Trash2, CheckCircle2, Award, RotateCcw } from 'lucide-react'
 import api from '../../services/api'
+import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
 import { formatCurrency } from '../../utils/format'
 
@@ -64,11 +65,43 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
   const [models, setModels] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [customBaseRates, setCustomBaseRates] = useState(null)
+
+  const slabsFetcher = useCallback(() => api.get('/rate-cards/slabs').then((res) => res.data?.data || {}), [])
+  const { data: slabConfig } = useApiQuery(slabsFetcher)
+
+  // Find vehicle slab configuration for this rate card
+  const vehicleSlab = useMemo(() => {
+    if (!baseRateCard || !slabConfig) return null
+    const vehicleKey = String(baseRateCard.vehicle_type || baseRateCard.category_name || '').toLowerCase()
+    const vehicleSlabs = slabConfig.vehicle_slabs || []
+    return vehicleSlabs.find(
+      (v) =>
+        String(v.category_id) === String(baseRateCard.cat_id) ||
+        v.vehicle_key?.toLowerCase() === vehicleKey.replace(/[^a-z0-9]/g, '_') ||
+        (v.vehicle_type || '').toLowerCase().includes(vehicleKey) ||
+        vehicleKey.includes((v.vehicle_type || '').toLowerCase())
+    ) || null
+  }, [baseRateCard, slabConfig])
+
+  // Computed base rates from Slabs
+  const slabCalculatedBase = useMemo(() => {
+    if (!vehicleSlab) return null
+    const rawMin = Number(vehicleSlab.min_charge) || 0
+    const lastRate = (vehicleSlab.slabs || []).find((s) => s.key === '5_10')?.rate || (vehicleSlab.slabs || []).find((s) => s.key === '1_5')?.rate || 10
+    const anchorMarkup = Number(vehicleSlab.markup_percent) || Number(slabConfig?.anchor_model?.markup_percent) || 10
+    const anchorMultiplier = 1 + anchorMarkup / 100
+    const min = Math.round(rawMin * anchorMultiplier * 100) / 100
+    const perKm = Math.round(lastRate * anchorMultiplier * 100) / 100
+    const pickup = Math.round(perKm * 0.5 * 100) / 100
+    return { min, perKm, pickup }
+  }, [vehicleSlab, slabConfig])
 
   // Build model rows whenever modal opens or base model changes
   useEffect(() => {
     if (!open || !baseRateCard) return
     setError('')
+    setCustomBaseRates(null)
 
     // Default to Model 3 as Base Anchor
     const baseAnchor = 3
@@ -91,9 +124,20 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
     setModels(initial)
   }, [open, baseRateCard])
 
-  const baseMin = useMemo(() => Number(baseRateCard?.min_charge) || 0, [baseRateCard])
-  const basePerKm = useMemo(() => Number(baseRateCard?.per_km_charge) || 0, [baseRateCard])
-  const basePickupKm = useMemo(() => (baseRateCard?.pickup_per_km_charge ? Number(baseRateCard.pickup_per_km_charge) : null), [baseRateCard])
+  const baseMin = useMemo(() => {
+    if (customBaseRates) return customBaseRates.min
+    return Number(baseRateCard?.min_charge) || 0
+  }, [baseRateCard, customBaseRates])
+
+  const basePerKm = useMemo(() => {
+    if (customBaseRates) return customBaseRates.perKm
+    return Number(baseRateCard?.per_km_charge) || 0
+  }, [baseRateCard, customBaseRates])
+
+  const basePickupKm = useMemo(() => {
+    if (customBaseRates) return customBaseRates.pickup
+    return baseRateCard?.pickup_per_km_charge ? Number(baseRateCard.pickup_per_km_charge) : null
+  }, [baseRateCard, customBaseRates])
 
   // Handler when admin explicitly changes which model is the Base Model
   function handleBaseModelChange(newBaseNum) {
@@ -265,8 +309,8 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
             </div>
           </div>
 
-          {/* Current Source Numbers */}
-          <div className="flex items-center gap-2.5 font-mono text-[12px]">
+          {/* Current Source Numbers & Slabs Matrix Autofill */}
+          <div className="flex items-center gap-2 font-mono text-[12px] flex-wrap">
             <div className="rounded-md border px-2.5 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
               <span className="text-[10px] text-gray-500 block font-sans">Base Min Fare</span>
               <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatCurrency(baseMin)}</span>
@@ -275,11 +319,30 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
               <span className="text-[10px] text-gray-500 block font-sans">Base Per KM</span>
               <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatCurrency(basePerKm)}/km</span>
             </div>
-            {basePickupKm != null && (
-              <div className="rounded-md border px-2.5 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
-                <span className="text-[10px] text-gray-500 block font-sans">Pickup Rate</span>
-                <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatCurrency(basePickupKm)}/km</span>
-              </div>
+            {slabCalculatedBase && (
+              <button
+                type="button"
+                onClick={() => setCustomBaseRates(slabCalculatedBase)}
+                className="flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-all hover:opacity-90"
+                style={{
+                  borderColor: customBaseRates ? 'var(--brand)' : 'rgba(234, 88, 12, 0.4)',
+                  background: customBaseRates ? 'var(--brand)' : 'rgba(234, 88, 12, 0.1)',
+                  color: customBaseRates ? 'var(--brand-ink)' : 'var(--brand)',
+                }}
+                title={`Autofill Base directly from Slabs Matrix (Min ₹${slabCalculatedBase.min}, Per KM ₹${slabCalculatedBase.perKm})`}
+              >
+                <Sparkles size={11} />
+                {customBaseRates ? 'Using Slabs Matrix Base' : 'Autofill from Slabs'}
+              </button>
+            )}
+            {customBaseRates && (
+              <button
+                type="button"
+                onClick={() => setCustomBaseRates(null)}
+                className="text-[11px] font-sans underline text-gray-400 hover:text-gray-600 px-1"
+              >
+                Reset
+              </button>
             )}
           </div>
         </div>

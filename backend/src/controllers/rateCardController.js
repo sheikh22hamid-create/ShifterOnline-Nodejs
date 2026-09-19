@@ -458,6 +458,7 @@ async function syncModelsFromSlabs(req, res) {
     const anchorMultiplier = 1 + anchorMarkup / 100;
 
     let updatedCount = 0;
+    let createdCount = 0;
 
     for (const category of categories) {
       const vehicleConfig = findVehicleSlabConfig(config.slabRates, category.id);
@@ -475,37 +476,81 @@ async function syncModelsFromSlabs(req, res) {
         orderBy: { sort_order: "asc" },
       });
 
-      for (const pkg of packages) {
-        const pkgTitle = String(pkg.title || "").toLowerCase();
-        const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+      const baseTemplate = packages[0] || null;
 
-        if (modelMatch) {
-          const offset = Number(modelMatch.offset_percent) || 0;
-          const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
+      for (const m of multipliers.models || []) {
+        const offset = Number(m.offset_percent) || 0;
+        const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
 
-          const calculatedMin = Math.round(Number(vehicleConfig.min_charge) * effectiveMultiplier * 100) / 100;
-          // Representative per_km_charge for legacy reference (e.g. 5-10 km slab rate scaled)
-          const basePerKm = Number(vehicleConfig.rates?.["5_10"] || vehicleConfig.rates?.["1_5"] || 10);
-          const calculatedPerKm = Math.round(basePerKm * effectiveMultiplier * 100) / 100;
+        const calculatedMin = Math.round(Number(vehicleConfig.min_charge) * effectiveMultiplier * 100) / 100;
+        // Representative per_km_charge for trip rate (e.g. 5-10 km slab rate scaled)
+        const basePerKm = Number(vehicleConfig.rates?.["5_10"] || vehicleConfig.rates?.["1_5"] || 10);
+        const calculatedPerKm = Math.round(basePerKm * effectiveMultiplier * 100) / 100;
+        const calculatedPickupPerKm = Math.round(calculatedPerKm * 0.5 * 100) / 100;
 
+        const modelTargetTitle = String(m.model).trim();
+        const pkgMatch = packages.find((p) =>
+          String(p.title || "").toLowerCase().includes(modelTargetTitle.toLowerCase())
+        );
+
+        if (pkgMatch) {
           await prisma.tbl_package.update({
-            where: { id: pkg.id },
+            where: { id: pkgMatch.id },
             data: {
               min_charge: String(calculatedMin),
               per_km_charge: String(calculatedPerKm),
-              user_title: modelMatch.user_title ? String(modelMatch.user_title).trim() : null,
-              driver_title: modelMatch.driver_title ? String(modelMatch.driver_title).trim() : null,
+              pickup_per_km_charge: pkgMatch.pickup_per_km_charge ? String(calculatedPickupPerKm) : null,
+              user_title: m.user_title ? String(m.user_title).trim() : pkgMatch.user_title,
+              driver_title: m.driver_title ? String(m.driver_title).trim() : pkgMatch.driver_title,
             },
           });
           updatedCount++;
+        } else {
+          // Auto-create missing model rate card for this vehicle category
+          const sortOrder = parseInt(modelTargetTitle.replace(/\D/g, ""), 10) || 0;
+          await prisma.tbl_package.create({
+            data: {
+              title: modelTargetTitle,
+              user_title: m.user_title ? String(m.user_title).trim() : null,
+              driver_title: m.driver_title ? String(m.driver_title).trim() : null,
+              type: baseTemplate?.type || "USER",
+              cat_id: category.id,
+              city_id: baseTemplate?.city_id || "1",
+              min_charge: String(calculatedMin),
+              per_km_charge: String(calculatedPerKm),
+              pickup_per_km_charge: String(calculatedPickupPerKm),
+              pickup_charge: baseTemplate?.pickup_charge || null,
+              outside_min_charge: "0",
+              outside_per_km_charge: "0",
+              outside_surcharge: "0",
+              driver_per_trip: baseTemplate?.driver_per_trip || "0",
+              driver_per_percent: baseTemplate?.driver_per_percent || "80",
+              free_waiting_time: baseTemplate?.free_waiting_time ?? 5,
+              waiting_charge: baseTemplate?.waiting_charge ?? 0,
+              service_charge_percent: baseTemplate?.service_charge_percent ?? 0,
+              night_charge_percent: baseTemplate?.night_charge_percent ?? 0,
+              start_time: baseTemplate?.start_time || new Date("1970-01-01T23:00:00.000Z"),
+              end_time: baseTemplate?.end_time || new Date("1970-01-01T06:00:00.000Z"),
+              sort_order: sortOrder,
+              cancellation_charge_customer: baseTemplate?.cancellation_charge_customer ?? 0,
+              cancellation_charge_driver: baseTemplate?.cancellation_charge_driver ?? 0,
+              admin_earning: baseTemplate?.admin_earning ?? 0,
+              driver_earning: baseTemplate?.driver_earning ?? 0,
+              driver_cancel_admin_earning: baseTemplate?.driver_cancel_admin_earning ?? 0,
+              driver_cancel_user_earning: baseTemplate?.driver_cancel_user_earning ?? 0,
+              status: 1,
+            },
+          });
+          createdCount++;
         }
       }
     }
 
     return res.status(200).json({
       success: true,
-      message: `Successfully synchronized ${updatedCount} model rate cards with distance-slab pricing rules!`,
+      message: `Successfully synchronized model rate cards with distance-slab pricing rules (${updatedCount} updated, ${createdCount} created)!`,
       updatedCount,
+      createdCount,
     });
   } catch (err) {
     return internalError(res, err, "rateCards.syncModelsFromSlabs");
