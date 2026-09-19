@@ -28,6 +28,7 @@ const Cities = lazy(() => import('./pages/Cities'))
 const PremiumPlans = lazy(() => import('./pages/PremiumPlans'))
 const Coupons = lazy(() => import('./pages/Coupons'))
 const Banners = lazy(() => import('./pages/Banners'))
+const PushNotifications = lazy(() => import('./pages/PushNotifications'))
 const Referrals = lazy(() => import('./pages/Referrals'))
 const DriverLeads = lazy(() => import('./pages/DriverLeads'))
 const Reports = lazy(() => import('./pages/Reports'))
@@ -96,6 +97,7 @@ function App() {
             <Route path="/marketing/premium-plans" element={<PremiumPlans />} />
             <Route path="/marketing/coupons" element={<Coupons />} />
             <Route path="/marketing/banners" element={<Banners />} />
+            <Route path="/marketing/push-notifications" element={<Gated roles={['superadmin', 'admin']}><PushNotifications /></Gated>} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/driver-leads" element={<DriverLeads />} />
 

@@ -155,4 +155,68 @@ async function sendPushNotification(fcmToken, title, body, data = {}, channelId 
   }
 }
 
-module.exports = { sendPushNotification };
+/**
+ * Sends a push notification to multiple device tokens in batches of up to 500.
+ */
+async function sendMulticastNotification(tokens, title, body, data = {}, channelId = "order_channel", imageUrl = null) {
+  const validTokens = (tokens || []).filter(Boolean);
+  if (validTokens.length === 0) {
+    return { sent: 0, failed: 0, reason: "no_valid_tokens" };
+  }
+
+  const client = initFirebase();
+  if (!client) {
+    if (!warnedNotConfigured) {
+      logger.warn("sendMulticastNotification: Firebase not configured. Push notifications disabled.");
+      warnedNotConfigured = true;
+    }
+    return { sent: 0, failed: validTokens.length, reason: "not_configured" };
+  }
+
+  const stringData = Object.fromEntries(
+    Object.entries({ ...data, title: String(title), body: String(body) }).map(([k, v]) => [k, String(v ?? "")])
+  );
+
+  const CHUNK_SIZE = 500;
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (let i = 0; i < validTokens.length; i += CHUNK_SIZE) {
+    const chunk = validTokens.slice(i, i + CHUNK_SIZE);
+    try {
+      const message = {
+        tokens: chunk,
+        notification: {
+          title,
+          body,
+          ...(imageUrl ? { imageUrl } : {}),
+        },
+        android: {
+          priority: "high",
+          notification: {
+            title,
+            body,
+            sound: "default",
+            channelId,
+            defaultSound: true,
+            defaultVibrateTimings: true,
+            visibility: "public",
+            ...(imageUrl ? { imageUrl } : {}),
+          },
+        },
+        data: stringData,
+      };
+
+      const response = await client.sendEachForMulticast(message);
+      sentCount += response.successCount;
+      failedCount += response.failureCount;
+    } catch (err) {
+      logger.error("sendMulticastNotification chunk failed:", err.message);
+      failedCount += chunk.length;
+    }
+  }
+
+  return { sent: sentCount, failed: failedCount };
+}
+
+module.exports = { sendPushNotification, sendMulticastNotification };

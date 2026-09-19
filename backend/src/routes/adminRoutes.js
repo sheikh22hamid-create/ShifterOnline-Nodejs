@@ -25,6 +25,7 @@ const monthlyDriverController = require("../controllers/monthlyDriverController"
 const orderQueueController = require("../controllers/orderQueueController");
 const adminSearchController = require("../controllers/adminSearchController");
 const uploadController = require("../controllers/uploadController");
+const adminNotificationController = require("../controllers/adminNotificationController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -167,6 +168,10 @@ router.get("/marketing/premium-plans", auth, marketingController.listPremiumPlan
 router.post("/marketing/premium-plans", auth, authorize("superadmin"), marketingController.createPremiumPlan);
 router.put("/marketing/premium-plans/:id", auth, authorize("superadmin"), marketingController.updatePremiumPlan);
 router.delete("/marketing/premium-plans/:id", auth, authorize("superadmin"), marketingController.deletePremiumPlan);
+
+// --- Push Notifications & Broadcast Messaging --------------------------------
+router.post("/notifications/send", auth, authorize("superadmin", "admin"), adminNotificationController.send);
+router.get("/notifications/history", auth, authorize("superadmin", "admin"), adminNotificationController.history);
 
 // --- Referral Tree & Loyalty Points ------------------------------------------
 router.get("/referrals/settings", auth, referralController.getSettings);
