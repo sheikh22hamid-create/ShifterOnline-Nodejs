@@ -512,6 +512,161 @@ async function syncModelsFromSlabs(req, res) {
   }
 }
 
+/**
+ * Auto-generate multiple model rate cards from a single base model (e.g. Model 3).
+ * Copies all common non-price settings (category, city, waiting time/charge,
+ * cancellation charges, driver share %, night surge window) and calculates
+ * scaled min_charge and per_km_charge according to each model's offset percentage.
+ */
+async function generateModels(req, res) {
+  try {
+    const baseId = parseInt(req.body.baseRateCardId || req.body.base_package_id || req.body.base_id, 10);
+    if (!baseId) {
+      return res.status(400).json({ success: false, message: "baseRateCardId is required" });
+    }
+
+    const base = await prisma.tbl_package.findUnique({ where: { id: baseId } });
+    if (!base) {
+      return res.status(404).json({ success: false, message: "Base rate card not found" });
+    }
+
+    const modelsList = req.body.models;
+    if (!Array.isArray(modelsList) || modelsList.length === 0) {
+      return res.status(400).json({ success: false, message: "models array is required" });
+    }
+
+    const category = base.cat_id ? await prisma.pkg_category.findUnique({ where: { id: base.cat_id } }) : null;
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    const results = [];
+
+    for (const m of modelsList) {
+      const offset = Number(m.offset_percent) || 0;
+      const multiplier = 1 + offset / 100;
+
+      const calculatedMin = Math.round(Number(base.min_charge) * multiplier * 100) / 100;
+      const calculatedPerKm = Math.round(Number(base.per_km_charge) * multiplier * 100) / 100;
+      const calculatedPickupPerKm =
+        base.pickup_per_km_charge != null
+          ? Math.round(Number(base.pickup_per_km_charge) * multiplier * 100) / 100
+          : null;
+      const calculatedOutsideMin =
+        base.outside_min_charge != null
+          ? Math.round(Number(base.outside_min_charge) * multiplier * 100) / 100
+          : 0;
+      const calculatedOutsidePerKm =
+        base.outside_per_km_charge != null
+          ? Math.round(Number(base.outside_per_km_charge) * multiplier * 100) / 100
+          : 0;
+
+      const modelTitle = String(m.title || `Model ${m.model_number || ""}`).trim();
+      const sortOrder =
+        m.sort_order !== undefined
+          ? parseInt(m.sort_order, 10)
+          : parseInt(modelTitle.replace(/\D/g, ""), 10) || 0;
+
+      // Find if this model already exists for the same cat_id, city_id and type
+      const existing = await prisma.tbl_package.findFirst({
+        where: {
+          cat_id: base.cat_id,
+          city_id: base.city_id,
+          type: base.type,
+          title: modelTitle,
+        },
+      });
+
+      if (existing) {
+        // Update existing model rate card
+        const updated = await prisma.tbl_package.update({
+          where: { id: existing.id },
+          data: {
+            min_charge: String(calculatedMin),
+            per_km_charge: String(calculatedPerKm),
+            pickup_per_km_charge: calculatedPickupPerKm != null ? String(calculatedPickupPerKm) : null,
+            outside_min_charge: String(calculatedOutsideMin),
+            outside_per_km_charge: String(calculatedOutsidePerKm),
+            user_title: m.user_title ? String(m.user_title).trim() : existing.user_title,
+            driver_title: m.driver_title ? String(m.driver_title).trim() : existing.driver_title,
+            sort_order: sortOrder,
+            free_waiting_time: base.free_waiting_time,
+            waiting_charge: base.waiting_charge,
+            service_charge_percent: base.service_charge_percent,
+            night_charge_percent: base.night_charge_percent,
+            start_time: base.start_time,
+            end_time: base.end_time,
+            driver_per_percent: base.driver_per_percent,
+            driver_per_trip: base.driver_per_trip,
+            cancellation_charge_customer: base.cancellation_charge_customer,
+            cancellation_charge_driver: base.cancellation_charge_driver,
+            admin_earning: base.admin_earning,
+            driver_earning: base.driver_earning,
+            driver_cancel_admin_earning: base.driver_cancel_admin_earning,
+            driver_cancel_user_earning: base.driver_cancel_user_earning,
+            status: base.status,
+          },
+        });
+        updatedCount++;
+        results.push(serializePackage(updated, category));
+      } else {
+        // Create new model rate card inheriting from base
+        const created = await prisma.tbl_package.create({
+          data: {
+            title: modelTitle,
+            user_title: m.user_title ? String(m.user_title).trim() : null,
+            driver_title: m.driver_title ? String(m.driver_title).trim() : null,
+            type: base.type,
+            cat_id: base.cat_id,
+            city_id: base.city_id,
+            min_charge: String(calculatedMin),
+            per_km_charge: String(calculatedPerKm),
+            pickup_per_km_charge: calculatedPickupPerKm != null ? String(calculatedPickupPerKm) : null,
+            pickup_charge: base.pickup_charge,
+            outside_min_charge: String(calculatedOutsideMin),
+            outside_per_km_charge: String(calculatedOutsidePerKm),
+            outside_surcharge: base.outside_surcharge,
+            driver_per_trip: base.driver_per_trip !== undefined ? String(base.driver_per_trip) : "0",
+            driver_per_percent: base.driver_per_percent !== undefined ? String(base.driver_per_percent) : "80",
+            free_waiting_time: base.free_waiting_time ?? 5,
+            waiting_charge: base.waiting_charge ?? 0,
+            service_charge_percent: base.service_charge_percent ?? 0,
+            night_charge_percent: base.night_charge_percent ?? 0,
+            start_time: base.start_time,
+            end_time: base.end_time,
+            loading_charge: base.loading_charge ?? null,
+            unloading_charge: base.unloading_charge ?? null,
+            service_charge: base.service_charge ?? null,
+            premium_plan_id: base.premium_plan_id ?? null,
+            sort_order: sortOrder,
+            cancellation_charge_customer: base.cancellation_charge_customer ?? 0,
+            cancellation_charge_driver: base.cancellation_charge_driver ?? 0,
+            cancellation_charge: base.cancellation_charge ?? null,
+            admin_earning: base.admin_earning ?? 0,
+            driver_earning: base.driver_earning ?? 0,
+            driver_cancel_admin_earning: base.driver_cancel_admin_earning ?? 0,
+            driver_cancel_user_earning: base.driver_cancel_user_earning ?? 0,
+            user_detail_image: base.user_detail_image ?? null,
+            driver_detail_image: base.driver_detail_image ?? null,
+            status: base.status ?? 1,
+          },
+        });
+        createdCount++;
+        results.push(serializePackage(created, category));
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully processed models (${createdCount} created, ${updatedCount} updated)`,
+      createdCount,
+      updatedCount,
+      data: results,
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.generateModels");
+  }
+}
+
 module.exports = {
   list,
   getOne,
@@ -522,4 +677,5 @@ module.exports = {
   updateSlabs,
   simulateFare,
   syncModelsFromSlabs,
+  generateModels,
 };

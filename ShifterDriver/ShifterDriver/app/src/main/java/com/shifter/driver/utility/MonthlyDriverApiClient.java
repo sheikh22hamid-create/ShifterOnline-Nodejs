@@ -27,7 +27,7 @@ import okhttp3.Response;
 public class MonthlyDriverApiClient {
 
     private static final String TAG = "MonthlyDriverApiClient";
-    private static final String BASE_URL = "https://shifteronline-nodejs-dev.onrender.com";
+    private static final String BASE_URL = "https://srv1984796.hstgr.cloud";
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
 
     private static final OkHttpClient client = new OkHttpClient.Builder()

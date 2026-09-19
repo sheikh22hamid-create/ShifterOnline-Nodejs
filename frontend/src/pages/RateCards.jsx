@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, Bike, Truck, Car, Zap, Search, Layers, Clock, Sliders } from 'lucide-react'
+import { Plus, Pencil, Trash2, Bike, Truck, Car, Zap, Search, Layers, Clock, Sliders, Sparkles } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -8,6 +8,7 @@ import Badge from '../components/common/Badge'
 import Modal from '../components/common/Modal'
 import RateCardFormModal from '../components/ratecards/RateCardFormModal'
 import SlabPricingModal from '../components/ratecards/SlabPricingModal'
+import GenerateModelsModal from '../components/ratecards/GenerateModelsModal'
 import { formatCurrency } from '../utils/format'
 
 function getVehicleIcon(catName) {
@@ -65,6 +66,7 @@ export default function RateCards() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [slabModalOpen, setSlabModalOpen] = useState(false)
+  const [generateBaseTarget, setGenerateBaseTarget] = useState(null)
 
   // Map of categories by ID for quick lookup fallback
   const categoryMap = useMemo(() => {
@@ -453,6 +455,15 @@ export default function RateCards() {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
+                              onClick={() => setGenerateBaseTarget(rc)}
+                              className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                              title="Auto-generate models (Model 1–5) from this rate card"
+                              aria-label="Generate Models"
+                            >
+                              <Sparkles size={14} />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setFormTarget(rc)}
                               className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
                               style={{ color: 'var(--ink-muted)' }}
@@ -498,6 +509,16 @@ export default function RateCards() {
             open={slabModalOpen}
             onClose={() => setSlabModalOpen(false)}
             onSynced={() => {
+              refetch()
+            }}
+          />
+          <GenerateModelsModal
+            open={Boolean(generateBaseTarget)}
+            baseRateCard={generateBaseTarget}
+            onClose={() => setGenerateBaseTarget(null)}
+            onGenerated={(msg) => {
+              toast.success(msg)
+              setGenerateBaseTarget(null)
               refetch()
             }}
           />
