@@ -17,10 +17,10 @@ async function assignDefaultDeliveryTypes(riderId) {
   const packages = await prisma.tbl_package.findMany({ where: { cat_id: cat.id, status: 1 } });
   for (const pkg of packages) {
     const exists = await prisma.tbl_rider_delivery_type.findFirst({
-      where: { rider_id: riderId, delivery_type: pkg.id },
+      where: { rider_id: riderId, delivery_type: String(pkg.id) },
     });
     if (!exists) {
-      await prisma.tbl_rider_delivery_type.create({ data: { rider_id: riderId, delivery_type: pkg.id, status: 1 } });
+      await prisma.tbl_rider_delivery_type.create({ data: { rider_id: riderId, delivery_type: String(pkg.id), status: 1 } });
     }
   }
 }
