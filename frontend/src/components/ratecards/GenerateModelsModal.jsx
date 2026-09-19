@@ -1,37 +1,90 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import { Sparkles, Plus, Trash2, CheckCircle2, Award } from 'lucide-react'
 import api from '../../services/api'
 import Modal from '../common/Modal'
 import { formatCurrency } from '../../utils/format'
 
-const DEFAULT_MODEL_TEMPLATES = [
-  { id: 'm1', model_number: 1, title: 'Model 1', user_title: 'Super Saver', driver_title: 'Standard Tier', offset_percent: -13, enabled: true },
-  { id: 'm2', model_number: 2, title: 'Model 2', user_title: 'Saver Plus', driver_title: 'Silver Tier', offset_percent: -7, enabled: true },
-  { id: 'm3', model_number: 3, title: 'Model 3', user_title: 'Comfort', driver_title: 'Prime Tier', offset_percent: 0, enabled: true },
-  { id: 'm4', model_number: 4, title: 'Model 4', user_title: 'Express', driver_title: 'Gold Beast', offset_percent: 20, enabled: true },
-  { id: 'm5', model_number: 5, title: 'Model 5', user_title: 'Priority', driver_title: 'Earning Beast', offset_percent: 40, enabled: true },
+// Standard templates with titles
+const BASE_MODEL_TEMPLATES = [
+  { model_number: 1, title: 'Model 1', user_title: 'Super Saver', driver_title: 'Standard Tier' },
+  { model_number: 2, title: 'Model 2', user_title: 'Saver Plus', driver_title: 'Silver Tier' },
+  { model_number: 3, title: 'Model 3', user_title: 'Comfort', driver_title: 'Prime Tier' },
+  { model_number: 4, title: 'Model 4', user_title: 'Express', driver_title: 'Gold Beast' },
+  { model_number: 5, title: 'Model 5', user_title: 'Priority', driver_title: 'Earning Beast' },
 ]
 
+/**
+ * Returns dynamic relative offsets depending on which model is selected as the Base (Anchor = 0%).
+ * If Model 3 is Base: Model 1 (-13%), Model 2 (-7%), Model 3 (0%), Model 4 (+20%), Model 5 (+40%).
+ * If Model 1 is Base: Model 1 (0%), Model 2 (+7%), Model 3 (+15%), Model 4 (+35%), Model 5 (+55%).
+ * If Model 2 is Base: Model 1 (-7%), Model 2 (0%), Model 3 (+8%), Model 4 (+25%), Model 5 (+45%).
+ */
+function getOffsetForModel(modelNum, baseModelNum) {
+  if (modelNum === baseModelNum) return 0
+
+  if (baseModelNum === 3) {
+    if (modelNum === 1) return -13
+    if (modelNum === 2) return -7
+    if (modelNum === 4) return 20
+    if (modelNum === 5) return 40
+    if (modelNum > 5) return 40 + (modelNum - 5) * 15
+  } else if (baseModelNum === 1) {
+    if (modelNum === 2) return 7
+    if (modelNum === 3) return 15
+    if (modelNum === 4) return 35
+    if (modelNum === 5) return 55
+    if (modelNum > 5) return 55 + (modelNum - 5) * 15
+  } else if (baseModelNum === 2) {
+    if (modelNum === 1) return -7
+    if (modelNum === 3) return 8
+    if (modelNum === 4) return 25
+    if (modelNum === 5) return 45
+    if (modelNum > 5) return 45 + (modelNum - 5) * 15
+  } else if (baseModelNum === 4) {
+    if (modelNum === 1) return -28
+    if (modelNum === 2) return -22
+    if (modelNum === 3) return -16
+    if (modelNum === 5) return 17
+    if (modelNum > 5) return 17 + (modelNum - 5) * 15
+  } else if (baseModelNum === 5) {
+    if (modelNum === 1) return -38
+    if (modelNum === 2) return -33
+    if (modelNum === 3) return -27
+    if (modelNum === 4) return -14
+    if (modelNum > 5) return (modelNum - 5) * 12
+  }
+
+  // Fallback linear scaling if custom base number
+  return (modelNum - baseModelNum) * 10
+}
+
 export default function GenerateModelsModal({ open, baseRateCard, onClose, onGenerated }) {
+  // Default base model is Model 3 (Anchor), just like the system was originally designed
+  const [selectedBaseModelNum, setSelectedBaseModelNum] = useState(3)
   const [models, setModels] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  // Initialize models excluding whichever model is the base itself
+  // Build model rows whenever modal opens or base model changes
   useEffect(() => {
     if (!open || !baseRateCard) return
     setError('')
 
-    const baseTitle = String(baseRateCard.title || '').toLowerCase()
-    const baseNumMatch = baseTitle.match(/\d+/)
-    const baseModelNum = baseNumMatch ? parseInt(baseNumMatch[0], 10) : null
+    // Default to Model 3 as Base Anchor
+    const baseAnchor = 3
+    setSelectedBaseModelNum(baseAnchor)
 
-    const initial = DEFAULT_MODEL_TEMPLATES.map((tmpl) => {
-      const isSelf = baseModelNum ? tmpl.model_number === baseModelNum : baseTitle === tmpl.title.toLowerCase()
+    const initial = BASE_MODEL_TEMPLATES.map((tmpl) => {
+      const isBase = tmpl.model_number === baseAnchor
       return {
-        ...tmpl,
-        isBase: isSelf,
-        enabled: !isSelf, // default enabled unless it is the base itself
+        id: `m${tmpl.model_number}`,
+        model_number: tmpl.model_number,
+        title: tmpl.title,
+        user_title: tmpl.user_title,
+        driver_title: tmpl.driver_title,
+        offset_percent: getOffsetForModel(tmpl.model_number, baseAnchor),
+        enabled: true, // All models enabled so everything is created/synced cleanly
+        isBase,
       }
     })
 
@@ -41,6 +94,21 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
   const baseMin = useMemo(() => Number(baseRateCard?.min_charge) || 0, [baseRateCard])
   const basePerKm = useMemo(() => Number(baseRateCard?.per_km_charge) || 0, [baseRateCard])
   const basePickupKm = useMemo(() => (baseRateCard?.pickup_per_km_charge ? Number(baseRateCard.pickup_per_km_charge) : null), [baseRateCard])
+
+  // Handler when admin explicitly changes which model is the Base Model
+  function handleBaseModelChange(newBaseNum) {
+    setSelectedBaseModelNum(newBaseNum)
+    setModels((prev) =>
+      prev.map((m) => {
+        const isBase = m.model_number === newBaseNum
+        return {
+          ...m,
+          isBase,
+          offset_percent: getOffsetForModel(m.model_number, newBaseNum),
+        }
+      })
+    )
+  }
 
   function handleToggle(id) {
     setModels((prev) =>
@@ -68,7 +136,7 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
       title: `Model ${nextNum}`,
       user_title: `Tier ${nextNum}`,
       driver_title: `Tier ${nextNum}`,
-      offset_percent: 50,
+      offset_percent: getOffsetForModel(nextNum, selectedBaseModelNum),
       enabled: true,
       isBase: false,
     }
@@ -79,10 +147,10 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
     setModels((prev) => prev.filter((m) => m.id !== id))
   }
 
-  const selectedCount = models.filter((m) => m.enabled && !m.isBase).length
+  const selectedCount = models.filter((m) => m.enabled).length
 
   async function handleSubmit() {
-    const targetModels = models.filter((m) => m.enabled && !m.isBase)
+    const targetModels = models.filter((m) => m.enabled)
     if (targetModels.length === 0) {
       setError('Please select at least one model to generate.')
       return
@@ -117,7 +185,7 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
     <Modal
       open={open}
       onClose={onClose}
-      width={780}
+      width={820}
       title={
         <div className="flex items-center gap-2">
           <div
@@ -131,7 +199,7 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
               Auto-Generate Models from Base Rate Card
             </div>
             <div className="text-[11.5px] font-normal" style={{ color: 'var(--ink-muted)' }}>
-              Source: {vehicleName} ({baseRateCard.title}) — applies percentage offsets & copies all common rules.
+              Select which model represents the Base (Anchor), and auto-calculate all other model tiers.
             </div>
           </div>
         </div>
@@ -163,7 +231,7 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
               style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
             >
               <Sparkles size={14} />
-              {submitting ? 'Generating…' : `Generate ${selectedCount} Model${selectedCount === 1 ? '' : 's'}`}
+              {submitting ? 'Generating…' : `Generate / Sync ${selectedCount} Models`}
             </button>
           </div>
         </div>
@@ -178,44 +246,82 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
         </div>
       )}
 
-      {/* Base Rate Card Summary Banner */}
+      {/* Base Rate Card Summary & Anchor Selector Banner */}
       <div
-        className="mb-3 rounded-xl border p-3 text-[12px]"
+        className="mb-3 rounded-xl border p-3.5 text-[12px]"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--border)' }}>
+          {/* Base Rate Card Details */}
           <div>
             <span className="font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider text-[10.5px]">
-              Base Model (Anchor Source)
+              Source Rate Card
             </span>
-            <div className="text-[13.5px] font-bold" style={{ color: 'var(--ink)' }}>
-              {vehicleName} — {baseRateCard.title}
+            <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>
+              {vehicleName}
               <span className="ml-2 text-[11.5px] font-normal" style={{ color: 'var(--ink-faint)' }}>
                 ({baseRateCard.type === 'USER' ? 'Customer Fare' : 'Driver Earning'})
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-3 font-mono text-[12px]">
-            <div className="rounded-md border px-2 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
-              <span className="text-[10px] text-gray-500 block">Min Fare</span>
+
+          {/* Current Source Numbers */}
+          <div className="flex items-center gap-2.5 font-mono text-[12px]">
+            <div className="rounded-md border px-2.5 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <span className="text-[10px] text-gray-500 block font-sans">Base Min Fare</span>
               <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatCurrency(baseMin)}</span>
             </div>
-            <div className="rounded-md border px-2 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
-              <span className="text-[10px] text-gray-500 block">Per KM</span>
+            <div className="rounded-md border px-2.5 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+              <span className="text-[10px] text-gray-500 block font-sans">Base Per KM</span>
               <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatCurrency(basePerKm)}/km</span>
             </div>
             {basePickupKm != null && (
-              <div className="rounded-md border px-2 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
-                <span className="text-[10px] text-gray-500 block">Pickup Rate</span>
+              <div className="rounded-md border px-2.5 py-1" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+                <span className="text-[10px] text-gray-500 block font-sans">Pickup Rate</span>
                 <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatCurrency(basePickupKm)}/km</span>
               </div>
             )}
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+
+        {/* Base Model Selector Dropdown & Pills */}
+        <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Award size={15} className="text-amber-500 shrink-0" />
+            <span className="font-semibold text-[12.5px]" style={{ color: 'var(--ink)' }}>
+              Which Model is this Base rate for?
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {BASE_MODEL_TEMPLATES.map((tmpl) => {
+              const isSelected = selectedBaseModelNum === tmpl.model_number
+              return (
+                <button
+                  key={tmpl.model_number}
+                  type="button"
+                  onClick={() => handleBaseModelChange(tmpl.model_number)}
+                  className={`rounded-lg px-2.5 py-1 text-[11.5px] font-semibold transition-all ${
+                    isSelected
+                      ? 'shadow-xs border'
+                      : 'border opacity-70 hover:opacity-100'
+                  }`}
+                  style={{
+                    background: isSelected ? 'rgba(234, 88, 12, 0.15)' : 'var(--bg)',
+                    borderColor: isSelected ? 'var(--brand)' : 'var(--border)',
+                    color: isSelected ? 'var(--brand)' : 'var(--ink-muted)',
+                  }}
+                >
+                  {tmpl.title} {tmpl.model_number === 3 ? '(Anchor)' : ''}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mt-2.5 flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
           <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
           <span>
-            City, Cancellation fees, Free waiting ({baseRateCard.free_waiting_time || 5}m), Waiting rate ({formatCurrency(baseRateCard.waiting_charge || 0)}/m), Driver share ({baseRateCard.driver_per_percent || 80}%), and Night timings will be copied automatically.
+            Model {selectedBaseModelNum} will be the <strong>0% Anchor</strong>. Other models automatically get their relative offsets.
           </span>
         </div>
       </div>
@@ -226,51 +332,31 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
           <thead>
             <tr style={{ background: 'var(--bg)' }}>
               <th className="w-8 px-3 py-2 text-center text-[11px]">Select</th>
-              <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Model Title</th>
-              <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>User App Title</th>
-              <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Driver App Title</th>
-              <th className="w-24 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Offset %</th>
+              <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Model</th>
+              <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Customer Title</th>
+              <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Driver Title</th>
+              <th className="w-28 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Offset %</th>
               <th className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Calculated Rates</th>
               <th className="w-8 px-2 py-2"></th>
             </tr>
           </thead>
           <tbody>
             {models.map((m) => {
+              const isAnchor = m.model_number === selectedBaseModelNum
               const multiplier = 1 + (m.offset_percent || 0) / 100
               const calcMin = Math.round(baseMin * multiplier * 100) / 100
               const calcPerKm = Math.round(basePerKm * multiplier * 100) / 100
 
-              if (m.isBase) {
-                return (
-                  <tr
-                    key={m.id}
-                    className="opacity-60"
-                    style={{ borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)' }}
-                  >
-                    <td className="px-3 py-2.5 text-center">
-                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" title="Source Base Model" />
-                    </td>
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: 'var(--ink)' }}>
-                      {m.title}{' '}
-                      <span className="ml-1 rounded bg-emerald-500/10 px-1 py-0.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400">
-                        Current Base
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5" style={{ color: 'var(--ink-muted)' }}>{baseRateCard.user_title || m.user_title}</td>
-                    <td className="px-3 py-2.5" style={{ color: 'var(--ink-muted)' }}>{baseRateCard.driver_title || m.driver_title}</td>
-                    <td className="px-3 py-2.5 font-mono text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>0% (Base)</td>
-                    <td className="px-3 py-2.5 font-mono text-[11.5px] font-semibold" style={{ color: 'var(--ink)' }}>
-                      {formatCurrency(baseMin)} | {formatCurrency(basePerKm)}/km
-                    </td>
-                    <td className="px-2 py-2.5"></td>
-                  </tr>
-                )
-              }
-
               return (
                 <tr
                   key={m.id}
-                  className={`transition-colors ${m.enabled ? 'hover:bg-black/2 dark:hover:bg-white/2' : 'opacity-40'}`}
+                  className={`transition-colors ${
+                    isAnchor
+                      ? 'bg-amber-500/5 dark:bg-amber-400/5'
+                      : m.enabled
+                      ? 'hover:bg-black/2 dark:hover:bg-white/2'
+                      : 'opacity-40'
+                  }`}
                   style={{ borderTop: '1px solid var(--border)' }}
                 >
                   {/* Toggle Checkbox */}
@@ -283,16 +369,32 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
                     />
                   </td>
 
-                  {/* Model Title */}
+                  {/* Model Title & Base Badge */}
                   <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      disabled={!m.enabled}
-                      value={m.title}
-                      onChange={(e) => handleFieldChange(m.id, 'title', e.target.value)}
-                      className="w-24 rounded border px-2 py-1 text-[12px] font-semibold outline-none"
-                      style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        disabled={!m.enabled}
+                        value={m.title}
+                        onChange={(e) => handleFieldChange(m.id, 'title', e.target.value)}
+                        className="w-20 rounded border px-2 py-1 text-[12px] font-semibold outline-none"
+                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                      />
+                      {isAnchor ? (
+                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                          ⭐ Base
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleBaseModelChange(m.model_number)}
+                          className="text-[10px] text-gray-400 hover:text-amber-600 underline whitespace-nowrap"
+                          title="Click to make this the Base model"
+                        >
+                          Make Base
+                        </button>
+                      )}
+                    </div>
                   </td>
 
                   {/* User App Title */}
@@ -326,11 +428,13 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
-                        disabled={!m.enabled}
+                        disabled={!m.enabled || isAnchor}
                         value={m.offset_percent}
                         onChange={(e) => handleFieldChange(m.id, 'offset_percent', e.target.value)}
-                        className="w-16 rounded border px-2 py-1 text-[12px] font-mono font-semibold outline-none text-right"
-                        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                        className={`w-16 rounded border px-2 py-1 text-[12px] font-mono font-semibold outline-none text-right ${
+                          isAnchor ? 'bg-amber-500/10 text-amber-600 font-bold' : ''
+                        }`}
+                        style={{ borderColor: 'var(--border)', background: isAnchor ? undefined : 'var(--bg)', color: isAnchor ? undefined : 'var(--ink)' }}
                       />
                       <span className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>%</span>
                     </div>
@@ -346,7 +450,13 @@ export default function GenerateModelsModal({ open, baseRateCard, onClose, onGen
                       <span className="text-gray-400 font-normal">/km</span>
                     </div>
                     <div className="text-[10px]" style={{ color: 'var(--ink-faint)' }}>
-                      {m.offset_percent > 0 ? `+${m.offset_percent}% vs base` : `${m.offset_percent}% vs base`}
+                      {isAnchor ? (
+                        <span className="font-semibold text-amber-600 dark:text-amber-400">Exact Base Rate (0%)</span>
+                      ) : m.offset_percent > 0 ? (
+                        `+${m.offset_percent}% vs Model ${selectedBaseModelNum}`
+                      ) : (
+                        `${m.offset_percent}% vs Model ${selectedBaseModelNum}`
+                      )}
                     </div>
                   </td>
 

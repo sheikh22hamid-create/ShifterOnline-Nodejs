@@ -566,14 +566,19 @@ async function generateModels(req, res) {
           ? parseInt(m.sort_order, 10)
           : parseInt(modelTitle.replace(/\D/g, ""), 10) || 0;
 
-      // Find if this model already exists for the same cat_id, city_id and type
-      const existing = await prisma.tbl_package.findFirst({
+      // Find if this model already exists for the same cat_id, city_id and type (case-insensitive)
+      const existingCandidates = await prisma.tbl_package.findMany({
         where: {
           cat_id: base.cat_id,
           city_id: base.city_id,
           type: base.type,
-          title: modelTitle,
         },
+      });
+
+      const existing = existingCandidates.find((cand) => {
+        const candTitle = String(cand.title || "").trim().toLowerCase();
+        const targetTitle = modelTitle.toLowerCase();
+        return candTitle === targetTitle || (cand.id === base.id && String(base.title || "").trim().toLowerCase() === targetTitle);
       });
 
       if (existing) {
@@ -581,6 +586,7 @@ async function generateModels(req, res) {
         const updated = await prisma.tbl_package.update({
           where: { id: existing.id },
           data: {
+            title: modelTitle,
             min_charge: String(calculatedMin),
             per_km_charge: String(calculatedPerKm),
             pickup_per_km_charge: calculatedPickupPerKm != null ? String(calculatedPickupPerKm) : null,

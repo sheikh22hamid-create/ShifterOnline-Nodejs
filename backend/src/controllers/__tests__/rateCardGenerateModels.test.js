@@ -5,6 +5,7 @@ jest.mock("../../config/db", () => ({
   tbl_package: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -59,7 +60,7 @@ describe("rateCardController.generateModels", () => {
 
     prisma.tbl_package.findUnique.mockResolvedValue(mockBase);
     prisma.pkg_category.findUnique.mockResolvedValue({ id: 8, cat_name: "Bike" });
-    prisma.tbl_package.findFirst.mockResolvedValue(null); // Not existing yet
+    prisma.tbl_package.findMany.mockResolvedValue([]); // Not existing yet
     prisma.tbl_package.create.mockImplementation(({ data }) => Promise.resolve({ id: Math.floor(Math.random() * 1000), ...data }));
 
     const req = {
@@ -139,7 +140,7 @@ describe("rateCardController.generateModels", () => {
 
     prisma.tbl_package.findUnique.mockResolvedValue(mockBase);
     prisma.pkg_category.findUnique.mockResolvedValue({ id: 8, cat_name: "Bike" });
-    prisma.tbl_package.findFirst.mockResolvedValue(mockExistingM1); // Exists
+    prisma.tbl_package.findMany.mockResolvedValue([mockExistingM1]); // Exists
     prisma.tbl_package.update.mockImplementation(({ data }) => Promise.resolve({ ...mockExistingM1, ...data }));
 
     const req = {
