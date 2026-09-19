@@ -172,6 +172,7 @@ router.delete("/marketing/premium-plans/:id", auth, authorize("superadmin"), mar
 // --- Push Notifications & Broadcast Messaging --------------------------------
 router.post("/notifications/send", auth, authorize("superadmin", "admin"), adminNotificationController.send);
 router.get("/notifications/history", auth, authorize("superadmin", "admin"), adminNotificationController.history);
+router.get("/notifications/recipients", auth, authorize("superadmin", "admin"), adminNotificationController.getRecipients);
 
 // --- Referral Tree & Loyalty Points ------------------------------------------
 router.get("/referrals/settings", auth, referralController.getSettings);

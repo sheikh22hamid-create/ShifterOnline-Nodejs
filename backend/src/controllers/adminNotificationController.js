@@ -97,18 +97,25 @@ async function send(req, res) {
       if (target_type === "specific_customer" && identifier) {
         const raw = String(identifier).trim();
         const digits = raw.replace(/\D/g, "");
+        const orConditions = [];
         if (digits.length >= 10) {
-          const last10 = digits.slice(-10);
-          customerWhere.OR = [
-            { mobile: { contains: last10 } },
-          ];
-        } else if (/^\d+$/.test(raw)) {
-          customerWhere.OR = [
-            { id: parseInt(raw, 10) },
-            { mobile: { contains: raw } },
-          ];
+          const numVal = Number(digits.slice(-10));
+          if (Number.isFinite(numVal)) {
+            orConditions.push({ mobile: numVal });
+          }
+        }
+        if (/^\d+$/.test(raw)) {
+          const idNum = parseInt(raw, 10);
+          orConditions.push({ id: idNum });
+          const numVal = Number(raw);
+          if (Number.isFinite(numVal)) {
+            orConditions.push({ mobile: numVal });
+          }
+        }
+        if (orConditions.length > 0) {
+          customerWhere.OR = orConditions;
         } else {
-          customerWhere.mobile = { contains: raw };
+          customerWhere.name = { contains: raw };
         }
       }
 
@@ -253,4 +260,69 @@ async function history(req, res) {
   }
 }
 
-module.exports = { send, history };
+async function getRecipients(req, res) {
+  try {
+    const type = req.query.type || "all";
+    let drivers = [];
+    let customers = [];
+
+    if (type === "all" || type === "drivers") {
+      const driverWhere = { status: 1 };
+      if (req.scopedCityId) driverWhere.city_id = req.scopedCityId;
+      const rawDrivers = await prisma.tbl_rider.findMany({
+        where: driverWhere,
+        select: {
+          id: true,
+          full_name: true,
+          fmobile: true,
+          vehicle: true,
+          vehicle_no: true,
+          city_id: true,
+          fcm_token: true,
+        },
+        orderBy: { id: "desc" },
+        take: 500,
+      });
+      drivers = rawDrivers.map((d) => ({
+        id: d.id,
+        name: d.full_name || `Driver #${d.id}`,
+        mobile: d.fmobile || "",
+        vehicle: d.vehicle_no ? `${d.vehicle || "Vehicle"} (${d.vehicle_no})` : d.vehicle || "",
+        has_fcm: Boolean(d.fcm_token && d.fcm_token.length > 10),
+      }));
+    }
+
+    if (type === "all" || type === "customers") {
+      const customerWhere = { status: 1 };
+      if (req.scopedCityId) customerWhere.city_id = req.scopedCityId;
+      const rawCustomers = await prisma.tbl_user.findMany({
+        where: customerWhere,
+        select: {
+          id: true,
+          name: true,
+          mobile: true,
+          email: true,
+          fcm_token: true,
+        },
+        orderBy: { id: "desc" },
+        take: 500,
+      });
+      customers = rawCustomers.map((c) => ({
+        id: c.id,
+        name: c.name || `Customer #${c.id}`,
+        mobile: c.mobile ? String(Math.floor(Number(c.mobile))) : "",
+        email: c.email || "",
+        has_fcm: Boolean(c.fcm_token && c.fcm_token.length > 10),
+      }));
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { drivers, customers },
+    });
+  } catch (err) {
+    return internalError(res, err, "notifications.getRecipients");
+  }
+}
+
+module.exports = { send, history, getRecipients };

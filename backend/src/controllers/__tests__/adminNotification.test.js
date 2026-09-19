@@ -1,4 +1,4 @@
-const { send, history } = require("../adminNotificationController");
+const { send, history, getRecipients } = require("../adminNotificationController");
 const prisma = require("../../config/db");
 const { sendMulticastNotification } = require("../../config/firebase");
 
@@ -227,6 +227,49 @@ describe("adminNotificationController", () => {
         expect.objectContaining({
           success: true,
           data: expect.any(Array),
+        })
+      );
+    });
+  });
+
+  describe("getRecipients", () => {
+    it("returns active drivers and customers for the dropdown selector", async () => {
+      prisma.tbl_rider.findMany.mockResolvedValue([
+        {
+          id: 1,
+          full_name: "Ramesh Rider",
+          fmobile: "9876543210",
+          vehicle: "Bike",
+          vehicle_no: "MP09AB1234",
+          fcm_token: "mock_fcm_token_valid_12345",
+        },
+      ]);
+      prisma.tbl_user.findMany.mockResolvedValue([
+        {
+          id: 10,
+          name: "Priya Customer",
+          mobile: 9876543211,
+          email: "priya@gmail.com",
+          fcm_token: "mock_fcm_token_user_valid_12345",
+        },
+      ]);
+
+      const req = { query: { type: "all" } };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+      await getRecipients(req, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            drivers: expect.arrayContaining([
+              expect.objectContaining({ id: 1, name: "Ramesh Rider", mobile: "9876543210", has_fcm: true }),
+            ]),
+            customers: expect.arrayContaining([
+              expect.objectContaining({ id: 10, name: "Priya Customer", mobile: "9876543211", has_fcm: true }),
+            ]),
+          }),
         })
       );
     });

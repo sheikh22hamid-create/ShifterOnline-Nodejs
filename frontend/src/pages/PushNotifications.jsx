@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Send,
   Bell,
@@ -15,6 +15,11 @@ import {
   Smartphone,
   ExternalLink,
   Zap,
+  Search,
+  ChevronDown,
+  X,
+  Check,
+  Phone,
 } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -70,6 +75,86 @@ export default function PushNotifications() {
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [sending, setSending] = useState(false)
+
+  // Recipient Dropdown & Search state
+  const [recipients, setRecipients] = useState({ drivers: [], customers: [] })
+  const [loadingRecipients, setLoadingRecipients] = useState(false)
+  const [selectedRecipient, setSelectedRecipient] = useState(null)
+  const [recipientSearch, setRecipientSearch] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [isManualInput, setIsManualInput] = useState(false)
+  const dropdownRef = useRef(null)
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Fetch recipients list (drivers & customers) for dropdown
+  const fetchRecipients = useCallback(async () => {
+    setLoadingRecipients(true)
+    try {
+      const res = await api.get('/notifications/recipients')
+      setRecipients(res.data?.data || { drivers: [], customers: [] })
+    } catch {
+      // ignore
+    } finally {
+      setLoadingRecipients(false)
+    }
+  }, [])
+
+  // Lazy load recipients when specific target is chosen
+  useEffect(() => {
+    if (targetType === 'specific_driver' || targetType === 'specific_customer') {
+      if (recipients.drivers.length === 0 && recipients.customers.length === 0) {
+        fetchRecipients()
+      }
+    }
+  }, [targetType, recipients, fetchRecipients])
+
+  // Filter recipients based on search text (matching name, mobile, or id)
+  const filteredRecipients = useMemo(() => {
+    const list = targetType === 'specific_driver' ? recipients.drivers : recipients.customers
+    if (!recipientSearch.trim()) return list.slice(0, 40)
+    const q = recipientSearch.toLowerCase().trim()
+    return list
+      .filter((r) => {
+        const nameMatch = r.name && r.name.toLowerCase().includes(q)
+        const mobileMatch = r.mobile && r.mobile.includes(q)
+        const idMatch = String(r.id).includes(q)
+        const vehicleMatch = r.vehicle && r.vehicle.toLowerCase().includes(q)
+        return nameMatch || mobileMatch || idMatch || vehicleMatch
+      })
+      .slice(0, 40)
+  }, [targetType, recipients, recipientSearch])
+
+  function handleSelectRecipient(rec) {
+    setSelectedRecipient(rec)
+    setTargetId(rec.mobile || String(rec.id))
+    setShowDropdown(false)
+    setRecipientSearch('')
+  }
+
+  function handleClearRecipient() {
+    setSelectedRecipient(null)
+    setTargetId('')
+    setRecipientSearch('')
+  }
+
+  function handleTargetTypeChange(newType) {
+    setTargetType(newType)
+    setSelectedRecipient(null)
+    setTargetId('')
+    setRecipientSearch('')
+    setIsManualInput(false)
+    setShowDropdown(false)
+  }
 
   // Fetch cities for city-targeted pushes
   useEffect(() => {
@@ -245,7 +330,7 @@ export default function PushNotifications() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setTargetType(item.id)}
+                      onClick={() => handleTargetTypeChange(item.id)}
                       className={`flex items-center gap-1.5 rounded-lg border p-2 text-left text-[12px] font-medium transition ${
                         isSelected ? 'border-[var(--brand)] shadow-sm' : 'border-[var(--border)]'
                       }`}
@@ -288,28 +373,203 @@ export default function PushNotifications() {
               </div>
             )}
 
-            {/* Specific Mobile Number / ID input */}
+            {/* Specific Driver / Customer Searchable Dropdown & Selector */}
             {(targetType === 'specific_driver' || targetType === 'specific_customer') && (
-              <div>
-                <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink)' }}>
-                  {targetType === 'specific_driver' ? 'Driver Mobile Number (or ID)' : 'Customer Mobile Number (or ID)'}
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter 10-digit mobile number (e.g. 9876543210) or ID"
-                  value={targetId}
-                  onChange={(e) => setTargetId(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{
-                    borderColor: 'var(--border)',
-                    background: 'var(--surface-muted)',
-                    color: 'var(--ink)',
-                  }}
-                  required
-                />
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Enter {targetType === 'specific_driver' ? 'driver' : 'customer'}&apos;s 10-digit mobile number (or their system ID).
-                </p>
+              <div ref={dropdownRef} className="relative">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[12.5px] font-medium" style={{ color: 'var(--ink)' }}>
+                    {targetType === 'specific_driver' ? 'Select Driver' : 'Select Customer / User'}{' '}
+                    <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManualInput(!isManualInput)
+                      setShowDropdown(false)
+                    }}
+                    className="text-[11.5px] font-medium hover:underline text-orange-400"
+                  >
+                    {isManualInput ? '← Pick from list' : '✎ Enter custom number manually'}
+                  </button>
+                </div>
+
+                {/* Case 1: Recipient is selected from Dropdown */}
+                {selectedRecipient && !isManualInput ? (
+                  <div
+                    className="flex items-center justify-between rounded-xl border p-3 transition shadow-sm"
+                    style={{
+                      background: 'rgba(234, 88, 12, 0.08)',
+                      borderColor: 'var(--brand)',
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm shrink-0"
+                        style={{ background: 'var(--brand)' }}
+                      >
+                        {targetType === 'specific_driver' ? <Truck size={19} /> : <UserCheck size={19} />}
+                      </div>
+                      <div>
+                        <div className="text-[13.5px] font-bold" style={{ color: 'var(--ink)' }}>
+                          {selectedRecipient.name}{' '}
+                          <span className="text-[11.5px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                            (ID #{selectedRecipient.id})
+                          </span>
+                        </div>
+                        <div className="text-[12px] flex items-center gap-2 mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                          <span className="font-semibold text-emerald-400">
+                            📞 {selectedRecipient.mobile || 'No Mobile'}
+                          </span>
+                          {selectedRecipient.vehicle && <span>• {selectedRecipient.vehicle}</span>}
+                          {selectedRecipient.email && <span>• {selectedRecipient.email}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearRecipient}
+                      className="flex items-center gap-1 text-[12px] font-medium text-orange-400 hover:text-orange-300 rounded-lg px-2.5 py-1 hover:bg-orange-500/10 transition"
+                    >
+                      <X size={14} /> Change
+                    </button>
+                  </div>
+                ) : isManualInput ? (
+                  /* Case 2: Manual Text Input fallback */
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Enter 10-digit mobile number (e.g. 9876543210) or ID"
+                      value={targetId}
+                      onChange={(e) => setTargetId(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                      style={{
+                        borderColor: 'var(--border)',
+                        background: 'var(--surface-muted)',
+                        color: 'var(--ink)',
+                      }}
+                      required
+                    />
+                    <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                      Enter {targetType === 'specific_driver' ? 'driver' : 'customer'}&apos;s 10-digit mobile number or system ID.
+                    </p>
+                  </div>
+                ) : (
+                  /* Case 3: Searchable Dropdown Combobox */
+                  <div>
+                    <div className="relative">
+                      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3" style={{ color: 'var(--ink-muted)' }}>
+                        <Search size={15} />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder={`Search ${targetType === 'specific_driver' ? 'driver' : 'customer'} by name or mobile number...`}
+                        value={recipientSearch}
+                        onFocus={() => setShowDropdown(true)}
+                        onChange={(e) => {
+                          setRecipientSearch(e.target.value)
+                          setShowDropdown(true)
+                        }}
+                        className="w-full rounded-lg border pl-9 pr-10 py-2 text-[13px] transition"
+                        style={{
+                          borderColor: showDropdown ? 'var(--brand)' : 'var(--border)',
+                          background: 'var(--surface-muted)',
+                          color: 'var(--ink)',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowDropdown(!showDropdown)}
+                        className="absolute inset-y-0 right-0 flex items-center px-3"
+                        style={{ color: 'var(--ink-muted)' }}
+                      >
+                        <ChevronDown size={15} className={`transition ${showDropdown ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+
+                    {/* Dropdown Options Menu */}
+                    {showDropdown && (
+                      <div
+                        className="absolute z-50 mt-1.5 w-full rounded-xl border shadow-xl max-h-64 overflow-y-auto divide-y"
+                        style={{
+                          borderColor: 'var(--border)',
+                          background: '#111827',
+                          color: 'var(--ink)',
+                        }}
+                      >
+                        {loadingRecipients ? (
+                          <div className="p-4 text-center text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
+                            <RefreshCw size={14} className="animate-spin inline mr-1.5" /> Loading {targetType === 'specific_driver' ? 'drivers' : 'customers'}...
+                          </div>
+                        ) : filteredRecipients.length === 0 ? (
+                          <div className="p-4 text-center text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
+                            No matching {targetType === 'specific_driver' ? 'driver' : 'customer'} found.
+                            <div className="mt-1 text-[11.5px]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsManualInput(true)
+                                  setTargetId(recipientSearch)
+                                  setShowDropdown(false)
+                                }}
+                                className="text-orange-400 hover:underline"
+                              >
+                                Use &ldquo;{recipientSearch}&rdquo; as manual number
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          filteredRecipients.map((rec) => (
+                            <div
+                              key={rec.id}
+                              onClick={() => handleSelectRecipient(rec)}
+                              className="flex items-center justify-between p-3 hover:bg-white/5 cursor-pointer transition"
+                              style={{ borderColor: 'rgba(255, 255, 255, 0.06)' }}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-bold shrink-0"
+                                  style={{
+                                    background:
+                                      targetType === 'specific_driver'
+                                        ? 'rgba(234, 88, 12, 0.15)'
+                                        : 'rgba(59, 130, 246, 0.15)',
+                                    color: targetType === 'specific_driver' ? 'var(--brand)' : '#3b82f6',
+                                  }}
+                                >
+                                  {targetType === 'specific_driver' ? <Truck size={15} /> : <UserCheck size={15} />}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-[13px] font-semibold truncate" style={{ color: 'var(--ink)' }}>
+                                    {rec.name}
+                                  </div>
+                                  <div className="text-[11.5px] flex items-center gap-2" style={{ color: 'var(--ink-muted)' }}>
+                                    <span className="font-mono text-emerald-400 font-medium">
+                                      📞 {rec.mobile || 'No Mobile'}
+                                    </span>
+                                    {rec.vehicle && <span className="truncate max-w-[140px]">• {rec.vehicle}</span>}
+                                    {rec.email && <span className="truncate max-w-[140px]">• {rec.email}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                              <span
+                                className="text-[11px] font-mono px-2 py-0.5 rounded shrink-0 ml-2"
+                                style={{ background: 'rgba(255, 255, 255, 0.06)', color: 'var(--ink-muted)' }}
+                              >
+                                #{rec.id}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {!targetId && (
+                      <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                        Search and click any {targetType === 'specific_driver' ? 'driver' : 'customer'} from the list above.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
