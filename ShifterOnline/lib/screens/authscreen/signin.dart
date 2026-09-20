@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, unused_local_variable
 
 import 'dart:async';
 import 'dart:developer';
@@ -29,6 +29,7 @@ import 'signup.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SignIn — Modern OTP-based login (2-step: Mobile → Verify OTP)
+// Pixel-perfect design matching user reference UI
 // ─────────────────────────────────────────────────────────────────────────────
 class SignIn extends StatefulWidget {
   final String? paymenttype;
@@ -70,33 +71,71 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     _initOtp();
     _initializeFCM();
     _setDarkMode();
+    number.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   void _initOtp() {
-    listenForCode();
     _otpInteractor = OTPInteractor();
     _otpCtrl = OTPTextEditController(
       codeLength: 6,
-      onCodeReceive: (code) {
-        debugPrint('OTP received: $code');
-        if (mounted) setState(() => _otpAutoFilled = true);
+      onCodeReceive: (receivedCode) {
+        debugPrint('OTPTextEditController onCodeReceive: $receivedCode');
+        _applyExtractedOtp(receivedCode);
       },
       otpInteractor: _otpInteractor,
-    )..startListenUserConsent((code) {
-        final exp = RegExp(r'(\d{6})');
-        final match = exp.stringMatch(code ?? '') ?? '';
-        if (match.isNotEmpty && mounted) {
-          setState(() => _otpAutoFilled = true);
+    );
+  }
+
+  /// Extracts 6 digits from any SMS text and fills the OTP input
+  void _applyExtractedOtp(String rawText) {
+    if (rawText.isEmpty) return;
+    final exp = RegExp(r'\b\d{6}\b');
+    final match = exp.stringMatch(rawText) ?? RegExp(r'\d{6}').stringMatch(rawText);
+    if (match != null && match.length == 6) {
+      debugPrint('Extracted 6-digit OTP: $match');
+      _otpCtrl.text = match;
+      if (mounted) {
+        setState(() => _otpAutoFilled = true);
+        // Auto-verify on seamless autofill
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted && _otpCtrl.text.length == 6 && !_isVerifying && _currentStep == 1) {
+            _handleVerifyOtp();
+          }
+        });
+      }
+    }
+  }
+
+  /// Actively starts SMS Retriever & SMS User Consent listeners when OTP is sent
+  void _startListeningForOtp() {
+    try {
+      listenForCode();
+    } catch (e) {
+      debugPrint('SmsAutoFill listenForCode error: $e');
+    }
+
+    try {
+      _otpCtrl.startListenUserConsent((smsBody) {
+        debugPrint('startListenUserConsent incoming SMS: $smsBody');
+        final exp = RegExp(r'\b\d{6}\b');
+        final match = exp.stringMatch(smsBody ?? '') ?? RegExp(r'\d{6}').stringMatch(smsBody ?? '') ?? '';
+        if (match.isNotEmpty) {
+          _applyExtractedOtp(match);
         }
         return match;
       });
+    } catch (e) {
+      debugPrint('startListenUserConsent error: $e');
+    }
   }
 
   @override
   void codeUpdated() {
-    if (code != null && code!.length == 6) {
-      _otpCtrl.text = code!;
-      if (mounted) setState(() => _otpAutoFilled = true);
+    debugPrint('CodeAutoFill codeUpdated callback: $code');
+    if (code != null && code!.isNotEmpty && mounted) {
+      _applyExtractedOtp(code!);
     }
   }
 
@@ -153,9 +192,9 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     showDialog(
       context: context,
       builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(16),
           child: SizedBox(
             height: Get.height * 0.8,
             width: Get.width * 0.9,
@@ -189,9 +228,9 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_countdown == 0) {
         t.cancel();
-        setState(() => _canResend = true);
+        if (mounted) setState(() => _canResend = true);
       } else {
-        setState(() => _countdown--);
+        if (mounted) setState(() => _countdown--);
       }
     });
   }
@@ -209,7 +248,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     }
     setState(() { _numberError = null; _isSendingOtp = true; });
 
-    // Send OTP
+    // Send OTP via backend
     final otpRes = await ApiWrapper.dataPostNode(
       Config.nodeSendOtp,
       {'mobile': mobile},
@@ -223,8 +262,10 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     }
 
     _startTimer();
+    _startListeningForOtp(); // Actively listen for incoming SMS immediately
+
     _pageController.nextPage(
-      duration: const Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 400),
       curve: Curves.easeInOut,
     );
     setState(() => _currentStep = 1);
@@ -260,12 +301,16 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
       } catch (_) {}
     }
     final String deviceId = await getDeviceId();
-    final loginRes = await ApiWrapper.dataPostNode(Config.nodeLoginByOtp, {
-      'mobile'    : mobile,
-      'ccode'     : '+91',
-      'fcm_token' : fcmToken.isNotEmpty ? fcmToken : '',
-      'device_id' : deviceId,
-    });
+
+    final loginRes = await ApiWrapper.dataPostNode(
+      Config.nodeLoginByOtp,
+      {
+        'mobile': mobile,
+        'ccode': '+91',
+        'fcm_token': fcmToken,
+        'device_id': deviceId,
+      },
+    );
     if (!mounted) return;
     setState(() => _isVerifying = false);
 
@@ -277,7 +322,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
       return;
     }
 
-    // ── Save session (identical to old handelSignIN) ──────────────────────────
+    // ── Save session ──────────────────────────────────────────────────────────
     log(loginRes.toString(), name: 'loginByOtp');
     getdata.remove('UserLogin');
     save('Uid', loginRes['UserLogin']['id'].toString());
@@ -291,12 +336,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     save('firstLogin', true);
 
     authService.singInAndStoreData(
-      name     : getdata.read('UserLogin')['name'],
-      uid      : getdata.read('UserLogin')['id'].toString(),
-      proPicPath: getdata.read('UserLogin')['r_img'] ?? '',
+      name     : loginRes['UserLogin']['name'] ?? '',
+      uid      : loginRes['UserLogin']['id'].toString(),
+      proPicPath: loginRes['UserLogin']['r_img'] ?? '',
     );
 
-    tostmsg(loginRes['ResponseMsg']);
+    tostmsg(loginRes['ResponseMsg'] ?? 'Login successful');
 
     if (widget.paymenttype == 'payment' || widget.paymenttype == 'BuyAnything') {
       Get.back();
@@ -315,7 +360,9 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     if (!mounted) return;
     if (otpRes?['Result'] == 'true') {
       _otpCtrl.text = '';
+      setState(() => _otpAutoFilled = false);
       _startTimer();
+      _startListeningForOtp();
     }
     ApiWrapper.showToastMessage(otpRes?['ResponseMsg'] ?? 'OTP resent');
   }
@@ -328,7 +375,13 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
         duration: const Duration(milliseconds: 350),
         curve: Curves.easeInOut,
       );
-      setState(() => _currentStep = 0);
+      setState(() {
+        _currentStep = 0;
+        _otpAutoFilled = false;
+        _otpCtrl.clear();
+      });
+    } else if (Navigator.canPop(context)) {
+      Get.back();
     }
   }
 
@@ -356,486 +409,524 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     );
   }
 
-   // ─────────────────────────────────────────────────────────────────────────────
-  // STEP 0 — Mobile Entry (Perfect UI & Fixed Scroll)
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STEP 0 — Mobile Entry (matching left reference design)
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildStep0MobileEntry() {
-    return SafeArea(
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        // viewInsets.bottom yahan use nahi kar rahe, Scaffold khud handle kar raha hai
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: Get.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+    final bool isPhoneValid = number.text.trim().length == 10 &&
+        RegExp(r'^[6-9][0-9]{9}$').hasMatch(number.text.trim());
+
+    return Column(
+      children: [
+        // ── Orange Hero Header ───────────────────────────────────────────────
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── Orange Hero Section ──────────────────────────────────────────────
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Row: Back button + ShifterOnline branding
+                  Row(
                     children: [
-                      // Top row: logo
-                      Row(
-                        children: [
-                          // Logo pill
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
-                                  blurRadius: 4,
-                                  offset: const Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: Image.asset(
-                                    'assets/logo1.png',
-                                    height: 26,
-                                    width: 26,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Text(
-                                      'Shifter Online',
-                                      style: TextStyle(
-                                        fontFamily: 'Gilroy_Bold',
-                                        fontSize: 13.5,
-                                        color: Color(0xFF1A1A1A),
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Delivery Made Simple',
-                                      style: TextStyle(
-                                        fontFamily: 'Gilroy_Medium',
-                                        fontSize: 8.5,
-                                        color: Color(0xFF777777),
-                                        height: 1.1,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
+                      GestureDetector(
+                        onTap: () {
+                          if (Navigator.canPop(context)) {
+                            Get.back();
+                          }
+                        },
+                        child: Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.22),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withOpacity(0.35), width: 1),
                           ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // Hero content: text left + mascot right
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          // Left: text
-                          Expanded(
-                            flex: 5,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Enjoy Delivery\nexperience with\nShifter Online.',
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 22,
-                                    color: Colors.white,
-                                    height: 1.25,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Anything you want,\nDelivered locally.',
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Medium',
-                                    fontSize: 13,
-                                    color: Colors.white70,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                // Icon badges row
-                                Row(
-                                  children: [
-                                    _heroBadge(Icons.local_shipping_rounded, 'Fast'),
-                                    const SizedBox(width: 12),
-                                    _heroBadge(Icons.shield_outlined, 'Safe'),
-                                    const SizedBox(width: 12),
-                                    _heroBadge(Icons.location_on_outlined, 'Local'),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                              ],
-                            ),
-                          ),
-                          // Right: mascot
-                          Expanded(
-                            flex: 4,
-                            child: ClipRRect(
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(16),
-                                topRight: Radius.circular(16),
-                              ),
-                              child: Image.asset(
-                                'assets/signin_hero_mascot.jpg',
-                                height: Get.height * 0.22, // 👈 Dynamic height for perfect fit
-                                fit: BoxFit.cover,
-                                alignment: Alignment.topCenter,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── White Card Section ───────────────────────────────────────────────
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                  boxShadow: [ // 👈 Elevated premium shadow
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 10,
-                      offset: const Offset(0, -4),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: 24,
-                  bottom: 40,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Orange accent line
-                    Container(
-                      width: 36,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFA4500),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Heading
-                    const Text(
-                      'Welcome Back 👋',
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 26,
-                        color: Color(0xFF1A1A1A),
-                        height: 1.2,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Sign in to continue to Shifter Online',
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 13.5,
-                        color: Color(0xFF888888),
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-
-                    // Mobile Number label
-                    const Text(
-                      'Mobile Number',
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 13.5,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Phone input
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFBFBFB),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: _numberError != null
-                              ? Colors.red.shade400
-                              : const Color(0xFFE2E2E2),
-                          width: 1.2,
+                          child: const Icon(Icons.arrow_back_rounded,
+                              color: Colors.white, size: 20),
                         ),
                       ),
-                      child: Row(
+                      const SizedBox(width: 14),
+                      // Logo + text
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                            child: Row(
-                              children: const [
-                                Text('🇮🇳', style: TextStyle(fontSize: 18)),
-                                SizedBox(width: 6),
-                                Text(
-                                  '+91',
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 15,
-                                    color: Color(0xFF1A1A1A),
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Icon(Icons.keyboard_arrow_down_rounded,
-                                    size: 18, color: Color(0xFF888888)),
-                              ],
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.asset(
+                              'assets/logo1.png',
+                              height: 32,
+                              width: 32,
+                              fit: BoxFit.cover,
                             ),
                           ),
-                          Container(width: 1, height: 24, color: const Color(0xFFE0E0E0)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: TextFormField(
-                              controller: number,
-                              autofocus: true, // 👈 Auto-open keyboard
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              maxLength: 10,
-                              onChanged: (_) {
-                                setState(() { // 👈 setState to update button color
-                                  if (_numberError != null) {
-                                    _numberError = null;
-                                  }
-                                });
-                              },
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 15,
-                                color: Color(0xFF1A1A1A),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Text(
+                                'ShifterOnline',
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Bold',
+                                  fontSize: 18,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.1,
+                                ),
                               ),
-                              decoration: const InputDecoration(
-                                hintText: 'Enter mobile number',
-                                hintStyle: TextStyle(
+                              Text(
+                                'Delivery Made Simple',
+                                style: TextStyle(
                                   fontFamily: 'Gilroy_Medium',
-                                  fontSize: 14,
-                                  color: Color(0xFFBBBBBB),
+                                  fontSize: 10,
+                                  color: Colors.white70,
+                                  height: 1.1,
                                 ),
-                                border: InputBorder.none,
-                                counterText: '',
-                                contentPadding: EdgeInsets.symmetric(vertical: 14),
                               ),
-                            ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
+                    ],
+                  ),
 
-                    if (_numberError != null) ...[
-                      const SizedBox(height: 5),
-                      Text(
-                        _numberError!,
-                        style: TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 12,
-                          color: Colors.red.shade500,
+                  const SizedBox(height: 16),
+
+                  // Hero row: Text & badges on left, 3D mascot on right
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Left text column
+                      Expanded(
+                        flex: 5,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Enjoy Delivery\nexperience with\nShifter Online.',
+                              style: TextStyle(
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 22,
+                                color: Colors.white,
+                                height: 1.22,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Anything you want,\nDelivered locally.',
+                              style: TextStyle(
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 13,
+                                color: Colors.white70,
+                                height: 1.35,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Fast, Safe, Reliable badges
+                            Row(
+                              children: [
+                                _heroBadge(Icons.local_shipping_rounded, 'Fast'),
+                                const SizedBox(width: 12),
+                                _heroBadge(Icons.shield_outlined, 'Safe'),
+                                const SizedBox(width: 12),
+                                _heroBadge(Icons.location_on_outlined, 'Reliable'),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                          ],
+                        ),
+                      ),
+                      // Right mascot image
+                      Expanded(
+                        flex: 4,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                          ),
+                          child: Image.asset(
+                            'assets/signin_hero_mascot.jpg',
+                            height: 195,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
+                          ),
                         ),
                       ),
                     ],
-
-                    const SizedBox(height: 20),
-
-                    // Continue button (Smart Disabled State)
-                    GestureDetector(
-                      onTap: (number.text.length == 10 && !_isSendingOtp) ? _handleContinue : null,
-                      child: Container(
-                        width: double.infinity,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          // 👈 If 10 digits, Orange gradient. Else, Grey gradient.
-                          gradient: number.text.length == 10
-                              ? const LinearGradient(
-                                  colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                )
-                              : const LinearGradient(
-                                  colors: [Color(0xFFE0E0E0), Color(0xFFCCCCCC)],
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                ),
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: number.text.length == 10 // 👈 Shadow only when active
-                              ? [
-                                  BoxShadow(
-                                    color: const Color(0xFFFF642F).withOpacity(0.35),
-                                    blurRadius: 14,
-                                    offset: const Offset(0, 5),
-                                  ),
-                                ]
-                              : [],
-                        ),
-                        child: Center(
-                          child: _isSendingOtp
-                              ? const SpinKitThreeBounce(color: Colors.white, size: 20)
-                              : Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Text(
-                                      'Continue',
-                                      style: TextStyle(
-                                        fontFamily: 'Gilroy_Bold',
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(width: 8),
-                                    Icon(Icons.arrow_forward_rounded,
-                                        size: 18, color: Colors.white),
-                                  ],
-                                ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Terms disclaimer
-                    Center(
-                      child: RichText(
-                        textAlign: TextAlign.center,
-                        text: TextSpan(
-                          text: 'By continuing, you agree to our ',
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy_Medium',
-                            fontSize: 11.5,
-                            color: Color(0xFF888888),
-                          ),
-                          children: [
-                            TextSpan(
-                              text: 'Terms and Conditions',
-                              style: const TextStyle(
-                                color: Color(0xFFFA4500),
-                                fontFamily: 'Gilroy_Bold',
-                                decoration: TextDecoration.underline,
-                                decorationColor: Color(0xFFFA4500),
-                              ),
-                              recognizer: TapGestureRecognizer()
-                                ..onTap = () => _showWebViewDialog(
-                                      'https://shifteronline.com/terms_conditions.php',
-                                      'Terms and Conditions'),
-                            ),
-                            const TextSpan(text: ' and '),
-                            TextSpan(
-                              text: 'Privacy Policy',
-                              style: const TextStyle(
-                                color: Color(0xFFFA4500),
-                                fontFamily: 'Gilroy_Bold',
-                                decoration: TextDecoration.underline,
-                                decorationColor: Color(0xFFFA4500),
-                              ),
-                              recognizer: TapGestureRecognizer()
-                                ..onTap = () => _showWebViewDialog(
-                                      'https://shifteronline.com/privacy_policy.php',
-                                      'Privacy Policy'),
-                            ),
-                            const TextSpan(text: '.'),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 22),
-
-                    // OR divider
-                    Row(
-                      children: [
-                        const Expanded(child: Divider(color: Color(0xFFE8E8E8), thickness: 1)),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'OR',
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 12,
-                              color: Color(0xFFAAAAAA),
-                            ),
-                          ),
-                        ),
-                        const Expanded(child: Divider(color: Color(0xFFE8E8E8), thickness: 1)),
-                      ],
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Create Account link
-                    Center(
-                      child: RichText(
-                        text: TextSpan(
-                          text: 'New to Shifter Online? ',
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy_Medium',
-                            fontSize: 14,
-                            color: Color(0xFF666666),
-                          ),
-                          children: [
-                            TextSpan(
-                              text: 'Create Account',
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 14,
-                                color: Color(0xFFFA4500),
-                              ),
-                              recognizer: TapGestureRecognizer()
-                                ..onTap = () => Get.to(() => SignUp(type: widget.paymenttype)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+
+        // ── White Card Section (Scrollable) ──────────────────────────────────
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(32),
+                topRight: Radius.circular(32),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 10,
+                  offset: Offset(0, -3),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 14,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top grey drag handle pill
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1D5DB),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Heading
+                  const Text(
+                    'Welcome Back 👋',
+                    style: TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 26,
+                      color: Color(0xFF111827),
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Sign in to continue your delivery journey',
+                    style: TextStyle(
+                      fontFamily: 'Gilroy_Medium',
+                      fontSize: 13.5,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+
+                  // Mobile Number label
+                  const Text(
+                    'Mobile Number',
+                    style: TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 13.5,
+                      color: Color(0xFF1F2937),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Phone input box
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAFAFA),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _numberError != null
+                            ? Colors.red.shade400
+                            : const Color(0xFFE5E7EB),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          child: Row(
+                            children: const [
+                              Text('🇮🇳', style: TextStyle(fontSize: 19)),
+                              SizedBox(width: 8),
+                              Text(
+                                '+91',
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Bold',
+                                  fontSize: 15,
+                                  color: Color(0xFF111827),
+                                ),
+                              ),
+                              SizedBox(width: 4),
+                              Icon(Icons.keyboard_arrow_down_rounded,
+                                  size: 18, color: Color(0xFF6B7280)),
+                            ],
+                          ),
+                        ),
+                        Container(width: 1, height: 26, color: const Color(0xFFE5E7EB)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: number,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            maxLength: 10,
+                            onChanged: (_) {
+                              if (_numberError != null) {
+                                setState(() => _numberError = null);
+                              }
+                            },
+                            style: const TextStyle(
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 15,
+                              color: Color(0xFF111827),
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: 'Enter mobile number',
+                              hintStyle: TextStyle(
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 14,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                              border: InputBorder.none,
+                              counterText: '',
+                              contentPadding: EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (_numberError != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _numberError!,
+                      style: TextStyle(
+                        fontFamily: 'Gilroy_Medium',
+                        fontSize: 12,
+                        color: Colors.red.shade500,
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  // Continue button (dynamically activates when phone is valid)
+                  GestureDetector(
+                    onTap: (!isPhoneValid || _isSendingOtp) ? null : _handleContinue,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: double.infinity,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: isPhoneValid
+                            ? const LinearGradient(
+                                colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                              )
+                            : null,
+                        color: isPhoneValid ? null : const Color(0xFFCFD6DC),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: isPhoneValid
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFFFA4500).withOpacity(0.32),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Center(
+                        child: _isSendingOtp
+                            ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Text(
+                                    'Continue',
+                                    style: TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Icon(Icons.arrow_forward_rounded,
+                                      size: 18, color: Colors.white),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Terms disclaimer
+                  Center(
+                    child: RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        text: 'By continuing, you agree to our\n',
+                        style: const TextStyle(
+                          fontFamily: 'Gilroy_Medium',
+                          fontSize: 11.5,
+                          color: Color(0xFF6B7280),
+                          height: 1.4,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: 'Terms and Conditions',
+                            style: const TextStyle(
+                              color: Color(0xFFFA4500),
+                              fontFamily: 'Gilroy_Bold',
+                              decoration: TextDecoration.underline,
+                              decorationColor: Color(0xFFFA4500),
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => _showWebViewDialog(
+                                    'https://shifteronline.com/terms_conditions.php',
+                                    'Terms and Conditions'),
+                          ),
+                          const TextSpan(text: ' and '),
+                          TextSpan(
+                            text: 'Privacy Policy',
+                            style: const TextStyle(
+                              color: Color(0xFFFA4500),
+                              fontFamily: 'Gilroy_Bold',
+                              decoration: TextDecoration.underline,
+                              decorationColor: Color(0xFFFA4500),
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => _showWebViewDialog(
+                                    'https://shifteronline.com/privacy_policy.php',
+                                    'Privacy Policy'),
+                          ),
+                          const TextSpan(text: '.'),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Create Account link
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => Get.to(() => SignUp(type: widget.paymenttype)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Text(
+                            'New to Shifter Online? ',
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 14,
+                              color: Color(0xFF4B5563),
+                            ),
+                          ),
+                          Text(
+                            'Create Account',
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 14,
+                              color: Color(0xFFFA4500),
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_rounded,
+                              size: 15, color: Color(0xFFFA4500)),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Environmental / Mission card at bottom of left screen
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFDCFCE7)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFDCFCE7),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.eco_rounded,
+                              color: Color(0xFF16A34A), size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Delivering a better tomorrow',
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Bold',
+                                  fontSize: 12.5,
+                                  color: Color(0xFF166534),
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'For a smarter, cleaner and more connected city.',
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Medium',
+                                  fontSize: 11,
+                                  color: Color(0xFF4B5563),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // STEP 1 — OTP Verification (reference right screen)
+  // STEP 1 — OTP Verification (matching right reference design)
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildStep1OtpVerify() {
+    final bool isOtpComplete = _otpCtrl.text.trim().length == 6;
+
     return SafeArea(
       child: Column(
         children: [
-          // Top: back + logo
+          // Top bar: back button + center ShifterOnline logo
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 GestureDetector(
@@ -843,16 +934,15 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                   child: Container(
                     width: 40,
                     height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF3F4F6),
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFEEEEEE)),
                     ),
                     child: const Icon(Icons.arrow_back_rounded,
-                        size: 20, color: Color(0xFF1A1A1A)),
+                        size: 20, color: Color(0xFF1F2937)),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const Spacer(),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -860,8 +950,8 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       borderRadius: BorderRadius.circular(6),
                       child: Image.asset(
                         'assets/logo1.png',
-                        height: 28,
-                        width: 28,
+                        height: 30,
+                        width: 30,
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -871,11 +961,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       mainAxisSize: MainAxisSize.min,
                       children: const [
                         Text(
-                          'Shifter Online',
+                          'ShifterOnline',
                           style: TextStyle(
                             fontFamily: 'Gilroy_Bold',
-                            fontSize: 14,
-                            color: Color(0xFF1A1A1A),
+                            fontSize: 16,
+                            color: Color(0xFF111827),
+                            fontWeight: FontWeight.w800,
                             height: 1.1,
                           ),
                         ),
@@ -883,8 +974,8 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                           'Delivery Made Simple',
                           style: TextStyle(
                             fontFamily: 'Gilroy_Medium',
-                            fontSize: 9,
-                            color: Color(0xFF777777),
+                            fontSize: 9.5,
+                            color: Color(0xFF6B7280),
                             height: 1.1,
                           ),
                         ),
@@ -892,6 +983,8 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     ),
                   ],
                 ),
+                const Spacer(),
+                const SizedBox(width: 40), // Balance the back button
               ],
             ),
           ),
@@ -900,23 +993,23 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                left: 22,
+                right: 22,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
-                  // OTP Illustration
+                  // 3D OTP Illustration
                   Image.asset(
                     'assets/otp_illustration.jpg',
-                    height: 180,
+                    height: 175,
                     fit: BoxFit.contain,
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
 
                   // Heading
                   const Text(
@@ -924,7 +1017,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     style: TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 24,
-                      color: Color(0xFF1A1A1A),
+                      color: Color(0xFF111827),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -933,7 +1026,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     style: TextStyle(
                       fontFamily: 'Gilroy_Medium',
                       fontSize: 13.5,
-                      color: Color(0xFF888888),
+                      color: Color(0xFF6B7280),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -941,11 +1034,11 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        '+91 ${number.text}',
+                        '+91 ${number.text.trim()}',
                         style: const TextStyle(
                           fontFamily: 'Gilroy_Bold',
                           fontSize: 15,
-                          color: Color(0xFF1A1A1A),
+                          color: Color(0xFF111827),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -957,37 +1050,47 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     ],
                   ),
 
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 28),
 
-                  // Pinput OTP boxes
+                  // 6-Digit Pinput OTP input
                   Pinput(
                     controller: _otpCtrl,
                     length: 6,
                     keyboardType: TextInputType.number,
+                    autofillHints: const [AutofillHints.oneTimeCode],
+                    onChanged: (pin) {
+                      setState(() {});
+                      if (pin.length == 6) {
+                        _handleVerifyOtp();
+                      }
+                    },
+                    onCompleted: (pin) {
+                      _handleVerifyOtp();
+                    },
                     defaultPinTheme: PinTheme(
-                      width: 52,
-                      height: 56,
+                      width: 50,
+                      height: 54,
                       textStyle: const TextStyle(
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 20,
-                        color: Color(0xFF1A1A1A),
+                        color: Color(0xFF111827),
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFDDDDDD), width: 1.5),
+                        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 6,
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                     ),
                     focusedPinTheme: PinTheme(
-                      width: 52,
-                      height: 56,
+                      width: 50,
+                      height: 54,
                       textStyle: const TextStyle(
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 20,
@@ -1015,19 +1118,19 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE8F7F0),
+                        color: const Color(0xFFECFDF5),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFBBE8D3)),
+                        border: Border.all(color: const Color(0xFFA7F3D0)),
                       ),
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(3),
+                            padding: const EdgeInsets.all(2),
                             decoration: const BoxDecoration(
-                              color: Color(0xFF00A86B),
+                              color: Color(0xFF059669),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.check, size: 12, color: Colors.white),
+                            child: const Icon(Icons.check, size: 13, color: Colors.white),
                           ),
                           const SizedBox(width: 10),
                           const Expanded(
@@ -1036,12 +1139,13 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                               style: TextStyle(
                                 fontFamily: 'Gilroy_Medium',
                                 fontSize: 12.5,
-                                color: Color(0xFF0B7B50),
+                                color: Color(0xFF065F46),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          const Icon(Icons.auto_awesome_rounded, size: 16, color: Color(0xFF00A86B)),
+                          const Icon(Icons.auto_awesome_rounded,
+                              size: 16, color: Color(0xFF059669)),
                         ],
                       ),
                     ),
@@ -1049,7 +1153,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
 
                   const SizedBox(height: 22),
 
-                  // Resend row
+                  // Resend countdown row
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -1058,7 +1162,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                         style: TextStyle(
                           fontFamily: 'Gilroy_Medium',
                           fontSize: 13,
-                          color: Color(0xFF888888),
+                          color: Color(0xFF6B7280),
                         ),
                       ),
                       GestureDetector(
@@ -1070,7 +1174,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                             fontSize: 13,
                             color: _canResend
                                 ? const Color(0xFFFA4500)
-                                : const Color(0xFFAAAAAA),
+                                : const Color(0xFF9CA3AF),
                           ),
                         ),
                       ),
@@ -1081,24 +1185,30 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
 
                   // Verify & Continue button
                   GestureDetector(
-                    onTap: _isVerifying ? null : _handleVerifyOtp,
-                    child: Container(
+                    onTap: (!isOtpComplete || _isVerifying) ? null : _handleVerifyOtp,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       width: double.infinity,
-                      height: 54,
+                      height: 52,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
+                        gradient: isOtpComplete
+                            ? const LinearGradient(
+                                colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                              )
+                            : null,
+                        color: isOtpComplete ? null : const Color(0xFFCFD6DC),
                         borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFFF642F).withOpacity(0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
+                        boxShadow: isOtpComplete
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFFFA4500).withOpacity(0.35),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Center(
                         child: _isVerifying
@@ -1123,25 +1233,26 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 22),
 
-                  // Security note
+                  // Security reassurance card
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF7F7F7),
+                      color: const Color(0xFFF9FAFB),
                       borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFF3F4F6)),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F5E9),
+                            color: const Color(0xFFDCFCE7),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.lock_outline_rounded,
-                              color: Color(0xFF43A047), size: 22),
+                          child: const Icon(Icons.shield_outlined,
+                              color: Color(0xFF16A34A), size: 22),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
@@ -1153,7 +1264,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 13,
-                                  color: Color(0xFF1A1A1A),
+                                  color: Color(0xFF111827),
                                 ),
                               ),
                               SizedBox(height: 2),
@@ -1162,8 +1273,8 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Medium',
                                   fontSize: 11.5,
-                                  color: Color(0xFF888888),
-                                  height: 1.4,
+                                  color: Color(0xFF6B7280),
+                                  height: 1.35,
                                 ),
                               ),
                             ],
@@ -1182,7 +1293,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Hero badge widget (icon + label below in white circle)
+  // Hero badge widget (icon + label in white circle)
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _heroBadge(IconData icon, String label) {
     return Column(
