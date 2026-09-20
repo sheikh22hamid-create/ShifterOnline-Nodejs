@@ -47,6 +47,7 @@ async function mobileCheck(req, res) {
     const mobile = String(req.body?.mobile || "").trim();
     const ccode = String(req.body?.ccode || "").trim();
     if (!mobile) return fail(res, "Something Went Wrong!");
+    if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
 
     const existing = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile), ccode } });
     if (existing) return fail(res, "Already Exist Mobile Number!");
@@ -62,6 +63,7 @@ async function sendOtp(req, res) {
   try {
     const mobile = otpService.normalizeMobile(req.body?.mobile);
     if (!mobile) return fail(res, "Something Went Wrong!");
+    if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
 
     const result = await otpService.sendOtp(mobile, { allowTestBypass: false });
     if (!result.ok) return fail(res, result.message);
@@ -168,7 +170,7 @@ async function register(req, res) {
     if (!fname || !mobile) return fail(res, "Please fill in all required fields!");
     // Validate email format only when provided
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res, "Please enter a valid email address!");
-    if (!/^[0-9]{6,15}$/.test(mobile)) return fail(res, "Please enter a valid mobile number!");
+    if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
 
     const mobileTaken = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
     if (mobileTaken) return fail(res, "Mobile Number Already Used!");
