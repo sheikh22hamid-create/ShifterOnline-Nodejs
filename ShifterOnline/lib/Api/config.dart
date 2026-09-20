@@ -193,6 +193,7 @@ class Config {
   static const String nodeVerifyOtp = "api/users/verify-otp";
   static const String nodeLogin = "api/users/login";
   static const String nodeLoginByOtp = "api/users/login-by-otp";
+  static const String nodeProfileOverview = "api/users/profile/overview";
   static const String nodeRegister = "api/users/register";
   static const String nodeForgotPassword = "api/users/forgot-password";
   // Node port of cust_api/pkg_history.php ("My Orders" screen) - the old

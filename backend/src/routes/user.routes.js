@@ -22,6 +22,8 @@ router.post("/delete-account", customerAuthController.deleteAccount);
 router.get("/country-codes", customerAuthController.countryCodeList);
 
 // Profile / address
+router.post("/profile/overview", customerProfileController.profileOverview);
+router.get("/profile/overview", customerProfileController.profileOverview);
 router.post("/profile/update", customerProfileController.updateProfile);
 router.post("/profile/image", customerProfileController.updateProfileImage);
 router.post("/address/list", customerProfileController.addressList);

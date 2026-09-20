@@ -26,10 +26,12 @@ import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import '../../utils/node_socket_manager.dart';
 import 'signup.dart';
+import 'widgets/delivery_login_hero.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SignIn — Modern OTP-based login (2-step: Mobile → Verify OTP)
-// Pixel-perfect design matching user reference UI
+// Animated override sheet: tapping "Enter mobile number" slides the Welcome
+// Back card all the way to the top, hiding the orange section behind it.
 // ─────────────────────────────────────────────────────────────────────────────
 class SignIn extends StatefulWidget {
   final String? paymenttype;
@@ -45,6 +47,10 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
   int _currentStep = 0; // 0 = Mobile entry, 1 = OTP verification
   ColorNotifier notifier = ColorNotifier();
   final getdata = GetStorage();
+
+  // Focus & expansion state for sliding sheet over orange hero
+  final FocusNode _numberFocus = FocusNode();
+  bool _isWelcomeExpanded = false;
 
   // ── Controllers ─────────────────────────────────────────────────────────────
   final TextEditingController number = TextEditingController();
@@ -71,8 +77,16 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     _initOtp();
     _initializeFCM();
     _setDarkMode();
+
     number.addListener(() {
       if (mounted) setState(() {});
+    });
+
+    // Expand sheet smoothly when text field gains focus
+    _numberFocus.addListener(() {
+      if (_numberFocus.hasFocus && !_isWelcomeExpanded) {
+        if (mounted) setState(() => _isWelcomeExpanded = true);
+      }
     });
   }
 
@@ -98,7 +112,6 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
       _otpCtrl.text = match;
       if (mounted) {
         setState(() => _otpAutoFilled = true);
-        // Auto-verify on seamless autofill
         Future.delayed(const Duration(milliseconds: 400), () {
           if (mounted && _otpCtrl.text.length == 6 && !_isVerifying && _currentStep == 1) {
             _handleVerifyOtp();
@@ -144,6 +157,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     _timer?.cancel();
     _pageController.dispose();
     number.dispose();
+    _numberFocus.dispose();
     _otpCtrl.dispose();
     cancel();
     super.dispose();
@@ -261,8 +275,11 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
       return;
     }
 
+    _numberFocus.unfocus();
+    setState(() => _isWelcomeExpanded = false);
+
     _startTimer();
-    _startListeningForOtp(); // Actively listen for incoming SMS immediately
+    _startListeningForOtp();
 
     _pageController.nextPage(
       duration: const Duration(milliseconds: 400),
@@ -369,6 +386,11 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
 
   // ── Pop handling ──────────────────────────────────────────────────────────────
   void _handlePop() {
+    if (_isWelcomeExpanded) {
+      _numberFocus.unfocus();
+      setState(() => _isWelcomeExpanded = false);
+      return;
+    }
     if (_currentStep == 1) {
       _timer?.cancel();
       _pageController.previousPage(
@@ -391,12 +413,17 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final bool isExpanded = _isWelcomeExpanded || _numberFocus.hasFocus || isKeyboardOpen;
+
     return PopScope(
-      canPop: _currentStep == 0,
-      onPopInvoked: (didPop) { if (!didPop) _handlePop(); },
+      canPop: _currentStep == 0 && !isExpanded,
+      onPopInvoked: (didPop) {
+        if (!didPop) _handlePop();
+      },
       child: Scaffold(
         backgroundColor: Colors.white,
-        resizeToAvoidBottomInset: true,
+        resizeToAvoidBottomInset: false, // Stack-based sliding sheet controls inset
         body: PageView(
           controller: _pageController,
           physics: const NeverScrollableScrollPhysics(),
@@ -410,508 +437,465 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // STEP 0 — Mobile Entry (matching left reference design)
+  // STEP 0 — Mobile Entry
+  // The White Card sheet slides up OVER the orange hero on click/focus/drag,
+  // completely hiding the orange section behind it.
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildStep0MobileEntry() {
     final bool isPhoneValid = number.text.trim().length == 10 &&
         RegExp(r'^[6-9][0-9]{9}$').hasMatch(number.text.trim());
+    final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final bool isExpanded = _isWelcomeExpanded || _numberFocus.hasFocus || isKeyboardOpen;
 
-    return Column(
-      children: [
-        // ── Orange Hero Header ───────────────────────────────────────────────
-        Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    final double topSafe = MediaQuery.of(context).padding.top;
+    final double heroHeight = DeliveryLoginHero.heightFor(
+      MediaQuery.sizeOf(context).width,
+      MediaQuery.textScalerOf(context).scale(1),
+    ) + topSafe;
+    final double normalTop = heroHeight - 28.0;
+    final double expandedTop = topSafe + 8.0;
+
+    return GestureDetector(
+      onTap: () {
+        if (_numberFocus.hasFocus || _isWelcomeExpanded) {
+          _numberFocus.unfocus();
+          setState(() => _isWelcomeExpanded = false);
+        }
+      },
+      behavior: HitTestBehavior.translucent,
+      child: Stack(
+        children: [
+          // The existing white sheet remains the frontmost interactive layer.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: heroHeight + 10,
+            child: DeliveryLoginHero(
+              active: _currentStep == 0 && !isExpanded,
             ),
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Top Row: Back button + ShifterOnline branding
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          if (Navigator.canPop(context)) {
-                            Get.back();
-                          }
-                        },
-                        child: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.22),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withOpacity(0.35), width: 1),
-                          ),
-                          child: const Icon(Icons.arrow_back_rounded,
-                              color: Colors.white, size: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      // Logo + text
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.asset(
-                              'assets/logo1.png',
-                              height: 32,
-                              width: 32,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Text(
-                                'ShifterOnline',
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 18,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.1,
-                                ),
-                              ),
-                              Text(
-                                'Delivery Made Simple',
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Medium',
-                                  fontSize: 10,
-                                  color: Colors.white70,
-                                  height: 1.1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
+          // ── Layer 2 (Front): White Card Sheet (Overrides & covers orange section) ──
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 360),
+            curve: Curves.easeOutCubic,
+            top: isExpanded ? expandedTop : normalTop,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: GestureDetector(
+              onVerticalDragUpdate: (details) {
+                if (details.primaryDelta != null) {
+                  if (details.primaryDelta! > 7 && isExpanded) {
+                    _numberFocus.unfocus();
+                    setState(() => _isWelcomeExpanded = false);
+                  } else if (details.primaryDelta! < -7 && !isExpanded) {
+                    _numberFocus.requestFocus();
+                    setState(() => _isWelcomeExpanded = true);
+                  }
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(isExpanded ? 24 : 32),
+                    topRight: Radius.circular(isExpanded ? 24 : 32),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  // Hero row: Text & badges on left, 3D mascot on right
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // Left text column
-                      Expanded(
-                        flex: 5,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Enjoy Delivery\nexperience with\nShifter Online.',
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 22,
-                                color: Colors.white,
-                                height: 1.22,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Anything you want,\nDelivered locally.',
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 13,
-                                color: Colors.white70,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Fast, Safe, Reliable badges
-                            Row(
-                              children: [
-                                _heroBadge(Icons.local_shipping_rounded, 'Fast'),
-                                const SizedBox(width: 12),
-                                _heroBadge(Icons.shield_outlined, 'Safe'),
-                                const SizedBox(width: 12),
-                                _heroBadge(Icons.location_on_outlined, 'Reliable'),
-                              ],
-                            ),
-                            const SizedBox(height: 18),
-                          ],
-                        ),
-                      ),
-                      // Right mascot image
-                      Expanded(
-                        flex: 4,
-                        child: ClipRRect(
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(20),
-                            topRight: Radius.circular(20),
-                          ),
-                          child: Image.asset(
-                            'assets/signin_hero_mascot.jpg',
-                            height: 195,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // ── White Card Section (Scrollable) ──────────────────────────────────
-        Expanded(
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(32),
-                topRight: Radius.circular(32),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 10,
-                  offset: Offset(0, -3),
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 14,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Top grey drag handle pill
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4.5,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD1D5DB),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Heading
-                  const Text(
-                    'Welcome Back 👋',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 26,
-                      color: Color(0xFF111827),
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'Sign in to continue your delivery journey',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Medium',
-                      fontSize: 13.5,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-
-                  // Mobile Number label
-                  const Text(
-                    'Mobile Number',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 13.5,
-                      color: Color(0xFF1F2937),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Phone input box
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFAFAFA),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _numberError != null
-                            ? Colors.red.shade400
-                            : const Color(0xFFE5E7EB),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                          child: Row(
-                            children: const [
-                              Text('🇮🇳', style: TextStyle(fontSize: 19)),
-                              SizedBox(width: 8),
-                              Text(
-                                '+91',
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 15,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(Icons.keyboard_arrow_down_rounded,
-                                  size: 18, color: Color(0xFF6B7280)),
-                            ],
-                          ),
-                        ),
-                        Container(width: 1, height: 26, color: const Color(0xFFE5E7EB)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: number,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            maxLength: 10,
-                            onChanged: (_) {
-                              if (_numberError != null) {
-                                setState(() => _numberError = null);
-                              }
-                            },
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 15,
-                              color: Color(0xFF111827),
-                            ),
-                            decoration: const InputDecoration(
-                              hintText: 'Enter mobile number',
-                              hintStyle: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 14,
-                                color: Color(0xFF9CA3AF),
-                              ),
-                              border: InputBorder.none,
-                              counterText: '',
-                              contentPadding: EdgeInsets.symmetric(vertical: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (_numberError != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      _numberError!,
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 12,
-                        color: Colors.red.shade500,
-                      ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x28000000),
+                      blurRadius: 16,
+                      offset: Offset(0, -4),
                     ),
                   ],
-
-                  const SizedBox(height: 20),
-
-                  // Continue button (dynamically activates when phone is valid)
-                  GestureDetector(
-                    onTap: (!isPhoneValid || _isSendingOtp) ? null : _handleContinue,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: double.infinity,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        gradient: isPhoneValid
-                            ? const LinearGradient(
-                                colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              )
-                            : null,
-                        color: isPhoneValid ? null : const Color(0xFFCFD6DC),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: isPhoneValid
-                            ? [
-                                BoxShadow(
-                                  color: const Color(0xFFFA4500).withOpacity(0.32),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Center(
-                        child: _isSendingOtp
-                            ? const SpinKitThreeBounce(color: Colors.white, size: 20)
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Text(
-                                    'Continue',
-                                    style: TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 16,
-                                      color: Colors.white,
-                                    ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(isExpanded ? 24 : 32),
+                    topRight: Radius.circular(isExpanded ? 24 : 32),
+                  ),
+                  child: Column(
+                    children: [
+                      // Top drag handle / collapse button
+                      GestureDetector(
+                        onTap: () {
+                          if (isExpanded) {
+                            _numberFocus.unfocus();
+                            setState(() => _isWelcomeExpanded = false);
+                          } else {
+                            _numberFocus.requestFocus();
+                            setState(() => _isWelcomeExpanded = true);
+                          }
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          padding: const EdgeInsets.only(top: 10, bottom: 8),
+                          width: double.infinity,
+                          alignment: Alignment.center,
+                          child: isExpanded
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  SizedBox(width: 8),
-                                  Icon(Icons.arrow_forward_rounded,
-                                      size: 18, color: Colors.white),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Terms disclaimer
-                  Center(
-                    child: RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        text: 'By continuing, you agree to our\n',
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: Color(0xFF6B7280),
-                          height: 1.4,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.keyboard_arrow_down_rounded,
+                                          size: 18, color: Color(0xFF6B7280)),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Swipe down to view header',
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Medium',
+                                          fontSize: 11.5,
+                                          color: Color(0xFF6B7280),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Container(
+                                  width: 42,
+                                  height: 4.5,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD1D5DB),
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
                         ),
-                        children: [
-                          TextSpan(
-                            text: 'Terms and Conditions',
-                            style: const TextStyle(
-                              color: Color(0xFFFA4500),
-                              fontFamily: 'Gilroy_Bold',
-                              decoration: TextDecoration.underline,
-                              decorationColor: Color(0xFFFA4500),
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () => _showWebViewDialog(
-                                    'https://shifteronline.com/terms_conditions.php',
-                                    'Terms and Conditions'),
-                          ),
-                          const TextSpan(text: ' and '),
-                          TextSpan(
-                            text: 'Privacy Policy',
-                            style: const TextStyle(
-                              color: Color(0xFFFA4500),
-                              fontFamily: 'Gilroy_Bold',
-                              decoration: TextDecoration.underline,
-                              decorationColor: Color(0xFFFA4500),
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () => _showWebViewDialog(
-                                    'https://shifteronline.com/privacy_policy.php',
-                                    'Privacy Policy'),
-                          ),
-                          const TextSpan(text: '.'),
-                        ],
                       ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 24),
-
-                  // Create Account link
-                  Center(
-                    child: GestureDetector(
-                      onTap: () => Get.to(() => SignUp(type: widget.paymenttype)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Text(
-                            'New to Shifter Online? ',
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 14,
-                              color: Color(0xFF4B5563),
-                            ),
+                      // Scrollable content inside the sheet
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          padding: EdgeInsets.only(
+                            left: 20,
+                            right: 20,
+                            top: 4,
+                            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
                           ),
-                          Text(
-                            'Create Account',
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              color: Color(0xFFFA4500),
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_rounded,
-                              size: 15, color: Color(0xFFFA4500)),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Environmental / Mission card at bottom of left screen
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFDCFCE7)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFDCFCE7),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.eco_rounded,
-                              color: Color(0xFF16A34A), size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Delivering a better tomorrow',
+                              const SizedBox(height: 10),
+
+                              // Heading
+                              const Text(
+                                'Welcome Back 👋',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
-                                  fontSize: 12.5,
-                                  color: Color(0xFF166534),
+                                  fontSize: 26,
+                                  color: Color(0xFF111827),
+                                  height: 1.2,
                                 ),
                               ),
-                              SizedBox(height: 2),
-                              Text(
-                                'For a smarter, cleaner and more connected city.',
+                              const SizedBox(height: 5),
+                              const Text(
+                                'Sign in to continue your delivery journey',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Medium',
-                                  fontSize: 11,
-                                  color: Color(0xFF4B5563),
+                                  fontSize: 13.5,
+                                  color: Color(0xFF6B7280),
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+
+                              // Mobile Number label
+                              const Text(
+                                'Mobile Number',
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Bold',
+                                  fontSize: 13.5,
+                                  color: Color(0xFF1F2937),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Phone input box
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFAFAFA),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: _numberError != null
+                                        ? Colors.red.shade400
+                                        : const Color(0xFFE5E7EB),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                      child: Row(
+                                        children: const [
+                                          Text('🇮🇳', style: TextStyle(fontSize: 19)),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            '+91',
+                                            style: TextStyle(
+                                              fontFamily: 'Gilroy_Bold',
+                                              fontSize: 15,
+                                              color: Color(0xFF111827),
+                                            ),
+                                          ),
+                                          SizedBox(width: 4),
+                                          Icon(Icons.keyboard_arrow_down_rounded,
+                                              size: 18, color: Color(0xFF6B7280)),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(width: 1, height: 26, color: const Color(0xFFE5E7EB)),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: number,
+                                        focusNode: _numberFocus,
+                                        onTap: () {
+                                          if (!_isWelcomeExpanded) {
+                                            setState(() => _isWelcomeExpanded = true);
+                                          }
+                                        },
+                                        keyboardType: TextInputType.number,
+                                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                        maxLength: 10,
+                                        onChanged: (_) {
+                                          if (_numberError != null) {
+                                            setState(() => _numberError = null);
+                                          }
+                                        },
+                                        style: const TextStyle(
+                                          fontFamily: 'Gilroy_Medium',
+                                          fontSize: 15,
+                                          color: Color(0xFF111827),
+                                        ),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Enter mobile number',
+                                          hintStyle: TextStyle(
+                                            fontFamily: 'Gilroy_Medium',
+                                            fontSize: 14,
+                                            color: Color(0xFF9CA3AF),
+                                          ),
+                                          border: InputBorder.none,
+                                          counterText: '',
+                                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              if (_numberError != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  _numberError!,
+                                  style: TextStyle(
+                                    fontFamily: 'Gilroy_Medium',
+                                    fontSize: 12,
+                                    color: Colors.red.shade500,
+                                  ),
+                                ),
+                              ],
+
+                              const SizedBox(height: 20),
+
+                              // Continue button
+                              GestureDetector(
+                                onTap: (!isPhoneValid || _isSendingOtp) ? null : _handleContinue,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  width: double.infinity,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    gradient: isPhoneValid
+                                        ? const LinearGradient(
+                                            colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
+                                            begin: Alignment.centerLeft,
+                                            end: Alignment.centerRight,
+                                          )
+                                        : null,
+                                    color: isPhoneValid ? null : const Color(0xFFCFD6DC),
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: isPhoneValid
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFFFA4500).withOpacity(0.32),
+                                              blurRadius: 14,
+                                              offset: const Offset(0, 5),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Center(
+                                    child: _isSendingOtp
+                                        ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                                        : Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: const [
+                                              Text(
+                                                'Continue',
+                                                style: TextStyle(
+                                                  fontFamily: 'Gilroy_Bold',
+                                                  fontSize: 16,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              SizedBox(width: 8),
+                                              Icon(Icons.arrow_forward_rounded,
+                                                  size: 18, color: Colors.white),
+                                            ],
+                                          ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // Terms disclaimer
+                              Center(
+                                child: RichText(
+                                  textAlign: TextAlign.center,
+                                  text: TextSpan(
+                                    text: 'By continuing, you agree to our\n',
+                                    style: const TextStyle(
+                                      fontFamily: 'Gilroy_Medium',
+                                      fontSize: 11.5,
+                                      color: Color(0xFF6B7280),
+                                      height: 1.4,
+                                    ),
+                                    children: [
+                                      TextSpan(
+                                        text: 'Terms and Conditions',
+                                        style: const TextStyle(
+                                          color: Color(0xFFFA4500),
+                                          fontFamily: 'Gilroy_Bold',
+                                          decoration: TextDecoration.underline,
+                                          decorationColor: Color(0xFFFA4500),
+                                        ),
+                                        recognizer: TapGestureRecognizer()
+                                          ..onTap = () => _showWebViewDialog(
+                                                'https://shifteronline.com/terms_conditions.php',
+                                                'Terms and Conditions'),
+                                      ),
+                                      const TextSpan(text: ' and '),
+                                      TextSpan(
+                                        text: 'Privacy Policy',
+                                        style: const TextStyle(
+                                          color: Color(0xFFFA4500),
+                                          fontFamily: 'Gilroy_Bold',
+                                          decoration: TextDecoration.underline,
+                                          decorationColor: Color(0xFFFA4500),
+                                        ),
+                                        recognizer: TapGestureRecognizer()
+                                          ..onTap = () => _showWebViewDialog(
+                                                'https://shifteronline.com/privacy_policy.php',
+                                                'Privacy Policy'),
+                                      ),
+                                      const TextSpan(text: '.'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Create Account link
+                              Center(
+                                child: GestureDetector(
+                                  onTap: () => Get.to(() => SignUp(type: widget.paymenttype)),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text(
+                                        'New to Shifter Online? ',
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Medium',
+                                          fontSize: 14,
+                                          color: Color(0xFF4B5563),
+                                        ),
+                                      ),
+                                      Text(
+                                        'Create Account',
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Bold',
+                                          fontSize: 14,
+                                          color: Color(0xFFFA4500),
+                                        ),
+                                      ),
+                                      SizedBox(width: 4),
+                                      Icon(Icons.arrow_forward_rounded,
+                                          size: 15, color: Color(0xFFFA4500)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Environmental / Mission card at bottom
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF0FDF4),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFDCFCE7)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFDCFCE7),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.eco_rounded,
+                                          color: Color(0xFF16A34A), size: 20),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Delivering a better tomorrow',
+                                            style: TextStyle(
+                                              fontFamily: 'Gilroy_Bold',
+                                              fontSize: 12.5,
+                                              color: Color(0xFF166534),
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            'For a smarter, cleaner and more connected city.',
+                                            style: TextStyle(
+                                              fontFamily: 'Gilroy_Medium',
+                                              fontSize: 11,
+                                              color: Color(0xFF4B5563),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -924,25 +908,11 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     return SafeArea(
       child: Column(
         children: [
-          // Top bar: back button + center ShifterOnline logo
+          // Top bar: ShifterOnline logo
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: _handlePop,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF3F4F6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.arrow_back_rounded,
-                        size: 20, color: Color(0xFF1F2937)),
-                  ),
-                ),
-                const Spacer(),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -983,11 +953,10 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     ),
                   ],
                 ),
-                const Spacer(),
-                const SizedBox(width: 40), // Balance the back button
               ],
             ),
           ),
+
 
           Expanded(
             child: SingleChildScrollView(
@@ -1292,32 +1261,4 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Hero badge widget (icon + label in white circle)
-  // ─────────────────────────────────────────────────────────────────────────────
-  Widget _heroBadge(IconData icon, String label) {
-    return Column(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.22),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
-          ),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          label,
-          style: const TextStyle(
-            fontFamily: 'Gilroy_Bold',
-            fontSize: 11,
-            color: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
 }

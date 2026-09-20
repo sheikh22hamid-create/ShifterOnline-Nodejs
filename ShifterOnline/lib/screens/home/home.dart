@@ -42,6 +42,7 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sql;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
+import 'widgets/stop_swap_list.dart';
 
 class ItemListDelet {
   static Future<Database> database() async {
@@ -1041,6 +1042,18 @@ class _HomeState extends State<Home> {
     setState(() => _extraStops[index] = stop);
   }
 
+  void _swapExtraStops(Map<String, dynamic> source, Map<String, dynamic> target) {
+    final from = _extraStops.indexWhere((stop) => identical(stop, source));
+    final to = _extraStops.indexWhere((stop) => identical(stop, target));
+    if (from < 0 || to < 0 || from == to) return;
+    setState(() {
+      _extraStops[from] = target;
+      _extraStops[to] = source;
+    });
+    // Home keeps route drafts locally. _openVehicleSelection already passes
+    // this complete ordered list into the existing distance/pricing flow.
+  }
+
   bool _isBeyondFinalDrop(Map<String, dynamic> stop) {
     final pickup = _confirmedPickupData;
     final drop = _confirmedDropData;
@@ -1557,22 +1570,25 @@ class _HomeState extends State<Home> {
             onTap: _changePickupLocation,
           ),
           connector(),
-          for (var index = 0; index < _extraStops.length; index++) ...[
-            _routeTimelineRow(
+          StopSwapList<Map<String, dynamic>>(
+            items: _extraStops,
+            onSwap: _swapExtraStops,
+            separator: connector(),
+            itemBuilder: (context, stop, index, wrapDragBody) => _routeTimelineRow(
               icon: Icons.location_on_rounded,
               iconColor: index == 0
                   ? const Color(0xfff27b38)
                   : const Color(0xff3976d3),
               title: 'Stop ${index + 1}',
               subtitle: 'Additional stop',
-              address: _extraStops[index]['address']?.toString() ??
+              address: stop['address']?.toString() ??
                   'Selected location',
               addressFontSize: 13,
               onTap: () => _editExtraStop(index),
               onDelete: () => setState(() => _extraStops.removeAt(index)),
+              wrapDragBody: wrapDragBody,
             ),
-            connector(),
-          ],
+          ),
           _routeTimelineRow(
             icon: Icons.location_on_rounded,
             iconColor: const Color(0xffe55353),
@@ -1677,13 +1693,9 @@ class _HomeState extends State<Home> {
     double addressFontSize = 11,
     VoidCallback? onTap,
     VoidCallback? onDelete,
+    Widget Function(Widget body)? wrapDragBody,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
+    final body = Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
@@ -1732,6 +1744,17 @@ class _HomeState extends State<Home> {
                 ],
               ),
             ),
+          ],
+        );
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: wrapDragBody?.call(body) ?? body),
             if (onDelete != null)
               IconButton(
                 onPressed: onDelete,
