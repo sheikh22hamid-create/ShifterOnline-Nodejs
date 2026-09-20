@@ -488,30 +488,28 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Brand logo
-                Image.asset(
-                  'assets/logo1.png',
-                  height: 38,
-                  fit: BoxFit.contain,
-                  alignment: Alignment.centerLeft,
-                ),
-
-                const SizedBox(height: 16),
-
                 // Hero Section: Text + Badges (Left) & Mascot (Right)
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      flex: 5,
+                      flex: 4,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Brand logo above title
+                          Image.asset(
+                            'assets/logo1.png',
+                            height: 34,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.centerLeft,
+                          ),
+                          const SizedBox(height: 10),
                           const Text(
                             'Welcome to\nShifter Online 👋',
                             style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
-                              fontSize: 23,
+                              fontSize: 22,
                               color: Color(0xFF1A1A1A),
                               height: 1.25,
                             ),
@@ -521,7 +519,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                             'Anything you want,\nDelivered locally.',
                             style: TextStyle(
                               fontFamily: 'Gilroy_Medium',
-                              fontSize: 14,
+                              fontSize: 13,
                               color: Color(0xFF777777),
                               height: 1.4,
                             ),
@@ -535,12 +533,12 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
-                      flex: 4,
+                      flex: 5,
                       child: Image.asset(
                         'assets/delivery_mascot.jpg',
-                        height: 240,
+                        height: 265,
                         fit: BoxFit.contain,
                       ),
                     ),
