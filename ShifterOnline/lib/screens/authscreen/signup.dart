@@ -14,7 +14,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
-import '../../bottombar.dart';
 import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import 'signin.dart';
@@ -459,15 +458,20 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
               else
                 const SizedBox(width: 40),
               GestureDetector(
-                onTap: () => Get.offAll(() => const Bottombar()),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  child: Text(
-                    'Skip',
+                onTap: () => Get.offAll(() => SignIn()),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3EE),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFFFCDB8), width: 1),
+                  ),
+                  child: const Text(
+                    'Login',
                     style: TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 14,
-                      color: Color(0xFF666666),
+                      color: Color(0xFFFA4500),
                     ),
                   ),
                 ),
@@ -486,8 +490,8 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
               children: [
                 // Brand logo
                 Image.asset(
-                  'assets/HomeLogo.png',
-                  height: 42,
+                  'assets/logo1.png',
+                  height: 38,
                   fit: BoxFit.contain,
                   alignment: Alignment.centerLeft,
                 ),
@@ -504,27 +508,13 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Welcome to',
+                            'Welcome to\nShifter Online 👋',
                             style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
-                              fontSize: 26,
+                              fontSize: 23,
                               color: Color(0xFF1A1A1A),
-                              height: 1.2,
+                              height: 1.25,
                             ),
-                          ),
-                          Row(
-                            children: const [
-                              Text(
-                                'Shifter Online ',
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 26,
-                                  color: Color(0xFF1A1A1A),
-                                  height: 1.2,
-                                ),
-                              ),
-                              Text('👋', style: TextStyle(fontSize: 24)),
-                            ],
                           ),
                           const SizedBox(height: 8),
                           const Text(
@@ -548,13 +538,10 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                     const SizedBox(width: 10),
                     Expanded(
                       flex: 4,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset(
-                          'assets/delivery_mascot.jpg',
-                          height: 210,
-                          fit: BoxFit.contain,
-                        ),
+                      child: Image.asset(
+                        'assets/delivery_mascot.jpg',
+                        height: 240,
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ],
