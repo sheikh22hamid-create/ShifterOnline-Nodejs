@@ -153,10 +153,10 @@ async function login(req, res) {
 async function register(req, res) {
   try {
     const fname = String(req.body?.fname || "").trim();
-    const email = String(req.body?.email || "").trim();
+    const email = String(req.body?.email || "").trim();  // optional — empty string is acceptable
     const mobile = String(req.body?.mobile || "").trim();
     const ccode = String(req.body?.ccode || "").trim();
-    const password = String(req.body?.password || "").trim();
+    const password = String(req.body?.password || "").trim(); // OTP-based flow sends empty string
     const cityId = Number(req.body?.city_id || 0) || null;
     const deviceId = String(req.body?.device_id || "").trim();
     const fcmToken = String(req.body?.fcm_token || "").trim();
@@ -164,15 +164,20 @@ async function register(req, res) {
       req.body?.referral_code || req.body?.refferal_code || req.body?.reffer_code || req.body?.refer_code || "";
     const refferalCode = String(referCodeRaw).trim().toUpperCase();
 
-    if (!fname || !email || !mobile || !password) return fail(res, "Something Went Wrong!");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res, "Please enter a valid email address!");
+    // fname and mobile are always required; email and password are optional (OTP-based signup)
+    if (!fname || !mobile) return fail(res, "Please fill in all required fields!");
+    // Validate email format only when provided
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res, "Please enter a valid email address!");
     if (!/^[0-9]{6,15}$/.test(mobile)) return fail(res, "Please enter a valid mobile number!");
 
     const mobileTaken = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
     if (mobileTaken) return fail(res, "Mobile Number Already Used!");
 
-    const emailTaken = await prisma.tbl_user.findFirst({ where: { email } });
-    if (emailTaken) return fail(res, "Email Already Used!");
+    // Skip email-uniqueness check when email is not provided
+    if (email) {
+      const emailTaken = await prisma.tbl_user.findFirst({ where: { email } });
+      if (emailTaken) return fail(res, "Email Already Used!");
+    }
 
     let referrerId = 0;
     let referrerIsDriver = false;
