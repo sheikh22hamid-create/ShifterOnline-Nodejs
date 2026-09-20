@@ -356,467 +356,473 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // STEP 0 — Mobile Entry (reference left screen)
+   // ─────────────────────────────────────────────────────────────────────────────
+  // STEP 0 — Mobile Entry (Perfect UI & Fixed Scroll)
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildStep0MobileEntry() {
-    return Column(
-      children: [
-        // ── Orange Hero Section ──────────────────────────────────────────────
-        Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+    return SafeArea(
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        // viewInsets.bottom yahan use nahi kar rahe, Scaffold khud handle kar raha hai
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: Get.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
           ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Top row: back + logo
-                  Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Orange Hero Section ──────────────────────────────────────────────
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (widget.paymenttype != 'onboarding')
-                        GestureDetector(
-                          onTap: () => Get.back(),
-                          child: Container(
-                            width: 40,
-                            height: 40,
+                      // Top row: logo
+                      Row(
+                        children: [
+                          // Logo pill
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.25),
-                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.arrow_back_rounded,
-                                color: Colors.white, size: 20),
-                          ),
-                        )
-                      else
-                        const SizedBox(width: 40),
-                      const SizedBox(width: 12),
-                      // Logo pill
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: Image.asset(
-                                'assets/logo1.png',
-                                height: 26,
-                                width: 26,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
-                              children: const [
-                                Text(
-                                  'Shifter Online',
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Image.asset(
+                                    'assets/logo1.png',
+                                    height: 26,
+                                    width: 26,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Text(
+                                      'Shifter Online',
+                                      style: TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 13.5,
+                                        color: Color(0xFF1A1A1A),
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Delivery Made Simple',
+                                      style: TextStyle(
+                                        fontFamily: 'Gilroy_Medium',
+                                        fontSize: 8.5,
+                                        color: Color(0xFF777777),
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // Hero content: text left + mascot right
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // Left: text
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Enjoy Delivery\nexperience with\nShifter Online.',
                                   style: TextStyle(
                                     fontFamily: 'Gilroy_Bold',
-                                    fontSize: 13.5,
-                                    color: Color(0xFF1A1A1A),
-                                    height: 1.1,
+                                    fontSize: 22,
+                                    color: Colors.white,
+                                    height: 1.25,
                                   ),
                                 ),
-                                Text(
-                                  'Delivery Made Simple',
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Anything you want,\nDelivered locally.',
                                   style: TextStyle(
                                     fontFamily: 'Gilroy_Medium',
-                                    fontSize: 8.5,
-                                    color: Color(0xFF777777),
-                                    height: 1.1,
+                                    fontSize: 13,
+                                    color: Colors.white70,
+                                    height: 1.4,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Hero content: text left + mascot right
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // Left: text
-                      Expanded(
-                        flex: 5,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Enjoy Delivery\nexperience with\nShifter Online.',
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 22,
-                                color: Colors.white,
-                                height: 1.25,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Anything you want,\nDelivered locally.',
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 13,
-                                color: Colors.white70,
-                                height: 1.4,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Icon badges row
-                            Row(
-                              children: [
-                                _heroBadge(Icons.local_shipping_rounded, 'Fast'),
-                                const SizedBox(width: 12),
-                                _heroBadge(Icons.shield_outlined, 'Safe'),
-                                const SizedBox(width: 12),
-                                _heroBadge(Icons.location_on_outlined, 'Local'),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-                        ),
-                      ),
-                      // Right: mascot
-                      Expanded(
-                        flex: 4,
-                        child: ClipRRect(
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(16),
-                            topRight: Radius.circular(16),
-                          ),
-                          child: Image.asset(
-                            'assets/signin_hero_mascot.jpg',
-                            height: 200,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // ── White Card Section ───────────────────────────────────────────────
-        Expanded(
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(28),
-                topRight: Radius.circular(28),
-              ),
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Orange accent line
-                  Container(
-                    width: 36,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFA4500),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Heading
-                  const Text(
-                    'Welcome Back 👋',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 26,
-                      color: Color(0xFF1A1A1A),
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Sign in to continue to Shifter Online',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Medium',
-                      fontSize: 13.5,
-                      color: Color(0xFF888888),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-
-                  // Mobile Number label
-                  const Text(
-                    'Mobile Number',
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 13.5,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Phone input
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFBFBFB),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _numberError != null
-                            ? Colors.red.shade400
-                            : const Color(0xFFE2E2E2),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                          child: Row(
-                            children: const [
-                              Text('🇮🇳', style: TextStyle(fontSize: 18)),
-                              SizedBox(width: 6),
-                              Text(
-                                '+91',
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 15,
-                                  color: Color(0xFF1A1A1A),
+                                const SizedBox(height: 16),
+                                // Icon badges row
+                                Row(
+                                  children: [
+                                    _heroBadge(Icons.local_shipping_rounded, 'Fast'),
+                                    const SizedBox(width: 12),
+                                    _heroBadge(Icons.shield_outlined, 'Safe'),
+                                    const SizedBox(width: 12),
+                                    _heroBadge(Icons.location_on_outlined, 'Local'),
+                                  ],
                                 ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(Icons.keyboard_arrow_down_rounded,
-                                  size: 18, color: Color(0xFF888888)),
-                            ],
-                          ),
-                        ),
-                        Container(width: 1, height: 24, color: const Color(0xFFE0E0E0)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: number,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            maxLength: 10,
-                            onChanged: (_) {
-                              if (_numberError != null) {
-                                setState(() => _numberError = null);
-                              }
-                            },
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 15,
-                              color: Color(0xFF1A1A1A),
-                            ),
-                            decoration: const InputDecoration(
-                              hintText: 'Enter mobile number',
-                              hintStyle: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 14,
-                                color: Color(0xFFBBBBBB),
-                              ),
-                              border: InputBorder.none,
-                              counterText: '',
-                              contentPadding: EdgeInsets.symmetric(vertical: 14),
+                                const SizedBox(height: 20),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                          // Right: mascot
+                          Expanded(
+                            flex: 4,
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(16),
+                                topRight: Radius.circular(16),
+                              ),
+                              child: Image.asset(
+                                'assets/signin_hero_mascot.jpg',
+                                height: Get.height * 0.22, // 👈 Dynamic height for perfect fit
+                                fit: BoxFit.cover,
+                                alignment: Alignment.topCenter,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
+                ),
+              ),
 
-                  if (_numberError != null) ...[
-                    const SizedBox(height: 5),
-                    Text(
-                      _numberError!,
+              // ── White Card Section ───────────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
+                  ),
+                  boxShadow: [ // 👈 Elevated premium shadow
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 24,
+                  bottom: 40,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Orange accent line
+                    Container(
+                      width: 36,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFA4500),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Heading
+                    const Text(
+                      'Welcome Back 👋',
+                      style: TextStyle(
+                        fontFamily: 'Gilroy_Bold',
+                        fontSize: 26,
+                        color: Color(0xFF1A1A1A),
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Sign in to continue to Shifter Online',
                       style: TextStyle(
                         fontFamily: 'Gilroy_Medium',
-                        fontSize: 12,
-                        color: Colors.red.shade500,
+                        fontSize: 13.5,
+                        color: Color(0xFF888888),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+
+                    // Mobile Number label
+                    const Text(
+                      'Mobile Number',
+                      style: TextStyle(
+                        fontFamily: 'Gilroy_Bold',
+                        fontSize: 13.5,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Phone input
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFBFBFB),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: _numberError != null
+                              ? Colors.red.shade400
+                              : const Color(0xFFE2E2E2),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            child: Row(
+                              children: const [
+                                Text('🇮🇳', style: TextStyle(fontSize: 18)),
+                                SizedBox(width: 6),
+                                Text(
+                                  '+91',
+                                  style: TextStyle(
+                                    fontFamily: 'Gilroy_Bold',
+                                    fontSize: 15,
+                                    color: Color(0xFF1A1A1A),
+                                  ),
+                                ),
+                                SizedBox(width: 4),
+                                Icon(Icons.keyboard_arrow_down_rounded,
+                                    size: 18, color: Color(0xFF888888)),
+                              ],
+                            ),
+                          ),
+                          Container(width: 1, height: 24, color: const Color(0xFFE0E0E0)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: number,
+                              autofocus: true, // 👈 Auto-open keyboard
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              maxLength: 10,
+                              onChanged: (_) {
+                                setState(() { // 👈 setState to update button color
+                                  if (_numberError != null) {
+                                    _numberError = null;
+                                  }
+                                });
+                              },
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 15,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: 'Enter mobile number',
+                                hintStyle: TextStyle(
+                                  fontFamily: 'Gilroy_Medium',
+                                  fontSize: 14,
+                                  color: Color(0xFFBBBBBB),
+                                ),
+                                border: InputBorder.none,
+                                counterText: '',
+                                contentPadding: EdgeInsets.symmetric(vertical: 14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    if (_numberError != null) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        _numberError!,
+                        style: TextStyle(
+                          fontFamily: 'Gilroy_Medium',
+                          fontSize: 12,
+                          color: Colors.red.shade500,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    // Continue button (Smart Disabled State)
+                    GestureDetector(
+                      onTap: (number.text.length == 10 && !_isSendingOtp) ? _handleContinue : null,
+                      child: Container(
+                        width: double.infinity,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          // 👈 If 10 digits, Orange gradient. Else, Grey gradient.
+                          gradient: number.text.length == 10
+                              ? const LinearGradient(
+                                  colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                )
+                              : const LinearGradient(
+                                  colors: [Color(0xFFE0E0E0), Color(0xFFCCCCCC)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: number.text.length == 10 // 👈 Shadow only when active
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFFFF642F).withOpacity(0.35),
+                                    blurRadius: 14,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: Center(
+                          child: _isSendingOtp
+                              ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Text(
+                                      'Continue',
+                                      style: TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Icon(Icons.arrow_forward_rounded,
+                                        size: 18, color: Colors.white),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Terms disclaimer
+                    Center(
+                      child: RichText(
+                        textAlign: TextAlign.center,
+                        text: TextSpan(
+                          text: 'By continuing, you agree to our ',
+                          style: const TextStyle(
+                            fontFamily: 'Gilroy_Medium',
+                            fontSize: 11.5,
+                            color: Color(0xFF888888),
+                          ),
+                          children: [
+                            TextSpan(
+                              text: 'Terms and Conditions',
+                              style: const TextStyle(
+                                color: Color(0xFFFA4500),
+                                fontFamily: 'Gilroy_Bold',
+                                decoration: TextDecoration.underline,
+                                decorationColor: Color(0xFFFA4500),
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () => _showWebViewDialog(
+                                      'https://shifteronline.com/terms_conditions.php',
+                                      'Terms and Conditions'),
+                            ),
+                            const TextSpan(text: ' and '),
+                            TextSpan(
+                              text: 'Privacy Policy',
+                              style: const TextStyle(
+                                color: Color(0xFFFA4500),
+                                fontFamily: 'Gilroy_Bold',
+                                decoration: TextDecoration.underline,
+                                decorationColor: Color(0xFFFA4500),
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () => _showWebViewDialog(
+                                      'https://shifteronline.com/privacy_policy.php',
+                                      'Privacy Policy'),
+                            ),
+                            const TextSpan(text: '.'),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    // OR divider
+                    Row(
+                      children: [
+                        const Expanded(child: Divider(color: Color(0xFFE8E8E8), thickness: 1)),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            'OR',
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 12,
+                              color: Color(0xFFAAAAAA),
+                            ),
+                          ),
+                        ),
+                        const Expanded(child: Divider(color: Color(0xFFE8E8E8), thickness: 1)),
+                      ],
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Create Account link
+                    Center(
+                      child: RichText(
+                        text: TextSpan(
+                          text: 'New to Shifter Online? ',
+                          style: const TextStyle(
+                            fontFamily: 'Gilroy_Medium',
+                            fontSize: 14,
+                            color: Color(0xFF666666),
+                          ),
+                          children: [
+                            TextSpan(
+                              text: 'Create Account',
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 14,
+                                color: Color(0xFFFA4500),
+                              ),
+                              recognizer: TapGestureRecognizer()
+                                ..onTap = () => Get.to(() => SignUp(type: widget.paymenttype)),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
-
-                  const SizedBox(height: 20),
-
-                  // Continue button
-                  GestureDetector(
-                    onTap: _isSendingOtp ? null : _handleContinue,
-                    child: Container(
-                      width: double.infinity,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFFF642F).withOpacity(0.35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: _isSendingOtp
-                            ? const SpinKitThreeBounce(color: Colors.white, size: 20)
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Text(
-                                    'Continue',
-                                    style: TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 16,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Icon(Icons.arrow_forward_rounded,
-                                      size: 18, color: Colors.white),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // Terms disclaimer
-                  Center(
-                    child: RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        text: 'By continuing, you agree to our ',
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: Color(0xFF888888),
-                        ),
-                        children: [
-                          TextSpan(
-                            text: 'Terms and Conditions',
-                            style: const TextStyle(
-                              color: Color(0xFFFA4500),
-                              fontFamily: 'Gilroy_Bold',
-                              decoration: TextDecoration.underline,
-                              decorationColor: Color(0xFFFA4500),
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () => _showWebViewDialog(
-                                    'https://shifteronline.com/terms_conditions.php',
-                                    'Terms and Conditions'),
-                          ),
-                          const TextSpan(text: ' and '),
-                          TextSpan(
-                            text: 'Privacy Policy',
-                            style: const TextStyle(
-                              color: Color(0xFFFA4500),
-                              fontFamily: 'Gilroy_Bold',
-                              decoration: TextDecoration.underline,
-                              decorationColor: Color(0xFFFA4500),
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () => _showWebViewDialog(
-                                    'https://shifteronline.com/privacy_policy.php',
-                                    'Privacy Policy'),
-                          ),
-                          const TextSpan(text: '.'),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 22),
-
-                  // OR divider
-                  Row(
-                    children: [
-                      const Expanded(child: Divider(color: Color(0xFFE8E8E8), thickness: 1)),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          'OR',
-                          style: TextStyle(
-                            fontFamily: 'Gilroy_Bold',
-                            fontSize: 12,
-                            color: Color(0xFFAAAAAA),
-                          ),
-                        ),
-                      ),
-                      const Expanded(child: Divider(color: Color(0xFFE8E8E8), thickness: 1)),
-                    ],
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // Create Account link
-                  Center(
-                    child: RichText(
-                      text: TextSpan(
-                        text: 'New to Shifter Online? ',
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 14,
-                          color: Color(0xFF666666),
-                        ),
-                        children: [
-                          TextSpan(
-                            text: 'Create Account',
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              color: Color(0xFFFA4500),
-                            ),
-                            recognizer: TapGestureRecognizer()
-                              ..onTap = () => Get.to(() => SignUp(type: widget.paymenttype)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
