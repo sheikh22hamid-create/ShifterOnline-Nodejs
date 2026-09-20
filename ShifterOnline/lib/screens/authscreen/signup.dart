@@ -484,57 +484,12 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Brand logo + tagline
-                Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6B35), Color(0xFFFA4500)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          'S',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Gilroy_Bold',
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'ShifterOnline',
-                          style: TextStyle(
-                            fontFamily: 'Gilroy_Bold',
-                            fontSize: 18,
-                            color: Color(0xFF1A1A1A),
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        Text(
-                          'Delivery Made Simple',
-                          style: TextStyle(
-                            fontFamily: 'Gilroy_Medium',
-                            fontSize: 10.5,
-                            color: Color(0xFF888888),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                // Brand logo
+                Image.asset(
+                  'assets/HomeLogo.png',
+                  height: 42,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
                 ),
 
                 const SizedBox(height: 16),
@@ -552,7 +507,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                             'Welcome to',
                             style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
-                              fontSize: 22,
+                              fontSize: 26,
                               color: Color(0xFF1A1A1A),
                               height: 1.2,
                             ),
@@ -563,41 +518,41 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                                 'Shifter Online ',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
-                                  fontSize: 22,
+                                  fontSize: 26,
                                   color: Color(0xFF1A1A1A),
                                   height: 1.2,
                                 ),
                               ),
-                              Text('👋', style: TextStyle(fontSize: 20)),
+                              Text('👋', style: TextStyle(fontSize: 24)),
                             ],
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 8),
                           const Text(
                             'Anything you want,\nDelivered locally.',
                             style: TextStyle(
                               fontFamily: 'Gilroy_Medium',
-                              fontSize: 13,
+                              fontSize: 14,
                               color: Color(0xFF777777),
-                              height: 1.35,
+                              height: 1.4,
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           _featureBadge(Icons.local_shipping_rounded, 'Fast & Reliable'),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           _featureBadge(Icons.shield_outlined, 'Safe & Secure'),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           _featureBadge(Icons.location_on_outlined, 'Your Local Partner'),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       flex: 4,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: Image.asset(
                           'assets/delivery_mascot.jpg',
-                          height: 185,
+                          height: 210,
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -605,7 +560,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                   ],
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // Elevated Input Card
                 Container(
