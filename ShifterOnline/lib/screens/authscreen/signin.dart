@@ -27,8 +27,6 @@ import '../../utils/customewidget/customwidgets.dart';
 import '../../utils/node_socket_manager.dart';
 import 'signup.dart';
 
-final getdata = GetStorage();
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SignIn — Modern OTP-based login (2-step: Mobile → Verify OTP)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,6 +43,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
   late final PageController _pageController;
   int _currentStep = 0; // 0 = Mobile entry, 1 = OTP verification
   ColorNotifier notifier = ColorNotifier();
+  final getdata = GetStorage();
 
   // ── Controllers ─────────────────────────────────────────────────────────────
   final TextEditingController number = TextEditingController();
