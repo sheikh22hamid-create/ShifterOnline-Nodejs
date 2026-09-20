@@ -15,6 +15,7 @@ router.post("/mobile-check", customerAuthController.mobileCheck);
 router.post("/send-otp", customerAuthController.sendOtp);
 router.post("/verify-otp", customerAuthController.verifyOtp);
 router.post("/login", customerAuthController.login);
+router.post("/login-by-otp", customerAuthController.loginByOtp);
 router.post("/register", customerAuthController.register);
 router.post("/forgot-password", customerAuthController.forgotPassword);
 router.post("/delete-account", customerAuthController.deleteAccount);

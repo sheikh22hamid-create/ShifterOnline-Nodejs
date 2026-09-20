@@ -149,7 +149,54 @@ async function login(req, res) {
     logger.error("customerAuthController.login failed:", err);
     return fail(res, "Internal server error", 500);
   }
+} // end login
+
+// --- OTP-based login (for existing users: verifyOtp → loginByOtp) ---
+async function loginByOtp(req, res) {
+  try {
+    const mobile = String(req.body?.mobile || "").trim();
+    const ccode  = String(req.body?.ccode  || "+91").trim();
+    const deviceId  = String(req.body?.device_id  || "").trim();
+    const fcmToken  = String(req.body?.fcm_token   || "").trim();
+    if (!mobile) return fail(res, "Something Went Wrong!");
+    if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
+
+    const user = await prisma.tbl_user.findFirst({
+      where: { mobile: Number(mobile), status: 1 },
+    });
+    if (!user) return fail(res, "No account found. Please create an account first!");
+
+    const data = {};
+    if (fcmToken) data.fcm_token = fcmToken;
+    if (deviceId) data.device_id = deviceId;
+
+    const [, , addressCount] = await Promise.all([
+      Object.keys(data).length ? prisma.tbl_user.update({ where: { id: user.id }, data }) : Promise.resolve(),
+      deviceSessionService.registerDevice({
+        uid: user.id,
+        userType: "customer",
+        deviceId,
+        fcmToken,
+        platform: req.body?.platform,
+        deviceName: req.body?.device_name,
+        appVersion: req.body?.app_version,
+      }),
+      prisma.tbl_address.count({ where: { uid: user.id } }),
+    ]);
+
+    return res.status(200).json({
+      UserLogin: { ...user, ...data, wallet: user.wallet?.toString?.() ?? user.wallet },
+      AddressExist: addressCount > 0,
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Login successfully!",
+    });
+  } catch (err) {
+    logger.error("customerAuthController.loginByOtp failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
 }
+
 
 // --- reg_user.php ---
 async function register(req, res) {
@@ -386,6 +433,7 @@ module.exports = {
   sendOtp,
   verifyOtp,
   login,
+  loginByOtp,
   register,
   forgotPassword,
   deleteAccount,
