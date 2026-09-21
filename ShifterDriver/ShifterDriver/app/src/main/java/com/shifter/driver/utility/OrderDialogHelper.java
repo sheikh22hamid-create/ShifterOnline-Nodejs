@@ -162,6 +162,15 @@ public class OrderDialogHelper {
             }
         }
 
+        String scheduleDateTime = getMapValue(orderData, "schedule_date_time", getMapValue(orderData, "order_date", null));
+        if (scheduleDateTime != null && !scheduleDateTime.isEmpty()) {
+            android.widget.TextView txtSubtitle = view.findViewById(com.shifter.driver.R.id.txt_header_subtitle);
+            if (txtSubtitle != null) {
+                txtSubtitle.setText("Scheduled pickup: " + formatScheduleLabel(scheduleDateTime));
+                txtSubtitle.setVisibility(android.view.View.VISIBLE);
+            }
+        }
+
         // Auto-reject timer (Dynamic from popup_duration in notification, fallback to home_data.php, default 10s)
         int timerSeconds = isDirectAssign ? 60 : 10;
         try {
@@ -263,6 +272,26 @@ public class OrderDialogHelper {
                 currentOrderId = null;
             }
         });
+    }
+
+    /**
+     * schedule_date_time arrives as an ISO-8601 string (see
+     * ShifterOnline's select_vehicle.dart DateTime.toIso8601String() and
+     * backend's Date.parse() usage) — this only needs to be
+     * human-readable in the popup, not machine-parsed again anywhere in
+     * this app, so a lenient best-effort format is fine: fall back to the
+     * raw string if parsing fails rather than showing nothing.
+     */
+    private static String formatScheduleLabel(String isoDateTime) {
+        try {
+            java.text.SimpleDateFormat iso = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+            iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            java.util.Date parsed = iso.parse(isoDateTime.length() >= 19 ? isoDateTime.substring(0, 19) : isoDateTime);
+            java.text.SimpleDateFormat display = new java.text.SimpleDateFormat("EEE, d MMM 'at' h:mm a", java.util.Locale.US);
+            return display.format(parsed);
+        } catch (Exception e) {
+            return isoDateTime;
+        }
     }
 
     private static String formatStops(String finalDrop, String rawStops) {
