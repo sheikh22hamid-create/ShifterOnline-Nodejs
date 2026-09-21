@@ -240,7 +240,23 @@ async function buyMapInfo(req, res) {
     if (requestedUid && row.uid !== requestedUid) return fail(res, "Something Went Wrong!");
 
     let rider = null;
-    if (row.rid) rider = await prisma.tbl_rider.findUnique({ where: { id: row.rid } });
+    let riderStar = null;
+    let totalTrips = 0;
+    if (row.rid) {
+      rider = await prisma.tbl_rider.findUnique({ where: { id: row.rid } });
+      if (rider) {
+        const ratingAgg = await prisma.pkg_order.aggregate({
+          where: { rid: rider.id, cust_rate: { gt: 0 } },
+          _avg: { cust_rate: true },
+        });
+        riderStar = ratingAgg._avg.cust_rate;
+        if (typeof prisma.pkg_order.count === "function") {
+          totalTrips = await prisma.pkg_order.count({
+            where: { rid: rider.id, o_status: "Completed" },
+          });
+        }
+      }
+    }
 
     const [restMsg, riderMsgTemplate] = BUY_FLOW_STEPS[row.flow_id] || ["", ""];
     const riderMsg = row.flow_id === 4 ? row.comment_reject || "" : riderMsgTemplate || "";
@@ -251,6 +267,10 @@ async function buyMapInfo(req, res) {
       rider_id: rider?.id || "",
       rider_name: rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "",
       rider_img: rider?.profile_picture || "",
+      rider_star: riderStar == null ? null : Number(riderStar).toFixed(1),
+      total_trips: totalTrips,
+      order_count: totalTrips,
+      vehicle_no: rider?.vehicle_no || "",
       rider_lats: rider?.rlats ? Number(rider.rlats) : 0.0,
       rider_longs: rider?.rlongs ? Number(rider.rlongs) : 0.0,
       rider_mobile: rider?.fmobile || "",

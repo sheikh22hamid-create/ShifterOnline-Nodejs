@@ -911,8 +911,12 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
           requireIo().to(`driver_${riderId}`).emit("order:dismiss", {
             order_id: String(orderId),
             reason: "timeout",
+            package_id: String(packageId),
+            expires_at: String(armedAt + POPUP_TIMEOUT_MS),
           });
-          await pushNotifier.notifyDriverDismiss(driver.fcm_token, orderId, "timeout");
+          await pushNotifier.notifyDriverDismiss(driver.fcm_token, orderId, "timeout", {
+            package_id: String(packageId), expires_at: String(armedAt + POPUP_TIMEOUT_MS),
+          });
         })
       );
 

@@ -462,12 +462,19 @@ async function getOrderDetails(req, res) {
     // Customer-facing average, not this one order's own cust_rate (that's
     // this order's own not-yet-submitted rating, always 0 at this point).
     let riderStar = null;
+    let totalTrips = 0;
     if (rider) {
       const ratingAgg = await prisma.pkg_order.aggregate({
         where: { rid: rider.id, cust_rate: { gt: 0 } },
         _avg: { cust_rate: true },
       });
       riderStar = ratingAgg._avg.cust_rate;
+
+      if (typeof prisma.pkg_order.count === "function") {
+        totalTrips = await prisma.pkg_order.count({
+          where: { rid: rider.id, o_status: "Completed" },
+        });
+      }
     }
 
     // The Prisma enum's JS member name (On_Route) differs from the space
@@ -509,6 +516,8 @@ async function getOrderDetails(req, res) {
           rider_mobile: rider ? rider.fmobile : null,
           rider_img: rider ? rider.profile_picture : null,
           rider_star: riderStar == null ? null : Number(riderStar).toFixed(1),
+          total_trips: totalTrips,
+          order_count: totalTrips,
           vehicle_no: rider ? rider.vehicle_no : null,
           rider_lats: rider ? rider.rlats : null,
           rider_longs: rider ? rider.rlongs : null,

@@ -18,7 +18,7 @@ async function notifyDriverOrderRequest(fcmToken, payload) {
   );
 }
 
-async function notifyDriverDismiss(fcmToken, orderId, reason) {
+async function notifyDriverDismiss(fcmToken, orderId, reason, offer = {}) {
   // A backgrounded/killed driver app has no other way to learn its offer is
   // gone (Socket.IO only reaches an active foreground app), so this must
   // actually reach the device. It's sent as a real (non-data-only)
@@ -40,7 +40,7 @@ async function notifyDriverDismiss(fcmToken, orderId, reason) {
     fcmToken,
     "Order No Longer Available",
     reasonText,
-    { type: "order_dismiss", order_id: String(orderId), reason: String(reason) },
+    stringifyPayload({ ...offer, type: "order_dismiss", order_id: String(orderId), reason: String(reason) }),
     "order_dismiss_channel_v1"
   );
 }

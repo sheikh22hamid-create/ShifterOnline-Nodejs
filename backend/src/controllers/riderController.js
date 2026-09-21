@@ -142,7 +142,15 @@ async function packageListForDriver(req, res) {
     const packages = await prisma.tbl_package.findMany({
       where: { cat_id: category.id, status: 1 },
       orderBy: { sort_order: "asc" },
-      select: { id: true, title: true, driver_title: true, driver_detail_image: true },
+      select: {
+        id: true,
+        title: true,
+        driver_title: true,
+        driver_detail_image: true,
+        user_detail_image: true,
+        per_km_charge: true,
+        min_charge: true,
+      },
     });
 
     const enabledRows = await prisma.tbl_rider_delivery_type.findMany({
@@ -152,8 +160,15 @@ async function packageListForDriver(req, res) {
 
     const packageData = packages.map((p) => ({
       id: String(p.id),
-      title: p.driver_title || p.title,
-      driver_detail_image: p.driver_detail_image || "",
+      title: p.title || p.driver_title || "",
+      driver_title: p.driver_title || "",
+      user_title: p.user_title || "",
+      driver_detail_image: p.driver_detail_image || p.user_detail_image || "",
+      user_detail_image: p.user_detail_image || "",
+      per_km_charge: p.per_km_charge != null ? String(p.per_km_charge) : "0",
+      min_charge: p.min_charge != null ? String(p.min_charge) : "0",
+      rate: p.per_km_charge != null ? String(p.per_km_charge) : "0",
+      km: p.per_km_charge != null ? String(p.per_km_charge) : "0",
       driver_active: enabledPackageIds.has(p.id) ? "1" : "0",
       status: enabledPackageIds.has(p.id) ? "1" : "0",
     }));

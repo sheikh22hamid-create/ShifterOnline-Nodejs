@@ -1,1109 +1,1228 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/refares"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
-
-
-    <RelativeLayout
+    android:fitsSystemWindows="true"
+    android:background="@color/home_canvas">
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:overScrollMode="never">
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="250dp"
-            android:orientation="vertical">
-
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/lvl_tit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="10dp"
-            android:gravity="center_vertical|start"
-            android:orientation="horizontal"
-            android:paddingVertical="6dp">
-
-            <!-- Left spacing -->
-            <View
-                android:visibility="gone"
-                android:layout_width="12dp"
-                android:layout_height="0dp" />
-
-            <!-- App Logo -->
-            <ImageView
-                android:id="@+id/img_back"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@drawable/logo" />
-
-            <!-- App Name -->
-            <TextView
-                android:visibility="visible"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="2dp"
-                android:layout_weight="1"
-                android:text="@string/app_name2"
-                android:textColor="@color/black"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <!-- Volume Control Button -->
-            <ImageButton
-                android:id="@+id/btn_volume_control"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="5dp"
-                android:background="@drawable/rounded_button"
-                android:contentDescription="Volume Control"
-                android:padding="10dp"
-                android:scaleType="fitCenter"
-                android:src="@drawable/ic_volume" />
-
-            <!-- Swipe Button: Swipe left→right to toggle Online/Offline -->
-            <FrameLayout
-                android:id="@+id/swipe_btn_container"
-                android:layout_width="185dp"
-                android:layout_height="54dp"
-                android:layout_marginEnd="4dp"
-                android:background="@drawable/swipe_btn_go_online_bg">
-
-                <!-- Label inside button -->
-                <TextView
-                    android:id="@+id/txt_stats"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:gravity="center"
-                    android:paddingStart="62dp"
-                    android:paddingEnd="8dp"
-                    android:text="GO ONLINE"
-                    android:textColor="@color/white"
-                    android:textSize="13sp"
-                    android:textStyle="bold" />
-
-                <!-- Draggable Thumb Circle -->
-                <FrameLayout
-                    android:id="@+id/swipe_thumb"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:layout_gravity="start|center_vertical"
-                    android:layout_margin="2dp"
-                    android:background="@drawable/swipe_thumb_white_circle"
-                    android:elevation="6dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <!-- Double arrow ">>" text inside circle -->
-                    <TextView
-                        android:id="@+id/txt_thumb_arrows"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="center"
-                        android:text="»"
-                        android:textColor="#2ECC71"
-                        android:textSize="22sp"
-                        android:textStyle="bold" />
-
-                </FrameLayout>
-
-            </FrameLayout>
-        </LinearLayout>
-
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/refares"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_below="@+id/lvl_tit">
-
-            <ScrollView
+            android:orientation="vertical"
+            android:paddingBottom="24dp">
+            <!-- ================= TOP HEADER ================= -->
+            <RelativeLayout
+                android:id="@+id/layout_header_bar"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:fillViewport="true">
-
+                android:layout_height="wrap_content"
+                android:paddingStart="16dp"
+                android:paddingTop="16dp"
+                android:paddingEnd="16dp"
+                android:paddingBottom="12dp">
+                <!-- Left: Shifter Partner Logo & Title -->
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:orientation="vertical">
-
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:layout_toStartOf="@id/home_header_actions">
+                    <ImageView
+                        android:id="@+id/img_logo"
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:contentDescription="Shifter Partner Logo"
+                        android:src="@drawable/logo" />
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
                         android:orientation="vertical">
-
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:layout_marginLeft="15dp"
-                            android:orientation="vertical">
-
-
-                            <TextView
-                                android:id="@+id/txt_title"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="5dp"
-                                android:paddingLeft="5dp"
-
-                                android:text="@string/welcome_partner"
-                                android:textColor="@color/black"
-                                android:textSize="18dp"
-
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:paddingLeft="5dp"
-                                android:text="@string/user_enjoy_msg"
-                                android:textColor="@color/gray2"
-                                android:textSize="12dp" />
-                        </LinearLayout>
-
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="10dp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Shifter"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Partner"
+                            android:textColor="@color/shifter_orange"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
                     </LinearLayout>
-
-                    <!-- ===== MONTHLY DEDICATED DRIVER CARDS ===== -->
-                    <include
-                        android:id="@+id/inc_monthly_duty_card"
-                        layout="@layout/layout_monthly_duty_card"
-                        android:visibility="gone" />
-
-                    <include
-                        android:id="@+id/inc_queued_orders_drawer"
-                        layout="@layout/layout_queued_orders_drawer"
-                        android:visibility="gone" />
-
-
-                    <!-- ===== How To Use Button ===== -->
-                    <LinearLayout
-                        android:id="@+id/btn_how_to_use"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginHorizontal="10dp"
-                        android:layout_marginTop="5dp"
-                        android:layout_marginBottom="10dp"
-                        android:background="@drawable/rounded_button_youtube"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:padding="14dp"
+                </LinearLayout>
+                <!-- Right: Notification, Volume, Profile Avatar -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:id="@+id/home_header_actions">
+                    <!-- Volume Control Button -->
+                    <ImageButton
+                        android:id="@+id/btn_volume_control"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_circle_light"
+                        android:contentDescription="@string/home_volume_description"
+                        android:padding="8dp"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_volume"
+                        app:tint="@color/driver_icon_tint" />
+                    <!-- Notification Button with Badge -->
+                    <FrameLayout
+                        android:id="@+id/btn_notification"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_marginEnd="10dp"
+                        android:background="@drawable/bg_circle_light"
                         android:clickable="true"
                         android:focusable="true"
-                        android:visibility="gone">
-
+                        android:foreground="?attr/selectableItemBackground"
+                        android:contentDescription="@string/home_notifications_description">
                         <ImageView
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:src="@drawable/ic_youtube_play"
-                            android:layout_marginEnd="12dp" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Training video"
-                                android:textColor="@color/white"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Button will removed after first 3 rides"
-                                android:textColor="#FFEBEE"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/arow_right"
-                            app:tint="@color/white" />
-
-                    </LinearLayout>
-
-                    <!-- Delivery Type Selection Section -->
-                    <LinearLayout
-                        android:id="@+id/card_delivery_types_section"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_margin="10dp"
-                        android:background="@drawable/box_boder2"
-                        android:orientation="vertical"
-                        android:padding="10dp">
-
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_bell_notification"
+                            app:tint="@color/driver_icon_tint" />
                         <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/select_delivery_types"
-                            android:textColor="@color/black"
-                            android:textSize="16dp"
+                            android:id="@+id/badge_notification_count"
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:layout_gravity="top|end"
+                            android:layout_marginTop="2dp"
+                            android:layout_marginEnd="2dp"
+                            android:background="@drawable/bg_circle_orange"
+                            android:gravity="center"
+                            android:textColor="@color/white"
+                            android:textSize="12sp"
                             android:textStyle="bold"
-                            android:paddingBottom="10dp" />
-
-                        <LinearLayout
-                            android:id="@+id/delivery_types_container"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="vertical">
-
-                            <!-- Delivery type items will be added dynamically here -->
-
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                    <!-- ===== Custom Orders Button ===== -->
+                            android:visibility="gone"
+                            tools:text="3"
+                            tools:visibility="visible" />
+                    </FrameLayout>
+                    <!-- Driver Profile Avatar with Presence Indicator -->
+                    <RelativeLayout
+                        android:id="@+id/btn_profile_avatar"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:contentDescription="@string/home_profile_description">
+                        <de.hdodenhof.circleimageview.CircleImageView
+                            android:id="@+id/img_driver_avatar"
+                            android:layout_width="38dp"
+                            android:layout_height="38dp"
+                            android:src="@drawable/user"
+                            app:civ_border_color="@color/white"
+                            app:civ_border_width="1.5dp"
+                            android:layout_centerInParent="true" />
+                        <View
+                            android:id="@+id/view_avatar_presence"
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:layout_alignParentEnd="true"
+                            android:layout_alignParentBottom="true"
+                            android:background="@drawable/circle"
+                            android:backgroundTint="@color/status_online_green" />
+                    </RelativeLayout>
+                </LinearLayout>
+            </RelativeLayout>
+            <!-- ================= GREETING & STATUS CONTROL ROW ================= -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="20dp"
+                android:gravity="start"
+                android:orientation="vertical">
+                <!-- Left: Greeting and Motivational Subtitle -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <TextView
+                        android:id="@+id/txt_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:text="Good evening, Partner 👋"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="24sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium" />
+                    <TextView
+                        android:id="@+id/txt_greeting_subtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/home_day_overview"
+                        android:textColor="@color/home_secondary"
+                        android:textSize="14sp" />
+                </LinearLayout>
+                <!-- Right: Interactive Online/Offline Animated Status Control -->
+                <FrameLayout
+                    android:id="@+id/btn_online_status_control"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="0dp"
+                    android:background="@drawable/bg_status_offline_pill"
+                    android:clickable="true"
+                    android:elevation="0dp"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:layout_marginTop="16dp"
+                    android:minHeight="64dp">
+                    <!-- STATE 1: OFFLINE [ ⏻  GO ONLINE  → ] -->
                     <LinearLayout
-                        android:visibility="gone"
-                        android:id="@+id/btn_custom_orders"
+                        android:id="@+id/layout_state_offline"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_margin="10dp"
-                        android:background="@drawable/rounded_button"
+                        android:gravity="center"
                         android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:padding="14dp"
-                        android:clickable="true"
-                        android:focusable="true">
-
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:visibility="visible"
+                        android:layout_gravity="center"
+                        android:minHeight="48dp">
                         <ImageView
-                            android:layout_width="32dp"
-                            android:layout_height="32dp"
-                            android:src="@drawable/ic_dollar"
-                            android:tint="@color/white"
-                            android:layout_marginEnd="12dp" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:src="@drawable/ic_power_icon"
+                            app:tint="@color/shifter_orange" />
+                        <TextView
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Custom Orders"
-                                android:textColor="@color/white"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="View &amp; bid on custom delivery requests"
-                                android:textColor="#DDEEFF"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
+                            android:layout_marginStart="8dp"
+                            android:layout_marginEnd="8dp"
+                            android:text="@string/home_go_online"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
                         <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/arow_right"
+                            app:tint="@color/shifter_orange" />
+                    </LinearLayout>
+                    <!-- STATE 2: CONNECTING [ ◌  Going Online... ] -->
+                    <LinearLayout
+                        android:id="@+id/layout_state_connecting"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:visibility="gone"
+                        android:layout_gravity="center"
+                        android:minHeight="48dp">
+                        <ProgressBar
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:indeterminate="true"
+                            android:indeterminateTint="@color/shifter_orange" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="Going Online..."
+                            android:textColor="@color/shifter_orange_dark"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                    <!-- STATE 2.5: ALMOST THERE [ ✓  Almost there... ] -->
+                    <LinearLayout
+                        android:id="@+id/layout_state_almost_there"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:visibility="gone"
+                        android:layout_gravity="center"
+                        android:minHeight="48dp">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_check"
+                            app:tint="@color/status_online_green" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:text="Almost there..."
+                            android:textColor="@color/status_online_green_dark"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                    <!-- STATE 3: ONLINE [ 🟢  You're Online \n Accepting delivery orders ] -->
+                    <LinearLayout
+                        android:id="@+id/layout_state_online"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingStart="2dp"
+                        android:paddingEnd="4dp"
+                        android:visibility="gone"
+                        android:layout_gravity="center"
+                        android:minHeight="48dp">
+                        <!-- Breathing Pulse Dot Container -->
+                        <FrameLayout
                             android:layout_width="24dp"
                             android:layout_height="24dp"
-                            android:src="@drawable/arow_right"
-                            android:tint="@color/white" />
-
+                            android:layout_marginEnd="6dp">
+                            <View
+                                android:id="@+id/view_online_pulse"
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_gravity="center"
+                                android:background="@drawable/bg_pulse_circle" />
+                            <View
+                                android:layout_width="10dp"
+                                android:layout_height="10dp"
+                                android:layout_gravity="center"
+                                android:background="@drawable/circle"
+                                android:backgroundTint="@color/status_online_green" />
+                        </FrameLayout>
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="You're Online"
+                                android:textColor="@color/status_online_green_dark"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/home_online_hint"
+                                android:textColor="@color/home_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
                     </LinearLayout>
-
+                    <!-- STATE 4: TURNING OFFLINE [ ⏹  Going Offline... ] -->
                     <LinearLayout
+                        android:id="@+id/layout_state_disconnecting"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:visibility="gone"
-                        android:id="@+id/crd_order"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_margin="10dp"
-                        android:background="@drawable/box_boder2"
-                        android:orientation="vertical"
-                        android:padding="10dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
+                        android:layout_gravity="center"
+                        android:minHeight="48dp">
+                        <ProgressBar
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:indeterminate="true"
+                            android:indeterminateTint="@color/status_offline_red" />
+                        <TextView
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:padding="5dp">
-
-                            <TextView
-                                android:id="@+id/txt_lastorder"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:text="@string/latest_order"
-                                android:textColor="@color/black"
-                                android:textSize="18dp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:layout_marginEnd="5dp"
-                                android:text="@string/accept_now"
-                                android:textColor="@color/gray1"
-                                android:textSize="16dp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_margin="5dp"
-                            android:orientation="vertical"
-                            android:padding="5dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal">
-
-                                <TextView
-                                    android:id="@+id/txt_orderid"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_weight="1"
-                                    android:text="OrderID : #123456"
-                                    android:textColor="@color/purple_500"
-                                    android:textSize="16dp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:id="@+id/txt_status"
-                                    android:layout_width="140dp"
-                                    android:layout_height="32dp"
-                                    android:background="@drawable/rounded_button_green"
-                                    android:backgroundTint="@color/green"
-                                    android:gravity="center"
-                                    android:padding="5dp"
-                                    android:text="@string/pickup_order"
-                                    android:textColor="@color/white"
-                                    android:textSize="14dp"
-                                    android:textStyle="bold" />
-                            </LinearLayout>
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:gravity="center"
-                                android:orientation="horizontal"
-                                android:padding="5dp">
-
-                                <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:gravity="center"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_current_location_pickup" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="2dp"
-                                        android:background="@color/white" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="2dp"
-                                        android:background="@color/white" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_current_location_drop" />
-                                </LinearLayout>
-
-                                <LinearLayout
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_weight="1"
-                                    android:gravity="center"
-                                    android:orientation="vertical">
-
-                                    <TextView
-                                        android:id="@+id/txt_toaddress"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginLeft="10dp"
-                                        android:padding="3dp"
-                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
-                                        android:textColor="@color/black" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="10dp"
-                                        android:background="@color/gray" />
-
-                                    <TextView
-                                        android:id="@+id/txt_fromaddress"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginLeft="10dp"
-                                        android:padding="3dp"
-                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
-                                        android:textColor="@color/black" />
-                                </LinearLayout>
-
-                            </LinearLayout>
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:gravity="center"
-                                android:padding="5dp">
-
-                                <TextView
-                                    android:id="@+id/txt_km"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:padding="2dp"
-                                    android:gravity="center_vertical"
-                                    android:drawablePadding="5dp"
-                                    android:drawableLeft="@drawable/ic_map_km"
-                                    android:text="29 KM" />
-
-                                <View
-                                    android:layout_width="10dp"
-                                    android:layout_height="1dp"
-                                    android:layout_marginLeft="5dp"
-                                    android:layout_marginRight="5dp"
-
-                                    android:background="@color/gray" />
-
-                                <TextView
-                                    android:id="@+id/txt_earningorder"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:padding="2dp"
-                                    android:gravity="center_vertical"
-                                    android:singleLine="true"
-                                    android:drawablePadding="5dp"
-                                    android:drawableLeft="@drawable/ic_earning"
-                                    android:text="250₹ " />
-
-                                <View
-                                    android:layout_width="10dp"
-                                    android:layout_height="1dp"
-                                    android:layout_marginLeft="5dp"
-                                    android:layout_marginRight="5dp"
-                                    android:background="@color/gray" />
-
-                                <TextView
-                                    android:id="@+id/txt_mit"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:padding="2dp"
-                                    android:gravity="center_vertical"
-                                    android:drawablePadding="5dp"
-                                    android:singleLine="true"
-                                    android:drawableLeft="@drawable/ic_min_deliver"
-                                    android:text=" 71 min deliver   " />
-                            </LinearLayout>
-
-
-                            <TextView
-                                android:id="@+id/txt_continue"
-                                android:layout_width="match_parent"
-                                android:layout_height="42dp"
-                                android:layout_marginStart="12dp"
-                                android:layout_marginEnd="12dp"
-                                android:background="@drawable/rounded_button"
-                                android:gravity="center"
-                                android:padding="5dp"
-                                android:text="@string/confirm_order"
-                                android:theme="@style/AppTheme.Button"
-                                android:visibility="gone" />
-
-
-                        </LinearLayout>
-
-
+                            android:layout_marginStart="8dp"
+                            android:text="Going Offline..."
+                            android:textColor="@color/status_offline_red"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
                     </LinearLayout>
-
-
-                    <LinearLayout
-                        android:visibility="gone"
-                        android:id="@+id/crd_orderby"
-                        android:layout_width="match_parent"
+                </FrameLayout>
+            </LinearLayout>
+            <!-- ================= PRIORITY ACTIVE ORDER CARD ================= -->
+            <LinearLayout
+                android:id="@+id/crd_order"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_home_surface"
+                android:elevation="0dp"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:visibility="gone">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:id="@+id/txt_orderid"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_margin="10dp"
-                        android:background="@drawable/box_boder2"
-                        android:orientation="vertical"
-                        android:padding="10dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:padding="5dp">
-
-                            <TextView
-                                android:id="@+id/txt_lastorder1"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:text="@string/latest_order"
-                                android:textColor="@color/black"
-                                android:textSize="18dp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:layout_marginEnd="5dp"
-                                android:text="@string/accept_now"
-                                android:textColor="@color/gray1"
-                                android:textSize="16dp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_margin="5dp"
-                            android:orientation="vertical"
-                            android:padding="5dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal">
-
-                                <TextView
-                                    android:id="@+id/txt_orderid1"
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_weight="1"
-                                    android:text="OrderID : #123456"
-                                    android:textColor="@color/purple_500"
-                                    android:textSize="16dp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:id="@+id/txt_status1"
-                                    android:layout_width="140dp"
-                                    android:layout_height="32dp"
-                                    android:background="@drawable/rounded_button_green"
-                                    android:backgroundTint="@color/blue"
-                                    android:gravity="center"
-                                    android:padding="5dp"
-                                    android:text="@string/pickup_order"
-                                    android:textColor="@color/white"
-                                    android:textSize="14dp"
-                                    android:textStyle="bold" />
-                            </LinearLayout>
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:gravity="center"
-                                android:orientation="horizontal"
-                                android:padding="5dp">
-
-                                <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:gravity="center"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_current_location_pickup" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="2dp"
-                                        android:background="@color/white" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="2dp"
-                                        android:background="@color/white" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="3dp"
-                                        android:background="@color/gray" />
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_current_location_drop" />
-                                </LinearLayout>
-
-                                <LinearLayout
-                                    android:layout_width="match_parent"
-                                    android:layout_height="wrap_content"
-                                    android:layout_weight="1"
-                                    android:gravity="center"
-                                    android:orientation="vertical">
-
-                                    <TextView
-                                        android:id="@+id/txt_toaddress1"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginLeft="10dp"
-                                        android:padding="3dp"
-                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
-                                        android:textColor="@color/black" />
-
-                                    <View
-                                        android:layout_width="1dp"
-                                        android:layout_height="10dp"
-                                        android:background="@color/gray" />
-
-                                    <TextView
-                                        android:id="@+id/txt_fromaddress1"
-                                        android:layout_width="match_parent"
-                                        android:layout_height="wrap_content"
-                                        android:layout_marginLeft="10dp"
-                                        android:padding="3dp"
-                                        android:text="10223, Mota Varachha, beside Lajamani Chowk, Surat, Gujarat 394101"
-                                        android:textColor="@color/black" />
-                                </LinearLayout>
-
-                            </LinearLayout>
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:gravity="center"
-                                android:padding="5dp">
-
-                                <TextView
-                                    android:id="@+id/txt_km1"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:gravity="center_vertical"
-                                    android:drawablePadding="5dp"
-                                    android:drawableLeft="@drawable/ic_map_km"
-                                    android:padding="2dp"
-                                    android:text="29 KM" />
-
-                                <View
-                                    android:layout_width="10dp"
-                                    android:layout_height="1dp"
-                                    android:layout_marginLeft="5dp"
-                                    android:layout_marginRight="5dp"
-                                    android:background="@color/gray" />
-
-                                <TextView
-                                    android:id="@+id/txt_earningorder1"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:padding="2dp"
-                                    android:gravity="center_vertical"
-                                    android:singleLine="true"
-                                    android:drawablePadding="5dp"
-                                    android:drawableLeft="@drawable/ic_earning"
-                                    android:text="250₹" />
-
-                                <View
-                                    android:layout_width="10dp"
-                                    android:layout_height="1dp"
-                                    android:layout_marginLeft="5dp"
-                                    android:layout_marginRight="5dp"
-
-                                    android:background="@color/gray" />
-
-                                <TextView
-                                    android:id="@+id/txt_mit1"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:padding="2dp"
-                                    android:singleLine="true"
-                                    android:gravity="center_vertical"
-                                    android:drawablePadding="5dp"
-                                    android:drawableLeft="@drawable/ic_min_deliver"
-                                    android:text=" 71 min deliver   " />
-                            </LinearLayout>
-
-
-                            <TextView
-                                android:id="@+id/txt_continue1"
-                                android:layout_width="match_parent"
-                                android:layout_height="42dp"
-                                android:layout_marginStart="12dp"
-                                android:layout_marginEnd="12dp"
-                                android:background="@drawable/rounded_button"
-                                android:gravity="center"
-                                android:padding="5dp"
-                                android:text="@string/confirm_order"
-                                android:theme="@style/AppTheme.Button"
-                                android:visibility="gone" />
-
-
-                        </LinearLayout>
-
-
-                    </LinearLayout>
-
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp" />
-
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_weight="1"
+                        android:text="—"
+                        android:textColor="@color/shifter_orange"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/txt_status"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_margin="10dp"
-                        android:background="@drawable/box_boder2"
-                        android:orientation="vertical"
-                        android:padding="10dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:padding="5dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:text="@string/overview_of"
-                                android:textColor="@color/black"
-                                android:textSize="18dp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:layout_marginEnd="5dp"
-                                android:text="@string/today"
-                                android:textColor="@color/gray1"
-                                android:textSize="16dp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-
-                        <HorizontalScrollView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fillViewport="true">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:padding="10dp">
-
-                                <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="130dp"
-                                    android:background="@drawable/box"
-                                    android:gravity="center"
-                                    android:minWidth="110dp"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_dollar" />
-
-                                    <TextView
-                                        android:id="@+id/txt_earning"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="₹"
-                                        android:textColor="@color/black"
-                                        android:textStyle="bold" />
-
-                                    <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="@string/earning"
-                                        android:textSize="16dp"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-
-                                <View
-                                    android:layout_width="20dp"
-                                    android:layout_height="1dp" />
-
-                                <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="130dp"
-                                    android:background="@drawable/box"
-                                    android:gravity="center"
-                                    android:minWidth="110dp"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_complete_count" />
-
-                                    <TextView
-                                        android:id="@+id/txt_complete"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text=""
-                                        android:textColor="@color/black"
-                                        android:textStyle="bold" />
-
-                                    <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="@string/completed"
-                                        android:textSize="16dp"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-
-                                <View
-                                    android:visibility="gone"
-                                    android:layout_width="20dp"
-                                    android:layout_height="1dp" />
-
-                                <LinearLayout
-                                    android:visibility="gone"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="130dp"
-                                    android:background="@drawable/box"
-                                    android:gravity="center"
-                                    android:minWidth="110dp"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_starrating" />
-
-                                    <TextView
-                                        android:id="@+id/txt_rating"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text=""
-                                        android:textColor="@color/black"
-                                        android:textStyle="bold" />
-
-                                    <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="@string/rating"
-                                        android:textSize="16dp"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-                            </LinearLayout>
-
-                        </HorizontalScrollView>
-                    </LinearLayout>
-
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp" />
-
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_margin="10dp"
-                        android:background="@drawable/box_boder2"
-                        android:orientation="vertical"
-                        android:padding="10dp">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:padding="5dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:text="@string/summary_for"
-                                android:textColor="@color/black"
-                                android:textSize="18dp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="5dp"
-                                android:layout_marginEnd="5dp"
-                                android:text="@string/this_month"
-                                android:textColor="@color/gray1"
-                                android:textSize="16dp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-
-                        <HorizontalScrollView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:fillViewport="true">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:padding="10dp">
-
-                                <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="130dp"
-                                    android:background="@drawable/box"
-                                    android:gravity="center"
-                                    android:minWidth="110dp"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_dollar" />
-
-                                    <TextView
-                                        android:id="@+id/txt_earning2"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="₹ "
-                                        android:textColor="@color/black"
-                                        android:textStyle="bold" />
-
-                                    <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="@string/earning"
-                                        android:textSize="16dp"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-
-                                <View
-                                    android:layout_width="20dp"
-                                    android:layout_height="1dp" />
-
-                                <LinearLayout
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="130dp"
-                                    android:background="@drawable/box"
-                                    android:gravity="center"
-                                    android:minWidth="110dp"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_complete_count" />
-
-                                    <TextView
-                                        android:id="@+id/txt_complete2"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text=""
-                                        android:textColor="@color/black"
-                                        android:textStyle="bold" />
-
-                                    <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="@string/completed"
-                                        android:textSize="16dp"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-
-                                <View
-                                    android:visibility="gone"
-                                    android:layout_width="20dp"
-                                    android:layout_height="1dp" />
-
-                                <LinearLayout
-                                    android:visibility="gone"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="130dp"
-                                    android:background="@drawable/box"
-                                    android:gravity="center"
-                                    android:minWidth="110dp"
-                                    android:orientation="vertical">
-
-                                    <ImageView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:src="@drawable/ic_starrating" />
-
-                                    <TextView
-                                        android:id="@+id/txt_rating2"
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text=""
-                                        android:textColor="@color/black"
-                                        android:textStyle="bold" />
-
-                                    <TextView
-                                        android:layout_width="wrap_content"
-                                        android:layout_height="wrap_content"
-                                        android:padding="5dp"
-                                        android:text="@string/rating"
-                                        android:textSize="16dp"
-                                        android:textStyle="bold" />
-                                </LinearLayout>
-                            </LinearLayout>
-
-                        </HorizontalScrollView>
-                    </LinearLayout>
-
-
-
+                        android:background="@drawable/rounded_button_green"
+                        android:backgroundTint="@color/status_online_green"
+                        android:paddingStart="10dp"
+                        android:paddingTop="4dp"
+                        android:paddingEnd="10dp"
+                        android:paddingBottom="4dp"
+                        android:text="Active Order"
+                        android:textColor="@color/white"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
-            </ScrollView>
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-    </RelativeLayout>
-
-</LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical">
+                    <!-- Pickup Address -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/baseline_location_pin_24"
+                            app:tint="@color/status_online_green" />
+                        <TextView
+                            android:id="@+id/txt_toaddress"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="—"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+                    <!-- Drop Address -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/baseline_location_pin_24"
+                            app:tint="@color/shifter_orange" />
+                        <TextView
+                            android:id="@+id/txt_fromaddress"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="—"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+                </LinearLayout>
+                <!-- Order Stats: KM, Earnings, Time -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:id="@+id/txt_km"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="—"
+                        android:textColor="@color/home_secondary"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/txt_mit"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:text="15 min deliver"
+                        android:textColor="@color/home_secondary"
+                        android:textSize="12sp" />
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+                    <TextView
+                        android:id="@+id/txt_earningorder"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="₹128"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <Button
+                    android:id="@+id/txt_continue"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/rounded_button"
+                    android:text="Continue Delivery →"
+                    android:textAllCaps="false"
+                    android:textColor="@color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:minHeight="48dp"
+                    android:gravity="center" />
+            </LinearLayout>
+            <!-- Buy Order Card (Secondary active order fallback) -->
+            <LinearLayout
+                android:id="@+id/crd_orderby"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_home_surface"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:visibility="gone">
+                <TextView
+                    android:id="@+id/txt_orderid1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="—"
+                    android:textColor="@color/shifter_orange"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/txt_status1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Active"
+                    android:textColor="@color/status_online_green"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/txt_toaddress1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Store Address"
+                    android:textColor="@color/driver_text_primary"
+                    android:textSize="13sp" />
+                <TextView
+                    android:id="@+id/txt_fromaddress1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Delivery Address"
+                    android:textColor="@color/driver_text_primary"
+                    android:textSize="13sp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp">
+                    <TextView
+                        android:id="@+id/txt_km1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="2.5 km"
+                        android:textColor="@color/home_secondary"
+                        android:textSize="12sp" />
+                    <TextView
+                        android:id="@+id/txt_mit1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:text="12 min"
+                        android:textColor="@color/home_secondary"
+                        android:textSize="12sp" />
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+                    <TextView
+                        android:id="@+id/txt_earningorder1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="₹95"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+                <Button
+                    android:id="@+id/txt_continue1"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/rounded_button"
+                    android:text="View Order Details"
+                    android:textAllCaps="false"
+                    android:textColor="@color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:minHeight="48dp"
+                    android:gravity="center" />
+            </LinearLayout>
+            <!-- ================= TODAY'S EARNINGS CARD ================= -->
+            <include
+                android:id="@+id/inc_monthly_duty_card"
+                layout="@layout/layout_monthly_duty_card"
+                android:visibility="gone" />
+            <include
+                android:id="@+id/inc_queued_orders_drawer"
+                layout="@layout/layout_queued_orders_drawer"
+                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="20dp"
+                android:background="@drawable/bg_home_surface"
+                android:elevation="0dp"
+                android:orientation="vertical"
+                android:padding="20dp">
+                <!-- Earnings Header: Wallet Icon, Title, View Details -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:layout_toStartOf="@id/btn_view_earnings_details">
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:src="@drawable/baseline_account_balance_wallet_24"
+                            app:tint="@color/shifter_orange" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/home_today_earnings"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                    <TextView
+                        android:id="@+id/btn_view_earnings_details"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:padding="8dp"
+                        android:text="@string/home_earning_details"
+                        android:textColor="@color/shifter_orange"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:minHeight="48dp"
+                        android:gravity="center" />
+                </RelativeLayout>
+                <!-- Large Amount and Growth Badge -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:id="@+id/txt_earning"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="38sp"
+                        android:textStyle="bold"
+                        tools:text="₹1,240"
+                        android:fontFamily="sans-serif-medium"
+                        android:fontFeatureSettings="tnum"
+                        android:text="—"
+                        android:layout_weight="1"
+                        android:maxLines="1" />
+                    <TextView
+                        android:id="@+id/txt_earning_growth"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/bg_badge_green"
+                        android:paddingStart="8dp"
+                        android:paddingTop="3dp"
+                        android:paddingEnd="8dp"
+                        android:paddingBottom="3dp"
+                        android:text="↑ Today's Net"
+                        android:textColor="@color/status_online_green_dark"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                </LinearLayout>
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="14dp"
+                    android:layout_marginBottom="14dp"
+                    android:background="@color/driver_card_stroke" />
+                <!-- 4 Metrics Grid: Total Orders, Completed, In Progress, Rating -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:weightSum="4">
+                    <!-- Metric 1: Total Orders -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/txt_stat_total_orders"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="21sp"
+                            android:textStyle="bold"
+                            tools:text="12"
+                            android:gravity="center"
+                            android:fontFamily="sans-serif-medium"
+                            android:fontFeatureSettings="tnum"
+                            android:text="—" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Orders"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="12sp"
+                            android:gravity="center" />
+                    </LinearLayout>
+                    <!-- Metric 2: Completed -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/txt_complete"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="21sp"
+                            android:textStyle="bold"
+                            tools:text="8"
+                            android:gravity="center"
+                            android:fontFamily="sans-serif-medium"
+                            android:fontFeatureSettings="tnum"
+                            android:text="—" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Completed"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="12sp"
+                            android:gravity="center" />
+                    </LinearLayout>
+                    <!-- Metric 3: In Progress -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/txt_stat_in_progress"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="21sp"
+                            android:textStyle="bold"
+                            tools:text="0"
+                            android:gravity="center"
+                            android:fontFamily="sans-serif-medium"
+                            android:fontFeatureSettings="tnum"
+                            android:text="—" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Active"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="12sp"
+                            android:gravity="center" />
+                    </LinearLayout>
+                    <!-- Metric 4: Your Rating -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/txt_rating"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="21sp"
+                            android:textStyle="bold"
+                            tools:text="4.8"
+                            android:gravity="center"
+                            android:fontFamily="sans-serif-medium"
+                            android:fontFeatureSettings="tnum"
+                            android:text="—" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Rating"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="12sp"
+                            android:gravity="center" />
+                    </LinearLayout>
+                </LinearLayout>
+                <!-- Hidden views required by existing HomeData binding references -->
+                <TextView
+                    android:id="@+id/txt_earning2"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/txt_complete2"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/txt_rating2"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="14dp"
+                android:orientation="horizontal"
+                android:weightSum="4">
+                <!-- Action 1: My Orders -->
+                <LinearLayout
+                    android:id="@+id/btn_quick_orders"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_home_surface"
+                    android:clickable="true"
+                    android:elevation="0dp"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:minHeight="88dp">
+                    <FrameLayout
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="@drawable/rounded_corner_box"
+                        android:backgroundTint="@color/home_accent_soft">
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_document"
+                            app:tint="@color/shifter_orange_dark" />
+                    </FrameLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="My Orders"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:maxLines="1" />
+                </LinearLayout>
+                <!-- Action 2: Wallet -->
+                <LinearLayout
+                    android:id="@+id/btn_quick_wallet"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_home_surface"
+                    android:clickable="true"
+                    android:elevation="0dp"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:minHeight="88dp">
+                    <FrameLayout
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="@drawable/rounded_corner_box"
+                        android:backgroundTint="@color/home_accent_soft">
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/baseline_account_balance_wallet_24"
+                            app:tint="@color/shifter_orange_dark" />
+                    </FrameLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Wallet"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:maxLines="1" />
+                </LinearLayout>
+                <!-- Action 3: Incentives / Leads -->
+                <LinearLayout
+                    android:id="@+id/btn_quick_incentives"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_home_surface"
+                    android:clickable="true"
+                    android:elevation="0dp"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:minHeight="88dp">
+                    <FrameLayout
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="@drawable/rounded_corner_box"
+                        android:backgroundTint="@color/home_accent_soft">
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_gift_box"
+                            app:tint="@color/shifter_orange_dark" />
+                    </FrameLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Incentives"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:maxLines="1" />
+                </LinearLayout>
+                <!-- Action 4: Support -->
+                <LinearLayout
+                    android:id="@+id/btn_quick_support"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_home_surface"
+                    android:clickable="true"
+                    android:elevation="0dp"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:minHeight="88dp">
+                    <FrameLayout
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:background="@drawable/rounded_corner_box"
+                        android:backgroundTint="@color/home_accent_soft">
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_headset"
+                            app:tint="@color/shifter_orange_dark" />
+                    </FrameLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Support"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:maxLines="1" />
+                </LinearLayout>
+            </LinearLayout>
+            <!-- ================= INCENTIVE TARGET BANNER ================= -->
+            <LinearLayout
+                android:id="@+id/layout_incentive_banner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_home_surface"
+                android:clickable="true"
+                android:elevation="0dp"
+                android:focusable="true"
+                android:orientation="horizontal"
+                android:padding="14dp"
+                android:foreground="?attr/selectableItemBackground">
+                <ImageView
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_trophy_small"
+                    app:tint="#FFA000" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Keep going!"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/txt_incentive_subtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Complete more orders to maximize your daily earnings."
+                        android:textColor="@color/home_secondary"
+                        android:textSize="12sp" />
+                    <ProgressBar
+                        android:id="@+id/progress_daily_target"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="4dp"
+                        android:layout_marginTop="8dp"
+                        android:max="10"
+                        android:progress="6"
+                        android:progressTint="@color/shifter_orange" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center_vertical"
+                    android:src="@drawable/arow_right"
+                    app:tint="@color/driver_text_secondary" />
+            </LinearLayout>
+            <!-- ================= DELIVERY TYPES SECTION ================= -->
+            <LinearLayout
+                android:id="@+id/card_delivery_types_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:orientation="vertical">
+                <!-- Section Title Header -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="vertical">
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:src="@drawable/ic_scooter"
+                            app:tint="@color/shifter_orange" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/home_delivery_preferences"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                    <!-- Subtitle / Learn More Trigger -->
+                    <LinearLayout
+                        android:id="@+id/btn_learn_more_types"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="0dp"
+                        android:foreground="?attr/selectableItemBackground"
+                        android:minHeight="48dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/home_delivery_hint"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="13sp" />
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:layout_marginStart="4dp"
+                            android:src="@drawable/ic_info"
+                            app:tint="@color/driver_text_secondary" />
+                    </LinearLayout>
+                </LinearLayout>
+                <!-- Dynamic Container for Delivery Tier Cards -->
+                <LinearLayout
+                    android:id="@+id/delivery_types_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <!-- Populated dynamically via item_delivery_type_card.xml -->
+                </LinearLayout>
+            </LinearLayout>
+            <!-- ================= QUICK ACTIONS (Moved below Delivery Types) ================= -->
+            <!-- ================= MONTHLY DEDICATED DRIVER CARDS ================= -->
+            <!-- ================= TRAINING VIDEO BUTTON ================= -->
+            <LinearLayout
+                android:id="@+id/btn_how_to_use"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/rounded_button_youtube"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp"
+                android:visibility="gone"
+                android:foreground="?attr/selectableItemBackground">
+                <ImageView
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginEnd="12dp"
+                    android:src="@drawable/ic_youtube_play" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Training Video"
+                        android:textColor="@color/white"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Watch quick driver training video"
+                        android:textColor="#FFEBEE"
+                        android:textSize="12sp" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/arow_right"
+                    app:tint="@color/white" />
+            </LinearLayout>
+            <!-- Custom Orders Button (kept accessible) -->
+            <LinearLayout
+                android:id="@+id/btn_custom_orders"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/rounded_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp"
+                android:visibility="gone"
+                android:foreground="?attr/selectableItemBackground">
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="12dp"
+                    android:src="@drawable/ic_dollar"
+                    app:tint="@color/white" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Custom Orders"
+                        android:textColor="@color/white"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="View and bid on custom orders"
+                        android:textColor="#DDEEFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/arow_right"
+                    app:tint="@color/white" />
+            </LinearLayout>
+            <!-- ================= A GREENER TOMORROW ECO BANNER ================= -->
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
