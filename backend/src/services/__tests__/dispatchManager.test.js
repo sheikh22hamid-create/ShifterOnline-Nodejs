@@ -50,6 +50,19 @@ function makeRiderRow(riderId, { distanceKm = 0.5 } = {}) {
   return { rider_id: riderId, rlats: "28.70", rlongs: "77.10", fcm_token: "tok", distance_km: distanceKm };
 }
 
+// Backs prisma.tbl_rider.findMany for offerToInterestedRiders — keyed by id
+// so a test can control exactly which ids come back "found" (i.e. still
+// online/approved). Omitting an id from ridersById simulates a rider who's
+// gone offline, unapproved, or otherwise stale since marking interest —
+// tbl_rider.findMany's own WHERE (a_status/status/vehicle) would filter them
+// out for real; this mock just returns whatever the test says is still there.
+function mockRidersById(ridersById) {
+  prisma.tbl_rider.findMany.mockImplementation(({ where } = {}) => {
+    const ids = (where && where.id && where.id.in) || [];
+    return Promise.resolve(ids.filter((id) => ridersById[id]).map((id) => ridersById[id]));
+  });
+}
+
 describe("dispatchManager overlapping batch cascade", () => {
   const order = {
     id: 297,
@@ -1416,6 +1429,94 @@ describe("dispatchManager overlapping batch cascade", () => {
         where: { order_id: order.id, rider_id: 1, package_id: 6, status: "sent" },
         data: { status: "timeout" },
       });
+    });
+  });
+
+  describe("schedule_date_time passthrough on order:request", () => {
+    it("includes schedule_date_time in the payload when the order has one", async () => {
+      const scheduledOrder = {
+        ...order,
+        id: 910,
+        booking_type: 2,
+        schedule_date_time: "2026-09-22T15:00:00.000Z",
+        allowed_delivery_types: JSON.stringify([6]),
+      };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...scheduledOrder });
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([1].map(makeRiderRow)) // tier 0 primary
+        .mockResolvedValueOnce([]); // tier 0 sameOrderLockBlocking recheck
+
+      await dispatchManager.startDispatch(scheduledOrder);
+      await flush();
+
+      const requests = emitted.filter((e) => e.event === "order:request" && e.room === "driver_1");
+      expect(requests).toHaveLength(1);
+      expect(requests[0].payload.schedule_date_time).toBe("2026-09-22T15:00:00.000Z");
+
+      dispatchManager.stopDispatch(910, "test_cleanup");
+    });
+
+    it("omits schedule_date_time when the order doesn't have one (instant orders unaffected)", async () => {
+      const instantOrder = {
+        ...order,
+        id: 911,
+        booking_type: 1,
+        schedule_date_time: null,
+        allowed_delivery_types: JSON.stringify([6]),
+      };
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...instantOrder });
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.$queryRaw
+        .mockResolvedValueOnce([2].map(makeRiderRow)) // tier 0 primary
+        .mockResolvedValueOnce([]); // tier 0 sameOrderLockBlocking recheck
+
+      await dispatchManager.startDispatch(instantOrder);
+      await flush();
+
+      const requests = emitted.filter((e) => e.event === "order:request" && e.room === "driver_2");
+      expect(requests).toHaveLength(1);
+      expect(requests[0].payload.schedule_date_time).toBeUndefined();
+
+      dispatchManager.stopDispatch(911, "test_cleanup");
+    });
+  });
+
+  describe("offerToInterestedRiders", () => {
+    const scheduledOrder = {
+      ...order,
+      id: 912,
+      booking_type: 2,
+      schedule_date_time: "2026-09-22T15:00:00.000Z",
+    };
+
+    it("prices and offers the order to each given rider, writes tbl_order_requests, and returns their ids", async () => {
+      mockRidersById({
+        5: { id: 5, rlats: "28.70", rlongs: "77.10", fcm_token: "tok5", vehicle: scheduledOrder.category },
+        6: { id: 6, rlats: "28.71", rlongs: "77.11", fcm_token: "tok6", vehicle: scheduledOrder.category },
+      });
+
+      const result = await dispatchManager.offerToInterestedRiders(scheduledOrder, [5, 6], { id: 6, title: "Model 1" }, 0);
+
+      expect(result.offeredRiderIds.sort()).toEqual([5, 6]);
+      const requests = emitted.filter((e) => e.event === "order:request");
+      expect(requests.map((r) => r.room).sort()).toEqual(["driver_5", "driver_6"]);
+      expect(prisma.tbl_order_requests.create).toHaveBeenCalledTimes(2);
+      // Priority offers use a longer expiry than the normal 15s cascade popup.
+      expect(Number(requests[0].payload.expires_at)).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
+    });
+
+    it("skips a rider who's gone offline/stale since marking interest", async () => {
+      mockRidersById({
+        5: { id: 5, rlats: "28.70", rlongs: "77.10", fcm_token: "tok5", vehicle: scheduledOrder.category },
+        // rider 6 not found / offline — mockRidersById omits it
+      });
+
+      const result = await dispatchManager.offerToInterestedRiders(scheduledOrder, [5, 6], { id: 6, title: "Model 1" }, 0);
+
+      expect(result.offeredRiderIds).toEqual([5]);
     });
   });
 });

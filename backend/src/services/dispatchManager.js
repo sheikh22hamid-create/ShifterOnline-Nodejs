@@ -5,6 +5,7 @@ const pricingEngine = require("./pricingEngine");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const { haversineKm } = require("../utils/geoDistance");
 const {
   POPUP_TIMEOUT_MS,
   BATCH_GAP_MS,
@@ -16,6 +17,7 @@ const {
   MODEL1_MISS_LIMIT,
   MODEL1_SUSPENSION_HOURS,
   RIDER_LOCATION_FRESHNESS_MS,
+  SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
 } = require("../config/constants");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
@@ -674,6 +676,16 @@ async function runBatchInner(orderId) {
             state.customerStats?.customerOrders
           );
 
+          // Scheduled orders (booking_type=2) carry their real pickup time
+          // into the driver's popup so it reads "Scheduled pickup: ..."
+          // instead of looking like an instant order — see
+          // docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md §8.
+          // Absent/undefined for every other booking type, so this is a
+          // pure no-op addition for instant/next-day orders.
+          if (currentOrder.schedule_date_time) {
+            payload.schedule_date_time = currentOrder.schedule_date_time;
+          }
+
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
           await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);
         })
@@ -934,6 +946,82 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
 }
 
 /**
+ * Priority round for a scheduled order (booking_type=2) that has drivers
+ * who marked interest ahead of time (pkg_order_interest) — see
+ * docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md
+ * §6/§7. Offers to exactly the given riders (no distance-based selection —
+ * the caller already picked them), reusing the same tbl_order_requests +
+ * order:request + claimOrderForRider machinery the normal cascade uses, so
+ * the very same atomic accept path (already race-safe across concurrent
+ * accepts today) resolves who actually gets it. Unlike the tiered cascade,
+ * there is exactly one round here — no per-driver lock, no batching.
+ *
+ * A rider whose interest was recorded but who has since gone offline,
+ * unapproved, or switched vehicle category is simply absent from the
+ * tbl_rider.findMany result below (its WHERE re-checks a_status/status/
+ * vehicle at offer time, not just at interest time) and is silently
+ * skipped — not included in offeredRiderIds.
+ */
+async function offerToInterestedRiders(order, riderIds, pkg, discount) {
+  if (!riderIds || riderIds.length === 0) return { offeredRiderIds: [] };
+
+  const riders = await prisma.tbl_rider.findMany({
+    where: {
+      id: { in: riderIds.map(Number) },
+      a_status: 1,
+      status: 1,
+      vehicle: order.category,
+    },
+  });
+
+  const distanceKm = Number(order.distance) || 0;
+  const armedAt = Date.now();
+  // Longer than the normal 15s (POPUP_TIMEOUT_MS) cascade popup — these
+  // riders already expressed interest ahead of time, so they're given a
+  // much longer window to actually accept.
+  const expiresAt = armedAt + SCHEDULED_ORDER_PRIORITY_WINDOW_MS;
+
+  const offeredRiderIds = [];
+  await Promise.all(
+    riders.map(async (driver) => {
+      const riderId = Number(driver.id);
+      const driverDistanceKm = haversineKm(
+        Number(order.plat), Number(order.plong),
+        Number(driver.rlats), Number(driver.rlongs)
+      );
+
+      await prisma.tbl_order_requests.create({
+        data: {
+          order_id: order.id,
+          rider_id: riderId,
+          package_id: Number(pkg.id),
+          status: "sent",
+          lat: driver.rlats ? String(driver.rlats) : null,
+          lng: driver.rlongs ? String(driver.rlongs) : null,
+        },
+      });
+
+      const { fare, driverTitle } = pricingEngine.priceForPackage(
+        pkg, distanceKm,
+        Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
+        0, discount
+      );
+
+      const payload = buildOrderRequestPayload(
+        order, pkg.id, distanceKm.toFixed(1), fare, pkg.title, expiresAt, driverTitle
+      );
+      payload.schedule_date_time = order.schedule_date_time;
+
+      requireIo().to(`driver_${riderId}`).emit("order:request", payload);
+      await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);
+      offeredRiderIds.push(riderId);
+    })
+  );
+
+  return { offeredRiderIds };
+}
+
+/**
  * Kicks off the overlapping batch cascade for a freshly created order.
  * Uses Tier Exhaustion (see runBatch): batches run BATCH_GAP_MS apart, each
  * drawing from one tier, and the cascade only moves to the next tier once
@@ -1123,6 +1211,7 @@ module.exports = {
   emitDirectAssign,
   emitQueueUpdate,
   startDispatch,
+  offerToInterestedRiders,
   stopDispatch,
   selectEligibleDrivers,
   recordModel1Outcome,
