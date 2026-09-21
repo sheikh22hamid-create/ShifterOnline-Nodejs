@@ -64,4 +64,30 @@ describe("pushNotifier", () => {
   it("passes through a falsy fcmToken without throwing", async () => {
     await expect(pushNotifier.notifyDriverOrderRequest(null, { order_id: "1" })).resolves.toBeDefined();
   });
+
+  it("notifyCustomerOrderLive sends a searching-for-driver push naming the order id", async () => {
+    await pushNotifier.notifyCustomerOrderLive("tok-5", 55);
+
+    expect(sendPushNotification).toHaveBeenCalledWith(
+      "tok-5",
+      expect.any(String),
+      expect.stringContaining("55"),
+      expect.objectContaining({ type: "schedule_live", order_id: "55" })
+    );
+  });
+
+  it("notifyCustomerLatePickup sends a may-be-late push mentioning the order id and schedule time", async () => {
+    await pushNotifier.notifyCustomerLatePickup("tok-6", 55, "2026-09-22T15:00:00.000Z");
+
+    expect(sendPushNotification).toHaveBeenCalledWith(
+      "tok-6",
+      expect.any(String),
+      expect.stringContaining("55"),
+      expect.objectContaining({
+        type: "schedule_late_pickup",
+        order_id: "55",
+        schedule_date_time: "2026-09-22T15:00:00.000Z",
+      })
+    );
+  });
 });

@@ -116,6 +116,26 @@ async function notifyCustomerScheduleReminder(fcmToken, orderId, scheduleTimeLab
   );
 }
 
+/** See dispatchManager's scheduled-order priority round — booking_type=2 order has moved from "scheduled" to actively searching for a driver. */
+async function notifyCustomerOrderLive(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Finding your driver",
+    `We're now finding a driver for your scheduled order #${orderId}.`,
+    { type: "schedule_live", order_id: String(orderId) }
+  );
+}
+
+/** See dispatchManager's scheduled-order priority round — a driver was assigned close enough to schedule_date_time that pickup may run a few minutes late. */
+async function notifyCustomerLatePickup(fcmToken, orderId, scheduleDateTime) {
+  return sendPushNotification(
+    fcmToken,
+    "Pickup may run a few minutes late",
+    `Your driver for order #${orderId} was assigned close to your requested pickup time and may arrive a few minutes after it.`,
+    { type: "schedule_late_pickup", order_id: String(orderId), schedule_date_time: scheduleDateTime || "" }
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
@@ -126,4 +146,6 @@ module.exports = {
   notifyCustomerAdvancePaymentTimeoutCancel,
   notifyDriverAdvancePaymentTimeoutCancel,
   notifyCustomerScheduleReminder,
+  notifyCustomerOrderLive,
+  notifyCustomerLatePickup,
 };
