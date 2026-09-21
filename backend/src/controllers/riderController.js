@@ -160,9 +160,9 @@ async function packageListForDriver(req, res) {
 
     const packageData = packages.map((p) => ({
       id: String(p.id),
-      title: p.title || p.driver_title || "",
-      driver_title: p.driver_title || "",
-      user_title: p.user_title || "",
+      title: p.driver_title || p.title || "",       // driver_title has priority (e.g. "Standard Tier" over "Model 1")
+      driver_title: p.driver_title || p.title || "", // also exposed separately for Android PackageData model
+      user_title: p.user_title || p.title || "",
       driver_detail_image: p.driver_detail_image || p.user_detail_image || "",
       user_detail_image: p.user_detail_image || "",
       per_km_charge: p.per_km_charge != null ? String(p.per_km_charge) : "0",
