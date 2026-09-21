@@ -326,15 +326,23 @@ public class OrderOverlayService extends Service {
             Log.e(TAG, "Error parsing reject timer", e);
         }
 
-        // expires_at (server epoch-ms deadline, armed the moment the offer's
-        // lock was acquired server-side) is the source of truth for how much
-        // time is ACTUALLY left.
+        // popup_duration = how long this blocking overlay may stay on screen;
+        // expires_at = the server's own deadline for honouring an accept.
+        // expires_at can only SHORTEN the countdown, never lengthen it past
+        // popup_duration — otherwise a scheduled-order priority offer (15
+        // MINUTE expires_at by design, so the driver can still accept long
+        // after the popup went away) would pin this full-screen overlay and
+        // its wake lock up for a quarter of an hour. Identical behaviour to
+        // before for the normal cascade, where expires_at - now is always the
+        // smaller of the two. Kept in lockstep with OrderDialogHelper's copy
+        // of this same calculation.
         long timerMillis = timerSeconds * 1000L;
         try {
             String expiresAtStr = intent.getStringExtra("expires_at");
             if (expiresAtStr != null && !expiresAtStr.isEmpty()) {
                 long expiresAt = Long.parseLong(expiresAtStr);
-                timerMillis = Math.max(0, expiresAt - System.currentTimeMillis());
+                long remainingMillis = Math.max(0, expiresAt - System.currentTimeMillis());
+                timerMillis = Math.min(timerMillis, remainingMillis);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error parsing expires_at, falling back to popup_duration", e);

@@ -14,6 +14,7 @@ const driverKycStatusController = require("../controllers/driverKycStatusControl
 const driverGovVerificationController = require("../controllers/driverGovVerificationController");
 const driverVerificationPaymentController = require("../controllers/driverVerificationPaymentController");
 const driverLeadController = require("../controllers/driverLeadController");
+const driverScheduledTripsController = require("../controllers/driverScheduledTripsController");
 const appKeyAuth = require("../middleware/appKeyAuth");
 
 const router = express.Router();
@@ -35,6 +36,9 @@ router.get("/test-drivers", riderController.listTestDrivers);
 router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);
 router.post("/delivery-type", riderController.setDeliveryType);
 router.post("/package-list", riderController.packageListForDriver);
+router.post("/scheduled-trips", driverScheduledTripsController.listScheduledTrips);
+router.post("/scheduled-trips/interest", driverScheduledTripsController.markInterest);
+router.post("/scheduled-trips/interest/remove", driverScheduledTripsController.removeInterest);
 router.post("/status", riderController.setStatus);
 router.post("/location", riderController.updateLocation);
 router.post("/isolate-test-drivers", riderController.isolateTestDrivers);

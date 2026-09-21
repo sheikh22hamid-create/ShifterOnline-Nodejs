@@ -33,7 +33,7 @@ export default function ScheduledOrders() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Order', 'Category', 'Pickup', 'Scheduled for', 'Fare', 'Status', 'Driver', ''].map((h) => (
+                {['Order', 'Category', 'Pickup', 'Scheduled for', 'Fare', 'Status', 'Driver', 'Interested', ''].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -44,21 +44,21 @@ export default function ScheduledOrders() {
               {loading &&
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={8} className="px-4 py-3">
+                    <td colSpan={9} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={9} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
               )}
               {!loading && !error && orders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-14 text-center">
+                  <td colSpan={9} className="px-4 py-14 text-center">
                     <CalendarClock size={20} className="mx-auto mb-2" style={{ color: 'var(--ink-faint)' }} />
                     <p className="text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                       No scheduled bookings yet — no order-creation flow produces one at the moment (see backend note in
@@ -91,6 +91,9 @@ export default function ScheduledOrders() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: o.rid ? 'var(--success)' : 'var(--ink-faint)' }}>
                       {o.rid ? `Driver #${o.rid}` : 'Unassigned'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
+                      {o.interested_count > 0 ? `${o.interested_count} interested` : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       {!o.rid && (

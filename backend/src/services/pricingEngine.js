@@ -636,6 +636,42 @@ async function getPackageListForCategory({ uid, catId }) {
   };
 }
 
+/**
+ * Cheapest-tier package + active plan discount for an order that already
+ * exists in the DB — the same {pkg, discount} shape createOrderCore
+ * (orderController.js) derives at order-creation time via its own
+ * firstPkg/planDiscount lookup, just re-derived here for a scheduled order
+ * (booking_type=2) whose priority-dispatch round (tripLifecycle.
+ * dispatchDueScheduledOrders -> dispatchManager.offerToInterestedRiders)
+ * needs to price each interested rider's own popup off the SAME cheapest
+ * tier the order was created with, not re-decided independently here.
+ *
+ * order.delivery_type is set to that cheapest tier's id at creation time
+ * (createOrderCore's firstTierPackageId) and never changes afterward for a
+ * still-Pending order, so it's read directly rather than re-sorting
+ * allowed_delivery_types by sort_order again; allowed_delivery_types (the
+ * full JSON-encoded tier list) is only a fallback for the rare row where
+ * delivery_type itself is missing.
+ */
+async function getFirstTierPricingContext(order) {
+  let packageId = order?.delivery_type;
+  if (!packageId && order?.allowed_delivery_types) {
+    try {
+      const ids = JSON.parse(order.allowed_delivery_types);
+      packageId = Array.isArray(ids) ? ids[0] : null;
+    } catch (e) {
+      packageId = null;
+    }
+  }
+
+  const [pkg, discount] = await Promise.all([
+    packageId ? getPackageById(packageId) : Promise.resolve(null),
+    getActivePlanDiscount(order?.uid),
+  ]);
+
+  return { pkg, discount };
+}
+
 async function getAddStopSettings() {
   const defaults = { maxExtraStops: 2, extraStopCharge: 0 };
   try {
@@ -670,6 +706,7 @@ module.exports = {
   calculateRadiusCharge,
   priceForPackage,
   priceForPackageId,
+  getFirstTierPricingContext,
   getFareEstimate,
   getDistanceEstimate,
   getPackageListForCategory,

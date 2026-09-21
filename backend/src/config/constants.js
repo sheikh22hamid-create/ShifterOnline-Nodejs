@@ -74,6 +74,31 @@ module.exports = {
   SCHEDULED_ORDER_REMINDER_LEAD_MS: 10 * 60 * 1000,
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS: 30 * 1000,
 
+  // Driver priority-interest dispatch (booking_type=2) — see
+  // docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md §3/§6.
+  // An order "goes live" this long before schedule_date_time; drivers who
+  // marked interest ahead of time get an exclusive popup window this long
+  // before it falls back to the normal radius-based cascade every instant
+  // order already uses.
+  SCHEDULED_ORDER_GO_LIVE_LEAD_MS: 30 * 60 * 1000,
+  SCHEDULED_ORDER_PRIORITY_WINDOW_MS: 15 * 60 * 1000,
+  // How long the DRIVER'S POPUP for a priority offer stays on screen before
+  // auto-closing — deliberately NOT SCHEDULED_ORDER_PRIORITY_WINDOW_MS.
+  // The offer stays server-side-acceptable for the full 15 minutes (that's
+  // what tbl_order_requests.expires_at holds), but the popup is a blocking,
+  // full-screen modal that also locks the driver out of the rest of the app
+  // and holds a wake lock (see OrderOverlayService) — pinning that open for
+  // 15 real minutes is not a usable UI. 60s is long enough for an offer the
+  // driver already opted into ahead of time (4x the 15s an unsolicited
+  // cascade popup gets), and once it auto-closes the offer is still live:
+  // the driver can reopen it from the FCM notification, and the fallback
+  // cascade re-offers the order at the end of the window anyway.
+  SCHEDULED_ORDER_PRIORITY_POPUP_MS: 60 * 1000,
+  // If the accepting driver has less than this much time left before
+  // schedule_date_time, the customer gets an extra "may run a few minutes
+  // late" push alongside the normal "driver assigned" notification.
+  SCHEDULED_ORDER_LATE_ACCEPT_BUFFER_MS: 10 * 60 * 1000,
+
   // Hourly sweep to expire verified leads that reached their expiry window
   LEAD_EXPIRY_SWEEP_INTERVAL_MS: 60 * 60 * 1000,
 };

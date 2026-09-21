@@ -8,7 +8,14 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
-const { POPUP_TIMEOUT_MS, PICKUP_OTP_TIMEOUT_MS, ADVANCE_PAYMENT_TIMEOUT_MS, SCHEDULED_ORDER_REMINDER_LEAD_MS } = require("../config/constants");
+const {
+  PICKUP_OTP_TIMEOUT_MS,
+  ADVANCE_PAYMENT_TIMEOUT_MS,
+  SCHEDULED_ORDER_REMINDER_LEAD_MS,
+  SCHEDULED_ORDER_GO_LIVE_LEAD_MS,
+  SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
+  SCHEDULED_ORDER_LATE_ACCEPT_BUFFER_MS,
+} = require("../config/constants");
 
 const whatsappNotifications = require("../whatsapp/notifications");
 
@@ -67,9 +74,12 @@ class OrderAlreadyTakenError extends Error { }
  * lost on crash/restart. Two atomic conditional UPDATEs run inside one DB
  * transaction, so either both apply or neither does:
  *   1. tbl_order_requests: claims THIS rider's offer for THIS order, only if
- *      it is still 'sent' and less than POPUP_TIMEOUT_MS old — per MySQL's
- *      own NOW(), not the Node process clock, so a crashed/restarted server
- *      can never make a stale offer acceptable again.
+ *      it is still 'sent' and its own expires_at hasn't passed yet — per
+ *      MySQL's own NOW(), not the Node process clock, so a crashed/restarted
+ *      server can never make a stale offer acceptable again. expires_at is
+ *      stamped by whichever dispatch path created the row (the normal
+ *      cascade's POPUP_TIMEOUT_MS, or offerToInterestedRiders' longer
+ *      SCHEDULED_ORDER_PRIORITY_WINDOW_MS), not a value hardcoded here.
  *   2. pkg_order: claims the booking, only if still unassigned/searchable.
  * Whichever UPDATE's WHERE clause a concurrent expiry-sweep or a competing
  * accept fails to match affects 0 rows — InnoDB's row lock on the same
@@ -91,7 +101,6 @@ class OrderAlreadyTakenError extends Error { }
  * still runs both in sequence for callers that want the one-shot result.
  */
 async function claimOrderForRider(orderId, riderId) {
-  const popupSeconds = POPUP_TIMEOUT_MS / 1000;
   let acceptedPackageId = null;
 
   // Check if order is already assigned to this rider (e.g. direct assigned by admin or queue)
@@ -102,13 +111,23 @@ async function claimOrderForRider(orderId, riderId) {
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Freshness is read from the request row's own expires_at column
+      // (dispatchManager stamps it at creation — POPUP_TIMEOUT_MS out for
+      // the normal cascade, SCHEDULED_ORDER_PRIORITY_WINDOW_MS out for
+      // offerToInterestedRiders' priority round) instead of a hardcoded
+      // "created_at + 15s" window: the old hardcoded interval made every
+      // offer expire after exactly POPUP_TIMEOUT_MS regardless of what the
+      // driver's own popup actually promised them, silently breaking any
+      // longer-lived offer (confirmed: a priority offer's driver-facing
+      // expires_at said 15 minutes, but this check rejected it as expired
+      // after 15 real seconds).
       const requestAffected = await tx.$executeRaw`
         UPDATE tbl_order_requests
         SET status = 'accepted'
         WHERE order_id = ${orderId}
           AND rider_id = ${riderId}
           AND status = 'sent'
-          AND created_at > (NOW() - INTERVAL ${popupSeconds} SECOND)
+          AND expires_at > NOW()
       `;
       if (requestAffected === 0) {
         throw new OfferNotFreshError();
@@ -249,6 +268,20 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   }).catch((err) => {
     logger.error(`notifyCustomerOrderAssigned failed for order ${orderId}:`, err);
   });
+
+  // Scheduled orders (booking_type=2) whose priority/fallback dispatch
+  // sweep (dispatchDueScheduledOrders below) didn't find a driver until
+  // close to schedule_date_time — warn the customer their pickup may run a
+  // few minutes late instead of leaving them to find out only once the
+  // driver is visibly behind.
+  if (Number(order.booking_type) === 2 && order.schedule_date_time) {
+    const scheduleMs = Date.parse(order.schedule_date_time);
+    if (!Number.isNaN(scheduleMs) && (scheduleMs - Date.now()) < SCHEDULED_ORDER_LATE_ACCEPT_BUFFER_MS) {
+      pushNotifier.notifyCustomerLatePickup(customer?.fcm_token, orderId, order.schedule_date_time).catch((err) =>
+        logger.error(`finalizeAcceptedOrder: notifyCustomerLatePickup failed for order ${orderId}:`, err)
+      );
+    }
+  }
 
   return {
     order: { ...order, ...priced, advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
@@ -1283,7 +1316,29 @@ async function sendScheduledOrderReminders() {
   }
 }
 
-// STEP 2 (PHP): actually dispatch to nearby drivers once schedule_date_time has arrived.
+// Fire-and-forget "your scheduled order is now being dispatched" push —
+// looked up fresh here (not passed down from the caller) the same way
+// finalizeAcceptedOrder above looks up the customer's fcm_token, since
+// dispatchDueScheduledOrders' own candidates query never selects it.
+function notifyOrderLive(order) {
+  (async () => {
+    try {
+      const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
+      await pushNotifier.notifyCustomerOrderLive(customer?.fcm_token, order.id);
+    } catch (err) {
+      logger.error(`dispatchDueScheduledOrders: notifyCustomerOrderLive failed for order ${order.id}:`, err);
+    }
+  })();
+}
+
+// STEP 2: once schedule_date_time is within SCHEDULED_ORDER_GO_LIVE_LEAD_MS,
+// the order "goes live" — see docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md
+// §3/§6. Drivers who marked interest (pkg_order_interest) get first crack
+// via a 15-minute priority-only window (dispatchManager.offerToInterestedRiders);
+// only once that elapses unaccepted (or if nobody was interested to begin
+// with) does this fall back to the exact same radius-based cascade every
+// instant order already uses (dispatchManager.startDispatch) — untouched
+// by this feature.
 async function dispatchDueScheduledOrders() {
   let candidates;
   try {
@@ -1298,15 +1353,67 @@ async function dispatchDueScheduledOrders() {
   const now = Date.now();
   for (const order of candidates) {
     const scheduleMs = order.schedule_date_time ? Date.parse(order.schedule_date_time) : NaN;
-    const isDue = Number.isNaN(scheduleMs) || scheduleMs <= now; // no parseable time -> treat as immediately due
-    if (!isDue) continue;
+    // No parseable time -> treat as immediately due, same fallback the
+    // pre-existing behavior used (see the historical note this replaces:
+    // ShifterOnline previously never sent schedule_date_time at all).
+    const isLive = Number.isNaN(scheduleMs) || (scheduleMs - now) <= SCHEDULED_ORDER_GO_LIVE_LEAD_MS;
+    if (!isLive) continue;
 
     try {
+      if (!order.priority_notify_sent) {
+        const interestRows = await prisma.pkg_order_interest.findMany({ where: { order_id: order.id } });
+        const interestedRiderIds = interestRows.map((r) => Number(r.rider_id));
+
+        if (interestedRiderIds.length > 0) {
+          const { pkg, discount } = await pricingEngine.getFirstTierPricingContext(order);
+          // offerToInterestedRiders re-checks each rider's CURRENT eligibility
+          // (online/approved/category, and not already mid-popup on another
+          // order) — interest was marked up to 7 days earlier, so it can
+          // legitimately come back having offered to nobody. Arming the
+          // 15-minute priority window in that case would park the order for a
+          // quarter of an hour with literally no driver holding an offer, so
+          // only arm it when at least one offer actually went out; otherwise
+          // fall through to the same-tick fallback cascade below, exactly as
+          // if nobody had marked interest in the first place.
+          const offerResult = await dispatchManager.offerToInterestedRiders(order, interestedRiderIds, pkg, discount);
+          const offeredRiderIds = (offerResult && offerResult.offeredRiderIds) || [];
+
+          if (offeredRiderIds.length > 0) {
+            await prisma.pkg_order.update({
+              where: { id: order.id },
+              data: { priority_notify_sent: true, priority_started_at: new Date() },
+            });
+            notifyOrderLive(order);
+            logger.info(`dispatchDueScheduledOrders: order ${order.id} went live — priority offer sent to ${offeredRiderIds.length} of ${interestedRiderIds.length} interested rider(s)`);
+            continue;
+          }
+
+          logger.warn(
+            `dispatchDueScheduledOrders: order ${order.id} had ${interestedRiderIds.length} interested rider(s) but none were still eligible — skipping the priority window, falling back to the normal cascade this tick`
+          );
+        }
+
+        // Nobody interested (or nobody still eligible) — no priority window
+        // to wait out, go straight to the fallback cascade this same tick.
+        await prisma.pkg_order.update({ where: { id: order.id }, data: { driver_notify_sent: true } });
+        dispatchManager.startDispatch(order).catch((err) =>
+          logger.error(`dispatchDueScheduledOrders: fallback dispatch failed to start for order ${order.id}:`, err)
+        );
+        notifyOrderLive(order);
+        logger.info(`dispatchDueScheduledOrders: order ${order.id} went live — no interested riders, fallback dispatch started`);
+        continue;
+      }
+
+      // Priority window already started on an earlier tick — check whether
+      // it's elapsed.
+      const priorityStartedMs = order.priority_started_at ? new Date(order.priority_started_at).getTime() : now;
+      if ((now - priorityStartedMs) < SCHEDULED_ORDER_PRIORITY_WINDOW_MS) continue;
+
       await prisma.pkg_order.update({ where: { id: order.id }, data: { driver_notify_sent: true } });
       dispatchManager.startDispatch(order).catch((err) =>
-        logger.error(`dispatchDueScheduledOrders: dispatch failed to start for order ${order.id}:`, err)
+        logger.error(`dispatchDueScheduledOrders: fallback dispatch failed to start for order ${order.id}:`, err)
       );
-      logger.info(`dispatchDueScheduledOrders: order ${order.id} scheduled time reached — dispatch started`);
+      logger.info(`dispatchDueScheduledOrders: order ${order.id} priority window elapsed unaccepted — fallback dispatch started`);
     } catch (err) {
       logger.error(`dispatchDueScheduledOrders: failed for order ${order.id}:`, err);
     }

@@ -295,4 +295,18 @@ public interface NodeService {
 
     @GET("api/rider/leads")
     Call<JsonObject> getMyLeads(@Query("rider_id") int riderId);
+
+    // Task 6/9: browse booking_type=2 scheduled trips and mark non-binding
+    // "interest" ahead of time (priority popup eligibility only - see
+    // dispatchManager.offerToInterestedRiders). riderRoutes.js mounts these
+    // under /api/rider, NOT /api/driver as an earlier draft of this plan
+    // assumed - verified against this file's existing api/rider/* routes.
+    @POST("api/rider/scheduled-trips")
+    Call<JsonObject> getScheduledTrips(@Body RequestBody body);
+
+    @POST("api/rider/scheduled-trips/interest")
+    Call<JsonObject> markScheduledTripInterest(@Body RequestBody body);
+
+    @POST("api/rider/scheduled-trips/interest/remove")
+    Call<JsonObject> removeScheduledTripInterest(@Body RequestBody body);
 }

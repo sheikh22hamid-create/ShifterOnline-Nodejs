@@ -89,6 +89,11 @@
             android:exported="true"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name="com.shifter.driver.ScheduledTripsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- ========= ALL INTERNAL ACTIVITIES ========= -->
 
         <activity

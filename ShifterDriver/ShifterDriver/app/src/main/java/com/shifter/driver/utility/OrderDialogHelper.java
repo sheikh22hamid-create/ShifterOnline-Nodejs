@@ -153,12 +153,20 @@ public class OrderDialogHelper {
         boolean isDirectAssign = "true".equalsIgnoreCase(getMapValue(orderData, "is_direct_assign", "false"))
                 || "true".equalsIgnoreCase(getMapValue(orderData, "is_monthly_order", "false"));
 
+        String scheduleDateTime = getMapValue(orderData, "schedule_date_time", null);
+
         if (isDirectAssign) {
             btnReject.setVisibility(android.view.View.GONE);
             btnAccept.setText("START TRIP / ACCEPT");
             android.widget.TextView txtSubtitle = view.findViewById(com.shifter.driver.R.id.txt_header_subtitle);
             if (txtSubtitle != null) {
                 txtSubtitle.setText("Mandatory Trip • Monthly Driver");
+            }
+        } else if (scheduleDateTime != null && !scheduleDateTime.isEmpty()) {
+            android.widget.TextView txtSubtitle = view.findViewById(com.shifter.driver.R.id.txt_header_subtitle);
+            if (txtSubtitle != null) {
+                txtSubtitle.setText("Scheduled pickup: " + formatScheduleLabel(scheduleDateTime));
+                txtSubtitle.setVisibility(android.view.View.VISIBLE);
             }
         }
 
@@ -179,15 +187,27 @@ public class OrderDialogHelper {
             Log.e(TAG, "Error parsing reject timer", e);
         }
         
-        // expires_at (server epoch-ms deadline, armed the moment the offer's
-        // lock was acquired server-side) is the source of truth for how much
-        // time is ACTUALLY left.
+        // Two different things, deliberately kept apart:
+        //   popup_duration = how long THIS BLOCKING MODAL may stay on screen.
+        //   expires_at     = the server's own deadline for honouring an accept.
+        // expires_at can only SHORTEN the countdown, never lengthen it past
+        // popup_duration. For the normal cascade the two are the same 15s
+        // window, so this stays exactly the behaviour it has always had (push/
+        // socket delivery latency has already eaten into expires_at by the
+        // time the popup renders, so expires_at - now is the smaller value and
+        // still wins). For a scheduled-order priority offer the server sends a
+        // 15-MINUTE expires_at with a much shorter popup_duration: the modal
+        // closes itself after popup_duration and hands the driver their phone
+        // back, while the offer underneath stays acceptable — the popup
+        // closing is not the offer expiring, and the driver can reopen it from
+        // the FCM notification.
         long timerMillis = timerSeconds * 1000L;
         try {
             String expiresAtStr = getMapValue(orderData, "expires_at", null);
             if (expiresAtStr != null && !expiresAtStr.isEmpty()) {
                 long expiresAt = Long.parseLong(expiresAtStr);
-                timerMillis = Math.max(0, expiresAt - System.currentTimeMillis());
+                long remainingMillis = Math.max(0, expiresAt - System.currentTimeMillis());
+                timerMillis = Math.min(timerMillis, remainingMillis);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error parsing expires_at, falling back to popup_duration", e);
@@ -263,6 +283,63 @@ public class OrderDialogHelper {
                 currentOrderId = null;
             }
         });
+    }
+
+    /**
+     * schedule_date_time arrives as an ISO-8601 string (ShifterOnline's
+     * select_vehicle.dart sends `_scheduledFor.toUtc().toIso8601String()`, so
+     * a `Z`-suffixed UTC instant) and is rendered here in the DRIVER's device
+     * timezone.
+     *
+     * The offset in the string is what decides the instant — this must never
+     * assume one. The previous version hardcoded the parser's timezone to UTC
+     * and stripped everything past the seconds, so an offset-less local
+     * string was silently reinterpreted as UTC and a 3:00 PM IST pickup
+     * rendered as "8:30 PM" on an IST phone: wrong by the device's whole UTC
+     * offset, unconditionally.
+     *
+     * Handled here: a trailing `Z`, a trailing `+HH:MM`/`-HH:MM`/`+HHMM`
+     * offset, and — for any older client still sending one — an offset-less
+     * string, which falls back to the device's own timezone (the same
+     * "local time" reading Node's Date.parse gives it server-side). Purely
+     * cosmetic: nothing in this app re-parses the formatted result, so an
+     * unrecognised shape just falls back to showing the raw string.
+     */
+    public static String formatScheduleLabel(String isoDateTime) {
+        try {
+            String raw = isoDateTime.trim();
+            java.util.TimeZone sourceZone = java.util.TimeZone.getDefault();
+
+            if (raw.endsWith("Z") || raw.endsWith("z")) {
+                sourceZone = java.util.TimeZone.getTimeZone("UTC");
+            } else {
+                // Look for a +HH:MM / -HH:MM / +HHMM offset AFTER the date part
+                // (index 10 onwards, so the date's own '-' separators can't
+                // be mistaken for an offset sign).
+                int offsetIdx = -1;
+                for (int i = Math.min(raw.length(), 10); i < raw.length(); i++) {
+                    char c = raw.charAt(i);
+                    if (c == '+' || c == '-') {
+                        offsetIdx = i;
+                        break;
+                    }
+                }
+                if (offsetIdx > 0) {
+                    sourceZone = java.util.TimeZone.getTimeZone("GMT" + raw.substring(offsetIdx));
+                }
+            }
+
+            java.text.SimpleDateFormat iso = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
+            iso.setTimeZone(sourceZone);
+            iso.setLenient(false);
+            java.util.Date parsed = iso.parse(raw.length() >= 19 ? raw.substring(0, 19) : raw);
+
+            java.text.SimpleDateFormat display = new java.text.SimpleDateFormat("EEE, d MMM 'at' h:mm a", java.util.Locale.US);
+            display.setTimeZone(java.util.TimeZone.getDefault());
+            return display.format(parsed);
+        } catch (Exception e) {
+            return isoDateTime;
+        }
     }
 
     private static String formatStops(String finalDrop, String rawStops) {
