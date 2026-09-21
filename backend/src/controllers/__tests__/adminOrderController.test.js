@@ -71,6 +71,63 @@ describe("adminOrderController next-day orders", () => {
         data: [expect.objectContaining({ id: 100, interested_count: 2 })],
       }));
     });
+
+    it("calls groupBy with the order ids and groups by order_id", async () => {
+      prisma.pkg_order.findMany.mockResolvedValueOnce([{ id: 100, booking_type: 2 }, { id: 101, booking_type: 2 }]);
+      prisma.pkg_order_interest.groupBy.mockResolvedValueOnce([]);
+
+      const req = { query: {} };
+      const res = makeRes();
+
+      await listScheduled(req, res);
+
+      expect(prisma.pkg_order_interest.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ["order_id"],
+          where: { order_id: { in: [100, 101] } },
+          _count: { order_id: true },
+        })
+      );
+    });
+
+    it("falls back to interested_count 0 for an order with no matching groupBy row", async () => {
+      prisma.pkg_order.findMany.mockResolvedValueOnce([{ id: 100, booking_type: 2 }]);
+      prisma.pkg_order_interest.groupBy.mockResolvedValueOnce([]);
+
+      const req = { query: {} };
+      const res = makeRes();
+
+      await listScheduled(req, res);
+
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        data: [expect.objectContaining({ id: 100, interested_count: 0 })],
+      }));
+    });
+
+    it("assigns each order its own count when only some orders have interest rows", async () => {
+      prisma.pkg_order.findMany.mockResolvedValueOnce([
+        { id: 100, booking_type: 2 },
+        { id: 101, booking_type: 2 },
+        { id: 102, booking_type: 2 },
+      ]);
+      prisma.pkg_order_interest.groupBy.mockResolvedValueOnce([
+        { order_id: 100, _count: { order_id: 3 } },
+        { order_id: 102, _count: { order_id: 1 } },
+      ]);
+
+      const req = { query: {} };
+      const res = makeRes();
+
+      await listScheduled(req, res);
+
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        data: [
+          expect.objectContaining({ id: 100, interested_count: 3 }),
+          expect.objectContaining({ id: 101, interested_count: 0 }),
+          expect.objectContaining({ id: 102, interested_count: 1 }),
+        ],
+      }));
+    });
   });
 
   describe("listNextDay", () => {
