@@ -65,7 +65,10 @@ function registerOrderHandlers(io, socket) {
         Order_flow_id: order.order_status,
         total_Delivery_charge: String(order.total_dcharge),
         advance_payment: order.advance_payment,
-        payment_status: (order.advance_payment === "0" || order.advance_payment === 0) ? 1 : (order.payment_status ?? 0),
+        // See orderController.js's getOrderDetails for why this must not be
+        // re-derived from the advance amount — order.payment_status is
+        // already the correct, gateway/no-advance-plan-verified value.
+        payment_status: order.payment_status ?? 0,
         advance_payment_timer: timerInfo.remaining_seconds,
         advance_payment_msg: timerInfo.is_advance_payment_required
           ? "Please complete the advance payment to confirm your order. Kindly note that if the payment is not completed within 2 minutes, your order will be automatically cancelled."

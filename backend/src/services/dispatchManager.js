@@ -1254,10 +1254,18 @@ async function reconcileStaleOffersOnStartup() {
       logger.warn(`dispatchManager: startup reconciliation flipped ${staleRequests} stale 'sent' request(s) to 'timeout'`);
     }
 
+    // Scheduled (booking_type=2) and next-day (booking_type=3) orders are
+    // BY DESIGN Pending/unassigned for a long time before their own sweep
+    // (dispatchDueScheduledOrders) ever starts a cascade for them — odate
+    // (order creation time) being old says nothing about whether a cascade
+    // actually died mid-flight for these, unlike instant orders. Excluding
+    // them here so a restart during that legitimate wait doesn't silently
+    // cancel an order no driver was ever offered yet.
     const staleOrders = await prisma.$executeRaw`
       UPDATE pkg_order
       SET o_status = 'Cancelled', cancel_reason = 'No driver found (recovered after restart)'
       WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
+        AND booking_type NOT IN (2, 3)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
     `;
     if (staleOrders > 0) {

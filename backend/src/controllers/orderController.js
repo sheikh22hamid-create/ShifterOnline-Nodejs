@@ -528,7 +528,15 @@ async function getOrderDetails(req, res) {
           grand_total: String(order.total_dcharge),
           Delivery_charge: String(order.d_charge),
           advance_payment: advancePayment == null ? "0" : String(advancePayment),
-          payment_status: (advancePayment == null || advancePayment === "0" || Number(advancePayment) === 0) ? 1 : (order.payment_status ?? 0),
+          // payment_status must reflect whether a payment actually happened
+          // (tripLifecycle.finalizeAcceptedOrder is the only writer of this
+          // column, and already correctly sets it to 1 only for a genuine
+          // no-advance-required plan or a verified gateway payment) — it is
+          // NOT implied by the advance amount being 0/null. Amount-based
+          // overriding here previously showed "Payment Completed Online" for
+          // orders nobody had paid for (zero-advance packages, or any order
+          // queried before acceptance ever wrote a real advance_payment row).
+          payment_status: order.payment_status ?? 0,
           advance_payment_timer: timerInfo.remaining_seconds,
           is_rate: order.is_rate,
           distance: order.distance,
