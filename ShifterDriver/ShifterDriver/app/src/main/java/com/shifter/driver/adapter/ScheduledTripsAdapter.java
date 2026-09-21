@@ -74,7 +74,13 @@ public class ScheduledTripsAdapter extends RecyclerView.Adapter<ScheduledTripsAd
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         JSONObject trip = trips.get(position);
-        holder.scheduleTime.setText(trip.optString("schedule_date_time", ""));
+        // schedule_date_time is a UTC-suffixed ISO-8601 instant on the wire
+        // (ShifterOnline sends .toUtc().toIso8601String()), so it must be
+        // rendered in the driver's own timezone rather than shown raw —
+        // same formatter the order popup uses, so the two always agree.
+        String scheduleRaw = trip.optString("schedule_date_time", "");
+        holder.scheduleTime.setText(
+                scheduleRaw.isEmpty() ? "" : com.shifter.driver.utility.OrderDialogHelper.formatScheduleLabel(scheduleRaw));
         holder.pickup.setText(trip.optString("pickup_address", ""));
         holder.fare.setText("₹" + trip.optString("estimated_fare", "0"));
 

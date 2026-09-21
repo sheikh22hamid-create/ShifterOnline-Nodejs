@@ -1366,18 +1366,35 @@ async function dispatchDueScheduledOrders() {
 
         if (interestedRiderIds.length > 0) {
           const { pkg, discount } = await pricingEngine.getFirstTierPricingContext(order);
-          await dispatchManager.offerToInterestedRiders(order, interestedRiderIds, pkg, discount);
-          await prisma.pkg_order.update({
-            where: { id: order.id },
-            data: { priority_notify_sent: true, priority_started_at: new Date() },
-          });
-          notifyOrderLive(order);
-          logger.info(`dispatchDueScheduledOrders: order ${order.id} went live — priority offer sent to ${interestedRiderIds.length} interested rider(s)`);
-          continue;
+          // offerToInterestedRiders re-checks each rider's CURRENT eligibility
+          // (online/approved/category, and not already mid-popup on another
+          // order) — interest was marked up to 7 days earlier, so it can
+          // legitimately come back having offered to nobody. Arming the
+          // 15-minute priority window in that case would park the order for a
+          // quarter of an hour with literally no driver holding an offer, so
+          // only arm it when at least one offer actually went out; otherwise
+          // fall through to the same-tick fallback cascade below, exactly as
+          // if nobody had marked interest in the first place.
+          const offerResult = await dispatchManager.offerToInterestedRiders(order, interestedRiderIds, pkg, discount);
+          const offeredRiderIds = (offerResult && offerResult.offeredRiderIds) || [];
+
+          if (offeredRiderIds.length > 0) {
+            await prisma.pkg_order.update({
+              where: { id: order.id },
+              data: { priority_notify_sent: true, priority_started_at: new Date() },
+            });
+            notifyOrderLive(order);
+            logger.info(`dispatchDueScheduledOrders: order ${order.id} went live — priority offer sent to ${offeredRiderIds.length} of ${interestedRiderIds.length} interested rider(s)`);
+            continue;
+          }
+
+          logger.warn(
+            `dispatchDueScheduledOrders: order ${order.id} had ${interestedRiderIds.length} interested rider(s) but none were still eligible — skipping the priority window, falling back to the normal cascade this tick`
+          );
         }
 
-        // Nobody interested — no priority window to wait out, go straight
-        // to the fallback cascade this same tick.
+        // Nobody interested (or nobody still eligible) — no priority window
+        // to wait out, go straight to the fallback cascade this same tick.
         await prisma.pkg_order.update({ where: { id: order.id }, data: { driver_notify_sent: true } });
         dispatchManager.startDispatch(order).catch((err) =>
           logger.error(`dispatchDueScheduledOrders: fallback dispatch failed to start for order ${order.id}:`, err)

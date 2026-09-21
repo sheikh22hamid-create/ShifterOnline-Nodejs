@@ -1078,6 +1078,10 @@ describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Date, "now").mockReturnValue(NOW);
+    // Default: every interested rider was still eligible and actually got an
+    // offer. Tests that care about the "nobody still eligible" case override
+    // this with an empty offeredRiderIds.
+    dispatchManager.offerToInterestedRiders.mockResolvedValue({ offeredRiderIds: [5, 6] });
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -1111,6 +1115,29 @@ describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
     expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 11 }));
     expect(prisma.pkg_order.update).toHaveBeenCalledWith({
       where: { id: 11 },
+      data: expect.objectContaining({ driver_notify_sent: true }),
+    });
+  });
+
+  it("falls through to the fallback cascade this same tick when every interested rider turned out ineligible", async () => {
+    prisma.pkg_order.findMany.mockResolvedValueOnce([
+      { id: 15, booking_type: 2, o_status: "Pending", driver_notify_sent: false, priority_notify_sent: false, schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1 },
+    ]);
+    prisma.pkg_order_interest.findMany.mockResolvedValueOnce([{ rider_id: 5 }, { rider_id: 6 }]);
+    // Both marked interest days ago but are now offline / on another popup.
+    dispatchManager.offerToInterestedRiders.mockResolvedValueOnce({ offeredRiderIds: [] });
+
+    await tripLifecycle.dispatchDueScheduledOrders();
+
+    // The 15-minute priority window must NOT be armed — there is nobody
+    // holding an offer to wait for.
+    expect(prisma.pkg_order.update).not.toHaveBeenCalledWith({
+      where: { id: 15 },
+      data: expect.objectContaining({ priority_notify_sent: true }),
+    });
+    expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 15 }));
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 15 },
       data: expect.objectContaining({ driver_notify_sent: true }),
     });
   });

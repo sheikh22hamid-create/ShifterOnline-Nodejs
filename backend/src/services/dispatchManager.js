@@ -18,6 +18,7 @@ const {
   MODEL1_SUSPENSION_HOURS,
   RIDER_LOCATION_FRESHNESS_MS,
   SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
+  SCHEDULED_ORDER_PRIORITY_POPUP_MS,
 } = require("../config/constants");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
@@ -292,6 +293,38 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     // remaining time as expires_at - now instead of restarting the clock.
     expires_at: String(expiresAt),
   };
+}
+
+/**
+ * Writes the `sent` offer row for one driver, with its lifetime expressed as
+ * a DURATION rather than an absolute Node-computed instant.
+ *
+ * Why not `prisma.tbl_order_requests.create({ ..., expires_at: new Date(...) })`:
+ * claimOrderForRider's freshness check is `expires_at > NOW()`, and NOW() is
+ * MySQL's clock. A Node-stamped expires_at compared against MySQL's NOW() is
+ * a cross-process clock comparison — with the two clocks even slightly apart
+ * (measured ~3.3s of skew on this project's own dev DB) the effective accept
+ * window silently shrinks (or stretches) for EVERY order type while the
+ * driver's popup still counts down the full nominal duration, producing a
+ * false "Offer expired" for a driver who tapped Accept with seconds to spare.
+ *
+ * Both timestamps are therefore produced by MySQL itself here — created_at =
+ * NOW(), expires_at = NOW() + INTERVAL <ttl> SECOND — so the only thing Node
+ * contributes is the ttl, a pure duration with no clock in it. Every later
+ * comparison (claimOrderForRider's accept check, reconcileStaleOffersOnStartup)
+ * then stays entirely inside MySQL's own clock domain.
+ *
+ * The driver-facing `expires_at` in the socket payload stays Node-computed on
+ * purpose: that one is only ever compared against the DRIVER's device clock
+ * for the popup countdown, never against MySQL, and it is deliberately
+ * capped by popup_duration on the device (see OrderDialogHelper).
+ */
+async function insertOrderRequest({ orderId, riderId, packageId, lat, lng, ttlMs }) {
+  const ttlSeconds = Math.max(1, Math.round(Number(ttlMs) / 1000));
+  await prisma.$executeRaw`
+    INSERT INTO tbl_order_requests (order_id, rider_id, package_id, status, lat, lng, created_at, expires_at)
+    VALUES (${Number(orderId)}, ${Number(riderId)}, ${Number(packageId)}, 'sent', ${lat}, ${lng}, NOW(), NOW() + INTERVAL ${ttlSeconds} SECOND)
+  `;
 }
 
 async function checkCascadeTermination(orderId) {
@@ -641,23 +674,19 @@ async function runBatchInner(orderId) {
       await Promise.all(
         lockedThisRoundDrivers.map(async (driver) => {
           const riderId = Number(driver.rider_id);
-          await prisma.tbl_order_requests.create({
-            data: {
-              order_id: orderId,
-              rider_id: riderId,
-              package_id: Number(packageId),
-              status: "sent",
-              lat: driver.rlats ? String(driver.rlats) : null,
-              lng: driver.rlongs ? String(driver.rlongs) : null,
-              // Explicit now — claimOrderForRider's freshness check reads
-              // this column instead of a hardcoded POPUP_TIMEOUT_MS window,
-              // so a priority offer (offerToInterestedRiders, a longer
-              // SCHEDULED_ORDER_PRIORITY_WINDOW_MS) can actually be accepted
-              // past the normal cascade's 15s. Same value the old hardcoded
-              // `created_at > NOW() - INTERVAL 15 SECOND` check produced for
-              // this row, just now stored instead of implied.
-              expires_at: new Date(armedAt + POPUP_TIMEOUT_MS),
-            },
+          // expires_at is stored as a MySQL-computed NOW() + ttl (see
+          // insertOrderRequest) — claimOrderForRider's freshness check reads
+          // this column instead of a hardcoded POPUP_TIMEOUT_MS window, so a
+          // priority offer (offerToInterestedRiders, a longer
+          // SCHEDULED_ORDER_PRIORITY_WINDOW_MS) can actually be accepted past
+          // the normal cascade's 15s.
+          await insertOrderRequest({
+            orderId,
+            riderId,
+            packageId: Number(packageId),
+            lat: driver.rlats ? String(driver.rlats) : null,
+            lng: driver.rlongs ? String(driver.rlongs) : null,
+            ttlMs: POPUP_TIMEOUT_MS,
           });
 
           // Each driver's own popup is priced off THEIR real pickup distance
@@ -988,9 +1017,10 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
 
   const distanceKm = Number(order.distance) || 0;
   const armedAt = Date.now();
-  // Longer than the normal 15s (POPUP_TIMEOUT_MS) cascade popup — these
-  // riders already expressed interest ahead of time, so they're given a
-  // much longer window to actually accept.
+  // How long the SERVER will still honour an accept on this offer. Longer
+  // than the normal 15s (POPUP_TIMEOUT_MS) cascade window — these riders
+  // already expressed interest ahead of time. This is NOT how long the
+  // driver's popup stays on screen; see the popup_duration override below.
   const expiresAt = armedAt + SCHEDULED_ORDER_PRIORITY_WINDOW_MS;
 
   const offeredRiderIds = [];
@@ -1002,16 +1032,13 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
         Number(driver.rlats), Number(driver.rlongs)
       );
 
-      await prisma.tbl_order_requests.create({
-        data: {
-          order_id: order.id,
-          rider_id: riderId,
-          package_id: Number(pkg.id),
-          status: "sent",
-          lat: driver.rlats ? String(driver.rlats) : null,
-          lng: driver.rlongs ? String(driver.rlongs) : null,
-          expires_at: new Date(expiresAt),
-        },
+      await insertOrderRequest({
+        orderId: order.id,
+        riderId,
+        packageId: Number(pkg.id),
+        lat: driver.rlats ? String(driver.rlats) : null,
+        lng: driver.rlongs ? String(driver.rlongs) : null,
+        ttlMs: SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
       });
 
       const { fare, driverTitle } = pricingEngine.priceForPackage(
@@ -1024,6 +1051,17 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
         order, pkg.id, distanceKm.toFixed(1), fare, pkg.title, expiresAt, driverTitle
       );
       payload.schedule_date_time = order.schedule_date_time;
+      // The popup's own on-screen lifetime, decoupled from the offer's
+      // server-side validity above. buildOrderRequestPayload defaults this to
+      // POPUP_TIMEOUT_MS (15s, the unsolicited-cascade popup); a priority
+      // offer gets longer than that but nowhere near the full 15-minute
+      // window, because the driver app renders this as a blocking modal that
+      // locks them out of the rest of the app while it is up. The device
+      // caps its countdown at min(popup_duration, expires_at - now) — see
+      // OrderDialogHelper/OrderOverlayService — so the popup closes itself
+      // after SCHEDULED_ORDER_PRIORITY_POPUP_MS while the offer underneath it
+      // stays acceptable, rather than falsely telling the driver it expired.
+      payload.popup_duration = String(Math.round(SCHEDULED_ORDER_PRIORITY_POPUP_MS / 1000));
 
       requireIo().to(`driver_${riderId}`).emit("order:request", payload);
       await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);
@@ -1119,6 +1157,63 @@ function stopDispatch(orderId, reason) {
       })
       .catch((err) => logger.error(`stopDispatch: failed updating tbl_order_requests for order ${orderId}:`, err));
   }
+
+  dismissUnlockedLiveOffers(orderId, reason, newRequestStatus, riderIds).catch((err) =>
+    logger.error(`stopDispatch: failed dismissing unlocked live offers for order ${orderId}:`, err)
+  );
+}
+
+/**
+ * The lock-based dismissal in stopDispatch above only reaches riders who are
+ * holding a lockManager lock for this order — which is every rider the normal
+ * tiered cascade offered to, but NONE of the riders offered via
+ * offerToInterestedRiders: that priority round deliberately takes no locks
+ * (spec §7 — there is only one round, so there is nothing to stagger). So
+ * when one interested driver accepted, every OTHER interested driver's popup
+ * used to sit on screen until its own timer ran out, on an order that was
+ * already gone.
+ *
+ * This closes that gap generically, off the offer rows themselves: any row
+ * still 'sent' with an expires_at in the future is, by definition, an offer
+ * some driver may still be looking at. Rows whose expires_at has already
+ * passed are left alone, so this cannot retroactively rewrite the status of
+ * long-finished offers — which is also why it is a no-op in practice for the
+ * instant (booking_type=1) and next-day (booking_type=3) flows, where every
+ * live offer is lock-backed and therefore already handled above.
+ */
+async function dismissUnlockedLiveOffers(orderId, reason, newRequestStatus, alreadyDismissedRiderIds) {
+  const handled = new Set((alreadyDismissedRiderIds || []).map(Number));
+
+  const rows = await prisma.tbl_order_requests.findMany({
+    where: { order_id: orderId, status: "sent", expires_at: { gt: new Date() } },
+    select: { rider_id: true },
+  });
+
+  const riderIds = [
+    ...new Set(rows.map((r) => Number(r.rider_id)).filter((id) => id && !handled.has(id))),
+  ];
+  if (riderIds.length === 0) return;
+
+  for (const riderId of riderIds) {
+    if (ioRef) {
+      ioRef.to(`driver_${riderId}`).emit("order:dismiss", { order_id: String(orderId), reason });
+    }
+  }
+
+  await prisma.tbl_order_requests.updateMany({
+    where: { order_id: orderId, rider_id: { in: riderIds }, status: "sent" },
+    data: { status: newRequestStatus },
+  });
+
+  const riders = await prisma.tbl_rider.findMany({
+    where: { id: { in: riderIds } },
+    select: { id: true, fcm_token: true },
+  });
+  await Promise.all(riders.map((r) => pushNotifier.notifyDriverDismiss(r.fcm_token, orderId, reason)));
+
+  logger.info(
+    `stopDispatch: dismissed ${riderIds.length} unlocked live offer(s) for order ${orderId} (reason=${reason}) — riders ${riderIds.join(",")}`
+  );
 }
 
 /**
@@ -1132,11 +1227,24 @@ function stopDispatch(orderId, reason) {
  */
 async function reconcileStaleOffersOnStartup() {
   try {
+    // Staleness is the row's OWN expires_at (stamped by whichever dispatch
+    // path created it — POPUP_TIMEOUT_MS for the normal cascade,
+    // SCHEDULED_ORDER_PRIORITY_WINDOW_MS for offerToInterestedRiders'
+    // priority round), not one hardcoded interval that no longer applies to
+    // every request type: a legitimate 15-minute priority offer that happens
+    // to be 2 minutes old when the process restarts must NOT be killed here,
+    // because claimOrderForRider would still happily accept it.
+    // Legacy rows written before expires_at was populated fall back to the
+    // old created_at + POPUP_TIMEOUT_MS rule so they still get cleaned up.
     const popupSeconds = POPUP_TIMEOUT_MS / 1000;
     const staleRequests = await prisma.$executeRaw`
       UPDATE tbl_order_requests
       SET status = 'timeout'
-      WHERE status = 'sent' AND created_at <= (NOW() - INTERVAL ${popupSeconds} SECOND)
+      WHERE status = 'sent'
+        AND (
+          (expires_at IS NOT NULL AND expires_at <= NOW())
+          OR (expires_at IS NULL AND created_at <= (NOW() - INTERVAL ${popupSeconds} SECOND))
+        )
     `;
     if (staleRequests > 0) {
       logger.warn(`dispatchManager: startup reconciliation flipped ${staleRequests} stale 'sent' request(s) to 'timeout'`);

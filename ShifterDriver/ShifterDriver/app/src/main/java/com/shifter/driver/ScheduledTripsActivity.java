@@ -105,6 +105,28 @@ public class ScheduledTripsActivity extends AppCompatActivity implements GetResu
         findViewById(R.id.txt_empty_state).setVisibility(trips.isEmpty() ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
+    /**
+     * True only when the backend actually reports success. Reads "Result"
+     * first (this app's existing convention for this response shape), then
+     * "ResponseCode" == "200", and finally — for a response carrying neither —
+     * falls back to "no explicit error key", the old, too-loose check.
+     */
+    private static boolean isApiSuccess(JsonObject body) {
+        if (body == null) return false;
+        if (body.has("error") && !body.get("error").isJsonNull()) {
+            try {
+                if (body.get("error").getAsBoolean()) return false;
+            } catch (Exception ignored) {}
+        }
+        if (body.has("Result") && !body.get("Result").isJsonNull()) {
+            return "true".equalsIgnoreCase(body.get("Result").getAsString());
+        }
+        if (body.has("ResponseCode") && !body.get("ResponseCode").isJsonNull()) {
+            return "200".equals(body.get("ResponseCode").getAsString());
+        }
+        return true;
+    }
+
     private void onToggleInterest(JSONObject trip, boolean nowInterested) {
         String orderId = trip.optString("id", "");
         if (orderId.isEmpty()) return;
@@ -123,8 +145,17 @@ public class ScheduledTripsActivity extends AppCompatActivity implements GetResu
         call.enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
-                boolean ok = response.isSuccessful() && response.body() != null
-                        && !(response.body().has("error") && response.body().get("error").getAsBoolean());
+                // HTTP 200 is NOT success on its own: this backend's driver
+                // endpoints always answer 200 and carry the real outcome in
+                // the body (see driverScheduledTripsController — a rider who
+                // fails the eligibility re-check gets
+                // {"ResponseCode":"401","Result":"false",...} with no `error`
+                // key at all). "Result" is this app's authoritative success
+                // flag everywhere else it reads this response shape
+                // (LeadReferralActivity, AccountFragment, OrderDetailsActivity),
+                // with ResponseCode as the fallback for any response that
+                // omits it.
+                boolean ok = response.isSuccessful() && isApiSuccess(response.body());
                 if (!ok) {
                     adapter.revertInterest(trip, !nowInterested);
                     Toast.makeText(ScheduledTripsActivity.this,

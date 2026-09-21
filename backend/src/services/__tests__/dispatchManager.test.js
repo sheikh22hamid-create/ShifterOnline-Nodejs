@@ -1,5 +1,6 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
+  $executeRaw: jest.fn(),
   pkg_order: {
     findUnique: jest.fn(),
     update: jest.fn(),
@@ -29,7 +30,13 @@ const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pushNotifier = require("../pushNotifier");
-const { POPUP_TIMEOUT_MS, BATCH_GAP_MS, MAX_DRIVERS_PER_BATCH } = require("../../config/constants");
+const {
+  POPUP_TIMEOUT_MS,
+  BATCH_GAP_MS,
+  MAX_DRIVERS_PER_BATCH,
+  SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
+  SCHEDULED_ORDER_PRIORITY_POPUP_MS,
+} = require("../../config/constants");
 
 const flush = async (ticks = 20) => {
   for (let i = 0; i < ticks; i++) {
@@ -86,6 +93,25 @@ describe("dispatchManager overlapping batch cascade", () => {
   let io;
   let orderRequestsStore;
 
+  // Mirrors insertOrderRequest's raw-INSERT template argument order:
+  // (order_id, rider_id, package_id, lat, lng, ttlSeconds). Returns 1, the
+  // affected-row count a real $executeRaw INSERT resolves to.
+  function recordOrderRequestInsert(values) {
+    const [order_id, rider_id, package_id, lat, lng, ttlSeconds] = values;
+    orderRequestsStore.push({
+      order_id,
+      rider_id,
+      package_id,
+      status: "sent",
+      lat,
+      lng,
+      ttl_seconds: ttlSeconds,
+      // What MySQL's own `NOW() + INTERVAL <ttl> SECOND` would have stored.
+      expires_at: new Date(Date.now() + ttlSeconds * 1000),
+    });
+    return 1;
+  }
+
   beforeEach(() => {
     jest.useFakeTimers();
     // Clears call history (not just resolved values) so mock.calls-based
@@ -121,10 +147,15 @@ describe("dispatchManager overlapping batch cascade", () => {
     // create() has actually written — real reject-only exclusion behavior,
     // not a canned return value.
     orderRequestsStore = [];
-    prisma.tbl_order_requests.create.mockImplementation(({ data }) => {
-      orderRequestsStore.push({ ...data });
-      return Promise.resolve({ id: orderRequestsStore.length, ...data });
-    });
+    // The offer row is written with a raw INSERT (dispatchManager's
+    // insertOrderRequest) so that created_at/expires_at are produced by
+    // MySQL's own clock rather than Node's — see that function's comment.
+    // This mock stands in for MySQL: it records the interpolated values in
+    // the same order the template lists them and simulates what
+    // `NOW() + INTERVAL <ttl> SECOND` would have stored.
+    prisma.$executeRaw.mockImplementation((_strings, ...values) =>
+      Promise.resolve(recordOrderRequestInsert(values))
+    );
     prisma.tbl_order_requests.findMany.mockImplementation(({ where }) => {
       const riderIds = [
         ...new Set(
@@ -678,7 +709,7 @@ describe("dispatchManager overlapping batch cascade", () => {
     await flush();
 
     expect(emitted.some((e) => e.event === "order:request" && e.room === "driver_5")).toBe(false);
-    expect(prisma.tbl_order_requests.create).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
     expect(lockManager.isLocked(5)).toBe(false);
   });
 
@@ -1401,10 +1432,10 @@ describe("dispatchManager overlapping batch cascade", () => {
       // between lockManager.acquireLock (which stamps the lock's real
       // expiresAt) and scheduleExpiry actually being called.
       const DB_LATENCY_MS = 5000;
-      prisma.tbl_order_requests.create.mockImplementationOnce(({ data }) => {
-        orderRequestsStore.push({ ...data });
+      prisma.$executeRaw.mockImplementationOnce((_strings, ...values) => {
+        recordOrderRequestInsert(values);
         jest.setSystemTime(new Date(Date.now() + DB_LATENCY_MS));
-        return Promise.resolve({ id: orderRequestsStore.length, ...data });
+        return Promise.resolve(1);
       });
 
       await dispatchManager.startDispatch(order);
@@ -1522,7 +1553,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       expect(result.offeredRiderIds.sort()).toEqual([5, 6]);
       const requests = emitted.filter((e) => e.event === "order:request");
       expect(requests.map((r) => r.room).sort()).toEqual(["driver_5", "driver_6"]);
-      expect(prisma.tbl_order_requests.create).toHaveBeenCalledTimes(2);
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
       // Priority offers use a longer expiry than the normal 15s cascade popup.
       expect(Number(requests[0].payload.expires_at)).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
       // And the DB row itself — the column claimOrderForRider actually reads
@@ -1534,6 +1565,49 @@ describe("dispatchManager overlapping batch cascade", () => {
         expect(row.expires_at).toBeInstanceOf(Date);
         expect(row.expires_at.getTime()).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
       }
+    });
+
+    it("gives the popup its own short display duration while the offer itself stays acceptable for the full priority window", async () => {
+      mockRidersById({
+        5: { id: 5, rlats: "28.70", rlongs: "77.10", fcm_token: "tok5", vehicle: scheduledOrder.category },
+      });
+
+      await dispatchManager.offerToInterestedRiders(scheduledOrder, [5], { id: 6, title: "Model 1" }, 0);
+
+      const payload = emitted.find((e) => e.event === "order:request").payload;
+      // The driver's blocking modal must not sit on screen for 15 minutes...
+      expect(Number(payload.popup_duration)).toBe(SCHEDULED_ORDER_PRIORITY_POPUP_MS / 1000);
+      expect(Number(payload.popup_duration) * 1000).toBeLessThan(SCHEDULED_ORDER_PRIORITY_WINDOW_MS);
+      // ...but the offer underneath it is still good for the full window, so
+      // the popup closing is not the offer expiring.
+      expect(Number(payload.expires_at) - Date.now()).toBeGreaterThan(14 * 60 * 1000);
+    });
+
+    it("dismisses the other interested riders' popups when one of them accepts (they hold no lock)", async () => {
+      mockRidersById({
+        5: { id: 5, rlats: "28.70", rlongs: "77.10", fcm_token: "tok5", vehicle: scheduledOrder.category },
+        6: { id: 6, rlats: "28.71", rlongs: "77.11", fcm_token: "tok6", vehicle: scheduledOrder.category },
+      });
+      await dispatchManager.offerToInterestedRiders(scheduledOrder, [5, 6], { id: 6, title: "Model 1" }, 0);
+
+      // Rider 5 accepts — tripLifecycle.finalizeAcceptedOrder calls this.
+      // Neither rider holds a lockManager lock (the priority round takes
+      // none by design), so the lock-based dismissal path reaches nobody.
+      prisma.tbl_order_requests.findMany.mockImplementationOnce(async () => [
+        { rider_id: 5 }, { rider_id: 6 },
+      ]);
+      dispatchManager.stopDispatch(scheduledOrder.id, "accepted_by_other");
+      await flush();
+
+      const dismissed = emitted
+        .filter((e) => e.event === "order:dismiss" && e.payload.order_id === String(scheduledOrder.id))
+        .map((e) => e.room)
+        .sort();
+      expect(dismissed).toEqual(["driver_5", "driver_6"]);
+      expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({
+        where: { order_id: scheduledOrder.id, rider_id: { in: [5, 6] }, status: "sent" },
+        data: { status: "auto_rejected" },
+      });
     });
 
     it("skips a rider who's gone offline/stale since marking interest", async () => {
@@ -1561,7 +1635,7 @@ describe("dispatchManager overlapping batch cascade", () => {
         expect(result.offeredRiderIds).toEqual([5]);
         const requests = emitted.filter((e) => e.event === "order:request");
         expect(requests.map((r) => r.room)).toEqual(["driver_5"]);
-        expect(prisma.tbl_order_requests.create).toHaveBeenCalledTimes(1);
+        expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
       } finally {
         lockManager.releaseLock(6);
       }
