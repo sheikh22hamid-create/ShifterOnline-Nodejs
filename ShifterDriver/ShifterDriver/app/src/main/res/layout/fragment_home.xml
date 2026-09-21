@@ -1154,9 +1154,9 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <!-- ================= INCENTIVE TARGET BANNER ================= -->
+            <!-- ================= SCHEDULED TRIPS SECTION ================= -->
             <LinearLayout
-                android:id="@+id/layout_incentive_banner"
+                android:id="@+id/btn_scheduled_trips"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
@@ -1164,69 +1164,79 @@
                 android:layout_marginBottom="12dp"
                 android:background="@drawable/bg_home_surface"
                 android:clickable="true"
-                android:elevation="0dp"
                 android:focusable="true"
+                android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:padding="14dp"
                 android:foreground="?attr/selectableItemBackground">
-                <ImageView
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:src="@drawable/ic_trophy_small"
-                    app:tint="#FFA000" />
+
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_circle_orange_light">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_calendar"
+                        app:tint="@color/shifter_orange"
+                        android:contentDescription="Scheduled Trips" />
+                </FrameLayout>
+
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="8dp"
                     android:layout_weight="1"
                     android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Keep going!"
-                        android:textColor="@color/driver_text_primary"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:id="@+id/txt_incentive_subtitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="Complete more orders to maximize your daily earnings."
-                        android:textColor="@color/home_secondary"
-                        android:textSize="12sp" />
+
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
-                        <ProgressBar
-                            android:id="@+id/progress_daily_target"
-                            style="?android:attr/progressBarStyleHorizontal"
-                            android:layout_width="0dp"
-                            android:layout_height="4dp"
-                            android:layout_weight="1"
-                            android:max="10"
-                            android:progress="1"
-                            android:progressTint="@color/shifter_orange" />
+
                         <TextView
-                            android:id="@+id/txt_incentive_target_ratio"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Scheduled Trips"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
-                            android:text="1/10"
-                            android:textColor="@color/home_secondary"
-                            android:textSize="12sp"
+                            android:background="@drawable/bg_badge_orange_light"
+                            android:paddingStart="8dp"
+                            android:paddingTop="2dp"
+                            android:paddingEnd="8dp"
+                            android:paddingBottom="2dp"
+                            android:text="Advance"
+                            android:textColor="@color/shifter_orange_dark"
+                            android:textSize="10sp"
                             android:textStyle="bold" />
                     </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="Browse upcoming advance bookings &amp; mark interest"
+                        android:textColor="@color/driver_text_secondary"
+                        android:textSize="12sp" />
                 </LinearLayout>
+
                 <ImageView
                     android:layout_width="16dp"
                     android:layout_height="16dp"
                     android:layout_gravity="center_vertical"
                     android:src="@drawable/arow_right"
-                    app:tint="@color/driver_text_secondary" />
+                    app:tint="@color/driver_text_secondary"
+                    android:contentDescription="Open" />
             </LinearLayout>
             <!-- ================= DELIVERY TYPES SECTION ================= -->
             <LinearLayout
@@ -1408,58 +1418,6 @@
                     android:layout_height="20dp"
                     android:src="@drawable/arow_right"
                     app:tint="@color/white" />
-            </LinearLayout>
-            <!-- ===== Scheduled Trips Button ===== -->
-            <LinearLayout
-                android:id="@+id/btn_scheduled_trips"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
-                android:layout_marginBottom="12dp"
-                android:background="@drawable/rounded_button"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:padding="14dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-
-                <ImageView
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:src="@drawable/ic_current_location_pickup"
-                    android:tint="@color/white"
-                    android:layout_marginEnd="12dp" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Scheduled Trips"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Browse upcoming trips and mark interest"
-                        android:textColor="#DDEEFF"
-                        android:textSize="12sp" />
-                </LinearLayout>
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/arow_right"
-                    android:tint="@color/white" />
-
             </LinearLayout>
             <!-- ================= A GREENER TOMORROW ECO BANNER ================= -->
         </LinearLayout>
