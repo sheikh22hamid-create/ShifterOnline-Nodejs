@@ -229,6 +229,8 @@ model pkg_order {
   allowed_delivery_types String?            @db.Text
   user_reminder_sent     Boolean?           @default(false)
   driver_notify_sent     Boolean?           @default(false)
+  priority_notify_sent   Boolean?           @default(false)
+  priority_started_at   DateTime?
   loading_charge         Decimal?           @db.Decimal(8, 2)
   unloading_charge       Decimal?           @db.Decimal(8, 2)
   service_charge         Decimal?           @db.Decimal(8, 2)
@@ -255,6 +257,17 @@ model pkg_order {
   scheduled_at           DateTime?          @db.DateTime(0)
 
   @@index([rid, order_status], map: "idx_rid_status")
+}
+
+model pkg_order_interest {
+  id         Int      @id @default(autoincrement())
+  order_id   Int
+  rider_id   Int
+  created_at DateTime @default(now())
+
+  @@unique([order_id, rider_id])
+  @@index([order_id])
+  @@index([rider_id])
 }
 
 model pkg_order_stops {
