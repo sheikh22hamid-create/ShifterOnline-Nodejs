@@ -429,7 +429,18 @@ async function listScheduled(req, res) {
     if (req.query.status === "assigned") where.rid = { not: 0 };
 
     const rows = await prisma.pkg_order.findMany({ where, orderBy: { schedule_date_time: "asc" } });
-    return res.status(200).json({ success: true, total: rows.length, data: rows });
+
+    const counts = rows.length
+      ? await prisma.pkg_order_interest.groupBy({
+          by: ["order_id"],
+          where: { order_id: { in: rows.map((r) => r.id) } },
+          _count: { order_id: true },
+        })
+      : [];
+    const countByOrderId = new Map(counts.map((c) => [c.order_id, c._count.order_id]));
+    const rowsWithInterest = rows.map((r) => ({ ...r, interested_count: countByOrderId.get(r.id) || 0 }));
+
+    return res.status(200).json({ success: true, total: rowsWithInterest.length, data: rowsWithInterest });
   } catch (err) {
     return internalError(res, err, "orders.listScheduled");
   }

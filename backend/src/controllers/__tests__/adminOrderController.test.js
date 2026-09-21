@@ -1,5 +1,6 @@
 jest.mock("../../config/db", () => ({
   pkg_order: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
+  pkg_order_interest: { groupBy: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
   tbl_rnoti: { create: jest.fn() },
   order_status_history: { create: jest.fn() },
@@ -14,7 +15,7 @@ jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn() }));
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
 const { getIO } = require("../../sockets/socketServer");
-const { assignRider, listNextDay, suggestNextDaySequence, assignNextDayBatch } = require("../adminOrderController");
+const { assignRider, listNextDay, listScheduled, suggestNextDaySequence, assignNextDayBatch } = require("../adminOrderController");
 
 function makeRes() {
   return { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
@@ -54,6 +55,22 @@ describe("adminOrderController.assignRider", () => {
 describe("adminOrderController next-day orders", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe("listScheduled", () => {
+    it("includes an interested_count per order", async () => {
+      prisma.pkg_order.findMany.mockResolvedValueOnce([{ id: 100, booking_type: 2 }]);
+      prisma.pkg_order_interest.groupBy.mockResolvedValueOnce([{ order_id: 100, _count: { order_id: 2 } }]);
+
+      const req = { query: {} };
+      const res = makeRes();
+
+      await listScheduled(req, res);
+
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        data: [expect.objectContaining({ id: 100, interested_count: 2 })],
+      }));
+    });
   });
 
   describe("listNextDay", () => {
