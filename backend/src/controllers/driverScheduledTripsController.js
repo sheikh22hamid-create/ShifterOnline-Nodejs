@@ -69,6 +69,16 @@ async function markInterest(req, res) {
       return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "uid and order_id are required" });
     }
 
+    const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+    if (
+      !order ||
+      order.booking_type !== 2 ||
+      order.o_status !== "Pending" ||
+      order.rid !== 0
+    ) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Order is not eligible for interest" });
+    }
+
     try {
       await prisma.pkg_order_interest.create({ data: { order_id: orderId, rider_id: riderId } });
     } catch (err) {
