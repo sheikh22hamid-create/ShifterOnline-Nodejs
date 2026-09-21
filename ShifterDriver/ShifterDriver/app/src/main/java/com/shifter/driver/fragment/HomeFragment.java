@@ -331,11 +331,6 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             startActivity(new Intent(getActivity(), LeadReferralActivity.class));
         });
 
-        if (binding.layoutIncentiveBanner != null) {
-            binding.layoutIncentiveBanner.setOnClickListener(v -> {
-                startActivity(new Intent(getActivity(), LeadReferralActivity.class));
-            });
-        }
 
         // 4. Support (Dial Toll-Free / Help)
         binding.btnQuickSupport.setOnClickListener(v -> {
@@ -818,18 +813,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         binding.txtRating2.setText(homeData.getPastStar() != null ? homeData.getPastStar() : "5.0");
                     }
 
-                    // Daily Target Progress Bar & dynamic motivational text
-                    if (binding.progressDailyTarget != null) {
-                        binding.progressDailyTarget.setProgress(Math.min(pastComplete, 10));
-                    }
-                    if (binding.txtIncentiveSubtitle != null) {
-                        if (pastComplete >= 10) {
-                            binding.txtIncentiveSubtitle.setText("Daily target achieved! Great job today! 🚀");
-                        } else {
-                            int left = 10 - pastComplete;
-                            binding.txtIncentiveSubtitle.setText("Complete " + left + " more order" + (left > 1 ? "s" : "") + " to hit your daily bonus.");
-                        }
-                    }
+
 
                     // Priority Active Order Card
                     if (homeData.getOrderHistory() != null) {
