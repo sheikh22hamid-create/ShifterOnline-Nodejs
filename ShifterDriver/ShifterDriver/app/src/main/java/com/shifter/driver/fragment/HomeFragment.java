@@ -174,6 +174,15 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             startActivity(new Intent(getActivity(), CustomOrderListActivity.class));
         });
 
+        // Scheduled Trips button — browse booking_type=2 scheduled trips and
+        // mark non-binding interest ahead of time (Task 9; see
+        // ScheduledTripsActivity's own header for details).
+        if (binding.btnScheduledTrips != null) {
+            binding.btnScheduledTrips.setOnClickListener(v -> {
+                startActivity(new Intent(getActivity(), com.shifter.driver.ScheduledTripsActivity.class));
+            });
+        }
+
         // How To Use button
         binding.btnHowToUse.setOnClickListener(v -> {
             try {
