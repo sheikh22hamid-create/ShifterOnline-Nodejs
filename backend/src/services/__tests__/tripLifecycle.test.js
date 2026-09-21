@@ -1,7 +1,8 @@
 jest.mock("../../config/db", () => ({
   $executeRaw: jest.fn(),
   $transaction: jest.fn(),
-  pkg_order: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() },
+  pkg_order: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
+  pkg_order_interest: { findMany: jest.fn() },
   $queryRaw: jest.fn(),
   tbl_order_requests: { updateMany: jest.fn(), findFirst: jest.fn() },
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
@@ -17,6 +18,7 @@ jest.mock("../dispatchManager", () => ({
   emitCustomerEvent: jest.fn(),
   emitDriverEvent: jest.fn(),
   startDispatch: jest.fn(),
+  offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
@@ -24,11 +26,14 @@ jest.mock("../pricingEngine", () => ({
   getPackageById: jest.fn(),
   getActiveCustomerPlan: jest.fn().mockResolvedValue(null),
   commissionAmount: jest.fn((dCharge, commissionPercent) => Math.round(((Number(dCharge) * Number(commissionPercent)) / 100) * 100) / 100),
+  getFirstTierPricingContext: jest.fn().mockResolvedValue({ pkg: {}, discount: null }),
 }));
 jest.mock("../pushNotifier", () => ({
   notifyCustomerOrderAssigned: jest.fn().mockResolvedValue({ sent: true }),
   notifyCustomerPickupTimeoutCancel: jest.fn().mockResolvedValue({ sent: true }),
   notifyDriverPickupTimeoutCancel: jest.fn().mockResolvedValue({ sent: true }),
+  notifyCustomerOrderLive: jest.fn().mockResolvedValue({ sent: true }),
+  notifyCustomerLatePickup: jest.fn().mockResolvedValue({ sent: true }),
 }));
 
 const prisma = require("../../config/db");
@@ -1064,5 +1069,137 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
     await tripLifecycle.sweepOverduePickups();
 
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // only the second order's own cancel ran
+  });
+});
+
+describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
+  const NOW = new Date("2026-09-22T14:30:00.000Z").getTime(); // 30 min before a 3:00 PM pickup
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("sends a priority offer (not the fallback cascade) when the order just went live and has interested riders", async () => {
+    prisma.pkg_order.findMany.mockResolvedValueOnce([
+      { id: 10, booking_type: 2, o_status: "Pending", driver_notify_sent: false, priority_notify_sent: false, schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1 },
+    ]);
+    prisma.pkg_order_interest.findMany.mockResolvedValueOnce([{ rider_id: 5 }, { rider_id: 6 }]);
+
+    await tripLifecycle.dispatchDueScheduledOrders();
+
+    expect(dispatchManager.offerToInterestedRiders).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10 }), [5, 6], expect.anything(), null
+    );
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 10 },
+      data: expect.objectContaining({ priority_notify_sent: true }),
+    });
+  });
+
+  it("skips straight to the fallback cascade when the order goes live with zero interested riders", async () => {
+    prisma.pkg_order.findMany.mockResolvedValueOnce([
+      { id: 11, booking_type: 2, o_status: "Pending", driver_notify_sent: false, priority_notify_sent: false, schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1 },
+    ]);
+    prisma.pkg_order_interest.findMany.mockResolvedValueOnce([]);
+
+    await tripLifecycle.dispatchDueScheduledOrders();
+
+    expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
+    expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 11 }));
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: expect.objectContaining({ driver_notify_sent: true }),
+    });
+  });
+
+  it("starts the fallback cascade once the 15-minute priority window has elapsed unaccepted", async () => {
+    prisma.pkg_order.findMany.mockResolvedValueOnce([
+      {
+        id: 12, booking_type: 2, o_status: "Pending", driver_notify_sent: false,
+        priority_notify_sent: true, priority_started_at: new Date(NOW - 15 * 60 * 1000),
+        schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1,
+      },
+    ]);
+
+    await tripLifecycle.dispatchDueScheduledOrders();
+
+    expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }));
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: expect.objectContaining({ driver_notify_sent: true }),
+    });
+  });
+
+  it("does not touch an order whose priority window hasn't elapsed yet", async () => {
+    prisma.pkg_order.findMany.mockResolvedValueOnce([
+      {
+        id: 13, booking_type: 2, o_status: "Pending", driver_notify_sent: false,
+        priority_notify_sent: true, priority_started_at: new Date(NOW - 5 * 60 * 1000),
+        schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1,
+      },
+    ]);
+
+    await tripLifecycle.dispatchDueScheduledOrders();
+
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+    expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
+  });
+
+  it("ignores an order that hasn't reached its 30-minute go-live lead yet", async () => {
+    prisma.pkg_order.findMany.mockResolvedValueOnce([
+      { id: 14, booking_type: 2, o_status: "Pending", driver_notify_sent: false, priority_notify_sent: false, schedule_date_time: "2026-09-22T15:05:00.000Z", uid: 1 },
+    ]);
+
+    await tripLifecycle.dispatchDueScheduledOrders();
+
+    expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("finalizeAcceptedOrder — late-accept customer warning (booking_type=2)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.$executeRaw.mockResolvedValue(1);
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak" });
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "sched-cust-tok" });
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297, uid: 9, delivery_type: 6, distance: 15.4, booking_type: 2,
+      schedule_date_time: "2026-09-22T15:00:00.000Z",
+    });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("sends the late-pickup push when the accepting driver has less than 10 minutes of buffer left", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(new Date("2026-09-22T14:52:00.000Z").getTime());
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(pushNotifier.notifyCustomerLatePickup).toHaveBeenCalledWith("sched-cust-tok", 297, "2026-09-22T15:00:00.000Z");
+  });
+
+  it("does not send it when there's plenty of buffer, or for non-scheduled orders", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(new Date("2026-09-22T14:00:00.000Z").getTime());
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(pushNotifier.notifyCustomerLatePickup).not.toHaveBeenCalled();
+  });
+
+  it("does not send it for a non-scheduled (booking_type != 2) order even with a tight schedule_date_time buffer", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(new Date("2026-09-22T14:52:00.000Z").getTime());
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297, uid: 9, delivery_type: 6, distance: 15.4, booking_type: 1,
+      schedule_date_time: "2026-09-22T15:00:00.000Z",
+    });
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(pushNotifier.notifyCustomerLatePickup).not.toHaveBeenCalled();
   });
 });
