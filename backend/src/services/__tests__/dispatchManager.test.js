@@ -1484,6 +1484,25 @@ describe("dispatchManager overlapping batch cascade", () => {
     });
   });
 
+  describe("expires_at written to tbl_order_requests (freshness-check fix)", () => {
+    // Regression coverage for the bug where claimOrderForRider's freshness
+    // check hardcoded a 15s window independent of what a priority offer's
+    // own payload told the driver — see tripLifecycle.test.js for the
+    // claimOrderForRider-side half of this fix. This half proves
+    // dispatchManager actually writes the column that check now reads.
+    it("stamps the normal cascade's tbl_order_requests row with expires_at = armedAt + POPUP_TIMEOUT_MS", async () => {
+      const armedAt = Date.now();
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      expect(orderRequestsStore.length).toBeGreaterThan(0);
+      for (const row of orderRequestsStore) {
+        expect(row.expires_at).toBeInstanceOf(Date);
+        expect(row.expires_at.getTime()).toBe(armedAt + POPUP_TIMEOUT_MS);
+      }
+    });
+  });
+
   describe("offerToInterestedRiders", () => {
     const scheduledOrder = {
       ...order,
@@ -1506,6 +1525,15 @@ describe("dispatchManager overlapping batch cascade", () => {
       expect(prisma.tbl_order_requests.create).toHaveBeenCalledTimes(2);
       // Priority offers use a longer expiry than the normal 15s cascade popup.
       expect(Number(requests[0].payload.expires_at)).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
+      // And the DB row itself — the column claimOrderForRider actually reads
+      // to decide freshness — carries that same longer window, not just the
+      // driver-facing payload.
+      const writtenRows = orderRequestsStore.filter((r) => r.order_id === 912);
+      expect(writtenRows).toHaveLength(2);
+      for (const row of writtenRows) {
+        expect(row.expires_at).toBeInstanceOf(Date);
+        expect(row.expires_at.getTime()).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
+      }
     });
 
     it("skips a rider who's gone offline/stale since marking interest", async () => {
@@ -1517,6 +1545,26 @@ describe("dispatchManager overlapping batch cascade", () => {
       const result = await dispatchManager.offerToInterestedRiders(scheduledOrder, [5, 6], { id: 6, title: "Model 1" }, 0);
 
       expect(result.offeredRiderIds).toEqual([5]);
+    });
+
+    it("skips a rider currently locked on an unrelated live order's popup, without creating a request row or emitting to them", async () => {
+      mockRidersById({
+        5: { id: 5, rlats: "28.70", rlongs: "77.10", fcm_token: "tok5", vehicle: scheduledOrder.category },
+        6: { id: 6, rlats: "28.71", rlongs: "77.11", fcm_token: "tok6", vehicle: scheduledOrder.category },
+      });
+      // Rider 6 is mid-popup on a totally different, concurrent order.
+      lockManager.acquireLock(6, 9999, POPUP_TIMEOUT_MS);
+
+      try {
+        const result = await dispatchManager.offerToInterestedRiders(scheduledOrder, [5, 6], { id: 6, title: "Model 1" }, 0);
+
+        expect(result.offeredRiderIds).toEqual([5]);
+        const requests = emitted.filter((e) => e.event === "order:request");
+        expect(requests.map((r) => r.room)).toEqual(["driver_5"]);
+        expect(prisma.tbl_order_requests.create).toHaveBeenCalledTimes(1);
+      } finally {
+        lockManager.releaseLock(6);
+      }
     });
   });
 });

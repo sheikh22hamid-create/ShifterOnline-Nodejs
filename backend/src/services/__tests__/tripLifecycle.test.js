@@ -238,6 +238,60 @@ describe("tripLifecycle.acceptOrder", () => {
   });
 });
 
+describe("claimOrderForRider freshness check reads expires_at, not a hardcoded 15s window", () => {
+  // Regression coverage: claimOrderForRider used to gate the accept on
+  // `created_at > (NOW() - INTERVAL 15 SECOND)` — a hardcoded window
+  // completely independent of what any given offer's own expires_at (now
+  // written by dispatchManager, see dispatchManager.test.js's "expires_at
+  // written to tbl_order_requests" coverage) actually promised the driver.
+  // A priority offer (offerToInterestedRiders) tells the driver they have
+  // SCHEDULED_ORDER_PRIORITY_WINDOW_MS (15 minutes) to accept, but the old
+  // hardcoded check would reject any accept past 15 real seconds regardless
+  // — this suite exists so reverting to that hardcoded condition fails a
+  // test instead of silently shipping again.
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, rid: 0, o_status: "Pending", delivery_type: 6 });
+  });
+
+  it("claims the offer via an expires_at > NOW() condition, not a hardcoded created_at+INTERVAL window", async () => {
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+
+    await tripLifecycle.claimOrderForRider(297, 1);
+
+    // The request-claim UPDATE is the FIRST $executeRaw call inside the
+    // transaction — inspect its own tagged-template SQL text directly
+    // rather than trusting the mocked return value (which would happily
+    // return whatever a test tells it to, hardcoded window or not).
+    const [strings] = prisma.$executeRaw.mock.calls[0];
+    const sql = strings.join("");
+    expect(sql).toContain("expires_at");
+    expect(sql).toMatch(/expires_at\s*>\s*NOW\(\)/i);
+    expect(sql).not.toMatch(/INTERVAL/i);
+    expect(sql).not.toContain("created_at >");
+  });
+
+  it("still fails with 'Offer expired' when the row's expires_at condition doesn't match (old behavior preserved for genuinely stale offers)", async () => {
+    prisma.$executeRaw.mockResolvedValueOnce(0); // expires_at > NOW() didn't match — real DB would see this for a lapsed offer
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, status: "sent" });
+
+    const result = await tripLifecycle.claimOrderForRider(297, 2);
+
+    expect(result).toEqual({ success: false, msg: "Offer expired" });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // pkg_order UPDATE never attempted
+  });
+
+  it("claims successfully for a genuinely fresh offer (expires_at condition matches)", async () => {
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 5, package_id: 6, status: "accepted" });
+
+    const result = await tripLifecycle.claimOrderForRider(297, 5);
+
+    expect(result).toEqual({ success: true, acceptedPackageId: 6 });
+  });
+});
 
 describe("tripLifecycle.rejectOrder", () => {
   beforeEach(() => {

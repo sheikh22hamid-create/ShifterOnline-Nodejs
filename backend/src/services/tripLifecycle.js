@@ -8,7 +8,7 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
-const { POPUP_TIMEOUT_MS, PICKUP_OTP_TIMEOUT_MS, ADVANCE_PAYMENT_TIMEOUT_MS, SCHEDULED_ORDER_REMINDER_LEAD_MS } = require("../config/constants");
+const { PICKUP_OTP_TIMEOUT_MS, ADVANCE_PAYMENT_TIMEOUT_MS, SCHEDULED_ORDER_REMINDER_LEAD_MS } = require("../config/constants");
 
 const whatsappNotifications = require("../whatsapp/notifications");
 
@@ -67,9 +67,12 @@ class OrderAlreadyTakenError extends Error { }
  * lost on crash/restart. Two atomic conditional UPDATEs run inside one DB
  * transaction, so either both apply or neither does:
  *   1. tbl_order_requests: claims THIS rider's offer for THIS order, only if
- *      it is still 'sent' and less than POPUP_TIMEOUT_MS old — per MySQL's
- *      own NOW(), not the Node process clock, so a crashed/restarted server
- *      can never make a stale offer acceptable again.
+ *      it is still 'sent' and its own expires_at hasn't passed yet — per
+ *      MySQL's own NOW(), not the Node process clock, so a crashed/restarted
+ *      server can never make a stale offer acceptable again. expires_at is
+ *      stamped by whichever dispatch path created the row (the normal
+ *      cascade's POPUP_TIMEOUT_MS, or offerToInterestedRiders' longer
+ *      SCHEDULED_ORDER_PRIORITY_WINDOW_MS), not a value hardcoded here.
  *   2. pkg_order: claims the booking, only if still unassigned/searchable.
  * Whichever UPDATE's WHERE clause a concurrent expiry-sweep or a competing
  * accept fails to match affects 0 rows — InnoDB's row lock on the same
@@ -91,7 +94,6 @@ class OrderAlreadyTakenError extends Error { }
  * still runs both in sequence for callers that want the one-shot result.
  */
 async function claimOrderForRider(orderId, riderId) {
-  const popupSeconds = POPUP_TIMEOUT_MS / 1000;
   let acceptedPackageId = null;
 
   // Check if order is already assigned to this rider (e.g. direct assigned by admin or queue)
@@ -102,13 +104,23 @@ async function claimOrderForRider(orderId, riderId) {
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Freshness is read from the request row's own expires_at column
+      // (dispatchManager stamps it at creation — POPUP_TIMEOUT_MS out for
+      // the normal cascade, SCHEDULED_ORDER_PRIORITY_WINDOW_MS out for
+      // offerToInterestedRiders' priority round) instead of a hardcoded
+      // "created_at + 15s" window: the old hardcoded interval made every
+      // offer expire after exactly POPUP_TIMEOUT_MS regardless of what the
+      // driver's own popup actually promised them, silently breaking any
+      // longer-lived offer (confirmed: a priority offer's driver-facing
+      // expires_at said 15 minutes, but this check rejected it as expired
+      // after 15 real seconds).
       const requestAffected = await tx.$executeRaw`
         UPDATE tbl_order_requests
         SET status = 'accepted'
         WHERE order_id = ${orderId}
           AND rider_id = ${riderId}
           AND status = 'sent'
-          AND created_at > (NOW() - INTERVAL ${popupSeconds} SECOND)
+          AND expires_at > NOW()
       `;
       if (requestAffected === 0) {
         throw new OfferNotFreshError();

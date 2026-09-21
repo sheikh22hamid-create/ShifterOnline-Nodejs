@@ -649,6 +649,14 @@ async function runBatchInner(orderId) {
               status: "sent",
               lat: driver.rlats ? String(driver.rlats) : null,
               lng: driver.rlongs ? String(driver.rlongs) : null,
+              // Explicit now — claimOrderForRider's freshness check reads
+              // this column instead of a hardcoded POPUP_TIMEOUT_MS window,
+              // so a priority offer (offerToInterestedRiders, a longer
+              // SCHEDULED_ORDER_PRIORITY_WINDOW_MS) can actually be accepted
+              // past the normal cascade's 15s. Same value the old hardcoded
+              // `created_at > NOW() - INTERVAL 15 SECOND` check produced for
+              // this row, just now stored instead of implied.
+              expires_at: new Date(armedAt + POPUP_TIMEOUT_MS),
             },
           });
 
@@ -960,7 +968,11 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
  * unapproved, or switched vehicle category is simply absent from the
  * tbl_rider.findMany result below (its WHERE re-checks a_status/status/
  * vehicle at offer time, not just at interest time) and is silently
- * skipped — not included in offeredRiderIds.
+ * skipped — not included in offeredRiderIds. Likewise, a rider currently
+ * locked (mid-popup on a completely unrelated live order — see lockManager)
+ * is skipped too: this function deliberately doesn't acquire a lock of its
+ * own (no per-driver lock, no batching, per above), but it must still not
+ * hand a second, competing popup to someone already holding one elsewhere.
  */
 async function offerToInterestedRiders(order, riderIds, pkg, discount) {
   if (!riderIds || riderIds.length === 0) return { offeredRiderIds: [] };
@@ -983,7 +995,7 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
 
   const offeredRiderIds = [];
   await Promise.all(
-    riders.map(async (driver) => {
+    riders.filter((driver) => !lockManager.isLocked(Number(driver.id))).map(async (driver) => {
       const riderId = Number(driver.id);
       const driverDistanceKm = haversineKm(
         Number(order.plat), Number(order.plong),
@@ -998,6 +1010,7 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
           status: "sent",
           lat: driver.rlats ? String(driver.rlats) : null,
           lng: driver.rlongs ? String(driver.rlongs) : null,
+          expires_at: new Date(expiresAt),
         },
       });
 
