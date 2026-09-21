@@ -153,6 +153,8 @@ public class OrderDialogHelper {
         boolean isDirectAssign = "true".equalsIgnoreCase(getMapValue(orderData, "is_direct_assign", "false"))
                 || "true".equalsIgnoreCase(getMapValue(orderData, "is_monthly_order", "false"));
 
+        String scheduleDateTime = getMapValue(orderData, "schedule_date_time", null);
+
         if (isDirectAssign) {
             btnReject.setVisibility(android.view.View.GONE);
             btnAccept.setText("START TRIP / ACCEPT");
@@ -160,10 +162,7 @@ public class OrderDialogHelper {
             if (txtSubtitle != null) {
                 txtSubtitle.setText("Mandatory Trip • Monthly Driver");
             }
-        }
-
-        String scheduleDateTime = getMapValue(orderData, "schedule_date_time", getMapValue(orderData, "order_date", null));
-        if (scheduleDateTime != null && !scheduleDateTime.isEmpty()) {
+        } else if (scheduleDateTime != null && !scheduleDateTime.isEmpty()) {
             android.widget.TextView txtSubtitle = view.findViewById(com.shifter.driver.R.id.txt_header_subtitle);
             if (txtSubtitle != null) {
                 txtSubtitle.setText("Scheduled pickup: " + formatScheduleLabel(scheduleDateTime));
