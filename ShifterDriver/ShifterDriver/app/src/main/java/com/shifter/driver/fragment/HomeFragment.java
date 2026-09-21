@@ -65,6 +65,7 @@ import com.shifter.driver.retrofit.GetResult;
 import com.shifter.driver.retrofit.NodeApiClient;
 import com.shifter.driver.socket.NodeSocketManager;
 import com.shifter.driver.utility.CustPrograssbar;
+import com.shifter.driver.utility.DeliveryPreferencesBottomSheet;
 import com.shifter.driver.utility.ModelInfoBottomSheet;
 import com.shifter.driver.utility.MonthlyDriverApiClient;
 import com.shifter.driver.utility.MonthlyDutyManager;
@@ -307,6 +308,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     private void setupQuickActions() {
         if (binding == null) return;
 
+        binding.btnHomeContactReferral.setOnClickListener(v ->
+                startActivity(new Intent(requireContext(), LeadReferralActivity.class)));
+
         // 1. My Orders
         binding.btnQuickOrders.setOnClickListener(v -> {
             startActivity(new Intent(getActivity(), OrderActivity.class));
@@ -319,7 +323,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         // View Details link in earnings card
         binding.btnViewEarningsDetails.setOnClickListener(v -> {
-            startActivity(new Intent(getActivity(), WalletActivity.class));
+            startActivity(new Intent(getActivity(), com.shifter.driver.activity.EarningsActivity.class));
         });
 
         // 3. Incentives / Lead Referral
@@ -344,26 +348,46 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             }
         });
 
-        // Learn More Delivery Types Header click
-        if (binding.btnLearnMoreTypes != null) {
-            binding.btnLearnMoreTypes.setOnClickListener(v -> {
-                if (packageDataList != null && !packageDataList.isEmpty()) {
-                    ModelInfoBottomSheet.show(getActivity(), packageDataList.get(0));
-                } else {
-                    Toast.makeText(getActivity(), "Select delivery models to receive orders", Toast.LENGTH_SHORT).show();
-                }
+        // Delivery Preferences Triggers: opens bottom sheet immediately
+        if (binding.btnDeliveryPreferencesHeader != null) {
+            binding.btnDeliveryPreferencesHeader.setOnClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                openDeliveryPreferencesSheet();
             });
+        }
+        if (binding.btnLearnMoreTypes != null) {
+            binding.btnLearnMoreTypes.setOnClickListener(v -> openDeliveryPreferencesSheet());
         }
     }
 
     /**
-     * Wires the interactive 4-state animated online/offline pill button.
+     * Wires the interactive animated online/offline card and delivery types shortcut.
      */
     private void setupOnlineStatusControl() {
         if (binding.btnOnlineStatusControl == null) return;
 
+        // Shortcut to Delivery Preferences bottom sheet when online
+        if (binding.layoutOnlineDeliveryTypesShortcut != null) {
+            binding.layoutOnlineDeliveryTypesShortcut.setOnClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                openDeliveryPreferencesSheet();
+            });
+        }
+
+        // Tap on top online status row -> go offline flow
+        if (binding.layoutOnlineHeaderRow != null) {
+            binding.layoutOnlineHeaderRow.setOnClickListener(v -> {
+                if (currentStatusState == STATUS_CONNECTING || currentStatusState == STATUS_ALMOST_THERE || currentStatusState == STATUS_DISCONNECTING) {
+                    return;
+                }
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+                updateStatusControlUI(STATUS_DISCONNECTING);
+                sendDriverStatusUpdateToBackend(false);
+            });
+        }
+
+        // Main card tap (handles offline -> online flow)
         binding.btnOnlineStatusControl.setOnClickListener(v -> {
-            // Prevent duplicate clicks while in transition
             if (currentStatusState == STATUS_CONNECTING || currentStatusState == STATUS_ALMOST_THERE || currentStatusState == STATUS_DISCONNECTING) {
                 return;
             }
@@ -459,12 +483,12 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         if (binding == null || binding.viewOnlinePulse == null) return;
         if (pulseAnimator != null && pulseAnimator.isRunning()) return;
 
-        PropertyValuesHolder scaleX = PropertyValuesHolder.ofFloat(View.SCALE_X, 1.0f, 1.55f);
-        PropertyValuesHolder scaleY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.0f, 1.55f);
-        PropertyValuesHolder alpha = PropertyValuesHolder.ofFloat(View.ALPHA, 0.7f, 0.0f);
+        PropertyValuesHolder scaleX = PropertyValuesHolder.ofFloat(View.SCALE_X, 1.0f, 1.45f);
+        PropertyValuesHolder scaleY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 1.0f, 1.45f);
+        PropertyValuesHolder alpha = PropertyValuesHolder.ofFloat(View.ALPHA, 0.65f, 0.0f);
 
         pulseAnimator = ObjectAnimator.ofPropertyValuesHolder(binding.viewOnlinePulse, scaleX, scaleY, alpha);
-        pulseAnimator.setDuration(1200);
+        pulseAnimator.setDuration(1600);
         pulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
         pulseAnimator.setRepeatMode(ValueAnimator.RESTART);
         pulseAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
@@ -927,9 +951,8 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     }
 
     /**
-     * Inflates and binds modern delivery tier cards from item_delivery_type_card.xml
-     * into deliveryTypesContainer with clear model separation, per-km rates,
-     * separate (i) info modal trigger, and custom switch.
+     * Inflates and binds delivery tier cards using DeliveryPreferencesBottomSheet.bindTierCard
+     * with optimistic UI updates and updates the active types summary on the online status card.
      */
     private void updateDeliveryTypesUI() {
         if (getActivity() == null || binding == null || binding.deliveryTypesContainer == null) {
@@ -965,97 +988,66 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 }
 
                 LayoutInflater inflater = LayoutInflater.from(getActivity());
+                int riderId = (riderData != null) ? riderData.getId() : 0;
+
                 for (PackageData packageData : packageDataList) {
                     View card = inflater.inflate(R.layout.item_delivery_type_card, binding.deliveryTypesContainer, false);
-
-                    TextView txtTitle = card.findViewById(R.id.txt_model_title);
-                    TextView txtSubtitle = card.findViewById(R.id.txt_model_subtitle);
-                    TextView txtRate = card.findViewById(R.id.txt_model_rate);
-                    TextView txtBaseFare = card.findViewById(R.id.txt_model_base_fare);
-                    View btnInfo = card.findViewById(R.id.btn_model_info);
-                    SwitchCompat switchStatus = card.findViewById(R.id.switch_model_status);
-
-                    String title = packageData.getTitle();
-                    txtTitle.setText(title != null ? title : "Delivery Model");
-
-                    String lowerTitle = (title != null ? title.toLowerCase() : "");
-
-                    // Subtitle based on model tier
-                    if (lowerTitle.contains("standard") || lowerTitle.contains("model 1") || lowerTitle.contains("super saver")) {
-                        txtSubtitle.setText("Regular deliveries, steady earnings");
-                    } else if (lowerTitle.contains("silver") || lowerTitle.contains("model 2") || lowerTitle.contains("saver plus")) {
-                        txtSubtitle.setText("Medium loads & daily shifts");
-                    } else if (lowerTitle.contains("prime") || lowerTitle.contains("model 3") || lowerTitle.contains("comfort")) {
-                        txtSubtitle.setText("High demand & priority trips");
-                    } else if (lowerTitle.contains("gold") || lowerTitle.contains("model 4") || lowerTitle.contains("express")) {
-                        txtSubtitle.setText("Express priority with higher pay");
-                    } else if (lowerTitle.contains("earning") || lowerTitle.contains("model 5") || lowerTitle.contains("priority")) {
-                        txtSubtitle.setText("Maximum earnings per kilometre");
-                    } else {
-                        txtSubtitle.setText("Direct dispatch delivery model");
-                    }
-
-                    // Dynamic per-km rate & min charge from admin setup (no hardcoded fallbacks)
-                    String perKm = packageData.getPerKmCharge();
-                    String minCharge = packageData.getMinCharge();
-
-                    txtRate.setText("₹" + perKm + " / km");
-
-                    if (txtBaseFare != null) {
-                        if (minCharge != null && !minCharge.isEmpty() && !"0".equals(minCharge) && !"0.00".equals(minCharge)) {
-                            txtBaseFare.setText("Min ₹" + minCharge);
-                            txtBaseFare.setVisibility(View.VISIBLE);
-                        } else {
-                            txtBaseFare.setVisibility(View.GONE);
-                        }
-                    }
-
-                    // Info Touch Target: Opens bottom sheet model overview without triggering switch
-                    btnInfo.setOnClickListener(v -> {
-                        ModelInfoBottomSheet.show(getActivity(), packageData);
+                    DeliveryPreferencesBottomSheet.bindTierCard(getActivity(), card, packageData, riderId, () -> {
+                        updateActiveDeliveryTypesSummary();
                     });
-
-                    // Switch State & Toggle Listener
-                    boolean isActive = "1".equals(packageData.getDriver_active());
-                    switchStatus.setChecked(isActive);
-                    switchStatus.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                        packageData.setDriver_active(isChecked ? "1" : "0");
-                        packageData.setStatus(isChecked ? "1" : "0");
-                        updatePackageStatus(packageData);
-                    });
-
                     binding.deliveryTypesContainer.addView(card);
                 }
+
+                updateActiveDeliveryTypesSummary();
             } catch (Exception e) {
                 e.printStackTrace();
             }
         });
     }
 
-    private void updatePackageStatus(PackageData packageData) {
-        try {
-            java.util.Map<String, Object> body = new java.util.HashMap<>();
-            body.put("rider_id", riderData != null ? riderData.getId() : 0);
-            body.put("package_id", Integer.parseInt(packageData.getId()));
-            body.put("enabled", "1".equals(packageData.getStatus()));
-
-            NodeApiClient.getInterface().updateDeliveryType(body).enqueue(new retrofit2.Callback<JsonObject>() {
-                @Override
-                public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
-                    JsonObject result = response.body();
-                    if (result != null && result.has("msg") && !result.get("msg").isJsonNull()) {
-                        Toast.makeText(getActivity(), result.get("msg").getAsString(), Toast.LENGTH_SHORT).show();
+    /**
+     * Dynamically updates the active delivery types counter and comma-separated summary
+     * shown in the top unified status card.
+     */
+    private void updateActiveDeliveryTypesSummary() {
+        if (binding == null) return;
+        int activeCount = 0;
+        StringBuilder sb = new StringBuilder();
+        if (packageDataList != null) {
+            for (PackageData p : packageDataList) {
+                if ("1".equals(p.getDriver_active())) {
+                    activeCount++;
+                    if (sb.length() > 0) sb.append(", ");
+                    String t = p.getTitle();
+                    if (t != null && t.toLowerCase().contains("tier")) {
+                        t = t.substring(0, t.toLowerCase().indexOf("tier")).trim();
                     }
+                    sb.append(t != null ? t : "Model");
                 }
-
-                @Override
-                public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
-                    Log.e("HomeFragment", "updateDeliveryType failed", t);
-                }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
+            }
         }
+        if (binding.txtOnlineActiveTypesCount != null) {
+            binding.txtOnlineActiveTypesCount.setText(activeCount + " delivery types active");
+        }
+        if (binding.txtOnlineActiveTypesSummary != null) {
+            binding.txtOnlineActiveTypesSummary.setText(sb.length() > 0 ? sb.toString() : "None active");
+        }
+    }
+
+    /**
+     * Opens the native 60fps Delivery Preferences Bottom Sheet with spring physics,
+     * independent scrolling, and instant optimistic toggle updates.
+     */
+    private void openDeliveryPreferencesSheet() {
+        if (getActivity() == null) return;
+        if (packageDataList == null || packageDataList.isEmpty()) {
+            Toast.makeText(getActivity(), "Loading delivery types...", Toast.LENGTH_SHORT).show();
+            getPackageList();
+            return;
+        }
+        DeliveryPreferencesBottomSheet.show(getActivity(), packageDataList, riderData, () -> {
+            updateDeliveryTypesUI();
+        });
     }
 
     @Override

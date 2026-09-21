@@ -40,7 +40,6 @@ import com.shifter.driver.databinding.FragmentAccountBinding;
 import com.shifter.driver.model.Help;
 import com.shifter.driver.model.Pages;
 import com.shifter.driver.model.RiderData;
-import com.shifter.driver.retrofit.APIClient;
 import com.shifter.driver.retrofit.GetResult;
 import com.shifter.driver.retrofit.NodeApiClient;
 import com.shifter.driver.utility.CustPrograssbar;
@@ -100,10 +99,14 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         binding.recyclerMenu.setLayoutManager(mLayoutManager2);
         binding.recyclerMenu.setItemAnimator(new DefaultItemAnimator());
 
+        binding.layoutBell.setOnClickListener(v -> startActivity(new Intent(getActivity(), com.shifter.driver.activity.NotificationActivity.class)));
+        binding.txtVehicleTag.setText(user.getVehicle() != null ? user.getVehicle() : "Shifter partner");
         binding.edUsername.setText(user.getFullName());
         binding.edPhone.setText(user.getMobile());
         if (user != null && user.getRefferCode() != null && !user.getRefferCode().trim().isEmpty()) {
             referralCode = user.getRefferCode().trim();
+        } else {
+            fetchFreshReferralCode(null);
         }
 
         loadProfileImage(user != null ? user.getProfilePicture() : null);
@@ -137,6 +140,8 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
                 loadProfileImage(user.getProfilePicture());
                 if (user.getRefferCode() != null && !user.getRefferCode().trim().isEmpty()) {
                     referralCode = user.getRefferCode().trim();
+                } else {
+                    fetchFreshReferralCode(null);
                 }
             }
         }
@@ -179,10 +184,29 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
     private void showReferTypeDialog() {
         if (getActivity() == null) return;
 
-        BottomSheetDialog dialog = new BottomSheetDialog(getActivity());
+        BottomSheetDialog dialog = new BottomSheetDialog(getActivity(), R.style.CustomBottomSheetDialogTheme);
         View view = LayoutInflater.from(getActivity())
                 .inflate(R.layout.dialog_refer_type, null);
         dialog.setContentView(view);
+
+        dialog.setOnShowListener(d -> {
+            try {
+                android.widget.FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+                if (bottomSheet != null) {
+                    bottomSheet.setBackgroundResource(android.R.color.transparent);
+                    com.google.android.material.bottomsheet.BottomSheetBehavior<android.view.View> behavior =
+                            com.google.android.material.bottomsheet.BottomSheetBehavior.from(bottomSheet);
+                    behavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
+                    behavior.setSkipCollapsed(true);
+                }
+            } catch (Exception ignored) {}
+        });
+
+        // Close button (X)
+        View btnClose = view.findViewById(R.id.btn_close_refer_sheet);
+        if (btnClose != null) {
+            btnClose.setOnClickListener(v -> dialog.dismiss());
+        }
 
         // Ensure referralCode is initialized from user if available
         if (referralCode == null || referralCode.trim().isEmpty() || referralCode.equals("—")) {
@@ -201,20 +225,26 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
             fetchFreshReferralCode(txtCode);
         }
 
-        // Tap on referral code chip to copy
+        // Tap on referral code chip or Copy button to copy
+        View.OnClickListener copyListener = v -> {
+            String code = (referralCode != null && !referralCode.trim().isEmpty() && !referralCode.equals("—"))
+                    ? referralCode.trim()
+                    : (txtCode != null ? txtCode.getText().toString().trim() : "");
+            if (!code.isEmpty() && !code.equals("—")) {
+                ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("Referral Code", code);
+                clipboard.setPrimaryClip(clip);
+                Toast.makeText(getActivity(), "Referral code copied: " + code, Toast.LENGTH_SHORT).show();
+            }
+        };
+
         View lvlChip = view.findViewById(R.id.lvl_ref_code_chip);
         if (lvlChip != null) {
-            lvlChip.setOnClickListener(v -> {
-                String code = (referralCode != null && !referralCode.trim().isEmpty() && !referralCode.equals("—"))
-                        ? referralCode.trim()
-                        : txtCode.getText().toString().trim();
-                if (!code.isEmpty() && !code.equals("—")) {
-                    ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
-                    ClipData clip = ClipData.newPlainText("Referral Code", code);
-                    clipboard.setPrimaryClip(clip);
-                    Toast.makeText(getActivity(), "Referral code copied: " + code, Toast.LENGTH_SHORT).show();
-                }
-            });
+            lvlChip.setOnClickListener(copyListener);
+        }
+        View lvlCopyBtn = view.findViewById(R.id.lvl_copy_btn_action);
+        if (lvlCopyBtn != null) {
+            lvlCopyBtn.setOnClickListener(copyListener);
         }
 
         // ─── Apply Referral Code Section ───
@@ -285,16 +315,22 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         }
 
         // DRIVER card — existing driver app URL
-        view.findViewById(R.id.option_driver).setOnClickListener(v -> {
-            dialog.dismiss();
-            shareReferral("driver");
-        });
+        View optDriver = view.findViewById(R.id.option_driver);
+        if (optDriver != null) {
+            optDriver.setOnClickListener(v -> {
+                dialog.dismiss();
+                shareReferral("driver");
+            });
+        }
 
         // CUSTOMER card — customer app URL
-        view.findViewById(R.id.option_customer).setOnClickListener(v -> {
-            dialog.dismiss();
-            shareReferral("customer");
-        });
+        View optCustomer = view.findViewById(R.id.option_customer);
+        if (optCustomer != null) {
+            optCustomer.setOnClickListener(v -> {
+                dialog.dismiss();
+                shareReferral("customer");
+            });
+        }
 
         // CONTACT REFERRAL card — launch LeadReferralActivity
         View optionContactLeads = view.findViewById(R.id.option_contact_leads);
@@ -305,10 +341,114 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
             });
         }
 
+        // Social Share buttons
+        View btnWhatsapp = view.findViewById(R.id.btn_share_whatsapp);
+        if (btnWhatsapp != null) {
+            btnWhatsapp.setOnClickListener(v -> {
+                dialog.dismiss();
+                shareViaApp("com.whatsapp", getReferralShareMessage("driver"), "Share via WhatsApp");
+            });
+        }
+
+        View btnCopyLink = view.findViewById(R.id.btn_share_copy_link);
+        if (btnCopyLink != null) {
+            btnCopyLink.setOnClickListener(v -> {
+                ClipboardManager clipboard = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
+                ClipData clip = ClipData.newPlainText("Shifter Referral", getReferralShareMessage("driver"));
+                clipboard.setPrimaryClip(clip);
+                Toast.makeText(getActivity(), "Referral link copied to clipboard!", Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        View btnFacebook = view.findViewById(R.id.btn_share_facebook);
+        if (btnFacebook != null) {
+            btnFacebook.setOnClickListener(v -> {
+                dialog.dismiss();
+                shareViaApp("com.facebook.katana", getReferralShareMessage("driver"), "Share via Facebook");
+            });
+        }
+
+        View btnInstagram = view.findViewById(R.id.btn_share_instagram);
+        if (btnInstagram != null) {
+            btnInstagram.setOnClickListener(v -> {
+                dialog.dismiss();
+                shareViaApp("com.instagram.android", getReferralShareMessage("driver"), "Share via Instagram");
+            });
+        }
+
+        View btnMore = view.findViewById(R.id.btn_share_more);
+        if (btnMore != null) {
+            btnMore.setOnClickListener(v -> {
+                dialog.dismiss();
+                shareReferral("driver");
+            });
+        }
+
         // Cancel
-        view.findViewById(R.id.txt_cancel).setOnClickListener(v -> dialog.dismiss());
+        View btnCancel = view.findViewById(R.id.txt_cancel);
+        if (btnCancel != null) {
+            btnCancel.setOnClickListener(v -> dialog.dismiss());
+        }
 
         dialog.show();
+    }
+
+    private String getReferralShareMessage(String type) {
+        StringBuilder sb = new StringBuilder();
+
+        // Message
+        if (referralMsg != null && !referralMsg.trim().isEmpty()) {
+            sb.append("🚀 ").append(referralMsg.trim());
+        } else {
+            sb.append("🚀 Hey! Use my referral code to join Shifter and earn exciting rewards!");
+        }
+
+        // Referral code
+        if (referralCode != null && !referralCode.trim().isEmpty() && !referralCode.equals("—")) {
+            sb.append("\n\n🎁 My Referral Code: ").append(referralCode.trim());
+        }
+
+        // Play Store URL — different for driver vs customer
+        String playStoreUrl;
+        if ("customer".equalsIgnoreCase(type)) {
+            playStoreUrl = "https://play.google.com/store/apps/details?id=com.shifter.online&pcampaignid=web_share";
+        } else {
+            String pkgName = getActivity() != null ? getActivity().getPackageName() : "com.shifter.driver";
+            playStoreUrl = "https://play.google.com/store/apps/details?id=" + pkgName;
+        }
+
+        sb.append("\n\n📲 Download App: ").append(playStoreUrl);
+        return sb.toString();
+    }
+
+    private void shareViaApp(String packageName, String message, String chooserTitle) {
+        if (getActivity() == null) return;
+        try {
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_SUBJECT, "Shifter Referral Code");
+            intent.putExtra(Intent.EXTRA_TEXT, message);
+            if (packageName != null && !packageName.isEmpty()) {
+                intent.setPackage(packageName);
+            }
+            startActivity(intent);
+        } catch (Exception e) {
+            // Fallback to normal chooser if app not installed or error
+            try {
+                Intent chooser = new Intent(Intent.ACTION_SEND);
+                chooser.setType("text/plain");
+                chooser.putExtra(Intent.EXTRA_SUBJECT, "Shifter Referral Code");
+                chooser.putExtra(Intent.EXTRA_TEXT, message);
+                startActivity(Intent.createChooser(chooser, chooserTitle));
+            } catch (Exception ex) {
+                Toast.makeText(getActivity(), "Unable to share", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    // ─── Share Referral (type = "driver" or "customer") ───────────────────────
+    private void shareReferral(String type) {
+        shareViaApp(null, getReferralShareMessage(type), "Share Referral Code via");
     }
 
     private void fetchFreshReferralCode(TextView txtCode) {
@@ -349,48 +489,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         });
     }
 
-    // ─── Share Referral (type = "driver" or "customer") ───────────────────────
-    private void shareReferral(String type) {
-        try {
-            StringBuilder sb = new StringBuilder();
 
-            // Message
-            if (referralMsg != null && !referralMsg.trim().isEmpty()) {
-                sb.append("🚀 ").append(referralMsg.trim());
-            } else {
-                sb.append("🚀 Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!");
-            }
-
-            // Referral code
-            if (referralCode != null && !referralCode.trim().isEmpty()) {
-                sb.append("\n\n🎁 Referral Code: ").append(referralCode.trim());
-            }
-
-            // Play Store URL — different for driver vs customer
-            String playStoreUrl;
-            if ("customer".equalsIgnoreCase(type)) {
-                playStoreUrl = "https://play.google.com/store/apps/details?id=com.shifter.online&pcampaignid=web_share";
-            } else {
-                // Driver app — use current app package name
-                String pkgName = getActivity() != null
-                        ? getActivity().getPackageName()
-                        : "com.shifter.driver";
-                playStoreUrl = "https://play.google.com/store/apps/details?id=" + pkgName;
-            }
-
-            sb.append("\n\n📲 Download App: ").append(playStoreUrl);
-
-            Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType("text/plain");
-            shareIntent.putExtra(Intent.EXTRA_SUBJECT, "Shifter Online Referral Code");
-            shareIntent.putExtra(Intent.EXTRA_TEXT, sb.toString());
-            startActivity(Intent.createChooser(shareIntent, "Share Referral Code via"));
-
-        } catch (Exception e) {
-            Log.e("REFER_SHARE", "Error: " + e.getMessage());
-            Toast.makeText(getActivity(), "Unable to share referral code", Toast.LENGTH_SHORT).show();
-        }
-    }
 
     private void logoutApi() {
         custPrograssbar.prograssCreate(getActivity());

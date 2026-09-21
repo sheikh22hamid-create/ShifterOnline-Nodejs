@@ -3,37 +3,56 @@
 import 'package:flutter/material.dart';
 
 class Config {
-  static const String imageURLPath =
-      'https://admin.shifteronline.com/admin/';
-  static const String baseurl = '${imageURLPath}cust_api/';
-
-  // Node.js order/dispatch backend (REST + Socket.io) — order creation,
-  // tracking and cancel/rate go here directly, not through the legacy PHP
-  // API (see memory/order_flow_direct_app_integration.md). Login/OTP/profile
-  // etc. stay on the legacy `baseurl` above; this is only for the order flow.
+  // Node.js backend URL (REST + Socket.io)
   static const String nodeBaseUrl = 'https://dev-api.shifteronline.com';
-  // Vehicle-category images (cat_img/other_image on pkg_category) are a mix
-  // of pre-migration files that still live on the legacy PHP admin's disk
-  // and newer ones uploaded through the Node admin panel straight to
-  // Cloudinary. Only the Node backend's /images/* route (Cloudinary
-  // redirect + legacy-folder static fallback, see backend/src/app.js) can
-  // resolve both - imageURLPath (the PHP domain) 404s on anything uploaded
-  // after the Cloudinary migration. Use this for any pkg_category image,
-  // not imageURLPath.
   static const String nodeImageURLPath = '$nodeBaseUrl/';
 
-  // cat_img/other_image/detail_image on pkg_category can be either a
-  // relative legacy path (needs nodeImageURLPath prefixed) or, since the
-  // Cloudinary migration, already a full absolute URL (e.g.
-  // https://admin.shifteronline.com/images/... or a Cloudinary URL) -
-  // prefixing nodeImageURLPath onto an already-absolute URL produces a
-  // malformed, unloadable image URL. Always resolve through this instead of
-  // concatenating nodeImageURLPath directly.
-  static String resolveImageUrl(String value) {
-    if (value.startsWith('http://') || value.startsWith('https://')) {
-      return value;
+  // Point legacy imageURLPath directly to Node backend so all Cloudinary
+  // and legacy images route through dev-api.shifteronline.com/
+  static const String imageURLPath = nodeImageURLPath;
+  static const String baseurl = '${imageURLPath}cust_api/';
+
+  /// Checks whether a given string is a valid, non-empty image path or URL.
+  /// Prevents 404 network errors caused by empty paths or naked base URLs.
+  static bool isValidImageUrl(String? value) {
+    if (value == null) return false;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == "null" || trimmed == "NULL") return false;
+    if (trimmed == 'https://admin.shifteronline.com/admin/' ||
+        trimmed == 'https://admin.shifteronline.com/admin' ||
+        trimmed == 'https://dev-api.shifteronline.com/' ||
+        trimmed == 'https://dev-api.shifteronline.com' ||
+        trimmed == nodeImageURLPath ||
+        trimmed == imageURLPath) {
+      return false;
     }
-    return '$nodeImageURLPath$value';
+    if (trimmed.endsWith('/admin/') || trimmed.endsWith('/admin') || trimmed.endsWith('/cust_api/')) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Safely resolves an image path or URL. Returns an empty string if invalid
+  /// so UI widgets can display local placeholders without making dead network requests.
+  static String resolveImageUrl(String? value) {
+    if (!isValidImageUrl(value)) {
+      return '';
+    }
+    String val = value!.trim();
+    // Strip legacy PHP admin URL if returned by old data records
+    if (val.startsWith('https://admin.shifteronline.com/admin/')) {
+      val = val.substring('https://admin.shifteronline.com/admin/'.length);
+    } else if (val.startsWith('http://admin.shifteronline.com/admin/')) {
+      val = val.substring('http://admin.shifteronline.com/admin/'.length);
+    }
+
+    if (val.startsWith('http://') || val.startsWith('https://')) {
+      return val;
+    }
+    if (val.startsWith('/')) {
+      val = val.substring(1);
+    }
+    return '$nodeImageURLPath$val';
   }
   static const String googleApikey =
       "AIzaSyD8IR3hFe5hlBFJr81pgpPJtB28xLiJPmw"; //"AIzaSyD8IR3hFe5hlBFJr81pgpPJtB28xLiJPmw";//"AIzaSyDDi8FMY861tc6LZrhL3H9wlqU8iraX72o"; // Google Key
@@ -218,6 +237,7 @@ class Config {
   static const String nodeBuyOrderCreate = "api/order/legacy/create";
   static const String nodeConfirmItem = "api/order/legacy/confirm-item";
   static const String nodeItemRemove = "api/order/legacy/item-remove";
+  static const String nodeBuyHistory = "api/order/legacy/history";
   // Node port of create_order.php's Razorpay order-creation step (generic
   // amount-based, used ahead of wallet top-up, premium-plan purchase and
   // advance-payment collection alike) - customerWalletController.js.

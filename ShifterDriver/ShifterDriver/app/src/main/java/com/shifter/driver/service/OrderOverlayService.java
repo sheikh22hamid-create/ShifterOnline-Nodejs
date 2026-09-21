@@ -42,6 +42,8 @@ public class OrderOverlayService extends Service {
     private PowerManager.WakeLock wakeLock;
 
     private String orderId;
+    private String packageId;
+    private long offerExpiresAt;
     private String riderId;
 
     @Override
@@ -77,10 +79,12 @@ public class OrderOverlayService extends Service {
             // else took it server-side, slightly ahead of this popup's own
             // local countdown) — close it without treating it as a reject.
             String dismissOrderId = intent.getStringExtra("order_id");
-            if (dismissOrderId != null && dismissOrderId.equals(orderId)) {
+            if (com.shifter.driver.utility.OrderOfferDismiss.matches(orderId, packageId, offerExpiresAt,
+                    dismissOrderId, intent.getStringExtra("package_id"), intent.getStringExtra("expires_at"),
+                    intent.getStringExtra("reason"), System.currentTimeMillis())) {
                 Log.d(TAG, "Dismiss received for currently-shown order " + dismissOrderId);
                 removeOverlay(); // also stops this service
-            } else {
+            } else if (rootContainer == null) {
                 // Nothing currently shown for this order (already handled,
                 // or this is a fresh service instance) — this start only
                 // existed to deliver the dismiss check, nothing to clean up.
@@ -91,6 +95,8 @@ public class OrderOverlayService extends Service {
 
         if (intent != null) {
             orderId = intent.getStringExtra("order_id");
+            packageId = intent.getStringExtra("package_id");
+            offerExpiresAt = com.shifter.driver.utility.OrderOfferDismiss.parseExpiry(intent.getStringExtra("expires_at"));
             riderId = intent.getStringExtra("rider_id");
 
             if (riderId == null || riderId.isEmpty()) {

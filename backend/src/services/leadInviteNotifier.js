@@ -4,21 +4,34 @@ const { sendWhatsAppNotification } = require("../whatsapp/notifications");
 
 const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY || "8b7c5cf8-49dd-11f1-9800-0200cd936042";
 const TWOFACTOR_BASE = "https://2factor.in/API/V1";
-const APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.shifter.online";
+const CUSTOMER_APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.shifter.online";
+const DRIVER_APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.shifter.driver";
 
 /**
- * Builds attractive WhatsApp message for the referred customer.
+ * Builds attractive WhatsApp message for the referred customer or driver partner.
  */
-function buildWhatsAppInviteText(leadName, driverName) {
+function buildWhatsAppInviteText(leadName, driverName, leadType = "customer") {
   const greeting = leadName ? `Namaste ${leadName} ji! 🙏` : `Namaste! 🙏`;
   const referrer = driverName ? `Aapke dost *${driverName}* (Shifter Partner)` : `Shifter Partner`;
+
+  if (leadType === "driver") {
+    return (
+      `${greeting}\n\n` +
+      `${referrer} ne aapko *Shifter Online Driver Partner* ke roop me judne ke liye invite kiya hai. 🚚\n\n` +
+      `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily behtareen kamai karein!\n\n` +
+      `📲 *Shifter Driver App* abhi download karein aur aasaani se register karein:\n` +
+      `👉 ${DRIVER_APP_DOWNLOAD_URL}\n\n` +
+      `Driver Helpline: +91 9109114515\n` +
+      `— *Team Shifter Online*`
+    );
+  }
 
   return (
     `${greeting}\n\n` +
     `${referrer} ne aapko *Shifter Online* recommend kiya hai. 🚚\n\n` +
     `Ab kisi bhi saman ko bhejna, mini-truck ya tempo book karna hua behad aasan aur kifayati!\n\n` +
     `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
-    `👉 ${APP_DOWNLOAD_URL}\n\n` +
+    `👉 ${CUSTOMER_APP_DOWNLOAD_URL}\n\n` +
     `Helpline: +91 9999908008\n` +
     `— *Team Shifter Online*`
   );
@@ -27,9 +40,12 @@ function buildWhatsAppInviteText(leadName, driverName) {
 /**
  * Builds concise SMS message text.
  */
-function buildSmsInviteText(leadName, driverName) {
+function buildSmsInviteText(leadName, driverName, leadType = "customer") {
   const driverStr = driverName ? ` ${driverName}` : "";
-  return `Namaste! Aapke dost${driverStr} ne aapko Shifter Online recommend kiya hai. Mini-truck/tempo booking ke liye app download karein: ${APP_DOWNLOAD_URL} - Shifter Online`;
+  if (leadType === "driver") {
+    return `Namaste! Aapke dost${driverStr} ne aapko Shifter Driver Partner banne ke liye invite kiya hai. Gadi jodne ke liye Driver App download karein: ${DRIVER_APP_DOWNLOAD_URL} - Shifter Online`;
+  }
+  return `Namaste! Aapke dost${driverStr} ne aapko Shifter Online recommend kiya hai. Mini-truck/tempo booking ke liye app download karein: ${CUSTOMER_APP_DOWNLOAD_URL} - Shifter Online`;
 }
 
 /**
@@ -64,8 +80,9 @@ async function sendLeadInvite(leadId) {
     }
   }
 
-  const whatsappMsg = buildWhatsAppInviteText(lead.name, driverName);
-  const smsMsg = buildSmsInviteText(lead.name, driverName);
+  const leadType = lead.lead_type || "customer";
+  const whatsappMsg = buildWhatsAppInviteText(lead.name, driverName, leadType);
+  const smsMsg = buildSmsInviteText(lead.name, driverName, leadType);
 
   let whatsappSent = false;
   let smsSent = false;
@@ -124,9 +141,13 @@ async function sendLeadInvite(leadId) {
   };
 }
 
+const APP_DOWNLOAD_URL = CUSTOMER_APP_DOWNLOAD_URL;
+
 module.exports = {
   sendLeadInvite,
   buildWhatsAppInviteText,
   buildSmsInviteText,
+  CUSTOMER_APP_DOWNLOAD_URL,
+  DRIVER_APP_DOWNLOAD_URL,
   APP_DOWNLOAD_URL,
 };

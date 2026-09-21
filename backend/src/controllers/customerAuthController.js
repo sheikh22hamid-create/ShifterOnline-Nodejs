@@ -203,7 +203,7 @@ async function register(req, res) {
   try {
     const fname = String(req.body?.fname || "").trim();
     const email = String(req.body?.email || "").trim();  // optional — empty string is acceptable
-    const mobile = String(req.body?.mobile || "").trim();
+    const mobile = normalizeToLast10Digits(req.body?.mobile) || String(req.body?.mobile || "").trim();
     const ccode = String(req.body?.ccode || "").trim();
     const password = String(req.body?.password || "").trim(); // OTP-based flow sends empty string
     const cityId = Number(req.body?.city_id || 0) || null;
@@ -331,7 +331,7 @@ async function register(req, res) {
     // (dispatchManager's existing is_favorite boost handles the rest).
     const normalizedPhone = normalizeToLast10Digits(mobile);
     const matchedLead = await prisma.tbl_driver_lead.findFirst({
-      where: { phone: normalizedPhone, status: "verified", expires_at: { gte: now } },
+      where: { phone: normalizedPhone, lead_type: "customer", status: "verified", expires_at: { gte: now } },
     });
     if (matchedLead) {
       await prisma.tbl_referral.create({

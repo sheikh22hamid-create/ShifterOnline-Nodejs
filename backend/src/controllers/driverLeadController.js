@@ -6,6 +6,8 @@ const { normalizeToLast10Digits } = require("../utils/phone");
 async function submitLeads(req, res) {
   try {
     const riderId = Number(req.body?.rider_id || req.body?.rid || 0);
+    const rawLeadType = String(req.body?.lead_type || req.body?.type || "customer").trim().toLowerCase();
+    const leadType = rawLeadType === "driver" ? "driver" : "customer";
     const contacts = Array.isArray(req.body?.contacts) ? req.body.contacts : [];
 
     if (!riderId) return res.status(200).json({ Result: "false", ResponseCode: "400", ResponseMsg: "Driver ID is required." });
@@ -42,7 +44,14 @@ async function submitLeads(req, res) {
       }
 
       await prisma.tbl_driver_lead.create({
-        data: { driver_id: riderId, name: name || phone, phone, status: "pending", submitted_at: now },
+        data: {
+          driver_id: riderId,
+          lead_type: leadType,
+          name: name || phone,
+          phone,
+          status: "pending",
+          submitted_at: now,
+        },
       });
       accepted += 1;
     }
@@ -53,6 +62,7 @@ async function submitLeads(req, res) {
       ResponseMsg: `${accepted} contact(s) submitted, ${skipped.length} skipped.`,
       accepted,
       skipped,
+      lead_type: leadType,
     });
   } catch (err) {
     logger.error("driverLeadController.submitLeads failed:", err);

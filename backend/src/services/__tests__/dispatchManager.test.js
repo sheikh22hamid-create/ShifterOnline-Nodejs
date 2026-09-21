@@ -286,7 +286,12 @@ describe("dispatchManager overlapping batch cascade", () => {
     await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
     await flush();
 
-    expect(pushNotifier.notifyDriverDismiss).toHaveBeenCalledWith("tok", order.id, "timeout");
+    const request = emitted.find((e) => e.event === "order:request");
+    const identity = { package_id: request.payload.package_id, expires_at: request.payload.expires_at };
+    expect(pushNotifier.notifyDriverDismiss).toHaveBeenCalledWith("tok", order.id, "timeout", identity);
+    expect(emitted.filter((e) => e.event === "order:dismiss").every((e) =>
+      e.payload.package_id === identity.package_id && e.payload.expires_at === identity.expires_at
+    )).toBe(true);
   });
 
   it("stopDispatch cancels pending timers and dismisses every currently-locked driver", async () => {

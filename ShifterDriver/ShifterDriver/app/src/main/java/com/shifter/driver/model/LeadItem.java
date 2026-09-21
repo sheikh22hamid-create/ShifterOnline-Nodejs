@@ -41,6 +41,10 @@ public class LeadItem {
     @Expose
     private String convertedAt;
 
+    @SerializedName("lead_type")
+    @Expose
+    private String leadType; // customer or driver
+
     public LeadItem() {
     }
 
@@ -114,5 +118,13 @@ public class LeadItem {
 
     public void setConvertedAt(String convertedAt) {
         this.convertedAt = convertedAt;
+    }
+
+    public String getLeadType() {
+        return leadType != null && !leadType.trim().isEmpty() ? leadType : "customer";
+    }
+
+    public void setLeadType(String leadType) {
+        this.leadType = leadType;
     }
 }

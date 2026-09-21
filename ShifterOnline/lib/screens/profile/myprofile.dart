@@ -394,7 +394,7 @@ class _MyProfileState extends State<MyProfile> {
                                 ],
                               ),
                               child: ClipOval(
-                                child: (rImg.isNotEmpty && rImg != "null")
+                                child: Config.isValidImageUrl(rImg)
                                     ? Image.network(
                                         Config.resolveImageUrl(rImg),
                                         fit: BoxFit.cover,
@@ -1010,7 +1010,7 @@ class _MyProfileState extends State<MyProfile> {
                 color: const Color(0xFFE2E8F0),
               ),
               child: ClipOval(
-                child: (avatarUrl != null && avatarUrl.isNotEmpty && avatarUrl != "null")
+                child: Config.isValidImageUrl(avatarUrl)
                     ? Image.network(
                         Config.resolveImageUrl(avatarUrl),
                         fit: BoxFit.cover,

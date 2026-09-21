@@ -35,6 +35,7 @@ const STATUS_FILTERS = [
 export default function DriverLeads() {
   const toast = useToast()
   const [statusFilter, setStatusFilter] = useState('pending')
+  const [typeFilter, setTypeFilter] = useState('all') // 'all' | 'customer' | 'driver'
   const [searchQuery, setSearchQuery] = useState('')
   const [verifyTarget, setVerifyTarget] = useState(null)
   const [rejectTarget, setRejectTarget] = useState(null)
@@ -43,9 +44,9 @@ export default function DriverLeads() {
   const fetcher = useCallback(
     () =>
       api
-        .get('/driver-leads', { params: { status: statusFilter } })
+        .get('/driver-leads', { params: { status: statusFilter, type: typeFilter } })
         .then((res) => res.data),
-    [statusFilter]
+    [statusFilter, typeFilter]
   )
 
   const { data, loading, error, refetch } = useApiQuery(fetcher)
@@ -57,6 +58,8 @@ export default function DriverLeads() {
     rejected: 0,
     expired: 0,
     total: 0,
+    customer_total: 0,
+    driver_total: 0,
   }
 
   // Filter in memory by search query (name, phone, driver name, driver phone)
@@ -140,15 +143,40 @@ export default function DriverLeads() {
     const driverName = item.driver?.name || ''
     const greeting = leadName ? `Namaste ${leadName} ji! 🙏` : `Namaste! 🙏`
     const referrer = driverName ? `Aapke dost *${driverName}* (Shifter Partner)` : `Shifter Partner`
-    const text =
-      `${greeting}\n\n` +
-      `${referrer} ne aapko *Shifter Online* recommend kiya hai. 🚚\n\n` +
-      `Ab kisi bhi saman ko bhejna, mini-truck ya tempo book karna hua behad aasan aur kifayati!\n\n` +
-      `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
-      `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-      `Helpline: +91 9999908008\n` +
-      `— *Team Shifter Online*`
+    const isDriverLead = item.lead_type === 'driver'
+
+    const text = isDriverLead
+      ? `${greeting}\n\n` +
+        `${referrer} ne aapko *Shifter Online Driver Partner* ke roop me judne ke liye invite kiya hai. 🚚\n\n` +
+        `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily behtareen kamai karein!\n\n` +
+        `📲 *Shifter Driver App* abhi download karein aur direct register karein:\n` +
+        `👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n` +
+        `Driver Helpline: +91 9109114515\n` +
+        `— *Team Shifter Online*`
+      : `${greeting}\n\n` +
+        `${referrer} ne aapko *Shifter Online* recommend kiya hai. 🚚\n\n` +
+        `Ab kisi bhi saman ko bhejna, mini-truck ya tempo book karna hua behad aasan aur kifayati!\n\n` +
+        `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
+        `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
+        `Helpline: +91 9999908008\n` +
+        `— *Team Shifter Online*`
+
     return `https://wa.me/91${item.phone}?text=${encodeURIComponent(text)}`
+  }
+
+  function getLeadTypeBadge(type) {
+    if (type === 'driver') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700 ring-1 ring-inset ring-purple-600/20 dark:bg-purple-950/40 dark:text-purple-300">
+          🚚 Driver
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-950/40 dark:text-blue-300">
+        👤 Customer
+      </span>
+    )
   }
 
   function getStatusBadge(status) {
@@ -179,8 +207,7 @@ export default function DriverLeads() {
             Driver Contact Leads
           </h1>
           <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-            Customer numbers referred by driver partners. Call to verify and
-            award reward points on their first ride.
+            Contacts referred by driver partners. Call to verify and award referral rewards.
           </p>
         </div>
         <button
@@ -192,6 +219,57 @@ export default function DriverLeads() {
         >
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           Refresh
+        </button>
+      </div>
+
+      {/* Lead Category Switcher (Customer vs Driver Leads) */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-b pb-3" style={{ borderColor: 'var(--border)' }}>
+        <button
+          type="button"
+          onClick={() => setTypeFilter('all')}
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all ${
+            typeFilter === 'all'
+              ? 'bg-[var(--brand)] text-white shadow-sm'
+              : 'border hover:bg-[var(--bg-hover)]'
+          }`}
+          style={typeFilter !== 'all' ? { borderColor: 'var(--border)', color: 'var(--ink)' } : {}}
+        >
+          <span>All Leads</span>
+          <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${typeFilter === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+            {counts.total}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTypeFilter('customer')}
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all ${
+            typeFilter === 'customer'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'border hover:bg-[var(--bg-hover)]'
+          }`}
+          style={typeFilter !== 'customer' ? { borderColor: 'var(--border)', color: 'var(--ink)' } : {}}
+        >
+          <span>👤 Customer Leads</span>
+          <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${typeFilter === 'customer' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'}`}>
+            {counts.customer_total}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTypeFilter('driver')}
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all ${
+            typeFilter === 'driver'
+              ? 'bg-purple-600 text-white shadow-sm'
+              : 'border hover:bg-[var(--bg-hover)]'
+          }`}
+          style={typeFilter !== 'driver' ? { borderColor: 'var(--border)', color: 'var(--ink)' } : {}}
+        >
+          <span>🚚 Driver Partner Leads</span>
+          <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${typeFilter === 'driver' ? 'bg-white/20 text-white' : 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'}`}>
+            {counts.driver_total}
+          </span>
         </button>
       </div>
 
@@ -384,11 +462,14 @@ export default function DriverLeads() {
                   >
                     {/* Contact details */}
                     <td className="px-4 py-3">
-                      <div
-                        className="font-medium"
-                        style={{ color: 'var(--ink)' }}
-                      >
-                        {item.name || 'Unnamed Contact'}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="font-medium"
+                          style={{ color: 'var(--ink)' }}
+                        >
+                          {item.name || 'Unnamed Contact'}
+                        </span>
+                        {getLeadTypeBadge(item.lead_type)}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 text-[12px]">
                         <a
@@ -576,6 +657,10 @@ export default function DriverLeads() {
                 </a>
                 )
               </div>
+              <div className="mt-1 flex items-center gap-2">
+                <strong>Category:</strong>
+                {getLeadTypeBadge(verifyTarget.lead_type)}
+              </div>
               <div className="mt-1">
                 <strong>Referred By:</strong>{' '}
                 {verifyTarget.driver?.name || `Driver #${verifyTarget.driver_id}`}{' '}
@@ -584,8 +669,8 @@ export default function DriverLeads() {
             </div>
             <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
               Once verified, the lead will remain active for 45 days. An automated
-              welcome invite with the app download link will be dispatched via
-              <strong> WhatsApp Bot</strong> to this customer.
+              welcome invite with the {verifyTarget.lead_type === 'driver' ? 'Driver Partner App' : 'Customer App'} download link will be dispatched via
+              <strong> WhatsApp Bot</strong> to this contact.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -630,6 +715,10 @@ export default function DriverLeads() {
               <div>
                 <strong>Contact:</strong> {rejectTarget.name || 'Unnamed'} (
                 {rejectTarget.phone})
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <strong>Category:</strong>
+                {getLeadTypeBadge(rejectTarget.lead_type)}
               </div>
               <div className="mt-1">
                 <strong>Referred By:</strong>{' '}

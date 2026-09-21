@@ -7,11 +7,13 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../bottombar.dart';
 import '../../utils/colors.dart';
+import '../../utils/schedule_time.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
 import 'vehicle_details_screen.dart';
@@ -54,6 +56,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   int _selectedIndex = -1;
   int _selectedRadiusKm = 4;
+  DateTime? _scheduledFor;
   bool _loadingRoute = true;
   bool _loadingAvailability = false;
   bool _loadingModels = false;
@@ -109,6 +112,31 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       _loadRoute();
       _refreshAvailability();
     });
+  }
+
+  Future<void> _pickScheduleDateTime() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _scheduledFor ?? now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 7)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_scheduledFor ?? now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+
+    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final error = ScheduleTimeValidation.validate(picked);
+    if (error != null) {
+      ApiWrapper.showToastMessage(error);
+      return;
+    }
+    setState(() => _scheduledFor = picked);
   }
 
   String _text(dynamic value, [String fallback = '']) {
@@ -633,6 +661,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }
 
   Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee) async {
+    if (_currentBookingType == 2 && _scheduledFor == null) {
+      ApiWrapper.showToastMessage('Please pick a pickup date & time first.');
+      return;
+    }
     if (_booking) return;
     setState(() => _booking = true);
     final deliveryTypeIds = _bookingDeliveryTypeIds(model);
@@ -654,6 +686,14 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'category': _text(category['cat_name'] ?? category['name'], _vehicleName(_selected!)),
       'delivery_type': deliveryTypeIds,
       'booking_type': _currentBookingType,
+      // .toUtc() before .toIso8601String() is load-bearing, not cosmetic: a
+      // local DateTime serialises WITHOUT any offset suffix, and every
+      // downstream consumer then guesses a different timezone for it — the
+      // Node sweep reads it as local-to-the-server (a UTC-hosted prod box
+      // would fire the go-live sweep 5.5h late for an IST customer) and the
+      // driver app reads it as UTC. .toUtc() emits a `Z`-suffixed instant,
+      // which means the same moment to all of them.
+      if (_currentBookingType == 2) 'schedule_date_time': _scheduledFor!.toUtc().toIso8601String(),
       'plat': _pickup.latitude, 'plong': _pickup.longitude, 'paddress': _text(_pickupData['address'], 'Pickup location'),
       'pick_name': _text(_pickupData['c_name'], 'Customer'), 'pmobile': _text(_pickupData['c_number']), 'pick_type': _text(_pickupData['type'], 'Other'),
       'dlat': _drop.latitude, 'dlong': _drop.longitude, 'daddress': _text(_dropData['address'], 'Drop location'),
@@ -1598,5 +1638,44 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }
 
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
-  Widget _bottomCta() => Container(padding: EdgeInsets.fromLTRB(15, 12, 15, 12 + MediaQuery.of(context).padding.bottom), decoration: BoxDecoration(color: notifier.getBgColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 16, offset: const Offset(0, -5))]), child: Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: notifier.text, fontSize: 17, fontFamily: 'Gilroy_Bold')), Text('${_vehicleName(_selected!)} · ${_modelTitle(_selectedModel!)}', style: TextStyle(color: greaycolor, fontSize: 12, fontFamily: 'Gilroy_Medium'))])), SizedBox(width: 160, height: 50, child: ElevatedButton.icon(onPressed: _booking ? null : _bookSelected, icon: const Icon(Icons.arrow_forward_rounded, size: 19), iconAlignment: IconAlignment.end, label: Text(_booking ? 'Booking...' : (_currentBookingType == 3 ? 'Book Next Day' : 'Book now')), style: ElevatedButton.styleFrom(backgroundColor: linercolor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))) ]));
+  Widget _bottomCta() => Container(
+    padding: EdgeInsets.fromLTRB(15, 12, 15, 12 + MediaQuery.of(context).padding.bottom),
+    decoration: BoxDecoration(color: notifier.getBgColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 16, offset: const Offset(0, -5))]),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_currentBookingType == 2) ...[
+          InkWell(
+            onTap: _pickScheduleDateTime,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: linercolor),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule_rounded, color: linercolor, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _scheduledFor == null
+                          ? 'Pick pickup date & time'
+                          : DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!),
+                      style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 13),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: greaycolor, size: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: notifier.text, fontSize: 17, fontFamily: 'Gilroy_Bold')), Text('${_vehicleName(_selected!)} · ${_modelTitle(_selectedModel!)}', style: TextStyle(color: greaycolor, fontSize: 12, fontFamily: 'Gilroy_Medium'))])), SizedBox(width: 160, height: 50, child: ElevatedButton.icon(onPressed: _booking ? null : _bookSelected, icon: const Icon(Icons.arrow_forward_rounded, size: 19), iconAlignment: IconAlignment.end, label: Text(_booking ? 'Booking...' : (_currentBookingType == 3 ? 'Book Next Day' : 'Book now')), style: ElevatedButton.styleFrom(backgroundColor: linercolor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))) ]),
+      ],
+    ),
+  );
 }

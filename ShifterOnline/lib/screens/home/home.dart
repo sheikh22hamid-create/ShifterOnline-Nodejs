@@ -69,11 +69,7 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  // Temporary flag to hide the "Schedule Booking" (pick date & time) entry
-  // point from the home screen while the feature is paused. Flip back to
-  // true to restore it - _handleScheduleBookingTap and its booking-type flow
-  // are left intact.
-  static const bool _scheduleBookingEnabled = false;
+  static const bool _scheduleBookingEnabled = true;
 
   final sql = Additemlist();
   TextEditingController searchController = TextEditingController();
@@ -100,7 +96,7 @@ class _HomeState extends State<Home> {
   bool _homeOrderStatusChecked = false;
   final Map<String, String?> _verifiedHomeOrderStatuses = {};
 
-  // ── LOCATION INTENT (geo: / maps.google.com / goo.gl) ────────────────────
+  // â”€â”€ LOCATION INTENT (geo: / maps.google.com / goo.gl) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   StreamSubscription<Uri>? _intentSubscription;
 
   @override
@@ -475,7 +471,7 @@ class _HomeState extends State<Home> {
       final phpRes = await ApiWrapper.dataPostNode(Config.nodePremiumPlans, {
         'uid': uid.toString(),
       });
-      debugPrint('Home: checkNextDayEligibility PHP response → $phpRes');
+      debugPrint('Home: checkNextDayEligibility PHP response â†’ $phpRes');
 
       if (phpRes != null && (phpRes['ResponseCode'] == '200' || phpRes['Result'] == 'true' || phpRes['Result'] == true)) {
         final activePlan = phpRes['ActivePlan'];
@@ -611,7 +607,7 @@ class _HomeState extends State<Home> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  "⭐ Premium Exclusive Feature",
+                  "â­ Premium Exclusive Feature",
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 12,
@@ -743,7 +739,7 @@ class _HomeState extends State<Home> {
       padding: const EdgeInsets.only(bottom: 15),
       child: Row(
         children: [
-          // ── Next Day Delivery (Half width) ────────────────
+          // â”€â”€ Next Day Delivery (Half width) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           Expanded(
             child: InkWell(
               onTap: _handleNextDayDeliveryTap,
@@ -807,7 +803,7 @@ class _HomeState extends State<Home> {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text(
-                                  "⭐ VIP",
+                                  "â­ VIP",
                                   style: TextStyle(
                                     fontFamily: 'Gilroy_Bold',
                                     fontSize: 8.5,
@@ -819,7 +815,7 @@ class _HomeState extends State<Home> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "Tomorrow · Super Saver",
+                            "Tomorrow Â· Super Saver",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -839,7 +835,7 @@ class _HomeState extends State<Home> {
 
           if (_scheduleBookingEnabled) const SizedBox(width: 10),
 
-          // ── Schedule Booking (Half width) ─────────────────
+          // â”€â”€ Schedule Booking (Half width) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (_scheduleBookingEnabled) Expanded(
             child: InkWell(
               onTap: _handleScheduleBookingTap,
@@ -1474,7 +1470,7 @@ class _HomeState extends State<Home> {
       for (var index = 0; index < _extraStops.length; index++)
         'Stop ${index + 1}',
       'Drop',
-    ].join(' → ');
+    ].join(' â†’ ');
     final pickupIsCurrent = pickupType == 'current location' ||
         pickupType == 'current' ||
         (currentLat != null &&
@@ -2088,7 +2084,7 @@ class _HomeState extends State<Home> {
     debugPrint("======= currentLat ======== $currentLat");
     debugPrint("======= currentLong ======= $currentLong");
 
-    // ── LISTEN FOR INCOMING LOCATION INTENTS ─────────────────────────────────
+    // â”€â”€ LISTEN FOR INCOMING LOCATION INTENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     final appLinks = AppLinks();
     // Handle initial link (app was cold-started from a geo / maps link)
     appLinks.getInitialLink().then((uri) {
@@ -2110,7 +2106,7 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
-  // ── LOCATION INTENT HANDLER ───────────────────────────────────────────────
+  // â”€â”€ LOCATION INTENT HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Future<void> _handleIncomingLocationUri(Uri uri) async {
     debugPrint('[AppLinks] Received URI: $uri');
 
@@ -2450,11 +2446,11 @@ class _HomeState extends State<Home> {
     try {
       final userData = getdata.read("UserLogin");
       if (userData == null || userData is! Map || userData["name"] == null) {
-        return "${"Welcome".tr}, 👋";
+        return "${"Welcome".tr}, ðŸ‘‹";
       }
-      return "${"Welcome".tr}, ${userData["name"].toString()} 👋";
+      return "${"Welcome".tr}, ${userData["name"].toString()} ðŸ‘‹";
     } catch (e) {
-      return "${"Welcome".tr}, 👋";
+      return "${"Welcome".tr}, ðŸ‘‹";
     }
   }
 
@@ -2481,7 +2477,7 @@ class _HomeState extends State<Home> {
           ),
           // Space kam karne ke liye yeh changes
           subtitle: Padding(
-            padding: EdgeInsets.zero, // ← top: 0 ki jagah zero use karo
+            padding: EdgeInsets.zero, // â† top: 0 ki jagah zero use karo
             child: Row(
               children: [
                 Image.asset(
@@ -2686,7 +2682,7 @@ class _HomeState extends State<Home> {
                                                   CircularProgressIndicator(),
                                             ),
                                             Text(
-                                              "Checking nearby vehicles…",
+                                              "Checking nearby vehiclesâ€¦",
                                               style: TextStyle(
                                                 color: greaycolor,
                                                 fontFamily: 'Gilroy_Medium',
@@ -2877,7 +2873,7 @@ class _HomeState extends State<Home> {
                                                                                         imageErrorBuilder: (context, error, stackTrace) {
                                                                                           return Center(child: Icon(Icons.image_not_supported, color: Colors.white, size: 50));
                                                                                         },
-                                                                                        image: "${Config.nodeImageURLPath}$otherImage",
+                                                                                        image: Config.resolveImageUrl(otherImage),
                                                                                         placeholder: "assets/ezgif.com-crop.gif",
                                                                                       ),
                                                                                     ),
@@ -2971,7 +2967,7 @@ class _HomeState extends State<Home> {
                                                                             );
                                                                           },
                                                                           image:
-                                                                              "${Config.nodeImageURLPath}${wheelerImages[i]}",
+                                                                              Config.resolveImageUrl(wheelerImages[i]),
                                                                           placeholder:
                                                                               "assets/ezgif.com-crop.gif",
                                                                         ),
@@ -3102,7 +3098,7 @@ class _HomeState extends State<Home> {
                                       ),
                                       SizedBox(height: 2),
                                       Text(
-                                        "Set your price · Drivers will bid",
+                                        "Set your price Â· Drivers will bid",
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.8),
                                           fontFamily: 'Gilroy_Medium',

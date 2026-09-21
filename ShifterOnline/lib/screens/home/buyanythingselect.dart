@@ -1603,9 +1603,12 @@ class _BuyAnythingSelectState extends State<BuyAnythingSelect> with SingleTicker
                                         borderRadius: BorderRadius.circular(15),
                                       ),
                                       child: Center(
-                                        child: Image.network(
-                                          "${Config.imageURLPath}${paymentGatwayApiModel!.data![index].img}",
-                                        ),
+                                        child: Config.isValidImageUrl(paymentGatwayApiModel!.data![index].img)
+                                            ? Image.network(
+                                                Config.resolveImageUrl(paymentGatwayApiModel!.data![index].img),
+                                                errorBuilder: (_, __, ___) => Icon(Icons.payment, color: linercolor),
+                                              )
+                                            : Icon(Icons.payment, color: linercolor),
                                       ),
                                     ),
                                     SizedBox(width: 10),

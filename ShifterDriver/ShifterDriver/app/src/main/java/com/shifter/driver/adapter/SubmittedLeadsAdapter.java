@@ -66,6 +66,20 @@ public class SubmittedLeadsAdapter extends RecyclerView.Adapter<SubmittedLeadsAd
         }
         holder.txtAvatar.setText(initial);
 
+        // Category badge (Customer vs Driver Partner)
+        boolean isDriver = "driver".equalsIgnoreCase(lead.getLeadType());
+        if (holder.txtLeadTypeBadge != null) {
+            if (isDriver) {
+                holder.txtLeadTypeBadge.setText("🚚 Driver");
+                holder.txtLeadTypeBadge.setBackground(ContextCompat.getDrawable(context, R.drawable.bg_badge_lead_driver));
+                holder.txtLeadTypeBadge.setTextColor(Color.parseColor("#7C3AED"));
+            } else {
+                holder.txtLeadTypeBadge.setText("👤 Customer");
+                holder.txtLeadTypeBadge.setBackground(ContextCompat.getDrawable(context, R.drawable.bg_badge_lead_customer));
+                holder.txtLeadTypeBadge.setTextColor(Color.parseColor("#1D4ED8"));
+            }
+        }
+
         // Date formatting
         String formattedDate = formatDate(lead.getSubmittedAt());
         holder.txtDate.setText(formattedDate);
@@ -142,12 +156,13 @@ public class SubmittedLeadsAdapter extends RecyclerView.Adapter<SubmittedLeadsAd
     }
 
     static class LeadViewHolder extends RecyclerView.ViewHolder {
-        TextView txtAvatar, txtName, txtPhone, txtStatusBadge, txtDesc, txtDate;
+        TextView txtAvatar, txtName, txtLeadTypeBadge, txtPhone, txtStatusBadge, txtDesc, txtDate;
 
         LeadViewHolder(@NonNull View itemView) {
             super(itemView);
             txtAvatar = itemView.findViewById(R.id.txt_lead_avatar);
             txtName = itemView.findViewById(R.id.txt_lead_name);
+            txtLeadTypeBadge = itemView.findViewById(R.id.txt_lead_type_badge);
             txtPhone = itemView.findViewById(R.id.txt_lead_phone);
             txtStatusBadge = itemView.findViewById(R.id.txt_lead_status_badge);
             txtDesc = itemView.findViewById(R.id.txt_lead_desc);

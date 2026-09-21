@@ -48,7 +48,6 @@ import com.shifter.driver.model.PDOrder;
 import com.shifter.driver.model.PDOrderItem;
 import com.shifter.driver.model.RestResponse;
 import com.shifter.driver.model.RiderData;
-import com.shifter.driver.retrofit.APIClient;
 import com.shifter.driver.retrofit.NodeApiClient;
 import com.shifter.driver.retrofit.GetResult;
 import com.shifter.driver.utility.CustPrograssbar;

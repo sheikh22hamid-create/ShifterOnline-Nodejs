@@ -11,7 +11,11 @@ function internalError(res, err, label) {
 async function listLeads(req, res) {
   try {
     const status = req.query?.status !== undefined ? req.query.status : "pending";
-    const where = status && status !== "all" ? { status } : {};
+    const leadType = req.query?.type || req.query?.lead_type;
+    const where = {};
+    if (status && status !== "all") where.status = status;
+    if (leadType && leadType !== "all") where.lead_type = leadType;
+
     const leads = await prisma.tbl_driver_lead.findMany({
       where,
       orderBy: { submitted_at: "desc" },
@@ -32,20 +36,31 @@ async function listLeads(req, res) {
 
     const enrichedLeads = (leads || []).map((l) => ({
       ...l,
+      lead_type: l.lead_type || "customer",
       driver: driverMap.get(l.driver_id) || { id: l.driver_id, name: `Driver #${l.driver_id}`, mobile: "" },
     }));
 
     // Quick counts across all statuses for dashboard badges
-    let counts = { pending: 0, verified: 0, converted: 0, rejected: 0, expired: 0, total: 0 };
+    let counts = { pending: 0, verified: 0, converted: 0, rejected: 0, expired: 0, total: 0, customer_total: 0, driver_total: 0 };
     if (typeof prisma.tbl_driver_lead.groupBy === "function") {
-      const allCounts = await prisma.tbl_driver_lead.groupBy({
+      const statusCounts = await prisma.tbl_driver_lead.groupBy({
         by: ["status"],
+        where: leadType && leadType !== "all" ? { lead_type: leadType } : {},
         _count: { id: true },
       });
-      for (const c of allCounts) {
+      for (const c of statusCounts) {
         const cnt = c._count?.id || 0;
         counts[c.status] = cnt;
         counts.total += cnt;
+      }
+
+      const typeCounts = await prisma.tbl_driver_lead.groupBy({
+        by: ["lead_type"],
+        _count: { id: true },
+      });
+      for (const tc of typeCounts) {
+        if (tc.lead_type === "driver") counts.driver_total = tc._count?.id || 0;
+        else counts.customer_total += tc._count?.id || 0;
       }
     }
 

@@ -26,17 +26,31 @@ describe("driverLeadController.submitLeads", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", ResponseCode: "400" }));
   });
 
-  it("accepts a new, unregistered, unclaimed number", async () => {
+  it("accepts a new, unregistered, unclaimed number with default customer type", async () => {
     const res = mockRes();
     await submitLeads({ body: { rider_id: 55, contacts: [{ name: "Ravi", phone: "9998887771" }] } }, res);
 
     expect(prisma.tbl_driver_lead.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ driver_id: 55, name: "Ravi", phone: "9998887771", status: "pending" }),
+      data: expect.objectContaining({ driver_id: 55, lead_type: "customer", name: "Ravi", phone: "9998887771", status: "pending" }),
     });
     const payload = res.json.mock.calls[0][0];
     expect(payload.Result).toBe("true");
     expect(payload.accepted).toBe(1);
+    expect(payload.lead_type).toBe("customer");
     expect(payload.skipped).toHaveLength(0);
+  });
+
+  it("accepts a new number with explicit driver lead_type", async () => {
+    const res = mockRes();
+    await submitLeads({ body: { rider_id: 55, lead_type: "driver", contacts: [{ name: "Vikram Driver", phone: "9998887772" }] } }, res);
+
+    expect(prisma.tbl_driver_lead.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ driver_id: 55, lead_type: "driver", name: "Vikram Driver", phone: "9998887772", status: "pending" }),
+    });
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.Result).toBe("true");
+    expect(payload.accepted).toBe(1);
+    expect(payload.lead_type).toBe("driver");
   });
 
   it("skips a number already registered as a customer", async () => {

@@ -8,6 +8,7 @@ const deviceSessionService = require("../services/deviceSessionService");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const { getAutoVerificationSettings } = require("../utils/driverVerificationSettings");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
+const { normalizeToLast10Digits } = require("../utils/phone");
 
 // Node port of the legacy PHP driver endpoints under
 // Php Backend/production/admin/rider_api/*.php. Response shape kept
@@ -547,6 +548,36 @@ async function registerHandler(req, res) {
         await prisma.tbl_rider.update({
           where: { id: riderId },
           data: { referred_by: referrerId, referred_by_type: refType, refer_by: referrerId },
+        });
+      }
+    } else if (riderId > 0) {
+      // If no manual referral code was provided, check if a driver partner referred this phone as a driver lead
+      const normalizedPhone = normalizeToLast10Digits(mobile);
+      const matchedLead = await prisma.tbl_driver_lead.findFirst({
+        where: { phone: normalizedPhone, lead_type: "driver", status: "verified", expires_at: { gte: now } },
+      });
+      if (matchedLead) {
+        await prisma.tbl_referral.create({
+          data: {
+            referrer_id: matchedLead.driver_id,
+            referrer_type: "DRIVER",
+            referred_id: riderId,
+            referred_type: "DRIVER",
+            referral_code: "",
+            status: "pending",
+            source: "lead",
+            points_awarded: 0,
+            ride_id: 0,
+            registered_at: now,
+          },
+        });
+        await prisma.tbl_driver_lead.update({
+          where: { id: matchedLead.id },
+          data: { status: "converted", converted_user_id: riderId, converted_at: now },
+        });
+        await prisma.tbl_rider.update({
+          where: { id: riderId },
+          data: { referred_by: matchedLead.driver_id, referred_by_type: "DRIVER", refer_by: matchedLead.driver_id },
         });
       }
     }

@@ -62,6 +62,7 @@ public class LeadReferralActivity extends AppCompatActivity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private boolean isAllSelected = false;
+    private String selectedLeadType = "customer"; // "customer" or "driver"
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,19 +91,49 @@ public class LeadReferralActivity extends AppCompatActivity {
     }
 
     private void setupUI() {
-        binding.txtSubmitBtnLabel.setText("Submit Leads (0 Selected)");
+        selectLeadType("customer");
         binding.btnSubmitLeads.setEnabled(false);
         binding.btnSubmitLeads.setAlpha(0.5f);
+    }
+
+    private void selectLeadType(String type) {
+        this.selectedLeadType = type;
+        boolean isCustomer = "customer".equalsIgnoreCase(type);
+
+        if (isCustomer) {
+            binding.btnTypeCustomer.setBackgroundResource(R.drawable.bg_selector_type_active_customer);
+            binding.txtTypeCustomerLabel.setTextColor(Color.WHITE);
+
+            binding.btnTypeDriver.setBackgroundResource(R.drawable.bg_selector_type_inactive);
+            binding.txtTypeDriverLabel.setTextColor(Color.parseColor("#475569"));
+
+            binding.txtLeadTypeHint.setText("💡 सामान/शिफ्टिंग बुक करने वाले लोगों के लिए Customer चुनें।");
+        } else {
+            binding.btnTypeDriver.setBackgroundResource(R.drawable.bg_selector_type_active_driver);
+            binding.txtTypeDriverLabel.setTextColor(Color.WHITE);
+
+            binding.btnTypeCustomer.setBackgroundResource(R.drawable.bg_selector_type_inactive);
+            binding.txtTypeCustomerLabel.setTextColor(Color.parseColor("#475569"));
+
+            binding.txtLeadTypeHint.setText("💡 गाड़ी/टेम्पो चलाने वाले नए ड्राइवर साथियों के लिए Driver चुनें।");
+        }
+        int count = contactAdapter != null ? contactAdapter.getSelectedContacts().size() : 0;
+        updateSubmitButton(count);
+    }
+
+    private void updateSubmitButton(int selectedCount) {
+        String typeLabel = "driver".equalsIgnoreCase(selectedLeadType) ? "Driver" : "Customer";
+        binding.txtSubmitBtnLabel.setText("Submit " + selectedCount + " Leads (" + typeLabel + ")");
+        boolean hasSelection = selectedCount > 0;
+        binding.btnSubmitLeads.setEnabled(hasSelection);
+        binding.btnSubmitLeads.setAlpha(hasSelection ? 1.0f : 0.5f);
     }
 
     private void setupAdapters() {
         // Contacts list adapter
         contactAdapter = new ContactSelectAdapter(this, selectedCount -> {
             binding.txtSelectedCount.setText(selectedCount + " selected");
-            binding.txtSubmitBtnLabel.setText("Submit Leads (" + selectedCount + " Selected)");
-            boolean hasSelection = selectedCount > 0;
-            binding.btnSubmitLeads.setEnabled(hasSelection);
-            binding.btnSubmitLeads.setAlpha(hasSelection ? 1.0f : 0.5f);
+            updateSubmitButton(selectedCount);
         });
         binding.recyclerContacts.setLayoutManager(new LinearLayoutManager(this));
         binding.recyclerContacts.setAdapter(contactAdapter);
@@ -116,6 +147,10 @@ public class LeadReferralActivity extends AppCompatActivity {
     private void setupListeners() {
         // Back
         binding.imgBack.setOnClickListener(v -> finish());
+
+        // Category Switcher
+        binding.btnTypeCustomer.setOnClickListener(v -> selectLeadType("customer"));
+        binding.btnTypeDriver.setOnClickListener(v -> selectLeadType("driver"));
 
         // Refresh leads button in header
         binding.btnRefreshLeads.setOnClickListener(v -> {
@@ -297,6 +332,17 @@ public class LeadReferralActivity extends AppCompatActivity {
             return;
         }
 
+        String typeName = "driver".equalsIgnoreCase(selectedLeadType) ? "Driver Partner (ड्राइवर साथी)" : "Customer (माल भेजने वाले)";
+
+        new AlertDialog.Builder(this)
+                .setTitle("Confirm Lead Submission")
+                .setMessage("Aap " + selected.size() + " contacts ko \"" + typeName + "\" ke roop me submit kar rahe hain.\n\nKya aap aage badhna chahte hain?")
+                .setPositiveButton("Submit Karein", (dialog, which) -> executeLeadSubmission(selected))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void executeLeadSubmission(List<ContactItem> selected) {
         // Show button progress
         binding.txtSubmitBtnLabel.setVisibility(View.GONE);
         binding.progressSubmit.setVisibility(View.VISIBLE);
@@ -304,6 +350,7 @@ public class LeadReferralActivity extends AppCompatActivity {
 
         Map<String, Object> body = new HashMap<>();
         body.put("rider_id", riderId);
+        body.put("lead_type", selectedLeadType);
 
         List<Map<String, String>> contactsArray = new ArrayList<>();
         for (ContactItem c : selected) {
@@ -356,9 +403,10 @@ public class LeadReferralActivity extends AppCompatActivity {
     }
 
     private void showSubmitResultDialog(int accepted, JsonArray skippedArr) {
+        String typeName = "driver".equalsIgnoreCase(selectedLeadType) ? "Driver Partner" : "Customer";
         StringBuilder msg = new StringBuilder();
-        msg.append("✅ ").append(accepted).append(" contact(s) submitted successfully!\n\n");
-        msg.append("Our ops team will verify them shortly. You'll receive 100 Reward Points on their 1st ride and become their Favorite Driver.\n");
+        msg.append("✅ ").append(accepted).append(" ").append(typeName).append(" contact(s) submitted successfully!\n\n");
+        msg.append("Our ops team will verify them shortly. You'll receive referral rewards upon onboarding/ride.\n");
 
         if (skippedArr.size() > 0) {
             msg.append("\n⚠️ ").append(skippedArr.size()).append(" contact(s) skipped:\n");

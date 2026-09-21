@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -7,12 +8,10 @@
     app:cardElevation="10dp"
     app:cardUseCompatPadding="true"
     app:cardBackgroundColor="@android:color/white">
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
-
         <!-- ================= TOP THEMED HEADER ================= -->
         <LinearLayout
             android:id="@+id/header_container"
@@ -25,13 +24,11 @@
             android:paddingTop="14dp"
             android:paddingEnd="16dp"
             android:paddingBottom="14dp">
-
             <!-- Circle Badge with Tier Icon -->
             <FrameLayout
                 android:layout_width="42dp"
                 android:layout_height="42dp"
                 android:background="@drawable/bg_circle_glass">
-
                 <ImageView
                     android:id="@+id/img_tier_icon"
                     android:layout_width="26dp"
@@ -40,7 +37,6 @@
                     android:src="@drawable/ic_tier_standard_box"
                     app:tint="@color/white" />
             </FrameLayout>
-
             <!-- Tier Title and Subtitle -->
             <LinearLayout
                 android:layout_width="0dp"
@@ -48,7 +44,6 @@
                 android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
-
                 <TextView
                     android:id="@+id/txt_tier_name"
                     android:layout_width="wrap_content"
@@ -59,7 +54,6 @@
                     android:textColor="@color/white"
                     android:textSize="18sp"
                     android:textStyle="bold" />
-
                 <TextView
                     android:id="@+id/txt_header_subtitle"
                     android:layout_width="wrap_content"
@@ -69,7 +63,6 @@
                     android:textColor="#E2E8F0"
                     android:textSize="13sp" />
             </LinearLayout>
-
             <!-- Fare Amount Badge -->
             <TextView
                 android:id="@+id/txt_estimated_price"
@@ -85,7 +78,6 @@
                 android:textSize="17sp"
                 android:textStyle="bold" />
         </LinearLayout>
-
         <!-- ================= BODY CONTENT ================= -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -95,32 +87,27 @@
             android:paddingTop="14dp"
             android:paddingEnd="16dp"
             android:paddingBottom="16dp">
-
             <!-- ROUTE RAIL -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
-
                 <!-- 1. Pickup Location -->
                 <LinearLayout
                     android:id="@+id/route_pickup_block"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
-
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/bg_badge_green" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:orientation="vertical">
-
                         <TextView
                             android:id="@+id/txt_pickup_name_title"
                             android:layout_width="wrap_content"
@@ -129,7 +116,6 @@
                             android:textColor="#10B981"
                             android:textSize="12sp"
                             android:textStyle="bold" />
-
                         <TextView
                             android:id="@+id/txt_pickup_address"
                             android:layout_width="match_parent"
@@ -142,7 +128,6 @@
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
-
                 <!-- Connector 1 -->
                 <View
                     android:id="@+id/route_line_pickup_stop1"
@@ -152,7 +137,6 @@
                     android:layout_marginTop="3dp"
                     android:layout_marginBottom="3dp"
                     android:background="#CBD5E1" />
-
                 <!-- Stop 1 (Optional) -->
                 <LinearLayout
                     android:id="@+id/route_stop1_block"
@@ -160,19 +144,16 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:visibility="gone">
-
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/bg_badge_orange" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:orientation="vertical">
-
                         <TextView
                             android:id="@+id/txt_stop1_title"
                             android:layout_width="wrap_content"
@@ -181,7 +162,6 @@
                             android:textColor="#EA580C"
                             android:textSize="12sp"
                             android:textStyle="bold" />
-
                         <TextView
                             android:id="@+id/txt_stop1_address"
                             android:layout_width="match_parent"
@@ -193,7 +173,6 @@
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
-
                 <View
                     android:id="@+id/route_line_stop1_stop2"
                     android:layout_width="2dp"
@@ -203,7 +182,6 @@
                     android:layout_marginBottom="3dp"
                     android:background="#CBD5E1"
                     android:visibility="gone" />
-
                 <!-- Stop 2 (Optional) -->
                 <LinearLayout
                     android:id="@+id/route_stop2_block"
@@ -211,19 +189,16 @@
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:visibility="gone">
-
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/dot_purple" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:orientation="vertical">
-
                         <TextView
                             android:id="@+id/txt_stop2_title"
                             android:layout_width="wrap_content"
@@ -232,7 +207,6 @@
                             android:textColor="#9333EA"
                             android:textSize="12sp"
                             android:textStyle="bold" />
-
                         <TextView
                             android:id="@+id/txt_stop2_address"
                             android:layout_width="match_parent"
@@ -244,7 +218,6 @@
                             android:textStyle="bold" />
                     </LinearLayout>
                 </LinearLayout>
-
                 <View
                     android:id="@+id/route_line_stop2_drop"
                     android:layout_width="2dp"
@@ -254,26 +227,22 @@
                     android:layout_marginBottom="3dp"
                     android:background="#CBD5E1"
                     android:visibility="gone" />
-
                 <!-- 2. Drop Location -->
                 <LinearLayout
                     android:id="@+id/route_drop_block"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
-
                     <View
                         android:layout_width="12dp"
                         android:layout_height="12dp"
                         android:layout_marginTop="4dp"
                         android:background="@drawable/dot_purple" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:orientation="vertical">
-
                         <TextView
                             android:id="@+id/txt_drop_name_title"
                             android:layout_width="match_parent"
@@ -282,7 +251,6 @@
                             android:textColor="#7C3AED"
                             android:textSize="12sp"
                             android:textStyle="bold" />
-
                         <TextView
                             android:id="@+id/txt_drop_address"
                             android:layout_width="match_parent"
@@ -296,14 +264,12 @@
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
-
             <!-- ================= INFO ROW: DISTANCE & VEHICLE/FARE ================= -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:orientation="horizontal">
-
                 <!-- Distance Card -->
                 <LinearLayout
                     android:layout_width="0dp"
@@ -316,19 +282,16 @@
                     android:paddingTop="8dp"
                     android:paddingEnd="10dp"
                     android:paddingBottom="8dp">
-
                     <ImageView
                         android:layout_width="22dp"
                         android:layout_height="22dp"
                         android:src="@drawable/ic_map_km"
                         app:tint="#334155" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:orientation="vertical">
-
                         <TextView
                             android:id="@+id/txt_distance"
                             android:layout_width="wrap_content"
@@ -337,17 +300,15 @@
                             android:textColor="#0F172A"
                             android:textSize="14sp"
                             android:textStyle="bold" />
-
                         <TextView
                             android:id="@+id/txt_duration"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="~ 28 mins"
-                            android:textColor="#64748B"
+                            android:textColor="@color/home_secondary"
                             android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>
-
                 <!-- Vehicle / Fare Card -->
                 <LinearLayout
                     android:layout_width="0dp"
@@ -361,19 +322,16 @@
                     android:paddingTop="8dp"
                     android:paddingEnd="10dp"
                     android:paddingBottom="8dp">
-
                     <ImageView
                         android:layout_width="22dp"
                         android:layout_height="22dp"
                         android:src="@drawable/ic_bike_box"
                         app:tint="#334155" />
-
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:orientation="vertical">
-
                         <TextView
                             android:id="@+id/txt_vehicle"
                             android:layout_width="wrap_content"
@@ -384,7 +342,6 @@
                             android:textColor="#0F172A"
                             android:textSize="14sp"
                             android:textStyle="bold" />
-
                         <TextView
                             android:id="@+id/txt_tier_sublabel"
                             android:layout_width="wrap_content"
@@ -392,12 +349,11 @@
                             android:ellipsize="end"
                             android:maxLines="1"
                             android:text="Standard Tier"
-                            android:textColor="#64748B"
+                            android:textColor="@color/home_secondary"
                             android:textSize="12sp" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
-
             <!-- ================= DRIVER / CUSTOMER ROW ================= -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -405,13 +361,11 @@
                 android:layout_marginTop="12dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
-
                 <ImageView
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:src="@drawable/ic_baseline_person_24"
                     app:tint="#334155" />
-
                 <TextView
                     android:id="@+id/txt_customer_name"
                     android:layout_width="0dp"
@@ -424,23 +378,20 @@
                     android:textColor="#0F172A"
                     android:textSize="14sp"
                     android:textStyle="bold" />
-
                 <ImageView
                     android:layout_width="15dp"
                     android:layout_height="15dp"
                     android:src="@drawable/ic_star_filled" />
-
                 <TextView
                     android:id="@+id/txt_driver_rating"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="4dp"
                     android:text="4.8 (120 orders)"
-                    android:textColor="#64748B"
+                    android:textColor="@color/home_secondary"
                     android:textSize="12.5sp"
                     android:textStyle="bold" />
             </LinearLayout>
-
             <!-- ================= TIER HIGHLIGHT CARD ================= -->
             <LinearLayout
                 android:id="@+id/layout_tier_highlight"
@@ -453,13 +404,11 @@
                 android:paddingTop="8dp"
                 android:paddingEnd="12dp"
                 android:paddingBottom="8dp">
-
                 <ImageView
                     android:id="@+id/img_highlight_icon"
                     android:layout_width="18dp"
                     android:layout_height="18dp"
                     android:src="@drawable/ic_info_circle" />
-
                 <TextView
                     android:id="@+id/txt_tier_highlight"
                     android:layout_width="0dp"
@@ -473,7 +422,6 @@
                     android:textSize="12.5sp"
                     android:textStyle="bold" />
             </LinearLayout>
-
             <!-- Optional legacy details box -->
             <TextView
                 android:id="@+id/txt_order_details"
@@ -481,14 +429,12 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:visibility="gone" />
-
             <!-- ================= BOTTOM ACTION BUTTONS ================= -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:orientation="horizontal">
-
                 <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btn_reject"
                     android:layout_width="0dp"
@@ -501,8 +447,8 @@
                     android:textAllCaps="true"
                     android:textColor="#DC2626"
                     android:textSize="14sp"
-                    android:textStyle="bold" />
-
+                    android:textStyle="bold"
+                    android:minHeight="48dp" />
                 <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btn_accept"
                     android:layout_width="0dp"
@@ -515,9 +461,9 @@
                     android:textAllCaps="true"
                     android:textColor="@color/white"
                     android:textSize="15sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:minHeight="48dp" />
             </LinearLayout>
-
         </LinearLayout>
     </LinearLayout>
 </androidx.cardview.widget.CardView>

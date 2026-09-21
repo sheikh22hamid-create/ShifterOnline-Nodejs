@@ -51,6 +51,10 @@ public class OrderDialogHelper {
         }
     }
 
+    public static void dismissIfShowing(String orderId, String packageId, String expiresAt, String reason) {
+        dismissIfShowing(orderId);
+    }
+
     /**
      * Show Accept/Reject dialog for an order with custom themed UI
      * 

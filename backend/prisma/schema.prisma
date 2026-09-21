@@ -826,6 +826,7 @@ model tbl_referral_point_log {
 model tbl_driver_lead {
   id                    Int       @id @default(autoincrement())
   driver_id             Int
+  lead_type             String    @default("customer") @db.VarChar(20)
   name                  String    @db.VarChar(150)
   phone                 String    @unique(map: "uniq_lead_phone") @db.VarChar(20)
   status                String    @default("pending") @db.VarChar(15)
@@ -838,6 +839,7 @@ model tbl_driver_lead {
 
   @@index([driver_id], map: "idx_lead_driver")
   @@index([status], map: "idx_lead_status")
+  @@index([lead_type], map: "idx_lead_type")
 }
 
 model tbl_referral_setting {

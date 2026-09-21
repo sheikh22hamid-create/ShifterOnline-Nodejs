@@ -39,6 +39,13 @@ describe("pushNotifier", () => {
     );
   });
 
+  it("preserves the expired model identity in delayed dismiss pushes", async () => {
+    await pushNotifier.notifyDriverDismiss("tok", 42, "timeout", { package_id: 7, expires_at: 15000 });
+    expect(sendPushNotification).toHaveBeenCalledWith("tok", expect.any(String), expect.any(String),
+      expect.objectContaining({ order_id: "42", package_id: "7", expires_at: "15000", reason: "timeout" }),
+      "order_dismiss_channel_v1");
+  });
+
   it("notifyCustomerOrderAssigned sends the assigned rider's info", async () => {
     await pushNotifier.notifyCustomerOrderAssigned("tok-3", { order_id: 42, rider_name: "Deepak", otp: 1234 });
 

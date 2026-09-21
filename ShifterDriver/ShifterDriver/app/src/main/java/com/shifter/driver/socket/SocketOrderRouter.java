@@ -73,12 +73,18 @@ public class SocketOrderRouter {
         // driver accepted the order).
         Intent dismissBroadcast = new Intent(ACTION_ORDER_DISMISS);
         dismissBroadcast.putExtra("order_id", orderId);
+        dismissBroadcast.putExtra("package_id", data.optString("package_id", ""));
+        dismissBroadcast.putExtra("expires_at", data.optString("expires_at", ""));
+        dismissBroadcast.putExtra("reason", data.optString("reason", ""));
         dismissBroadcast.setPackage(context.getPackageName());
         context.sendBroadcast(dismissBroadcast);
 
         Intent dismissIntent = new Intent(context, OrderOverlayService.class);
         dismissIntent.putExtra("dismiss", true);
         dismissIntent.putExtra("order_id", orderId);
+        dismissIntent.putExtra("package_id", data.optString("package_id", ""));
+        dismissIntent.putExtra("expires_at", data.optString("expires_at", ""));
+        dismissIntent.putExtra("reason", data.optString("reason", ""));
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 context.startForegroundService(dismissIntent);

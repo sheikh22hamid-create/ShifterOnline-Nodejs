@@ -163,6 +163,16 @@ function formatPkgOrderForDriver(row, ctx) {
     order_user_id: row.uid,
     status: row.o_status,
     order_date: row.odate,
+    // Completion columns contain IST wall-clock values; pickup_time is UTC.
+    // Return an explicit offset so earnings do not move into the wrong day.
+    earnings_completed_at: row.o_status === "Completed" && (row.drop_time || row.ddate)
+      ? new Date(row.drop_time || row.ddate).toISOString().replace("Z", "+05:30") : null,
+    trip_duration_minutes: row.o_status === "Completed" && row.pickup_time && row.drop_time
+      && new Date(row.drop_time).getTime() - 19800000 >= new Date(row.pickup_time).getTime()
+      ? Math.floor((new Date(row.drop_time).getTime() - 19800000 - new Date(row.pickup_time).getTime()) / 60000)
+      : null,
+    vehicle_category: row.category,
+
     total: row.d_charge,
     pick_name: row.pick_name,
     drop_name: row.drop_name,
