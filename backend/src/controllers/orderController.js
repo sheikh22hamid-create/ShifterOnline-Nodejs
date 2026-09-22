@@ -232,10 +232,16 @@ async function createOrderCore({
     100
   );
 
-  const firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+  let firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
     slabPricingConfig?.slabRates,
     firstPkg?.cat_id || firstPkg?.category || firstPkg?.category_id
   );
+  if (!firstVehicleSlabConfig && firstPkg?.cat_id) {
+    const catRow = await prisma.pkg_category.findUnique({ where: { id: Number(firstPkg.cat_id) } }).catch(() => null);
+    if (catRow?.cat_name) {
+      firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(slabPricingConfig?.slabRates, catRow.cat_name);
+    }
+  }
 
   // radiusRangeKm=1 (zero radius charge), not resolvedRadiusKm — no driver
   // is known yet at order-creation time, so there's no real pickup distance

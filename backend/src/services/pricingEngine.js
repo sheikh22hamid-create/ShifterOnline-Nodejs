@@ -493,7 +493,13 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
   const resolvedExtraMileCharge = Number(extraMileCharge) || 0;
-  const vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
+  let vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
+  if (!vehicleSlabConfig && cat_id) {
+    const catRow = await prisma.pkg_category.findUnique({ where: { id: Number(cat_id) } }).catch(() => null);
+    if (catRow?.cat_name) {
+      vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, catRow.cat_name);
+    }
+  }
 
   return {
     Result: true,

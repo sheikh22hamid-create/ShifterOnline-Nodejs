@@ -347,7 +347,7 @@ describe("getPackageListForCategory", () => {
 describe("getFareEstimate", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  const pkg = { id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 4 };
+  const pkg = { id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 4, use_linear_pricing: true };
 
   it("quotes zero radius charge when radius_km isn't known yet (unchanged default behavior)", async () => {
     getRoadDistanceKm.mockResolvedValue({ distanceKm: 10, durationMin: 20 });

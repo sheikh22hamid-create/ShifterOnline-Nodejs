@@ -393,13 +393,13 @@ function findVehicleSlabConfig(slabRates, catIdOrName) {
     }
   }
 
-  // Fallback mappings for known variations
-  if (input.includes("bike") || input.includes("two") || input === "8") return slabRates.bike;
-  if (input.includes("scooter") || input === "16") return slabRates.scooter;
+  // Fallback mappings for known variations across dev and prod environments
+  if (input.includes("bike") || input.includes("two") || input === "8" || input === "1") return slabRates.bike;
+  if (input.includes("scooter") || input === "16" || input === "2") return slabRates.scooter;
   if (input.includes("mini") || input === "9") return slabRates.mini_3w;
-  if (input.includes("loader") || input.includes("electric") || input === "23" || input === "22") return slabRates.e_loader;
-  if (input.includes("3 wheeler") || input.includes("three") || input.includes("3w") || input === "24" || input === "15") return slabRates.three_wheeler;
-  if (input.includes("4 wheeler") || input.includes("four") || input.includes("ace") || input.includes("tata") || input.includes("4w") || input === "25" || input === "11" || input === "17")
+  if (input.includes("loader") || input.includes("electric") || input === "23" || input === "22" || input === "3" || input === "10") return slabRates.e_loader;
+  if (input.includes("3 wheeler") || input.includes("three") || input.includes("3w") || input === "24" || input === "15" || input === "4") return slabRates.three_wheeler;
+  if (input.includes("4 wheeler") || input.includes("four") || input.includes("ace") || input.includes("tata") || input.includes("4w") || input === "25" || input === "11" || input === "17" || input === "5")
     return slabRates.four_wheeler;
 
   return null;

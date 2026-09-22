@@ -104,7 +104,7 @@ function matchVehicleSlab(vehicleSlabs, catId, catName = '') {
     rawName.includes('four') ||
     rawName.includes('ace') ||
     rawName.includes('4w') ||
-    ['25', '11', '17'].includes(strId)
+    ['25', '11', '17', '5'].includes(strId)
   ) {
     return vehicleSlabs.find(
       (v) =>
@@ -120,7 +120,7 @@ function matchVehicleSlab(vehicleSlabs, catId, catName = '') {
     rawName.includes('3') ||
     rawName.includes('three') ||
     rawName.includes('3w') ||
-    ['24', '15', '9'].includes(strId)
+    ['24', '15', '9', '4'].includes(strId)
   ) {
     return vehicleSlabs.find(
       (v) =>
@@ -130,24 +130,24 @@ function matchVehicleSlab(vehicleSlabs, catId, catName = '') {
     )
   }
 
-  // 5. E-Loader categories (catId 23, 22, or "loader", "electric")
+  // 5. E-Loader categories (catId 23, 22, 3, or "loader", "electric")
   if (
     rawName.includes('loader') ||
     rawName.includes('electric') ||
-    ['23', '22'].includes(strId)
+    ['23', '22', '3'].includes(strId)
   ) {
     return vehicleSlabs.find(
       (v) => v.vehicle_key === 'e_loader' || (v.vehicle_type || '').toLowerCase().includes('loader')
     )
   }
 
-  // 6. Scooter (catId 16, or "scooter")
-  if (rawName.includes('scooter') || strId === '16') {
+  // 6. Scooter (catId 16, 2, or "scooter")
+  if (rawName.includes('scooter') || ['16', '2'].includes(strId)) {
     return vehicleSlabs.find((v) => v.vehicle_key === 'scooter' || (v.vehicle_type || '').toLowerCase().includes('scooter'))
   }
 
-  // 7. Bike (catId 8, or "bike", "two")
-  if (rawName.includes('bike') || rawName.includes('two') || strId === '8') {
+  // 7. Bike (catId 8, 1, or "bike", "two")
+  if (rawName.includes('bike') || rawName.includes('two') || ['8', '1'].includes(strId)) {
     return vehicleSlabs.find((v) => v.vehicle_key === 'bike' || (v.vehicle_type || '').toLowerCase().includes('bike'))
   }
 
