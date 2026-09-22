@@ -255,6 +255,8 @@ model pkg_order {
   next_day_sequence      Int?
   next_day_batch_id      String?            @db.VarChar(50)
   scheduled_at           DateTime?          @db.DateTime(0)
+  referral_points_used   Int                @default(0)
+  referral_points_amount Decimal            @default(0.00) @db.Decimal(10, 2)
 
   @@index([rid, order_status], map: "idx_rid_status")
 }
@@ -855,6 +857,7 @@ model tbl_referral_setting {
   point_value                   Decimal   @default(1.00) @db.Decimal(10, 2)
   referral_enabled              Boolean   @default(true)
   share_message                 String?   @db.Text
+  ride_discount_percent         Decimal   @default(0.00) @db.Decimal(5, 2)
   updated_at                    DateTime? @db.DateTime(0)
 }
 

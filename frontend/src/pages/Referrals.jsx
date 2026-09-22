@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Coins, Gift, Save, PhoneCall } from 'lucide-react'
+import { Coins, Gift, Save, PhoneCall, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -46,6 +46,7 @@ export default function Referrals() {
         point_value: editable.point_value,
         referral_enabled: editable.referral_enabled,
         share_message: editable.share_message,
+        ride_discount_percent: editable.ride_discount_percent,
       })
       toast.success('Referral settings saved.')
       setForm(null)
@@ -184,6 +185,24 @@ export default function Referrals() {
                 <option value="1">Enabled</option>
                 <option value="0">Disabled</option>
               </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>
+                Ride discount from points (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                disabled={!isSuperadmin}
+                value={editable.ride_discount_percent ?? 0}
+                onChange={(e) => setForm({ ...editable, ride_discount_percent: Number(e.target.value) })}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                style={FIELD_STYLE}
+              />
+              <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                Max % of a ride's fare (or advance payment) customers can cover using referral points.
+              </p>
             </div>
           </div>
         </div>

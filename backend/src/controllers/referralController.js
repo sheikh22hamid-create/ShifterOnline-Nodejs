@@ -18,7 +18,7 @@ async function getSettings(req, res) {
 async function updateSettings(req, res) {
   try {
     const existing = await prisma.tbl_referral_setting.findFirst();
-    const { user_point, driver_point, min_trip_unlock, point_value, referral_enabled, share_message } = req.body;
+    const { user_point, driver_point, min_trip_unlock, point_value, referral_enabled, share_message, ride_discount_percent } = req.body;
 
     // Spec's body uses user_point/driver_point/min_trip_unlock; the real
     // columns are user_points_per_referral/driver_points_per_referral and
@@ -29,6 +29,7 @@ async function updateSettings(req, res) {
     if (req.body.lead_referral_points !== undefined) data.lead_referral_points = Number(req.body.lead_referral_points);
     if (req.body.lead_verification_window_days !== undefined) data.lead_verification_window_days = Number(req.body.lead_verification_window_days);
     if (point_value !== undefined) data.point_value = point_value;
+    if (ride_discount_percent !== undefined) data.ride_discount_percent = ride_discount_percent;
     if (referral_enabled !== undefined) data.referral_enabled = Boolean(referral_enabled);
     if (share_message !== undefined) data.share_message = share_message;
     data.updated_at = new Date();

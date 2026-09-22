@@ -499,6 +499,15 @@ async function updateStatus(orderId, riderId, status) {
     const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
     const advancePaymentCollected = Number(advanceRow?.advance_payment) || 0;
 
+    // Referral points redeemed against this ride's fare at booking time
+    // (orderController.createOrderCore) - never touched the customer's
+    // wallet, so it stays out of the advance-payment wallet-debit-back block
+    // below, but it's the same kind of "already settled, don't collect
+    // again" amount for cash-collection and commission purposes: the
+    // platform absorbs it so the driver's net payout is unaffected.
+    const referralPointsAmount = Number(order.referral_points_amount) || 0;
+    const prepaidTotal = advancePaymentCollected + referralPointsAmount;
+
     const rider = await prisma.tbl_rider.findUnique({
       where: { id: riderId },
       select: { id: true, monthly_plan: true },
@@ -506,7 +515,7 @@ async function updateStatus(orderId, riderId, status) {
     const isMonthlyDriver = Number(rider?.monthly_plan) === 1;
 
     const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
-    const cashCollected = isCashOrder ? Math.max(0, finalTotal - advancePaymentCollected) : 0;
+    const cashCollected = isCashOrder ? Math.max(0, finalTotal - prepaidTotal) : 0;
 
     if (isMonthlyDriver) {
       if (cashCollected > 0) {
@@ -544,7 +553,7 @@ async function updateStatus(orderId, riderId, status) {
           });
         }
       }
-    } else if (isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || advancePaymentCollected > 0)) {
+    } else if (isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || prepaidTotal > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money. Computed off finalTotal (includes waiting
@@ -556,11 +565,13 @@ async function updateStatus(orderId, riderId, status) {
       // The driver popup shows (and the driver collects in cash) the FULL
       // fare — but the customer already paid advance_payment online at
       // accept time (tripLifecycle.acceptOrder), which is money admin
-      // already holds. Only the commission still outstanding after that
-      // advance is clawed back from the driver's wallet here; debiting the
-      // full commission again would double-charge the driver for the
-      // portion admin already collected upfront.
-      const netCommissionDue = Math.max(0, commission + perTripCharge - advancePaymentCollected);
+      // already holds, and/or covered part of the fare with referral points
+      // at booking (platform-absorbed discount, never collected from the
+      // driver either). Only the commission still outstanding after both is
+      // clawed back from the driver's wallet here; debiting the full
+      // commission again would double-charge the driver for the portion
+      // admin already collected upfront or chose to forgo.
+      const netCommissionDue = Math.max(0, commission + perTripCharge - prepaidTotal);
 
       // Guarded the same way the advance-payment debit below is: a retried or
       // duplicate 'complete' call (order #1790 showed this live — two
@@ -602,7 +613,7 @@ async function updateStatus(orderId, riderId, status) {
       // this exact shortfall and shows "₹X added to wallet" on the driver's
       // trip-detail screen, but nothing here ever actually paid it — the
       // driver's real wallet never received a matching credit for it.
-      const advanceRefundDue = Math.max(0, advancePaymentCollected - (commission + perTripCharge));
+      const advanceRefundDue = Math.max(0, prepaidTotal - (commission + perTripCharge));
       if (advanceRefundDue > 0) {
         const refundKey = `advance_refund:${orderId}`;
         const alreadyRefunded = await prisma.tbl_wallet_history.findFirst({
@@ -769,6 +780,40 @@ async function processNextQueuedOrder(riderId, completedOrderId) {
  * the race against a concurrent driver accept (spec §4.6) — if the driver's
  * accept already flipped o_status away from cancellable, affectedRows is 0.
  */
+/**
+ * Refunds any referral points spent on this order (booking-time fare
+ * redemption and/or advance-payment redemption both land in the same
+ * pkg_order.referral_points_used column) back to the customer once it's
+ * cancelled before completion — otherwise those points would just vanish
+ * for a ride that never happened. Guarded by zeroing referral_points_used
+ * atomically first (updateMany's affected-row count), so a duplicate cancel
+ * call can never double-refund.
+ */
+async function refundReferralPointsIfAny(orderId, uid, pointsUsed, client = prisma) {
+  if (!pointsUsed || pointsUsed <= 0) return;
+  const claimed = await client.pkg_order.updateMany({
+    where: { id: orderId, referral_points_used: { gt: 0 } },
+    data: { referral_points_used: 0, referral_points_amount: 0 },
+  });
+  if (claimed.count === 0) return;
+  const updatedUser = await client.tbl_user.update({
+    where: { id: uid },
+    data: { referral_points: { increment: pointsUsed } },
+  });
+  await client.tbl_referral_point_log.create({
+    data: {
+      user_id: uid,
+      user_type: "USER",
+      points: pointsUsed,
+      txn_type: "credit",
+      source: "ride_discount_refund",
+      balance_after: updatedUser.referral_points || 0,
+      note: `Refunded — order #${orderId} was cancelled`,
+      created_at: new Date(),
+    },
+  }).catch(() => {});
+}
+
 async function customerCancel(uid, orderId, comment) {
   const orderBefore = await prisma.pkg_order.findFirst({ where: { id: orderId, uid } });
   if (!orderBefore) {
@@ -784,6 +829,10 @@ async function customerCancel(uid, orderId, comment) {
   if (affectedRows === 0) {
     return { success: false, msg: "Order cannot be cancelled" };
   }
+
+  await refundReferralPointsIfAny(orderId, uid, orderBefore.referral_points_used).catch((err) => {
+    logger.error(`customerCancel: refundReferralPointsIfAny failed for order ${orderId}:`, err);
+  });
 
   if (orderBefore.rid !== 0) {
     const isUnpaidAdvance = Number(orderBefore.advance_payment || 0) > 0 && Number(orderBefore.payment_status || 0) === 0;
@@ -875,7 +924,7 @@ async function driverCancel(orderId, riderId, reason) {
   await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw`
       SELECT id, uid, rid, order_status, o_status, advance_payment,
-             payment_status, razorpay_payment_id, delivery_type
+             payment_status, razorpay_payment_id, delivery_type, referral_points_used
       FROM pkg_order
       WHERE id = ${orderId}
       FOR UPDATE
@@ -920,6 +969,8 @@ async function driverCancel(orderId, riderId, reason) {
         AND o_status NOT IN ('Completed', 'Cancelled')
     `;
     if (affected === 0) throw new Error("ORDER_NOT_CANCELLABLE");
+
+    await refundReferralPointsIfAny(orderId, Number(order.uid), Number(order.referral_points_used) || 0, tx);
 
     const amount = Math.max(0, Math.round(Number(order.advance_payment) || 0));
     // Legacy payment paths have historically persisted the gateway payment id

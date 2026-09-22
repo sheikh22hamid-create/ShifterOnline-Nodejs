@@ -36,6 +36,7 @@ router.post("/invoice-url", orderInvoiceController.generateInvoiceUrl);
 router.get("/invoice", orderInvoiceController.renderInvoice);
 router.post("/map-info", orderController.getMapInfo);
 router.post("/advance-payment", orderController.advancePayment);
+router.post("/advance-payment/redeem-points", orderController.redeemAdvanceWithPoints);
 
 // My-orders list (was missing entirely - see legacyOrderController.js header)
 router.post("/history", legacyOrderController.pkgHistory);

@@ -155,7 +155,7 @@ async function createOrderCore({
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
-  stops = [],
+  stops = [], useReferralPoints = false,
 }) {
   if (
     !uid ||
@@ -266,6 +266,53 @@ async function createOrderCore({
   const finalTotalCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare);
   const finalDCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare);
 
+  // Referral-point redemption against this ride's fare (admin-capped %,
+  // "use whatever points are available, rest stays real cash" - never
+  // blocks booking on a points race). d_charge/total_dcharge themselves are
+  // left untouched (driver earning/commission keep computing off the full
+  // fare) - the redeemed amount is tracked separately and only reduces what
+  // the CUSTOMER pays in cash, netted off at ride completion in
+  // tripLifecycle.js alongside advance_payment. Platform absorbs the cost.
+  let referralPointsUsed = 0;
+  let referralPointsAmount = 0;
+  if (useReferralPoints && finalTotalCharge > 0) {
+    const [settings, customerPoints] = await Promise.all([
+      prisma.tbl_referral_setting.findFirst(),
+      prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { referral_points: true } }),
+    ]);
+    const percent = Number(settings?.ride_discount_percent) || 0;
+    if (settings?.referral_enabled && percent > 0) {
+      const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
+      const maxByPercent = Math.floor((finalTotalCharge * percent) / 100 / pointValue);
+      const available = Number(customerPoints?.referral_points) || 0;
+      const pointsUsed = Math.min(available, maxByPercent);
+      if (pointsUsed > 0) {
+        const decremented = await prisma.tbl_user.updateMany({
+          where: { id: Number(uid), referral_points: { gte: pointsUsed } },
+          data: { referral_points: { decrement: pointsUsed } },
+        });
+        // Lost a race with another spend on the same balance - skip the
+        // redemption rather than fail the booking over it.
+        if (decremented.count > 0) {
+          referralPointsUsed = pointsUsed;
+          referralPointsAmount = Math.round(pointsUsed * pointValue * 100) / 100;
+          await prisma.tbl_referral_point_log.create({
+            data: {
+              user_id: Number(uid),
+              user_type: "USER",
+              points: -pointsUsed,
+              txn_type: "debit",
+              source: "ride_discount",
+              balance_after: available - pointsUsed,
+              note: `Redeemed for ride discount (₹${referralPointsAmount})`,
+              created_at: new Date(),
+            },
+          });
+        }
+      }
+    }
+  }
+
   const parsedWeight = parseFloat(String(packageWeight));
   const finalScheduleDateTime = Number(bookingType) === 3
     ? nextDayScheduleDateIST()
@@ -330,6 +377,8 @@ async function createOrderCore({
       trans_id: transactionId || null,
       photos: photos || null,
       otp: crypto.randomInt(1000, 10000),
+      referral_points_used: referralPointsUsed,
+      referral_points_amount: referralPointsAmount,
     },
   });
 
@@ -386,7 +435,7 @@ async function createOrder(req, res) {
       uid, category, delivery_type, booking_type, plat, plong, paddress, pick_name, pmobile, pick_type,
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
-      schedule_date_time, scheduleDateTime,
+      schedule_date_time, scheduleDateTime, use_referral_points,
       stops,
     } = req.body;
 
@@ -397,7 +446,7 @@ async function createOrder(req, res) {
       pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
       couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
       scheduleDateTime: schedule_date_time || scheduleDateTime || null,
-      stops,
+      stops, useReferralPoints: Boolean(use_referral_points),
     });
 
     if (!result.ok && result.code === "VALIDATION") {
@@ -420,6 +469,8 @@ async function createOrder(req, res) {
       Result: "true",
       order_id: order.id,
       booking_type: order.booking_type,
+      referral_points_used: order.referral_points_used || 0,
+      referral_points_amount: Number(order.referral_points_amount) || 0,
       ResponseMsg: "Package Order Placed Successfully!!!",
     });
   } catch (err) {
@@ -1280,6 +1331,110 @@ async function advancePayment(req, res) {
   }
 }
 
+/**
+ * Covers all or part of this order's advance_payment using the customer's
+ * referral points instead of Razorpay - capped by the same admin
+ * ride_discount_percent used for the booking-time redemption. Reduces
+ * advance_payment (and marks payment_status paid if that reaches zero)
+ * directly at the source, so the existing cash-collected / commission-claw-
+ * back math at ride completion (tripLifecycle.js) needs no changes: it
+ * already treats whatever sits in advance_payment as "already settled".
+ * Any leftover (points ran out before covering the full amount) is left in
+ * advance_payment for the customer to still pay via the normal Razorpay
+ * advancePayment() call.
+ */
+async function redeemAdvanceWithPoints(req, res) {
+  const b = req.body || {};
+  const orderId = Number(b.order_id || 0);
+  if (!orderId) {
+    return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Missing Parameters" });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw`SELECT id, uid, advance_payment, payment_status, o_status, order_status FROM pkg_order WHERE id = ${orderId} FOR UPDATE`;
+      const order = rows[0];
+      if (!order) return { code: "401", msg: "Order Not Found" };
+      if (order.o_status === "Cancelled" || Number(order.order_status) === 4) {
+        return { code: "401", msg: "Order is already cancelled." };
+      }
+      if (Number(order.payment_status) === 1) {
+        return { code: "401", msg: "Order Already Paid" };
+      }
+      const advanceDue = Math.round(Number(order.advance_payment) || 0);
+      if (advanceDue <= 0) {
+        return { code: "401", msg: "No advance payment due." };
+      }
+
+      const settings = await tx.tbl_referral_setting.findFirst();
+      const percent = Number(settings?.ride_discount_percent) || 0;
+      if (!settings?.referral_enabled || percent <= 0) {
+        return { code: "401", msg: "Paying with referral points is not available right now." };
+      }
+      const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
+      const maxByPercent = Math.floor((advanceDue * percent) / 100 / pointValue);
+
+      const user = await tx.tbl_user.findUnique({ where: { id: Number(order.uid) } });
+      if (!user) return { code: "401", msg: "User Not Found" };
+      const available = Number(user.referral_points) || 0;
+      const pointsUsed = Math.min(available, maxByPercent);
+      if (pointsUsed <= 0) {
+        return { code: "401", msg: "Not enough referral points available." };
+      }
+
+      const decremented = await tx.tbl_user.updateMany({
+        where: { id: Number(order.uid), referral_points: { gte: pointsUsed } },
+        data: { referral_points: { decrement: pointsUsed } },
+      });
+      if (decremented.count === 0) return { code: "401", msg: "Not enough referral points available." };
+
+      const pointsAmount = Math.min(advanceDue, Math.round(pointsUsed * pointValue * 100) / 100);
+      const remaining = Math.max(0, advanceDue - pointsAmount);
+      const fullyPaid = remaining <= 0;
+
+      await tx.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(remaining)}, payment_status = ${fullyPaid ? 1 : 0} WHERE id = ${orderId}`;
+      await tx.pkg_order.update({
+        where: { id: orderId },
+        data: {
+          referral_points_used: { increment: pointsUsed },
+          referral_points_amount: { increment: pointsAmount },
+        },
+      });
+      await tx.tbl_referral_point_log.create({
+        data: {
+          user_id: Number(order.uid),
+          user_type: "USER",
+          points: -pointsUsed,
+          txn_type: "debit",
+          source: "ride_discount",
+          balance_after: available - pointsUsed,
+          note: `Redeemed against advance payment for order #${orderId} (₹${pointsAmount})`,
+          created_at: new Date(),
+        },
+      });
+
+      return { code: "200", pointsUsed, pointsAmount, remaining, fullyPaid };
+    });
+
+    if (result.code !== "200") {
+      return res.status(200).json({ ResponseCode: result.code, Result: false, ResponseMsg: result.msg });
+    }
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: true,
+      ResponseMsg: result.fullyPaid ? "Advance payment fully covered by referral points" : "Referral points applied to advance payment",
+      order_id: orderId,
+      points_used: result.pointsUsed,
+      points_amount: result.pointsAmount,
+      remaining_amount: result.remaining,
+      payment_status: result.fullyPaid ? 1 : 0,
+    });
+  } catch (err) {
+    logger.error("redeemAdvanceWithPoints failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: false, ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
   getCategories,
   fareEstimate,
@@ -1303,4 +1458,5 @@ module.exports = {
   paymentMethodStatus,
   getMapInfo,
   advancePayment,
+  redeemAdvanceWithPoints,
 };
