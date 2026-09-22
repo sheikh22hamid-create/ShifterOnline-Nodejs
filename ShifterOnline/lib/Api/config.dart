@@ -193,6 +193,7 @@ class Config {
   static const String nodePaymentGateways = "api/users/payment-gateways";
   static const String nodeHome = "api/users/home";
   static const String nodeCancelReasons = "api/users/cancel-reasons";
+  static const String nodeUserLeads = "api/user/leads";
   static const String nodeAppConfig = "api/users/app-config";
   // Read-only auth-adjacent lookups (country codes) - safe to move even
   // though login/OTP/register themselves stay on the legacy PHP for now.

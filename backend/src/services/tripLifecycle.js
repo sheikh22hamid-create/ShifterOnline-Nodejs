@@ -4,6 +4,7 @@ const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
 const referralRewardService = require("./referralRewardService");
+const rewardPlanService = require("./rewardPlanService");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
@@ -688,6 +689,13 @@ async function updateStatus(orderId, riderId, status) {
     // completion on this.
     referralRewardService.processReferralRewardsForCompletedOrder({ uid: order.uid, riderId, orderId }).catch((err) => {
       logger.error(`processReferralRewardsForCompletedOrder error for order ${orderId}:`, err);
+    });
+
+    // Fire-and-forget, same pattern as above - activates whatever reward
+    // plan the admin pre-set for this customer (if any) now that their ride
+    // is done. Never blocks order completion.
+    rewardPlanService.applyPendingRewardPlanIfAny({ uid: order.uid, orderId }).catch((err) => {
+      logger.error(`applyPendingRewardPlanIfAny error for order ${orderId}:`, err);
     });
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });

@@ -89,6 +89,13 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         binding.lvlPremiumPlans.setOnClickListener(this::onBindClick);
         binding.lvlReferEarn.setOnClickListener(this::onBindClick);
         binding.lvlTraining.setOnClickListener(this::onBindClick);
+        binding.lvlTestRide.setOnClickListener(v -> {
+            if (sessionManager.getActiveOrder() != null) {
+                Toast.makeText(requireContext(), R.string.demo_active_trip, Toast.LENGTH_LONG).show();
+                return;
+            }
+            startActivity(new Intent(requireContext(), com.shifter.driver.activity.DemoRideActivity.class));
+        });
         binding.lvlPayout.setOnClickListener(this::onBindClick);
         binding.lvlPrivacy.setOnClickListener(this::onBindClick);
         binding.lvlTerms.setOnClickListener(this::onBindClick);

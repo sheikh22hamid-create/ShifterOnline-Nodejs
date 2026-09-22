@@ -55,6 +55,8 @@ const locationRoutes = require("./routes/locationRoutes");
 const whatsappRoutes = require("./routes/whatsappRoutes");
 
 app.use("/api/users", userRoutes);
+app.use("/api/user", userRoutes);
+app.use("/user", userRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/rider", riderRoutes);
 app.use("/rider", riderRoutes);

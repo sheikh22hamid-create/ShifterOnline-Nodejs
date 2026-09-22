@@ -31,6 +31,7 @@ import 'package:goParcel/screens/profile/faq.dart';
 import 'package:goParcel/utils/colors.dart';
 import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
+import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:get/get.dart';
@@ -115,6 +116,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
     _socketSubscription = NodeSocketManager.instance.addListeners(onOrderAssigned: (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
+      // Already handling this order's assignment here — clear it from the
+      // scheduled-order catch-up watch list so Bottombar's app-wide
+      // listener doesn't also navigate to a second TrackingWay instance.
+      ScheduledOrderWatch.remove(orderid);
       debugPrint("🔔 order:assigned (tracking screen refresh): $data");
       final assignedLat = double.tryParse(data['rider_lat']?.toString() ?? '');
       final assignedLng = double.tryParse(data['rider_lng']?.toString() ?? '');
@@ -1268,11 +1273,20 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final distance = (orderProduc?["distance"] != null) ? "${orderProduc["distance"]} km" : "0 km";
     final weight = (orderProduc?["package_weight"] != null) ? "${orderProduc["package_weight"]} Kg" : "0 Kg";
     final category = (orderProduc?["category"] ?? "Bike").toString();
+    final isScheduled = orderProduc?["booking_type"]?.toString() == "2";
     final bookingType = orderProduc?["booking_type"]?.toString() == "1"
         ? "Current Booking".tr
-        : orderProduc?["booking_type"]?.toString() == "2"
+        : isScheduled
             ? "Schedule Booking".tr
             : "Next Day Booking".tr;
+    final rawScheduleTime = orderProduc?["schedule_date_time"]?.toString();
+    String? scheduledForLabel;
+    if (isScheduled && rawScheduleTime != null && rawScheduleTime.isNotEmpty) {
+      final parsed = DateTime.tryParse(rawScheduleTime);
+      scheduledForLabel = parsed == null
+          ? rawScheduleTime
+          : DateFormat('EEE, d MMM · h:mm a').format(parsed.toLocal());
+    }
 
     return Container(
       width: double.infinity,
@@ -1357,19 +1371,39 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     Expanded(child: buildItem(Icons.event_note_rounded, "Booking Type".tr, bookingType)),
                   ],
                 ),
+                if (scheduledForLabel != null) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: buildItem(Icons.schedule_rounded, "Scheduled For".tr, scheduledForLabel)),
+                    ],
+                  ),
+                ],
               ],
             );
           }
 
-          return Row(
+          return Column(
             children: [
-              Expanded(child: buildItem(Icons.route_rounded, "Distance".tr, distance)),
-              Container(width: 1, height: 32, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 4)),
-              Expanded(child: buildItem(Icons.shopping_bag_outlined, "Weight".tr, weight)),
-              Container(width: 1, height: 32, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 4)),
-              Expanded(child: buildItem(Icons.two_wheeler_rounded, "Category".tr, category)),
-              Container(width: 1, height: 32, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 4)),
-              Expanded(child: buildItem(Icons.event_note_rounded, "Booking Type".tr, bookingType)),
+              Row(
+                children: [
+                  Expanded(child: buildItem(Icons.route_rounded, "Distance".tr, distance)),
+                  Container(width: 1, height: 32, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                  Expanded(child: buildItem(Icons.shopping_bag_outlined, "Weight".tr, weight)),
+                  Container(width: 1, height: 32, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                  Expanded(child: buildItem(Icons.two_wheeler_rounded, "Category".tr, category)),
+                  Container(width: 1, height: 32, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                  Expanded(child: buildItem(Icons.event_note_rounded, "Booking Type".tr, bookingType)),
+                ],
+              ),
+              if (scheduledForLabel != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: buildItem(Icons.schedule_rounded, "Scheduled For".tr, scheduledForLabel)),
+                  ],
+                ),
+              ],
             ],
           );
         },
@@ -2148,24 +2182,30 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: linercolor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.account_balance_wallet_outlined, color: linercolor, size: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: linercolor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.account_balance_wallet_outlined, color: linercolor, size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Payment Details".tr,
+                    style: TextStyle(
+                      color: notifier.text,
+                      fontFamily: "Gilroy_Bold",
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                "Payment Details".tr,
-                style: TextStyle(
-                  color: notifier.text,
-                  fontFamily: "Gilroy_Bold",
-                  fontSize: 15,
-                ),
-              ),
+              if (isCompleted) _buildCompactInvoiceButton(),
             ],
           ),
           const SizedBox(height: 12),
@@ -2643,40 +2683,167 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     );
   }
 
+  // ── 10B. COMPACT INVOICE BUTTON ──────────────────────────────────────────
+
+  Widget _buildCompactInvoiceButton() {
+    if (widget.type != "Pickup") return const SizedBox();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isInvoiceLoading ? null : () => downloadInvoice(),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F8EE),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF00C853).withOpacity(0.4), width: 1.2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isInvoiceLoading)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C853)),
+                )
+              else
+                const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF00C853)),
+              const SizedBox(width: 5),
+              Text(
+                isInvoiceLoading ? "Please wait...".tr : "Invoice".tr,
+                style: const TextStyle(
+                  color: Color(0xFF00C853),
+                  fontFamily: "Gilroy_Bold",
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── 11. BOTTOM ACTION BUTTONS (CANCEL / REVIEW / INVOICE) ──────────────────
 
   Widget _buildBottomActionButtons() {
     final status = (orderProduc?["Order_Status"] ?? "").toString();
+    final statusLower = status.trim().toLowerCase();
 
-    // 1. Completed state actions
-    if (status == "Completed") {
-      return Row(
+    // 1. Completed state actions: Prominently show Final Amount with compact side invoice button
+    if (statusLower == "completed") {
+      final rawActualTotal = (orderProduc?["grand_total"] ??
+              orderProduc?["total_Delivery_charge"] ??
+              buyMapinfo?["grand_total"] ??
+              buyMapinfo?["total_Delivery_charge"] ??
+              grandTotal ??
+              "0")
+          .toString();
+      double totalDouble = double.tryParse(rawActualTotal) ?? 0.0;
+
+      final rawAdvance = (orderProduc?["advance_payment "] ??
+              orderProduc?["advance_payment"] ??
+              buyMapinfo?["advance_payment "] ??
+              buyMapinfo?["advance_payment"] ??
+              "0")
+          .toString();
+      double advDouble = double.tryParse(rawAdvance) ?? 0.0;
+      if (totalDouble == 0.0 && advDouble > 0) {
+        totalDouble = advDouble;
+      }
+      final totalStr = (totalDouble % 1 == 0) ? totalDouble.toInt().toString() : totalDouble.toStringAsFixed(2);
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (orderProduc?["is_rate"] == "0") ...[
-            Expanded(
-              child: appButton1(
-                tital: "Order Review".tr,
-                buttonbgColor: linercolor,
-                bordecolor: linercolor,
-                onTap: () {
-                  commit.clear();
-                  reviewRider();
-                },
-              ),
+            appButton1(
+              tital: "Order Review".tr,
+              buttonbgColor: linercolor,
+              bordecolor: linercolor,
+              onTap: () {
+                commit.clear();
+                reviewRider();
+              },
             ),
-            const SizedBox(width: 10),
+            const SizedBox(height: 12),
           ],
-          if (widget.type == "Pickup")
-            Expanded(
-              child: appButton1(
-                tital: isInvoiceLoading ? "Please wait...".tr : "Order Invoice".tr,
-                buttonbgColor: greencolor,
-                bordecolor: greencolor,
-                onTap: () {
-                  if (!isInvoiceLoading) downloadInvoice();
-                },
-              ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: notifier.getBgColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "Final Amount".tr,
+                          style: TextStyle(
+                            color: greaycolor,
+                            fontFamily: "Gilroy_Medium",
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F8EE),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 10),
+                              SizedBox(width: 3),
+                              Text(
+                                "Paid",
+                                style: TextStyle(
+                                  color: Color(0xFF00C853),
+                                  fontFamily: "Gilroy_Bold",
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      "$currency$totalStr",
+                      style: TextStyle(
+                        color: notifier.text,
+                        fontFamily: "Gilroy_Bold",
+                        fontSize: 20,
+                      ),
+                    ),
+                  ],
+                ),
+                _buildCompactInvoiceButton(),
+              ],
+            ),
+          ),
         ],
       );
     }

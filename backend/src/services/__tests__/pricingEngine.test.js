@@ -100,19 +100,45 @@ describe("calculateFare", () => {
 });
 
 describe("calculateDriverEarning", () => {
-  it("prefers a positive flat driver_per_trip over the percentage", () => {
-    const pkg = { driver_per_trip: "80", driver_per_percent: "50" };
+  it("prefers a valid flat driver_per_trip over the percentage", () => {
+    const pkg = { min_charge: 50, driver_per_trip: "80", driver_per_percent: "10" };
     expect(calculateDriverEarning(pkg, 100)).toBe(80);
   });
 
-  it("falls back to fare-minus-commission when driver_per_trip is 0 or unset (driver_per_percent is admin's commission rate, not the driver's share)", () => {
-    const pkg = { driver_per_trip: "0", driver_per_percent: "70" };
-    expect(calculateDriverEarning(pkg, 100)).toBe(30);
+  it("ignores tiny erroneous flat driver_per_trip (like ₹3) that would starve the driver", () => {
+    const pkg = { min_charge: 40, driver_per_trip: "3", driver_per_percent: "93" };
+    // On ₹43 fare, flat ₹3 is < min_charge and < 40% fare, so it is ignored
+    // driver gets 93% of 43 = 40
+    expect(calculateDriverEarning(pkg, 43)).toBe(40);
   });
 
-  it("returns the full fare when neither field parses to a usable number (0% commission)", () => {
+  it("handles driver_per_percent > 50 as Driver Share % (e.g. 70%, 80%, 90%, 93%)", () => {
+    const pkg = { driver_per_trip: "0", driver_per_percent: "93" };
+    // 43 * 93% = 39.99 -> 40
+    expect(calculateDriverEarning(pkg, 43)).toBe(40);
+
+    const pkg80 = { driver_per_trip: "0", driver_per_percent: "80" };
+    // 100 * 80% = 80
+    expect(calculateDriverEarning(pkg80, 100)).toBe(80);
+  });
+
+  it("handles driver_per_percent <= 50 as Admin Commission % (e.g. 5%, 8%, 10%, 15%, 20%, 25%, 30%)", () => {
+    const pkg10 = { driver_per_trip: "0", driver_per_percent: "10" };
+    // 10% commission means driver gets 90%
+    expect(calculateDriverEarning(pkg10, 100)).toBe(90);
+
+    const pkg15 = { driver_per_trip: "0", driver_per_percent: "15" };
+    // 15% commission means driver gets 85%
+    expect(calculateDriverEarning(pkg15, 100)).toBe(85);
+
+    const pkg25 = { driver_per_trip: "0", driver_per_percent: "25" };
+    // 25% commission means driver gets 75%
+    expect(calculateDriverEarning(pkg25, 100)).toBe(75);
+  });
+
+  it("falls back to standard 10% commission (90% driver share) when field is empty", () => {
     const pkg = { driver_per_trip: "", driver_per_percent: "" };
-    expect(calculateDriverEarning(pkg, 100)).toBe(100);
+    expect(calculateDriverEarning(pkg, 100)).toBe(90);
   });
 
   it("rounds the result to a whole rupee — the driver's real payout is a round number, not fractional paise", () => {
@@ -123,9 +149,11 @@ describe("calculateDriverEarning", () => {
 });
 
 describe("calculateCommissionPercent", () => {
-  it("recovers driver_per_percent exactly for a percent-based package", () => {
-    // fare=100, driverEarning=100*(100-30)/100=70 -> commission should read back as 30%
+  it("recovers commission rate for a percent-based package", () => {
+    // fare=100, driverEarning=70 -> commission should read back as 30%
     expect(calculateCommissionPercent(100, 70)).toBe(30);
+    // fare=43, driverEarning=40 -> commission should read back as 6.98%
+    expect(calculateCommissionPercent(43, 40)).toBe(6.98);
   });
 
   it("derives the true effective % admin kept for a flat driver_per_trip package", () => {

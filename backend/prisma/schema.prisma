@@ -825,7 +825,9 @@ model tbl_referral_point_log {
 
 model tbl_driver_lead {
   id                    Int       @id @default(autoincrement())
-  driver_id             Int
+  driver_id             Int       @default(0)
+  user_id               Int?      @default(0)
+  referrer_type         String    @default("driver") @db.VarChar(10)
   lead_type             String    @default("customer") @db.VarChar(20)
   name                  String    @db.VarChar(150)
   phone                 String    @unique(map: "uniq_lead_phone") @db.VarChar(20)
@@ -838,6 +840,8 @@ model tbl_driver_lead {
   converted_at          DateTime? @db.DateTime(0)
 
   @@index([driver_id], map: "idx_lead_driver")
+  @@index([user_id], map: "idx_lead_user")
+  @@index([referrer_type], map: "idx_lead_referrer_type")
   @@index([status], map: "idx_lead_status")
   @@index([lead_type], map: "idx_lead_type")
 }
@@ -1045,6 +1049,27 @@ model tbl_user_plan_subscription {
   @@index([status, end_date], map: "idx_status_date")
   @@index([plan_type], map: "idx_sub_plan_type")
   @@index([user_id], map: "idx_user")
+}
+
+model tbl_pending_reward_plan {
+  id                Int                            @id @default(autoincrement())
+  user_id           Int
+  plan_for          tbl_user_plan_subscription_plan_for
+  plan_id           Int
+  assigned_by_admin Int
+  status            tbl_pending_reward_plan_status @default(pending)
+  applied_order_id  Int?
+  applied_at        DateTime?                      @db.Timestamp(0)
+  created_at        DateTime                       @default(now()) @db.Timestamp(0)
+  updated_at        DateTime                       @default(now()) @db.Timestamp(0)
+
+  @@index([user_id, plan_for, status], map: "idx_pending_user_status")
+}
+
+enum tbl_pending_reward_plan_status {
+  pending
+  applied
+  cancelled
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

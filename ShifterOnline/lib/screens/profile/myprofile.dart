@@ -24,6 +24,7 @@ import 'editprofile.dart';
 import 'faq.dart';
 import 'favorite_drivers.dart';
 import 'premium_plans_screen.dart';
+import 'LeadReferralScreen.dart';
 
 class MyProfile extends StatefulWidget {
   const MyProfile({super.key});
@@ -1701,6 +1702,87 @@ class _MyProfileState extends State<MyProfile> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LeadReferralScreen(),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      border: Border.all(color: const Color(0xFFFFEDD5)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFFEDD5),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.contacts_rounded, color: Color(0xFFFA4500), size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    "Refer from Phone Contacts",
+                                    style: TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFA4500),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      "NEW",
+                                      style: TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                "Select contacts, earn 100 pts & track status",
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Medium',
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFFFA4500)),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

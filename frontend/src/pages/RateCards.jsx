@@ -294,7 +294,7 @@ export default function RateCards() {
                   'Distance Pricing',
                   'Pickup & Cancel',
                   'Night Surge',
-                  'Driver Share',
+                  'Commission & Split',
                   'Wait Policy',
                   'Status',
                   canManage ? 'Actions' : undefined,
@@ -426,12 +426,26 @@ export default function RateCards() {
 
                       {/* Driver Share / Commission */}
                       <td className="font-mono-data whitespace-nowrap px-4 py-3" style={{ color: 'var(--ink-muted)' }}>
-                        <div>{rc.driver_per_percent}%</div>
-                        {rc.service_charge_percent > 0 && (
-                          <div className="text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
-                            {rc.service_charge_percent}% fee
-                          </div>
-                        )}
+                        {(() => {
+                          const rawPct = parseFloat(rc.commission_percent ?? rc.driver_per_percent) || 0
+                          const commPct = rawPct > 50 ? Math.round((100 - rawPct) * 100) / 100 : rawPct
+                          const driverSharePct = Math.round((100 - commPct) * 100) / 100
+                          return (
+                            <div>
+                              <div className="flex items-center gap-1 text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                🚗 Driver: {driverSharePct}%
+                              </div>
+                              <div className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                                🏢 Admin: {commPct}%
+                              </div>
+                              {Number(rc.service_charge_percent) > 0 && (
+                                <div className="text-[10.5px] text-amber-600 dark:text-amber-400">
+                                  +{rc.service_charge_percent}% user fee
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </td>
 
                       {/* Waiting Policy */}

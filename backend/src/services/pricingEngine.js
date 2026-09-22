@@ -208,25 +208,46 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
 }
 
 /**
- * driver_per_trip / driver_per_percent are legacy VarChar columns on the
- * live schema — never assume they parse cleanly. Flat per-trip amount wins
- * over percentage when both are present and > 0.
- *
- * driver_per_percent is admin's commission RATE (confirmed against the live
- * rate cards: Model 1-5 store 5/6.5/8/9.5/11 there, increasing with model
- * tier like a commission schedule, not a driver-share schedule) — so the
- * driver keeps the fare MINUS that percentage, not that percentage of it.
- * Getting this backwards was paying drivers only their commission (5-11%
- * of the fare) instead of their actual ~89-95% cut.
+ * Driver earning calculation supporting both:
+ * 1. Flat per-trip earning (driver_per_trip) - protected against tiny erroneous amounts.
+ * 2. Percentage split (driver_per_percent):
+ *    - Values <= 50 are treated as Admin Commission % (e.g., 5, 8, 10, 15, 20, 25, 30).
+ *      Driver keeps (100 - commission)%.
+ *    - Values > 50 are treated as Driver Share % (e.g., 70, 80, 85, 90, 93, 95).
+ *      Driver keeps that percentage directly.
+ *    - Empty or 0 falls back to 10% standard platform commission (90% driver share).
  */
 function calculateDriverEarning(pkg, totalFare) {
-  const flat = parseFloat(pkg.driver_per_trip);
+  const fare = Number(totalFare) || 0;
+  if (fare <= 0) return 0;
+
+  // Check flat per-trip amount first (if set and meaningful)
+  const flat = parseFloat(pkg?.driver_per_trip);
   if (Number.isFinite(flat) && flat > 0) {
-    return roundMoney(flat);
+    const minCharge = Number(pkg?.min_charge) || 0;
+    // Guard against tiny flat numbers (like ₹2, ₹3 or ₹4) accidentally hijacking a ride.
+    // Flat is honored if it's at least 40% of the fare or >= minCharge.
+    if (flat >= minCharge || flat >= fare * 0.4) {
+      return roundMoney(flat);
+    }
   }
 
-  const commissionPercent = parseFloat(pkg.driver_per_percent) || 0;
-  return roundMoney((totalFare * (100 - commissionPercent)) / 100);
+  // Percentage calculation
+  const raw = parseFloat(pkg?.driver_per_percent);
+  let driverSharePercent = 90; // Default: 90% driver share, 10% admin commission
+
+  if (Number.isFinite(raw) && raw >= 0) {
+    if (raw > 50 && raw <= 100) {
+      // Interpreted as Driver Share % (e.g., 80%, 90%, 93%)
+      driverSharePercent = raw;
+    } else if (raw <= 50) {
+      // Interpreted as Admin Commission % (e.g., 5%, 8%, 10%, 15%, 20%, 25%, 30%)
+      driverSharePercent = 100 - raw;
+    }
+  }
+
+  const driverEarning = roundMoney((fare * driverSharePercent) / 100);
+  return Math.min(fare, Math.max(0, driverEarning));
 }
 
 async function getPackagesForCategory(cat_id) {

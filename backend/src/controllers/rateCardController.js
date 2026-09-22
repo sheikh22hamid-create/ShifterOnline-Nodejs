@@ -36,8 +36,23 @@ function formatTime(date) {
 }
 
 function serializePackage(pkg, category) {
+  const rawPct = parseFloat(pkg.driver_per_percent);
+  let commission_percent = 10;
+  let driver_share_percent = 90;
+  if (Number.isFinite(rawPct) && rawPct >= 0) {
+    if (rawPct > 50 && rawPct <= 100) {
+      driver_share_percent = rawPct;
+      commission_percent = Math.round((100 - rawPct) * 100) / 100;
+    } else if (rawPct <= 50) {
+      commission_percent = rawPct;
+      driver_share_percent = Math.round((100 - rawPct) * 100) / 100;
+    }
+  }
+
   return {
     ...pkg,
+    commission_percent: String(commission_percent),
+    driver_share_percent: String(driver_share_percent),
     user_title: pkg.user_title || null,
     driver_title: pkg.driver_title || null,
     start_time: formatTime(pkg.start_time),
@@ -130,7 +145,20 @@ async function create(req, res) {
         min_charge: b.min_charge,
         per_km_charge: b.per_km_charge,
         driver_per_trip: b.driver_per_trip !== undefined ? String(b.driver_per_trip) : "0",
-        driver_per_percent: b.driver_per_percent !== undefined ? String(b.driver_per_percent) : "0",
+        driver_per_percent: (() => {
+          if (b.commission_percent !== undefined && b.commission_percent !== "") {
+            return String(parseFloat(b.commission_percent) || 0);
+          }
+          if (b.driver_share_percent !== undefined && b.driver_share_percent !== "") {
+            const share = parseFloat(b.driver_share_percent) || 0;
+            return String(Math.max(0, Math.round((100 - share) * 100) / 100));
+          }
+          if (b.driver_per_percent !== undefined && b.driver_per_percent !== "") {
+            const raw = parseFloat(b.driver_per_percent) || 0;
+            return raw > 50 ? String(Math.max(0, Math.round((100 - raw) * 100) / 100)) : String(raw);
+          }
+          return "10";
+        })(),
         free_waiting_time: parseInt(b.free_waiting_time, 10),
         waiting_charge: b.waiting_charge,
         service_charge_percent: b.service_charge_percent ?? 0,
@@ -227,7 +255,15 @@ async function update(req, res) {
     if (b.cat_id !== undefined) data.cat_id = parseInt(b.cat_id, 10);
     if (b.city_id !== undefined) data.city_id = String(b.city_id);
     if (b.driver_per_trip !== undefined) data.driver_per_trip = String(b.driver_per_trip);
-    if (b.driver_per_percent !== undefined) data.driver_per_percent = String(b.driver_per_percent);
+    if (b.commission_percent !== undefined && b.commission_percent !== "") {
+      data.driver_per_percent = String(parseFloat(b.commission_percent) || 0);
+    } else if (b.driver_share_percent !== undefined && b.driver_share_percent !== "") {
+      const share = parseFloat(b.driver_share_percent) || 0;
+      data.driver_per_percent = String(Math.max(0, Math.round((100 - share) * 100) / 100));
+    } else if (b.driver_per_percent !== undefined) {
+      const raw = parseFloat(b.driver_per_percent) || 0;
+      data.driver_per_percent = raw > 50 ? String(Math.max(0, Math.round((100 - raw) * 100) / 100)) : String(raw);
+    }
     if (b.free_waiting_time !== undefined) data.free_waiting_time = parseInt(b.free_waiting_time, 10);
     if (b.start_time !== undefined) data.start_time = toTimeValue(b.start_time);
     if (b.end_time !== undefined) data.end_time = toTimeValue(b.end_time);
@@ -524,7 +560,7 @@ async function syncModelsFromSlabs(req, res) {
               outside_per_km_charge: "0",
               outside_surcharge: "0",
               driver_per_trip: baseTemplate?.driver_per_trip || "0",
-              driver_per_percent: baseTemplate?.driver_per_percent || "80",
+              driver_per_percent: baseTemplate?.driver_per_percent || "10",
               free_waiting_time: baseTemplate?.free_waiting_time ?? 5,
               waiting_charge: baseTemplate?.waiting_charge ?? 0,
               service_charge_percent: baseTemplate?.service_charge_percent ?? 0,
@@ -677,7 +713,7 @@ async function generateModels(req, res) {
             outside_per_km_charge: String(calculatedOutsidePerKm),
             outside_surcharge: base.outside_surcharge,
             driver_per_trip: base.driver_per_trip !== undefined ? String(base.driver_per_trip) : "0",
-            driver_per_percent: base.driver_per_percent !== undefined ? String(base.driver_per_percent) : "80",
+            driver_per_percent: base.driver_per_percent !== undefined ? String(base.driver_per_percent) : "10",
             free_waiting_time: base.free_waiting_time ?? 5,
             waiting_charge: base.waiting_charge ?? 0,
             service_charge_percent: base.service_charge_percent ?? 0,

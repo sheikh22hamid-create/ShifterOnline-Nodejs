@@ -32,8 +32,21 @@ const EMPTY_FORM = {
   end_time: '00:00',
   night_charge_percent: '0',
   service_charge_percent: '0',
-  driver_per_percent: '80',
+  commission_percent: '10',
+  driver_share_percent: '90',
+  driver_per_percent: '10',
   status: 1,
+}
+
+function getCommissionAndShare(rawVal) {
+  const n = parseFloat(rawVal);
+  if (!Number.isFinite(n) || n < 0) return { commission: '10', driverShare: '90' };
+  if (n > 50 && n <= 100) {
+    const comm = Math.round((100 - n) * 100) / 100;
+    return { commission: String(comm), driverShare: String(n) };
+  }
+  const share = Math.round((100 - n) * 100) / 100;
+  return { commission: String(n), driverShare: String(share) };
 }
 
 function Label({ children, htmlFor }) {
@@ -278,6 +291,10 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
     // sync-to-props transition, not a first-render duplicate.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError('')
+    const split = rateCard
+      ? getCommissionAndShare(rateCard.commission_percent ?? rateCard.driver_per_percent)
+      : { commission: '10', driverShare: '90' }
+
     setForm(
       rateCard
         ? {
@@ -305,7 +322,9 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
             end_time: rateCard.end_time,
             night_charge_percent: rateCard.night_charge_percent,
             service_charge_percent: rateCard.service_charge_percent,
-            driver_per_percent: rateCard.driver_per_percent,
+            commission_percent: split.commission,
+            driver_share_percent: split.driverShare,
+            driver_per_percent: split.commission,
             status: rateCard.status,
           }
         : EMPTY_FORM
@@ -314,6 +333,46 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
 
   function set(key, value) {
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function handleCommissionChange(val) {
+    if (val === '') {
+      setForm((f) => ({ ...f, commission_percent: '', driver_share_percent: '', driver_per_percent: '' }))
+      return
+    }
+    const num = parseFloat(val)
+    if (!Number.isFinite(num)) {
+      setForm((f) => ({ ...f, commission_percent: val }))
+      return
+    }
+    const clampedComm = Math.max(0, Math.min(100, num))
+    const share = Math.max(0, Math.min(100, Math.round((100 - clampedComm) * 100) / 100))
+    setForm((f) => ({
+      ...f,
+      commission_percent: val,
+      driver_share_percent: String(share),
+      driver_per_percent: String(clampedComm),
+    }))
+  }
+
+  function handleDriverShareChange(val) {
+    if (val === '') {
+      setForm((f) => ({ ...f, commission_percent: '', driver_share_percent: '', driver_per_percent: '' }))
+      return
+    }
+    const num = parseFloat(val)
+    if (!Number.isFinite(num)) {
+      setForm((f) => ({ ...f, driver_share_percent: val }))
+      return
+    }
+    const clampedShare = Math.max(0, Math.min(100, num))
+    const comm = Math.max(0, Math.min(100, Math.round((100 - clampedShare) * 100) / 100))
+    setForm((f) => ({
+      ...f,
+      driver_share_percent: val,
+      commission_percent: String(comm),
+      driver_per_percent: String(comm),
+    }))
   }
 
   async function handleSubmit() {
@@ -650,18 +709,74 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="night_charge_percent">Night surge (₹)</Label>
             <Input id="night_charge_percent" type="number" value={form.night_charge_percent} onChange={(e) => set('night_charge_percent', e.target.value)} />
           </div>
           <div>
-            <Label htmlFor="service_charge_percent">Commission %</Label>
-            <Input id="service_charge_percent" type="number" value={form.service_charge_percent} onChange={(e) => set('service_charge_percent', e.target.value)} />
+            <Label htmlFor="service_charge_percent">Customer Service Charge (%)</Label>
+            <Input id="service_charge_percent" type="number" value={form.service_charge_percent} onChange={(e) => set('service_charge_percent', e.target.value)} placeholder="0 (added to user fare)" />
           </div>
-          <div>
-            <Label htmlFor="driver_per_percent">Driver share %</Label>
-            <Input id="driver_per_percent" type="number" value={form.driver_per_percent} onChange={(e) => set('driver_per_percent', e.target.value)} />
+        </div>
+
+        {/* Earning & Commission Split */}
+        <div className="rounded-xl border p-3.5 shadow-sm" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle, rgba(0,0,0,0.02))' }}>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-semibold text-[12.5px]" style={{ color: 'var(--ink)' }}>
+              Ride Earning & Commission Split
+            </span>
+            <span className="rounded bg-brand/10 px-2 py-0.5 text-[10.5px] font-medium text-brand">
+              Auto-Balanced (Total = 100%)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="commission_percent">Admin Commission (%)</Label>
+              <Input
+                id="commission_percent"
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={form.commission_percent ?? ''}
+                onChange={(e) => handleCommissionChange(e.target.value)}
+                placeholder="e.g. 10"
+              />
+              <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                Platform deduction per ride
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="driver_share_percent">Driver Share (%)</Label>
+              <Input
+                id="driver_share_percent"
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={form.driver_share_percent ?? ''}
+                onChange={(e) => handleDriverShareChange(e.target.value)}
+                placeholder="e.g. 90"
+              />
+              <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                Driver net earnings per ride
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-700 dark:text-emerald-300">
+            <div className="flex items-center gap-1.5">
+              <span>🚗 Driver:</span>
+              <span className="font-bold text-[13px]">{form.driver_share_percent || 0}%</span>
+              <span className="text-[11px] opacity-75">(₹{Math.round((form.driver_share_percent || 0) * 100) / 100} per ₹100 fare)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span>🏢 Shifter:</span>
+              <span className="font-bold text-[13px]">{form.commission_percent || 0}%</span>
+              <span className="text-[11px] opacity-75">(₹{Math.round((form.commission_percent || 0) * 100) / 100} per ₹100 fare)</span>
+            </div>
           </div>
         </div>
 

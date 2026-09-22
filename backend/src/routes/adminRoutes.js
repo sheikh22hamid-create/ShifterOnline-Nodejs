@@ -18,6 +18,7 @@ const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
 const adminDriverLeadController = require("../controllers/adminDriverLeadController");
+const adminUserLeadController = require("../controllers/adminUserLeadController");
 const multer = require("multer");
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const serviceZoneController = require("../controllers/serviceZoneController");
@@ -26,6 +27,7 @@ const orderQueueController = require("../controllers/orderQueueController");
 const adminSearchController = require("../controllers/adminSearchController");
 const uploadController = require("../controllers/uploadController");
 const adminNotificationController = require("../controllers/adminNotificationController");
+const rewardPlanController = require("../controllers/rewardPlanController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -181,11 +183,22 @@ router.get("/referrals/users", auth, authorize(...RIDER_ROLES), scopeFilter, ref
 router.get("/referrals/search-target", auth, authorize("superadmin", "admin"), scopeFilter, referralController.searchTarget);
 router.post("/referrals/adjust-points", auth, authorize("superadmin", "admin"), referralController.adjustPoints);
 
+router.post("/reward-plans/assign-now", auth, authorize("superadmin", "admin"), rewardPlanController.assignNow);
+router.post("/reward-plans/set-pending", auth, authorize("superadmin", "admin"), rewardPlanController.setPending);
+router.delete("/reward-plans/pending/:id", auth, authorize("superadmin", "admin"), rewardPlanController.cancelPending);
+router.get("/reward-plans/pending/:userId", auth, authorize("superadmin", "admin"), rewardPlanController.getPending);
+
 // --- Driver Lead Verification Queue ------------------------------------------
 router.get("/driver-leads", auth, authorize(...RIDER_ROLES), adminDriverLeadController.listLeads);
 router.post("/driver-leads/:id/verify", auth, authorize(...RIDER_ROLES), adminDriverLeadController.verifyLead);
 router.post("/driver-leads/:id/reject", auth, authorize(...RIDER_ROLES), adminDriverLeadController.rejectLead);
 router.post("/driver-leads/:id/send-invite", auth, authorize(...RIDER_ROLES), adminDriverLeadController.sendInvite);
+
+// --- User Referral Leads Queue (User-Submitted Contacts) ----------------------
+router.get("/user-leads", auth, authorize(...RIDER_ROLES), adminUserLeadController.listUserLeads);
+router.post("/user-leads/:id/verify", auth, authorize(...RIDER_ROLES), adminUserLeadController.verifyLead);
+router.post("/user-leads/:id/reject", auth, authorize(...RIDER_ROLES), adminUserLeadController.rejectLead);
+router.get("/user-leads/export", auth, authorize(...RIDER_ROLES), adminUserLeadController.exportUserLeads);
 
 // --- Platform Master Settings & Payment Gateways -----------------------------
 router.get("/settings", auth, authorize("superadmin"), settingsController.getSettings);

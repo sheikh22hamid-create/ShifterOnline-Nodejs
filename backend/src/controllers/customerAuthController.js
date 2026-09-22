@@ -334,10 +334,14 @@ async function register(req, res) {
       where: { phone: normalizedPhone, lead_type: "customer", status: "verified", expires_at: { gte: now } },
     });
     if (matchedLead) {
+      const isUserReferrer = matchedLead.referrer_type === "user" || (matchedLead.user_id && matchedLead.user_id > 0);
+      const referrerId = isUserReferrer ? matchedLead.user_id : matchedLead.driver_id;
+      const referrerType = isUserReferrer ? "USER" : "DRIVER";
+
       await prisma.tbl_referral.create({
         data: {
-          referrer_id: matchedLead.driver_id,
-          referrer_type: "DRIVER",
+          referrer_id: referrerId,
+          referrer_type: referrerType,
           referred_id: newUser.id,
           referred_type: "USER",
           referral_code: "",
@@ -352,9 +356,11 @@ async function register(req, res) {
         where: { id: matchedLead.id },
         data: { status: "converted", converted_user_id: newUser.id, converted_at: now },
       });
-      await prisma.tbl_favorite_driver.create({
-        data: { user_id: newUser.id, rider_id: matchedLead.driver_id, status: 1 },
-      });
+      if (!isUserReferrer && matchedLead.driver_id > 0) {
+        await prisma.tbl_favorite_driver.create({
+          data: { user_id: newUser.id, rider_id: matchedLead.driver_id, status: 1 },
+        });
+      }
     }
 
     const created = await prisma.tbl_user.findUnique({ where: { id: newUser.id } });

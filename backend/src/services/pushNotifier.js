@@ -136,6 +136,16 @@ async function notifyCustomerLatePickup(fcmToken, orderId, scheduleDateTime) {
   );
 }
 
+/** Fired by rewardPlanService whenever an admin-granted plan actually activates (immediate grant or a pending reward applied on ride completion). */
+async function notifyRewardPlanAssigned(fcmToken, planName) {
+  return sendPushNotification(
+    fcmToken,
+    "You've received a reward!",
+    `You've been given the ${planName} plan.`,
+    { type: "reward_plan_assigned" }
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
@@ -148,4 +158,5 @@ module.exports = {
   notifyCustomerScheduleReminder,
   notifyCustomerOrderLive,
   notifyCustomerLatePickup,
+  notifyRewardPlanAssigned,
 };

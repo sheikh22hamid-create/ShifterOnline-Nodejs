@@ -557,10 +557,14 @@ async function registerHandler(req, res) {
         where: { phone: normalizedPhone, lead_type: "driver", status: "verified", expires_at: { gte: now } },
       });
       if (matchedLead) {
+        const isUserReferrer = matchedLead.referrer_type === "user" || (matchedLead.user_id && matchedLead.user_id > 0);
+        const referrerId = isUserReferrer ? matchedLead.user_id : matchedLead.driver_id;
+        const referrerType = isUserReferrer ? "USER" : "DRIVER";
+
         await prisma.tbl_referral.create({
           data: {
-            referrer_id: matchedLead.driver_id,
-            referrer_type: "DRIVER",
+            referrer_id: referrerId,
+            referrer_type: referrerType,
             referred_id: riderId,
             referred_type: "DRIVER",
             referral_code: "",
@@ -577,7 +581,7 @@ async function registerHandler(req, res) {
         });
         await prisma.tbl_rider.update({
           where: { id: riderId },
-          data: { referred_by: matchedLead.driver_id, referred_by_type: "DRIVER", refer_by: matchedLead.driver_id },
+          data: { referred_by: referrerId, referred_by_type: referrerType, refer_by: referrerId },
         });
       }
     }

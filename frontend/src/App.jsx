@@ -31,6 +31,7 @@ const Banners = lazy(() => import('./pages/Banners'))
 const PushNotifications = lazy(() => import('./pages/PushNotifications'))
 const Referrals = lazy(() => import('./pages/Referrals'))
 const DriverLeads = lazy(() => import('./pages/DriverLeads'))
+const UserLeads = lazy(() => import('./pages/UserLeads'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Faqs = lazy(() => import('./pages/Faqs'))
 const LegalPages = lazy(() => import('./pages/LegalPages'))
@@ -100,6 +101,7 @@ function App() {
             <Route path="/marketing/push-notifications" element={<Gated roles={['superadmin', 'admin']}><PushNotifications /></Gated>} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/driver-leads" element={<DriverLeads />} />
+            <Route path="/user-leads" element={<UserLeads />} />
 
             {/* CMS & System Settings */}
             <Route path="/reports" element={<Gated roles={['superadmin', 'admin']}><Reports /></Gated>} />

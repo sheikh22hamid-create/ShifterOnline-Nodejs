@@ -14,6 +14,7 @@ import '../../Api/config.dart';
 import '../../bottombar.dart';
 import '../../utils/colors.dart';
 import '../../utils/schedule_time.dart';
+import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
 import 'vehicle_details_screen.dart';
@@ -714,7 +715,35 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       await _storage.write('OrderID', orderId);
       ApiWrapper.showToastMessage(_text(response['ResponseMsg'], 'Order placed successfully.'));
       if (_currentBookingType == 3) {
-        _showNextDayOrderSuccessDialog(orderId, fee, payValue);
+        _showScheduledOrderConfirmedDialog(
+          orderId, fee, payValue,
+          badgeIcon: Icons.local_shipping_rounded,
+          badgeText: "Next Day Delivery",
+          message: "Your order #$orderId has been scheduled for tomorrow. A driver will be assigned for pickup in the morning.",
+        );
+      } else if (_currentBookingType == 2) {
+        // Scheduled (booking_type=2) orders aren't dispatched immediately —
+        // the backend only starts finding a driver 30 minutes before
+        // schedule_date_time (see dispatchDueScheduledOrders), so sending
+        // this to WaitingScreen (built for the instant-order cascade, with
+        // its own ~130s safety-timeout) would show a meaningless countdown
+        // and auto-close long before any driver is ever contacted.
+        //
+        // But that also means NO screen is left listening for this order's
+        // eventual order:assigned event (it may fire 30+ minutes later,
+        // long after this dialog is closed) — without this, the customer
+        // would never see the advance-payment prompt when a driver finally
+        // accepts. Bottombar's app-wide listener (see bottombar.dart)
+        // watches for exactly the order ids registered here.
+        ScheduledOrderWatch.add(orderId);
+        _showScheduledOrderConfirmedDialog(
+          orderId, fee, payValue,
+          badgeIcon: Icons.schedule_rounded,
+          badgeText: "Scheduled Booking",
+          message: _scheduledFor == null
+              ? "Your order #$orderId has been scheduled. A driver will be assigned closer to your pickup time."
+              : "Your order #$orderId is scheduled for ${DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!)}. A driver will be assigned closer to your pickup time.",
+        );
       } else {
         Get.offAll(() => WaitingScreen(orderId: orderId));
       }
@@ -723,7 +752,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     }
   }
 
-  void _showNextDayOrderSuccessDialog(String orderId, double fee, int payValue) {
+  void _showScheduledOrderConfirmedDialog(
+    String orderId, double fee, int payValue, {
+    required IconData badgeIcon,
+    required String badgeText,
+    required String message,
+  }) {
     Get.dialog(
       WillPopScope(
         onWillPop: () async => false,
@@ -782,10 +816,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.local_shipping_rounded, color: linercolor, size: 14),
+                      Icon(badgeIcon, color: linercolor, size: 14),
                       const SizedBox(width: 4),
                       Text(
-                        "Next Day Delivery",
+                        badgeText,
                         style: TextStyle(
                           color: linercolor,
                           fontFamily: 'Gilroy_Bold',
@@ -797,7 +831,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  "Your order #$orderId has been scheduled for tomorrow. A driver will be assigned for pickup in the morning.",
+                  message,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 13,

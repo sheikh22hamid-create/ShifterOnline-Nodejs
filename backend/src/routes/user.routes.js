@@ -62,4 +62,9 @@ router.post("/custom-order/convert", customOrderBiddingController.convertOrder);
 router.post("/premium-plans", customerPlanController.list);
 router.post("/premium-plans/purchase", customerPlanController.purchase);
 
+// User Referral Leads from Phone Contacts (Customer vs Driver Leads)
+const userLeadController = require("../controllers/userLeadController");
+router.post("/leads", userLeadController.submitLeads);
+router.get("/leads", userLeadController.listMyLeads);
+
 module.exports = router;

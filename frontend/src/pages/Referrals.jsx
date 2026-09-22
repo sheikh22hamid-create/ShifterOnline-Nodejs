@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Coins, Save, PhoneCall } from 'lucide-react'
+import { Coins, Gift, Save, PhoneCall } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -7,6 +7,7 @@ import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
 import Pagination from '../components/common/Pagination'
 import AdjustPointsModal from '../components/growth/AdjustPointsModal'
+import GiveRewardPlanModal from '../components/growth/GiveRewardPlanModal'
 import { formatDateTime } from '../utils/format'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
@@ -32,6 +33,7 @@ export default function Referrals() {
   const total = tree?.total ?? 0
 
   const [adjustOpen, setAdjustOpen] = useState(false)
+  const [rewardOpen, setRewardOpen] = useState(false)
 
   async function handleSaveSettings() {
     setSaving(true)
@@ -66,13 +68,22 @@ export default function Referrals() {
             Reward settings, referral tree, and manual point adjustments.
           </p>
         </div>
-        <Link
-          to="/driver-leads"
-          className="flex items-center gap-1.5 self-start rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:bg-[var(--bg-hover)] sm:self-auto"
-          style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
-        >
-          <PhoneCall size={13} /> Driver Leads Queue
-        </Link>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Link
+            to="/driver-leads"
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:bg-[var(--bg-hover)]"
+            style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+          >
+            <PhoneCall size={13} /> Driver Leads Queue
+          </Link>
+          <Link
+            to="/user-leads"
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-medium transition-colors hover:bg-[var(--bg-hover)]"
+            style={{ borderColor: '#2563EB', color: '#2563EB' }}
+          >
+            <Users size={13} /> User Leads Queue
+          </Link>
+        </div>
       </div>
 
       {editable && (
@@ -183,14 +194,24 @@ export default function Referrals() {
           Referral tree
         </h3>
         {canAdjust && (
-          <button
-            type="button"
-            onClick={() => setAdjustOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold"
-            style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-          >
-            <Coins size={13} /> Adjust points
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRewardOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold"
+              style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+            >
+              <Gift size={13} /> Give reward plan
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdjustOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold"
+              style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+            >
+              <Coins size={13} /> Adjust points
+            </button>
+          </div>
         )}
       </div>
 
@@ -288,6 +309,15 @@ export default function Referrals() {
           setAdjustOpen(false)
           toast.success('Points adjusted.')
           refetchTree()
+        }}
+      />
+
+      <GiveRewardPlanModal
+        open={rewardOpen}
+        onClose={() => setRewardOpen(false)}
+        onDone={() => {
+          setRewardOpen(false)
+          toast.success('Reward plan given.')
         }}
       />
     </div>

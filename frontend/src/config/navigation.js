@@ -54,6 +54,7 @@ export const NAV_GROUPS = [
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },
       { to: '/driver-leads', label: 'Driver Leads Queue', icon: PhoneCall, roles: ALL_STAFF, built: true },
+      { to: '/user-leads', label: 'User Contact Referrals', icon: UserCheck, roles: ALL_STAFF, built: true },
       { to: '/kyc', label: 'KYC Approval Dock', icon: ShieldCheck, roles: ALL_STAFF, built: true },
       { to: '/customers', label: 'Customers', icon: UserCircle, roles: ALL_STAFF, built: true },
     ],
