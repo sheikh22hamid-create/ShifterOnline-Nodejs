@@ -8,8 +8,10 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   tbl_user: { findUnique: jest.fn(), update: jest.fn() },
   tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn() },
+  tbl_referral_point_log: { create: jest.fn().mockResolvedValue({}) },
   order_status_history: { create: jest.fn() },
   pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+  app_settings: { findFirst: jest.fn().mockResolvedValue(null) },
 }));
 
 jest.mock("../dispatchManager", () => ({
@@ -519,6 +521,35 @@ describe("tripLifecycle.customerCancel", () => {
       }),
     });
   });
+
+  it("refunds any referral points redeemed on this order once it's cancelled", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0, referral_points_used: 5 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+    prisma.pkg_order.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.tbl_user.update.mockResolvedValueOnce({ referral_points: 55 });
+
+    const result = await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+    expect(result).toEqual({ success: true });
+    expect(prisma.pkg_order.updateMany).toHaveBeenCalledWith({
+      where: { id: 297, referral_points_used: { gt: 0 } },
+      data: { referral_points_used: 0, referral_points_amount: 0 },
+    });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { referral_points: { increment: 5 } },
+    });
+  });
+
+  it("does not touch referral points when none were redeemed on this order", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0, referral_points_used: 0 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+
+    await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+    expect(prisma.pkg_order.updateMany).not.toHaveBeenCalled();
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("tripLifecycle.driverCancel", () => {
@@ -632,6 +663,28 @@ describe("tripLifecycle.driverCancel", () => {
       }),
     }));
   });
+
+  it("refunds redeemed referral points when the driver cancels", async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{
+      id: 297, uid: 7, rid: 11, order_status: 1, o_status: "Processing",
+      advance_payment: "0", payment_status: 0, razorpay_payment_id: null,
+      referral_points_used: 5,
+    }]);
+    prisma.pkg_order.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.tbl_user.update.mockResolvedValueOnce({ referral_points: 55 });
+
+    const result = await tripLifecycle.driverCancel(297, 11, "vehicle breakdown");
+
+    expect(result).toMatchObject({ success: true });
+    expect(prisma.pkg_order.updateMany).toHaveBeenCalledWith({
+      where: { id: 297, referral_points_used: { gt: 0 } },
+      data: { referral_points_used: 0, referral_points_amount: 0 },
+    });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { referral_points: { increment: 5 } },
+    });
+  });
 });
 
 describe("tripLifecycle.updateStatus('complete') — commission deduction", () => {
@@ -676,6 +729,34 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
         }),
       })
     );
+  });
+
+  it("nets a booking-time referral-point discount off the driver's commission claw-back, same as an advance payment", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 20,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "0",
+      referral_points_amount: 5,
+    });
+
+    const result = await tripLifecycle.updateStatus(297, 1, "complete");
+
+    expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
+    // commission=20, minus the 5 the platform already absorbed via referral
+    // points -> driver only owes 15 back, same net earning either way.
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { wallet_balance: { decrement: 15 } },
+    });
+    // The referral discount never touched the customer's wallet, so it must
+    // not be swept into the advance-payment wallet-debit-back block.
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
   });
 
   it("stamps the commission-debit wallet entry with the IST-shifted clock, not a bare new Date()", async () => {
@@ -1055,6 +1136,38 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
     });
     // Both rows attempted — one cancellation call per overdue order.
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("sweepOverduePickups uses the admin-configured pickup OTP timeout when set", async () => {
+    prisma.app_settings.findFirst.mockResolvedValueOnce({ setting_value: "15" });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([{ order_id: 400, rid: 3 }]);
+
+    const before = Date.now();
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(prisma.app_settings.findFirst).toHaveBeenCalledWith({ where: { setting_key: "pickup_otp_timeout_minutes" } });
+    const cutoffArg = prisma.pkg_order_wait_timer.findMany.mock.calls[0][0].where.pickup_wait_start.lte;
+    // ~15 minutes back, not the hardcoded 10.
+    expect(before - cutoffArg.getTime()).toBeGreaterThan(14 * 60 * 1000);
+    expect(before - cutoffArg.getTime()).toBeLessThan(16 * 60 * 1000);
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("within 15 minutes"),
+      400
+    );
+  });
+
+  it("sweepOverduePickups falls back to the default 10-minute timeout when no admin setting exists", async () => {
+    prisma.app_settings.findFirst.mockResolvedValueOnce(null);
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([{ order_id: 400, rid: 3 }]);
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("within 10 minutes"),
+      400
+    );
   });
 
   it("sweepOverduePickups doesn't let one failing cancellation stop the rest", async () => {

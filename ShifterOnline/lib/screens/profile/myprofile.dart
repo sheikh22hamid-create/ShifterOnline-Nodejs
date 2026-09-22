@@ -25,6 +25,7 @@ import 'faq.dart';
 import 'favorite_drivers.dart';
 import 'premium_plans_screen.dart';
 import 'LeadReferralScreen.dart';
+import '../../utils/Calculation.dart';
 
 class MyProfile extends StatefulWidget {
   const MyProfile({super.key});
@@ -44,6 +45,8 @@ class _MyProfileState extends State<MyProfile> {
 
   Map<String, dynamic>? overviewData;
   bool isLoadingOverview = false;
+  String customerCareNumber = "+91 9999908008";
+  String customerCareHours = "24/7 Helpline";
 
   final PageListApiController pageListApiController = Get.put(PageListApiController());
 
@@ -52,6 +55,23 @@ class _MyProfileState extends State<MyProfile> {
     super.initState();
     getPackage();
     fetchProfileOverview();
+    fetchCustomerCare();
+  }
+
+  Future<void> fetchCustomerCare() async {
+    try {
+      final res = await ApiWrapper.dataPostNode(Config.nodeCustomerCare, {});
+      if (res != null && (res["Result"] == "true" || res["Result"] == true)) {
+        if (mounted) {
+          setState(() {
+            final num = (res["customer_care_number"] ?? "").toString().trim();
+            if (num.isNotEmpty) customerCareNumber = num;
+            final hrs = (res["customer_care_hours"] ?? "").toString().trim();
+            if (hrs.isNotEmpty) customerCareHours = hrs;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -1076,6 +1096,17 @@ class _MyProfileState extends State<MyProfile> {
             ),
             child: Column(
               children: [
+                // Customer Care Helpline
+                _buildMenuItem(
+                  icon: Icons.headset_mic_rounded,
+                  iconColor: const Color(0xFF00C853),
+                  iconBgColor: const Color(0xFFE8F8EE),
+                  title: "Customer Care",
+                  subtitle: "Call $customerCareNumber • $customerCareHours",
+                  onTap: () => _callCustomerCare(),
+                ),
+                _buildItemDivider(),
+
                 // FAQ
                 _buildMenuItem(
                   icon: Icons.question_mark_rounded,
@@ -1112,6 +1143,123 @@ class _MyProfileState extends State<MyProfile> {
           ),
         ],
       ),
+    );
+  }
+
+  void _callCustomerCare() {
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F8EE),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.phone_in_talk_rounded, color: Color(0xFF00C853), size: 32),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              "Customer Care Support".tr,
+              style: const TextStyle(
+                fontFamily: "Gilroy_Bold",
+                fontSize: 18,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              customerCareHours.tr,
+              style: const TextStyle(
+                fontFamily: "Gilroy_Medium",
+                fontSize: 13,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.phone_rounded, color: Color(0xFF00C853), size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    customerCareNumber,
+                    style: const TextStyle(
+                      fontFamily: "Gilroy_Bold",
+                      fontSize: 17,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Get.back(),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: Colors.grey.shade300),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: Text("Cancel".tr, style: const TextStyle(fontFamily: "Gilroy_Bold", color: Color(0xFF64748B))),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Get.back();
+                      makePhoneCall(customerCareNumber);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: const Color(0xFF00C853),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.call_rounded, color: Colors.white, size: 18),
+                        const SizedBox(width: 6),
+                        Text("Call Now".tr, style: const TextStyle(fontFamily: "Gilroy_Bold", color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 6),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 

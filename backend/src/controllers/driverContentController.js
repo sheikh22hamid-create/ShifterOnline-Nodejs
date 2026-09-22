@@ -224,7 +224,13 @@ async function countryCodeList(req, res) {
 async function pageList(req, res) {
   try {
     const rid = Number(req.body?.rid || 0);
-    const rows = await prisma.tbl_page.findMany({ where: { status: 1 } });
+    const [rows, careSettings] = await Promise.all([
+      prisma.tbl_page.findMany({ where: { status: 1 } }),
+      prisma.app_settings.findMany({
+        where: { setting_key: { in: ["customer_care_number", "customer_care_email", "customer_care_hours"] } },
+      }),
+    ]);
+    const careMap = Object.fromEntries(careSettings.map((s) => [s.setting_key, s.setting_value]));
     const list = rows.map((r) => ({ title: r.title, description: r.description }));
 
     let referralCode = "";
@@ -249,6 +255,9 @@ async function pageList(req, res) {
       ResponseMsg: list.length ? "Pages List Founded!" : "Pages list empty",
       referral_code: referralCode,
       referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
+      customer_care_number: careMap.customer_care_number || "+91 9999908008",
+      customer_care_email: careMap.customer_care_email || "support@shifteronline.com",
+      customer_care_hours: careMap.customer_care_hours || "24/7 Helpline",
     });
   } catch (err) {
     logger.error("driverContentController.pageList failed:", err);

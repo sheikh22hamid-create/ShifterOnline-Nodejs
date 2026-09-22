@@ -41,11 +41,15 @@ async function cancelReasonList(req, res) {
 // keeps working instead of the key vanishing outright.
 async function appConfig(req, res) {
   try {
-    const setting = await prisma.setting.findFirst();
+    const [setting, careRow] = await Promise.all([
+      prisma.setting.findFirst(),
+      prisma.app_settings.findUnique({ where: { setting_key: "customer_care_number" } }),
+    ]);
     return res.status(200).json({
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "type Get Successfully!!",
+      customer_care_number: careRow?.setting_value || "+91 9999908008",
       SMS_TYPE: setting?.sms_type ?? null,
       Admob_Enabled: null,
       maintainance_Enabled: null,
@@ -214,16 +218,48 @@ async function cityList(req, res) {
 // --- pagelist.php ---
 async function pageList(req, res) {
   try {
-    const rows = await prisma.tbl_page.findMany({ where: { status: 1 } });
+    const [rows, careSettings] = await Promise.all([
+      prisma.tbl_page.findMany({ where: { status: 1 } }),
+      prisma.app_settings.findMany({
+        where: { setting_key: { in: ["customer_care_number", "customer_care_email", "customer_care_hours"] } },
+      }),
+    ]);
+    const careMap = Object.fromEntries(careSettings.map((s) => [s.setting_key, s.setting_value]));
     const list = rows.map((r) => ({ title: r.title, description: r.description }));
     return res.status(200).json({
       pagelist: list,
       ResponseCode: "200",
       Result: list.length ? "true" : "false",
       ResponseMsg: list.length ? "Pages List Founded!" : "Pages Not Founded!",
+      customer_care_number: careMap.customer_care_number || "+91 9999908008",
+      customer_care_email: careMap.customer_care_email || "support@shifteronline.com",
+      customer_care_hours: careMap.customer_care_hours || "24/7 Helpline",
     });
   } catch (err) {
     logger.error("customerContentController.pageList failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- customer_care API ---
+async function getCustomerCare(req, res) {
+  try {
+    const rows = await prisma.app_settings.findMany({
+      where: {
+        setting_key: { in: ["customer_care_number", "customer_care_email", "customer_care_hours"] },
+      },
+    });
+    const map = Object.fromEntries(rows.map((s) => [s.setting_key, s.setting_value]));
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Customer care details fetched successfully",
+      customer_care_number: map.customer_care_number || "+91 9999908008",
+      customer_care_email: map.customer_care_email || "support@shifteronline.com",
+      customer_care_hours: map.customer_care_hours || "24/7 Helpline",
+    });
+  } catch (err) {
+    logger.error("customerContentController.getCustomerCare failed:", err);
     return fail(res, "Internal server error", 500);
   }
 }
@@ -394,7 +430,15 @@ async function homeData(req, res) {
       prisma.app_settings.findMany({
         where: {
           setting_key: {
-            in: ["how_to_use_video_url", "how_to_use_enabled", "how_to_use_title", "how_to_use_max_orders"],
+            in: [
+              "how_to_use_video_url",
+              "how_to_use_enabled",
+              "how_to_use_title",
+              "how_to_use_max_orders",
+              "customer_care_number",
+              "customer_care_email",
+              "customer_care_hours",
+            ],
           },
         },
       }),
@@ -437,6 +481,9 @@ async function homeData(req, res) {
       how_to_use_enabled: isHowUseEnabled ? 1 : 0,
       completed_orders_count: completedOrdersCount,
       how_to_use_max_orders: maxOrdersThreshold,
+      customer_care_number: howToUseMap.customer_care_number || "+91 9999908008",
+      customer_care_email: howToUseMap.customer_care_email || "support@shifteronline.com",
+      customer_care_hours: howToUseMap.customer_care_hours || "24/7 Helpline",
     };
 
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Home Data Get Successfully!", ResultData: resultData });
@@ -510,4 +557,5 @@ module.exports = {
   cancelReasonList,
   appConfig,
   pkgHistoryCustomer,
+  getCustomerCare,
 };

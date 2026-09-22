@@ -15,6 +15,7 @@ import android.widget.Toast;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.graphics.Color;
+import android.net.Uri;
 import android.widget.EditText;
 import java.util.HashMap;
 import java.util.Map;
@@ -65,7 +66,9 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
     CustPrograssbar custPrograssbar;
     private String referralCode = "";
     private String referralMsg = "";
-
+    private String customerCareNumber = "+91 9999908008";
+    private String customerCareEmail = "support@shifter.online";
+    private String customerCareHours = "24/7 Helpline";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -179,9 +182,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
                     .putExtra("title", "Terms & Conditions")
                     .putExtra("desc", "<p>Please read these terms and conditions carefully before using our driver partner application. By accepting deliveries, you agree to follow safety and service standards.</p>"));
         } else if (id == R.id.lvl_contact) {
-            startActivity(new Intent(getActivity(), HelpDetailsActivity.class)
-                    .putExtra("title", "Contact Us")
-                    .putExtra("desc", "<p>Need help? Contact our support team directly.<br/><br/><b>Email:</b> support@shifter.online<br/><b>Helpline:</b> +91 9999908008</p>"));
+            showCustomerCareDialog();
         } else if (id == R.id.lvl_logout) {
             logoutApi();
         }
@@ -659,7 +660,18 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
                         binding.recyclerMenu.setAdapter(new MyFaqAdepter(help.getPagelist()));
                     }
                 }
-
+                if (result.has("customer_care_number") && !result.get("customer_care_number").isJsonNull()) {
+                    String num = result.get("customer_care_number").getAsString().trim();
+                    if (!num.isEmpty()) customerCareNumber = num;
+                }
+                if (result.has("customer_care_email") && !result.get("customer_care_email").isJsonNull()) {
+                    String email = result.get("customer_care_email").getAsString().trim();
+                    if (!email.isEmpty()) customerCareEmail = email;
+                }
+                if (result.has("customer_care_hours") && !result.get("customer_care_hours").isJsonNull()) {
+                    String hours = result.get("customer_care_hours").getAsString().trim();
+                    if (!hours.isEmpty()) customerCareHours = hours;
+                }
             }
 
         } catch (Exception e) {
@@ -706,6 +718,27 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
                 .show();
     }
 
+
+    private void showCustomerCareDialog() {
+        if (getActivity() == null) return;
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Customer Care Helpline")
+                .setMessage("Need assistance? Call our dedicated support team.\n\n"
+                        + "📞 Phone: " + customerCareNumber + "\n"
+                        + "⏰ Hours: " + customerCareHours + "\n"
+                        + "✉️ Email: " + customerCareEmail)
+                .setPositiveButton("Call Now", (dialog, which) -> {
+                    try {
+                        Intent dialIntent = new Intent(Intent.ACTION_DIAL);
+                        dialIntent.setData(Uri.parse("tel:" + customerCareNumber.replaceAll("\\s+", "")));
+                        startActivity(dialIntent);
+                    } catch (Exception e) {
+                        Toast.makeText(getActivity(), "Unable to open phone dialer", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
 
     @Override
     public void onDestroyView() {

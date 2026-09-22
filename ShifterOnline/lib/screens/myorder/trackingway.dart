@@ -32,6 +32,7 @@ import 'package:goParcel/utils/colors.dart';
 import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
 import 'package:goParcel/utils/scheduled_order_watch.dart';
+import 'package:goParcel/utils/Calculation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:get/get.dart';
@@ -76,6 +77,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   String? razorpayOrderId;
   Timer? _advanceTimer;
   int _remainingSeconds = 0;
+  bool _redeemingReferralPoints = false;
 
   // Latest driver position from the Node socket.
   double? liveDriverLat;
@@ -610,7 +612,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           const SizedBox(width: 8),
           // [ ? Help ]
           InkWell(
-            onTap: () => Get.to(() => Faq()),
+            onTap: () => _showHelpAndSupportSheet(),
             borderRadius: BorderRadius.circular(20),
             child: Container(
               padding: const EdgeInsets.all(7),
@@ -623,6 +625,177 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           ),
         ],
       ),
+    );
+  }
+
+  void _showHelpAndSupportSheet() {
+    final careNumber = (orderProduc?["customer_care_number"] ?? "+91 9999908008").toString();
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(22),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F8EE),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF00C853), size: 30),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "Need Help with Your Order?".tr,
+              style: const TextStyle(
+                fontFamily: "Gilroy_Bold",
+                fontSize: 18,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              "Our support team is available 24/7 to assist you".tr,
+              style: const TextStyle(
+                fontFamily: "Gilroy_Medium",
+                fontSize: 12.5,
+                color: Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Option 1: Call Customer Care
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  Get.back();
+                  makePhoneCall(careNumber);
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F8EE),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF00C853).withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF00C853),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.call_rounded, color: Colors.white, size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Call Customer Care Helpline".tr,
+                              style: const TextStyle(
+                                fontFamily: "Gilroy_Bold",
+                                fontSize: 14.5,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              careNumber,
+                              style: const TextStyle(
+                                fontFamily: "Gilroy_Medium",
+                                fontSize: 13,
+                                color: Color(0xFF00C853),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF00C853)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Option 2: View FAQs
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  Get.back();
+                  Get.to(() => Faq());
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.question_mark_rounded, color: Colors.blue.shade700, size: 20),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Frequently Asked Questions".tr,
+                              style: const TextStyle(
+                                fontFamily: "Gilroy_Bold",
+                                fontSize: 14,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "Find answers to common questions".tr,
+                              style: const TextStyle(
+                                fontFamily: "Gilroy_Medium",
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF94A3B8)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
     );
   }
 
@@ -4900,7 +5073,32 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     }
   }
 
-  showAdvancePaymentDialog() {
+  /// Looks up the customer's referral-points balance and the admin-configured
+  /// ride_discount_percent/point_value ahead of showing the advance-payment
+  /// dialog, so the "Pay with referral points" button only appears when the
+  /// feature is enabled and the customer actually has points to spend.
+  Future<Map<String, dynamic>?> _fetchReferralDiscountInfo() async {
+    final currentUid = (uid.toString().isNotEmpty && uid.toString() != "0")
+        ? uid.toString()
+        : (getdata.read("Uid") ?? "").toString();
+    if (currentUid.isEmpty || currentUid == "0") return null;
+    try {
+      final response = await ApiWrapper.dataGetNode('${Config.nodeReferralDiscountInfo}?uid=$currentUid');
+      if (response is Map && (response['Result'] == true || response['Result'] == 'true')) {
+        return Map<String, dynamic>.from(response);
+      }
+    } catch (e) {
+      debugPrint("======== Referral Discount Info Error ======== $e");
+    }
+    return null;
+  }
+
+  showAdvancePaymentDialog() async {
+    final referralInfo = await _fetchReferralDiscountInfo();
+    final bool referralEnabled = referralInfo != null && referralInfo['enabled'] == true;
+    final double referralPointsAvailable =
+        double.tryParse((referralInfo?['referral_points_available'] ?? 0).toString()) ?? 0;
+    if (!mounted) return;
     // The booking response may omit currency for some orders. Interpolating
     // the nullable global directly would render the literal string "null"
     // before every amount (for example, "null15"). Keep the payment dialog
@@ -4932,6 +5130,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       actualDouble = advDouble;
     }
     double remainingDouble = (actualDouble - advDouble) > 0 ? (actualDouble - advDouble) : 0.0;
+
+    // Mutable: reduced in place when referral points partially cover the
+    // advance, so the Razorpay button below always asks for what's still due.
+    double dueAdvanceAmount = advDouble;
+    bool referralPointsRedeemed = false;
 
     String actualAmountStr = (actualDouble % 1 == 0)
         ? actualDouble.toInt().toString()
@@ -5071,7 +5274,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                "Advance Amount".tr,
+                                referralPointsRedeemed ? "Advance Due".tr : "Advance Amount".tr,
                                 style: TextStyle(
                                   color: notifier.text,
                                   fontFamily: 'Gilroy_Bold',
@@ -5079,7 +5282,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                 ),
                               ),
                               Text(
-                                "$paymentCurrency$advanceAmount",
+                                "$paymentCurrency${(dueAdvanceAmount % 1 == 0) ? dueAdvanceAmount.toInt().toString() : dueAdvanceAmount.toStringAsFixed(2)}",
                                 style: TextStyle(
                                   color: linercolor,
                                   fontFamily: 'Gilroy_Bold',
@@ -5194,6 +5397,101 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 ),
                 actionsPadding: EdgeInsets.only(left: 15, right: 15, bottom: 15),
                 actions: [
+                  if (referralEnabled && referralPointsAvailable > 0 && !referralPointsRedeemed && dueAdvanceAmount > 0) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: InkWell(
+                        onTap: _redeemingReferralPoints
+                            ? null
+                            : () async {
+                                setDialogState(() => _redeemingReferralPoints = true);
+                                String currentOrderId = buyMapinfo?["order_id"]?.toString() ??
+                                    orderProduc?["order_id"]?.toString() ??
+                                    orderid;
+                                if (currentOrderId.isEmpty || currentOrderId == "0") {
+                                  currentOrderId = (getdata.read("OrderID") ?? "0").toString();
+                                }
+                                try {
+                                  final response = await ApiWrapper.dataPostNode(
+                                    Config.nodeAdvancePaymentRedeemPoints,
+                                    {"order_id": currentOrderId},
+                                  );
+                                  if (response is Map &&
+                                      response['ResponseCode']?.toString() == "200" &&
+                                      (response['Result'] == true || response['Result'] == "true")) {
+                                    final pointsUsed = double.tryParse((response['points_used'] ?? 0).toString()) ?? 0;
+                                    final remaining = double.tryParse((response['remaining_amount'] ?? 0).toString()) ?? 0;
+                                    final paymentStatus = response['payment_status']?.toString();
+                                    ApiWrapper.showToastMessage(response['ResponseMsg'] ?? "Referral points applied".tr);
+                                    if (remaining <= 0 || paymentStatus == "1") {
+                                      // Fully covered by points - mirror the same
+                                      // post-success flow as a successful Razorpay
+                                      // advance payment (see callAdvancePaymentApi).
+                                      _closeStuckAdvanceDialogIfOpen();
+                                      isAdvancePaymentFlow = false;
+                                      _advancePaymentCompleted = true;
+                                      await pageRefresh();
+                                    } else {
+                                      // callAdvancePaymentApi (called after the
+                                      // Razorpay checkout below succeeds) reads the
+                                      // due amount straight back out of
+                                      // orderProduc["advance_payment"], not from
+                                      // dueAdvanceAmount — without updating it here
+                                      // too, that later call would verify the
+                                      // payment against the stale pre-redemption
+                                      // amount instead of what Razorpay actually
+                                      // charged, and fail.
+                                      if (orderProduc != null) {
+                                        orderProduc!["advance_payment"] = remaining.toString();
+                                        orderProduc!["advance_payment "] = remaining.toString();
+                                      }
+                                      setDialogState(() {
+                                        dueAdvanceAmount = remaining;
+                                        if (pointsUsed > 0) referralPointsRedeemed = true;
+                                        _redeemingReferralPoints = false;
+                                      });
+                                    }
+                                  } else {
+                                    ApiWrapper.showToastMessage(
+                                      (response is Map ? response['ResponseMsg'] : null) ??
+                                          "Could not apply referral points".tr,
+                                    );
+                                    setDialogState(() => _redeemingReferralPoints = false);
+                                  }
+                                } catch (e) {
+                                  debugPrint("======== Redeem Referral Points Error ======== $e");
+                                  ApiWrapper.showToastMessage("Error: $e");
+                                  setDialogState(() => _redeemingReferralPoints = false);
+                                }
+                              },
+                        child: Container(
+                          margin: EdgeInsets.only(bottom: 10),
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: linercolor.withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: linercolor),
+                          ),
+                          child: Center(
+                            child: _redeemingReferralPoints
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: linercolor),
+                                  )
+                                : Text(
+                                    "Pay with referral points".tr,
+                                    style: TextStyle(
+                                      color: linercolor,
+                                      fontFamily: "Gilroy_Bold",
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   Row(
                     children: [
                       Expanded(
@@ -5231,14 +5529,17 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       Expanded(
                         child: InkWell(
                           onTap: () {
+                            final payableAmount = (dueAdvanceAmount % 1 == 0)
+                                ? dueAdvanceAmount.toInt().toString()
+                                : dueAdvanceAmount.toStringAsFixed(2);
                             _advanceTimer?.cancel();
                             _advanceTimer = null;
                             isAdvanceDialogOpened = false;
                             Navigator.of(context, rootNavigator: true).pop();
                             setState(() {
-                              grandTotal = advanceAmount;
+                              grandTotal = payableAmount;
                             });
-                            _payAdvanceWithRazorpay(advanceAmount);
+                            _payAdvanceWithRazorpay(payableAmount);
                           },
                           child: Container(
                             padding: EdgeInsets.symmetric(vertical: 12),

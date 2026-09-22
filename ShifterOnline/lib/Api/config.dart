@@ -162,6 +162,7 @@ class Config {
   static const String nodeDistance = "api/order/distance";
   static const String nodePackageList = "api/order/packagelist";
   static const String nodeNextDayEligibility = "api/order/next-day-eligibility";
+  static const String nodeReferralDiscountInfo = "api/order/referral-discount-info";
   // Node mirrors of the legacy PHP wallet / premium-plan / custom-order-bid
   // endpoints (customerWalletController.js, customerPlanController.js,
   // customOrderBiddingController.js - mounted under /api/users in app.js).
@@ -195,6 +196,7 @@ class Config {
   static const String nodeCancelReasons = "api/users/cancel-reasons";
   static const String nodeUserLeads = "api/user/leads";
   static const String nodeAppConfig = "api/users/app-config";
+  static const String nodeCustomerCare = "api/users/customer-care";
   // Read-only auth-adjacent lookups (country codes) - safe to move even
   // though login/OTP/register themselves stay on the legacy PHP for now.
   static const String nodeCountryCodes = "api/users/country-codes";
@@ -233,6 +235,7 @@ class Config {
   static const String nodePaymentStatus = "api/order/payment-status";
   static const String nodeInvoiceUrl = "api/order/invoice-url";
   static const String nodeAdvancePayment = "api/order/advance-payment";
+  static const String nodeAdvancePaymentRedeemPoints = "api/order/advance-payment/redeem-points";
   // "Buy Anything" create + item confirm/remove - Node ports of
   // cust_api/buy_order.php, confirm_item.php, item_remove.php.
   static const String nodeBuyOrderCreate = "api/order/legacy/create";

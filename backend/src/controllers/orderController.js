@@ -1242,6 +1242,34 @@ async function getMapInfo(req, res) {
 // so the net wallet effect across a completed ride is zero. Kept identical
 // to the legacy PHP behavior this compensates for - do not "fix" the credit
 // here without also updating that debit logic.
+/**
+ * Read-only lookup so the customer app can show "Save up to ₹X with
+ * referral points" before/during booking without duplicating the admin
+ * settings + points-balance math client-side.
+ */
+async function referralDiscountInfo(req, res) {
+  try {
+    const uid = Number(req.query.uid || req.body?.uid || 0);
+    const [settings, user] = await Promise.all([
+      prisma.tbl_referral_setting.findFirst(),
+      uid ? prisma.tbl_user.findUnique({ where: { id: uid }, select: { referral_points: true } }) : Promise.resolve(null),
+    ]);
+    const percent = Number(settings?.ride_discount_percent) || 0;
+    const enabled = Boolean(settings?.referral_enabled) && percent > 0;
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: true,
+      enabled,
+      ride_discount_percent: percent,
+      point_value: Number(settings?.point_value) || 1,
+      referral_points_available: Number(user?.referral_points) || 0,
+    });
+  } catch (err) {
+    logger.error("referralDiscountInfo failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: false, ResponseMsg: "Internal server error" });
+  }
+}
+
 async function advancePayment(req, res) {
   const b = req.body || {};
   const orderId = Number(b.order_id || 0);
@@ -1459,4 +1487,5 @@ module.exports = {
   getMapInfo,
   advancePayment,
   redeemAdvanceWithPoints,
+  referralDiscountInfo,
 };

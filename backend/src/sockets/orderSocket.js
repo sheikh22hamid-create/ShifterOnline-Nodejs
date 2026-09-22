@@ -1,3 +1,4 @@
+const prisma = require("../config/db");
 const tripLifecycle = require("../services/tripLifecycle");
 const logger = require("../utils/logger");
 const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
@@ -47,13 +48,40 @@ function registerOrderHandlers(io, socket) {
       // hardcoded 120 keeps this one value from ever drifting out of sync
       // with what every later re-fetch on either app computes.
       const timerInfo = getAdvancePaymentTimerInfo(order);
+
+      // Same customer-facing average + trip count getOrderDetails computes
+      // (orderController.js) - this event is the FIRST thing the customer
+      // app sees right after accept (initialOrderData in bottombar.dart /
+      // waiting_screen.dart), rendered before any REST call lands. Leaving
+      // these out here left the driver card showing "New"/blank rating on
+      // first paint until a later pageRefresh() silently overwrote it.
+      const [ratingAgg, totalTrips] = await Promise.all([
+        prisma.pkg_order.aggregate({ where: { rid: rider.id, cust_rate: { gt: 0 } }, _avg: { cust_rate: true } }),
+        prisma.pkg_order.count({ where: { rid: rider.id, o_status: "Completed" } }),
+      ]);
+      const riderStar = ratingAgg._avg.cust_rate;
+
       io.to(`customer_${order.uid}`).emit("order:assigned", {
         order_id: order.id,
         rider_id: rider.id,
         rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
+        // rider_mobile/rider_img/rider_lats/rider_longs are the field names
+        // getOrderDetails (orderController.js) uses and TrackingWay's
+        // _buildRiderDetailsCard actually reads - keeping rider_phone/
+        // profile_picture/rider_lat/rider_lng alongside them only because a
+        // couple of other screens (live_driver_tracking.dart,
+        // trackingway.dart's own map-recenter logic) already fall back to
+        // the short lat/lng names.
+        rider_mobile: rider.fmobile,
         rider_phone: rider.fmobile,
+        rider_img: rider.profile_picture,
         profile_picture: rider.profile_picture,
+        rider_star: riderStar == null ? null : Number(riderStar).toFixed(1),
+        total_trips: totalTrips,
+        order_count: totalTrips,
         vehicle_no: rider.vehicle_no,
+        rider_lats: rider.rlats ? Number(rider.rlats) : null,
+        rider_longs: rider.rlongs ? Number(rider.rlongs) : null,
         rider_lat: rider.rlats ? Number(rider.rlats) : null,
         rider_lng: rider.rlongs ? Number(rider.rlongs) : null,
         otp: order.otp,

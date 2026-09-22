@@ -64,6 +64,9 @@ const HANDLED_FLAG_KEYS = [
   'auto_verification_charge_old',
   'auto_verification_msg',
   'manual_registration',
+  'customer_care_number',
+  'customer_care_email',
+  'customer_care_hours',
 ]
 
 function PaymentGateways() {
@@ -212,6 +215,39 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </Section>
 
+        <Section title="Customer Care & Support">
+          <div>
+            <Label htmlFor="customer_care_number">Helpline / Support Phone Number</Label>
+            <Input
+              id="customer_care_number"
+              placeholder="+91 9999908008"
+              value={flags.customer_care_number ?? ''}
+              onChange={(e) => setFlags((f) => ({ ...f, customer_care_number: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Displayed in Customer &amp; Driver apps. Tapping initiates a direct phone call.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="customer_care_email">Support Email (Optional)</Label>
+            <Input
+              id="customer_care_email"
+              placeholder="support@shifteronline.com"
+              value={flags.customer_care_email ?? ''}
+              onChange={(e) => setFlags((f) => ({ ...f, customer_care_email: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="customer_care_hours">Operating Hours (Optional)</Label>
+            <Input
+              id="customer_care_hours"
+              placeholder="24/7 Helpline"
+              value={flags.customer_care_hours ?? ''}
+              onChange={(e) => setFlags((f) => ({ ...f, customer_care_hours: e.target.value }))}
+            />
+          </div>
+        </Section>
+
         <Section title="Commission & driver pay">
           <div>
             <Label htmlFor="service_charge">Service charge (%)</Label>
@@ -239,6 +275,20 @@ function SettingsForm({ data, onSaved }) {
           <div>
             <Label htmlFor="reject_timer">Dispatch reject timer (sec)</Label>
             <Input id="reject_timer" type="number" value={form.reject_timer} onChange={(e) => setForm((f) => ({ ...f, reject_timer: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_otp_timeout_minutes">Pickup OTP timeout (min)</Label>
+            <Input
+              id="flag-pickup_otp_timeout_minutes"
+              type="number"
+              min="1"
+              placeholder="e.g. 10"
+              value={flags.pickup_otp_timeout_minutes ?? '10'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_otp_timeout_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              If the customer doesn't hand over the pickup OTP within this many minutes of the driver arriving, the ride auto-cancels from the customer's side.
+            </p>
           </div>
         </Section>
 

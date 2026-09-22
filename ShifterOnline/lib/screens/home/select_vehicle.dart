@@ -75,6 +75,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   double _planDiscountPercent = 0;
   double _planDiscountMaxCap = 0;
 
+  bool _referralDiscountEnabled = false;
+  double _referralDiscountPercent = 0;
+  double _referralPointValue = 1;
+  double _referralPointsAvailable = 0;
+  bool _useReferralPoints = false;
+
   double _number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
   LatLng get _pickup => LatLng(_number(_pickupData['lat_map']), _number(_pickupData['long_map']));
   LatLng get _drop => LatLng(_number(_dropData['lat_map']), _number(_dropData['long_map']));
@@ -112,7 +118,39 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRoute();
       _refreshAvailability();
+      _fetchReferralDiscountInfo();
     });
+  }
+
+  // Referral points redeemable against the CURRENT selected model's fare,
+  // capped by both the admin's ride_discount_percent and the customer's
+  // actual balance — mirrors the backend's own cap so the toggle never
+  // advertises more than `use_referral_points: true` will actually redeem.
+  int get _referralRedeemablePoints {
+    if (!_referralDiscountEnabled || _referralPointValue <= 0 || _referralPointsAvailable <= 0) return 0;
+    final fare = _selectedModel == null ? null : _modelFare(_selectedModel!);
+    if (fare == null || fare <= 0) return 0;
+    final maxByPercent = (fare * _referralDiscountPercent / 100 / _referralPointValue).ceil();
+    final capped = math.min(_referralPointsAvailable.floor(), maxByPercent);
+    return capped < 0 ? 0 : capped;
+  }
+
+  double get _referralRedeemableAmount => _referralRedeemablePoints * _referralPointValue;
+
+  Future<void> _fetchReferralDiscountInfo() async {
+    final uid = _storage.read('Uid');
+    if (uid == null) return;
+    final response = await ApiWrapper.dataGetNode('${Config.nodeReferralDiscountInfo}?uid=$uid');
+    if (!mounted) return;
+    if (response is Map && (response['Result'] == true || response['Result'] == 'true')) {
+      setState(() {
+        _referralDiscountEnabled = response['enabled'] == true;
+        _referralDiscountPercent = _number(response['ride_discount_percent']);
+        final pointValue = _number(response['point_value']);
+        _referralPointValue = pointValue > 0 ? pointValue : 1;
+        _referralPointsAvailable = _number(response['referral_points_available']);
+      });
+    }
   }
 
   Future<void> _pickScheduleDateTime() async {
@@ -702,6 +740,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'package_weight': '0', 'package_cost': '0', 'description': 'No description provided', 'p_method_id': payValue,
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
       'extra_mile_charge': 0, 'cou_id': 0, 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
+      if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
       'stops': _stopsData.map((stop) => {
         'lat': stop['lat_map'], 'lng': stop['long_map'], 'address': stop['address'],
         'hno': stop['hno'], 'landmark': stop['landmark'],
@@ -714,6 +753,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final orderId = response['order_id']?.toString() ?? '';
       await _storage.write('OrderID', orderId);
       ApiWrapper.showToastMessage(_text(response['ResponseMsg'], 'Order placed successfully.'));
+      final referralPointsUsed = _number(response['referral_points_used']);
+      if (referralPointsUsed > 0) {
+        final referralAmount = _number(response['referral_points_amount']);
+        ApiWrapper.showToastMessage('₹${referralAmount.toStringAsFixed(0)} paid using ${referralPointsUsed.toStringAsFixed(0)} referral points');
+      }
       if (_currentBookingType == 3) {
         _showScheduledOrderConfirmedDialog(
           orderId, fee, payValue,
@@ -1668,6 +1712,31 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
       if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () => setState(() => _selectedModelIndex = index), child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
       if (_selectedModel != null) ...[const SizedBox(height: 14), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]), Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12))))],
+      if (_referralDiscountEnabled && _referralPointsAvailable > 0 && _referralRedeemablePoints > 0) ...[
+        const SizedBox(height: 10),
+        InkWell(
+          onTap: () => setState(() => _useReferralPoints = !_useReferralPoints),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: _useReferralPoints ? linercolor.withOpacity(.08) : notifier.getBgColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _useReferralPoints ? linercolor : notifier.bordecolor),
+            ),
+            child: Row(children: [
+              Icon(_useReferralPoints ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, color: _useReferralPoints ? linercolor : greaycolor, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Use referral points', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13)),
+                  Text('Save ₹${_referralRedeemableAmount.toStringAsFixed(0)} ($_referralRedeemablePoints pts)', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ],
     ]));
   }
 

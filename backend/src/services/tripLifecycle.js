@@ -1109,14 +1109,14 @@ async function rateOrder(uid, orderId, riderId, star, comment) {
  * who gets the OTP right as the sweep runs, or a customer/driver cancel
  * that lands first, can never be double-cancelled or overwritten here.
  */
-async function cancelOverduePickup(orderId, riderId) {
+async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP_TIMEOUT_MS / 60000) {
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (!order) return;
 
   const affected = await prisma.$executeRaw`
     UPDATE pkg_order
     SET o_status = 'Cancelled', order_status = 4,
-        cancel_reason = 'Customer did not provide OTP within 10 minutes of driver arrival'
+        cancel_reason = ${`Customer did not provide OTP within ${timeoutMinutes} minutes of driver arrival`}
     WHERE id = ${orderId} AND o_status = 'Pickup'
   `;
   if (affected === 0) return; // already resolved another way between the sweep's read and this write
@@ -1134,7 +1134,7 @@ async function cancelOverduePickup(orderId, riderId) {
         user_id: order.uid,
         amount: cancellationCharge,
         type: "debit",
-        remark: `No-show penalty — OTP not provided within 10 minutes (order #${orderId})`,
+        remark: `No-show penalty — OTP not provided within ${timeoutMinutes} minutes (order #${orderId})`,
         wallet_type: "user",
         order_id: orderId,
         created_at: istNow(),
@@ -1158,7 +1158,7 @@ async function cancelOverduePickup(orderId, riderId) {
   notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
 
   logger.warn(
-    `tripLifecycle: order ${orderId} auto-cancelled — customer did not provide OTP within ${PICKUP_OTP_TIMEOUT_MS / 60000} minutes of driver arrival (rider ${riderId})`
+    `tripLifecycle: order ${orderId} auto-cancelled — customer did not provide OTP within ${timeoutMinutes} minutes of driver arrival (rider ${riderId})`
   );
 }
 
@@ -1171,8 +1171,25 @@ async function cancelOverduePickup(orderId, riderId) {
  * timestamp), so a sweep that runs late — or resumes after a restart —
  * still finds and cancels every order that's actually overdue.
  */
+async function getPickupOtpTimeoutMinutes() {
+  const defaultMinutes = PICKUP_OTP_TIMEOUT_MS / 60000;
+  try {
+    const row = await prisma.app_settings.findFirst({ where: { setting_key: "pickup_otp_timeout_minutes" } });
+    const parsed = parseFloat(row?.setting_value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMinutes;
+  } catch (err) {
+    logger.error("getPickupOtpTimeoutMinutes: failed to read admin setting, using default:", err);
+    return defaultMinutes;
+  }
+}
+
 async function sweepOverduePickups() {
-  const cutoff = new Date(Date.now() - PICKUP_OTP_TIMEOUT_MS);
+  // Re-read every tick (not captured once at import time) so an admin
+  // changing this in Settings takes effect on the very next sweep, no
+  // restart needed — falls back to the original hardcoded 10 minutes
+  // (PICKUP_OTP_TIMEOUT_MS) if the admin hasn't set it yet.
+  const timeoutMinutes = await getPickupOtpTimeoutMinutes();
+  const cutoff = new Date(Date.now() - timeoutMinutes * 60000);
   let overdue;
   try {
     overdue = await prisma.pkg_order_wait_timer.findMany({
@@ -1185,7 +1202,7 @@ async function sweepOverduePickups() {
 
   for (const waitRow of overdue) {
     try {
-      await cancelOverduePickup(waitRow.order_id, waitRow.rid);
+      await cancelOverduePickup(waitRow.order_id, waitRow.rid, timeoutMinutes);
     } catch (err) {
       logger.error(`sweepOverduePickups: failed cancelling order ${waitRow.order_id}:`, err);
     }

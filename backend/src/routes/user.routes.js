@@ -49,6 +49,8 @@ router.post("/home", customerContentController.homeData);
 router.post("/orders/history", customerContentController.pkgHistoryCustomer);
 router.post("/cancel-reasons", customerContentController.cancelReasonList);
 router.get("/app-config", customerContentController.appConfig);
+router.get("/customer-care", customerContentController.getCustomerCare);
+router.post("/customer-care", customerContentController.getCustomerCare);
 
 // Custom-order bidding (customer side) - driver side is in riderRoutes.js,
 // admin side already exists in adminRoutes.js/customOrderController.js

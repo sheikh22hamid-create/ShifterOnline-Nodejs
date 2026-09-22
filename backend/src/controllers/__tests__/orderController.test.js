@@ -1,7 +1,9 @@
 jest.mock("../../config/db", () => ({
   tbl_package: { findMany: jest.fn() },
-  tbl_user: { findUnique: jest.fn() },
+  tbl_user: { findUnique: jest.fn(), updateMany: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
+  tbl_referral_setting: { findFirst: jest.fn() },
+  tbl_referral_point_log: { create: jest.fn() },
   pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn() },
   $queryRaw: jest.fn(),
 }));
@@ -207,6 +209,71 @@ describe("orderController.createOrderCore", () => {
         }),
       })
     );
+  });
+
+  describe("referral-points ride discount", () => {
+    beforeEach(() => {
+      prisma.tbl_referral_setting.findFirst.mockResolvedValue({
+        referral_enabled: true, ride_discount_percent: 10, point_value: 1,
+      });
+    });
+
+    it("redeems points up to the admin % cap, leaving the rest as real cash", async () => {
+      // fare 50, 10% cap -> max 5 points redeemable; customer has plenty.
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+
+      await createOrderCore({ ...baseInput, useReferralPoints: true });
+
+      expect(prisma.tbl_user.updateMany).toHaveBeenCalledWith({
+        where: { id: 1, referral_points: { gte: 5 } },
+        data: { referral_points: { decrement: 5 } },
+      });
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ referral_points_used: 5, referral_points_amount: 5 }) })
+      );
+    });
+
+    it("uses only what's available when the customer has fewer points than the cap", async () => {
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 2 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+
+      await createOrderCore({ ...baseInput, useReferralPoints: true });
+
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ referral_points_used: 2, referral_points_amount: 2 }) })
+      );
+    });
+
+    it("never blocks booking when the points deduction loses a race", async () => {
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 0 }); // someone else spent it first
+
+      const result = await createOrderCore({ ...baseInput, useReferralPoints: true });
+
+      expect(result.ok).toBe(true);
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ referral_points_used: 0, referral_points_amount: 0 }) })
+      );
+    });
+
+    it("skips redemption entirely when the caller didn't opt in", async () => {
+      await createOrderCore(baseInput);
+
+      expect(prisma.tbl_referral_setting.findFirst).not.toHaveBeenCalled();
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ referral_points_used: 0, referral_points_amount: 0 }) })
+      );
+    });
+
+    it("skips redemption when the admin hasn't enabled a ride discount", async () => {
+      prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, ride_discount_percent: 0, point_value: 1 });
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+
+      await createOrderCore({ ...baseInput, useReferralPoints: true });
+
+      expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
+    });
   });
 });
 describe("orderController.createOrder (HTTP handler) — photos pass-through", () => {
