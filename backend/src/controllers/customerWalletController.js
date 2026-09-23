@@ -75,6 +75,120 @@ async function createRazorpayOrder(req, res) {
   }
 }
 
+// --- Clear Outstanding Due (driver-only) ---
+// The amount is always computed server-side from the driver's current
+// wallet_balance, never taken from the client, so a tampered client can't
+// request an order for less than the real due or credit more than it paid
+// for (see design spec 2026-09-23-driver-wallet-outstanding-dues-design.md).
+async function createClearDueOrder(req, res) {
+  try {
+    const mobile = String(req.body?.mobile || "");
+    if (!mobile) return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Missing Data" });
+
+    const rider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (!rider) return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "No driver found with this mobile number!" });
+
+    const dueAmount = Math.max(0, -Number(rider.wallet_balance || 0));
+    if (dueAmount <= 0) {
+      return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "No outstanding dues to clear." });
+    }
+
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+      logger.error("createClearDueOrder: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured.");
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Payment gateway is not configured. Try again later." });
+    }
+
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+    const resp = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: Math.round(dueAmount * 100),
+        currency: "INR",
+        receipt: `cleardue_${rider.id}_${Date.now()}`,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      logger.error("createClearDueOrder: Razorpay API error:", data);
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: data?.error?.description || "Failed to create payment order" });
+    }
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Order created",
+      OrderId: data.id,
+      order_id: data.id,
+      amount: data.amount,
+      currency: data.currency,
+      due_amount: dueAmount,
+    });
+  } catch (err) {
+    logger.error("createClearDueOrder failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+async function clearOutstandingDue(req, res) {
+  try {
+    const b = req.body || {};
+    const mobile = String(b.mobile || "");
+    const dueAmount = Number(b.due_amount || 0);
+    const razorpayPaymentId = b.razorpay_payment_id;
+    const razorpayOrderId = b.razorpay_order_id;
+    const razorpaySignature = b.razorpay_signature;
+
+    if (!mobile || !dueAmount || !razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
+      return fail(res, "Missing Parameters");
+    }
+
+    let verification;
+    try {
+      verification = await verifyRazorpayPayment({
+        paymentId: razorpayPaymentId,
+        orderId: razorpayOrderId,
+        signature: razorpaySignature,
+        expectedAmountRupees: dueAmount,
+      });
+    } catch (e) {
+      logger.error("clearOutstandingDue: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured.", e);
+      return res.status(200).json({ Result: false, msg: "Payment verification is not configured. Try again later." });
+    }
+    if (!verification.ok) return fail(res, verification.reason);
+
+    const rider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (!rider) return fail(res, "No driver found with this mobile number!");
+
+    try {
+      await prisma.tbl_wallet_history.create({
+        data: {
+          user_id: rider.id,
+          mobile,
+          amount: dueAmount,
+          type: "credit",
+          remark: "Outstanding Due Cleared",
+          payment_id: razorpayPaymentId,
+          razorpay_payment_id: razorpayPaymentId,
+          wallet_type: "driver",
+          created_at: new Date(),
+        },
+      });
+    } catch (e) {
+      if (e.code === "P2002") return fail(res, "This payment has already been credited.");
+      throw e;
+    }
+
+    const updated = await prisma.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: { increment: dueAmount } } });
+    return res.status(200).json({ Result: true, msg: "Outstanding due cleared", balance: Number(updated.wallet_balance) });
+  } catch (err) {
+    logger.error("customerWalletController.clearOutstandingDue failed:", err);
+    return fail(res, "Internal server error");
+  }
+}
+
 // --- add_wallet.php ---
 async function addWallet(req, res) {
   try {
@@ -279,4 +393,4 @@ async function withdrawWallet(req, res) {
   }
 }
 
-module.exports = { addWallet, walletHistory, withdrawWallet, createRazorpayOrder };
+module.exports = { addWallet, walletHistory, withdrawWallet, createRazorpayOrder, createClearDueOrder, clearOutstandingDue };

@@ -165,3 +165,85 @@ describe("customerWalletController.walletHistory outstanding-due fields", () => 
     expect(getDriverMaxDueLimit).not.toHaveBeenCalled();
   });
 });
+
+describe("customerWalletController.createClearDueOrder", () => {
+  const { createClearDueOrder } = require("../customerWalletController");
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.RAZORPAY_KEY_ID = "key_id";
+    process.env.RAZORPAY_KEY_SECRET = "key_secret";
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("refuses to create an order when there is no outstanding due", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "50.00" });
+    const res = mockRes();
+    await createClearDueOrder({ body: { mobile: "9000000000" } }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false" }));
+  });
+
+  it("creates a Razorpay order for exactly the server-computed due amount, ignoring any client-sent amount", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "order_due_1", amount: 7000, currency: "INR" }),
+    });
+    const res = mockRes();
+    await createClearDueOrder({ body: { mobile: "9000000000", amount: 999999 } }, res);
+    const [, options] = global.fetch.mock.calls[0];
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.amount).toBe(7000); // 70.00 rupees in paise, not the client's 999999
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", OrderId: "order_due_1", due_amount: 70 }));
+  });
+});
+
+describe("customerWalletController.clearOutstandingDue", () => {
+  const { clearOutstandingDue } = require("../customerWalletController");
+  const body = {
+    mobile: "9000000000",
+    razorpay_payment_id: "pay_due_1",
+    razorpay_order_id: "order_due_1",
+    razorpay_signature: "sig_1",
+    due_amount: 70,
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("credits the wallet by exactly the verified due amount once payment is verified", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    prisma.tbl_rider.update.mockResolvedValue({ wallet_balance: "0.00" });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(verifyRazorpayPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmountRupees: 70 }));
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 70, type: "credit", remark: "Outstanding Due Cleared", razorpay_payment_id: "pay_due_1" }) })
+    );
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet_balance: { increment: 70 } } });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true }));
+  });
+
+  it("refuses when Razorpay verification fails", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: false, reason: "Payment Verification Failed!" });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
+  });
+
+  it("rejects a replayed payment_id via the existing unique-constraint guard", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    const p2002 = Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    prisma.tbl_wallet_history.create.mockRejectedValue(p2002);
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false, msg: "This payment has already been credited." }));
+  });
+});
