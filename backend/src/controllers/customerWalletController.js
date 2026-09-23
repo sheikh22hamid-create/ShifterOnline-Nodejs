@@ -1,7 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
-const { getDriverMaxDueLimit } = require("../services/driverWalletSettings");
+const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount } = require("../services/driverWalletSettings");
 
 // Node port of cust_api/add_wallet.php, wallet_history.php,
 // withdraw_wallet.php + rider_api equivalents (rider_api has no dedicated
@@ -249,7 +249,7 @@ async function addWallet(req, res) {
     }
 
     if (walletType === "driver") {
-      return fail(res, "Drivers cannot add money to their wallet.");
+      return fail(res, "Drivers cannot add money to their ledger.");
     }
 
     let verification;
@@ -342,10 +342,11 @@ async function walletHistory(req, res) {
     const rows = await prisma.tbl_wallet_history.findMany({ where, orderBy: { id: "desc" } });
     let withdrawalSummary = {};
     if (walletType === "driver") {
-      const [pending, latest, maxDueLimit] = await Promise.all([
+      const [pending, latest, maxDueLimit, minWithdrawalAmount] = await Promise.all([
         prisma.driver_withdraw_requests.aggregate({ where: { rider_id: userId, status: "pending" }, _sum: { amount: true } }),
         prisma.driver_withdraw_requests.findFirst({ where: { rider_id: userId }, orderBy: { id: "desc" }, select: { id: true, amount: true, status: true, created_at: true } }),
         getDriverMaxDueLimit(),
+        getDriverMinWithdrawalAmount(),
       ]);
       const pendingAmount = Number(pending._sum.amount || 0);
       const balanceNum = Number(wallet || 0);
@@ -356,7 +357,8 @@ async function walletHistory(req, res) {
         latest_withdrawal: latest ? { id: latest.id, amount: Number(latest.amount || 0).toFixed(2), status: latest.status, created_at: latest.created_at } : null,
         outstanding_due: outstandingDue.toFixed(2),
         max_due_limit: maxDueLimit,
-        can_withdraw: balanceNum > 0,
+        min_withdrawal_amount: minWithdrawalAmount,
+        can_withdraw: balanceNum > 0 && balanceNum > minWithdrawalAmount,
         can_clear_due: balanceNum < 0,
         due_limit_reached: balanceNum <= -maxDueLimit,
       };
@@ -366,7 +368,7 @@ async function walletHistory(req, res) {
 
     return res.status(200).json({
       Result: true,
-      msg: "Wallet History",
+      msg: walletType === "driver" ? "Ledger History" : "Wallet History",
       wallet_balance: wallet?.toString?.() ?? wallet,
       wallet_points: walletPoints,
       ...withdrawalSummary,
@@ -387,7 +389,7 @@ async function withdrawWallet(req, res) {
     const mobile = String(b.mobile || "");
     const amount = Number(b.amount || 0);
     const walletType = b.wallet_type || "user";
-    const remark = b.remark || "Wallet Withdraw";
+    const remark = b.remark || (walletType === "driver" ? "Ledger Withdraw" : "Wallet Withdraw");
     if (!mobile || !amount || !walletType) return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Missing Data" });
 
     const account =
@@ -399,8 +401,18 @@ async function withdrawWallet(req, res) {
     }
 
     const currentBalance = Number(walletType === "user" ? account.wallet : account.wallet_balance || 0);
-    if (walletType === "driver" && currentBalance <= 0) {
-      return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
+    if (walletType === "driver") {
+      if (currentBalance <= 0) {
+        return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
+      }
+      const minWithdrawalAmount = await getDriverMinWithdrawalAmount();
+      if (currentBalance <= minWithdrawalAmount) {
+        return res.status(200).json({
+          ResponseCode: "404",
+          Result: "false",
+          ResponseMsg: `You need more than ₹${minWithdrawalAmount} in your ledger to withdraw. Current balance ₹${currentBalance}.`,
+        });
+      }
     }
     if (currentBalance < amount) {
       return res.status(200).json({ ResponseCode: "402", Result: "false", ResponseMsg: "Insufficient Balance!" });

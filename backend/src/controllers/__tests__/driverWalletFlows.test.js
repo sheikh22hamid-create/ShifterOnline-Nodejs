@@ -1,6 +1,6 @@
 jest.mock("../../config/db", () => ({
   tbl_rider: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
-  tbl_user: { findFirst: jest.fn(), update: jest.fn() },
+  tbl_user: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
   driver_withdraw_requests: { aggregate: jest.fn(), findFirst: jest.fn() },
   app_settings: { findFirst: jest.fn() },
@@ -8,9 +8,11 @@ jest.mock("../../config/db", () => ({
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn() }));
 jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn(), fetchRazorpayOrder: jest.fn() }));
+jest.mock("../../services/driverWalletSettings", () => ({ getDriverMaxDueLimit: jest.fn(), getDriverMinWithdrawalAmount: jest.fn() }));
 
 const prisma = require("../../config/db");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../../utils/razorpayVerify");
+const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount } = require("../../services/driverWalletSettings");
 
 function mockRes() {
   return { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
@@ -34,7 +36,7 @@ describe("customerWalletController.addWallet driver block", () => {
     await addWallet({ body: driverBody }, res);
     expect(verifyRazorpayPayment).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false, msg: "Drivers cannot add money to their wallet." }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false, msg: "Drivers cannot add money to their ledger." }));
   });
 
   it("still allows a customer recharge", async () => {
@@ -55,6 +57,7 @@ describe("customerWalletController.withdrawWallet", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    getDriverMinWithdrawalAmount.mockResolvedValue(0);
   });
 
   it("rejects a driver withdraw when balance is exactly 0", async () => {
@@ -86,6 +89,57 @@ describe("customerWalletController.withdrawWallet", () => {
     expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ user_id: 7, amount: 100, type: "debit" }) })
     );
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
+  });
+
+  it("uses the 'Ledger Withdraw' remark by default for a driver withdrawal, not 'Wallet Withdraw'", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "500.00" });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remark: "Ledger Withdraw" }) })
+    );
+  });
+
+  it("still uses the 'Wallet Withdraw' remark by default for a customer withdrawal", async () => {
+    prisma.tbl_user.findFirst.mockResolvedValue({ id: 2, wallet: "500.00" });
+    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: { mobile: "9999999999", amount: 100, wallet_type: "user" } }, res);
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remark: "Wallet Withdraw" }) })
+    );
+  });
+
+  it("rejects a driver withdraw when balance is positive but at or below the admin-configured minimum withdrawal amount", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(500);
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "500.00" });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(prisma.tbl_rider.updateMany).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false" }));
+  });
+
+  it("allows a driver withdraw once balance exceeds the admin-configured minimum withdrawal amount", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(500);
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "600.00" });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
+  });
+
+  it("does not apply the minimum-withdrawal-amount gate to customer withdrawals", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(500);
+    prisma.tbl_user.findFirst.mockResolvedValue({ id: 2, wallet: "100.00" });
+    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: { mobile: "9999999999", amount: 100, wallet_type: "user" } }, res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
   });
 
@@ -124,11 +178,8 @@ describe("customerWalletController.withdrawWallet", () => {
   });
 });
 
-jest.mock("../../services/driverWalletSettings", () => ({ getDriverMaxDueLimit: jest.fn() }));
-
 describe("customerWalletController.walletHistory outstanding-due fields", () => {
   const { walletHistory } = require("../customerWalletController");
-  const { getDriverMaxDueLimit } = require("../../services/driverWalletSettings");
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -136,6 +187,7 @@ describe("customerWalletController.walletHistory outstanding-due fields", () => 
     prisma.driver_withdraw_requests.aggregate.mockResolvedValue({ _sum: { amount: null } });
     prisma.driver_withdraw_requests.findFirst.mockResolvedValue(null);
     getDriverMaxDueLimit.mockResolvedValue(100);
+    getDriverMinWithdrawalAmount.mockResolvedValue(0);
   });
 
   async function request(riderOverrides) {
@@ -173,6 +225,19 @@ describe("customerWalletController.walletHistory outstanding-due fields", () => 
     expect(result.can_withdraw).toBe(true);
     expect(result.can_clear_due).toBe(false);
     expect(result.outstanding_due).toBe("0.00");
+  });
+
+  it("balance positive but at or below the admin-configured minimum withdrawal amount: cannot withdraw", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(500);
+    const result = await request({ wallet_balance: "500.00" });
+    expect(result.can_withdraw).toBe(false);
+    expect(result.min_withdrawal_amount).toBe(500);
+  });
+
+  it("balance exceeds the admin-configured minimum withdrawal amount: can withdraw", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(500);
+    const result = await request({ wallet_balance: "600.00" });
+    expect(result.can_withdraw).toBe(true);
   });
 
   it("does not add these fields for a customer wallet", async () => {
