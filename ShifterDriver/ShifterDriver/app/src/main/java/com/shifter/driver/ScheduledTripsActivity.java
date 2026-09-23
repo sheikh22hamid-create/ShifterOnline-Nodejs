@@ -4,11 +4,11 @@ import android.os.Bundle;
 import android.widget.Toast;
 
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.gson.JsonObject;
+import com.shifter.driver.activity.LocaleAwareActivity;
 import com.shifter.driver.adapter.ScheduledTripsAdapter;
 import com.shifter.driver.model.RiderData;
 import com.shifter.driver.retrofit.GetResult;
@@ -44,7 +44,7 @@ import retrofit2.Call;
  * instead (the same style HomeFragment.sendDriverStatusUpdateToBackend and
  * updatePackageStatus already use for the same reason).
  */
-public class ScheduledTripsActivity extends AppCompatActivity implements GetResult.MyListener {
+public class ScheduledTripsActivity extends LocaleAwareActivity implements GetResult.MyListener {
 
     private ScheduledTripsAdapter adapter;
     private SessionManager sessionManager;

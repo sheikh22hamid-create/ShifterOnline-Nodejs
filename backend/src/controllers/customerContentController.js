@@ -49,7 +49,7 @@ async function appConfig(req, res) {
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "type Get Successfully!!",
-      customer_care_number: careRow?.setting_value || "+91 9999908008",
+      customer_care_number: careRow?.setting_value || "+91 9109114515",
       SMS_TYPE: setting?.sms_type ?? null,
       Admob_Enabled: null,
       maintainance_Enabled: null,
@@ -231,7 +231,7 @@ async function pageList(req, res) {
       ResponseCode: "200",
       Result: list.length ? "true" : "false",
       ResponseMsg: list.length ? "Pages List Founded!" : "Pages Not Founded!",
-      customer_care_number: careMap.customer_care_number || "+91 9999908008",
+      customer_care_number: careMap.customer_care_number || "+91 9109114515",
       customer_care_email: careMap.customer_care_email || "support@shifteronline.com",
       customer_care_hours: careMap.customer_care_hours || "24/7 Helpline",
     });
@@ -254,7 +254,7 @@ async function getCustomerCare(req, res) {
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "Customer care details fetched successfully",
-      customer_care_number: map.customer_care_number || "+91 9999908008",
+      customer_care_number: map.customer_care_number || "+91 9109114515",
       customer_care_email: map.customer_care_email || "support@shifteronline.com",
       customer_care_hours: map.customer_care_hours || "24/7 Helpline",
     });
@@ -481,7 +481,7 @@ async function homeData(req, res) {
       how_to_use_enabled: isHowUseEnabled ? 1 : 0,
       completed_orders_count: completedOrdersCount,
       how_to_use_max_orders: maxOrdersThreshold,
-      customer_care_number: howToUseMap.customer_care_number || "+91 9999908008",
+      customer_care_number: howToUseMap.customer_care_number || "+91 9109114515",
       customer_care_email: howToUseMap.customer_care_email || "support@shifteronline.com",
       customer_care_hours: howToUseMap.customer_care_hours || "24/7 Helpline",
     };

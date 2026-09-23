@@ -151,14 +151,14 @@ export default function DriverLeads() {
         `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily behtareen kamai karein!\n\n` +
         `📲 *Shifter Driver App* abhi download karein aur direct register karein:\n` +
         `👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n` +
-        `Driver Helpline: +91 9109114515\n` +
+        `Helpline: +91 9109114515\n` +
         `— *Team Shifter Online*`
       : `${greeting}\n\n` +
         `${referrer} ne aapko *Shifter Online* recommend kiya hai. 🚚\n\n` +
         `Ab kisi bhi saman ko bhejna, mini-truck ya tempo book karna hua behad aasan aur kifayati!\n\n` +
         `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
         `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-        `Helpline: +91 9999908008\n` +
+        `Helpline: +91 9109114515\n` +
         `— *Team Shifter Online*`
 
     return `https://wa.me/91${item.phone}?text=${encodeURIComponent(text)}`

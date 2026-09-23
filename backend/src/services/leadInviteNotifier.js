@@ -10,7 +10,7 @@ const DRIVER_APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=c
 /**
  * Builds attractive WhatsApp message for the referred customer or driver partner.
  */
-function buildWhatsAppInviteText(leadName, driverName, leadType = "customer") {
+function buildWhatsAppInviteText(leadName, driverName, leadType = "customer", helplineNumber = "+91 9109114515") {
   const greeting = leadName ? `Namaste ${leadName} ji! 🙏` : `Namaste! 🙏`;
   const referrer = driverName ? `Aapke dost *${driverName}* (Shifter Partner)` : `Shifter Partner`;
 
@@ -21,7 +21,7 @@ function buildWhatsAppInviteText(leadName, driverName, leadType = "customer") {
       `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily behtareen kamai karein!\n\n` +
       `📲 *Shifter Driver App* abhi download karein aur aasaani se register karein:\n` +
       `👉 ${DRIVER_APP_DOWNLOAD_URL}\n\n` +
-      `Driver Helpline: +91 9109114515\n` +
+      `Helpline: ${helplineNumber}\n` +
       `— *Team Shifter Online*`
     );
   }
@@ -32,7 +32,7 @@ function buildWhatsAppInviteText(leadName, driverName, leadType = "customer") {
     `Ab kisi bhi saman ko bhejna, mini-truck ya tempo book karna hua behad aasan aur kifayati!\n\n` +
     `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
     `👉 ${CUSTOMER_APP_DOWNLOAD_URL}\n\n` +
-    `Helpline: +91 9999908008\n` +
+    `Helpline: ${helplineNumber}\n` +
     `— *Team Shifter Online*`
   );
 }
@@ -80,8 +80,29 @@ async function sendLeadInvite(leadId) {
     }
   }
 
+  // Fetch helpline from admin app_settings
+  let helplineNumber = "+91 9109114515";
+  try {
+    const careRow = await prisma.app_settings.findUnique({
+      where: { setting_key: "customer_care_number" },
+    });
+    if (careRow?.setting_value?.trim()) {
+      const raw = careRow.setting_value.trim();
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 10) {
+        helplineNumber = `+91 ${digits}`;
+      } else if (digits.length === 12 && digits.startsWith("91")) {
+        helplineNumber = `+91 ${digits.slice(2)}`;
+      } else {
+        helplineNumber = raw;
+      }
+    }
+  } catch (e) {
+    logger.warn("Could not load customer_care_number setting:", e.message);
+  }
+
   const leadType = lead.lead_type || "customer";
-  const whatsappMsg = buildWhatsAppInviteText(lead.name, driverName, leadType);
+  const whatsappMsg = buildWhatsAppInviteText(lead.name, driverName, leadType, helplineNumber);
   const smsMsg = buildSmsInviteText(lead.name, driverName, leadType);
 
   let whatsappSent = false;

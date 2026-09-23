@@ -183,7 +183,7 @@ export default function UserLeads() {
         `Ab kisi bhi saman ko bhejna, shifting ya tempo book karna hua behad aasan aur kifayati!\n\n` +
         `📲 *Shifter Customer App* abhi download karein aur apni pehli booking par special discount paiye:\n` +
         `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-        `Helpline: +91 9999908008\n` +
+        `Helpline: +91 9109114515\n` +
         `— *Team Shifter Online*`
 
     return `https://wa.me/91${item.phone}?text=${encodeURIComponent(text)}`

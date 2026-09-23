@@ -187,6 +187,10 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name="com.shifter.driver.activity.ClearDueSuccessActivity"
+            android:exported="false" />
+
+        <activity
             android:name="com.shifter.driver.activity.NotificationActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

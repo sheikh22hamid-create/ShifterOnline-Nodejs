@@ -109,7 +109,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
 
   // ── Form State ─────────────────────────────────────────────────────────────
   final String dropdownvalue = '+91';
-  bool _termsAccepted       = true;
+  bool _termsAccepted       = false;
   bool _referralExpanded    = false;
   bool _isMobileChecking    = false;
   bool _isCreatingAccount   = false;

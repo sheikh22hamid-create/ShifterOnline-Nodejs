@@ -74,7 +74,17 @@ async function homeData(req, res) {
     const monthOrder = Number(pkgMonth.total_order || 0) + Number(buyMonth.total_order || 0);
     const monthEarning = Number(pkgMonth.earning || 0) + Number(buyMonth.earning || 0);
 
-    const setting = await prisma.setting.findFirst({ select: { reject_timer: true, rider_commission: true } });
+    const [setting, careSettings] = await Promise.all([
+      prisma.setting.findFirst({ select: { reject_timer: true, rider_commission: true } }),
+      prisma.app_settings.findMany({
+        where: { setting_key: { in: ["customer_care_number", "customer_care_email", "customer_care_hours"] } },
+      }),
+    ]);
+    const careMap = Object.fromEntries(careSettings.map((s) => [s.setting_key, s.setting_value]));
+    const customerCareNumber = careMap.customer_care_number || "+91 9109114515";
+    const customerCareEmail = careMap.customer_care_email || "support@shifteronline.com";
+    const customerCareHours = careMap.customer_care_hours || "24/7 Helpline";
+
     const rider = await prisma.tbl_rider.findUnique({ where: { id: rid } });
     if (!rider) return fail(res, "Something Went Wrong!");
 
@@ -187,6 +197,9 @@ async function homeData(req, res) {
       referral_code: referralCode,
       referral_points: rider.referral_points || 0,
       referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
+      customer_care_number: customerCareNumber,
+      customer_care_email: customerCareEmail,
+      customer_care_hours: customerCareHours,
       report_data: { today_order: todayOrderStr, today_earning: todayEarningStr, month_order: monthOrderStr, month_earning: monthEarningStr, wallet: walletStr },
       ResponseCode: "200",
       Result: "true",
@@ -255,7 +268,7 @@ async function pageList(req, res) {
       ResponseMsg: list.length ? "Pages List Founded!" : "Pages list empty",
       referral_code: referralCode,
       referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
-      customer_care_number: careMap.customer_care_number || "+91 9999908008",
+      customer_care_number: careMap.customer_care_number || "+91 9109114515",
       customer_care_email: careMap.customer_care_email || "support@shifteronline.com",
       customer_care_hours: careMap.customer_care_hours || "24/7 Helpline",
     });

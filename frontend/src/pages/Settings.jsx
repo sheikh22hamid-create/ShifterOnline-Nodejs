@@ -282,7 +282,7 @@ function SettingsForm({ data, onSaved }) {
             <Label htmlFor="customer_care_number">Helpline / Support Phone Number</Label>
             <Input
               id="customer_care_number"
-              placeholder="+91 9999908008"
+              placeholder="+91 9109114515"
               value={flags.customer_care_number ?? ''}
               onChange={(e) => setFlags((f) => ({ ...f, customer_care_number: e.target.value }))}
             />

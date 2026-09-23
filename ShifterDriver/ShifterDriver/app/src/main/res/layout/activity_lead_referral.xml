@@ -259,149 +259,171 @@
                     android:textSize="11sp" />
             </LinearLayout>
 
-            <!-- Search Bar -->
+            <!-- Search Bar + Quick Action Controls (Visible only after permission granted) -->
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="10dp"
-                android:layout_marginEnd="16dp"
-                android:background="@drawable/bg_search_input_pill"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp">
-
-                <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
-                    android:src="@drawable/ic_search_lens"
-                    app:tint="@color/shifter_orange"
-                    android:contentDescription="Search" />
-
-                <EditText
-                    android:id="@+id/ed_search_contact"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:background="@null"
-                    android:hint="Search contact by name or number..."
-                    android:imeOptions="actionSearch"
-                    android:inputType="text"
-                    android:textColor="#0F172A"
-                    android:textColorHint="#94A3B8"
-                    android:textSize="13sp"
-                    android:minHeight="48dp" />
-
-                <ImageView
-                    android:id="@+id/img_clear_search"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@drawable/ic_close"
-                    app:tint="#94A3B8"
-                    android:visibility="gone"
-                    android:contentDescription="Clear" />
-            </LinearLayout>
-
-            <!-- Quick Action Bar (Select All / Count) -->
-            <LinearLayout
+                android:id="@+id/layout_contacts_controls"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginTop="10dp"
-                android:layout_marginEnd="16dp"
-                android:layout_marginBottom="4dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="vertical"
+                android:visibility="gone">
 
-                <TextView
-                    android:id="@+id/btn_toggle_select_all"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_select_all_pill"
+                <!-- Search Bar -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginStart="16dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginEnd="16dp"
+                    android:background="@drawable/bg_search_input_pill"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
                     android:paddingStart="12dp"
-                    android:paddingTop="6dp"
-                    android:paddingEnd="12dp"
-                    android:paddingBottom="6dp"
-                    android:text="Select All"
-                    android:textColor="@color/shifter_orange_dark"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
+                    android:paddingEnd="12dp">
 
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="1dp"
-                    android:layout_weight="1" />
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@drawable/ic_search_lens"
+                        app:tint="@color/shifter_orange"
+                        android:contentDescription="Search" />
 
-                <TextView
-                    android:id="@+id/txt_selected_count"
-                    android:layout_width="wrap_content"
+                    <EditText
+                        android:id="@+id/ed_search_contact"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@null"
+                        android:hint="Search contact by name or number..."
+                        android:imeOptions="actionSearch"
+                        android:inputType="text"
+                        android:textColor="#0F172A"
+                        android:textColorHint="#94A3B8"
+                        android:textSize="13sp"
+                        android:minHeight="48dp" />
+
+                    <ImageView
+                        android:id="@+id/img_clear_search"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_close"
+                        app:tint="#94A3B8"
+                        android:visibility="gone"
+                        android:contentDescription="Clear" />
+                </LinearLayout>
+
+                <!-- Quick Action Bar (Select All / Count) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="0 selected"
-                    android:textColor="@color/shifter_orange"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
+                    android:layout_marginStart="16dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginEnd="16dp"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_toggle_select_all"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_select_all_pill"
+                        android:paddingStart="12dp"
+                        android:paddingTop="6dp"
+                        android:paddingEnd="12dp"
+                        android:paddingBottom="6dp"
+                        android:text="Select All"
+                        android:textColor="@color/shifter_orange_dark"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="1dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:id="@+id/txt_selected_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0 selected"
+                        android:textColor="@color/shifter_orange"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
             </LinearLayout>
 
             <!-- Permission Denied Fallback -->
-            <LinearLayout
+            <androidx.core.widget.NestedScrollView
                 android:id="@+id/layout_permission_denied"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="24dp"
+                android:fillViewport="true"
+                android:overScrollMode="never"
                 android:visibility="gone">
 
-                <FrameLayout
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:background="@drawable/bg_circle_orange_light">
-
-                    <ImageView
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:layout_gravity="center"
-                        android:src="@drawable/ic_phone"
-                        app:tint="@color/shifter_orange"
-                        android:contentDescription="Phone" />
-                </FrameLayout>
-
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="Contact Permission Needed"
-                    android:textColor="#0F172A"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
                     android:gravity="center"
-                    android:text="To refer your friends and earn reward points, please grant contact permission."
-                    android:textColor="@color/home_secondary"
-                    android:textSize="13sp" />
+                    android:orientation="vertical"
+                    android:paddingHorizontal="24dp"
+                    android:paddingVertical="16dp">
 
-                <TextView
-                    android:id="@+id/btn_grant_permission"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:background="@drawable/bg_btn_shifter_orange"
-                    android:paddingStart="24dp"
-                    android:paddingTop="11dp"
-                    android:paddingEnd="24dp"
-                    android:paddingBottom="11dp"
-                    android:text="Grant Contacts Permission"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                    <FrameLayout
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:background="@drawable/bg_circle_orange_light">
+
+                        <ImageView
+                            android:layout_width="30dp"
+                            android:layout_height="30dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_phone"
+                            app:tint="@color/shifter_orange"
+                            android:contentDescription="Phone" />
+                    </FrameLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Contact Permission Needed"
+                        android:textColor="#0F172A"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center"
+                        android:text="To refer your friends and earn reward points, please grant contact permission."
+                        android:textColor="@color/home_secondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/btn_grant_permission"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:layout_marginBottom="12dp"
+                        android:background="@drawable/bg_btn_shifter_orange"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:minHeight="46dp"
+                        android:paddingStart="28dp"
+                        android:paddingTop="12dp"
+                        android:paddingEnd="28dp"
+                        android:paddingBottom="12dp"
+                        android:text="Grant Contacts Permission"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
 
             <!-- Loading Indicator for Contacts -->
             <ProgressBar

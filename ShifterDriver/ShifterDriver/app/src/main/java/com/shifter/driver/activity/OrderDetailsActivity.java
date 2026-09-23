@@ -21,7 +21,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -64,7 +63,7 @@ import okhttp3.MediaType;
 import okhttp3.RequestBody;
 import retrofit2.Call;
 
-public class OrderDetailsActivity extends AppCompatActivity
+public class OrderDetailsActivity extends LocaleAwareActivity
         implements OnMapReadyCallback, TaskLoadedCallback, GetResult.MyListener {
 
     private ActivityOrderDetailsBinding binding;

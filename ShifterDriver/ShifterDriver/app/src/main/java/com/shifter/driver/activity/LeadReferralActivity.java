@@ -15,9 +15,11 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.google.gson.Gson;
@@ -49,7 +51,7 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class LeadReferralActivity extends AppCompatActivity {
+public class LeadReferralActivity extends LocaleAwareActivity {
 
     private static final int REQ_CONTACTS_PERMISSION = 201;
 
@@ -69,6 +71,13 @@ public class LeadReferralActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         binding = ActivityLeadReferralBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        // Safe bottom insets for system navigation bar (3-button / gesture bar)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
+            Insets navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            v.setPadding(0, 0, 0, navInsets.bottom);
+            return insets;
+        });
 
         sessionManager = new SessionManager(this);
         RiderData riderData = sessionManager.getUserDetails();
@@ -230,11 +239,13 @@ public class LeadReferralActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
                 == PackageManager.PERMISSION_GRANTED) {
             binding.layoutPermissionDenied.setVisibility(View.GONE);
+            binding.layoutContactsControls.setVisibility(View.VISIBLE);
             binding.recyclerContacts.setVisibility(View.VISIBLE);
             binding.layoutBottomSubmit.setVisibility(View.VISIBLE);
             loadContactsAsync();
         } else {
             binding.layoutPermissionDenied.setVisibility(View.VISIBLE);
+            binding.layoutContactsControls.setVisibility(View.GONE);
             binding.recyclerContacts.setVisibility(View.GONE);
             binding.layoutBottomSubmit.setVisibility(View.GONE);
         }

@@ -66,7 +66,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
     CustPrograssbar custPrograssbar;
     private String referralCode = "";
     private String referralMsg = "";
-    private String customerCareNumber = "+91 9999908008";
+    private String customerCareNumber = "+91 9109114515";
     private String customerCareEmail = "support@shifter.online";
     private String customerCareHours = "24/7 Helpline";
 
@@ -84,6 +84,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         sessionManager = new SessionManager(getActivity());
         user = sessionManager.getUserDetails();
         custPrograssbar = new CustPrograssbar();
+        customerCareNumber = sessionManager.getCustomerCareNumber();
 
         binding.cardProfile.setOnClickListener(this::onBindClick);
         binding.lvlEdit.setOnClickListener(this::onBindClick);
@@ -662,7 +663,10 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
                 }
                 if (result.has("customer_care_number") && !result.get("customer_care_number").isJsonNull()) {
                     String num = result.get("customer_care_number").getAsString().trim();
-                    if (!num.isEmpty()) customerCareNumber = num;
+                    if (!num.isEmpty()) {
+                        customerCareNumber = num;
+                        if (sessionManager != null) sessionManager.setCustomerCareNumber(num);
+                    }
                 }
                 if (result.has("customer_care_email") && !result.get("customer_care_email").isJsonNull()) {
                     String email = result.get("customer_care_email").getAsString().trim();

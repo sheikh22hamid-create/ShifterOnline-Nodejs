@@ -183,6 +183,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         getHome();
         getPackageList();
+        fetchCustomerSupportSettings();
 
         // Active Order Cards click listeners
         binding.crdOrder.setOnClickListener(this::onBindClick);
@@ -343,14 +344,16 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         });
 
 
-        // 4. Support (Dial Toll-Free / Help)
+        // 4. Support (Dial Support Helpline configured in Admin Panel)
         binding.btnQuickSupport.setOnClickListener(v -> {
+            String supportNum = sessionManager != null ? sessionManager.getCustomerCareNumber() : "+91 9999908008";
+            String cleanDial = supportNum.replaceAll("[^0-9+]", "");
             try {
                 Intent dialIntent = new Intent(Intent.ACTION_DIAL);
-                dialIntent.setData(android.net.Uri.parse("tel:1800123456"));
+                dialIntent.setData(android.net.Uri.parse("tel:" + cleanDial));
                 startActivity(dialIntent);
             } catch (Exception e) {
-                Toast.makeText(getActivity(), "Customer Support: 1800-123-456", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getActivity(), "Customer Support: " + supportNum, Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -722,6 +725,35 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         getResult.callForLogin(call, "1");
     }
 
+    private void fetchCustomerSupportSettings() {
+        try {
+            JSONObject jsonObject = new JSONObject();
+            int rid = (riderData != null) ? riderData.getId() : 0;
+            jsonObject.put("rid", rid);
+            RequestBody body = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
+            NodeApiClient.getInterface().pagelist(body).enqueue(new retrofit2.Callback<JsonObject>() {
+                @Override
+                public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        JsonObject obj = response.body();
+                        if (obj.has("customer_care_number") && !obj.get("customer_care_number").isJsonNull()) {
+                            String num = obj.get("customer_care_number").getAsString().trim();
+                            if (!num.isEmpty() && sessionManager != null) {
+                                sessionManager.setCustomerCareNumber(num);
+                            }
+                        }
+                    }
+                }
+
+                @Override
+                public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void callback(JsonObject result, String callNo) {
         if (binding == null || !isAdded()) return;
@@ -741,6 +773,12 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 }
 
                 if (homeData.getResult().equalsIgnoreCase("true")) {
+                    if (result.has("customer_care_number") && !result.get("customer_care_number").isJsonNull()) {
+                        String careNum = result.get("customer_care_number").getAsString().trim();
+                        if (!careNum.isEmpty() && sessionManager != null) {
+                            sessionManager.setCustomerCareNumber(careNum);
+                        }
+                    }
                     boolean apiOnline = false;
                     if (result.has("Online") && !result.get("Online").isJsonNull()) {
                         try {
@@ -956,6 +994,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     public void onRefresh() {
         getHome();
         getPackageList();
+        fetchCustomerSupportSettings();
         setupMonthlyDriverUI();
     }
 
