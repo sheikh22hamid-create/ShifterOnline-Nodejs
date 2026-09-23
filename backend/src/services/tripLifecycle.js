@@ -709,6 +709,14 @@ async function updateStatus(orderId, riderId, status) {
       logger.error(`applyPendingRewardPlanIfAny error for order ${orderId}:`, err);
     });
 
+    // Fire-and-forget, same pattern - checks the customer's lifetime
+    // completed-ride count against admin-configured milestone tiers and
+    // activates any newly-crossed one. Applies to every customer, unlike the
+    // per-customer pending reward above.
+    rewardPlanService.applyRideMilestoneRewardsIfAny({ uid: order.uid, orderId }).catch((err) => {
+      logger.error(`applyRideMilestoneRewardsIfAny error for order ${orderId}:`, err);
+    });
+
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     return { success: true, order_status: 5, o_status: "Completed" };
   }

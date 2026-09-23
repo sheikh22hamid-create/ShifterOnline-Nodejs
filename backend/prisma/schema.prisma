@@ -1075,6 +1075,38 @@ enum tbl_pending_reward_plan_status {
   cancelled
 }
 
+/// Admin-configured milestone tiers: "on their Nth completed ride, give this
+/// customer this plan". Applies to every USER customer going forward (not a
+/// per-customer assignment like tbl_pending_reward_plan).
+model tbl_ride_milestone_reward {
+  id               Int      @id @default(autoincrement())
+  rides_required   Int      @unique(map: "uniq_milestone_rides_required")
+  plan_id          Int
+  status           Boolean  @default(true)
+  created_by_admin Int
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+  updated_at       DateTime @default(now()) @db.Timestamp(0)
+}
+
+/// One row per (user, milestone) that has been evaluated, so a customer's
+/// lifetime ride count crossing the same tier again (or two concurrent
+/// completions) never double-applies it.
+model tbl_ride_milestone_applied {
+  id           Int                          @id @default(autoincrement())
+  user_id      Int
+  milestone_id Int
+  status       tbl_ride_milestone_applied_status
+  order_id     Int?
+  applied_at   DateTime                     @default(now()) @db.Timestamp(0)
+
+  @@unique([user_id, milestone_id], map: "uniq_milestone_applied_user_milestone")
+}
+
+enum tbl_ride_milestone_applied_status {
+  applied
+  skipped_active_plan
+}
+
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model tbl_user_referrals {
   id               Int       @id @default(autoincrement())

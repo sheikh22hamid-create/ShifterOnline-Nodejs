@@ -30,6 +30,7 @@ const Coupons = lazy(() => import('./pages/Coupons'))
 const Banners = lazy(() => import('./pages/Banners'))
 const PushNotifications = lazy(() => import('./pages/PushNotifications'))
 const Referrals = lazy(() => import('./pages/Referrals'))
+const RideMilestones = lazy(() => import('./pages/RideMilestones'))
 const DriverLeads = lazy(() => import('./pages/DriverLeads'))
 const UserLeads = lazy(() => import('./pages/UserLeads'))
 const Reports = lazy(() => import('./pages/Reports'))
@@ -100,6 +101,7 @@ function App() {
             <Route path="/marketing/banners" element={<Banners />} />
             <Route path="/marketing/push-notifications" element={<Gated roles={['superadmin', 'admin']}><PushNotifications /></Gated>} />
             <Route path="/referrals" element={<Referrals />} />
+            <Route path="/ride-milestones" element={<RideMilestones />} />
             <Route path="/driver-leads" element={<DriverLeads />} />
             <Route path="/user-leads" element={<UserLeads />} />
 

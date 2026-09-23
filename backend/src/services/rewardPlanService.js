@@ -176,10 +176,128 @@ async function applyPendingRewardPlanIfAny({ uid, orderId }) {
   }
 }
 
+// --- Ride-milestone rewards -------------------------------------------------
+// Admin-configured tiers ("on their Nth completed ride, give this customer
+// this plan") that apply to every USER customer automatically, as opposed to
+// tbl_pending_reward_plan above which is a one-off per-customer assignment.
+
+async function listMilestoneRewards() {
+  const rows = await prisma.tbl_ride_milestone_reward.findMany({ orderBy: { rides_required: "asc" } });
+  if (rows.length === 0) return rows;
+  // No Prisma relation is declared between tbl_ride_milestone_reward.plan_id
+  // and tbl_premium_plan (same pattern as tbl_pending_reward_plan), so the
+  // plan name is joined in manually for the admin list view.
+  const plans = await prisma.tbl_premium_plan.findMany({ where: { id: { in: rows.map((r) => r.plan_id) } } });
+  const plansById = new Map(plans.map((p) => [p.id, p]));
+  return rows.map((r) => ({ ...r, plan: plansById.get(r.plan_id) || null }));
+}
+
+async function createMilestoneReward({ ridesRequired, planId, adminId }) {
+  const rides = Number(ridesRequired);
+  if (!Number.isInteger(rides) || rides <= 0) throw new Error("rides_required must be a positive whole number.");
+  const plan = await prisma.tbl_premium_plan.findFirst({ where: { id: Number(planId), plan_for: "USER", status: true } });
+  if (!plan) throw new Error("Plan not found or inactive.");
+  return prisma.tbl_ride_milestone_reward.create({
+    data: { rides_required: rides, plan_id: plan.id, created_by_admin: Number(adminId) },
+  });
+}
+
+async function updateMilestoneReward({ id, ridesRequired, planId, status }) {
+  const data = {};
+  if (ridesRequired !== undefined) {
+    const rides = Number(ridesRequired);
+    if (!Number.isInteger(rides) || rides <= 0) throw new Error("rides_required must be a positive whole number.");
+    data.rides_required = rides;
+  }
+  if (planId !== undefined) {
+    const plan = await prisma.tbl_premium_plan.findFirst({ where: { id: Number(planId), plan_for: "USER", status: true } });
+    if (!plan) throw new Error("Plan not found or inactive.");
+    data.plan_id = plan.id;
+  }
+  if (status !== undefined) data.status = Boolean(status);
+
+  const existing = await prisma.tbl_ride_milestone_reward.findUnique({ where: { id: Number(id) } });
+  if (!existing) throw new Error("Milestone not found.");
+  return prisma.tbl_ride_milestone_reward.update({ where: { id: Number(id) }, data });
+}
+
+async function deleteMilestoneReward({ id }) {
+  const existing = await prisma.tbl_ride_milestone_reward.findUnique({ where: { id: Number(id) } });
+  if (!existing) throw new Error("Milestone not found.");
+  await prisma.tbl_ride_milestone_reward.delete({ where: { id: Number(id) } });
+  return { success: true };
+}
+
+/**
+ * Called fire-and-forget from tripLifecycle on every completed customer
+ * order, same pattern as applyPendingRewardPlanIfAny above. Counts the
+ * customer's lifetime completed rides and activates any admin-configured
+ * milestone tier they've just crossed for the first time.
+ *
+ * Each (user, milestone) pair is claimed via an insert into
+ * tbl_ride_milestone_applied guarded by its unique constraint, so a retried
+ * or concurrent completion can never double-apply the same tier. If the
+ * customer already has an active plan, the tier is recorded as skipped
+ * rather than stacked/replaced - admin can see it happened and grant it
+ * manually via the "Give reward plan" flow if they still want to.
+ */
+async function applyRideMilestoneRewardsIfAny({ uid, orderId }) {
+  if (!uid) return [];
+
+  const [tiers, ridesCompleted] = await Promise.all([
+    prisma.tbl_ride_milestone_reward.findMany({ where: { status: true }, orderBy: { rides_required: "asc" } }),
+    prisma.pkg_order.count({ where: { uid: Number(uid), o_status: "Completed" } }),
+  ]);
+
+  const crossedTiers = tiers.filter((t) => t.rides_required <= ridesCompleted);
+  if (crossedTiers.length === 0) return [];
+
+  const results = [];
+  for (const tier of crossedTiers) {
+    try {
+      await prisma.tbl_ride_milestone_applied.create({
+        data: { user_id: Number(uid), milestone_id: tier.id, status: "applied", order_id: Number(orderId) || null },
+      });
+    } catch (err) {
+      // Unique constraint hit -> already applied/skipped for this user+tier
+      // (by this call or a concurrent one). Nothing to do, move to next tier.
+      continue;
+    }
+
+    const activeSubscription = await prisma.tbl_user_plan_subscription.findFirst({
+      where: { user_id: Number(uid), plan_for: "USER", plan_type: "CUSTOMER_PREMIUM", status: "active" },
+    });
+    if (activeSubscription) {
+      await prisma.tbl_ride_milestone_applied.updateMany({
+        where: { user_id: Number(uid), milestone_id: tier.id },
+        data: { status: "skipped_active_plan" },
+      });
+      results.push({ tier, skipped: true });
+      continue;
+    }
+
+    try {
+      const result = await activatePlan({ userId: uid, planFor: "USER", planId: tier.plan_id, source: "ride_milestone" });
+      notifyAssigned(result.entity, result.plan.plan_name);
+      results.push({ tier, skipped: false, ...result });
+    } catch (err) {
+      logger.error(`rewardPlanService.applyRideMilestoneRewardsIfAny: activation failed for user ${uid}, tier ${tier.id}:`, err);
+      // Leave the applied row as-is (claimed) rather than retrying forever -
+      // a deleted/deactivated plan needs an admin fix, not an infinite loop.
+    }
+  }
+  return results;
+}
+
 module.exports = {
   assignPlanNow,
   setPendingRewardPlan,
   cancelPendingRewardPlan,
   getPendingRewardPlan,
   applyPendingRewardPlanIfAny,
+  listMilestoneRewards,
+  createMilestoneReward,
+  updateMilestoneReward,
+  deleteMilestoneReward,
+  applyRideMilestoneRewardsIfAny,
 };

@@ -57,4 +57,55 @@ async function getPending(req, res) {
   }
 }
 
-module.exports = { assignNow, setPending, cancelPending, getPending };
+/** List all ride-milestone tiers (admin-configured, applies to every customer). */
+async function listMilestones(req, res) {
+  try {
+    const rows = await rewardPlanService.listMilestoneRewards();
+    return res.status(200).json({ success: true, data: rows });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.listMilestones");
+  }
+}
+
+async function createMilestone(req, res) {
+  try {
+    const { rides_required, plan_id } = req.body;
+    if (!rides_required || !plan_id) {
+      return res.status(400).json({ success: false, message: "rides_required and plan_id are required" });
+    }
+    const milestone = await rewardPlanService.createMilestoneReward({ ridesRequired: rides_required, planId: plan_id, adminId: req.user.id });
+    return res.status(201).json({ success: true, message: "Ride milestone created.", data: milestone });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.createMilestone");
+  }
+}
+
+async function updateMilestone(req, res) {
+  try {
+    const { rides_required, plan_id, status } = req.body;
+    const milestone = await rewardPlanService.updateMilestoneReward({ id: req.params.id, ridesRequired: rides_required, planId: plan_id, status });
+    return res.status(200).json({ success: true, message: "Ride milestone updated.", data: milestone });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.updateMilestone");
+  }
+}
+
+async function deleteMilestone(req, res) {
+  try {
+    await rewardPlanService.deleteMilestoneReward({ id: req.params.id });
+    return res.status(200).json({ success: true, message: "Ride milestone deleted." });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.deleteMilestone");
+  }
+}
+
+module.exports = {
+  assignNow,
+  setPending,
+  cancelPending,
+  getPending,
+  listMilestones,
+  createMilestone,
+  updateMilestone,
+  deleteMilestone,
+};
