@@ -67,6 +67,7 @@ const HANDLED_FLAG_KEYS = [
   'customer_care_number',
   'customer_care_email',
   'customer_care_hours',
+  'driver_min_withdrawal_amount',
 ]
 
 function PaymentGateways() {
@@ -288,6 +289,20 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               If the customer doesn't hand over the pickup OTP within this many minutes of the driver arriving, the ride auto-cancels from the customer's side.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-driver_min_withdrawal_amount">Driver minimum withdrawal amount (₹)</Label>
+            <Input
+              id="flag-driver_min_withdrawal_amount"
+              type="number"
+              min="0"
+              placeholder="e.g. 500"
+              value={flags.driver_min_withdrawal_amount ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, driver_min_withdrawal_amount: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              A driver can only withdraw from their ledger once its balance exceeds this amount. Set to 0 to allow withdrawal at any positive balance.
             </p>
           </div>
         </Section>

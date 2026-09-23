@@ -168,7 +168,7 @@ export default function Drivers() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Driver', 'Vehicle', 'City', 'Status', 'KYC', 'Payment', 'Wallet', ''].map((h) => (
+                {['Driver', 'Vehicle', 'City', 'Status', 'KYC', 'Payment', 'Ledger', ''].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>

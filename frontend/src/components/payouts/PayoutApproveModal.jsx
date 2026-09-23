@@ -54,7 +54,7 @@ export default function PayoutApproveModal({ open, payout, onClose, onDone }) {
         </div>
       )}
       <p className="mb-3 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Approving debits <span className="font-mono-data">₹{payout?.amount}</span> from the driver's wallet and marks
+        Approving debits <span className="font-mono-data">₹{payout?.amount}</span> from the driver's ledger and marks
         this withdrawal request as paid.
       </p>
       <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="txn-ref">

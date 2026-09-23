@@ -478,7 +478,7 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                   label="City"
                   value={rider.city_name || (rider.city_id ? `City #${rider.city_id}` : '—')}
                 />
-                <Field label="Wallet balance" value={<span className="font-mono-data">{formatCurrency(rider.wallet_balance)}</span>} />
+                <Field label="Ledger balance" value={<span className="font-mono-data">{formatCurrency(rider.wallet_balance)}</span>} />
                 <Field label="Joined" value={formatDateTime(rider.rdate)} />
                 {rider.full_address && (
                   <div className="col-span-2 border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
