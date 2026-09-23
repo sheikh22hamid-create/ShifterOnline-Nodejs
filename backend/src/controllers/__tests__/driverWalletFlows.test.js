@@ -1,7 +1,8 @@
 jest.mock("../../config/db", () => ({
   tbl_rider: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_user: { findFirst: jest.fn(), update: jest.fn() },
-  tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn() },
+  tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+  driver_withdraw_requests: { aggregate: jest.fn(), findFirst: jest.fn() },
   app_settings: { findFirst: jest.fn() },
   $transaction: jest.fn(),
 }));
@@ -100,5 +101,67 @@ describe("customerWalletController.withdrawWallet", () => {
     await withdrawWallet({ body: { ...driverBody, amount: 100 } }, res);
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ResponseCode: "402", Result: "false" }));
+  });
+});
+
+jest.mock("../../services/driverWalletSettings", () => ({ getDriverMaxDueLimit: jest.fn() }));
+
+describe("customerWalletController.walletHistory outstanding-due fields", () => {
+  const { walletHistory } = require("../customerWalletController");
+  const { getDriverMaxDueLimit } = require("../../services/driverWalletSettings");
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.tbl_wallet_history.findMany.mockResolvedValue([]);
+    prisma.driver_withdraw_requests.aggregate.mockResolvedValue({ _sum: { amount: null } });
+    prisma.driver_withdraw_requests.findFirst.mockResolvedValue(null);
+    getDriverMaxDueLimit.mockResolvedValue(100);
+  });
+
+  async function request(riderOverrides) {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "0.00", ...riderOverrides });
+    const res = mockRes();
+    await walletHistory({ body: { mobile: "9000000000", wallet_type: "driver" } }, res);
+    return res.json.mock.calls[0][0];
+  }
+
+  it("balance = 0: cannot withdraw, cannot clear due, limit not reached", async () => {
+    const result = await request({ wallet_balance: "0.00" });
+    expect(result.can_withdraw).toBe(false);
+    expect(result.can_clear_due).toBe(false);
+    expect(result.outstanding_due).toBe("0.00");
+    expect(result.due_limit_reached).toBe(false);
+  });
+
+  it("balance = -70 (within limit): cannot withdraw, can clear due, limit not reached", async () => {
+    const result = await request({ wallet_balance: "-70.00" });
+    expect(result.can_withdraw).toBe(false);
+    expect(result.can_clear_due).toBe(true);
+    expect(result.outstanding_due).toBe("70.00");
+    expect(result.max_due_limit).toBe(100);
+    expect(result.due_limit_reached).toBe(false);
+  });
+
+  it("balance = -100 (at limit): due_limit_reached is true", async () => {
+    const result = await request({ wallet_balance: "-100.00" });
+    expect(result.can_clear_due).toBe(true);
+    expect(result.due_limit_reached).toBe(true);
+  });
+
+  it("balance = 690 (positive): can withdraw, cannot clear due", async () => {
+    const result = await request({ wallet_balance: "690.00" });
+    expect(result.can_withdraw).toBe(true);
+    expect(result.can_clear_due).toBe(false);
+    expect(result.outstanding_due).toBe("0.00");
+  });
+
+  it("does not add these fields for a customer wallet", async () => {
+    prisma.tbl_user.findFirst.mockResolvedValue({ id: 2, wallet: "90.00" });
+    const res = mockRes();
+    await walletHistory({ body: { mobile: "9000000000", wallet_type: "user" } }, res);
+    const result = res.json.mock.calls[0][0];
+    expect(result).not.toHaveProperty("outstanding_due");
+    expect(result).not.toHaveProperty("can_withdraw");
+    expect(getDriverMaxDueLimit).not.toHaveBeenCalled();
   });
 });

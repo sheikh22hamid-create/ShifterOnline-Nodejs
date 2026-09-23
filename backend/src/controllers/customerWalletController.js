@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
+const { getDriverMaxDueLimit } = require("../services/driverWalletSettings");
 
 // Node port of cust_api/add_wallet.php, wallet_history.php,
 // withdraw_wallet.php + rider_api equivalents (rider_api has no dedicated
@@ -183,15 +184,23 @@ async function walletHistory(req, res) {
     const rows = await prisma.tbl_wallet_history.findMany({ where, orderBy: { id: "desc" } });
     let withdrawalSummary = {};
     if (walletType === "driver") {
-      const [pending, latest] = await Promise.all([
+      const [pending, latest, maxDueLimit] = await Promise.all([
         prisma.driver_withdraw_requests.aggregate({ where: { rider_id: userId, status: "pending" }, _sum: { amount: true } }),
         prisma.driver_withdraw_requests.findFirst({ where: { rider_id: userId }, orderBy: { id: "desc" }, select: { id: true, amount: true, status: true, created_at: true } }),
+        getDriverMaxDueLimit(),
       ]);
       const pendingAmount = Number(pending._sum.amount || 0);
+      const balanceNum = Number(wallet || 0);
+      const outstandingDue = Math.max(0, -balanceNum);
       withdrawalSummary = {
         pending_withdrawal_amount: pendingAmount.toFixed(2),
-        available_to_withdraw: Math.max(0, Number(wallet || 0) - pendingAmount).toFixed(2),
+        available_to_withdraw: Math.max(0, balanceNum - pendingAmount).toFixed(2),
         latest_withdrawal: latest ? { id: latest.id, amount: Number(latest.amount || 0).toFixed(2), status: latest.status, created_at: latest.created_at } : null,
+        outstanding_due: outstandingDue.toFixed(2),
+        max_due_limit: maxDueLimit,
+        can_withdraw: balanceNum > 0,
+        can_clear_due: balanceNum < 0,
+        due_limit_reached: balanceNum <= -maxDueLimit,
       };
     }
     const totalCredit = rows.filter((r) => r.type === "credit").reduce((s, r) => s + Number(r.amount || 0), 0);
