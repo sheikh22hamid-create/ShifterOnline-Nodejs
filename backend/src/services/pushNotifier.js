@@ -136,6 +136,16 @@ async function notifyCustomerLatePickup(fcmToken, orderId, scheduleDateTime) {
   );
 }
 
+/** See adminOrderController.assignNextDayBatch — admin pre-assigned a driver to this customer's next-day (booking_type=3) order the night before. */
+async function notifyCustomerNextDayAssigned(fcmToken, data) {
+  return sendPushNotification(
+    fcmToken,
+    "Driver assigned for tomorrow",
+    `${data.rider_name || "A driver"} has been assigned to pick you up tomorrow.`,
+    stringifyPayload({ ...data, type: "next_day_assigned" })
+  );
+}
+
 /** Fired by rewardPlanService whenever an admin-granted plan actually activates (immediate grant or a pending reward applied on ride completion). */
 async function notifyRewardPlanAssigned(fcmToken, planName) {
   return sendPushNotification(
@@ -158,5 +168,6 @@ module.exports = {
   notifyCustomerScheduleReminder,
   notifyCustomerOrderLive,
   notifyCustomerLatePickup,
+  notifyCustomerNextDayAssigned,
   notifyRewardPlanAssigned,
 };

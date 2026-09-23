@@ -179,7 +179,7 @@ export default function NextDaySequenceModal({ open, orders, onClose, onAssigned
 
       <label className="flex items-center gap-2 text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
         <input type="checkbox" checked={notifyNow} onChange={(e) => setNotifyNow(e.target.checked)} />
-        Notify the driver now (informational only — no accept/reject)
+        Notify the driver and customers now (informational only — no accept/reject)
       </label>
     </Modal>
   )

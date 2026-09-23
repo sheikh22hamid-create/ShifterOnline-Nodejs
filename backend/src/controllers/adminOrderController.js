@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const dispatchManager = require("../services/dispatchManager");
 const pricingEngine = require("../services/pricingEngine");
+const pushNotifier = require("../services/pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const { getIO } = require("../sockets/socketServer");
 const { buildNextDaySequence } = require("../utils/geoDistance");
@@ -640,6 +641,40 @@ async function assignNextDayBatch(req, res) {
         });
       } catch (socketErr) {
         logger.error(`assignNextDayBatch: socket notify failed for rider ${riderId}:`, socketErr);
+      }
+
+      // Tell each order's customer too - previously only the driver learned
+      // about a next-day pre-assignment, leaving the customer with no idea
+      // who's picking them up tomorrow until the driver actually starts the
+      // run. Doesn't touch order_status/o_status (still "Pending" until
+      // pickup day) - this is purely a heads-up, not a lifecycle transition.
+      try {
+        const riderName = rider.full_name || `${rider.first_name || ""} ${rider.last_name || ""}`.trim();
+        const uids = [...new Set(orders.map((o) => o.uid))];
+        const customers = await prisma.tbl_user.findMany({
+          where: { id: { in: uids } },
+          select: { id: true, fcm_token: true },
+        });
+        const fcmByUid = new Map(customers.map((c) => [c.id, c.fcm_token]));
+        const io = getIO();
+        for (const o of orders) {
+          const payload = {
+            order_id: o.id,
+            rider_id: riderId,
+            rider_name: riderName,
+            rider_phone: rider.fmobile,
+            vehicle_no: rider.vehicle_no,
+          };
+          io.to(`customer_${o.uid}`).emit("order:next_day_assigned", payload);
+          const fcmToken = fcmByUid.get(o.uid);
+          if (fcmToken) {
+            pushNotifier.notifyCustomerNextDayAssigned(fcmToken, payload).catch((err) =>
+              logger.error(`assignNextDayBatch: customer push failed for order ${o.id}:`, err)
+            );
+          }
+        }
+      } catch (custErr) {
+        logger.error(`assignNextDayBatch: customer notify failed for rider ${riderId}:`, custErr);
       }
     }
 

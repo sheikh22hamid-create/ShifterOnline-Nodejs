@@ -3,17 +3,20 @@ jest.mock("../../config/db", () => ({
   pkg_order_interest: { groupBy: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
   tbl_rnoti: { create: jest.fn() },
+  tbl_user: { findMany: jest.fn() },
   order_status_history: { create: jest.fn() },
   $executeRaw: jest.fn(),
   $transaction: jest.fn(),
 }));
-jest.mock("../../services/dispatchManager", () => ({ stopDispatch: jest.fn() }));
+jest.mock("../../services/dispatchManager", () => ({ stopDispatch: jest.fn(), emitDirectAssign: jest.fn() }));
 jest.mock("../../services/pricingEngine", () => ({ priceForPackageId: jest.fn() }));
+jest.mock("../../services/pushNotifier", () => ({ notifyCustomerNextDayAssigned: jest.fn().mockResolvedValue() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn() }));
 jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn() }));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
+const pushNotifier = require("../../services/pushNotifier");
 const { getIO } = require("../../sockets/socketServer");
 const { assignRider, listNextDay, listScheduled, suggestNextDaySequence, assignNextDayBatch } = require("../adminOrderController");
 
@@ -199,13 +202,17 @@ describe("adminOrderController next-day orders", () => {
 
   describe("assignNextDayBatch", () => {
     it("sets rid, next_day_sequence and driver_earning on every order in the batch, and notifies the driver once", async () => {
-      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1 });
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1, full_name: "Deepak", fmobile: "9999999999", vehicle_no: "MP09 AB 1234" });
       prisma.pkg_order.findMany.mockResolvedValue([
-        { id: 200, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "A", daddress: "B", total_dcharge: 250 },
-        { id: 100, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "C", daddress: "D", total_dcharge: 300 },
+        { id: 200, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "A", daddress: "B", total_dcharge: 250, uid: 9 },
+        { id: 100, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "C", daddress: "D", total_dcharge: 300, uid: 11 },
       ]);
       prisma.pkg_order.update.mockResolvedValue({});
       prisma.$transaction.mockResolvedValue([{}, {}]);
+      prisma.tbl_user.findMany.mockResolvedValue([
+        { id: 9, fcm_token: "token-9" },
+        { id: 11, fcm_token: "token-11" },
+      ]);
       getIO.mockReturnValue({ to: jest.fn().mockReturnThis(), emit: jest.fn() });
       const req = {
         body: {
@@ -236,6 +243,43 @@ describe("adminOrderController next-day orders", () => {
       expect(io.emit).toHaveBeenCalledWith("order:next_day_assigned", expect.objectContaining({
         orders: expect.arrayContaining([expect.objectContaining({ order_id: 200, sequence: 1, fare: 250 })]),
       }));
+
+      // Each order's customer gets a live socket update and a push
+      // notification too, not just the driver.
+      expect(io.to).toHaveBeenCalledWith("customer_9");
+      expect(io.to).toHaveBeenCalledWith("customer_11");
+      expect(io.emit).toHaveBeenCalledWith("order:next_day_assigned", expect.objectContaining({
+        order_id: 200, rider_id: 2, rider_name: "Deepak", vehicle_no: "MP09 AB 1234",
+      }));
+      expect(pushNotifier.notifyCustomerNextDayAssigned).toHaveBeenCalledWith(
+        "token-9", expect.objectContaining({ order_id: 200, rider_name: "Deepak" })
+      );
+      expect(pushNotifier.notifyCustomerNextDayAssigned).toHaveBeenCalledWith(
+        "token-11", expect.objectContaining({ order_id: 100, rider_name: "Deepak" })
+      );
+
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("does not notify the driver or customers when notify_driver_now is false", async () => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1, full_name: "Deepak" });
+      prisma.pkg_order.findMany.mockResolvedValue([
+        { id: 200, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "A", daddress: "B", total_dcharge: 250, uid: 9 },
+      ]);
+      prisma.pkg_order.update.mockResolvedValue({});
+      prisma.$transaction.mockResolvedValue([{}]);
+      getIO.mockReturnValue({ to: jest.fn().mockReturnThis(), emit: jest.fn() });
+      const req = {
+        body: { rider_id: "2", notify_driver_now: false, sequence: [{ order_id: 200, position: 1 }] },
+        user: { role: "superadmin" },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(prisma.tbl_rnoti.create).not.toHaveBeenCalled();
+      expect(prisma.tbl_user.findMany).not.toHaveBeenCalled();
+      expect(pushNotifier.notifyCustomerNextDayAssigned).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
