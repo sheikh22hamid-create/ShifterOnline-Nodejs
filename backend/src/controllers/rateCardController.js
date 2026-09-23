@@ -18,6 +18,21 @@ const {
 
 const PACKAGE_TYPES = ["USER", "DRIVER"];
 
+// tbl_package.driver_card_subtitle / driver_info_subtitle are VarChar(255) -
+// without this check an over-long value reaches MySQL and fails with a raw
+// 500 instead of a readable 400, unlike driver_info_sections' own limits.
+const SUBTITLE_MAX_LENGTH = 255;
+
+class InvalidSubtitleError extends Error {}
+
+function validateSubtitleLength(field, rawValue) {
+  const trimmed = rawValue ? String(rawValue).trim() : "";
+  if (trimmed.length > SUBTITLE_MAX_LENGTH) {
+    throw new InvalidSubtitleError(`${field} cannot exceed ${SUBTITLE_MAX_LENGTH} characters`);
+  }
+  return trimmed || null;
+}
+
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
   return res.status(500).json({ success: false, message: "Internal server error" });
@@ -136,10 +151,14 @@ async function create(req, res) {
     }
 
     let infoSections;
+    let cardSubtitle;
+    let infoSubtitle;
     try {
       infoSections = normalizeInfoSections(b.driver_info_sections);
+      cardSubtitle = validateSubtitleLength("driver_card_subtitle", b.driver_card_subtitle);
+      infoSubtitle = validateSubtitleLength("driver_info_subtitle", b.driver_info_subtitle);
     } catch (e) {
-      if (e instanceof InvalidSectionsError) {
+      if (e instanceof InvalidSectionsError || e instanceof InvalidSubtitleError) {
         return res.status(400).json({ success: false, message: e.message });
       }
       throw e;
@@ -155,8 +174,8 @@ async function create(req, res) {
         title: b.title,
         user_title: b.user_title ? String(b.user_title).trim() : null,
         driver_title: b.driver_title ? String(b.driver_title).trim() : null,
-        driver_card_subtitle: b.driver_card_subtitle ? String(b.driver_card_subtitle).trim() : null,
-        driver_info_subtitle: b.driver_info_subtitle ? String(b.driver_info_subtitle).trim() : null,
+        driver_card_subtitle: cardSubtitle,
+        driver_info_subtitle: infoSubtitle,
         driver_info_sections: infoSections,
         type: b.type,
         cat_id: parseInt(b.cat_id, 10),
@@ -237,8 +256,6 @@ async function update(req, res) {
       "title",
       "user_title",
       "driver_title",
-      "driver_card_subtitle",
-      "driver_info_subtitle",
       "min_charge",
       "per_km_charge",
       "free_waiting_time",
@@ -265,17 +282,25 @@ async function update(req, res) {
     ];
     for (const field of directFields) {
       if (b[field] !== undefined) {
-        if (
-          field === "user_title" ||
-          field === "driver_title" ||
-          field === "driver_card_subtitle" ||
-          field === "driver_info_subtitle"
-        ) {
+        if (field === "user_title" || field === "driver_title") {
           data[field] = b[field] ? String(b[field]).trim() : null;
         } else {
           data[field] = b[field];
         }
       }
+    }
+    try {
+      if (b.driver_card_subtitle !== undefined) {
+        data.driver_card_subtitle = validateSubtitleLength("driver_card_subtitle", b.driver_card_subtitle);
+      }
+      if (b.driver_info_subtitle !== undefined) {
+        data.driver_info_subtitle = validateSubtitleLength("driver_info_subtitle", b.driver_info_subtitle);
+      }
+    } catch (e) {
+      if (e instanceof InvalidSubtitleError) {
+        return res.status(400).json({ success: false, message: e.message });
+      }
+      throw e;
     }
     if (b.type !== undefined) data.type = b.type;
     if (b.cat_id !== undefined) data.cat_id = parseInt(b.cat_id, 10);

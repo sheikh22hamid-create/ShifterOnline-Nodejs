@@ -103,6 +103,48 @@ describe("rateCardController tier info fields", () => {
     expect(prisma.tbl_package.update.mock.calls[0][0].data.driver_card_subtitle).toBeNull();
   });
 
+  // Code review finding: driver_card_subtitle/driver_info_subtitle are
+  // VarChar(255) columns with no length check anywhere, so an over-long
+  // value reaches MySQL and fails with a raw 500 instead of a readable 400
+  // - the one field class in this feature that didn't get the same
+  // boundary-input treatment as driver_info_sections.
+  it("create rejects an over-long driver_card_subtitle with a 400 instead of hitting the database", async () => {
+    const res = mockRes();
+    await create({ body: { ...VALID_BODY, driver_card_subtitle: "x".repeat(256) } }, res);
+    expect(prisma.tbl_package.create).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, message: expect.stringContaining("driver_card_subtitle") })
+    );
+  });
+
+  it("create rejects an over-long driver_info_subtitle with a 400 instead of hitting the database", async () => {
+    const res = mockRes();
+    await create({ body: { ...VALID_BODY, driver_info_subtitle: "x".repeat(256) } }, res);
+    expect(prisma.tbl_package.create).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, message: expect.stringContaining("driver_info_subtitle") })
+    );
+  });
+
+  it("create accepts a subtitle at exactly the 255-character limit", async () => {
+    const res = mockRes();
+    await create({ body: { ...VALID_BODY, driver_card_subtitle: "x".repeat(255) } }, res);
+    expect(prisma.tbl_package.create).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("update rejects an over-long driver_info_subtitle with a 400 and does not touch the database", async () => {
+    const res = mockRes();
+    await update({ params: { id: "1" }, body: { driver_info_subtitle: "x".repeat(256) } }, res);
+    expect(prisma.tbl_package.update).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, message: expect.stringContaining("driver_info_subtitle") })
+    );
+  });
+
   it("returns driver_info_sections to the admin UI as a parsed array", async () => {
     const res = mockRes();
     await update({

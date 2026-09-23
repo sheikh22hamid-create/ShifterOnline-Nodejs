@@ -565,6 +565,7 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
                 value={form.driver_card_subtitle}
                 onChange={(e) => set('driver_card_subtitle', e.target.value)}
                 placeholder="e.g. Regular deliveries, steady earnings"
+                maxLength={255}
               />
             </div>
             <div>
@@ -574,6 +575,7 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
                 value={form.driver_info_subtitle}
                 onChange={(e) => set('driver_info_subtitle', e.target.value)}
                 placeholder="e.g. High demand & priority trips"
+                maxLength={255}
               />
             </div>
           </div>
