@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { uniqueRefferCode } = require("./riderAuthController");
+const { parseInfoSections } = require("../services/driverTierInfo");
 
 /**
  * Dummy/seed rider accounts recognizable by naming convention
@@ -145,11 +146,15 @@ async function packageListForDriver(req, res) {
       select: {
         id: true,
         title: true,
+        user_title: true,
         driver_title: true,
         driver_detail_image: true,
         user_detail_image: true,
         per_km_charge: true,
         min_charge: true,
+        driver_card_subtitle: true,
+        driver_info_subtitle: true,
+        driver_info_sections: true,
       },
     });
 
@@ -163,6 +168,9 @@ async function packageListForDriver(req, res) {
       title: p.driver_title || p.title || "",       // driver_title has priority (e.g. "Standard Tier" over "Model 1")
       driver_title: p.driver_title || p.title || "", // also exposed separately for Android PackageData model
       user_title: p.user_title || p.title || "",
+      driver_card_subtitle: p.driver_card_subtitle || "",
+      driver_info_subtitle: p.driver_info_subtitle || "",
+      driver_info_sections: parseInfoSections(p.driver_info_sections),
       driver_detail_image: p.driver_detail_image || p.user_detail_image || "",
       user_detail_image: p.user_detail_image || "",
       per_km_charge: p.per_km_charge != null ? String(p.per_km_charge) : "0",
