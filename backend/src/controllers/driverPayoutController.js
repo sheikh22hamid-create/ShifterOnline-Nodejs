@@ -120,7 +120,15 @@ async function requestPayout(req, res) {
   }
 }
 
-// --- withdraw_requests.php --- (wallet-balance withdrawal, distinct from the trip-earnings payout above)
+// --- withdraw_requests.php --- (wallet-balance withdrawal, distinct from
+// the trip-earnings payout above)
+//
+// SUPERSEDED as of 2026-09-23 by customerWalletController.withdrawWallet's
+// immediate, atomic self-service withdraw (see
+// docs/superpowers/specs/2026-09-23-driver-wallet-outstanding-dues-design.md).
+// Left in place with its data intact for historical withdrawal records and
+// payoutController's admin approve/reject screens - do not build new
+// driver-facing withdrawal features on this path.
 async function withdrawRequest(req, res) {
   try {
     const riderId = Number(req.body?.rider_id || 0);
