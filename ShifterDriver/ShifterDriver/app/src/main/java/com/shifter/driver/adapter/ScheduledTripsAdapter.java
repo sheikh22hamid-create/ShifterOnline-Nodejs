@@ -81,7 +81,8 @@ public class ScheduledTripsAdapter extends RecyclerView.Adapter<ScheduledTripsAd
         String scheduleRaw = trip.optString("schedule_date_time", "");
         holder.scheduleTime.setText(
                 scheduleRaw.isEmpty() ? "" : com.shifter.driver.utility.OrderDialogHelper.formatScheduleLabel(scheduleRaw));
-        holder.pickup.setText(trip.optString("pickup_address", ""));
+        holder.pickup.setText("📍 " + trip.optString("pickup_address", ""));
+        holder.drop.setText("🏁 " + trip.optString("delivery_address", ""));
         holder.fare.setText("₹" + trip.optString("estimated_fare", "0"));
 
         boolean interested = "1".equals(trip.optString("is_interested", "0"));
@@ -104,6 +105,7 @@ public class ScheduledTripsAdapter extends RecyclerView.Adapter<ScheduledTripsAd
     static class ViewHolder extends RecyclerView.ViewHolder {
         final TextView scheduleTime;
         final TextView pickup;
+        final TextView drop;
         final TextView fare;
         final Button interestToggle;
 
@@ -111,6 +113,7 @@ public class ScheduledTripsAdapter extends RecyclerView.Adapter<ScheduledTripsAd
             super(itemView);
             scheduleTime = itemView.findViewById(R.id.txt_schedule_time);
             pickup = itemView.findViewById(R.id.txt_pickup);
+            drop = itemView.findViewById(R.id.txt_drop);
             fare = itemView.findViewById(R.id.txt_fare);
             interestToggle = itemView.findViewById(R.id.btn_interest_toggle);
         }

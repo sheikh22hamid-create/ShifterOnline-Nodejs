@@ -177,6 +177,19 @@ async function walletHistory(req, res) {
     }
 
     const rows = await prisma.tbl_wallet_history.findMany({ where, orderBy: { id: "desc" } });
+    let withdrawalSummary = {};
+    if (walletType === "driver") {
+      const [pending, latest] = await Promise.all([
+        prisma.driver_withdraw_requests.aggregate({ where: { rider_id: userId, status: "pending" }, _sum: { amount: true } }),
+        prisma.driver_withdraw_requests.findFirst({ where: { rider_id: userId }, orderBy: { id: "desc" }, select: { id: true, amount: true, status: true, created_at: true } }),
+      ]);
+      const pendingAmount = Number(pending._sum.amount || 0);
+      withdrawalSummary = {
+        pending_withdrawal_amount: pendingAmount.toFixed(2),
+        available_to_withdraw: Math.max(0, Number(wallet || 0) - pendingAmount).toFixed(2),
+        latest_withdrawal: latest ? { id: latest.id, amount: Number(latest.amount || 0).toFixed(2), status: latest.status, created_at: latest.created_at } : null,
+      };
+    }
     const totalCredit = rows.filter((r) => r.type === "credit").reduce((s, r) => s + Number(r.amount || 0), 0);
     const totalDebit = rows.filter((r) => r.type === "debit").reduce((s, r) => s + Number(r.amount || 0), 0);
 
@@ -185,6 +198,7 @@ async function walletHistory(req, res) {
       msg: "Wallet History",
       wallet_balance: wallet?.toString?.() ?? wallet,
       wallet_points: walletPoints,
+      ...withdrawalSummary,
       total_credit: totalCredit,
       total_debit: totalDebit,
       data: rows,

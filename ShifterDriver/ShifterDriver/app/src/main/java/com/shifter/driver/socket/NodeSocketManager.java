@@ -29,9 +29,19 @@ public class NodeSocketManager {
 
     // Same backend the customer app points at — see
     // backend/API_INTEGRATION_GUIDE.md.
-    private static final String BASE_URL = "https://dev-api.shifteronline.com";
+    private static final String BASE_URL = com.shifter.driver.BuildConfig.API_BASE_URL;
 
     private static NodeSocketManager instance;
+
+    public interface ConnectionListener { void onConnectionChanged(boolean connected); }
+    private final java.util.Set<ConnectionListener> connectionListeners = new java.util.concurrent.CopyOnWriteArraySet<>();
+    public void addConnectionListener(ConnectionListener listener) { connectionListeners.add(listener); }
+    public void removeConnectionListener(ConnectionListener listener) { connectionListeners.remove(listener); }
+    private void notifyConnectionChanged() {
+        mainHandler.post(() -> {
+            for (ConnectionListener listener : connectionListeners) listener.onConnectionChanged(isConnected());
+        });
+    }
 
     private Socket socket;
     private int riderId = -1;
@@ -84,6 +94,11 @@ public class NodeSocketManager {
 
     /** Call once after login, or at app start while already logged in. */
     public synchronized void connectDriver(int riderId) {
+        connectDriver(riderId, BASE_URL);
+    }
+
+    // Package-private endpoint injection for isolated transport tests.
+    synchronized void connectDriver(int riderId, String endpoint) {
         if (socket != null && this.riderId == riderId) {
             // Already set up for this driver — connect() below is a no-op
             // if already connected, and re-joins on its own reconnect event
@@ -98,7 +113,7 @@ public class NodeSocketManager {
         try {
             IO.Options options = new IO.Options();
             options.reconnection = true;
-            socket = IO.socket(BASE_URL, options);
+            socket = IO.socket(endpoint, options);
         } catch (URISyntaxException e) {
             Log.e(TAG, "Bad socket URL", e);
             return;
@@ -111,9 +126,10 @@ public class NodeSocketManager {
                 payload.put("rider_id", riderId);
             } catch (Exception ignored) {}
             socket.emit("driver:join", payload);
+            notifyConnectionChanged();
         });
 
-        socket.on(Socket.EVENT_DISCONNECT, args -> Log.d(TAG, "disconnected"));
+        socket.on(Socket.EVENT_DISCONNECT, args -> { Log.d(TAG, "disconnected"); notifyConnectionChanged(); });
         socket.on(Socket.EVENT_CONNECT_ERROR, args ->
                 Log.e(TAG, "connect error: " + (args.length > 0 ? args[0] : "")));
 
@@ -313,6 +329,7 @@ public class NodeSocketManager {
             socket.off();
             socket.disconnect();
             socket = null;
+            notifyConnectionChanged();
         }
     }
 

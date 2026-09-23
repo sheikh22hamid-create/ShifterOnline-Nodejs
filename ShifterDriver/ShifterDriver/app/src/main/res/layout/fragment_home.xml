@@ -326,7 +326,8 @@
                                 <TextView
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
-                                    android:text="You're Online"
+                                    android:id="@+id/txt_online_title"
+                                    android:text="@string/home_online_title"
                                     android:textColor="#065F46"
                                     android:textSize="16sp"
                                     android:textStyle="bold" />
@@ -335,7 +336,8 @@
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="2dp"
-                                    android:text="Ready for orders"
+                                    android:id="@+id/txt_online_subtitle"
+                                    android:text="@string/home_connection_ready"
                                     android:textColor="#059669"
                                     android:textSize="13sp" />
                             </LinearLayout>
@@ -620,7 +622,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Active"
+                    android:text="@string/home_active_label"
                     android:textColor="@color/status_online_green"
                     android:textSize="12sp" />
                 <TextView
@@ -820,7 +822,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Orders"
+                            android:text="@string/home_orders_label"
                             android:textColor="@color/home_secondary"
                             android:textSize="12sp"
                             android:gravity="center" />
@@ -849,7 +851,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Completed"
+                            android:text="@string/home_completed_label"
                             android:textColor="@color/home_secondary"
                             android:textSize="12sp"
                             android:gravity="center" />
@@ -878,7 +880,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Active"
+                            android:text="@string/home_active_label"
                             android:textColor="@color/home_secondary"
                             android:textSize="12sp"
                             android:gravity="center" />
@@ -907,7 +909,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
-                            android:text="Rating"
+                            android:text="@string/home_rating_label"
                             android:textColor="@color/home_secondary"
                             android:textSize="12sp"
                             android:gravity="center" />
@@ -971,7 +973,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="My Orders"
+                        android:text="@string/home_my_orders"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -1011,7 +1013,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="Wallet"
+                        android:text="@string/home_wallet_label"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -1051,7 +1053,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="Incentives"
+                        android:text="@string/home_refer_earn"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -1090,7 +1092,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="Support"
+                        android:text="@string/home_support_label"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -1201,7 +1203,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Scheduled Trips"
+                            android:text="@string/home_scheduled_label"
                             android:textColor="@color/driver_text_primary"
                             android:textSize="15sp"
                             android:textStyle="bold" />
@@ -1215,7 +1217,7 @@
                             android:paddingTop="2dp"
                             android:paddingEnd="8dp"
                             android:paddingBottom="2dp"
-                            android:text="Advance"
+                            android:text="@string/home_advance_label"
                             android:textColor="@color/shifter_orange_dark"
                             android:textSize="10sp"
                             android:textStyle="bold" />
@@ -1225,7 +1227,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="3dp"
-                        android:text="Browse upcoming advance bookings &amp; mark interest"
+                        android:text="@string/home_scheduled_hint"
                         android:textColor="@color/driver_text_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -1238,6 +1240,13 @@
                     app:tint="@color/driver_text_secondary"
                     android:contentDescription="Open" />
             </LinearLayout>
+            <Button android:id="@+id/btn_more_options"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp" android:minHeight="48dp"
+                android:text="@string/home_more_options" android:textAllCaps="false" />
+            <LinearLayout android:id="@+id/layout_more_options"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:visibility="gone">
             <!-- ================= DELIVERY TYPES SECTION ================= -->
             <LinearLayout
                 android:id="@+id/card_delivery_types_section"
@@ -1293,7 +1302,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
-                                android:text="View earnings and details for each type"
+                                android:text="@string/home_types_hint"
                                 android:textColor="@color/home_secondary"
                                 android:textSize="12sp" />
                         </LinearLayout>
@@ -1355,14 +1364,14 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Training Video"
+                        android:text="@string/home_training_label"
                         android:textColor="@color/white"
                         android:textSize="15sp"
                         android:textStyle="bold" />
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Watch quick driver training video"
+                        android:text="@string/home_training_hint"
                         android:textColor="#FFEBEE"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -1419,7 +1428,7 @@
                     android:src="@drawable/arow_right"
                     app:tint="@color/white" />
             </LinearLayout>
-            <!-- ================= A GREENER TOMORROW ECO BANNER ================= -->
+            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>

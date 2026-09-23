@@ -99,8 +99,14 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     private static final int STATUS_ALMOST_THERE = 3;
     private static final int STATUS_ONLINE = 4;
     private static final int STATUS_DISCONNECTING = 5;
-
+    private static final int STATUS_RECONNECTING = 6;
     private int currentStatusState = STATUS_OFFLINE;
+    private final NodeSocketManager.ConnectionListener connectionListener = connected -> {
+        if (binding != null && isOnline && (currentStatusState == STATUS_ONLINE || currentStatusState == STATUS_RECONNECTING)) {
+            updateStatusControlUI(STATUS_ONLINE);
+        }
+    };
+
     private ObjectAnimator pulseAnimator = null;
     public static boolean isUpdateHome = false;
 
@@ -159,6 +165,11 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         // 4. Quick Actions (Orders, Wallet, Incentives, Support)
         setupQuickActions();
+        binding.btnMoreOptions.setOnClickListener(v -> {
+            boolean expanded = binding.layoutMoreOptions.getVisibility() == View.VISIBLE;
+            binding.layoutMoreOptions.setVisibility(expanded ? View.GONE : View.VISIBLE);
+            binding.btnMoreOptions.setText(expanded ? R.string.home_more_options : R.string.home_fewer_options);
+        });
 
         // 5. Swipe refresh & initial data fetch
         sessionManager.setStringData(SessionManager.currency, "₹");
@@ -410,6 +421,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
      */
     private void updateStatusControlUI(int state) {
         if (binding == null || getActivity() == null) return;
+        if (state == STATUS_ONLINE && !NodeSocketManager.getInstance().isConnected()) state = STATUS_RECONNECTING;
         this.currentStatusState = state;
 
         binding.layoutStateOffline.setVisibility(View.GONE);
@@ -449,7 +461,18 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 }
                 break;
 
+            case STATUS_RECONNECTING:
+                binding.btnOnlineStatusControl.setBackgroundResource(R.drawable.bg_status_connecting_pill);
+                binding.layoutStateOnline.setVisibility(View.VISIBLE);
+                binding.txtOnlineTitle.setText(R.string.home_reconnecting);
+                binding.txtOnlineSubtitle.setText(R.string.home_reconnecting_hint);
+                stopPulseAnimation();
+                binding.viewAvatarPresence.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FF5E1E")));
+                break;
+
             case STATUS_ONLINE:
+                binding.txtOnlineTitle.setText(R.string.home_online_title);
+                binding.txtOnlineSubtitle.setText(R.string.home_connection_ready);
                 binding.btnOnlineStatusControl.setBackgroundResource(R.drawable.bg_status_online_pill);
                 binding.layoutStateOnline.setVisibility(View.VISIBLE);
                 startPulseAnimation();
@@ -621,7 +644,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         NodeApiClient.getInterface().setStatus(nodeBody).enqueue(new retrofit2.Callback<JsonObject>() {
             @Override
             public void onResponse(retrofit2.Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
-                if (!isAdded() || getActivity() == null) return;
+                if (!isAdded() || getActivity() == null || binding == null) return;
 
                 if (response.isSuccessful() && response.body() != null) {
                     JsonObject result = response.body();
@@ -631,16 +654,16 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         return;
                     }
 
+                    if (!result.has("Result") || !"true".equalsIgnoreCase(result.get("Result").getAsString())) {
+                        updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
+                        Toast.makeText(getActivity(), R.string.home_status_failed, Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     if (online) {
-                        // Brief "Almost there..." transition (400ms) for high-end feel
-                        updateStatusControlUI(STATUS_ALMOST_THERE);
-                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                            if (!isAdded() || getActivity() == null) return;
-                            isOnline = true;
-                            updateStatusControlUI(STATUS_ONLINE);
-                            startLocationServiceIfNeeded();
-                            Toast.makeText(getActivity(), "You are now ONLINE. Ready for orders!", Toast.LENGTH_SHORT).show();
-                        }, 400);
+                        isOnline = true;
+                        startLocationServiceIfNeeded();
+                        NodeSocketManager.getInstance().connectDriver(riderData.getId());
+                        updateStatusControlUI(STATUS_ONLINE);
                     } else {
                         isOnline = false;
                         updateStatusControlUI(STATUS_OFFLINE);
@@ -664,7 +687,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
             @Override
             public void onFailure(retrofit2.Call<JsonObject> call, Throwable t) {
-                if (!isAdded() || getActivity() == null) return;
+                if (!isAdded() || getActivity() == null || binding == null) return;
                 Log.e("HomeFragment", "Node rider status update failed", t);
                 Toast.makeText(getActivity(), "Network error. Status not updated.", Toast.LENGTH_SHORT).show();
                 updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
@@ -701,6 +724,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
     @Override
     public void callback(JsonObject result, String callNo) {
+        if (binding == null || !isAdded()) return;
         try {
             custPrograssbar.closePrograssBar();
 
@@ -777,7 +801,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     }
 
                     // Dynamic Today's Earnings with safe fallback (no null / NaN)
-                    double pastEarningVal = homeData.getPastMonthEarning();
+                    double pastEarningVal = homeData.getTodayEarning();
                     String todayEarn = String.format(Locale.getDefault(), "%.0f", pastEarningVal);
                     binding.txtEarning.setText(currency + todayEarn);
                     if (binding.txtEarning2 != null) {
@@ -806,11 +830,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
                     String rating = homeData.getCurrentStar();
                     if (rating == null || rating.trim().isEmpty() || "null".equalsIgnoreCase(rating)) {
-                        rating = "4.8";
+                        rating = getString(R.string.home_no_rating);
+                        binding.txtRating.setTextSize(12);
                     }
+                    if (!rating.equals(getString(R.string.home_no_rating))) binding.txtRating.setTextSize(21);
                     binding.txtRating.setText(rating);
                     if (binding.txtRating2 != null) {
-                        binding.txtRating2.setText(homeData.getPastStar() != null ? homeData.getPastStar() : "5.0");
+                        binding.txtRating2.setText(homeData.getPastStar() != null ? homeData.getPastStar() : getString(R.string.home_no_rating));
                     }
 
 
@@ -836,13 +862,12 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             binding.txtMit.setText("Express deliver");
                         }
 
-                        // Auto-navigate to OrderDetailsActivity if active order is present
+                        // Keep the active order available through the Continue Delivery card.
                         String status = homeData.getOrderHistory().getStatus();
                         if (getActivity() != null && !"Completed".equalsIgnoreCase(status) && !"Cancelled".equalsIgnoreCase(status)) {
                             sessionManager.setActiveOrder(homeData.getOrderHistory());
                             isUpdateHome = false;
-                            startActivity(new Intent(getActivity(), OrderDetailsActivity.class)
-                                    .putExtra("myclass", homeData.getOrderHistory()));
+
                         } else {
                             sessionManager.clearActiveOrder();
                         }
@@ -1037,6 +1062,8 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     @Override
     public void onResume() {
         super.onResume();
+        NodeSocketManager.getInstance().addConnectionListener(connectionListener);
+        updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
         if (isUpdateHome) {
             getHome();
         }
@@ -1049,22 +1076,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             updateVolumeButtonIcon();
         }
 
-        // Auto-navigate to OrderDetailsActivity if active order is present
-        if (homeData != null && homeData.getOrderHistory() != null
-                && getActivity() != null) {
-            String status = homeData.getOrderHistory().getStatus();
-            if (!"Completed".equalsIgnoreCase(status) && !"Cancelled".equalsIgnoreCase(status)) {
-                isUpdateHome = false;
-                startActivity(
-                        new Intent(getActivity(), OrderDetailsActivity.class)
-                                .putExtra("myclass", homeData.getOrderHistory()));
-            }
-        }
+
     }
 
     @Override
     public void onPause() {
         super.onPause();
+        NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
     }
 
@@ -1073,6 +1091,8 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         super.onDestroyView();
         stopPulseAnimation();
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
+        NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
+        binding = null;
     }
 
     private void showVolumeControlDialog() {
