@@ -221,7 +221,7 @@ async function withdrawWallet(req, res) {
     const amount = Number(b.amount || 0);
     const walletType = b.wallet_type || "user";
     const remark = b.remark || "Wallet Withdraw";
-    if (!mobile || !amount || !walletType) return fail(res, "Missing Data");
+    if (!mobile || !amount || !walletType) return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Missing Data" });
 
     const account =
       walletType === "user"
@@ -232,22 +232,38 @@ async function withdrawWallet(req, res) {
     }
 
     const currentBalance = Number(walletType === "user" ? account.wallet : account.wallet_balance || 0);
+    if (walletType === "driver" && currentBalance <= 0) {
+      return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
+    }
     if (currentBalance < amount) {
       return res.status(200).json({ ResponseCode: "402", Result: "false", ResponseMsg: "Insufficient Balance!" });
     }
 
-    const newBalance = currentBalance - amount;
-    if (walletType === "user") {
-      await prisma.tbl_user.update({ where: { id: account.id }, data: { wallet: newBalance } });
-    } else {
-      await prisma.tbl_rider.update({ where: { id: account.id }, data: { wallet_balance: newBalance } });
-    }
+    // Atomic conditional debit: the WHERE clause re-checks the balance at
+    // commit time instead of trusting the currentBalance read above, so two
+    // concurrent withdraw calls for the same account can no longer both pass
+    // (see customerWalletController.withdrawWallet race - fixed 2026-09-23).
+    const model = walletType === "user" ? "tbl_user" : "tbl_rider";
+    const balanceField = walletType === "user" ? "wallet" : "wallet_balance";
 
-    await prisma.tbl_wallet_history.create({
-      data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: new Date() },
+    let debited = false;
+    await prisma.$transaction(async (tx) => {
+      const result = await tx[model].updateMany({
+        where: { id: account.id, [balanceField]: { gte: amount } },
+        data: { [balanceField]: { decrement: amount } },
+      });
+      if (result.count === 0) return;
+      debited = true;
+      await tx.tbl_wallet_history.create({
+        data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: new Date() },
+      });
     });
 
-    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Withdraw Successful!", NewBalance: newBalance });
+    if (!debited) {
+      return res.status(200).json({ ResponseCode: "402", Result: "false", ResponseMsg: "Insufficient Balance!" });
+    }
+
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Withdraw Successful!", NewBalance: currentBalance - amount });
   } catch (err) {
     logger.error("customerWalletController.withdrawWallet failed:", err);
     return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
