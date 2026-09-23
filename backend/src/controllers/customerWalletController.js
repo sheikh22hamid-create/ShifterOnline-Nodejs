@@ -89,6 +89,10 @@ async function addWallet(req, res) {
       return fail(res, "Missing Parameters");
     }
 
+    if (walletType === "driver") {
+      return fail(res, "Drivers cannot add money to their wallet.");
+    }
+
     let verification;
     try {
       verification = await verifyRazorpayPayment({
