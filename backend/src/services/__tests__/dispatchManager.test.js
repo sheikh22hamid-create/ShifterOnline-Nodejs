@@ -10,6 +10,7 @@ jest.mock("../../config/db", () => ({
   tbl_order_requests: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn(), update: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
+  app_settings: { findFirst: jest.fn().mockResolvedValue(null) },
 }));
 
 jest.mock("../pricingEngine", () => {
@@ -1323,6 +1324,10 @@ describe("dispatchManager overlapping batch cascade", () => {
   });
 
   describe("recordModel1Outcome (Model 1 reliability suspension)", () => {
+    beforeEach(() => {
+      prisma.app_settings.findFirst.mockResolvedValue(null);
+    });
+
     it("is a no-op for any package other than Model 1", async () => {
       await dispatchManager.recordModel1Outcome(1, 7, "miss");
       await dispatchManager.recordModel1Outcome(1, 21, "accept");
@@ -1352,8 +1357,9 @@ describe("dispatchManager overlapping batch cascade", () => {
       });
     });
 
-    it("suspends the rider from Model 1 for 24h once the miss streak reaches the limit, and resets the streak", async () => {
+    it("suspends the rider from Model 1 for 24h once the miss streak reaches the default limit, resets the streak, and notifies the driver", async () => {
       prisma.tbl_rider.update.mockResolvedValueOnce({ model1_miss_streak: 5 });
+      prisma.tbl_rider.update.mockResolvedValueOnce({ fcm_token: "driver-tok" });
 
       await dispatchManager.recordModel1Outcome(42, 6, "miss");
 
@@ -1366,6 +1372,9 @@ describe("dispatchManager overlapping batch cascade", () => {
       const hoursFromNow = (suspendedUntil.getTime() - Date.now()) / (60 * 60 * 1000);
       expect(hoursFromNow).toBeGreaterThan(23.9);
       expect(hoursFromNow).toBeLessThanOrEqual(24);
+
+      await flush();
+      expect(pushNotifier.notifyDriverModel1Suspended).toHaveBeenCalledWith("driver-tok", 5, 24);
     });
 
     it("does not suspend while the miss streak is still below the limit", async () => {
@@ -1374,6 +1383,42 @@ describe("dispatchManager overlapping batch cascade", () => {
       await dispatchManager.recordModel1Outcome(42, 6, "miss");
 
       expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+      expect(pushNotifier.notifyDriverModel1Suspended).not.toHaveBeenCalled();
+    });
+
+    it("uses the admin-configured miss limit and suspension hours instead of the defaults", async () => {
+      prisma.app_settings.findFirst.mockImplementation(({ where }) => {
+        if (where.setting_key === "model1_miss_limit") return Promise.resolve({ setting_value: "3" });
+        if (where.setting_key === "model1_suspension_hours") return Promise.resolve({ setting_value: "6" });
+        return Promise.resolve(null);
+      });
+      prisma.tbl_rider.update.mockResolvedValueOnce({ model1_miss_streak: 3 });
+      prisma.tbl_rider.update.mockResolvedValueOnce({ fcm_token: "driver-tok" });
+
+      await dispatchManager.recordModel1Outcome(42, 6, "miss");
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(2);
+      const [, secondCallArgs] = prisma.tbl_rider.update.mock.calls;
+      const suspendedUntil = secondCallArgs[0].data.model1_suspended_until;
+      const hoursFromNow = (suspendedUntil.getTime() - Date.now()) / (60 * 60 * 1000);
+      expect(hoursFromNow).toBeGreaterThan(5.9);
+      expect(hoursFromNow).toBeLessThanOrEqual(6);
+
+      await flush();
+      expect(pushNotifier.notifyDriverModel1Suspended).toHaveBeenCalledWith("driver-tok", 3, 6);
+    });
+
+    it("does not suspend below a higher admin-configured miss limit", async () => {
+      prisma.app_settings.findFirst.mockImplementation(({ where }) => {
+        if (where.setting_key === "model1_miss_limit") return Promise.resolve({ setting_value: "8" });
+        return Promise.resolve(null);
+      });
+      prisma.tbl_rider.update.mockResolvedValueOnce({ model1_miss_streak: 5 });
+
+      await dispatchManager.recordModel1Outcome(42, 6, "miss");
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+      expect(pushNotifier.notifyDriverModel1Suspended).not.toHaveBeenCalled();
     });
   });
 

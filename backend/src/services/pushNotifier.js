@@ -156,6 +156,16 @@ async function notifyRewardPlanAssigned(fcmToken, planName) {
   );
 }
 
+/** Fired by dispatchManager.recordModel1Outcome once a rider's consecutive Model 1 misses hit the admin-configured limit. */
+async function notifyDriverModel1Suspended(fcmToken, missLimit, suspensionHours) {
+  return sendPushNotification(
+    fcmToken,
+    "Model 1 rides paused",
+    `You ignored ${missLimit} Model 1 rides in a row, so Model 1 offers are paused for you for ${suspensionHours} hour${suspensionHours === 1 ? "" : "s"}.`,
+    { type: "model1_suspended", miss_limit: String(missLimit), suspension_hours: String(suspensionHours) }
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
@@ -170,4 +180,5 @@ module.exports = {
   notifyCustomerLatePickup,
   notifyCustomerNextDayAssigned,
   notifyRewardPlanAssigned,
+  notifyDriverModel1Suspended,
 };

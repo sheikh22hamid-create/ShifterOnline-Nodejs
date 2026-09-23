@@ -540,6 +540,74 @@ async function remove(req, res) {
   }
 }
 
+// Drivers currently locked out of Model 1 offers (see
+// dispatchManager.recordModel1Outcome / selectEligibleDrivers) — lets an
+// admin see who tripped the reliability suspension and, if warranted, lift
+// it early via unsuspendModel1.
+async function listModel1Suspended(req, res) {
+  try {
+    const where = { model1_suspended_until: { gt: new Date() } };
+    if (req.scopedCityId) where.city_id = req.scopedCityId;
+
+    const rows = await prisma.tbl_rider.findMany({
+      where,
+      orderBy: { model1_suspended_until: "desc" },
+      select: { id: true, full_name: true, first_name: true, last_name: true, fmobile: true, city_id: true, model1_suspended_until: true },
+    });
+
+    const withCity = await attachCityNames(rows);
+    const data = withCity.map((r) => ({
+      id: r.id,
+      full_name: riderName(r),
+      fmobile: r.fmobile,
+      city_name: r.city_name,
+      model1_suspended_until: r.model1_suspended_until,
+    }));
+
+    return res.status(200).json({ success: true, total: data.length, data });
+  } catch (err) {
+    return internalError(res, err, "riders.listModel1Suspended");
+  }
+}
+
+// Admin override to lift a Model 1 suspension before it naturally expires —
+// clears both the suspension and the miss streak that led to it, so the
+// driver doesn't start back at 4/5 misses the moment they're re-eligible.
+async function unsuspendModel1(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const rider = await prisma.tbl_rider.findUnique({ where: { id } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+    if (!rider.model1_suspended_until || rider.model1_suspended_until <= new Date()) {
+      return res.status(400).json({ success: false, message: "Driver is not currently suspended from Model 1" });
+    }
+
+    await prisma.tbl_rider.update({
+      where: { id },
+      data: { model1_suspended_until: null, model1_miss_streak: 0 },
+    });
+
+    await prisma.tbl_rnoti.create({
+      data: {
+        rid: id,
+        title: "Model 1 rides resumed",
+        msg: "An admin has lifted your Model 1 suspension. You can receive Model 1 ride offers again.",
+        type: "account_status",
+        date: new Date(),
+      },
+    });
+
+    return res.status(200).json({ success: true, message: "Model 1 suspension removed" });
+  } catch (err) {
+    return internalError(res, err, "riders.unsuspendModel1");
+  }
+}
+
 async function toggleModel(req, res) {
   try {
     const riderId = parseInt(req.params.id, 10);
@@ -783,4 +851,16 @@ async function create(req, res) {
   }
 }
 
-module.exports = { list, getOne, create, kycDecision, toggleStatus, remove, toggleModel, setPaymentComplete, updateProfile };
+module.exports = {
+  list,
+  getOne,
+  create,
+  kycDecision,
+  toggleStatus,
+  remove,
+  toggleModel,
+  setPaymentComplete,
+  updateProfile,
+  listModel1Suspended,
+  unsuspendModel1,
+};

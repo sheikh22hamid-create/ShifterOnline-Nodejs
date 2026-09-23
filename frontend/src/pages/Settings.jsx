@@ -68,6 +68,8 @@ const HANDLED_FLAG_KEYS = [
   'customer_care_email',
   'customer_care_hours',
   'driver_min_withdrawal_amount',
+  'model1_miss_limit',
+  'model1_suspension_hours',
 ]
 
 function PaymentGateways() {
@@ -93,6 +95,65 @@ function PaymentGateways() {
             <div key={g.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-[13px]" style={{ borderColor: 'var(--border)' }}>
               <span>{g.title}</span>
               <span style={{ color: g.status === 1 ? 'var(--success)' : 'var(--ink-faint)' }}>{g.status === 1 ? 'Active' : 'Inactive'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function Model1SuspendedDrivers() {
+  const toast = useToast()
+  const fetcher = useCallback(() => api.get('/riders/model1-suspended').then((res) => res.data.data), [])
+  const { data: drivers, loading, refetch } = useApiQuery(fetcher)
+  const [unsuspendingId, setUnsuspendingId] = useState(null)
+
+  async function handleUnsuspend(id) {
+    setUnsuspendingId(id)
+    try {
+      await api.patch(`/riders/${id}/model1-unsuspend`)
+      toast.success('Model 1 suspension removed.')
+      refetch()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not remove suspension.')
+    } finally {
+      setUnsuspendingId(null)
+    }
+  }
+
+  return (
+    <section className="surface-card rounded-xl p-4">
+      <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+        Drivers suspended from Model 1
+      </h3>
+      {loading ? (
+        <p className="text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+          Loading…
+        </p>
+      ) : drivers?.length === 0 ? (
+        <p className="text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+          No drivers are currently suspended from Model 1.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {drivers?.map((d) => (
+            <div key={d.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-[13px]" style={{ borderColor: 'var(--border)' }}>
+              <div>
+                <div className="font-medium">{d.full_name || `Driver #${d.id}`}</div>
+                <div className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                  {d.fmobile}{d.city_name ? ` · ${d.city_name}` : ''} · Suspended until {new Date(d.model1_suspended_until).toLocaleString()}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={unsuspendingId === d.id}
+                onClick={() => handleUnsuspend(d.id)}
+                className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+              >
+                {unsuspendingId === d.id ? 'Removing…' : 'Remove suspension'}
+              </button>
             </div>
           ))}
         </div>
@@ -303,6 +364,37 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               A driver can only withdraw from their ledger once its balance exceeds this amount. Set to 0 to allow withdrawal at any positive balance.
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Model 1 reliability suspension">
+          <div>
+            <Label htmlFor="flag-model1_miss_limit">Max Model 1 rides a driver can ignore</Label>
+            <Input
+              id="flag-model1_miss_limit"
+              type="number"
+              min="1"
+              placeholder="e.g. 5"
+              value={flags.model1_miss_limit ?? '5'}
+              onChange={(e) => setFlags((f) => ({ ...f, model1_miss_limit: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              After this many Model 1 offers in a row are rejected or timed out, the driver is suspended from Model 1 offers below.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-model1_suspension_hours">Suspension length (hours)</Label>
+            <Input
+              id="flag-model1_suspension_hours"
+              type="number"
+              min="1"
+              placeholder="e.g. 24"
+              value={flags.model1_suspension_hours ?? '24'}
+              onChange={(e) => setFlags((f) => ({ ...f, model1_suspension_hours: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              How long a suspended driver stops receiving Model 1 offers before they're automatically eligible again.
             </p>
           </div>
         </Section>
@@ -937,6 +1029,8 @@ function SettingsForm({ data, onSaved }) {
         </section>
 
         <PaymentGateways />
+
+        <Model1SuspendedDrivers />
 
         {/* Bottom Save Action Bar */}
         <div className="sticky bottom-4 z-10 flex items-center justify-between rounded-xl border p-3.5 shadow-lg backdrop-blur-md" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>

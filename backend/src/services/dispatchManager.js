@@ -14,12 +14,11 @@ const {
   SEARCH_RADIUS_KM,
   STARTUP_RECOVERY_BUFFER_SECONDS,
   MODEL_1_PACKAGE_ID,
-  MODEL1_MISS_LIMIT,
-  MODEL1_SUSPENSION_HOURS,
   RIDER_LOCATION_FRESHNESS_MS,
   SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
   SCHEDULED_ORDER_PRIORITY_POPUP_MS,
 } = require("../config/constants");
+const { getModel1MissLimit, getModel1SuspensionHours } = require("./model1SuspensionSettings");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
 const activeDispatches = new Map();
@@ -180,12 +179,14 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
 
 /**
  * Model 1 reliability tracking: a rider who keeps Model 1 enabled but misses
- * (rejects or times out on) MODEL1_MISS_LIMIT of its offers in a row is
- * excluded from Model 1 offers for MODEL1_SUSPENSION_HOURS (see the
- * suspension check in selectEligibleDrivers) — leaving it toggled on isn't
- * free if it's never actually the one they take. No-op for every other
- * package_id; only Model 1 itself is tracked. Called from both this file's
- * own scheduleExpiry (timeout) and tripLifecycle's reject/accept handlers.
+ * (rejects or times out on) the admin-configured miss limit
+ * (model1SuspensionSettings.getModel1MissLimit, default 5) of its offers in a
+ * row is excluded from Model 1 offers for the admin-configured suspension
+ * window (getModel1SuspensionHours, default 24h — see the suspension check
+ * in selectEligibleDrivers) — leaving it toggled on isn't free if it's never
+ * actually the one they take. No-op for every other package_id; only Model 1
+ * itself is tracked. Called from both this file's own scheduleExpiry
+ * (timeout) and tripLifecycle's reject/accept handlers.
  */
 async function recordModel1Outcome(riderId, packageId, outcome) {
   if (Number(packageId) !== MODEL_1_PACKAGE_ID) return;
@@ -208,15 +209,23 @@ async function recordModel1Outcome(riderId, packageId, outcome) {
       data: { model1_miss_streak: { increment: 1 } },
       select: { model1_miss_streak: true },
     });
-    if (rider.model1_miss_streak >= MODEL1_MISS_LIMIT) {
-      const suspendedUntil = new Date(Date.now() + MODEL1_SUSPENSION_HOURS * 60 * 60 * 1000);
-      await prisma.tbl_rider.update({
+    const missLimit = await getModel1MissLimit();
+    if (rider.model1_miss_streak >= missLimit) {
+      const suspensionHours = await getModel1SuspensionHours();
+      const suspendedUntil = new Date(Date.now() + suspensionHours * 60 * 60 * 1000);
+      const suspendedRider = await prisma.tbl_rider.update({
         where: { id: riderId },
         data: { model1_miss_streak: 0, model1_suspended_until: suspendedUntil },
+        select: { fcm_token: true },
       });
       logger.warn(
-        `dispatchManager: rider ${riderId} suspended from Model 1 until ${suspendedUntil.toISOString()} (${MODEL1_MISS_LIMIT} consecutive misses)`
+        `dispatchManager: rider ${riderId} suspended from Model 1 until ${suspendedUntil.toISOString()} (${missLimit} consecutive misses)`
       );
+      if (suspendedRider.fcm_token) {
+        pushNotifier
+          .notifyDriverModel1Suspended(suspendedRider.fcm_token, missLimit, suspensionHours)
+          .catch((err) => logger.error(`dispatchManager: notifyDriverModel1Suspended failed for rider ${riderId}:`, err));
+      }
     }
   } catch (err) {
     logger.error(`dispatchManager: recordModel1Outcome miss-tracking failed for rider ${riderId}:`, err);
