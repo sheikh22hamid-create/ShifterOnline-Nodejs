@@ -10,6 +10,11 @@ const {
   calculateModelFares,
   findVehicleSlabConfig,
 } = require("../services/slabPricingService");
+const {
+  normalizeInfoSections,
+  parseInfoSections,
+  InvalidSectionsError,
+} = require("../services/driverTierInfo");
 
 const PACKAGE_TYPES = ["USER", "DRIVER"];
 
@@ -55,6 +60,7 @@ function serializePackage(pkg, category) {
     driver_share_percent: String(driver_share_percent),
     user_title: pkg.user_title || null,
     driver_title: pkg.driver_title || null,
+    driver_info_sections: parseInfoSections(pkg.driver_info_sections),
     start_time: formatTime(pkg.start_time),
     end_time: formatTime(pkg.end_time),
     category_name: category?.cat_name || null,
@@ -129,6 +135,16 @@ async function create(req, res) {
       return res.status(400).json({ success: false, message: `type must be one of ${PACKAGE_TYPES.join(", ")}` });
     }
 
+    let infoSections;
+    try {
+      infoSections = normalizeInfoSections(b.driver_info_sections);
+    } catch (e) {
+      if (e instanceof InvalidSectionsError) {
+        return res.status(400).json({ success: false, message: e.message });
+      }
+      throw e;
+    }
+
     const category = await prisma.pkg_category.findUnique({ where: { id: parseInt(b.cat_id, 10) } });
     if (!category) {
       return res.status(400).json({ success: false, message: `cat_id ${b.cat_id} does not exist` });
@@ -139,6 +155,9 @@ async function create(req, res) {
         title: b.title,
         user_title: b.user_title ? String(b.user_title).trim() : null,
         driver_title: b.driver_title ? String(b.driver_title).trim() : null,
+        driver_card_subtitle: b.driver_card_subtitle ? String(b.driver_card_subtitle).trim() : null,
+        driver_info_subtitle: b.driver_info_subtitle ? String(b.driver_info_subtitle).trim() : null,
+        driver_info_sections: infoSections,
         type: b.type,
         cat_id: parseInt(b.cat_id, 10),
         city_id: String(b.city_id),
@@ -218,6 +237,8 @@ async function update(req, res) {
       "title",
       "user_title",
       "driver_title",
+      "driver_card_subtitle",
+      "driver_info_subtitle",
       "min_charge",
       "per_km_charge",
       "free_waiting_time",
@@ -244,7 +265,12 @@ async function update(req, res) {
     ];
     for (const field of directFields) {
       if (b[field] !== undefined) {
-        if (field === "user_title" || field === "driver_title") {
+        if (
+          field === "user_title" ||
+          field === "driver_title" ||
+          field === "driver_card_subtitle" ||
+          field === "driver_info_subtitle"
+        ) {
           data[field] = b[field] ? String(b[field]).trim() : null;
         } else {
           data[field] = b[field];
@@ -270,6 +296,16 @@ async function update(req, res) {
     if (b.premium_plan_id !== undefined) data.premium_plan_id = b.premium_plan_id ? parseInt(b.premium_plan_id, 10) : null;
     if (b.sort_order !== undefined) data.sort_order = parseInt(b.sort_order, 10);
     if (b.status !== undefined) data.status = parseInt(b.status, 10);
+    if (b.driver_info_sections !== undefined) {
+      try {
+        data.driver_info_sections = normalizeInfoSections(b.driver_info_sections);
+      } catch (e) {
+        if (e instanceof InvalidSectionsError) {
+          return res.status(400).json({ success: false, message: e.message });
+        }
+        throw e;
+      }
+    }
 
     const updated = await prisma.tbl_package.update({ where: { id }, data });
     const category = updated.cat_id ? await prisma.pkg_category.findUnique({ where: { id: updated.cat_id } }) : null;
