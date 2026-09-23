@@ -10,6 +10,9 @@ const EMPTY_FORM = {
   title: 'Model 3',
   user_title: '',
   driver_title: '',
+  driver_card_subtitle: '',
+  driver_info_subtitle: '',
+  driver_info_sections: [],
   type: 'USER',
   cat_id: '',
   city_id: '',
@@ -312,6 +315,11 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
             cancellation_charge_driver: rateCard.cancellation_charge_driver ?? '0',
             driver_cancel_admin_earning: rateCard.driver_cancel_admin_earning ?? '0',
             driver_cancel_user_earning: rateCard.driver_cancel_user_earning ?? '0',
+            driver_card_subtitle: rateCard.driver_card_subtitle ?? '',
+            driver_info_subtitle: rateCard.driver_info_subtitle ?? '',
+            driver_info_sections: Array.isArray(rateCard.driver_info_sections)
+              ? rateCard.driver_info_sections
+              : [],
             outside_min_charge: rateCard.outside_min_charge ?? '0',
             outside_per_km_charge: rateCard.outside_per_km_charge ?? '0',
             outside_surcharge: rateCard.outside_surcharge ?? '0',
@@ -333,6 +341,32 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
 
   function set(key, value) {
     setForm((f) => ({ ...f, [key]: value }))
+  }
+
+  function setSection(index, key, value) {
+    setForm((f) => {
+      const next = f.driver_info_sections.map((s, i) => (i === index ? { ...s, [key]: value } : s))
+      return { ...f, driver_info_sections: next }
+    })
+  }
+
+  function addSection() {
+    setForm((f) => ({ ...f, driver_info_sections: [...f.driver_info_sections, { heading: '', body: '' }] }))
+  }
+
+  function removeSection(index) {
+    setForm((f) => ({ ...f, driver_info_sections: f.driver_info_sections.filter((_, i) => i !== index) }))
+  }
+
+  function moveSection(index, delta) {
+    setForm((f) => {
+      const target = index + delta
+      if (target < 0 || target >= f.driver_info_sections.length) return f
+      const next = [...f.driver_info_sections]
+      const [moved] = next.splice(index, 1)
+      next.splice(target, 0, moved)
+      return { ...f, driver_info_sections: next }
+    })
   }
 
   function handleCommissionChange(val) {
@@ -512,6 +546,110 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
               onChange={(e) => set('driver_title', e.target.value)}
               placeholder="e.g. Earning Beast / Prime Tier"
             />
+          </div>
+        </div>
+
+        <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+          <div className="mb-2 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+            Driver info
+          </div>
+          <p className="mb-3 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+            Shown in the driver app. Leave everything blank to hide the tier's Details button entirely.
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="driver_card_subtitle">Card subtitle</Label>
+              <Input
+                id="driver_card_subtitle"
+                value={form.driver_card_subtitle}
+                onChange={(e) => set('driver_card_subtitle', e.target.value)}
+                placeholder="e.g. Regular deliveries, steady earnings"
+              />
+            </div>
+            <div>
+              <Label htmlFor="driver_info_subtitle">Popup subtitle</Label>
+              <Input
+                id="driver_info_subtitle"
+                value={form.driver_info_subtitle}
+                onChange={(e) => set('driver_info_subtitle', e.target.value)}
+                placeholder="e.g. High demand & priority trips"
+              />
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <Label>Info sections</Label>
+            {form.driver_info_sections.length === 0 ? (
+              <p className="mb-2 text-[12px]" style={{ color: 'var(--ink-faint)' }}>
+                No sections yet — the Details button stays hidden for this tier.
+              </p>
+            ) : (
+              form.driver_info_sections.map((section, index) => (
+                <div key={index} className="mb-2 rounded-lg border p-2.5" style={{ borderColor: 'var(--border)' }}>
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <Input
+                      value={section.heading}
+                      onChange={(e) => setSection(index, 'heading', e.target.value)}
+                      placeholder="Heading, e.g. Earnings"
+                      maxLength={120}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => moveSection(index, -1)}
+                      disabled={index === 0}
+                      aria-label="Move section up"
+                      className="px-1.5 disabled:opacity-30"
+                      style={{ color: 'var(--ink-muted)' }}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSection(index, 1)}
+                      disabled={index === form.driver_info_sections.length - 1}
+                      aria-label="Move section down"
+                      className="px-1.5 disabled:opacity-30"
+                      style={{ color: 'var(--ink-muted)' }}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeSection(index)}
+                      aria-label="Remove section"
+                      className="px-1.5"
+                      style={{ color: 'var(--danger)' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <textarea
+                    value={section.body}
+                    onChange={(e) => setSection(index, 'body', e.target.value)}
+                    placeholder="Body text shown under the heading"
+                    maxLength={2000}
+                    rows={3}
+                    className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none resize-y"
+                    style={FIELD_STYLE}
+                  />
+                </div>
+              ))
+            )}
+            <button
+              type="button"
+              onClick={addSection}
+              disabled={form.driver_info_sections.length >= 12}
+              className="mt-1 rounded-lg border px-2.5 py-1 text-[12px] disabled:opacity-40"
+              style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+            >
+              + Add section
+            </button>
+            {form.driver_info_sections.length >= 12 && (
+              <span className="ml-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                Maximum of 12 sections reached.
+              </span>
+            )}
           </div>
         </div>
 

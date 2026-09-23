@@ -155,6 +155,22 @@ public interface NodeService {
     @POST("api/users/wallet/create-order")
     Call<JsonObject> createOrder(@Body RequestBody body);
 
+    // Node port's immediate, atomic withdraw (customerWalletController.withdrawWallet)
+    // - replaces the old admin-approval withdrawRequest below for wallet-balance
+    // withdrawals. Body: {mobile, amount, wallet_type: "driver"}.
+    @POST("api/users/wallet/withdraw")
+    Call<JsonObject> withdrawWallet(@Body RequestBody body);
+
+    // Clear-outstanding-due flow (customerWalletController.createClearDueOrder /
+    // clearOutstandingDue) - driver-only. The due amount is always computed
+    // server-side, never sent by the client. Body for create-order: {mobile}.
+    @POST("api/users/wallet/clear-due/create-order")
+    Call<JsonObject> createClearDueOrder(@Body RequestBody body);
+
+    // Body: {mobile, razorpay_payment_id, razorpay_order_id, razorpay_signature}.
+    @POST("api/users/wallet/clear-due/verify")
+    Call<JsonObject> clearOutstandingDue(@Body RequestBody body);
+
     // Node port of cust_api/custom_order_list_driver.php / custom_order_bid.php.
     @POST("api/rider/custom-order/open")
     Call<JsonObject> getCustomOrderList(@Body RequestBody body);
