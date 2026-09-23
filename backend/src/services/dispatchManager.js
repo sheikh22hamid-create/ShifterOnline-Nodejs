@@ -143,6 +143,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         WHERE rid > 0
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
+      AND (r.wallet_balance IS NULL OR r.wallet_balance >= 0)
       AND (
         ${Number(packageId)} != ${MODEL_1_PACKAGE_ID}
         OR r.model1_suspended_until IS NULL
