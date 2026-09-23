@@ -63,4 +63,21 @@ async function verifyRazorpayPayment({ paymentId, orderId, signature, expectedAm
   return { ok: true, payment };
 }
 
-module.exports = { verifyRazorpayPayment, fetchRazorpayPayment };
+// Fetches an order's own record from Razorpay (not the payment) - used
+// where a caller needs to check what the order was actually created for
+// (e.g. its `receipt`) before trusting a client-reported payment against
+// it, rather than trusting whatever purpose/amount the client claims the
+// order was for.
+async function fetchRazorpayOrder(orderId) {
+  if (!RAZORPAY_KEY_SECRET || !RAZORPAY_KEY_ID) {
+    throw new Error("RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured");
+  }
+  const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
+  const resp = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
+module.exports = { verifyRazorpayPayment, fetchRazorpayPayment, fetchRazorpayOrder };

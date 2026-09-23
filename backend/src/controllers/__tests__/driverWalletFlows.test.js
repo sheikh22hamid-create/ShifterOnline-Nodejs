@@ -7,10 +7,10 @@ jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn() }));
-jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn() }));
+jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn(), fetchRazorpayOrder: jest.fn() }));
 
 const prisma = require("../../config/db");
-const { verifyRazorpayPayment } = require("../../utils/razorpayVerify");
+const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../../utils/razorpayVerify");
 
 function mockRes() {
   return { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
@@ -87,6 +87,26 @@ describe("customerWalletController.withdrawWallet", () => {
       expect.objectContaining({ data: expect.objectContaining({ user_id: 7, amount: 100, type: "debit" }) })
     );
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
+  });
+
+  // Code review finding: NewBalance must come from a fresh in-transaction
+  // read, not `currentBalance - amount` arithmetic - that stale math is
+  // wrong whenever the real balance moved between the initial read and this
+  // transaction committing (e.g. a commission debit from tripLifecycle
+  // landed in the gap), even though this withdraw itself succeeded validly.
+  it("reports the fresh post-debit balance, not stale pre-transaction arithmetic", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "500.00" });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    // Simulates another debit (e.g. a commission charge) landing between the
+    // initial read (500) and this withdrawal's transaction committing: the
+    // real balance after this withdraw's own -100 is 350, not 400.
+    prisma.tbl_rider.findFirst
+      .mockResolvedValueOnce({ id: 7, wallet_balance: "500.00" })
+      .mockResolvedValueOnce({ id: 7, wallet_balance: "350.00" });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ NewBalance: 350 }));
   });
 
   it("reports insufficient balance instead of over-withdrawing when a concurrent request already spent the balance", async () => {
@@ -186,6 +206,13 @@ describe("customerWalletController.createClearDueOrder", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false" }));
   });
 
+  it("refuses to create an order when balance is exactly 0", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "0.00" });
+    const res = mockRes();
+    await createClearDueOrder({ body: { mobile: "9000000000" } }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false" }));
+  });
+
   it("creates a Razorpay order for exactly the server-computed due amount, ignoring any client-sent amount", async () => {
     prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
     global.fetch = jest.fn().mockResolvedValue({
@@ -208,18 +235,23 @@ describe("customerWalletController.clearOutstandingDue", () => {
     razorpay_payment_id: "pay_due_1",
     razorpay_order_id: "order_due_1",
     razorpay_signature: "sig_1",
-    due_amount: 70,
   };
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    // Default: an order that legitimately belongs to rider 7's clear-due flow.
+    fetchRazorpayOrder.mockResolvedValue({ id: "order_due_1", amount: 7000, receipt: "cleardue_7_1758610000000" });
+  });
 
-  it("credits the wallet by exactly the verified due amount once payment is verified", async () => {
+  it("credits the wallet by exactly the paid amount once payment and order-ownership are verified", async () => {
     verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
     prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
     prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
     prisma.tbl_rider.update.mockResolvedValue({ wallet_balance: "0.00" });
     const res = mockRes();
     await clearOutstandingDue({ body }, res);
+    expect(fetchRazorpayOrder).toHaveBeenCalledWith("order_due_1");
     expect(verifyRazorpayPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmountRupees: 70 }));
     expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ amount: 70, type: "credit", remark: "Outstanding Due Cleared", razorpay_payment_id: "pay_due_1" }) })
@@ -230,6 +262,7 @@ describe("customerWalletController.clearOutstandingDue", () => {
 
   it("refuses when Razorpay verification fails", async () => {
     verifyRazorpayPayment.mockResolvedValue({ ok: false, reason: "Payment Verification Failed!" });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
     const res = mockRes();
     await clearOutstandingDue({ body }, res);
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
@@ -245,5 +278,68 @@ describe("customerWalletController.clearOutstandingDue", () => {
     await clearOutstandingDue({ body }, res);
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false, msg: "This payment has already been credited." }));
+  });
+
+  // Security regression (found in code review): a driver could previously pay
+  // for an unrelated/oversized order via the generic /wallet/create-order
+  // endpoint and post its payment details here with a self-chosen
+  // `due_amount`, crediting their wallet by any amount they paid for -
+  // completely bypassing the "drivers cannot self-recharge" rule (Task 2).
+  it("rejects a payment for an order that doesn't carry this driver's clear-due receipt (self-recharge bypass attempt)", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    fetchRazorpayOrder.mockResolvedValue({ id: "order_1", amount: 500000, receipt: `wallet_${Date.now()}` });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(verifyRazorpayPayment).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
+  });
+
+  it("rejects a clear-due order receipt that belongs to a different driver", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    fetchRazorpayOrder.mockResolvedValue({ id: "order_due_1", amount: 7000, receipt: "cleardue_999_1758610000000" });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
+  });
+
+  it("clamps the credit to the actual outstanding due, never crediting more than what's owed even if the order paid more", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    // Order was legitimately created for the due, but paid amount somehow
+    // exceeds the current due (e.g. balance improved between order creation
+    // and payment) - credit must still be capped at the real due, not the
+    // paid amount, so this can never push the wallet positive.
+    fetchRazorpayOrder.mockResolvedValue({ id: "order_due_1", amount: 500000, receipt: "cleardue_7_1758610000000" });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    prisma.tbl_rider.update.mockResolvedValue({ wallet_balance: "0.00" });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 70 }) })
+    );
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet_balance: { increment: 70 } } });
+  });
+
+  it("rejects when the driver has no outstanding due left to clear, even with a valid captured payment", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "0.00" });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
+  });
+
+  it("writes the ledger row and credits the balance in the same transaction", async () => {
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: { status: "captured" } });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00" });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    prisma.tbl_rider.update.mockResolvedValue({ wallet_balance: "0.00" });
+    const res = mockRes();
+    await clearOutstandingDue({ body }, res);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
   });
 });

@@ -1,6 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
-const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
+const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
 const { getDriverMaxDueLimit } = require("../services/driverWalletSettings");
 
 // Node port of cust_api/add_wallet.php, wallet_history.php,
@@ -76,10 +76,19 @@ async function createRazorpayOrder(req, res) {
 }
 
 // --- Clear Outstanding Due (driver-only) ---
-// The amount is always computed server-side from the driver's current
-// wallet_balance, never taken from the client, so a tampered client can't
-// request an order for less than the real due or credit more than it paid
-// for (see design spec 2026-09-23-driver-wallet-outstanding-dues-design.md).
+// createClearDueOrder computes the order amount server-side from the
+// driver's current wallet_balance - never from the client - and tags the
+// order's `receipt` with the rider's id so clearOutstandingDue can later
+// confirm a payment was actually made against *this* clear-due order and
+// not some other order the client happens to have a valid payment for.
+// clearOutstandingDue re-fetches that order from Razorpay (never trusts a
+// client-supplied amount), checks the receipt belongs to this rider, and
+// clamps the credit to the rider's real outstanding due at the moment of
+// crediting - so even a payment for more than the due, or a due that
+// shrank between order creation and payment (e.g. an admin adjustment
+// landed in between), can never push the wallet balance positive. Any
+// amount paid beyond the due is not tracked/refunded here - out of scope,
+// see design spec 2026-09-23-driver-wallet-outstanding-dues-design.md.
 async function createClearDueOrder(req, res) {
   try {
     const mobile = String(req.body?.mobile || "");
@@ -136,14 +145,38 @@ async function clearOutstandingDue(req, res) {
   try {
     const b = req.body || {};
     const mobile = String(b.mobile || "");
-    const dueAmount = Number(b.due_amount || 0);
     const razorpayPaymentId = b.razorpay_payment_id;
     const razorpayOrderId = b.razorpay_order_id;
     const razorpaySignature = b.razorpay_signature;
 
-    if (!mobile || !dueAmount || !razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
+    if (!mobile || !razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
       return fail(res, "Missing Parameters");
     }
+
+    const rider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (!rider) return fail(res, "No driver found with this mobile number!");
+
+    // Never trust a client-supplied amount or receipt: re-fetch the order
+    // from Razorpay itself and confirm it's the clear-due order this
+    // specific rider's createClearDueOrder created (its receipt is tagged
+    // `cleardue_<riderId>_...`). Without this check a driver could pay for
+    // any order (e.g. a full-amount wallet recharge order, which the
+    // generic /wallet/create-order endpoint still creates for any client
+    // amount) and post its payment details here to credit their wallet by
+    // whatever they paid - defeating the "drivers cannot self-recharge"
+    // rule entirely.
+    let order;
+    try {
+      order = await fetchRazorpayOrder(razorpayOrderId);
+    } catch (e) {
+      logger.error("clearOutstandingDue: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured.", e);
+      return res.status(200).json({ Result: false, msg: "Payment verification is not configured. Try again later." });
+    }
+    if (!order || !String(order.receipt || "").startsWith(`cleardue_${rider.id}_`)) {
+      return fail(res, "This payment does not belong to your outstanding due.");
+    }
+
+    const paidAmount = Number(order.amount) / 100;
 
     let verification;
     try {
@@ -151,7 +184,7 @@ async function clearOutstandingDue(req, res) {
         paymentId: razorpayPaymentId,
         orderId: razorpayOrderId,
         signature: razorpaySignature,
-        expectedAmountRupees: dueAmount,
+        expectedAmountRupees: paidAmount,
       });
     } catch (e) {
       logger.error("clearOutstandingDue: RAZORPAY_KEY_ID/RAZORPAY_KEY_SECRET not configured.", e);
@@ -159,30 +192,41 @@ async function clearOutstandingDue(req, res) {
     }
     if (!verification.ok) return fail(res, verification.reason);
 
-    const rider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
-    if (!rider) return fail(res, "No driver found with this mobile number!");
+    // Clamp to the rider's *current* outstanding due, not the amount paid:
+    // if the due shrank between order creation and payment (e.g. an admin
+    // adjustment landed in between) this can never credit more than what's
+    // actually owed, so the wallet can never be pushed positive by this
+    // endpoint.
+    const actualDue = Math.max(0, -Number(rider.wallet_balance || 0));
+    if (actualDue <= 0) {
+      return fail(res, "No outstanding dues to clear.");
+    }
+    const creditAmount = Math.min(paidAmount, actualDue);
 
     try {
-      await prisma.tbl_wallet_history.create({
-        data: {
-          user_id: rider.id,
-          mobile,
-          amount: dueAmount,
-          type: "credit",
-          remark: "Outstanding Due Cleared",
-          payment_id: razorpayPaymentId,
-          razorpay_payment_id: razorpayPaymentId,
-          wallet_type: "driver",
-          created_at: new Date(),
-        },
+      let newBalance = null;
+      await prisma.$transaction(async (tx) => {
+        await tx.tbl_wallet_history.create({
+          data: {
+            user_id: rider.id,
+            mobile,
+            amount: creditAmount,
+            type: "credit",
+            remark: "Outstanding Due Cleared",
+            payment_id: razorpayPaymentId,
+            razorpay_payment_id: razorpayPaymentId,
+            wallet_type: "driver",
+            created_at: new Date(),
+          },
+        });
+        const updated = await tx.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: { increment: creditAmount } } });
+        newBalance = Number(updated.wallet_balance);
       });
+      return res.status(200).json({ Result: true, msg: "Outstanding due cleared", balance: newBalance });
     } catch (e) {
       if (e.code === "P2002") return fail(res, "This payment has already been credited.");
       throw e;
     }
-
-    const updated = await prisma.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: { increment: dueAmount } } });
-    return res.status(200).json({ Result: true, msg: "Outstanding due cleared", balance: Number(updated.wallet_balance) });
   } catch (err) {
     logger.error("customerWalletController.clearOutstandingDue failed:", err);
     return fail(res, "Internal server error");
@@ -370,6 +414,7 @@ async function withdrawWallet(req, res) {
     const balanceField = walletType === "user" ? "wallet" : "wallet_balance";
 
     let debited = false;
+    let newBalance = null;
     await prisma.$transaction(async (tx) => {
       const result = await tx[model].updateMany({
         where: { id: account.id, [balanceField]: { gte: amount } },
@@ -380,13 +425,21 @@ async function withdrawWallet(req, res) {
       await tx.tbl_wallet_history.create({
         data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: new Date() },
       });
+      // Re-read the balance inside the same transaction instead of trusting
+      // currentBalance - amount: a successful updateMany only proves the
+      // balance was >= amount at commit time, not that it was unchanged
+      // since the read above (e.g. a commission debit could have landed in
+      // between), so the pre-transaction arithmetic can be wrong even when
+      // this withdrawal itself is entirely valid.
+      const fresh = await tx[model].findFirst({ where: { id: account.id } });
+      newBalance = Number(fresh[balanceField]);
     });
 
     if (!debited) {
       return res.status(200).json({ ResponseCode: "402", Result: "false", ResponseMsg: "Insufficient Balance!" });
     }
 
-    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Withdraw Successful!", NewBalance: currentBalance - amount });
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Withdraw Successful!", NewBalance: newBalance });
   } catch (err) {
     logger.error("customerWalletController.withdrawWallet failed:", err);
     return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
