@@ -592,6 +592,9 @@ model tbl_package {
   title                        String           @db.Text
   user_title                   String?          @db.VarChar(255)
   driver_title                 String?          @db.VarChar(255)
+  driver_card_subtitle         String?          @db.VarChar(255)
+  driver_info_subtitle         String?          @db.VarChar(255)
+  driver_info_sections         String?          @db.Text
   type                         tbl_package_type
   min_charge                   Decimal          @db.Decimal(10, 2)
   per_km_charge                Decimal          @db.Decimal(10, 2)
