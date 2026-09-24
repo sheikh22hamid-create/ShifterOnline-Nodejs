@@ -278,6 +278,8 @@ const registerUpload = multer({
 }).fields([
   { name: "profile_photo", maxCount: 1 },
   { name: "upi_image", maxCount: 1 },
+  { name: "puc_image", maxCount: 1 },
+  { name: "bima_image", maxCount: 1 },
 ]);
 
 const DOC_CONFIG = {
@@ -597,6 +599,20 @@ async function registerHandler(req, res) {
       upiImagePath = await uploadBuffer(upiFile.buffer, `images/rider_docs/${filename}`);
     }
 
+    // PUC certificate / vehicle insurance (bima) - both optional, image-only,
+    // no document number or verification workflow (see DOC_CONFIG above).
+    async function saveOptionalDocImage(fieldName, filePrefix) {
+      const file = req.files?.[fieldName]?.[0];
+      if (!file) return "";
+      const allowedExt = ["jpg", "jpeg", "png", "webp", "pdf"];
+      let ext = path.extname(file.originalname || "").replace(".", "").toLowerCase();
+      if (!allowedExt.includes(ext)) ext = "jpg";
+      const filename = `${filePrefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
+      return uploadBuffer(file.buffer, `images/rider_docs/${filename}`);
+    }
+    const pucImagePath = await saveOptionalDocImage("puc_image", "puc");
+    const bimaImagePath = await saveOptionalDocImage("bima_image", "bima");
+
     // Personal doc row
     let docRow = await prisma.tbl_personal_doc.findFirst({ where: { rider_id: riderId } });
     if (!docRow) {
@@ -619,6 +635,8 @@ async function registerHandler(req, res) {
       });
     }
     if (upiImagePath) docUpdate.upi_image = upiImagePath;
+    if (pucImagePath) docUpdate.puc_image = pucImagePath;
+    if (bimaImagePath) docUpdate.bima_image = bimaImagePath;
 
     // Only populated when the RC's registered owner isn't the driver -
     // the app runs its own UIDAI eKYC OTP check against this name before

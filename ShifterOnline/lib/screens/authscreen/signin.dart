@@ -181,6 +181,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
   }
 
   void _showLocalNotification(RemoteMessage message) {
+    if (message.data['type'] == 'trip_milestone') return; // App-wide notification handler owns these.
     if (message.notification != null) {
       Get.snackbar(
         message.notification!.title ?? 'Notification',

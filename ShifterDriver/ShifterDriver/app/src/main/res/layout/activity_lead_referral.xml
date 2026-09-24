@@ -43,7 +43,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
                 android:layout_weight="1"
-                android:text="Refer Contacts &amp; Earn"
+                android:text="@string/refer_contacts_and_earn"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -66,7 +66,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="54dp"
             android:layout_marginTop="2dp"
-            android:text="Earn reward points &amp; become Favorite Driver 🚀"
+            android:text="@string/earn_reward_become_favorite_driver"
             android:textColor="#FFF0E6"
             android:textSize="12sp" />
     </LinearLayout>
@@ -91,7 +91,7 @@
             android:layout_weight="1"
             android:background="@drawable/bg_lead_tab_selected"
             android:gravity="center"
-            android:text="Select Contacts"
+            android:text="@string/select_contacts_label"
             android:textColor="#FFFFFF"
             android:textSize="13sp"
             android:textStyle="bold" />
@@ -104,7 +104,7 @@
             android:layout_weight="1"
             android:background="@drawable/bg_lead_tab_unselected"
             android:gravity="center"
-            android:text="My Leads"
+            android:text="@string/my_leads"
             android:textColor="@color/home_secondary"
             android:textSize="13sp"
             android:textStyle="bold" />
@@ -157,7 +157,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="100 Reward Points on 1st Ride"
+                        android:text="@string/reward_points_on_first_ride"
                         android:textColor="@color/shifter_orange_dark"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -166,7 +166,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="Select people from your contacts. After ops verification &amp; upon their 1st ride, you earn points and automatically become their Favorite Driver!"
+                        android:text="@string/select_people_from_contacts_hint"
                         android:textColor="#4B5563"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -332,7 +332,7 @@
                         android:paddingTop="6dp"
                         android:paddingEnd="12dp"
                         android:paddingBottom="6dp"
-                        android:text="Select All"
+                        android:text="@string/select_all_label"
                         android:textColor="@color/shifter_orange_dark"
                         android:textSize="12sp"
                         android:textStyle="bold" />
@@ -346,7 +346,7 @@
                         android:id="@+id/txt_selected_count"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="0 selected"
+                        android:text="@string/selected_count_zero"
                         android:textColor="@color/shifter_orange"
                         android:textSize="12sp"
                         android:textStyle="bold" />
@@ -389,7 +389,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:text="Contact Permission Needed"
+                        android:text="@string/contact_permission_needed"
                         android:textColor="#0F172A"
                         android:textSize="16sp"
                         android:textStyle="bold" />
@@ -399,7 +399,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:gravity="center"
-                        android:text="To refer your friends and earn reward points, please grant contact permission."
+                        android:text="@string/refer_friends_grant_permission_hint"
                         android:textColor="@color/home_secondary"
                         android:textSize="13sp" />
 
@@ -418,7 +418,7 @@
                         android:paddingTop="12dp"
                         android:paddingEnd="28dp"
                         android:paddingBottom="12dp"
-                        android:text="Grant Contacts Permission"
+                        android:text="@string/grant_contacts_permission"
                         android:textColor="#FFFFFF"
                         android:textSize="14sp"
                         android:textStyle="bold" />
@@ -442,7 +442,7 @@
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="No contacts found"
+                android:text="@string/no_contacts_found"
                 android:textColor="@color/home_secondary"
                 android:textSize="14sp"
                 android:visibility="gone" />
@@ -539,7 +539,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Total Leads"
+                        android:text="@string/total_leads"
                         android:textColor="@color/home_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -568,7 +568,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Verified"
+                        android:text="@string/verified"
                         android:textColor="@color/home_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -597,7 +597,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Rewarded"
+                        android:text="@string/rewarded_label"
                         android:textColor="@color/home_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -641,7 +641,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="16dp"
-                            android:text="No Leads Submitted Yet"
+                            android:text="@string/no_leads_submitted_yet"
                             android:textColor="#0F172A"
                             android:textSize="16sp"
                             android:textStyle="bold" />
@@ -651,7 +651,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:gravity="center"
-                            android:text="Switch to 'Select Contacts' tab to refer people you know and start earning reward points!"
+                            android:text="@string/switch_select_contacts_tab_hint"
                             android:textColor="@color/home_secondary"
                             android:textSize="13sp" />
 
@@ -665,7 +665,7 @@
                             android:paddingTop="10dp"
                             android:paddingEnd="22dp"
                             android:paddingBottom="10dp"
-                            android:text="Refer Contacts Now"
+                            android:text="@string/refer_contacts_now"
                             android:textColor="#FFFFFF"
                             android:textSize="13sp"
                             android:textStyle="bold" />

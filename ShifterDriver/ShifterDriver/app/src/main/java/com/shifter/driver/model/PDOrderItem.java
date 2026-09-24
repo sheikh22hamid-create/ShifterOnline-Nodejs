@@ -19,7 +19,7 @@ public class PDOrderItem implements Parcelable {
 	private final String distance;
 
 	@SerializedName("order_flow_id")
-	private final String orderFlowId;
+	private String orderFlowId;
 
 	@SerializedName("customer_paddress")
 	private final String customerPaddress;
@@ -290,6 +290,8 @@ public class PDOrderItem implements Parcelable {
 	public String getDistance(){
 		return distance;
 	}
+
+	public void setOrderFlowId(String flowId) { this.orderFlowId = flowId; }
 
 	public String getOrderFlowId(){
 		return orderFlowId;

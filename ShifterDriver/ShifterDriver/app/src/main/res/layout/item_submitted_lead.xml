@@ -47,7 +47,7 @@
                     android:layout_weight="1"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:text="Lead Name"
+                    android:text="@string/lead_name_label"
                     android:textColor="#0F172A"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -62,7 +62,7 @@
                     android:paddingTop="2dp"
                     android:paddingEnd="6dp"
                     android:paddingBottom="2dp"
-                    android:text="👤 Customer"
+                    android:text="@string/customer_person_icon_label"
                     android:textColor="#1D4ED8"
                     android:textSize="10sp"
                     android:textStyle="bold" />
@@ -86,7 +86,7 @@
             android:paddingTop="5dp"
             android:paddingEnd="10dp"
             android:paddingBottom="5dp"
-            android:text="⏳ Pending"
+            android:text="@string/pending_hourglass_badge"
             android:textColor="#D97706"
             android:textSize="11sp"
             android:textStyle="bold" />
@@ -108,7 +108,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Verification pending. Ops team will call."
+            android:text="@string/verification_pending_ops_call"
             android:textColor="@color/home_secondary"
             android:textSize="12sp" />
         <TextView

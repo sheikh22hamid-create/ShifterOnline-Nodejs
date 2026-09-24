@@ -99,6 +99,93 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // window, so a cancel landing while the screen is merely backgrounded
     // (not destroyed) still reaches it.
     private android.content.BroadcastReceiver orderCancelledReceiver;
+    private final android.os.Handler tripHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private android.content.BroadcastReceiver tripProgressReceiver;
+    private boolean tripActionPending;
+    private boolean terminalProgressHandled;
+    private String renderedTripState = "";
+    private final Runnable tripPoll = new Runnable() {
+        @Override public void run() {
+            if (orderItem != null && binding != null && !isWaitingForPayment && !terminalProgressHandled) {
+                com.shifter.driver.utility.TripProgressClient.request(OrderDetailsActivity.this, orderItem.getId(), "sync", null, null);
+            }
+            tripHandler.postDelayed(this, 10000);
+        }
+    };
+
+    @Override protected void onResume() {
+        super.onResume();
+        tripHandler.removeCallbacks(tripPoll);
+        tripHandler.post(tripPoll);
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        tripHandler.removeCallbacks(tripPoll);
+    }
+
+    private void registerTripProgress() {
+        tripProgressReceiver = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context context, Intent intent) {
+                if (orderItem != null && orderItem.getId().equals(intent.getStringExtra("order_id"))) applyTripProgress();
+            }
+        };
+        androidx.core.content.ContextCompat.registerReceiver(this, tripProgressReceiver,
+                new android.content.IntentFilter(com.shifter.driver.utility.TripProgressClient.ACTION_PROGRESS),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    private void applyTripProgress() {
+        if (orderItem == null || binding == null || isWaitingForPayment || isFinishing() || isDestroyed()) return;
+        JsonObject data = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
+        if (data == null) return;
+        if (!data.get("active").getAsBoolean()) {
+            if (terminalProgressHandled || "complete".equals(lastAction)) return;
+            terminalProgressHandled = true;
+            if (data.get("order_status").getAsInt() == 5) fetchCompletedOrderAndShowDialog(orderItem.getId());
+            else navigateToHomeAndFinish("This trip is no longer active");
+            return;
+        }
+        String flow = data.get("driver_flow_id").getAsString();
+        int step = data.get("stop_step").getAsInt();
+        String state = flow + ":" + step;
+        orderItem.setOrderFlowId(flow);
+        sessionManager.setOrderStopStep(orderItem.getId(), step);
+        sessionManager.setActiveOrder(orderItem);
+        long offset = (data.has("received_at") ? data.get("received_at").getAsLong() : System.currentTimeMillis()) - data.get("server_time").getAsLong();
+        android.content.SharedPreferences.Editor timer = getSharedPreferences("pickup_timer_prefs", MODE_PRIVATE).edit();
+        long pickupStart = data.get("pickup_wait_start").getAsLong();
+        long dropStart = data.get("drop_wait_start").getAsLong();
+        if (pickupStart > 0) timer.putLong("pickup_start_" + orderItem.getId(), pickupStart + offset);
+        if (dropStart > 0) timer.putLong("drop_start_" + orderItem.getId(), dropStart + offset);
+        timer.putLong("pickup_elapsed_" + orderItem.getId(), data.get("pickup_wait_seconds").getAsLong()).apply();
+        if (!state.equals(renderedTripState)) {
+            boolean changed = !renderedTripState.isEmpty();
+            renderedTripState = state;
+            setupUI(); setupClicks(); setupMap();
+            if (changed) {
+                binding.getRoot().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                String message = "2".equals(flow) ? "Pickup arrival confirmed. Verify OTP after loading."
+                        : "4".equals(flow) ? "Drop arrival confirmed. Complete delivery after handover."
+                        : "3".equals(flow) && step == 0 ? "Pickup complete. Navigate to the next destination."
+                        : "Stop progress updated";
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private void sendTripAction(String action, String otp, Runnable success) {
+        if (tripActionPending) return;
+        tripActionPending = true;
+        binding.txtConfirm.setEnabled(false);
+        com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), action, otp, (data, error) -> {
+            tripActionPending = false;
+            if (isFinishing() || isDestroyed()) return;
+            binding.txtConfirm.setEnabled(true);
+            if (error != null) Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+            else { applyTripProgress(); if (success != null) success.run(); }
+        });
+    }
 
     // Set only by OrderDialogHelper.startOrderDetailsActivity — the single
     // funnel both accept paths (foreground dialog, background overlay) use
@@ -123,7 +210,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             paymentCountDownTimer.cancel();
             paymentCountDownTimer = null;
         }
-        stopAndClearPickupWaitingTimer();
+        tripHandler.removeCallbacksAndMessages(null);
+        if (pickupWaitingTimerHandler != null) pickupWaitingTimerHandler.removeCallbacksAndMessages(null);
+        if (tripProgressReceiver != null) unregisterReceiver(tripProgressReceiver);
         if (orderCancelledReceiver != null) {
             try {
                 unregisterReceiver(orderCancelledReceiver);
@@ -181,6 +270,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
 
         registerOrderCancelledReceiver();
+        registerTripProgress();
 
         if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false) || isAdvancePaymentRequired(orderItem)) {
             // Show waiting for advance payment screen and start polling server
@@ -330,12 +420,15 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     }
 
     private void initOrderDetailsScreen() {
+        isWaitingForPayment = false;
         binding = ActivityOrderDetailsBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         applySystemWindowInsets(binding.getRoot());
         setupUI();
         setupClicks();
         setupMap();
+        applyTripProgress();
+        com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "sync", null, null);
     }
 
     private void showWaitingForPaymentScreen(com.google.gson.JsonObject rootObj, PDOrder pdOrder) {
@@ -626,6 +719,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     // ------------------------------------------------ UI
     private void setupUI() {
+        updateTripControls();
         binding.txtOrderid.setText(getString(R.string.order_id) + " #" + orderItem.getId());
         binding.txtDatetime.setText(getString(R.string.date) + " " + orderItem.getOrderDate());
         binding.txtUname.setText(orderItem.getPickName());
@@ -993,7 +1087,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (binding != null && binding.layoutWaitingTimer != null) {
             binding.layoutWaitingTimer.setVisibility(View.GONE);
         }
-        if (orderItem != null && !TextUtils.isEmpty(orderItem.getId())) {
+        if (orderItem != null && !TextUtils.isEmpty(orderItem.getId())
+                && com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId()) == null) {
             String orderId = orderItem.getId();
             android.content.SharedPreferences prefs = getSharedPreferences("pickup_timer_prefs", MODE_PRIVATE);
             long pickupStart = prefs.getLong("pickup_start_" + orderId, 0);
@@ -1043,7 +1138,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         binding.layoutWaitingTimer.setVisibility(View.VISIBLE);
 
         if (binding.txtWaitingTimerTitle != null) {
-            binding.txtWaitingTimerTitle.setText(isDropWaiting ? "Waiting at Drop (Unloading)" : "Waiting at Pickup");
+            binding.txtWaitingTimerTitle.setText(isDropWaiting ? "Total waiting · unloading" : "Waiting at Pickup");
         }
 
         if (!TextUtils.isEmpty(orderItem.getFreeWaitingTime()) && !"0".equals(orderItem.getFreeWaitingTime())) {
@@ -1158,38 +1253,24 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         });
 
         binding.txtConfirm.setOnClickListener(v -> {
-            if ("arrived".equalsIgnoreCase(status)) {
+            if (tripActionPending) return;
+            if ("pickup".equals(status)) {
                 showOtpDialog();
-            } else if ("pickup".equalsIgnoreCase(status)) {
-                orderstatus(status, "");
-            } else if (status != null && status.startsWith("arrived_stop_")) {
-                int currentStep = getActiveStopStep();
-                sessionManager.setOrderStopStep(orderItem.getId(), currentStep + 1);
-                String stopNum = status.substring("arrived_stop_".length());
-                Toast.makeText(this, "Arrived at Stop " + stopNum, Toast.LENGTH_SHORT).show();
-                setupUI();
-                setupClicks();
-                setupMap();
-            } else if (status != null && status.startsWith("complete_stop_")) {
-                int currentStep = getActiveStopStep();
-                sessionManager.setOrderStopStep(orderItem.getId(), currentStep + 1);
-                String stopNum = status.substring("complete_stop_".length());
-                Toast.makeText(this, "Stop " + stopNum + " Completed!", Toast.LENGTH_SHORT).show();
-                setupUI();
-                setupClicks();
-                setupMap();
-            } else if ("arrived_drop".equalsIgnoreCase(status)) {
-                int currentStep = getActiveStopStep();
-                sessionManager.setOrderStopStep(orderItem.getId(), currentStep + 1);
-                Toast.makeText(this, "Arrived at Drop Location", Toast.LENGTH_SHORT).show();
-                setupUI();
-                setupClicks();
-                setupMap();
-            } else if ("complete".equalsIgnoreCase(status)) {
-                orderstatus("complete", "");
-            } else {
-                orderstatus(status, "");
-            }
+            } else if ("complete".equals(status)) {
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Complete delivery?")
+                        .setMessage("Confirm the goods have been handed over and any required payment has been collected.")
+                        .setNegativeButton("Not yet", null)
+                        .setPositiveButton("Complete delivery", (dialog, which) -> orderstatus("complete", ""))
+                        .show();
+            } else if (status.startsWith("arrived") || status.startsWith("complete_stop_")) {
+                final String action = status;
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle(status.startsWith("arrived") ? "Confirm arrival manually?" : "Complete this stop?")
+                        .setMessage(status.startsWith("arrived") ? "Use this if you have reached the location but GPS has not confirmed it." : "Confirm the work at this stop is finished.")
+                        .setNegativeButton("Not yet", null)
+                        .setPositiveButton("Confirm", (dialog, which) -> sendTripAction(action, null, null)).show();
+            } else orderstatus(status, "");
         });
 
         binding.btnStartDrive.setOnClickListener(v -> {
@@ -1229,73 +1310,30 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         android.app.Dialog dialog = new android.app.Dialog(this);
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.dialog_enter_otp);
-
         if (dialog.getWindow() != null) {
             dialog.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
             dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
         }
-
-        EditText edOtp = dialog.findViewById(R.id.ed_otp);
-        TextView txtSubmit = dialog.findViewById(R.id.txt_submit_otp);
-        TextView txtCancel = dialog.findViewById(R.id.txt_cancel_otp);
-
-        txtCancel.setOnClickListener(v -> dialog.dismiss());
-
-        txtSubmit.setOnClickListener(v -> {
-            String otp = edOtp.getText().toString().trim();
-            if (TextUtils.isEmpty(otp)) {
-                edOtp.setError("Enter OTP");
-                return;
-            }
-
-            // Call API - Node's verify-pickup-otp (orderController.js), not a
-            // PHP port: {success, message, data} instead of {Result, ResponseMsg}.
-            custPrograssbar.prograssCreate(this);
-            java.util.Map<String, Object> body = new java.util.HashMap<>();
-            body.put("order_id", orderItem.getId());
-            body.put("otp", otp);
-
-            Call<JsonObject> call = NodeApiClient.getInterface().verifyPickupOtp(body);
-            android.os.Handler otpTimeoutHandler = new android.os.Handler(getMainLooper());
-            Runnable otpTimeout = () -> {
-                if (!call.isCanceled()) {
-                    call.cancel();
-                    custPrograssbar.closePrograssBar();
-                    Toast.makeText(OrderDetailsActivity.this,
-                            "OTP verification timed out. Please try again.", Toast.LENGTH_SHORT).show();
-                }
-            };
-            otpTimeoutHandler.postDelayed(otpTimeout, 15_000L);
-            call.enqueue(new retrofit2.Callback<JsonObject>() {
-                @Override
-                public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
-                    otpTimeoutHandler.removeCallbacks(otpTimeout);
-                    custPrograssbar.closePrograssBar();
-                    JsonObject jsonResponse = response.body();
-                    boolean isSuccess = jsonResponse != null && jsonResponse.has("success")
-                            && !jsonResponse.get("success").isJsonNull() && jsonResponse.get("success").getAsBoolean();
-
-                    if (isSuccess) {
-                        dialog.dismiss();
-                        orderstatus(status, ""); // Proceed with arrived status
-                    } else {
-                        String msg = (jsonResponse != null && jsonResponse.has("message") && !jsonResponse.get("message").isJsonNull())
-                                ? jsonResponse.get("message").getAsString() : "Invalid OTP";
-                        Toast.makeText(OrderDetailsActivity.this, msg, Toast.LENGTH_SHORT).show();
-                    }
-                }
-
-                @Override
-                public void onFailure(Call<JsonObject> call, Throwable t) {
-                    otpTimeoutHandler.removeCallbacks(otpTimeout);
-                    custPrograssbar.closePrograssBar();
-                    if (!call.isCanceled()) {
-                        Toast.makeText(OrderDetailsActivity.this, "Network error", Toast.LENGTH_SHORT).show();
-                    }
-                }
+        EditText input = dialog.findViewById(R.id.ed_otp);
+        TextView submit = dialog.findViewById(R.id.txt_submit_otp);
+        dialog.findViewById(R.id.txt_cancel_otp).setOnClickListener(v -> dialog.dismiss());
+        submit.setOnClickListener(v -> {
+            String otp = input.getText().toString().trim();
+            if (!otp.matches("[0-9]{4}")) { input.setError("Enter the 4-digit pickup OTP"); return; }
+            if (tripActionPending) return;
+            submit.setEnabled(false);
+            tripActionPending = true;
+            binding.txtConfirm.setEnabled(false);
+            com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "pickup", otp, (data, error) -> {
+                tripActionPending = false;
+                if (isFinishing() || isDestroyed()) return;
+                submit.setEnabled(true);
+                binding.txtConfirm.setEnabled(true);
+                if (error != null) { input.setError(error); return; }
+                dialog.dismiss();
+                applyTripProgress();
             });
         });
-
         dialog.show();
     }
 
@@ -1390,6 +1428,67 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         currentPolyline = mMap.addPolyline((PolylineOptions) values[0]);
     }
 
+    private void updateTripControls() {
+        List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
+        switch (orderItem.getOrderFlowId()) {
+            case "0":
+                status = "accept";
+                binding.txtConfirm.setText(getString(R.string.confirm_order_btn));
+                binding.txtReject.setText(getString(R.string.reject_btn));
+                binding.txtReject.setVisibility(View.VISIBLE);
+                break;
+
+            case "1":
+                status = "arrived";
+                binding.txtConfirm.setText("REACHED PICKUP · MANUAL");
+                binding.txtReject.setText(getString(R.string.cancel));
+                binding.txtReject.setVisibility(View.VISIBLE);
+                break;
+
+            case "2":
+                status = "pickup";
+                binding.txtConfirm.setText("VERIFY OTP & START DELIVERY");
+                binding.txtReject.setText(getString(R.string.cancel));
+                binding.txtReject.setVisibility(View.VISIBLE);
+                break;
+
+            case "3":
+            case "4":
+                binding.txtReject.setVisibility(View.GONE);
+                int numStops = (stops != null) ? stops.size() : 0;
+                int stopStep = getActiveStopStep();
+                if (numStops > 0 && stopStep < numStops * 2) {
+                    int stopIndex = stopStep / 2;
+                    int stopNumber = stopIndex + 1;
+                    if (stopStep % 2 == 0) {
+                        status = "arrived_stop_" + stopNumber;
+                        binding.txtConfirm.setText("REACHED STOP " + stopNumber + " · MANUAL");
+                    } else {
+                        status = "complete_stop_" + stopNumber;
+                        binding.txtConfirm.setText("COMPLETE STOP " + stopNumber);
+                    }
+                } else {
+                    if (stopStep <= numStops * 2) {
+                        status = "arrived_drop";
+                        binding.txtConfirm.setText("REACHED DROP · MANUAL");
+                    } else {
+                        status = "complete";
+                        binding.txtConfirm.setText("DROP COMPLETE");
+                    }
+                }
+                break;
+
+            default:
+                break;
+        }
+
+        binding.txtConfirm.setEnabled(!tripActionPending);
+        int count = stops.size();
+        boolean pickup = "1".equals(orderItem.getOrderFlowId()) || "2".equals(orderItem.getOrderFlowId());
+        binding.btnStartDrive.setText(pickup ? "Navigate to pickup" : getActiveStopStep() < count * 2
+                ? "Navigate to stop " + (getActiveStopStep() / 2 + 1) : "Navigate to drop");
+    }
+
     // ------------------------------------------------ PATH
     private void updateLocationPath() {
         if (mMap == null || orderItem == null) {
@@ -1410,8 +1509,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
         LatLng pickupLoc = new LatLng(orderItem.getPlat(), orderItem.getPlong());
         LatLng dropLoc = new LatLng(orderItem.getDlat(), orderItem.getDlong());
-        boolean isPostPickup = "2".equals(orderItem.getOrderFlowId())
-                || "3".equals(orderItem.getOrderFlowId())
+        boolean isPostPickup = "3".equals(orderItem.getOrderFlowId())
                 || "4".equals(orderItem.getOrderFlowId());
 
         List<LatLng> routePoints = new ArrayList<>();
@@ -1425,7 +1523,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         // Stops are part of the order route. Keep their sequence from the API
         // and include them in both the map markers and Directions waypoints.
         List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
-        for (com.shifter.driver.model.OrderStop stop : stops) {
+        for (int routeIndex = isPostPickup ? Math.min(getActiveStopStep() / 2, stops.size()) : 0; routeIndex < stops.size(); routeIndex++) {
+            com.shifter.driver.model.OrderStop stop = stops.get(routeIndex);
             try {
                 double lat = Double.parseDouble(stop.getLat());
                 double lng = Double.parseDouble(stop.getLng());
@@ -1438,58 +1537,6 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
         if (dropLoc.latitude != 0.0 && dropLoc.longitude != 0.0) {
             routePoints.add(dropLoc);
-        }
-
-        switch (orderItem.getOrderFlowId()) {
-            case "0":
-                status = "accept";
-                binding.txtConfirm.setText(getString(R.string.confirm_order_btn));
-                binding.txtReject.setText(getString(R.string.reject_btn));
-                binding.txtReject.setVisibility(View.VISIBLE);
-                break;
-
-            case "1":
-                status = "arrived";
-                binding.txtConfirm.setText("ARRIVED ORDER");
-                binding.txtReject.setText(getString(R.string.cancel));
-                binding.txtReject.setVisibility(View.VISIBLE);
-                break;
-
-            case "2":
-                status = "pickup";
-                binding.txtConfirm.setText(getString(R.string.pickup_complete));
-                binding.txtReject.setText(getString(R.string.cancel));
-                binding.txtReject.setVisibility(View.VISIBLE);
-                break;
-
-            case "3":
-            case "4":
-                binding.txtReject.setVisibility(View.GONE);
-                int numStops = (stops != null) ? stops.size() : 0;
-                int stopStep = getActiveStopStep();
-                if (numStops > 0 && stopStep < numStops * 2) {
-                    int stopIndex = stopStep / 2;
-                    int stopNumber = stopIndex + 1;
-                    if (stopStep % 2 == 0) {
-                        status = "arrived_stop_" + stopNumber;
-                        binding.txtConfirm.setText("ARRIVED STOP " + stopNumber);
-                    } else {
-                        status = "complete_stop_" + stopNumber;
-                        binding.txtConfirm.setText("COMPLETE STOP " + stopNumber);
-                    }
-                } else {
-                    if (stopStep <= numStops * 2) {
-                        status = "arrived_drop";
-                        binding.txtConfirm.setText("ARRIVED DROP");
-                    } else {
-                        status = "complete";
-                        binding.txtConfirm.setText("DROP COMPLETE");
-                    }
-                }
-                break;
-
-            default:
-                break;
         }
 
         // 1. Always add Pickup Marker (Green with Box icon and PICKUP label)
@@ -1666,26 +1713,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     // ------------------------------------------------ API
     private void orderstatus(String status, String comment) {
+        if (tripActionPending) return;
+        tripActionPending = true;
+        binding.txtConfirm.setEnabled(false);
         lastAction = status;
-        if ("pickup".equalsIgnoreCase(status)) {
-            pausePickupWaitingTimer();
-        }
-        custPrograssbar.prograssCreate(this);
 
-        // Node's tripLifecycle.updateStatus only understands
-        // arrived/pickup/complete (backend/API_INTEGRATION_GUIDE.md §6.1) —
-        // this app's own "arrived_drop" intermediate step (reached the drop
-        // location, before the final complete tap) has no Node equivalent,
-        // so it's advanced purely client-side: synthesize the same
-        // Next_step-less success callback() already falls back to for
-        // lastAction=="arrived_drop", without calling the backend at all.
-        if ("arrived_drop".equalsIgnoreCase(status)) {
-            JsonObject fakeResult = new JsonObject();
-            fakeResult.addProperty("Result", "true");
-            fakeResult.addProperty("ResponseMsg", "");
-            callback(fakeResult, "1");
-            return;
-        }
+        custPrograssbar.prograssCreate(this);
 
         org.json.JSONObject payload = new org.json.JSONObject();
         try {
@@ -1702,7 +1735,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             JsonObject fakeResult = new JsonObject();
             fakeResult.addProperty("Result", success ? "true" : "false");
             fakeResult.addProperty("ResponseMsg", msg);
-            callback(fakeResult, "1");
+            runOnUiThread(() -> {
+                tripActionPending = false;
+                if (isFinishing() || isDestroyed()) return;
+                binding.txtConfirm.setEnabled(true);
+                callback(fakeResult, "1");
+            });
         });
     }
 

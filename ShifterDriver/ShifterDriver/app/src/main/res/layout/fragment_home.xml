@@ -57,7 +57,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Partner"
+                            android:text="@string/partner_label"
                             android:textColor="@color/shifter_orange"
                             android:textSize="13sp"
                             android:textStyle="bold" />
@@ -166,7 +166,7 @@
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
                         android:maxLines="2"
-                        android:text="Good evening, Partner 👋"
+                        android:text="@string/good_evening_partner"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="24sp"
                         android:textStyle="bold"
@@ -246,7 +246,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
-                            android:text="Going Online..."
+                            android:text="@string/going_online"
                             android:textColor="@color/shifter_orange_dark"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -272,7 +272,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="6dp"
-                            android:text="Almost there..."
+                            android:text="@string/almost_there"
                             android:textColor="@color/status_online_green_dark"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -447,7 +447,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
-                            android:text="Going Offline..."
+                            android:text="@string/going_offline"
                             android:textColor="@color/status_offline_red"
                             android:textSize="14sp"
                             android:textStyle="bold" />
@@ -491,7 +491,7 @@
                         android:paddingTop="4dp"
                         android:paddingEnd="10dp"
                         android:paddingBottom="4dp"
-                        android:text="Active Order"
+                        android:text="@string/active_order_label"
                         android:textColor="@color/white"
                         android:textSize="12sp"
                         android:textStyle="bold" />
@@ -589,7 +589,7 @@
                     android:layout_height="44dp"
                     android:layout_marginTop="12dp"
                     android:background="@drawable/rounded_button"
-                    android:text="Continue Delivery →"
+                    android:text="@string/continue_delivery"
                     android:textAllCaps="false"
                     android:textColor="@color/white"
                     android:textSize="15sp"
@@ -630,14 +630,14 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Store Address"
+                    android:text="@string/store_address_label"
                     android:textColor="@color/driver_text_primary"
                     android:textSize="13sp" />
                 <TextView
                     android:id="@+id/txt_fromaddress1"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Delivery Address"
+                    android:text="@string/delivery_address_label"
                     android:textColor="@color/driver_text_primary"
                     android:textSize="13sp" />
                 <LinearLayout
@@ -678,7 +678,7 @@
                     android:layout_height="40dp"
                     android:layout_marginTop="8dp"
                     android:background="@drawable/rounded_button"
-                    android:text="View Order Details"
+                    android:text="@string/view_order_details_btn"
                     android:textAllCaps="false"
                     android:textColor="@color/white"
                     android:textSize="15sp"
@@ -779,7 +779,7 @@
                         android:paddingTop="3dp"
                         android:paddingEnd="8dp"
                         android:paddingBottom="3dp"
-                        android:text="↑ Today's Net"
+                        android:text="@string/todays_net_label"
                         android:textColor="@color/status_online_green_dark"
                         android:textSize="12sp"
                         android:textStyle="bold"
@@ -1411,14 +1411,14 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Custom Orders"
+                        android:text="@string/custom_orders_label"
                         android:textColor="@color/white"
                         android:textSize="15sp"
                         android:textStyle="bold" />
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="View and bid on custom orders"
+                        android:text="@string/view_and_bid_custom_orders"
                         android:textColor="#DDEEFF"
                         android:textSize="12sp" />
                 </LinearLayout>

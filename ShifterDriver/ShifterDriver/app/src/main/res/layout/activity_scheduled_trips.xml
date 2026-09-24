@@ -23,7 +23,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:padding="24dp"
-        android:text="No scheduled trips right now."
+        android:text="@string/no_scheduled_trips_right_now"
         android:visibility="gone" />
 
 </LinearLayout>

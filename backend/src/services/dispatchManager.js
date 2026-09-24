@@ -142,7 +142,13 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         WHERE rid > 0
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
-      AND (r.wallet_balance IS NULL OR r.wallet_balance >= 0)
+      AND (
+        r.wallet_balance IS NULL
+        OR r.wallet_balance >= -COALESCE(
+          (SELECT CAST(setting_value AS DECIMAL(10,2)) FROM app_settings WHERE setting_key = 'driver_max_due_limit' LIMIT 1),
+          100.00
+        )
+      )
       AND (
         ${Number(packageId)} != ${MODEL_1_PACKAGE_ID}
         OR r.model1_suspended_until IS NULL

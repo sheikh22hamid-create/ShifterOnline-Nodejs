@@ -25,6 +25,8 @@ import retrofit2.http.Query;
  * memory/order_dispatch_auth_gap.md).
  */
 public interface NodeService {
+    @POST("api/order/trip-progress")
+    Call<JsonObject> tripProgress(@Body Map<String, Object> body);
 
     @POST("api/rider/status")
     Call<JsonObject> setStatus(@Body Map<String, Object> body);
@@ -103,7 +105,9 @@ public interface NodeService {
             @Part("device_id") RequestBody deviceId,
             @Part("referral_code") RequestBody referralCode,
             @Part("rc_owner_name") RequestBody rcOwnerName,
-            @Part("rc_owner_aadhar_number") RequestBody rcOwnerAadhaarNumber
+            @Part("rc_owner_aadhar_number") RequestBody rcOwnerAadhaarNumber,
+            @Part MultipartBody.Part pucImage,
+            @Part MultipartBody.Part bimaImage
     );
 
     // --- KYC manual-upload endpoints (Node port of rider_api/bank_account.php,

@@ -134,6 +134,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     }, onStatusChanged: (data) {
 
       if (!mounted || data['order_id']?.toString() != orderid) return;
+      final eventId = data['event_id']?.toString();
+      if (eventId != null && !_seenTripEvents.add(eventId)) return;
+      final message = data['message']?.toString();
+      if (message != null && message.isNotEmpty) ApiWrapper.showToastMessage(message);
       debugPrint("🔔 order:status_changed: $data");
       pageRefresh();
     }, onOrderCompleted: (data) {
@@ -2197,6 +2201,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // ── 8. CONTEXTUAL STATUS CARD ─────────────────────────────────────────────
 
+  final Set<String> _seenTripEvents = <String>{};
+
   Widget _buildContextualStatusCard() {
     final status = (orderProduc?["Order_Status"] ?? "Processing").toString();
     final s = status.toLowerCase();
@@ -2216,6 +2222,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       message = "This order has been cancelled.".tr;
       icon = Icons.cancel_outlined;
       accent = const Color(0xFFFF5252);
+    } else if (orderProduc?["trip_progress"]?["arrived_drop"] == true) {
+      title = "Driver Arrived at Drop".tr;
+      message = "Your driver has reached the drop location. Please receive your goods.".tr;
+      icon = Icons.location_on_outlined;
+      accent = const Color(0xFFFF9100);
     } else if (s == "on route" || s == "on_route" || s == "intransit") {
       title = "In Transit — On the Way to Drop".tr;
       message = "Your delivery partner is on the way to the drop location.".tr;
@@ -2223,7 +2234,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       accent = const Color(0xFF2979FF);
     } else if (s == "pickup") {
       title = "Rider Arrived at Pickup".tr;
-      message = "Your package is being collected by the delivery partner.".tr;
+      message = "Share the pickup OTP only after your goods are loaded and handed over. Verifying it starts delivery.".tr;
       icon = Icons.inventory_2_outlined;
       accent = const Color(0xFFFF9100);
     }

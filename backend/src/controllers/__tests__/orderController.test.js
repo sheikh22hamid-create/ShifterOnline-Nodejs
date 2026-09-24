@@ -1,4 +1,6 @@
 jest.mock("../../config/db", () => ({
+  pkg_order_wait_timer: { findUnique: jest.fn().mockResolvedValue(null) },
+  driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
   tbl_package: { findMany: jest.fn() },
   tbl_user: { findUnique: jest.fn(), updateMany: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },

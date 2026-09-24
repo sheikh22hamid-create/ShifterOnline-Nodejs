@@ -34,7 +34,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="MONTHLY DEDICATED DRIVER"
+                    android:text="@string/monthly_dedicated_driver_caps"
                     android:textColor="#059669"
                     android:textSize="10.5sp"
                     android:textStyle="bold" />
@@ -61,7 +61,7 @@
                 android:paddingTop="3dp"
                 android:paddingEnd="8dp"
                 android:paddingBottom="3dp"
-                android:text="🟢 In-Zone"
+                android:text="@string/in_zone_badge"
                 android:textColor="@color/white"
                 android:textSize="11sp"
                 android:textStyle="bold" />
@@ -92,7 +92,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="In-Zone Duty"
+                        android:text="@string/in_zone_duty"
                         android:textColor="#64748B"
                         android:textSize="10.5sp" />
 
@@ -117,7 +117,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Base Salary"
+                        android:text="@string/base_salary"
                         android:textColor="#64748B"
                         android:textSize="10.5sp" />
 
@@ -157,7 +157,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Overtime Pay"
+                        android:text="@string/overtime_pay"
                         android:textColor="#64748B"
                         android:textSize="10.5sp" />
 
@@ -182,7 +182,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Cash in Hand"
+                        android:text="@string/cash_in_hand"
                         android:textColor="#64748B"
                         android:textSize="10.5sp" />
 
@@ -208,7 +208,7 @@
             android:background="@drawable/bg_btn_accept_themed"
             android:backgroundTint="#059669"
             android:stateListAnimator="@null"
-            android:text="START DUTY (PUNCH IN)"
+            android:text="@string/start_duty_punch_in"
             android:textColor="@color/white"
             android:textSize="13sp"
             android:textStyle="bold" />

@@ -1701,11 +1701,12 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
     prisma.$queryRaw.mockResolvedValue([]);
   });
 
-  it("excludes drivers with a negative wallet balance from new-ride offers", async () => {
+  it("excludes drivers whose negative wallet balance exceeds max due limit from new-ride offers", async () => {
     const order = { id: 900, uid: 7, plat: "28.7", plong: "77.1", category: "Bike" };
     await selectEligibleDrivers(order, 6, []);
     const [strings] = prisma.$queryRaw.mock.calls[0];
     const sql = strings.join(" ");
-    expect(sql).toContain("wallet_balance >= 0");
+    expect(sql).toContain("wallet_balance >=");
   });
+
 });

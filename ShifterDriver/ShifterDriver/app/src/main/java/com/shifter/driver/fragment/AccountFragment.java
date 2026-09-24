@@ -185,7 +185,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         } else if (id == R.id.lvl_contact) {
             showCustomerCareDialog();
         } else if (id == R.id.lvl_logout) {
-            logoutApi();
+            handleLogoutClick();
         }
     }
 
@@ -499,6 +499,152 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
     }
 
 
+
+    // ─── Logout & Go Offline Flow ───────────────────────────────────────────
+    private void handleLogoutClick() {
+        if (getActivity() == null) return;
+        boolean isOnline = com.shifter.driver.locationservice.LocationUpdateService.isRunning(getActivity());
+        if (isOnline) {
+            showGoOfflineLogoutDialog();
+        } else {
+            showConfirmLogoutDialog();
+        }
+    }
+
+    private void showGoOfflineLogoutDialog() {
+        if (getActivity() == null) return;
+
+        BottomSheetDialog dialog = new BottomSheetDialog(getActivity(), R.style.CustomBottomSheetDialogTheme);
+        View view = LayoutInflater.from(getActivity()).inflate(R.layout.dialog_logout_go_offline, null);
+        dialog.setContentView(view);
+
+        dialog.setOnShowListener(d -> {
+            try {
+                android.widget.FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+                if (bottomSheet != null) {
+                    bottomSheet.setBackgroundResource(android.R.color.transparent);
+                    com.google.android.material.bottomsheet.BottomSheetBehavior<android.view.View> behavior =
+                            com.google.android.material.bottomsheet.BottomSheetBehavior.from(bottomSheet);
+                    behavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
+                    behavior.setSkipCollapsed(true);
+                }
+            } catch (Exception ignored) {}
+        });
+
+        // Close button (X)
+        View btnClose = view.findViewById(R.id.btn_close_offline_sheet);
+        if (btnClose != null) {
+            btnClose.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        // Cancel button
+        View btnCancel = view.findViewById(R.id.btn_cancel_logout);
+        if (btnCancel != null) {
+            btnCancel.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        // Just Go Offline (Stay logged in)
+        View btnGoOfflineOnly = view.findViewById(R.id.btn_go_offline_only);
+        if (btnGoOfflineOnly != null) {
+            btnGoOfflineOnly.setOnClickListener(v -> {
+                dialog.dismiss();
+                performGoOfflineOnly();
+            });
+        }
+
+        // Go Offline & Log Out
+        View btnGoOfflineLogout = view.findViewById(R.id.btn_go_offline_logout);
+        if (btnGoOfflineLogout != null) {
+            btnGoOfflineLogout.setOnClickListener(v -> {
+                dialog.dismiss();
+                logoutApi();
+            });
+        }
+
+        dialog.show();
+    }
+
+    private void performGoOfflineOnly() {
+        if (getActivity() == null) return;
+        Toast.makeText(getActivity(), "Going offline...", Toast.LENGTH_SHORT).show();
+
+        // 1) Stop background location update service
+        try {
+            getActivity().stopService(new Intent(getActivity(), com.shifter.driver.locationservice.LocationUpdateService.class));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // 2) Set driver status to OFFLINE (a_status = 0)
+        if (user != null) {
+            try {
+                java.util.Map<String, Object> statusBody = new java.util.HashMap<>();
+                statusBody.put("rider_id", user.getId());
+                statusBody.put("a_status", 0);
+                if (getActivity() != null) {
+                    statusBody.put("device_id", com.shifter.driver.utility.Utility.getDeviceId(getActivity()));
+                }
+                NodeApiClient.getInterface().setStatus(statusBody).enqueue(new retrofit2.Callback<JsonObject>() {
+                    @Override
+                    public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                        if (getActivity() != null) {
+                            Toast.makeText(getActivity(), "You are now OFFLINE. Duty is off.", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<JsonObject> call, Throwable t) {
+                        if (getActivity() != null) {
+                            Toast.makeText(getActivity(), "Offline updated locally.", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void showConfirmLogoutDialog() {
+        if (getActivity() == null) return;
+
+        BottomSheetDialog dialog = new BottomSheetDialog(getActivity(), R.style.CustomBottomSheetDialogTheme);
+        View view = LayoutInflater.from(getActivity()).inflate(R.layout.dialog_confirm_logout, null);
+        dialog.setContentView(view);
+
+        dialog.setOnShowListener(d -> {
+            try {
+                android.widget.FrameLayout bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+                if (bottomSheet != null) {
+                    bottomSheet.setBackgroundResource(android.R.color.transparent);
+                    com.google.android.material.bottomsheet.BottomSheetBehavior<android.view.View> behavior =
+                            com.google.android.material.bottomsheet.BottomSheetBehavior.from(bottomSheet);
+                    behavior.setState(com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED);
+                    behavior.setSkipCollapsed(true);
+                }
+            } catch (Exception ignored) {}
+        });
+
+        View btnClose = view.findViewById(R.id.btn_close_confirm_sheet);
+        if (btnClose != null) {
+            btnClose.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        View btnCancel = view.findViewById(R.id.btn_cancel_confirm_logout);
+        if (btnCancel != null) {
+            btnCancel.setOnClickListener(v -> dialog.dismiss());
+        }
+
+        View btnConfirm = view.findViewById(R.id.btn_confirm_logout);
+        if (btnConfirm != null) {
+            btnConfirm.setOnClickListener(v -> {
+                dialog.dismiss();
+                logoutApi();
+            });
+        }
+
+        dialog.show();
+    }
 
     private void logoutApi() {
         custPrograssbar.prograssCreate(getActivity());

@@ -6,6 +6,7 @@ const orderAvailabilityController = require("../controllers/orderAvailabilityCon
 const orderInvoiceController = require("../controllers/orderInvoiceController");
 
 const router = express.Router();
+router.post("/trip-progress", require('../controllers/driverTripController').syncProgress);
 
 router.get("/categories", orderController.getCategories);
 router.post("/fare-estimate", orderController.fareEstimate);

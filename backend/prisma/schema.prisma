@@ -261,6 +261,34 @@ model pkg_order {
   @@index([rid, order_status], map: "idx_rid_status")
 }
 
+// Server-owned driver milestones. Global order_status=4 still means cancelled.
+model driver_trip_progress {
+  order_id          Int       @id
+  rider_id          Int
+  automation_enabled Boolean @default(false)
+  stop_step         Int       @default(0)
+  otp_verified_at   DateTime? @db.DateTime(3)
+  candidate_key     String?   @db.VarChar(50)
+  candidate_since   DateTime? @db.DateTime(3)
+  candidate_count   Int       @default(0)
+  last_sample_at    DateTime? @db.DateTime(3)
+  updated_at        DateTime  @updatedAt @db.DateTime(3)
+}
+
+model driver_trip_event {
+  id           Int       @id @default(autoincrement())
+  order_id     Int
+  rider_id     Int
+  user_id      Int
+  milestone    String    @db.VarChar(50)
+  payload      Json
+  created_at   DateTime  @default(now()) @db.DateTime(3)
+  sent_at      DateTime? @db.DateTime(3)
+  lease_until  DateTime? @db.DateTime(3)
+  @@unique([order_id, milestone])
+  @@index([sent_at, lease_until])
+}
+
 model pkg_order_interest {
   id         Int      @id @default(autoincrement())
   order_id   Int
@@ -676,6 +704,10 @@ model tbl_personal_doc {
   aadhar_back      String? @db.Text
   aadhaar_back     String? @db.VarChar(255)
   upi_image        String? @db.VarChar(255)
+  // Optional, unverified vehicle documents - image only, no document number
+  // or approval workflow, unlike Aadhaar/PAN/DL/RC above.
+  puc_image        String? @db.VarChar(255)
+  bima_image       String? @db.VarChar(255)
   // Populated only when the vehicle's RC owner isn't the driver themselves -
   // the app runs a separate UIDAI eKYC OTP verification against the RTO's
   // registered owner name before letting the driver proceed (see

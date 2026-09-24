@@ -68,7 +68,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Refer &amp; Earn"
+                    android:text="@string/home_refer_earn"
                     android:textColor="@color/driver_text_primary"
                     android:textSize="22sp"
                     android:textStyle="bold" />
@@ -77,7 +77,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
-                    android:text="Invite and earn rewards together!"
+                    android:text="@string/invite_and_earn_together"
                     android:textColor="@color/home_secondary"
                     android:textSize="13sp" />
 
@@ -117,7 +117,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:gravity="center"
-                            android:text="Refer Friends"
+                            android:text="@string/refer_friends"
                             android:textColor="@color/driver_text_primary"
                             android:textSize="11sp"
                             android:textStyle="bold" />
@@ -127,7 +127,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:gravity="center"
-                            android:text="Invite drivers or customers"
+                            android:text="@string/invite_drivers_or_customers"
                             android:textColor="@color/home_secondary"
                             android:textSize="9sp" />
                     </LinearLayout>
@@ -161,7 +161,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:gravity="center"
-                            android:text="They Join"
+                            android:text="@string/they_join_label"
                             android:textColor="@color/driver_text_primary"
                             android:textSize="11sp"
                             android:textStyle="bold" />
@@ -171,7 +171,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:gravity="center"
-                            android:text="Complete their first ride/order"
+                            android:text="@string/complete_first_ride_order"
                             android:textColor="@color/home_secondary"
                             android:textSize="9sp" />
                     </LinearLayout>
@@ -204,7 +204,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
                             android:gravity="center"
-                            android:text="You Earn"
+                            android:text="@string/you_earn_label"
                             android:textColor="@color/driver_text_primary"
                             android:textSize="11sp"
                             android:textStyle="bold" />
@@ -214,7 +214,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:gravity="center"
-                            android:text="Get reward points directly"
+                            android:text="@string/get_reward_points_directly"
                             android:textColor="@color/home_secondary"
                             android:textSize="9sp" />
                     </LinearLayout>
@@ -265,7 +265,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="REFER DRIVER"
+                    android:text="@string/refer_driver_caps"
                     android:textColor="@color/driver_text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -274,7 +274,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Invite new delivery partners"
+                    android:text="@string/invite_new_delivery_partners"
                     android:textColor="#4B5563"
                     android:textSize="11sp" />
 
@@ -324,7 +324,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="REFER CUSTOMER"
+                    android:text="@string/refer_customer_caps"
                     android:textColor="@color/driver_text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -333,7 +333,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Invite customers to use Shifter"
+                    android:text="@string/invite_customers_use_shifter"
                     android:textColor="#4B5563"
                     android:textSize="11sp" />
 
@@ -405,7 +405,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Refer from Phone Contacts"
+                        android:text="@string/refer_from_phone_contacts"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="14sp"
                         android:textStyle="bold" />
@@ -419,7 +419,7 @@
                         android:paddingTop="2dp"
                         android:paddingEnd="6dp"
                         android:paddingBottom="2dp"
-                        android:text="NEW"
+                        android:text="@string/new_badge_caps"
                         android:textColor="@color/white"
                         android:textSize="10sp"
                         android:textStyle="bold" />
@@ -429,7 +429,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Select contacts, earn 100 pts per lead &amp; track status"
+                    android:text="@string/select_contacts_earn_points_hint"
                     android:textColor="@color/home_secondary"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -473,7 +473,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Your Referral Code"
+                    android:text="@string/your_referral_code"
                     android:textColor="@color/shifter_orange"
                     android:textSize="11sp"
                     android:textStyle="bold" />
@@ -511,7 +511,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="4dp"
-                    android:text="Copy"
+                    android:text="@string/copy_label"
                     android:textColor="@color/shifter_orange"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -524,7 +524,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginBottom="12dp"
-            android:text="Share via"
+            android:text="@string/share_via"
             android:textColor="@color/home_secondary"
             android:textSize="12sp" />
 
@@ -582,7 +582,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Copy Link"
+                    android:text="@string/copy_link"
                     android:textColor="#374151"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -660,7 +660,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="More"
+                    android:text="@string/more_label"
                     android:textColor="#374151"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -692,7 +692,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="The more you refer, the more you earn!"
+                    android:text="@string/more_you_refer_more_you_earn"
                     android:textColor="#92400E"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -701,7 +701,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Help grow the Shifter community and unlock bigger rewards."
+                    android:text="@string/help_grow_shifter_community"
                     android:textColor="#B45309"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -742,7 +742,7 @@
             android:focusable="true"
             android:foreground="?attr/selectableItemBackground"
             android:gravity="center"
-            android:text="Cancel"
+            android:text="@string/cancel"
             android:textColor="#4B5563"
             android:textSize="15sp"
             android:textStyle="bold" />

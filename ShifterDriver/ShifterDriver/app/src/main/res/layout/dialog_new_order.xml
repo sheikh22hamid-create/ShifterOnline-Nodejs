@@ -59,7 +59,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="New Order Request"
+                    android:text="@string/new_order_request"
                     android:textColor="#E2E8F0"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -112,7 +112,7 @@
                             android:id="@+id/txt_pickup_name_title"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="PICKUP LOCATION"
+                            android:text="@string/pickup_location_caps"
                             android:textColor="#10B981"
                             android:textSize="12sp"
                             android:textStyle="bold" />
@@ -122,7 +122,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
                             android:lineSpacingExtra="2dp"
-                            android:text="Pickup Location"
+                            android:text="@string/pickup_location"
                             android:textColor="#0F172A"
                             android:textSize="14.5sp"
                             android:textStyle="bold" />
@@ -247,7 +247,7 @@
                             android:id="@+id/txt_drop_name_title"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="DROP LOCATION"
+                            android:text="@string/drop_location_caps"
                             android:textColor="#7C3AED"
                             android:textSize="12sp"
                             android:textStyle="bold" />
@@ -257,7 +257,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="3dp"
                             android:lineSpacingExtra="2dp"
-                            android:text="Drop Location"
+                            android:text="@string/drop_location"
                             android:textColor="#0F172A"
                             android:textSize="14.5sp"
                             android:textStyle="bold" />
@@ -374,7 +374,7 @@
                     android:layout_weight="1"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:text="Customer"
+                    android:text="@string/customer_label"
                     android:textColor="#0F172A"
                     android:textSize="14sp"
                     android:textStyle="bold" />
@@ -417,7 +417,7 @@
                     android:layout_weight="1"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:text="Standard delivery • Earn steadily"
+                    android:text="@string/standard_delivery_tagline"
                     android:textColor="#1D4ED8"
                     android:textSize="12.5sp"
                     android:textStyle="bold" />
@@ -443,7 +443,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_reject_themed"
                     android:stateListAnimator="@null"
-                    android:text="REJECT (10S)"
+                    android:text="@string/reject_with_timer"
                     android:textAllCaps="true"
                     android:textColor="#DC2626"
                     android:textSize="14sp"
@@ -457,7 +457,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_btn_accept_themed"
                     android:stateListAnimator="@null"
-                    android:text="ACCEPT"
+                    android:text="@string/accept_caps"
                     android:textAllCaps="true"
                     android:textColor="@color/white"
                     android:textSize="15sp"

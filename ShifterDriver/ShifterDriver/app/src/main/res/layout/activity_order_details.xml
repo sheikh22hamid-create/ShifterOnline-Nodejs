@@ -112,7 +112,7 @@
                                 android:layout_height="wrap_content"
                                 android:ellipsize="end"
                                 android:maxLines="1"
-                                android:text="Customer Name"
+                                android:text="@string/customer_name_label"
                                 android:textColor="#1E293B"
                                 android:textSize="15sp"
                                 android:textStyle="bold" />
@@ -165,7 +165,7 @@
                             android:backgroundTint="#1E293B"
                             android:gravity="center"
                             android:paddingHorizontal="10dp"
-                            android:text="Navigate 🚗"
+                            android:text="@string/navigate_label"
                             android:textColor="@color/white"
                             android:textSize="12sp"
                             android:textStyle="bold" />
@@ -284,7 +284,7 @@
                             android:background="@drawable/bg_pill_credit"
                             android:paddingHorizontal="8dp"
                             android:paddingVertical="2dp"
-                            android:text="Current location"
+                            android:text="@string/current_location_label"
                             android:textColor="#00A854"
                             android:textSize="12sp"
                             android:textStyle="bold" />
@@ -293,7 +293,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="You are here"
+                            android:text="@string/you_are_here"
                             android:textColor="@color/home_secondary"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -324,7 +324,7 @@
                                 android:background="@drawable/bg_pill_credit"
                                 android:paddingHorizontal="8dp"
                                 android:paddingVertical="2dp"
-                                android:text="Pickup"
+                                android:text="@string/pickup_short_label"
                                 android:textColor="#00C853"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -338,7 +338,7 @@
                             android:ellipsize="end"
                             android:lineSpacingExtra="2dp"
                             android:maxLines="2"
-                            android:text="Pickup address will be displayed here"
+                            android:text="@string/pickup_address_placeholder"
                             android:textColor="#334155"
                             android:textSize="13sp" />
                     </LinearLayout>
@@ -377,7 +377,7 @@
                                 android:background="@drawable/bg_pill_debit"
                                 android:paddingHorizontal="8dp"
                                 android:paddingVertical="2dp"
-                                android:text="Drop"
+                                android:text="@string/drop_short_label"
                                 android:textColor="#E53935"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -391,7 +391,7 @@
                             android:ellipsize="end"
                             android:lineSpacingExtra="2dp"
                             android:maxLines="2"
-                            android:text="Drop address will be displayed here"
+                            android:text="@string/drop_address_placeholder"
                             android:textColor="#334155"
                             android:textSize="13sp" />
                     </LinearLayout>
@@ -428,7 +428,7 @@
                                 android:id="@+id/txt_waiting_timer_title"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Waiting at Pickup"
+                                android:text="@string/waiting_at_pickup"
                                 android:textColor="#B78103"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -436,7 +436,7 @@
                                 android:id="@+id/txt_waiting_timer_info"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Timer running since arrival"
+                                android:text="@string/timer_running_since_arrival"
                                 android:textColor="#795548"
                                 android:textSize="12sp" />
                         </LinearLayout>

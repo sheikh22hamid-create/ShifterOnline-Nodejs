@@ -1,4 +1,5 @@
 jest.mock("../../config/db", () => ({
+  driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
   $executeRaw: jest.fn(),
   $transaction: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
@@ -970,6 +971,27 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       where: { id: 1 },
       data: { wallet_balance: { decrement: 16 } },
     });
+  });
+
+  it("includes unloading in the shared waiting allowance and records its end", async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-24T10:00:00Z'));
+    try {
+      prisma.pkg_order.findUnique.mockResolvedValue({ id: 304, rid: 1, d_charge: 100, total_dcharge: 100, commission: 0,
+        trans_id: 'wallet_paid', free_waiting_time: '60', wating_charge: '60' });
+      prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 60, drop_wait_start: new Date('2026-09-24T09:58:00Z') });
+      const result = await tripLifecycle.updateStatus(304, 1, 'complete');
+      expect(result.success).toBe(true);
+      expect(prisma.pkg_order.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ total_dcharge: 220 }) })); // 180s minus 60s free = 120s chargeable.
+      expect(prisma.pkg_order_wait_timer.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ drop_wait_seconds: 120, total_wait_seconds: 180 }) }));
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("new clients must arrive at drop before completion", async () => {
+    prisma.driver_trip_progress.findUnique.mockResolvedValueOnce({ automation_enabled: true });
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 304, rid: 1, order_status: 3 });
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 60 });
+    expect((await tripLifecycle.updateStatus(304, 1, 'complete')).success).toBe(false);
+    expect(prisma.pkg_order.update).not.toHaveBeenCalled();
   });
 
   // cust_api/advanced_payment.php credits advance_payment straight into the

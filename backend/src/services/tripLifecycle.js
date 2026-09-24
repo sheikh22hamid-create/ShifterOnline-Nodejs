@@ -366,6 +366,15 @@ async function rejectOrder(orderId, riderId, packageId = null) {
 }
 
 async function updateStatus(orderId, riderId, status) {
+  if (['arrived', 'pickup', 'arrived_drop'].includes(status) || /^(arrived|complete)_stop_[1-9]\d*$/.test(status)) {
+    try {
+      const data = await require('./driverTripService').progressTrip({ orderId, riderId, action: status });
+      return { success: true, ...data };
+    } catch (error) {
+      if (error.statusCode) return { success: false, msg: error.message };
+      throw error;
+    }
+  }
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (!order) {
     return { success: false, msg: "Order not found" };
@@ -400,50 +409,30 @@ async function updateStatus(orderId, riderId, status) {
     return { success: true, order_status: 0, o_status: "Pending" };
   }
 
-  if (status === "arrived") {
-    const now = new Date();
-    await prisma.pkg_order.update({
-      where: { id: orderId },
-      data: { order_status: 2, o_status: "Pickup" },
-    });
-    await prisma.pkg_order_wait_timer.upsert({
-      where: { order_id_rid: { order_id: orderId, rid: riderId } },
-      create: { order_id: orderId, rid: riderId, pickup_wait_start: now, created_at: now },
-      update: { pickup_wait_start: now, updated_at: now },
-    });
-    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 2, o_status: "Pickup", rid: riderId });
-    return { success: true, order_status: 2, o_status: "Pickup" };
-  }
-
-  if (status === "pickup") {
-    const now = new Date();
-    const waitTimer = await prisma.pkg_order_wait_timer.findUnique({
-      where: { order_id_rid: { order_id: orderId, rid: riderId } },
-    });
-    const pickupWaitSeconds = waitTimer?.pickup_wait_start
-      ? Math.max(0, Math.round((now - new Date(waitTimer.pickup_wait_start)) / 1000))
-      : 0;
-
-    await prisma.pkg_order.update({
-      where: { id: orderId },
-      data: { order_status: 3, o_status: "On_Route", pickup_time: now },
-    });
-    await prisma.pkg_order_wait_timer.update({
-      where: { order_id_rid: { order_id: orderId, rid: riderId } },
-      data: { pickup_wait_end: now, pickup_wait_seconds: pickupWaitSeconds, updated_at: now },
-    });
-    notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 3, o_status: "On_Route", rid: riderId });
-    return { success: true, order_status: 3, o_status: "On Route" };
-  }
-
   if (status === "complete") {
+    const progress = await prisma.driver_trip_progress.findUnique({ where: { order_id: orderId } });
+    if (order.order_status === 5) {
+      if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
+      return { success: true, order_status: 5, o_status: "Completed" };
+    }
+    if (progress?.automation_enabled) {
+      const arrival = await prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: orderId, rid: riderId } } });
+      if (order.order_status !== 3 || !arrival?.drop_wait_start) return { success: false, msg: "Confirm drop arrival and handover before completing delivery" };
+    }
     const now = new Date();
     const waitTimer = await prisma.pkg_order_wait_timer.findUnique({
       where: { order_id_rid: { order_id: orderId, rid: riderId } },
     });
 
     const freeWaitSeconds = parseFloat(order.free_waiting_time) || 0;
-    const totalWaitSeconds = waitTimer?.pickup_wait_seconds || 0;
+    const dropWaitSeconds = waitTimer?.drop_wait_start
+      ? Math.max(0, Math.floor((now - new Date(waitTimer.drop_wait_start)) / 1000)) : 0;
+    const totalWaitSeconds = (waitTimer?.pickup_wait_seconds || 0) + dropWaitSeconds;
+    if (waitTimer?.drop_wait_start) {
+      await prisma.pkg_order_wait_timer.update({ where: { order_id_rid: { order_id: orderId, rid: riderId } }, data: {
+        drop_wait_end: now, drop_wait_seconds: dropWaitSeconds, total_wait_seconds: totalWaitSeconds,
+      } });
+    }
     const chargeableWaitSeconds = Math.max(0, totalWaitSeconds - freeWaitSeconds);
     const waitingChargeRate = Number(order.wating_charge) || 0;
     const waitingCharge = round2((chargeableWaitSeconds / 60) * waitingChargeRate);
@@ -718,6 +707,7 @@ async function updateStatus(orderId, riderId, status) {
     });
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
+    if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
     return { success: true, order_status: 5, o_status: "Completed" };
   }
 

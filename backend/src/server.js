@@ -31,6 +31,9 @@ const PORT = process.env.PORT || 5000;
 
 const server = http.createServer(app);
 initSocket(server);
+setInterval(() => {
+  require('./services/tripEventNotifier').flushTripEvents().catch(err => logger.error('Trip notification retry failed:', err));
+}, 15000);
 
 const { initWhatsAppBot } = require("./whatsapp/client");
 

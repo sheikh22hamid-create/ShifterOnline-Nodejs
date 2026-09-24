@@ -115,6 +115,7 @@ async function sendPushNotification(fcmToken, title, body, data = {}, channelId 
     if (!isDriverEvent) {
       message.notification = { title, body };
       message.android.notification = {
+        ...(data.type === 'trip_milestone' ? { tag: `trip_event_${data.event_id}` } : {}),
         title,
         body,
         sound: "default",

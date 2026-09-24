@@ -39,7 +39,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="Contact Name"
+            android:text="@string/contact_name_label"
             android:textColor="#0F172A"
             android:textSize="15sp"
             android:textStyle="bold" />

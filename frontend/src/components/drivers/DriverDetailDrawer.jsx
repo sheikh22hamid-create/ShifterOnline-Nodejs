@@ -704,6 +704,25 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                 onPreview={(title, src) => setPreviewDoc({ title, src })}
               />
 
+              {/* PUC & Insurance — optional, image-only, no verification workflow (unlike the DocumentCard docs above) */}
+              <div className="surface-card rounded-xl border p-3.5 space-y-2.5" style={{ borderColor: 'var(--border)' }}>
+                <div className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  PUC & Insurance <span className="font-normal" style={{ color: 'var(--ink-faint)' }}>(Optional)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <DocThumbnail
+                    label="PUC Certificate"
+                    src={rider.personal_doc?.puc_image}
+                    onPreview={(lbl, src) => setPreviewDoc({ title: lbl, src })}
+                  />
+                  <DocThumbnail
+                    label="Vehicle Insurance"
+                    src={rider.personal_doc?.bima_image}
+                    onPreview={(lbl, src) => setPreviewDoc({ title: lbl, src })}
+                  />
+                </div>
+              </div>
+
               {/* Bank & Payout Account */}
               <div className="surface-card rounded-xl border p-3.5 space-y-3" style={{ borderColor: 'var(--border)' }}>
                 <div className="flex items-center justify-between">

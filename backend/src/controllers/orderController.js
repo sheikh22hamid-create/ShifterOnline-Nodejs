@@ -13,6 +13,15 @@ const { sendPushNotification } = require("../config/firebase");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 
+async function customerTripProgress(order) {
+  if (!order.rid) return null;
+  const [progress, timer] = await Promise.all([
+    prisma.driver_trip_progress.findUnique({ where: { order_id: order.id } }),
+    prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: order.id, rid: order.rid } } }),
+  ]);
+  return { stop_step: progress?.stop_step || 0, arrived_drop: order.order_status === 3 && !!timer?.drop_wait_start };
+}
+
 function isFiniteNumber(value) {
   return typeof value === "number" ? Number.isFinite(value) : Number.isFinite(Number(value));
 }
@@ -580,6 +589,7 @@ async function getOrderDetails(req, res) {
           rider_longs: rider ? rider.rlongs : null,
           Order_Status: orderStatus,
           Order_flow_id: order.order_status,
+          trip_progress: await customerTripProgress(order),
           otp: order.otp,
           total_Delivery_charge: String(order.total_dcharge),
           grand_total: String(order.total_dcharge),
@@ -705,6 +715,9 @@ async function verifyPickupOtp(req, res) {
     if (!dbOtp) return res.status(400).json({ success: false, message: "OTP not generated for this order." });
     if (inOtp !== dbOtp) return res.status(400).json({ success: false, message: "Invalid OTP!!" });
 
+    // Compatibility for older drivers that verify first, then send pickup.
+    // New clients use trip-progress pickup+OTP as one atomic handover action.
+    await require('../services/driverTripService').progressTrip({ orderId: order.id, riderId: order.rid, action: 'verify_otp', otp: inOtp });
     return res.status(200).json({ success: true, message: "OTP Verified Successfully.", data: { order_id: Number(order_id) } });
   } catch (err) {
     logger.error("verifyPickupOtp failed:", err);
