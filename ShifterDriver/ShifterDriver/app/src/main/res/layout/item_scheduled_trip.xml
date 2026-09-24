@@ -1,62 +1,209 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="12dp"
     android:layout_marginVertical="6dp"
-    android:background="@drawable/bg_home_surface"
+    android:background="@drawable/bg_card_white"
+    android:elevation="1dp"
     android:orientation="vertical"
     android:padding="14dp">
 
+    <!-- Header: Schedule Time Badge & Fare Badge -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/txt_schedule_time"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="@color/shifter_orange_dark"
-            android:textSize="12.5sp"
-            android:textStyle="bold" />
+            android:background="@drawable/bg_badge_schedule_time"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp">
 
-        <TextView
-            android:id="@+id/txt_fare"
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@drawable/ic_calendar"
+                app:tint="#C2410C" />
+
+            <TextView
+                android:id="@+id/txt_schedule_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#C2410C"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#059669"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_badge_fare"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp">
+
+            <TextView
+                android:id="@+id/txt_fare"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#059669"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/txt_pickup"
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="12dp"
+        android:background="#F1F5F9" />
+
+    <!-- Route Timeline (Pickup -> Drop) -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:textColor="#0F172A"
-        android:textSize="13sp" />
+        android:orientation="horizontal">
 
-    <TextView
-        android:id="@+id/txt_drop"
+        <!-- Timeline Graphic Column -->
+        <LinearLayout
+            android:layout_width="18dp"
+            android:layout_height="match_parent"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="3dp"
+            android:paddingBottom="4dp">
+
+            <View
+                android:layout_width="9dp"
+                android:layout_height="9dp"
+                android:background="@drawable/dot_timeline_pickup" />
+
+            <View
+                android:layout_width="2dp"
+                android:layout_height="0dp"
+                android:layout_marginVertical="3dp"
+                android:layout_weight="1"
+                android:background="#CBD5E1" />
+
+            <View
+                android:layout_width="9dp"
+                android:layout_height="9dp"
+                android:background="@drawable/dot_timeline_drop" />
+        </LinearLayout>
+
+        <!-- Address Text Column -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Pickup Details -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PICKUP"
+                android:textColor="#64748B"
+                android:textSize="10.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_pickup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#0F172A"
+                android:textSize="13sp" />
+
+            <!-- Drop Details -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="DROP"
+                android:textColor="#64748B"
+                android:textSize="10.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txt_drop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#334155"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="10dp"
+        android:background="#F8FAFC" />
+
+    <!-- Footer: Priority Window Pill & Interest Toggle Button -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:textColor="@color/home_secondary"
-        android:textSize="13sp" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <Button
-        android:id="@+id/btn_interest_toggle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="end"
-        android:layout_marginTop="10dp" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@drawable/ic_star_filled"
+                app:tint="#D97706" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="15m Priority Window"
+                android:textColor="#64748B"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btn_interest_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_btn_interested_outline"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="0dp"
+            android:text="☆ I'm Interested"
+            android:textAllCaps="false"
+            android:textColor="#FF5E1E"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
 </LinearLayout>

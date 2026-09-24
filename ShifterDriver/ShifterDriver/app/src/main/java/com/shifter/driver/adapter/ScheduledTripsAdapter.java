@@ -81,20 +81,33 @@ public class ScheduledTripsAdapter extends RecyclerView.Adapter<ScheduledTripsAd
         String scheduleRaw = trip.optString("schedule_date_time", "");
         holder.scheduleTime.setText(
                 scheduleRaw.isEmpty() ? "" : com.shifter.driver.utility.OrderDialogHelper.formatScheduleLabel(scheduleRaw));
-        holder.pickup.setText("📍 " + trip.optString("pickup_address", ""));
-        holder.drop.setText("🏁 " + trip.optString("delivery_address", ""));
+        holder.pickup.setText(trip.optString("pickup_address", ""));
+        holder.drop.setText(trip.optString("delivery_address", ""));
         holder.fare.setText("₹" + trip.optString("estimated_fare", "0"));
 
         boolean interested = "1".equals(trip.optString("is_interested", "0"));
-        holder.interestToggle.setText(interested ? "Interested ✓" : "I'm Interested");
+        bindInterestButton(holder.interestToggle, interested);
+
         holder.interestToggle.setOnClickListener(v -> {
-            boolean nowInterested = !interested;
+            boolean nowInterested = !("1".equals(trip.optString("is_interested", "0")));
             try {
                 trip.put("is_interested", nowInterested ? "1" : "0");
             } catch (Exception ignored) {}
-            holder.interestToggle.setText(nowInterested ? "Interested ✓" : "I'm Interested");
+            bindInterestButton(holder.interestToggle, nowInterested);
             if (listener != null) listener.onToggle(trip, nowInterested);
         });
+    }
+
+    private void bindInterestButton(Button btn, boolean interested) {
+        if (interested) {
+            btn.setText("✓ Interested");
+            btn.setBackgroundResource(R.drawable.bg_btn_interested_active);
+            btn.setTextColor(android.graphics.Color.WHITE);
+        } else {
+            btn.setText("☆ I'm Interested");
+            btn.setBackgroundResource(R.drawable.bg_btn_interested_outline);
+            btn.setTextColor(android.graphics.Color.parseColor("#FF5E1E"));
+        }
     }
 
     @Override

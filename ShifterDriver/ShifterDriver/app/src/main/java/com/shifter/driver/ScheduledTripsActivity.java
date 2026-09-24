@@ -47,6 +47,8 @@ import retrofit2.Call;
 public class ScheduledTripsActivity extends LocaleAwareActivity implements GetResult.MyListener {
 
     private ScheduledTripsAdapter adapter;
+    private androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
+    private android.view.View emptyStateLayout;
     private SessionManager sessionManager;
     private RiderData riderData;
     private int riderId;
@@ -59,6 +61,29 @@ public class ScheduledTripsActivity extends LocaleAwareActivity implements GetRe
         sessionManager = new SessionManager(this);
         riderData = sessionManager.getUserDetails();
         riderId = riderData != null ? riderData.getId() : 0;
+
+        android.view.View backBtn = findViewById(R.id.img_back);
+        if (backBtn != null) backBtn.setOnClickListener(v -> finish());
+
+        android.view.View refreshBtn = findViewById(R.id.img_refresh);
+        if (refreshBtn != null) refreshBtn.setOnClickListener(v -> {
+            if (swipeRefresh != null) swipeRefresh.setRefreshing(true);
+            loadTrips();
+        });
+
+        android.view.View emptyRefreshBtn = findViewById(R.id.btn_empty_refresh);
+        if (emptyRefreshBtn != null) emptyRefreshBtn.setOnClickListener(v -> {
+            if (swipeRefresh != null) swipeRefresh.setRefreshing(true);
+            loadTrips();
+        });
+
+        emptyStateLayout = findViewById(R.id.layout_empty_state);
+
+        swipeRefresh = findViewById(R.id.swipe_refresh_layout);
+        if (swipeRefresh != null) {
+            swipeRefresh.setColorSchemeResources(R.color.shifter_orange);
+            swipeRefresh.setOnRefreshListener(this::loadTrips);
+        }
 
         RecyclerView recycler = findViewById(R.id.recycler_scheduled_trips);
         recycler.setLayoutManager(new LinearLayoutManager(this));
@@ -83,6 +108,7 @@ public class ScheduledTripsActivity extends LocaleAwareActivity implements GetRe
 
     @Override
     public void callback(JsonObject result, String callNo) {
+        if (swipeRefresh != null) swipeRefresh.setRefreshing(false);
         try {
             if (callNo.equalsIgnoreCase("1")) {
                 onScheduledTripsResponse(new JSONObject(result.toString()));
@@ -102,7 +128,13 @@ public class ScheduledTripsActivity extends LocaleAwareActivity implements GetRe
             }
         }
         adapter.setTrips(trips);
-        findViewById(R.id.txt_empty_state).setVisibility(trips.isEmpty() ? android.view.View.VISIBLE : android.view.View.GONE);
+        boolean isEmpty = trips.isEmpty();
+        if (emptyStateLayout != null) {
+            emptyStateLayout.setVisibility(isEmpty ? android.view.View.VISIBLE : android.view.View.GONE);
+        } else {
+            android.view.View oldEmpty = findViewById(R.id.txt_empty_state);
+            if (oldEmpty != null) oldEmpty.setVisibility(isEmpty ? android.view.View.VISIBLE : android.view.View.GONE);
+        }
     }
 
     /**
