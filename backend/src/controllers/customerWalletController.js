@@ -342,25 +342,41 @@ async function walletHistory(req, res) {
     const rows = await prisma.tbl_wallet_history.findMany({ where, orderBy: { id: "desc" } });
     let withdrawalSummary = {};
     if (walletType === "driver") {
-      const [pending, latest, maxDueLimit, minWithdrawalAmount] = await Promise.all([
+      const [pending, latest, maxDueLimit, minWithdrawalAmount, bankAccount] = await Promise.all([
         prisma.driver_withdraw_requests.aggregate({ where: { rider_id: userId, status: "pending" }, _sum: { amount: true } }),
         prisma.driver_withdraw_requests.findFirst({ where: { rider_id: userId }, orderBy: { id: "desc" }, select: { id: true, amount: true, status: true, created_at: true } }),
         getDriverMaxDueLimit(),
         getDriverMinWithdrawalAmount(),
+        prisma.tbl_bank_account.findFirst({ where: { rider_id: userId } }),
       ]);
       const pendingAmount = Number(pending._sum.amount || 0);
       const balanceNum = Number(wallet || 0);
       const outstandingDue = Math.max(0, -balanceNum);
+      // available_to_withdraw now nets out both the reserve (min_withdrawal_amount
+      // must stay in the ledger, see withdrawWallet) and any pending payout -
+      // this is the true ceiling withdrawWallet will accept.
+      const availableToWithdraw = Math.max(0, balanceNum - pendingAmount - minWithdrawalAmount);
       withdrawalSummary = {
         pending_withdrawal_amount: pendingAmount.toFixed(2),
-        available_to_withdraw: Math.max(0, balanceNum - pendingAmount).toFixed(2),
+        available_to_withdraw: availableToWithdraw.toFixed(2),
         latest_withdrawal: latest ? { id: latest.id, amount: Number(latest.amount || 0).toFixed(2), status: latest.status, created_at: latest.created_at } : null,
         outstanding_due: outstandingDue.toFixed(2),
         max_due_limit: maxDueLimit,
         min_withdrawal_amount: minWithdrawalAmount,
-        can_withdraw: balanceNum > 0 && balanceNum > minWithdrawalAmount,
+        can_withdraw: availableToWithdraw > 0,
         can_clear_due: balanceNum < 0,
         due_limit_reached: balanceNum <= -maxDueLimit,
+        payout_methods: {
+          upi_id: account.upi_id || null,
+          bank_account: bankAccount
+            ? {
+                bank_name: bankAccount.bank_name,
+                account_name: bankAccount.a_name,
+                ifsc_code: bankAccount.ifsc_code,
+                account_number_masked: bankAccount.iban_num ? `•••${String(bankAccount.iban_num).slice(-4)}` : null,
+              }
+            : null,
+        },
       };
     }
     const totalCredit = rows.filter((r) => r.type === "credit").reduce((s, r) => s + Number(r.amount || 0), 0);
@@ -401,16 +417,30 @@ async function withdrawWallet(req, res) {
     }
 
     const currentBalance = Number(walletType === "user" ? account.wallet : account.wallet_balance || 0);
+    // reserve is the admin-configured driver_min_withdrawal_amount, now
+    // enforced as a floor that must stay in the ledger - not just an
+    // eligibility gate. A driver with ₹20 and a ₹10 minimum can withdraw at
+    // most ₹10; withdrawing the full ₹20 previously succeeded and drained
+    // the ledger below the configured minimum entirely.
+    let reserve = 0;
     if (walletType === "driver") {
       if (currentBalance <= 0) {
         return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
       }
-      const minWithdrawalAmount = await getDriverMinWithdrawalAmount();
-      if (currentBalance <= minWithdrawalAmount) {
+      reserve = await getDriverMinWithdrawalAmount();
+      const maxWithdrawable = Math.max(0, currentBalance - reserve);
+      if (maxWithdrawable <= 0) {
         return res.status(200).json({
           ResponseCode: "404",
           Result: "false",
-          ResponseMsg: `You need more than ₹${minWithdrawalAmount} in your ledger to withdraw. Current balance ₹${currentBalance}.`,
+          ResponseMsg: `₹${reserve} must stay in your ledger. Current balance ₹${currentBalance}.`,
+        });
+      }
+      if (amount > maxWithdrawable) {
+        return res.status(200).json({
+          ResponseCode: "404",
+          Result: "false",
+          ResponseMsg: `You can withdraw up to ₹${maxWithdrawable} - ₹${reserve} must stay in your ledger.`,
         });
       }
     }
@@ -418,10 +448,64 @@ async function withdrawWallet(req, res) {
       return res.status(200).json({ ResponseCode: "402", Result: "false", ResponseMsg: "Insufficient Balance!" });
     }
 
-    // Atomic conditional debit: the WHERE clause re-checks the balance at
-    // commit time instead of trusting the currentBalance read above, so two
-    // concurrent withdraw calls for the same account can no longer both pass
-    // (see customerWalletController.withdrawWallet race - fixed 2026-09-23).
+    // Payout method (driver only, optional): the driver either withdraws to
+    // whatever UPI id / bank account is already saved on their profile, or
+    // supplies a fresh one here to update it first - same upsert pattern as
+    // driverKycController.saveBankAccount. Omitted entirely by customer
+    // withdrawals and by any caller not sending payout_method, so existing
+    // behavior (a plain ledger debit) is unchanged when it's absent.
+    let payoutDetailText = null;
+    if (walletType === "driver" && b.payout_method) {
+      const method = String(b.payout_method).toLowerCase();
+      if (method === "upi") {
+        let upiId = b.upi_id ? String(b.upi_id).trim() : "";
+        if (upiId) {
+          await prisma.tbl_rider.update({ where: { id: account.id }, data: { upi_id: upiId } });
+        } else {
+          const rider = await prisma.tbl_rider.findUnique({ where: { id: account.id }, select: { upi_id: true } });
+          upiId = rider?.upi_id || "";
+        }
+        if (!upiId) {
+          return res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: "Add a UPI ID before withdrawing." });
+        }
+        payoutDetailText = `UPI (${upiId})`;
+      } else if (method === "bank") {
+        const accountName = b.account_name;
+        const accountNumber = b.account_number;
+        const ifscCode = b.ifsc_code;
+        const bankName = b.bank_name;
+        if (accountName && accountNumber && bankName) {
+          const existing = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
+          const data = {
+            a_name: accountName,
+            iban_num: accountNumber,
+            bank_name: bankName,
+            ifsc_code: ifscCode || existing?.ifsc_code || null,
+            status: 0,
+          };
+          if (existing) {
+            await prisma.tbl_bank_account.update({ where: { id: existing.id }, data });
+          } else {
+            await prisma.tbl_bank_account.create({ data: { rider_id: account.id, branch_name: "", vat_id: "", ...data } });
+          }
+        }
+        const bank = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
+        if (!bank) {
+          return res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: "Add your bank account before withdrawing." });
+        }
+        const maskedAcc = bank.iban_num ? `•••${String(bank.iban_num).slice(-4)}` : "";
+        payoutDetailText = `Bank ${bank.bank_name || ""} (${maskedAcc})`.trim();
+      } else {
+        return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Invalid payout method." });
+      }
+    }
+    const finalRemark = payoutDetailText ? `${remark} via ${payoutDetailText}` : remark;
+
+    // Atomic conditional debit: the WHERE clause re-checks the balance (and
+    // now the reserve) at commit time instead of trusting the currentBalance
+    // read above, so two concurrent withdraw calls for the same account can
+    // no longer both pass (see customerWalletController.withdrawWallet race
+    // - fixed 2026-09-23), and neither can push the balance below reserve.
     const model = walletType === "user" ? "tbl_user" : "tbl_rider";
     const balanceField = walletType === "user" ? "wallet" : "wallet_balance";
 
@@ -429,13 +513,13 @@ async function withdrawWallet(req, res) {
     let newBalance = null;
     await prisma.$transaction(async (tx) => {
       const result = await tx[model].updateMany({
-        where: { id: account.id, [balanceField]: { gte: amount } },
+        where: { id: account.id, [balanceField]: { gte: amount + reserve } },
         data: { [balanceField]: { decrement: amount } },
       });
       if (result.count === 0) return;
       debited = true;
       await tx.tbl_wallet_history.create({
-        data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: new Date() },
+        data: { user_id: account.id, mobile, amount, type: "debit", remark: finalRemark, wallet_type: walletType, created_at: new Date() },
       });
       // Re-read the balance inside the same transaction instead of trusting
       // currentBalance - amount: a successful updateMany only proves the

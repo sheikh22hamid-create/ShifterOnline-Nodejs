@@ -3,6 +3,7 @@ jest.mock("../../config/db", () => ({
   tbl_user: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
   driver_withdraw_requests: { aggregate: jest.fn(), findFirst: jest.fn() },
+  tbl_bank_account: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
   app_settings: { findFirst: jest.fn() },
   $transaction: jest.fn(),
 }));
@@ -161,6 +162,50 @@ describe("customerWalletController.withdrawWallet", () => {
     const res = mockRes();
     await withdrawWallet({ body: driverBody }, res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ NewBalance: 350 }));
+  });
+
+  it("rejects a driver withdraw that would drop the ledger below the admin-configured minimum (reserve, not just a gate)", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(10);
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "20.00" });
+    const res = mockRes();
+    await withdrawWallet({ body: { ...driverBody, amount: 20 } }, res);
+    expect(prisma.tbl_rider.updateMany).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false" }));
+  });
+
+  it("allows withdrawing exactly balance minus the reserve, and enforces the reserve atomically", async () => {
+    getDriverMinWithdrawalAmount.mockResolvedValue(10);
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "20.00" });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: { ...driverBody, amount: 10 } }, res);
+    expect(prisma.tbl_rider.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, wallet_balance: { gte: 20 } }, // amount(10) + reserve(10)
+      data: { wallet_balance: { decrement: 10 } },
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
+  });
+
+  it("saves a fresh UPI id and tags the ledger remark with the payout method", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "500.00" });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await withdrawWallet({ body: { ...driverBody, payout_method: "upi", upi_id: "driver@okhdfc" } }, res);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { upi_id: "driver@okhdfc" } });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remark: "Ledger Withdraw via UPI (driver@okhdfc)" }) })
+    );
+  });
+
+  it("refuses a bank payout when the driver has no saved bank account and supplies no fresh details", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "500.00" });
+    prisma.tbl_bank_account.findFirst.mockResolvedValue(null);
+    const res = mockRes();
+    await withdrawWallet({ body: { ...driverBody, payout_method: "bank" } }, res);
+    expect(prisma.tbl_rider.updateMany).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", ResponseMsg: "Add your bank account before withdrawing." }));
   });
 
   it("reports insufficient balance instead of over-withdrawing when a concurrent request already spent the balance", async () => {

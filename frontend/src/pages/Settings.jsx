@@ -364,7 +364,7 @@ function SettingsForm({ data, onSaved }) {
               onChange={(e) => setFlags((f) => ({ ...f, driver_min_withdrawal_amount: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              A driver can only withdraw from their ledger once its balance exceeds this amount. Set to 0 to allow withdrawal at any positive balance.
+              This amount always stays in the driver's ledger - they can only withdraw the balance above it (e.g. ₹20 balance with a ₹10 minimum lets them withdraw up to ₹10). Set to 0 to allow withdrawing the full balance.
             </p>
           </div>
           <div>

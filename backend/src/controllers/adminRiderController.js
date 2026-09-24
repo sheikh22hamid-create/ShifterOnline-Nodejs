@@ -208,6 +208,45 @@ async function getOne(req, res) {
   }
 }
 
+// Read-only ledger view for the driver detail drawer - lets admin see which
+// UPI id / bank account a withdrawal actually went to (customerWalletController
+// .withdrawWallet now tags this onto the remark) without needing DB access.
+async function walletHistory(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const rider = await prisma.tbl_rider.findUnique({ where: { id }, select: { id: true, city_id: true, wallet_balance: true } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+
+    const rows = await prisma.tbl_wallet_history.findMany({
+      where: { user_id: id, wallet_type: "driver" },
+      orderBy: { id: "desc" },
+      take: 100,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        wallet_balance: rider.wallet_balance,
+        transactions: rows.map((r) => ({
+          id: r.id,
+          amount: r.amount,
+          type: r.type,
+          remark: r.remark,
+          order_id: r.order_id,
+          created_at: r.created_at,
+        })),
+      },
+    });
+  } catch (err) {
+    return internalError(res, err, "riders.walletHistory");
+  }
+}
+
 // Editable driver-profile fields - deliberately excludes status/verification
 // columns (those go through toggleStatus/kycDecision/setPaymentComplete so
 // they stay audited + trigger the right side effects), wallet_balance (would
@@ -863,4 +902,5 @@ module.exports = {
   updateProfile,
   listModel1Suspended,
   unsuspendModel1,
+  walletHistory,
 };

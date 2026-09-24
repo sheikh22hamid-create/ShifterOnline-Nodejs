@@ -111,6 +111,7 @@ router.post("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderC
 router.get("/riders/model1-suspended", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.listModel1Suspended);
 router.patch("/riders/:id/model1-unsuspend", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.unsuspendModel1);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
+router.get("/riders/:id/wallet-history", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.walletHistory);
 router.patch("/riders/:id/profile", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.updateProfile);
 router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);

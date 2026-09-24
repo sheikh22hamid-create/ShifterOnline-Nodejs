@@ -2,6 +2,7 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findFirst: jest.fn() }, tbl_user: { findFirst: jest.fn() },
   tbl_wallet_history: { findMany: jest.fn() },
   driver_withdraw_requests: { aggregate: jest.fn(), findFirst: jest.fn() },
+  tbl_bank_account: { findFirst: jest.fn() },
   app_settings: { findFirst: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn() }));

@@ -191,6 +191,12 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
   const fetcher = useCallback(() => api.get(`/riders/${riderId}`).then((res) => res.data.data), [riderId])
   const { data: rider, setData, loading, refetch } = useApiQuery(fetcher)
 
+  const walletFetcher = useCallback(
+    () => api.get(`/riders/${riderId}/wallet-history`).then((res) => res.data.data),
+    [riderId]
+  )
+  const { data: walletData, loading: walletLoading } = useApiQuery(walletFetcher)
+
   function openEditModal() {
     setEditForm({
       full_name: rider.full_name || '',
@@ -795,6 +801,51 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                         onPreview={(lbl, src) => setPreviewDoc({ title: 'Bank / UPI Document', src })}
                       />
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Wallet Ledger - recent credits/debits, including which UPI/bank
+                  a withdrawal was sent to (see customerWalletController.withdrawWallet's remark) */}
+              <div className="surface-card rounded-xl border p-3.5 space-y-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center justify-between">
+                  <div className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>
+                    Wallet Ledger
+                  </div>
+                  <span className="text-[11.5px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+                    Balance: {formatCurrency(walletData?.wallet_balance ?? rider.wallet_balance)}
+                  </span>
+                </div>
+
+                {walletLoading ? (
+                  <div className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
+                    Loading transactions…
+                  </div>
+                ) : !walletData?.transactions || walletData.transactions.length === 0 ? (
+                  <div className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
+                    No ledger transactions yet.
+                  </div>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                    {walletData.transactions.map((txn) => (
+                      <div key={txn.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                        <div className="min-w-0">
+                          <div className="text-[12.5px]" style={{ color: 'var(--ink)' }}>
+                            {txn.remark || (txn.type === 'credit' ? 'Ledger credit' : 'Ledger debit')}
+                          </div>
+                          <div className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                            {formatDateTime(txn.created_at)}
+                            {txn.order_id ? ` · Order #${txn.order_id}` : ''}
+                          </div>
+                        </div>
+                        <span
+                          className="shrink-0 font-mono-data text-[12.5px] font-semibold"
+                          style={{ color: txn.type === 'credit' ? 'var(--success)' : 'var(--danger)' }}
+                        >
+                          {txn.type === 'credit' ? '+' : '−'} {formatCurrency(txn.amount)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
