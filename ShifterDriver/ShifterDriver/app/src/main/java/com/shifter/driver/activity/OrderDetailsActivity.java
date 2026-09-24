@@ -106,9 +106,14 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private boolean tripActionPending;
     private boolean terminalProgressHandled;
     private String renderedTripState = "";
+    private com.google.android.gms.maps.model.Circle driverAccuracyCircle;
     private final Runnable tripPoll = new Runnable() {
         @Override public void run() {
             if (orderItem != null && binding != null && !isWaitingForPayment && !terminalProgressHandled) {
+                updateDriverLocationOnMap();
+                updateArrivalHint();
+                android.location.Location fix = LocationUpdateService.getLocation();
+                if (!fix.hasAccuracy() || fix.getAccuracy() > 35) requestFreshLocationAndUpdateMap();
                 com.shifter.driver.utility.TripProgressClient.request(OrderDetailsActivity.this, orderItem.getId(), "sync", null, null);
             }
             tripHandler.postDelayed(this, 10000);
@@ -119,6 +124,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         super.onResume();
         tripHandler.removeCallbacks(tripPoll);
         tripHandler.post(tripPoll);
+        if (binding != null && !isWaitingForPayment) requestFreshLocationAndUpdateMap();
     }
 
     @Override protected void onPause() {
@@ -129,7 +135,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private void registerTripProgress() {
         tripProgressReceiver = new android.content.BroadcastReceiver() {
             @Override public void onReceive(android.content.Context context, Intent intent) {
-                if (orderItem != null && orderItem.getId().equals(intent.getStringExtra("order_id"))) applyTripProgress();
+                if (orderItem != null && orderItem.getId().equals(intent.getStringExtra("order_id"))) {
+                    applyTripProgress(); updateArrivalHint();
+                }
             }
         };
         androidx.core.content.ContextCompat.registerReceiver(this, tripProgressReceiver,
@@ -141,16 +149,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         locationReceiver = new android.content.BroadcastReceiver() {
             @Override
             public void onReceive(android.content.Context context, Intent intent) {
-                double lat = intent.getDoubleExtra("lat", 0.0);
-                double lng = intent.getDoubleExtra("lng", 0.0);
-                if (lat != 0.0 && lng != 0.0 && mMap != null) {
-                    LatLng newPos = new LatLng(lat, lng);
-                    if (driverMapMarker != null) {
-                        driverMapMarker.setPosition(newPos);
-                    } else {
-                        updateLocationPath();
-                    }
-                }
+                updateDriverLocationOnMap();
+                updateArrivalHint();
             }
         };
         androidx.core.content.ContextCompat.registerReceiver(
@@ -1253,6 +1253,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     // ------------------------------------------------ CLICKS
     private void setupClicks() {
+        binding.txtTripLocationStatus.setOnClickListener(v -> {
+            if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+            } else requestFreshLocationAndUpdateMap();
+        });
 
         binding.imgBack.setOnClickListener(v -> onBackPressed());
 
@@ -1448,24 +1454,74 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     }
 
     private void requestFreshLocationAndUpdateMap() {
+        if (isFinishing() || isDestroyed()) return;
+        if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) { updateArrivalHint(); return; }
         try {
-            com.google.android.gms.location.FusedLocationProviderClient fused =
-                    com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this);
-            if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                fused.getLastLocation().addOnSuccessListener(loc -> {
-                    if (loc != null && loc.getLatitude() != 0.0 && loc.getLongitude() != 0.0) {
-                        com.shifter.driver.locationservice.LocationUpdateService.setLocation(loc);
-                        if (mMap != null) {
-                            if (driverMapMarker != null) {
-                                driverMapMarker.setPosition(new LatLng(loc.getLatitude(), loc.getLongitude()));
-                            } else {
-                                updateLocationPath();
-                            }
-                        }
-                    }
-                });
+            Intent refresh = new Intent(this, LocationUpdateService.class).setAction(LocationUpdateService.ACTION_REFRESH_LOCATION);
+            androidx.core.content.ContextCompat.startForegroundService(this, refresh);
+        } catch (RuntimeException error) {
+            Log.w("OrderDetails", "Unable to start precise trip location", error);
+            if (binding != null) binding.txtTripLocationStatus.setText("Location tracking paused. Reopen the app and enable precise location.");
+        }
+    }
+
+    private void updateDriverLocationOnMap() {
+        if (mMap == null) return;
+        android.location.Location fix = LocationUpdateService.getLocation();
+        if (!fix.hasAccuracy()) {
+            if (driverMapMarker != null) { driverMapMarker.remove(); driverMapMarker = null; }
+            if (driverAccuracyCircle != null) { driverAccuracyCircle.remove(); driverAccuracyCircle = null; }
+            return;
+        }
+        LatLng position = new LatLng(fix.getLatitude(), fix.getLongitude());
+        if (driverMapMarker == null) {
+            driverMapMarker = mMap.addMarker(new MarkerOptions().position(position).title("Your GPS location")
+                    .icon(createCustomMarker("YOU", Color.parseColor("#2563EB"), R.drawable.ic_scooter)).anchor(0.5f, 1f).zIndex(2f));
+        } else driverMapMarker.setPosition(position);
+        if (driverMapMarker != null) driverMapMarker.setSnippet("Accuracy ±" + Math.round(fix.getAccuracy()) + " m");
+        if (driverAccuracyCircle == null) {
+            driverAccuracyCircle = mMap.addCircle(new com.google.android.gms.maps.model.CircleOptions().center(position)
+                    .radius(fix.getAccuracy()).strokeWidth(2f).strokeColor(0x772563EB).fillColor(0x202563EB));
+        } else { driverAccuracyCircle.setCenter(position); driverAccuracyCircle.setRadius(fix.getAccuracy()); }
+    }
+
+    private void updateArrivalHint() {
+        if (binding == null || orderItem == null || isWaitingForPayment) return;
+        String flow = orderItem.getOrderFlowId();
+        if ("2".equals(flow)) { binding.txtTripLocationStatus.setText("Pickup reached. Verify OTP after goods handover."); return; }
+        if ("4".equals(flow)) { binding.txtTripLocationStatus.setText("Drop reached. Confirm delivery after goods handover."); return; }
+        if ("3".equals(flow) && getActiveStopStep() % 2 == 1) {
+            binding.txtTripLocationStatus.setText("Stop reached. Complete this stop to continue."); return;
+        }
+        String error = com.shifter.driver.utility.TripProgressClient.syncError(this, orderItem.getId());
+        if (!error.isEmpty()) { binding.txtTripLocationStatus.setText(error); return; }
+        if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            binding.txtTripLocationStatus.setText("Auto-arrival needs precise location. Enable it in app permissions."); return;
+        }
+        android.location.Location fix = LocationUpdateService.getLocation();
+        if (!fix.hasAccuracy()) { binding.txtTripLocationStatus.setText("Auto-arrival: acquiring fresh GPS… Tap to retry."); return; }
+        double lat = orderItem.getPlat(), lng = orderItem.getPlong();
+        if ("3".equals(flow)) {
+            List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
+            int index = getActiveStopStep() / 2;
+            lat = orderItem.getDlat(); lng = orderItem.getDlong();
+            if (index < stops.size()) {
+                try { lat = Double.parseDouble(stops.get(index).getLat()); lng = Double.parseDouble(stops.get(index).getLng()); }
+                catch (NumberFormatException ignored) { binding.txtTripLocationStatus.setText("Stop location unavailable. Confirm arrival manually."); return; }
             }
-        } catch (Exception ignored) {}
+        }
+        float[] distance = new float[1];
+        android.location.Location.distanceBetween(fix.getLatitude(), fix.getLongitude(), lat, lng, distance);
+        String quality = "GPS ±" + (int) Math.ceil(fix.getAccuracy()) + " m";
+        String destination = "3".equals(flow) ? "Next stop" : "Pickup";
+        String distanceText = destination + " ~" + Math.round(distance[0]) + " m away";
+        binding.txtTripLocationStatus.setText(fix.getAccuracy() > 35
+                ? distanceText + " • " + quality + " • Waiting for accurate GPS"
+                : distance[0] + fix.getAccuracy() <= 100
+                    ? distanceText + " • " + quality + " • Hold position for auto-arrival"
+                    : distanceText + " • " + quality);
     }
 
     @Override
@@ -1549,6 +1605,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
 
         mMap.clear();
+        driverAccuracyCircle = null;
+        driverMapMarker = null;
 
         double driverLat = 0.0;
         double driverLng = 0.0;
@@ -1643,6 +1701,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         } else {
             driverMapMarker = null;
         }
+
+        updateDriverLocationOnMap();
+        updateArrivalHint();
 
         // 4. Draw the complete Pickup -> Stop(s) -> Drop route.
         if (routePoints.size() >= 2 && hasDifferentRoutePoints(routePoints)) {

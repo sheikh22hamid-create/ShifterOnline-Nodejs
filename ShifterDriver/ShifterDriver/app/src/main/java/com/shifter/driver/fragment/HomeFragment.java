@@ -140,6 +140,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         binding = FragmentHomeBinding.inflate(inflater, container, false);
+        binding.btnFavoriteRoutes.setOnClickListener(v -> startActivity(new Intent(requireContext(), com.shifter.driver.activity.FavoriteRoutesActivity.class)));
         sessionManager = new SessionManager(getActivity());
         custPrograssbar = new CustPrograssbar();
 
@@ -1101,6 +1102,20 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     @Override
     public void onResume() {
         super.onResume();
+        com.shifter.driver.utility.FavoriteRouteClient.request(requireContext(), "list", null, (data, error) -> {
+            if (!isAdded() || binding == null) return;
+            String label = "Favorite routes · Manage";
+            if (data != null && data.getAsJsonObject("config").get("enabled").getAsBoolean() && !data.get("active_route_id").isJsonNull()) {
+                int id = data.get("active_route_id").getAsInt();
+                for (com.google.gson.JsonElement item : data.getAsJsonArray("routes")) {
+                    com.google.gson.JsonObject route = item.getAsJsonObject();
+                    if (route.get("id").getAsInt() == id && !route.get("disabled").getAsBoolean()) {
+                        label = "Route: " + route.get("name").getAsString() + " · " + route.get("mode").getAsString() + " · " + route.get("radius_km").getAsString() + " km";
+                    }
+                }
+            }
+            binding.btnFavoriteRoutes.setText(label);
+        });
         NodeSocketManager.getInstance().addConnectionListener(connectionListener);
         updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
         if (isUpdateHome) {

@@ -25,6 +25,8 @@ import retrofit2.http.Query;
  * memory/order_dispatch_auth_gap.md).
  */
 public interface NodeService {
+    @POST("api/rider/favorite-routes")
+    Call<JsonObject> favoriteRoutes(@Body Map<String, Object> body);
     @POST("api/order/trip-progress")
     Call<JsonObject> tripProgress(@Body Map<String, Object> body);
 

@@ -91,6 +91,8 @@ async function getRejectedRiderIds(orderId) {
  * once their lock has lapsed.
  */
 async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = MAX_DRIVERS_PER_BATCH + 1) {
+  const favoriteRoutes = require('./favoriteRouteService');
+  const routeConfig = process.env.FAVORITE_ROUTES_ENABLED === 'true' ? await favoriteRoutes.settings(order.city_id) : {enabled:false};
   const excludeSet = new Set(excludeRiderIds.map(Number));
   const exclude = excludeSet.size > 0 ? [...excludeSet] : [0];
   const radiusKm = Number(order.radius_range) || SEARCH_RADIUS_KM;
@@ -174,13 +176,15 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       )
     HAVING distance_km <= ${radiusKm}
     ORDER BY has_priority_plan DESC, is_favorite DESC, distance_km ASC
-    LIMIT ${limit}
+    ${routeConfig.enabled ? Prisma.empty : Prisma.sql`LIMIT ${limit}`}
   `;
 
   // Belt-and-suspenders: the SQL's own NOT IN already excludes these riders,
   // but re-checking in JS means the exclusion is guaranteed by this
   // function's return value regardless of how the query was built.
-  return rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
+  const eligible = rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
+  if (!routeConfig.enabled) return eligible;
+  return (await favoriteRoutes.matchCandidates(order, eligible, routeConfig)).slice(0, limit);
 }
 
 /**
@@ -729,6 +733,10 @@ async function runBatchInner(orderId) {
             state.customerStats?.customerOrders
           );
 
+          if (driver.favorite_route_match?.matched) {
+            payload.favorite_route_match = JSON.stringify(driver.favorite_route_match);
+            payload.order_details += `\nYour route match · drops within ${driver.favorite_route_match.distance_km.toFixed(1)} km of route`;
+          }
           // Scheduled orders (booking_type=2) carry their real pickup time
           // into the driver's popup so it reads "Scheduled pickup: ..."
           // instead of looking like an instant order — see

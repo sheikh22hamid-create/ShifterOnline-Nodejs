@@ -200,7 +200,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="1dp"
-                            android:text="@string/distance"
+                            android:text="Trip distance"
                             android:textColor="@color/home_secondary"
                             android:textSize="12sp" />
                     </LinearLayout>
@@ -454,6 +454,16 @@
                             android:textStyle="bold" />
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
+                <TextView
+                    android:id="@+id/txt_trip_location_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Auto-arrival: acquiring precise GPS…"
+                    android:textColor="#475569"
+                    android:textSize="12sp"
+                    android:maxLines="2"
+                    android:accessibilityLiveRegion="polite" />
                 <!-- Row 5: Action Buttons (Reject / Confirm) -->
                 <LinearLayout
                     android:layout_width="match_parent"

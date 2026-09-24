@@ -156,6 +156,17 @@ async function notifyRewardPlanAssigned(fcmToken, planName) {
   );
 }
 
+/** Any driver-wallet ledger change (commission debit, cancellation compensation, payout approval, ...) - see services/walletNotifier.js. */
+async function notifyDriverWalletTransaction(fcmToken, type, amountText, remark) {
+  const isCredit = type === "credit";
+  return sendPushNotification(
+    fcmToken,
+    isCredit ? "Wallet credited" : "Wallet debited",
+    `${isCredit ? "+" : "-"}${amountText}${remark ? ` — ${remark}` : ""}`,
+    { type: "wallet_transaction", txn_type: String(type), amount: amountText }
+  );
+}
+
 /** Fired by dispatchManager.recordModel1Outcome once a rider's consecutive Model 1 misses hit the admin-configured limit. */
 async function notifyDriverModel1Suspended(fcmToken, missLimit, suspensionHours) {
   return sendPushNotification(
@@ -181,4 +192,5 @@ module.exports = {
   notifyCustomerNextDayAssigned,
   notifyRewardPlanAssigned,
   notifyDriverModel1Suspended,
+  notifyDriverWalletTransaction,
 };

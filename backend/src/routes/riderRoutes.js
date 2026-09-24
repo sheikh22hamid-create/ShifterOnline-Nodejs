@@ -18,6 +18,7 @@ const driverScheduledTripsController = require("../controllers/driverScheduledTr
 const appKeyAuth = require("../middleware/appKeyAuth");
 
 const router = express.Router();
+router.post('/favorite-routes', require('../controllers/favoriteRouteController').driver);
 
 // Driver auth (Node port of rider_api/*.php - mobile check, OTP login,
 // password login, registration with KYC docs, logout)

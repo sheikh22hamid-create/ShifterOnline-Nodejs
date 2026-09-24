@@ -1,0 +1,10 @@
+const {project,evaluate}=require('../favoriteRouteGeometry');
+const route={id:1,name:'East',geometry:[{lat:0,lng:0},{lat:0,lng:2}],radius_km:10,forward_only:false};
+test('matches the middle of a long segment, not just endpoints',()=>expect(project({lat:0.01,lng:1},route.geometry).distanceKm).toBeCloseTo(1.112,2));
+test('clamps beyond endpoint',()=>expect(project({lat:0,lng:3},route.geometry).distanceKm).toBeCloseTo(111.195,2));
+test('all drops must match',()=>expect(evaluate(route,{lat:0,lng:0},[{lat:0,lng:1},{lat:1,lng:1}]).reason).toBe('drop_outside_coverage'));
+test('forward mode respects ordered stops',()=>expect(evaluate({...route,forward_only:true},{lat:0,lng:0},[{lat:0,lng:1.5},{lat:0,lng:1}]).reason).toBe('direction_mismatch'));
+test('reverse direction is allowed when disabled',()=>expect(evaluate(route,{lat:0,lng:2},[{lat:0,lng:1}]).matched).toBe(true));
+test('rejects malformed coordinates',()=>expect(project({lat:NaN,lng:1},route.geometry)).toBeNull());
+test('handles repeated points',()=>expect(project({lat:0,lng:0},[{lat:0,lng:0},{lat:0,lng:0}]).distanceKm).toBe(0));
+test('uses shortest antimeridian segment',()=>expect(project({lat:0,lng:180},[{lat:0,lng:179},{lat:0,lng:-179}]).distanceKm).toBeCloseTo(0));

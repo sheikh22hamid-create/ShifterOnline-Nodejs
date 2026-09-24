@@ -15,6 +15,7 @@ const Orders = lazy(() => import('./pages/Orders'))
 const ScheduledOrders = lazy(() => import('./pages/ScheduledOrders'))
 const NextDayOrders = lazy(() => import('./pages/NextDayOrders'))
 const Drivers = lazy(() => import('./pages/Drivers'))
+const FavoriteRoutes = lazy(() => import('./pages/FavoriteRoutes'))
 const DriverActivity = lazy(() => import('./pages/DriverActivity'))
 const DriverTraining = lazy(() => import('./pages/DriverTraining'))
 const CustomOrders = lazy(() => import('./pages/CustomOrders'))
@@ -80,6 +81,7 @@ function App() {
             <Route path="/orders/next-day" element={<NextDayOrders />} />
             <Route path="/custom-orders" element={<CustomOrders />} />
             <Route path="/drivers" element={<Drivers />} />
+            <Route path="/favorite-routes" element={<FavoriteRoutes />} />
             <Route path="/monthly-drivers" element={<MonthlyDrivers />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />
             <Route path="/driver-training" element={<DriverTraining />} />

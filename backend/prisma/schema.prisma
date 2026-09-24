@@ -7,6 +7,52 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model driver_favorite_route {
+  id Int @id @default(autoincrement())
+  rider_id Int
+  city_id Int?
+  name String @db.VarChar(80)
+  points Json
+  geometry Json
+  distance_km Float
+  duration_seconds Int
+  radius_km Float @default(10)
+  mode String @default("prefer") @db.VarChar(12)
+  forward_only Boolean @default(false)
+  expires_at DateTime?
+  disabled Boolean @default(false)
+  disabled_reason String? @db.VarChar(255)
+  version Int @default(1)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  @@index([rider_id])
+  @@index([city_id])
+}
+
+model driver_favorite_route_state {
+  rider_id Int @id
+  route_id Int? @unique
+  updated_at DateTime @updatedAt
+}
+
+model favorite_route_settings {
+  city_id Int @id
+  config Json
+  updated_at DateTime @updatedAt
+}
+
+model favorite_route_audit {
+  id Int @id @default(autoincrement())
+  city_id Int?
+  rider_id Int?
+  route_id Int?
+  actor String @db.VarChar(80)
+  action String @db.VarChar(40)
+  detail Json
+  created_at DateTime @default(now())
+  @@index([city_id, created_at])
+}
+
 model Pkg_tracking {
   id      Int    @id @default(autoincrement())
   link    String @db.Text

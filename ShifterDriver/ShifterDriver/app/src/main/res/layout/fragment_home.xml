@@ -18,6 +18,14 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingBottom="24dp">
+            <Button
+                android:id="@+id/btn_favorite_routes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:text="Favorite routes · Manage"
+                android:textAllCaps="false"
+                android:contentDescription="Manage favorite routes" />
             <!-- ================= TOP HEADER ================= -->
             <RelativeLayout
                 android:id="@+id/layout_header_bar"

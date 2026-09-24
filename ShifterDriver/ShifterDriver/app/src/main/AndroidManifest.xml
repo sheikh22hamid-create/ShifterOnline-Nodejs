@@ -333,6 +333,7 @@
             </intent-filter>
         </receiver>
 
+        <activity android:name=".activity.FavoriteRoutesActivity" android:exported="false" />
     </application>
 
 </manifest>

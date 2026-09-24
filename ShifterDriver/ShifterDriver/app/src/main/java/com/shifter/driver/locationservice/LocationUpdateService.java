@@ -49,6 +49,7 @@ public class LocationUpdateService extends Service {
     private static final long UPDATE_INTERVAL = 10000; // 10 seconds
     private static final long FASTEST_INTERVAL = 5000; // 5 seconds
     public static final String ACTION_LOCATION_UPDATED = "com.shifter.driver.LOCATION_UPDATED";
+    public static final String ACTION_REFRESH_LOCATION = "com.shifter.driver.REFRESH_TRIP_LOCATION";
 
     // holds last known location
     private static Location lastLocation;
@@ -80,13 +81,21 @@ public class LocationUpdateService extends Service {
     private FirebaseFirestore db;
     private String riderId;
     private ExecutorService apiExecutor; // For parallel API calls
+    private android.location.LocationManager satelliteManager;
+    private android.location.LocationListener satelliteListener;
+    private Location latestSatelliteFix;
 
-    public static void setLocation(Location location) {
-        lastLocation = location;
+    public static synchronized boolean setLocation(Location location) {
+        if (location == null || !LocationFixPolicy.accept(lastLocation == null ? 0 : lastLocation.getElapsedRealtimeNanos() / 1000000,
+                location.getElapsedRealtimeNanos() / 1000000, android.os.SystemClock.elapsedRealtime(),
+                location.getLatitude(), location.getLongitude(), location.hasAccuracy() ? location.getAccuracy() : -1)) return false;
+        lastLocation = new Location(location);
+        return true;
     }
 
-    public static Location getLocation() {
-        if (lastLocation != null) return lastLocation;
+    public static synchronized Location getLocation() {
+        if (lastLocation != null && LocationFixPolicy.isFresh(lastLocation.getElapsedRealtimeNanos() / 1000000,
+                android.os.SystemClock.elapsedRealtime())) return new Location(lastLocation);
         Location fallback = new Location("default");
         fallback.setLatitude(0.0);
         fallback.setLongitude(0.0);
@@ -117,7 +126,6 @@ public class LocationUpdateService extends Service {
         apiExecutor = Executors.newSingleThreadExecutor(); // For API calls
         
         createLocationCallback();
-        startLocationUpdates();
     }
 
     @Override
@@ -126,6 +134,8 @@ public class LocationUpdateService extends Service {
         // Start as foreground immediately
         Notification notification = buildNotification();
         startForeground(NOTIFICATION_ID, notification);
+        startLocationUpdates();
+        requestCurrentFix();
         
         return START_STICKY;
     }
@@ -149,9 +159,12 @@ public class LocationUpdateService extends Service {
 
     private void startLocationUpdates() {
         LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setInterval(UPDATE_INTERVAL);
-        locationRequest.setFastestInterval(FASTEST_INTERVAL);
+        boolean activeTrip = sessionManager.getActiveOrder() != null;
+        locationRequest.setInterval(activeTrip ? 5000 : UPDATE_INTERVAL);
+        locationRequest.setFastestInterval(activeTrip ? 3000 : FASTEST_INTERVAL);
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        locationRequest.setWaitForAccurateLocation(true);
+        locationRequest.setMaxWaitTime(0);
         
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
                 != PackageManager.PERMISSION_GRANTED 
@@ -164,11 +177,43 @@ public class LocationUpdateService extends Service {
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
                 .addOnSuccessListener(aVoid -> Log.d(TAG, "Location updates started"))
                 .addOnFailureListener(e -> Log.e(TAG, "Failed to start location updates: " + e.getMessage()));
+        if (activeTrip) startSatelliteUpdates();
+    }
+
+    private void startSatelliteUpdates() {
+        if (satelliteListener != null || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) return;
+        satelliteManager = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+        if (satelliteManager == null || !satelliteManager.getAllProviders().contains(android.location.LocationManager.GPS_PROVIDER)) return;
+        satelliteListener = new android.location.LocationListener() {
+            @Override public void onLocationChanged(Location fix) {
+                if (fix.hasAccuracy() && LocationFixPolicy.isFresh(fix.getElapsedRealtimeNanos() / 1000000, android.os.SystemClock.elapsedRealtime())) {
+                    latestSatelliteFix = new Location(fix);
+                    handleLocationUpdate(fix);
+                }
+            }
+            @Override public void onProviderEnabled(String provider) {}
+            @Override public void onProviderDisabled(String provider) { latestSatelliteFix = null; }
+            @Override public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+        };
+        try {
+            satelliteManager.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 3000, 0f, satelliteListener, Looper.getMainLooper());
+        } catch (RuntimeException error) {
+            satelliteListener = null;
+            Log.w(TAG, "Satellite location unavailable; using fused updates", error);
+        }
     }
 
     private void handleLocationUpdate(Location location) {
+        // Fused dead-reckoning can drift while a stationary phone has a usable
+        // satellite fix. Prefer fresh satellite observations, never old GPS.
+        if (!android.location.LocationManager.GPS_PROVIDER.equals(location.getProvider()) && latestSatelliteFix != null
+                && LocationFixPolicy.preferSatellite(latestSatelliteFix.getElapsedRealtimeNanos() / 1000000,
+                        latestSatelliteFix.getAccuracy(), android.os.SystemClock.elapsedRealtime())) return;
         // Update static location
-        setLocation(location);
+        if (!setLocation(location)) return;
+        Log.d(TAG, "Trip fix provider=" + location.getProvider() + " accuracy=" + location.getAccuracy()
+                + " speed=" + (location.hasSpeed() ? location.getSpeed() : -1));
 
         try {
             Intent locIntent = new Intent(ACTION_LOCATION_UPDATED);
@@ -192,6 +237,21 @@ public class LocationUpdateService extends Service {
         } else {
             Log.w(TAG, "Rider ID not available, skipping location updates");
         }
+    }
+
+    private com.google.android.gms.tasks.CancellationTokenSource freshFixCancellation;
+    private long lastFreshFixRequest;
+    private void requestCurrentFix() {
+        if (android.os.SystemClock.elapsedRealtime() - lastFreshFixRequest < 10000) return;
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        lastFreshFixRequest = android.os.SystemClock.elapsedRealtime();
+        if (freshFixCancellation != null) freshFixCancellation.cancel();
+        freshFixCancellation = new com.google.android.gms.tasks.CancellationTokenSource();
+        final com.google.android.gms.tasks.CancellationTokenSource token = freshFixCancellation;
+        locationUpdateHandler.postDelayed(token::cancel, 20000);
+        fusedLocationClient.getCurrentLocation(LocationRequest.PRIORITY_HIGH_ACCURACY, token.getToken())
+                .addOnSuccessListener(location -> { if (location != null) handleLocationUpdate(location); })
+                .addOnFailureListener(error -> Log.w(TAG, "Current GPS fix unavailable", error));
     }
 
     /**
@@ -292,6 +352,9 @@ public class LocationUpdateService extends Service {
 
     @Override
     public void onDestroy() {
+        if (satelliteManager != null && satelliteListener != null) satelliteManager.removeUpdates(satelliteListener);
+        if (freshFixCancellation != null) freshFixCancellation.cancel();
+        if (locationUpdateHandler != null) locationUpdateHandler.removeCallbacksAndMessages(null);
         sIsRunning = false;
         Log.d(TAG, "Service onDestroy");
         stopLocationUpdates();

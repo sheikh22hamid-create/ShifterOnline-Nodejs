@@ -51,6 +51,7 @@ export const NAV_GROUPS = [
       { to: '/orders/next-day', label: 'Next Day Orders', icon: Sunrise, roles: ALL_STAFF, built: true },
       { to: '/custom-orders', label: 'Custom Orders (Bidding)', icon: ShoppingBag, roles: ALL_STAFF, built: true },
       { to: '/drivers', label: 'Drivers Fleet', icon: Users, roles: ALL_STAFF, built: true },
+      { to: '/favorite-routes', label: 'Favorite Routes', icon: MapPin, roles: ALL_STAFF, built: true },
       { to: '/monthly-drivers', label: 'Monthly Drivers', icon: UserCheck, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },

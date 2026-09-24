@@ -39,6 +39,12 @@ router.post("/upload-image", auth, memoryUpload.single("image"), uploadControlle
 
 // Define role whitelist for rider/fleet management before any route registrations
 const RIDER_ROLES = ["superadmin", "admin", "executive"];
+const favoriteRoutes = require('../controllers/favoriteRouteController');
+router.get('/favorite-routes', auth, authorize(...RIDER_ROLES), favoriteRoutes.list);
+router.get('/favorite-routes/metrics', auth, authorize(...RIDER_ROLES), favoriteRoutes.metrics);
+router.put('/favorite-routes/settings', auth, authorize('superadmin','admin'), favoriteRoutes.settings);
+router.post('/favorite-routes/:id/disable', auth, authorize('superadmin','admin'), favoriteRoutes.disable);
+router.post('/favorite-routes/:id/diagnose', auth, authorize(...RIDER_ROLES), favoriteRoutes.diagnose);
 
 // Every route below (except login) requires a valid admin-panel JWT.
 router.post("/auth/login", authController.login);

@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const adminSocket = require("../sockets/adminSocket");
+const pushNotifier = require("../services/pushNotifier");
 const logger = require("../utils/logger");
 
 function internalError(res, err, label) {
@@ -127,6 +128,15 @@ async function approve(req, res) {
       status: "approved",
       amount,
     });
+
+    // In-app notification list entry is already written above (tbl_rnoti,
+    // "Payout approved") - this is only the actual push so it's seen even
+    // with the app backgrounded, which nothing sent before this fix.
+    if (rider.fcm_token) {
+      pushNotifier
+        .notifyDriverWalletTransaction(rider.fcm_token, "debit", `₹${amount.toFixed(2)}`, remarkParts.join(" — "))
+        .catch((err) => logger.error(`payouts.approve: wallet push notify failed for rider ${rider.id}:`, err));
+    }
 
     return res.status(200).json({ success: true, message: "Withdrawal request approved" });
   } catch (err) {

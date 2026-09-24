@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
 const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount } = require("../services/driverWalletSettings");
+const walletNotifier = require("../services/walletNotifier");
 
 // Node port of cust_api/add_wallet.php, wallet_history.php,
 // withdraw_wallet.php + rider_api equivalents (rider_api has no dedicated
@@ -222,6 +223,9 @@ async function clearOutstandingDue(req, res) {
         const updated = await tx.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: { increment: creditAmount } } });
         newBalance = Number(updated.wallet_balance);
       });
+      walletNotifier
+        .notifyDriverWalletTransaction(rider.id, { type: "credit", amount: creditAmount, remark: "Outstanding Due Cleared" })
+        .catch((err) => logger.error(`clearOutstandingDue: wallet notify failed for rider ${rider.id}:`, err));
       return res.status(200).json({ Result: true, msg: "Outstanding due cleared", balance: newBalance });
     } catch (e) {
       if (e.code === "P2002") return fail(res, "This payment has already been credited.");

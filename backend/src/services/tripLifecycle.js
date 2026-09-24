@@ -6,6 +6,7 @@ const driverPlanService = require("./driverPlanService");
 const referralRewardService = require("./referralRewardService");
 const rewardPlanService = require("./rewardPlanService");
 const pushNotifier = require("./pushNotifier");
+const walletNotifier = require("./walletNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
@@ -577,18 +578,22 @@ async function updateStatus(orderId, riderId, status) {
             where: { id: riderId },
             data: { wallet_balance: { decrement: netCommissionDue } },
           });
+          const commissionRemark = `Admin deduction for order #${orderId}${driverBenefit?.benefit > 0 ? ` (${driverBenefit.plan.plan_name})` : ""}`;
           await prisma.tbl_wallet_history.create({
             data: {
               user_id: riderId,
               amount: netCommissionDue,
               type: "debit",
-              remark: `Admin deduction for order #${orderId}${driverBenefit?.benefit > 0 ? ` (${driverBenefit.plan.plan_name})` : ""}`,
+              remark: commissionRemark,
               wallet_type: "driver",
               order_id: orderId,
               payment_id: commissionKey,
               created_at: istNow(),
             },
           });
+          walletNotifier
+            .notifyDriverWalletTransaction(riderId, { type: "debit", amount: netCommissionDue, remark: commissionRemark })
+            .catch((err) => logger.error(`updateStatus: wallet notify (commission debit) failed for rider ${riderId}:`, err));
         }
       }
 
@@ -613,18 +618,22 @@ async function updateStatus(orderId, riderId, status) {
             where: { id: riderId },
             data: { wallet_balance: { increment: advanceRefundDue } },
           });
+          const refundRemark = `Advance payment balance for order #${orderId} (cash collected was less than net earning)`;
           await prisma.tbl_wallet_history.create({
             data: {
               user_id: riderId,
               amount: advanceRefundDue,
               type: "credit",
-              remark: `Advance payment balance for order #${orderId} (cash collected was less than net earning)`,
+              remark: refundRemark,
               wallet_type: "driver",
               order_id: orderId,
               payment_id: refundKey,
               created_at: istNow(),
             },
           });
+          walletNotifier
+            .notifyDriverWalletTransaction(riderId, { type: "credit", amount: advanceRefundDue, remark: refundRemark })
+            .catch((err) => logger.error(`updateStatus: wallet notify (advance refund) failed for rider ${riderId}:`, err));
         }
       }
     }
@@ -868,6 +877,7 @@ async function customerCancel(uid, orderId, comment) {
 
       const driverEarning = Number(pkg?.driver_earning) || 0;
       if (driverEarning > 0) {
+        const compRemark = `Cancellation compensation for order #${orderId}`;
         await prisma.tbl_rider.update({
           where: { id: Number(orderBefore.rid) },
           data: { wallet_balance: { increment: driverEarning } },
@@ -877,12 +887,15 @@ async function customerCancel(uid, orderId, comment) {
             user_id: Number(orderBefore.rid),
             amount: driverEarning,
             type: "credit",
-            remark: `Cancellation compensation for order #${orderId}`,
+            remark: compRemark,
             wallet_type: "driver",
             order_id: orderId,
             created_at: istNow(),
           },
         });
+        walletNotifier
+          .notifyDriverWalletTransaction(Number(orderBefore.rid), { type: "credit", amount: driverEarning, remark: compRemark })
+          .catch((err) => logger.error(`customerCancel: wallet notify (cancellation compensation) failed for rider ${orderBefore.rid}:`, err));
       }
     }
   } else {
@@ -918,6 +931,10 @@ async function driverCancel(orderId, riderId, reason) {
   let cancelledOrder = null;
   let refundAmount = 0;
   let refundStatus = "not_required";
+  // Collected inside the transaction, notified after it commits - an FCM
+  // call must not run while this transaction's row lock (FOR UPDATE above)
+  // is still held.
+  const walletNotifications = [];
 
   await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw`
@@ -998,6 +1015,7 @@ async function driverCancel(orderId, riderId, reason) {
           where: { payment_id: driverFeeKey, type: "debit", wallet_type: "driver" },
         });
         if (!alreadyDebited) {
+          const feeRemark = `Cancellation fee for cancelling order #${orderId}`;
           await tx.tbl_rider.update({
             where: { id: Number(riderId) },
             data: { wallet_balance: { decrement: driverFee } },
@@ -1010,10 +1028,11 @@ async function driverCancel(orderId, riderId, reason) {
               wallet_type: "driver",
               order_id: orderId,
               payment_id: driverFeeKey,
-              remark: `Cancellation fee for cancelling order #${orderId}`,
+              remark: feeRemark,
               created_at: istNow(),
             },
           });
+          walletNotifications.push({ riderId: Number(riderId), type: "debit", amount: driverFee, remark: feeRemark });
 
           const userComp = Number(pkg?.driver_cancel_user_earning) || 0;
           if (userComp > 0) {
@@ -1054,6 +1073,12 @@ async function driverCancel(orderId, riderId, reason) {
 
     cancelledOrder = { ...order, rid: 0, order_status: 0, o_status: "Pending", uid: Number(order.uid) };
   });
+
+  for (const n of walletNotifications) {
+    walletNotifier
+      .notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark })
+      .catch((err) => logger.error(`driverCancel: wallet notify failed for rider ${n.riderId}:`, err));
+  }
 
   const freshOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (freshOrder && refundStatus !== "already_cancelled") {
