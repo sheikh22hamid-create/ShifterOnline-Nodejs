@@ -58,6 +58,17 @@ public class ScheduledTripsActivity extends LocaleAwareActivity implements GetRe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_scheduled_trips);
 
+        android.view.View root = findViewById(R.id.root_scheduled_trips);
+        if (root != null) {
+            androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+                androidx.core.graphics.Insets safe = insets.getInsets(
+                        androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                                | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+                v.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                return androidx.core.view.WindowInsetsCompat.CONSUMED;
+            });
+        }
+
         sessionManager = new SessionManager(this);
         riderData = sessionManager.getUserDetails();
         riderId = riderData != null ? riderData.getId() : 0;

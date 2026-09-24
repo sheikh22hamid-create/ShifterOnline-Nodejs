@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_scheduled_trips"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/driver_bg_light"
+    android:background="@color/white"
+    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <!-- Top App Bar -->
@@ -64,126 +66,135 @@
             app:tint="@color/driver_text_primary" />
     </RelativeLayout>
 
-    <!-- Informational Priority Banner -->
+    <!-- Content on Light Surface Background -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="6dp"
-        android:background="@drawable/bg_info_banner_soft"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="12dp">
-
-        <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:background="@drawable/bg_badge_schedule_time"
-            android:padding="6dp"
-            android:src="@drawable/ic_zap_bolt"
-            app:tint="#FF5E1E" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="15-Minute Priority Dispatch Window"
-                android:textColor="#C2410C"
-                android:textSize="12.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:lineSpacingExtra="1.5dp"
-                android:text="Mark 'Interested' on trips you prefer. When the order activates, you get first priority before normal broadcast."
-                android:textColor="#64748B"
-                android:textSize="11sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <FrameLayout
-        android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:background="@color/driver_bg_light"
+        android:orientation="vertical">
 
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/swipe_refresh_layout"
+        <!-- Informational Priority Banner -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/bg_info_banner_soft"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="12dp">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recycler_scheduled_trips"
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@drawable/bg_badge_schedule_time"
+                android:padding="6dp"
+                android:src="@drawable/ic_zap_bolt"
+                app:tint="#FF5E1E" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="15-Minute Priority Dispatch Window"
+                    android:textColor="#C2410C"
+                    android:textSize="12.5sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:lineSpacingExtra="1.5dp"
+                    android:text="Mark 'Interested' on trips you prefer. When the order activates, you get first priority before normal broadcast."
+                    android:textColor="#64748B"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+                android:id="@+id/swipe_refresh_layout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recycler_scheduled_trips"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="24dp" />
+            </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+            <!-- Modern Empty State -->
+            <LinearLayout
+                android:id="@+id/layout_empty_state"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:paddingTop="4dp"
-                android:paddingBottom="24dp" />
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-
-        <!-- Modern Empty State -->
-        <LinearLayout
-            android:id="@+id/layout_empty_state"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="32dp"
-            android:visibility="gone">
-
-            <FrameLayout
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:background="@drawable/bg_badge_schedule_time">
-
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_calendar"
-                    app:tint="#FF5E1E" />
-            </FrameLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="No Scheduled Trips Right Now"
-                android:textColor="@color/driver_text_primary"
-                android:textSize="16.5sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/txt_empty_state"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
                 android:gravity="center"
-                android:lineSpacingExtra="2dp"
-                android:text="Customers haven't booked any advance trips in your area yet. Pull down to refresh or check back soon."
-                android:textColor="@color/driver_text_secondary"
-                android:textSize="12.5sp" />
+                android:orientation="vertical"
+                android:padding="32dp"
+                android:visibility="gone">
 
-            <Button
-                android:id="@+id/btn_empty_refresh"
-                android:layout_width="wrap_content"
-                android:layout_height="38dp"
-                android:layout_marginTop="16dp"
-                android:background="@drawable/bg_btn_cancel_light"
-                android:paddingHorizontal="20dp"
-                android:text="Refresh List"
-                android:textAllCaps="false"
-                android:textColor="@color/driver_text_primary"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-    </FrameLayout>
+                <FrameLayout
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:background="@drawable/bg_badge_schedule_time">
+
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_calendar"
+                        app:tint="#FF5E1E" />
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="No Scheduled Trips Right Now"
+                    android:textColor="@color/driver_text_primary"
+                    android:textSize="16.5sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txt_empty_state"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:lineSpacingExtra="2dp"
+                    android:text="Customers haven't booked any advance trips in your area yet. Pull down to refresh or check back soon."
+                    android:textColor="@color/driver_text_secondary"
+                    android:textSize="12.5sp" />
+
+                <Button
+                    android:id="@+id/btn_empty_refresh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/bg_btn_cancel_light"
+                    android:paddingHorizontal="20dp"
+                    android:text="Refresh List"
+                    android:textAllCaps="false"
+                    android:textColor="@color/driver_text_primary"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
 </LinearLayout>

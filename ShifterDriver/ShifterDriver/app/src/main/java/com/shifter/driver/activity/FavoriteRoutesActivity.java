@@ -69,9 +69,17 @@ public class FavoriteRoutesActivity extends AppCompatActivity {
         super.onCreate(state);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.parseColor("#F8F9FA"));
+        root.setBackgroundColor(Color.WHITE);
+        root.setFitsSystemWindows(true);
         setContentView(root);
-        ProfileScreenInsets.apply(this);
+
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            androidx.core.graphics.Insets safe = insets.getInsets(
+                    androidx.core.view.WindowInsetsCompat.Type.systemBars()
+                            | androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            return androidx.core.view.WindowInsetsCompat.CONSUMED;
+        });
 
         // Modern Top App Bar
         RelativeLayout header = new RelativeLayout(this);
@@ -147,6 +155,7 @@ public class FavoriteRoutesActivity extends AppCompatActivity {
         scroll = new ScrollView(this);
         scroll.setClipToPadding(false);
         scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.parseColor("#F8F9FA"));
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
