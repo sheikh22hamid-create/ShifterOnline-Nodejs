@@ -13,7 +13,7 @@ async function driver(req){
   return rider;
 }
 function city(req){
-  const value=req.user.role==='superadmin'?Number(req.query.city_id||req.body.city_id||0):Number(req.user.city_id);
+  const value=req.user.role==='superadmin'?Number(req.query.city_id||req.body?.city_id||0):Number(req.user.city_id);
   if(!Number.isSafeInteger(value)||value<0||req.user.role!=='superadmin'&&!value)fail('Invalid city scope',403);
   return value;
 }
