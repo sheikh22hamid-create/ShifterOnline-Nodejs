@@ -417,118 +417,151 @@ async function withdrawWallet(req, res) {
     }
 
     const currentBalance = Number(walletType === "user" ? account.wallet : account.wallet_balance || 0);
-    // reserve is the admin-configured driver_min_withdrawal_amount, now
-    // enforced as a floor that must stay in the ledger - not just an
-    // eligibility gate. A driver with ₹20 and a ₹10 minimum can withdraw at
-    // most ₹10; withdrawing the full ₹20 previously succeeded and drained
-    // the ledger below the configured minimum entirely.
-    let reserve = 0;
+
+    // Driver withdrawals go through admin approval (payoutController.approve
+    // does the actual debit) - the wallet is only ever touched once an admin
+    // acts on the request, never here. A driver's withdrawal used to debit
+    // immediately with no request row at all, which meant it never reached
+    // the admin Payouts screen for approval (see incident: rider
+    // 9999900001's ₹2 withdrawal went straight through with nobody
+    // approving it) - reusing driver_withdraw_requests (the table the
+    // Payouts page already reads) closes that gap instead of inventing a
+    // second, parallel approval mechanism.
     if (walletType === "driver") {
       if (currentBalance <= 0) {
         return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
       }
-      reserve = await getDriverMinWithdrawalAmount();
-      const maxWithdrawable = Math.max(0, currentBalance - reserve);
+      const reserve = await getDriverMinWithdrawalAmount();
+      const pendingAgg = await prisma.driver_withdraw_requests.aggregate({
+        where: { rider_id: account.id, status: "pending" },
+        _sum: { amount: true },
+      });
+      const pendingAmount = Number(pendingAgg._sum.amount || 0);
+      // reserve stays in the ledger permanently; pendingAmount is already
+      // earmarked by an earlier request still awaiting admin action - both
+      // must come off what's left to request again.
+      const maxWithdrawable = Math.max(0, currentBalance - reserve - pendingAmount);
       if (maxWithdrawable <= 0) {
         return res.status(200).json({
           ResponseCode: "404",
           Result: "false",
-          ResponseMsg: `₹${reserve} must stay in your ledger. Current balance ₹${currentBalance}.`,
+          ResponseMsg: pendingAmount > 0
+            ? `You already have ₹${pendingAmount} pending approval. Nothing further is available to request right now.`
+            : `₹${reserve} must stay in your ledger. Current balance ₹${currentBalance}.`,
         });
       }
       if (amount > maxWithdrawable) {
         return res.status(200).json({
           ResponseCode: "404",
           Result: "false",
-          ResponseMsg: `You can withdraw up to ₹${maxWithdrawable} - ₹${reserve} must stay in your ledger.`,
+          ResponseMsg: `You can request up to ₹${maxWithdrawable} right now - ₹${reserve} must stay in your ledger${pendingAmount > 0 ? `, and ₹${pendingAmount} is already pending approval` : ""}.`,
         });
       }
+
+      // Payout method: the driver either withdraws to whatever UPI id / bank
+      // account is already saved on their profile, or supplies a fresh one
+      // here to update it first - same upsert pattern as
+      // driverKycController.saveBankAccount. The resolved method/detail is
+      // snapshotted onto the request row (not just the driver's profile) so
+      // admin sees exactly what was chosen even if the saved profile changes
+      // before the request is approved.
+      let payoutMethod = null;
+      let payoutDetailText = null;
+      if (b.payout_method) {
+        const method = String(b.payout_method).toLowerCase();
+        if (method === "upi") {
+          let upiId = b.upi_id ? String(b.upi_id).trim() : "";
+          if (upiId) {
+            await prisma.tbl_rider.update({ where: { id: account.id }, data: { upi_id: upiId } });
+          } else {
+            const rider = await prisma.tbl_rider.findUnique({ where: { id: account.id }, select: { upi_id: true } });
+            upiId = rider?.upi_id || "";
+          }
+          if (!upiId) {
+            return res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: "Add a UPI ID before withdrawing." });
+          }
+          payoutMethod = "upi";
+          payoutDetailText = `UPI (${upiId})`;
+        } else if (method === "bank") {
+          const accountName = b.account_name;
+          const accountNumber = b.account_number;
+          const ifscCode = b.ifsc_code;
+          const bankName = b.bank_name;
+          if (accountName && accountNumber && bankName) {
+            const existing = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
+            const data = {
+              a_name: accountName,
+              iban_num: accountNumber,
+              bank_name: bankName,
+              ifsc_code: ifscCode || existing?.ifsc_code || null,
+              status: 0,
+            };
+            if (existing) {
+              await prisma.tbl_bank_account.update({ where: { id: existing.id }, data });
+            } else {
+              await prisma.tbl_bank_account.create({ data: { rider_id: account.id, branch_name: "", vat_id: "", ...data } });
+            }
+          }
+          const bank = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
+          if (!bank) {
+            return res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: "Add your bank account before withdrawing." });
+          }
+          const maskedAcc = bank.iban_num ? `•••${String(bank.iban_num).slice(-4)}` : "";
+          payoutMethod = "bank";
+          payoutDetailText = `Bank ${bank.bank_name || ""} (${maskedAcc})`.trim();
+        } else {
+          return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Invalid payout method." });
+        }
+      }
+
+      const request = await prisma.driver_withdraw_requests.create({
+        data: {
+          rider_id: account.id,
+          amount,
+          status: "pending",
+          city_id: account.city_id ?? null,
+          payout_method: payoutMethod,
+          payout_detail: payoutDetailText,
+        },
+      });
+
+      return res.status(200).json({
+        ResponseCode: "200",
+        Result: "true",
+        ResponseMsg: "Withdrawal request submitted. It will be paid out once an admin approves it.",
+        request_id: request.id,
+      });
     }
+
     if (currentBalance < amount) {
       return res.status(200).json({ ResponseCode: "402", Result: "false", ResponseMsg: "Insufficient Balance!" });
     }
 
-    // Payout method (driver only, optional): the driver either withdraws to
-    // whatever UPI id / bank account is already saved on their profile, or
-    // supplies a fresh one here to update it first - same upsert pattern as
-    // driverKycController.saveBankAccount. Omitted entirely by customer
-    // withdrawals and by any caller not sending payout_method, so existing
-    // behavior (a plain ledger debit) is unchanged when it's absent.
-    let payoutDetailText = null;
-    if (walletType === "driver" && b.payout_method) {
-      const method = String(b.payout_method).toLowerCase();
-      if (method === "upi") {
-        let upiId = b.upi_id ? String(b.upi_id).trim() : "";
-        if (upiId) {
-          await prisma.tbl_rider.update({ where: { id: account.id }, data: { upi_id: upiId } });
-        } else {
-          const rider = await prisma.tbl_rider.findUnique({ where: { id: account.id }, select: { upi_id: true } });
-          upiId = rider?.upi_id || "";
-        }
-        if (!upiId) {
-          return res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: "Add a UPI ID before withdrawing." });
-        }
-        payoutDetailText = `UPI (${upiId})`;
-      } else if (method === "bank") {
-        const accountName = b.account_name;
-        const accountNumber = b.account_number;
-        const ifscCode = b.ifsc_code;
-        const bankName = b.bank_name;
-        if (accountName && accountNumber && bankName) {
-          const existing = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
-          const data = {
-            a_name: accountName,
-            iban_num: accountNumber,
-            bank_name: bankName,
-            ifsc_code: ifscCode || existing?.ifsc_code || null,
-            status: 0,
-          };
-          if (existing) {
-            await prisma.tbl_bank_account.update({ where: { id: existing.id }, data });
-          } else {
-            await prisma.tbl_bank_account.create({ data: { rider_id: account.id, branch_name: "", vat_id: "", ...data } });
-          }
-        }
-        const bank = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
-        if (!bank) {
-          return res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: "Add your bank account before withdrawing." });
-        }
-        const maskedAcc = bank.iban_num ? `•••${String(bank.iban_num).slice(-4)}` : "";
-        payoutDetailText = `Bank ${bank.bank_name || ""} (${maskedAcc})`.trim();
-      } else {
-        return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Invalid payout method." });
-      }
-    }
-    const finalRemark = payoutDetailText ? `${remark} via ${payoutDetailText}` : remark;
-
-    // Atomic conditional debit: the WHERE clause re-checks the balance (and
-    // now the reserve) at commit time instead of trusting the currentBalance
-    // read above, so two concurrent withdraw calls for the same account can
-    // no longer both pass (see customerWalletController.withdrawWallet race
-    // - fixed 2026-09-23), and neither can push the balance below reserve.
-    const model = walletType === "user" ? "tbl_user" : "tbl_rider";
-    const balanceField = walletType === "user" ? "wallet" : "wallet_balance";
-
+    // Atomic conditional debit (customer wallet only - driver withdrawals
+    // are handled above via the pending-request path): the WHERE clause
+    // re-checks the balance at commit time instead of trusting the
+    // currentBalance read above, so two concurrent withdraw calls for the
+    // same account can no longer both pass (see
+    // customerWalletController.withdrawWallet race - fixed 2026-09-23).
     let debited = false;
     let newBalance = null;
     await prisma.$transaction(async (tx) => {
-      const result = await tx[model].updateMany({
-        where: { id: account.id, [balanceField]: { gte: amount + reserve } },
-        data: { [balanceField]: { decrement: amount } },
+      const result = await tx.tbl_user.updateMany({
+        where: { id: account.id, wallet: { gte: amount } },
+        data: { wallet: { decrement: amount } },
       });
       if (result.count === 0) return;
       debited = true;
       await tx.tbl_wallet_history.create({
-        data: { user_id: account.id, mobile, amount, type: "debit", remark: finalRemark, wallet_type: walletType, created_at: new Date() },
+        data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: new Date() },
       });
       // Re-read the balance inside the same transaction instead of trusting
       // currentBalance - amount: a successful updateMany only proves the
       // balance was >= amount at commit time, not that it was unchanged
-      // since the read above (e.g. a commission debit could have landed in
-      // between), so the pre-transaction arithmetic can be wrong even when
-      // this withdrawal itself is entirely valid.
-      const fresh = await tx[model].findFirst({ where: { id: account.id } });
-      newBalance = Number(fresh[balanceField]);
+      // since the read above, so the pre-transaction arithmetic can be
+      // wrong even when this withdrawal itself is entirely valid.
+      const fresh = await tx.tbl_user.findFirst({ where: { id: account.id } });
+      newBalance = Number(fresh.wallet);
     });
 
     if (!debited) {

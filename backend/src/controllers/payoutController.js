@@ -42,6 +42,14 @@ async function list(req, res) {
         rider_name: rider ? riderName(rider) : null,
         rider_mobile: rider ? rider.fmobile : null,
         amount: w.amount,
+        // payout_method/payout_detail are the snapshot taken at request time
+        // (customerWalletController.withdrawWallet) - what the driver
+        // actually chose, which can differ from their current saved
+        // bank_account below if they've since changed it. Prefer the
+        // snapshot; fall back to the current saved account for older rows
+        // created before this column existed.
+        payout_method: w.payout_method,
+        payout_detail: w.payout_detail,
         bank_account: bank
           ? { bank_name: bank.bank_name, account_no: bank.iban_num, ifsc: bank.ifsc_code }
           : null,
@@ -84,6 +92,7 @@ async function approve(req, res) {
     }
 
     const remarkParts = [`Payout approved (withdrawal #${id})`];
+    if (withdrawal.payout_detail) remarkParts.push(`via ${withdrawal.payout_detail}`);
     if (transaction_reference) remarkParts.push(`ref: ${transaction_reference}`);
     if (payment_proof_url) remarkParts.push(`proof: ${payment_proof_url}`);
 

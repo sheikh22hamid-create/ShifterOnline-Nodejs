@@ -96,7 +96,13 @@ export default function Payouts() {
                       {formatCurrency(p.amount)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
-                      {p.bank_account ? (
+                      {p.payout_detail ? (
+                        // What the driver actually picked when requesting this
+                        // withdrawal (see customerWalletController.withdrawWallet) -
+                        // preferred over bank_account below, which reflects their
+                        // *current* saved profile and may have changed since.
+                        <span className="font-mono-data text-[12px]">{p.payout_detail}</span>
+                      ) : p.bank_account ? (
                         <>
                           {p.bank_account.bank_name}
                           <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
