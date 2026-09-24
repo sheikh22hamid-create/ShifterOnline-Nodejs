@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="10dp"
+    android:background="@drawable/bg_home_surface"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="14dp">
+
+    <!-- Tier Icon Container with Tinted Rounded Background -->
+    <FrameLayout
+        android:id="@+id/layout_tier_icon_bg"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="center_vertical"
+        android:background="@drawable/rounded_corner_box"
+        android:backgroundTint="@color/tier_standard_bg">
+
+        <ImageView
+            android:id="@+id/img_tier_icon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_tier_standard_box"
+            app:tint="@color/tier_standard_tint" />
+    </FrameLayout>
+
+    <!-- Content: Title, Info, Subtitle, Rate & Min Base Fare -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- Title and (i) Info icon inline -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/txt_model_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/driver_text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                tools:text="Standard Tier" />
+        </LinearLayout>
+
+        <!-- Model Subtitle -->
+        <TextView
+            android:id="@+id/txt_model_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/home_secondary"
+            android:textSize="12sp"
+            tools:text="Regular deliveries, steady earnings" />
+
+        <!-- Details chip: opens the tier info sheet -->
+        <LinearLayout
+            android:id="@+id/btn_model_info"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7dp"
+            android:background="@drawable/bg_tier_details_button"
+            android:clickable="true"
+            android:contentDescription="Tier Information"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:minHeight="30dp"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="4dp">
+
+            <ImageView
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:src="@drawable/ic_info"
+                app:tint="@color/shifter_orange" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5dp"
+                android:text="@string/details_label"
+                android:textColor="@color/shifter_orange_dark"
+                android:textSize="12.5sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_marginStart="4dp"
+                android:src="@drawable/arow_right"
+                app:tint="@color/shifter_orange" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Custom Switch Toggle -->
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/switch_model_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="48dp"
+        android:minHeight="48dp"
+        app:thumbTint="@color/switch_thumb_selector"
+        app:trackTint="@color/switch_track_selector" />
+</LinearLayout>
