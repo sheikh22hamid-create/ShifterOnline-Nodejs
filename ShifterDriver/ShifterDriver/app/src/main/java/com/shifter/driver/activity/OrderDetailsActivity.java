@@ -75,6 +75,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     private GoogleMap mMap;
     private Polyline currentPolyline;
+    private com.google.android.gms.maps.model.Marker driverMapMarker;
+    private android.content.BroadcastReceiver locationReceiver;
 
     private String dialPhone = "";
     private String status = "";
@@ -132,6 +134,28 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         };
         androidx.core.content.ContextCompat.registerReceiver(this, tripProgressReceiver,
                 new android.content.IntentFilter(com.shifter.driver.utility.TripProgressClient.ACTION_PROGRESS),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    private void registerLocationReceiver() {
+        locationReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context context, Intent intent) {
+                double lat = intent.getDoubleExtra("lat", 0.0);
+                double lng = intent.getDoubleExtra("lng", 0.0);
+                if (lat != 0.0 && lng != 0.0 && mMap != null) {
+                    LatLng newPos = new LatLng(lat, lng);
+                    if (driverMapMarker != null) {
+                        driverMapMarker.setPosition(newPos);
+                    } else {
+                        updateLocationPath();
+                    }
+                }
+            }
+        };
+        androidx.core.content.ContextCompat.registerReceiver(
+                this, locationReceiver,
+                new android.content.IntentFilter(com.shifter.driver.locationservice.LocationUpdateService.ACTION_LOCATION_UPDATED),
                 androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
@@ -213,6 +237,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         tripHandler.removeCallbacksAndMessages(null);
         if (pickupWaitingTimerHandler != null) pickupWaitingTimerHandler.removeCallbacksAndMessages(null);
         if (tripProgressReceiver != null) unregisterReceiver(tripProgressReceiver);
+        if (locationReceiver != null) {
+            try {
+                unregisterReceiver(locationReceiver);
+            } catch (Exception ignored) {}
+            locationReceiver = null;
+        }
         if (orderCancelledReceiver != null) {
             try {
                 unregisterReceiver(orderCancelledReceiver);
@@ -271,6 +301,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
         registerOrderCancelledReceiver();
         registerTripProgress();
+        registerLocationReceiver();
 
         if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false) || isAdvancePaymentRequired(orderItem)) {
             // Show waiting for advance payment screen and start polling server
@@ -1405,6 +1436,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     }
 
     private void setupMap() {
+        requestFreshLocationAndUpdateMap();
         if (mMap != null) {
             updateLocationPath();
             return;
@@ -1413,6 +1445,27 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (mapFragment != null) {
             mapFragment.getMapAsync(this);
         }
+    }
+
+    private void requestFreshLocationAndUpdateMap() {
+        try {
+            com.google.android.gms.location.FusedLocationProviderClient fused =
+                    com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this);
+            if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                fused.getLastLocation().addOnSuccessListener(loc -> {
+                    if (loc != null && loc.getLatitude() != 0.0 && loc.getLongitude() != 0.0) {
+                        com.shifter.driver.locationservice.LocationUpdateService.setLocation(loc);
+                        if (mMap != null) {
+                            if (driverMapMarker != null) {
+                                driverMapMarker.setPosition(new LatLng(loc.getLatitude(), loc.getLongitude()));
+                            } else {
+                                updateLocationPath();
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (Exception ignored) {}
     }
 
     @Override
@@ -1586,7 +1639,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     .title("Current Location")
                     .icon(createCustomMarker("YOU", Color.parseColor("#2563EB"), R.drawable.ic_scooter))
                     .anchor(0.5f, 1.0f);
-            mMap.addMarker(driverMarker);
+            driverMapMarker = mMap.addMarker(driverMarker);
+        } else {
+            driverMapMarker = null;
         }
 
         // 4. Draw the complete Pickup -> Stop(s) -> Drop route.

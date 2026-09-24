@@ -501,7 +501,26 @@ async function getOrderDetails(req, res) {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid and order_id are required" });
     }
 
-    const order = await prisma.pkg_order.findFirst({ where: { id: Number(order_id), uid: Number(uid) } });
+    let order = await prisma.pkg_order.findFirst({ where: { id: Number(order_id), uid: Number(uid) } });
+    if (!order) {
+      // Fallback: check if the requesting user matches the order by customer mobile or if uid owns it
+      const user = await prisma.tbl_user.findUnique({ where: { id: Number(uid) } });
+      if (user && user.mobile) {
+        const candidate = await prisma.pkg_order.findUnique({ where: { id: Number(order_id) } });
+        if (candidate) {
+          const userMobile = String(user.mobile).trim();
+          const pMobile = String(candidate.customer_pmobile || "").trim();
+          const dMobile = String(candidate.customer_dmobile || "").trim();
+          if (
+            (pMobile && (pMobile.endsWith(userMobile) || userMobile.endsWith(pMobile))) ||
+            (dMobile && (dMobile.endsWith(userMobile) || userMobile.endsWith(dMobile))) ||
+            Number(candidate.uid) === Number(user.id)
+          ) {
+            order = candidate;
+          }
+        }
+      }
+    }
     if (!order) {
       return res.status(404).json({ ResponseCode: "404", Result: "false", ResponseMsg: "Order not found" });
     }
