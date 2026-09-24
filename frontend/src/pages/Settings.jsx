@@ -68,6 +68,7 @@ const HANDLED_FLAG_KEYS = [
   'customer_care_email',
   'customer_care_hours',
   'driver_min_withdrawal_amount',
+  'driver_max_due_limit',
   'model1_miss_limit',
   'model1_suspension_hours',
 ]
@@ -364,6 +365,20 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               A driver can only withdraw from their ledger once its balance exceeds this amount. Set to 0 to allow withdrawal at any positive balance.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-driver_max_due_limit">Driver maximum due limit (₹)</Label>
+            <Input
+              id="flag-driver_max_due_limit"
+              type="number"
+              min="0"
+              placeholder="e.g. 100"
+              value={flags.driver_max_due_limit ?? '100'}
+              onChange={(e) => setFlags((f) => ({ ...f, driver_max_due_limit: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Maximum negative wallet balance allowed for a driver before they are blocked from receiving new ride offers (Default: 100).
             </p>
           </div>
         </Section>

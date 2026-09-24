@@ -75,6 +75,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   double _planDiscountPercent = 0;
   double _planDiscountMaxCap = 0;
 
+  // Next Day Saver Delivery is a Premium Plan (no-advance-payment) perk —
+  // mirrors home.dart's _checkNextDayEligibility gate. Defaults to false so
+  // the banner never flashes for a non-eligible user while the check runs.
+  bool _nextDayEligible = false;
+
   bool _referralDiscountEnabled = false;
   double _referralDiscountPercent = 0;
   double _referralPointValue = 1;
@@ -119,6 +124,35 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       _loadRoute();
       _refreshAvailability();
       _fetchReferralDiscountInfo();
+      _fetchNextDayEligibility();
+    });
+  }
+
+  // Same eligibility rule as home.dart's _checkNextDayEligibility: active
+  // Premium Plan with the no-advance-payment privilege. If the user somehow
+  // already has bookingType 3 (arrived from home.dart's own gated banner)
+  // and turns out ineligible here, fall back to Instant rather than letting
+  // an ineligible booking through.
+  Future<void> _fetchNextDayEligibility() async {
+    final uid = _storage.read('Uid');
+    if (uid == null || uid.toString() == '0' || uid.toString().isEmpty) return;
+
+    bool eligible = false;
+    try {
+      final response = await ApiWrapper.dataPostNode(Config.nodeNextDayEligibility, {
+        'uid': int.tryParse(uid.toString()) ?? 0,
+      });
+      if (response is Map && (response['Result'] == true || response['Result'] == 'true' || response['ResponseCode'] == '200')) {
+        eligible = response['is_eligible'] == true || response['is_eligible'] == 'true';
+      }
+    } catch (e) {
+      // Network/parse failure - stay ineligible (fail closed, not open).
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _nextDayEligible = eligible;
+      if (!eligible && _currentBookingType == 3) _currentBookingType = 1;
     });
   }
 
@@ -638,6 +672,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }
 
   Future<void> _toggleNextDayDelivery() async {
+    if (!_nextDayEligible) return;
     final nextType = _currentBookingType == 3 ? 1 : 3;
     setState(() {
       _currentBookingType = nextType;
@@ -1063,7 +1098,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                 children: [
-                  _nextDayDeliveryBanner(),
+                  if (_nextDayEligible) _nextDayDeliveryBanner(),
                   _routeSummary(),
                   const SizedBox(height: 18),
                   Row(
