@@ -7,7 +7,7 @@ import useApiQuery from '../../hooks/useApiQuery'
 import Drawer from '../common/Drawer'
 import Badge from '../common/Badge'
 import Modal from '../common/Modal'
-import WalletAdjustModal from './WalletAdjustModal'
+import WalletAdjustModal from '../common/WalletAdjustModal'
 import { orderStatusTone, orderStatusLabel } from '../../utils/orderStatus'
 import { formatCurrency, formatDateTime } from '../../utils/format'
 
@@ -32,6 +32,12 @@ export default function CustomerDetailDrawer({ customerId, onClose, onChanged })
 
   const fetcher = useCallback(() => api.get(`/customers/${customerId}`).then((res) => res.data.data), [customerId])
   const { data: customer, loading, refetch } = useApiQuery(fetcher)
+
+  const walletFetcher = useCallback(
+    () => api.get(`/customers/${customerId}/wallet-history`).then((res) => res.data.data),
+    [customerId]
+  )
+  const { data: walletData, loading: walletLoading, refetch: refetchWallet } = useApiQuery(walletFetcher)
 
   const [walletOpen, setWalletOpen] = useState(false)
   const [blockModalOpen, setBlockModalOpen] = useState(false)
@@ -146,10 +152,54 @@ export default function CustomerDetailDrawer({ customerId, onClose, onChanged })
               <div className="surface-card grid grid-cols-2 gap-3 rounded-xl p-3.5">
                 <Field label="Mobile" value={<span className="font-mono-data">{customer.mobile}</span>} />
                 <Field label="Email" value={customer.email} />
-                <Field label="Wallet" value={<span className="font-mono-data">{formatCurrency(customer.wallet)}</span>} />
+                <Field label="Wallet" value={<span className="font-mono-data">{formatCurrency(walletData?.wallet ?? customer.wallet)}</span>} />
                 <Field label="Plan" value={customer.plan_type} />
                 <Field label="Referral points" value={customer.referral_points} />
                 <Field label="Registered" value={formatDateTime(customer.registered_at)} />
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                  Wallet Ledger
+                </h3>
+                <span className="text-[11.5px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+                  Balance: {formatCurrency(walletData?.wallet ?? customer.wallet)}
+                </span>
+              </div>
+              <div className="surface-card rounded-xl border p-3.5" style={{ borderColor: 'var(--border)' }}>
+                {walletLoading ? (
+                  <div className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
+                    Loading transactions…
+                  </div>
+                ) : !walletData?.transactions || walletData.transactions.length === 0 ? (
+                  <div className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
+                    No ledger transactions yet.
+                  </div>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                    {walletData.transactions.map((txn) => (
+                      <div key={txn.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                        <div className="min-w-0">
+                          <div className="text-[12.5px]" style={{ color: 'var(--ink)' }}>
+                            {txn.remark || (txn.type === 'credit' ? 'Ledger credit' : 'Ledger debit')}
+                          </div>
+                          <div className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                            {formatDateTime(txn.created_at)}
+                            {txn.order_id ? ` · Order #${txn.order_id}` : ''}
+                          </div>
+                        </div>
+                        <span
+                          className="shrink-0 font-mono-data text-[12.5px] font-semibold"
+                          style={{ color: txn.type === 'credit' ? 'var(--success)' : 'var(--danger)' }}
+                        >
+                          {txn.type === 'credit' ? '+' : '−'} {formatCurrency(txn.amount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -217,12 +267,14 @@ export default function CustomerDetailDrawer({ customerId, onClose, onChanged })
 
       <WalletAdjustModal
         open={walletOpen}
-        customer={customer}
+        endpoint={`/customers/${customerId}/wallet-adjust`}
+        name={customer?.name || customer?.fname || `#${customerId}`}
         onClose={() => setWalletOpen(false)}
         onDone={() => {
           setWalletOpen(false)
           toast.success('Wallet adjusted.')
           refetch()
+          refetchWallet()
           onChanged?.()
         }}
       />

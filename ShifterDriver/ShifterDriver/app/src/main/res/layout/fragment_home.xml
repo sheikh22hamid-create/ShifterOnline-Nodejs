@@ -18,14 +18,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingBottom="24dp">
-            <Button
-                android:id="@+id/btn_favorite_routes"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:text="Favorite routes · Manage"
-                android:textAllCaps="false"
-                android:contentDescription="Manage favorite routes" />
             <!-- ================= TOP HEADER ================= -->
             <RelativeLayout
                 android:id="@+id/layout_header_bar"
@@ -1107,63 +1099,6 @@
                         android:maxLines="1" />
                 </LinearLayout>
             </LinearLayout>
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginBottom="16dp"
-                android:background="@drawable/profile_soft"
-                android:orientation="vertical"
-                android:padding="18dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="@string/home_referral_title"
-                            android:textColor="@color/driver_text_primary"
-                            android:textSize="19sp"
-                            android:textStyle="bold" />
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
-                            android:text="@string/home_referral_description"
-                            android:textColor="@color/home_secondary"
-                            android:textSize="14sp" />
-                    </LinearLayout>
-                    <ImageView
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:layout_marginStart="14dp"
-                        android:importantForAccessibility="no"
-                        android:src="@drawable/ic_gift_box" />
-                </LinearLayout>
-
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/btn_home_contact_referral"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="48dp"
-                    android:layout_marginTop="14dp"
-                    android:background="@drawable/profile_action"
-                    android:padding="12dp"
-                    android:text="@string/home_referral_action"
-                    android:textAllCaps="false"
-                    android:textColor="@android:color/white"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
             <!-- ================= SCHEDULED TRIPS SECTION ================= -->
             <LinearLayout
                 android:id="@+id/btn_scheduled_trips"
@@ -1247,6 +1182,129 @@
                     android:src="@drawable/arow_right"
                     app:tint="@color/driver_text_secondary"
                     android:contentDescription="Open" />
+            </LinearLayout>
+
+            <!-- ================= FAVORITE ROUTES SECTION ================= -->
+            <LinearLayout
+                android:id="@+id/btn_favorite_routes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/bg_home_surface"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp"
+                android:foreground="?attr/selectableItemBackground">
+
+                <FrameLayout
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_circle_blue_light">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_route"
+                        app:tint="@color/blue"
+                        android:contentDescription="Favorite Routes" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/txt_favorite_routes_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Favorite routes"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_favorite_routes_subtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:text="Get preferred orders along a route you drive"
+                        android:textColor="@color/driver_text_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="center_vertical"
+                    android:src="@drawable/arow_right"
+                    app:tint="@color/driver_text_secondary"
+                    android:contentDescription="Open" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/profile_soft"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="@string/home_referral_title"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="19sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="@string/home_referral_description"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                    <ImageView
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="14dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_gift_box" />
+                </LinearLayout>
+
+                <androidx.appcompat.widget.AppCompatButton
+                    android:id="@+id/btn_home_contact_referral"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/profile_action"
+                    android:padding="12dp"
+                    android:text="@string/home_referral_action"
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
             </LinearLayout>
             <Button android:id="@+id/btn_more_options"
                 android:layout_width="match_parent" android:layout_height="wrap_content"

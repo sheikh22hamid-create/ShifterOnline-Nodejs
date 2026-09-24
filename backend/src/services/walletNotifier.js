@@ -33,4 +33,28 @@ async function notifyDriverWalletTransaction(riderId, { type, amount, remark }) 
   }
 }
 
-module.exports = { notifyDriverWalletTransaction };
+// Customer-side equivalent of notifyDriverWalletTransaction above - same
+// after-the-transaction, never-throws contract. Writes tbl_notification
+// (what the customer app's notification list reads) and sends the FCM push.
+async function notifyCustomerWalletTransaction(userId, { type, amount, remark }) {
+  try {
+    const amountText = `₹${Number(amount).toFixed(2)}`;
+    const isCredit = type === "credit";
+    const title = isCredit ? "Wallet credited" : "Wallet debited";
+    const description = `${isCredit ? "+" : "-"}${amountText}${remark ? ` — ${remark}` : ""}`;
+
+    const user = await prisma.tbl_user.findUnique({ where: { id: userId }, select: { fcm_token: true } });
+
+    await prisma.tbl_notification.create({
+      data: { uid: userId, title, description, datetime: new Date() },
+    });
+
+    if (user?.fcm_token) {
+      await pushNotifier.notifyCustomerWalletTransaction(user.fcm_token, type, amountText, remark);
+    }
+  } catch (err) {
+    logger.error(`walletNotifier.notifyCustomerWalletTransaction failed for user ${userId}:`, err);
+  }
+}
+
+module.exports = { notifyDriverWalletTransaction, notifyCustomerWalletTransaction };

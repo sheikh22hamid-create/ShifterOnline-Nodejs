@@ -28,6 +28,7 @@ const adminSearchController = require("../controllers/adminSearchController");
 const uploadController = require("../controllers/uploadController");
 const adminNotificationController = require("../controllers/adminNotificationController");
 const rewardPlanController = require("../controllers/rewardPlanController");
+const walletAdjustmentController = require("../controllers/walletAdjustmentController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -118,6 +119,7 @@ router.get("/riders/model1-suspended", auth, authorize(...RIDER_ROLES), scopeFil
 router.patch("/riders/:id/model1-unsuspend", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.unsuspendModel1);
 router.get("/riders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.getOne);
 router.get("/riders/:id/wallet-history", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.walletHistory);
+router.post("/riders/:id/wallet-adjust", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.walletAdjust);
 router.patch("/riders/:id/profile", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.updateProfile);
 router.put("/riders/:id/models/:packageId/toggle", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleModel);
 router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.kycDecision);
@@ -151,8 +153,12 @@ router.post("/orders/:id/cancel", auth, authorize("superadmin", "admin"), scopeF
 // --- Customers ---------------------------------------------------------------
 router.get("/customers", auth, authorize(...RIDER_ROLES), scopeFilter, adminCustomerController.list);
 router.get("/customers/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminCustomerController.getOne);
+router.get("/customers/:id/wallet-history", auth, authorize(...RIDER_ROLES), scopeFilter, adminCustomerController.walletHistory);
 router.patch("/customers/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminCustomerController.toggleStatus);
 router.post("/customers/:id/wallet-adjust", auth, authorize("superadmin", "admin"), scopeFilter, adminCustomerController.walletAdjust);
+
+// --- Wallet Adjustments Report (cross-entity audit trail, superadmin-only) --
+router.get("/wallet-adjustments", auth, authorize("superadmin"), walletAdjustmentController.list);
 router.delete("/customers/:id", auth, authorize("superadmin"), adminCustomerController.remove);
 
 // --- Driver Payouts ----------------------------------------------------------

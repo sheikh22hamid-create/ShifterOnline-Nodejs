@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const walletNotifier = require("../services/walletNotifier");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -188,14 +189,61 @@ async function walletAdjust(req, res) {
           type,
           remark: remark || `Manual ${type} by admin #${req.user.id}`,
           wallet_type: "user",
+          // Marks this row as a manual admin adjustment (vs. order earnings,
+          // referral bonus, payout, ...) so walletAdjustmentController can
+          // filter for its cross-entity audit report without a schema change -
+          // payment_id is already documented as safe to reuse for tagging.
+          payment_id: `admin_adjustment_${req.user.id}`,
           created_at: new Date(),
         },
       }),
     ]);
 
+    // Fire-and-forget: own I/O (FCM), must not hold up or fail the response
+    // now that the wallet change has already committed.
+    walletNotifier.notifyCustomerWalletTransaction(id, { type, amount: amt, remark: remark || `Manual ${type} by admin` });
+
     return res.status(200).json({ success: true, message: "Wallet adjusted", data: { id: updatedCustomer.id, wallet: updatedCustomer.wallet } });
   } catch (err) {
     return internalError(res, err, "customers.walletAdjust");
+  }
+}
+
+// Read-only ledger view for the customer detail drawer, mirroring
+// adminRiderController.walletHistory.
+async function walletHistory(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const customer = await prisma.tbl_user.findUnique({ where: { id }, select: { id: true, city_id: true, wallet: true } });
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+    if (isScopedOut(req, customer.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: customer is outside your assigned city" });
+    }
+
+    const rows = await prisma.tbl_wallet_history.findMany({
+      where: { user_id: id, wallet_type: "user" },
+      orderBy: { id: "desc" },
+      take: 100,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        wallet: customer.wallet,
+        transactions: rows.map((r) => ({
+          id: r.id,
+          amount: r.amount,
+          type: r.type,
+          remark: r.remark,
+          order_id: r.order_id,
+          created_at: r.created_at,
+        })),
+      },
+    });
+  } catch (err) {
+    return internalError(res, err, "customers.walletHistory");
   }
 }
 
@@ -230,4 +278,4 @@ async function remove(req, res) {
   }
 }
 
-module.exports = { list, getOne, toggleStatus, walletAdjust, remove };
+module.exports = { list, getOne, toggleStatus, walletAdjust, walletHistory, remove };

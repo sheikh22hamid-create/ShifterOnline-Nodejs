@@ -146,6 +146,9 @@ public class OrderDialogHelper {
         // 2. Configure Multi-stop timeline
         configureRouteTimeline(view, rawStops, deliveryAddress, tripDistanceKm);
 
+        // Favorite Route match banner (server-side dispatch match — see dispatchManager.js)
+        configureFavoriteRouteBanner(view, getMapValue(orderData, "favorite_route_match", null));
+
         if (txtDetails != null && orderData != null) {
             String details = getMapValue(orderData, "order_details", null);
             if (details != null && !details.isEmpty() && !"No additional details".equalsIgnoreCase(details)) {
@@ -410,6 +413,32 @@ public class OrderDialogHelper {
             }
         } catch (Exception ignored) {
             // Keep the normal pickup/drop layout if the socket payload is malformed.
+        }
+    }
+
+    public static void configureFavoriteRouteBanner(android.view.View root, String favoriteRouteMatchJson) {
+        android.view.View banner = root.findViewById(com.shifter.driver.R.id.layout_favorite_route_match);
+        android.widget.TextView label = root.findViewById(com.shifter.driver.R.id.txt_favorite_route_match);
+        if (banner == null || label == null) return;
+        if (favoriteRouteMatchJson == null || favoriteRouteMatchJson.isEmpty()) {
+            banner.setVisibility(android.view.View.GONE);
+            return;
+        }
+        try {
+            JSONObject match = new JSONObject(favoriteRouteMatchJson);
+            if (!match.optBoolean("matched", false)) {
+                banner.setVisibility(android.view.View.GONE);
+                return;
+            }
+            double distanceKm = match.optDouble("distance_km", -1);
+            String routeName = match.optString("route_name", "");
+            StringBuilder text = new StringBuilder("On your route");
+            if (!routeName.isEmpty()) text.append(" — ").append(routeName);
+            if (distanceKm >= 0) text.append(String.format(java.util.Locale.getDefault(), " · drop %.1f km from line", distanceKm));
+            label.setText(text.toString());
+            banner.setVisibility(android.view.View.VISIBLE);
+        } catch (Exception e) {
+            banner.setVisibility(android.view.View.GONE);
         }
     }
 

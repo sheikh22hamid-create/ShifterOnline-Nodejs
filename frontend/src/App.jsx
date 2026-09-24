@@ -22,6 +22,7 @@ const CustomOrders = lazy(() => import('./pages/CustomOrders'))
 const KycApproval = lazy(() => import('./pages/KycApproval'))
 const Customers = lazy(() => import('./pages/Customers'))
 const Payouts = lazy(() => import('./pages/Payouts'))
+const WalletAdjustments = lazy(() => import('./pages/WalletAdjustments'))
 const RateCards = lazy(() => import('./pages/RateCards'))
 const Categories = lazy(() => import('./pages/Categories'))
 const Vehicles = lazy(() => import('./pages/Vehicles'))
@@ -98,6 +99,7 @@ function App() {
             {/* Financials & Growth */}
             <Route path="/monthly-attendance" element={<Gated roles={['superadmin', 'admin']}><MonthlyAttendanceReports /></Gated>} />
             <Route path="/payouts" element={<Gated roles={['superadmin', 'admin']}><Payouts /></Gated>} />
+            <Route path="/wallet-adjustments" element={<Gated roles={['superadmin']}><WalletAdjustments /></Gated>} />
             <Route path="/marketing/premium-plans" element={<PremiumPlans />} />
             <Route path="/marketing/coupons" element={<Coupons />} />
             <Route path="/marketing/banners" element={<Banners />} />

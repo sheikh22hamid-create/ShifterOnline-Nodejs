@@ -294,6 +294,9 @@ public class OrderOverlayService extends Service {
         // 2. Configure Multi-stop timeline
         configureRouteTimeline(view, rawStops, finalDropAddress, tripDistanceKm);
 
+        // Favorite Route match banner (server-side dispatch match — see dispatchManager.js)
+        com.shifter.driver.utility.OrderDialogHelper.configureFavoriteRouteBanner(view, intent.getStringExtra("favorite_route_match"));
+
         if (txtDetails != null) {
             String details = intent.getStringExtra("order_details");
             if (details != null && !details.isEmpty() && !"No additional details".equalsIgnoreCase(details)) {

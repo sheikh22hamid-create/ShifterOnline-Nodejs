@@ -3,6 +3,7 @@ const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
 const { uniqueRefferCode } = require("./riderAuthController");
+const walletNotifier = require("../services/walletNotifier");
 
 // Legacy convention shared by every doc-status column touched here
 // (tbl_personal_doc.*_status, tbl_vehicle_details.status, tbl_bank_account.status,
@@ -244,6 +245,65 @@ async function walletHistory(req, res) {
     });
   } catch (err) {
     return internalError(res, err, "riders.walletHistory");
+  }
+}
+
+// Credit/debit the driver's wallet_balance with an audited tbl_wallet_history
+// row, mirroring adminCustomerController.walletAdjust. This is the sanctioned
+// way to touch wallet_balance - see the PROFILE_FIELDS note below for why the
+// plain profile-edit endpoint refuses to.
+async function walletAdjust(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { amount, type, remark } = req.body;
+
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, message: "amount must be a positive number" });
+    }
+    if (!["credit", "debit"].includes(type)) {
+      return res.status(400).json({ success: false, message: "type must be credit or debit" });
+    }
+
+    const rider = await prisma.tbl_rider.findUnique({ where: { id } });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Driver not found" });
+    }
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
+
+    const amt = Number(amount);
+    if (type === "debit" && Number(rider.wallet_balance) < amt) {
+      return res.status(400).json({ success: false, message: "Insufficient wallet balance for this debit" });
+    }
+
+    const [updatedRider] = await prisma.$transaction([
+      prisma.tbl_rider.update({
+        where: { id },
+        data: { wallet_balance: type === "credit" ? { increment: amt } : { decrement: amt } },
+      }),
+      prisma.tbl_wallet_history.create({
+        data: {
+          user_id: id,
+          amount: amt,
+          type,
+          remark: remark || `Manual ${type} by admin #${req.user.id}`,
+          wallet_type: "driver",
+          // See adminCustomerController.walletAdjust for why payment_id is
+          // (re)used as the "this is a manual admin adjustment" marker.
+          payment_id: `admin_adjustment_${req.user.id}`,
+          created_at: new Date(),
+        },
+      }),
+    ]);
+
+    // Fire-and-forget: own I/O (FCM), must not hold up or fail the response
+    // now that the wallet change has already committed.
+    walletNotifier.notifyDriverWalletTransaction(id, { type, amount: amt, remark: remark || `Manual ${type} by admin` });
+
+    return res.status(200).json({ success: true, message: "Wallet adjusted", data: { id: updatedRider.id, wallet_balance: updatedRider.wallet_balance } });
+  } catch (err) {
+    return internalError(res, err, "riders.walletAdjust");
   }
 }
 
@@ -903,4 +963,5 @@ module.exports = {
   listModel1Suspended,
   unsuspendModel1,
   walletHistory,
+  walletAdjust,
 };

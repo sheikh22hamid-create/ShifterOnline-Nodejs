@@ -9,6 +9,7 @@ import {
   Check,
   Eye,
   ImageOff,
+  Wallet,
 } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
@@ -17,6 +18,7 @@ import useApiQuery from '../../hooks/useApiQuery'
 import Drawer from '../common/Drawer'
 import Badge from '../common/Badge'
 import Modal from '../common/Modal'
+import WalletAdjustModal from '../common/WalletAdjustModal'
 import DocumentImageViewer from '../kyc/DocumentImageViewer'
 import { approvalTone, approvalLabel, onlineTone, onlineLabel, verificationTone } from '../../utils/driverStatus'
 import { formatCurrency, formatDateTime } from '../../utils/format'
@@ -178,6 +180,7 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
   const canModerate = hasRole('superadmin', 'admin')
   const canDelete = hasRole('superadmin')
 
+  const [walletOpen, setWalletOpen] = useState(false)
   const [blockReason, setBlockReason] = useState('')
   const [blockModalOpen, setBlockModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -195,7 +198,7 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
     () => api.get(`/riders/${riderId}/wallet-history`).then((res) => res.data.data),
     [riderId]
   )
-  const { data: walletData, loading: walletLoading } = useApiQuery(walletFetcher)
+  const { data: walletData, loading: walletLoading, refetch: refetchWallet } = useApiQuery(walletFetcher)
 
   function openEditModal() {
     setEditForm({
@@ -385,6 +388,14 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                   style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
                 >
                   <Pencil size={13} /> Edit Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWalletOpen(true)}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold"
+                  style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+                >
+                  <Wallet size={13} /> Adjust wallet
                 </button>
                 <button
                   type="button"
@@ -889,6 +900,20 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
           </div>
         )}
       </Drawer>
+
+      <WalletAdjustModal
+        open={walletOpen}
+        endpoint={`/riders/${riderId}/wallet-adjust`}
+        name={rider?.full_name || `Driver #${riderId}`}
+        onClose={() => setWalletOpen(false)}
+        onDone={() => {
+          setWalletOpen(false)
+          toast.success('Wallet adjusted.')
+          refetch()
+          refetchWallet()
+          onChanged?.()
+        }}
+      />
 
       <Modal
         open={blockModalOpen}

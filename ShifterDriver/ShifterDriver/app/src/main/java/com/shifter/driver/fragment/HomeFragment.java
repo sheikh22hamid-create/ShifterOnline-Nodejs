@@ -339,9 +339,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             startActivity(new Intent(getActivity(), com.shifter.driver.activity.EarningsActivity.class));
         });
 
-        // 3. Incentives / Lead Referral
+        // 3. Refer & Earn (same detailed bottom sheet as the Profile section)
         binding.btnQuickIncentives.setOnClickListener(v -> {
-            startActivity(new Intent(getActivity(), LeadReferralActivity.class));
+            if (riderData == null && sessionManager != null) {
+                riderData = sessionManager.getUserDetails();
+            }
+            com.shifter.driver.utility.ReferAndEarnBottomSheet.show(getActivity(), riderData, sessionManager,
+                    riderData != null ? riderData.getRefferCode() : null, null, null);
         });
 
 
@@ -1104,17 +1108,17 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         super.onResume();
         com.shifter.driver.utility.FavoriteRouteClient.request(requireContext(), "list", null, (data, error) -> {
             if (!isAdded() || binding == null) return;
-            String label = "Favorite routes · Manage";
+            String subtitle = "Get preferred orders along a route you drive";
             if (data != null && data.getAsJsonObject("config").get("enabled").getAsBoolean() && !data.get("active_route_id").isJsonNull()) {
                 int id = data.get("active_route_id").getAsInt();
                 for (com.google.gson.JsonElement item : data.getAsJsonArray("routes")) {
                     com.google.gson.JsonObject route = item.getAsJsonObject();
                     if (route.get("id").getAsInt() == id && !route.get("disabled").getAsBoolean()) {
-                        label = "Route: " + route.get("name").getAsString() + " · " + route.get("mode").getAsString() + " · " + route.get("radius_km").getAsString() + " km";
+                        subtitle = "Active: " + route.get("name").getAsString() + " · " + route.get("mode").getAsString() + " · " + route.get("radius_km").getAsString() + " km";
                     }
                 }
             }
-            binding.btnFavoriteRoutes.setText(label);
+            binding.txtFavoriteRoutesSubtitle.setText(subtitle);
         });
         NodeSocketManager.getInstance().addConnectionListener(connectionListener);
         updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
