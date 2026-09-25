@@ -188,9 +188,20 @@ async function notifyDriverModel1Suspended(fcmToken, missLimit, suspensionHours)
   );
 }
 
+/** Fired by forceAssignService when an admin force-assigns a scheduled order directly to a driver. */
+async function notifyDriverForceAssigned(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Ride Assigned",
+    `You have been assigned scheduled order #${orderId} by admin.`,
+    { type: "force_assign", order_id: String(orderId) }
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
+  notifyDriverForceAssigned,
   notifyCustomerOrderAssigned,
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,

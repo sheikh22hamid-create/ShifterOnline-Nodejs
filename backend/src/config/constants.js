@@ -101,4 +101,10 @@ module.exports = {
 
   // Hourly sweep to expire verified leads that reached their expiry window
   LEAD_EXPIRY_SWEEP_INTERVAL_MS: 60 * 60 * 1000,
+
+  // Daily Driver auto-enroll: creates tomorrow's enrollment for every
+  // active auto-enroll row. Idempotent (dailyDriverPlanService.enroll
+  // rejects a duplicate rider+date), so an hourly sweep rather than a single
+  // precise midnight cron is safe and self-healing across restarts.
+  DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS: 60 * 60 * 1000,
 };

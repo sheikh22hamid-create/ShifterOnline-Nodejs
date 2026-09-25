@@ -77,6 +77,20 @@ router.get("/monthly-drivers/:riderId/queue", auth, authorize(...RIDER_ROLES), o
 router.post("/monthly-drivers/queue/assign", auth, authorize("superadmin", "admin"), scopeFilter, orderQueueController.assignOrderToQueue);
 router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", "admin"), scopeFilter, orderQueueController.removeOrderFromQueue);
 
+// --- Daily Driver System -----------------------------------------------------
+const adminDailyDriverController = require("../controllers/adminDailyDriverController");
+router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
+router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
+router.put("/daily-driver/plans/:planId", auth, authorize("superadmin", "admin"), adminDailyDriverController.updatePlan);
+router.post("/daily-driver/plans/:planId/status", auth, authorize("superadmin", "admin"), adminDailyDriverController.setPlanStatus);
+router.get("/daily-driver/enrollments", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listEnrollments);
+router.get("/daily-driver/requests/pending", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPendingRequests);
+router.post("/daily-driver/requests/:enrollmentId/approve", auth, authorize("superadmin", "admin"), adminDailyDriverController.approveEnrollment);
+router.post("/daily-driver/requests/:enrollmentId/reject", auth, authorize("superadmin", "admin"), adminDailyDriverController.rejectEnrollment);
+router.get("/daily-driver/:riderId/ledger", auth, authorize(...RIDER_ROLES), adminDailyDriverController.getLedger);
+router.get("/daily-driver/scheduled-orders/pending", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listAssignableScheduledOrders);
+router.post("/daily-driver/force-assign", auth, authorize("superadmin", "admin"), scopeFilter, adminDailyDriverController.forceAssign);
+
 
 // --- Staff & Executive Management -----------------------------------------
 router.get("/staff", auth, authorize("superadmin", "admin"), staffController.list);

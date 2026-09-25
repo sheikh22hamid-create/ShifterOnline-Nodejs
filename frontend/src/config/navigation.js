@@ -37,6 +37,7 @@ import {
   PhoneCall,
   History,
   Receipt,
+  Timer,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -56,6 +57,7 @@ export const NAV_GROUPS = [
       { to: '/drivers', label: 'Drivers Fleet', icon: Users, roles: ALL_STAFF, built: true },
       { to: '/favorite-routes', label: 'Favorite Routes', icon: MapPin, roles: ALL_STAFF, built: true },
       { to: '/monthly-drivers', label: 'Monthly Drivers', icon: UserCheck, roles: ALL_STAFF, built: true },
+      { to: '/daily-drivers', label: 'Daily Drivers', icon: Timer, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },
       { to: '/driver-leads', label: 'Driver Leads Queue', icon: PhoneCall, roles: ALL_STAFF, built: true },

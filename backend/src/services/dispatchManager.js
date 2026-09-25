@@ -1369,6 +1369,7 @@ module.exports = {
   emitQueueUpdate,
   startDispatch,
   offerToInterestedRiders,
+  insertOrderRequest,
   stopDispatch,
   selectEligibleDrivers,
   recordModel1Outcome,

@@ -69,6 +69,18 @@ router.post("/duty/punch-in", monthlyDriverController.punchIn);
 router.post("/duty/punch-out", monthlyDriverController.punchOut);
 router.get("/queue/:riderId", orderQueueController.getDriverQueue);
 
+// Daily Driver: plans, enrollment, auto-enroll, duty tracking
+const dailyDriverController = require("../controllers/dailyDriverController");
+router.post("/daily-driver/plans", dailyDriverController.listPlans);
+router.post("/daily-driver/enroll", dailyDriverController.enroll);
+router.post("/daily-driver/enrollment/cancel", dailyDriverController.cancelEnrollment);
+router.post("/daily-driver/auto-enroll", dailyDriverController.setAutoEnroll);
+router.post("/daily-driver/auto-enroll/cancel", dailyDriverController.cancelAutoEnroll);
+router.get("/daily-driver/duty/status/:riderId", dailyDriverController.getDutyStatus);
+router.post("/daily-driver/duty/punch-in", dailyDriverController.punchIn);
+router.post("/daily-driver/duty/punch-out", dailyDriverController.punchOut);
+router.post("/daily-driver/duty/ping", dailyDriverController.locationPing);
+
 // KYC document uploads, bank account, vehicle details
 // (appKeyAuth = the static app-key header the PHP originals required)
 router.post("/kyc/address-document", appKeyAuth, driverKycController.uploadAddressDocument);

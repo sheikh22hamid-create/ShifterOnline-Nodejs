@@ -20,11 +20,13 @@ const { initSocket } = require("./sockets/socketServer");
 const dispatchManager = require("./services/dispatchManager");
 const tripLifecycle = require("./services/tripLifecycle");
 const driverLeadService = require("./services/driverLeadService");
+const dailyDriverPlanService = require("./services/dailyDriverPlanService");
 const {
   PICKUP_TIMEOUT_SWEEP_INTERVAL_MS,
   ADVANCE_PAYMENT_SWEEP_INTERVAL_MS,
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS,
   LEAD_EXPIRY_SWEEP_INTERVAL_MS,
+  DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS,
 } = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
@@ -87,5 +89,13 @@ setInterval(() => {
     logger.error("expireStaleLeads interval failed:", err)
   );
 }, LEAD_EXPIRY_SWEEP_INTERVAL_MS);
+
+// Daily Driver auto-enroll - creates tomorrow's enrollment for every active
+// auto-enroll row (spec section 4). See dailyDriverPlanService.runAutoEnrollJob.
+setInterval(() => {
+  dailyDriverPlanService.runAutoEnrollJob().catch((err) =>
+    logger.error("dailyDriver runAutoEnrollJob interval failed:", err)
+  );
+}, DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS);
 
 // WhatsApp session reset trigger

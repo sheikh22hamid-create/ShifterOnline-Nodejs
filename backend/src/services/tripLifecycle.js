@@ -3,6 +3,7 @@ const dispatchManager = require("./dispatchManager");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
+const dailyDriverEnrollmentQuery = require("./dailyDriverCommissionExemption");
 const referralRewardService = require("./referralRewardService");
 const rewardPlanService = require("./rewardPlanService");
 const pushNotifier = require("./pushNotifier");
@@ -503,6 +504,11 @@ async function updateStatus(orderId, riderId, status) {
       select: { id: true, monthly_plan: true },
     });
     const isMonthlyDriver = Number(rider?.monthly_plan) === 1;
+    // Daily Driver replaces Monthly Driver for new enrollments (see
+    // docs/superpowers/specs/2026-09-26-daily-driver-system-design.md) but
+    // both can be commission-exempt in parallel during the transition
+    // (existing monthly_driver_contract rows are left alone, not migrated).
+    const isDailyDriverExempt = await dailyDriverEnrollmentQuery.hasActiveDailyDriverEnrollmentToday(riderId);
 
     const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
     const cashCollected = isCashOrder ? Math.max(0, finalTotal - prepaidTotal) : 0;
@@ -543,6 +549,12 @@ async function updateStatus(orderId, riderId, status) {
           });
         }
       }
+    } else if (isDailyDriverExempt) {
+      // Commission fully exempt while a Daily Driver enrollment is active,
+      // same as the monthly-driver branch above, but with no ledger entry
+      // here - dailyDriverSettlementService.settleEnrollment sums
+      // pkg_order.driver_earning directly for the whole duty window instead
+      // of accumulating per-ride ledger rows.
     } else if (isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || prepaidTotal > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before

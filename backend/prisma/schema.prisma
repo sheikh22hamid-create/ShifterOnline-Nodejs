@@ -8,48 +8,50 @@ datasource db {
 }
 
 model driver_favorite_route {
-  id Int @id @default(autoincrement())
-  rider_id Int
-  city_id Int?
-  name String @db.VarChar(80)
-  points Json
-  geometry Json
-  distance_km Float
+  id               Int       @id @default(autoincrement())
+  rider_id         Int
+  city_id          Int?
+  name             String    @db.VarChar(80)
+  points           Json
+  geometry         Json
+  distance_km      Float
   duration_seconds Int
-  radius_km Float @default(10)
-  mode String @default("prefer") @db.VarChar(12)
-  forward_only Boolean @default(false)
-  expires_at DateTime?
-  disabled Boolean @default(false)
-  disabled_reason String? @db.VarChar(255)
-  version Int @default(1)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  radius_km        Float     @default(10)
+  mode             String    @default("prefer") @db.VarChar(12)
+  forward_only     Boolean   @default(false)
+  expires_at       DateTime?
+  disabled         Boolean   @default(false)
+  disabled_reason  String?   @db.VarChar(255)
+  version          Int       @default(1)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
   @@index([rider_id])
   @@index([city_id])
 }
 
 model driver_favorite_route_state {
-  rider_id Int @id
-  route_id Int? @unique
+  rider_id   Int      @id
+  route_id   Int?     @unique
   updated_at DateTime @updatedAt
 }
 
 model favorite_route_settings {
-  city_id Int @id
-  config Json
+  city_id    Int      @id
+  config     Json
   updated_at DateTime @updatedAt
 }
 
 model favorite_route_audit {
-  id Int @id @default(autoincrement())
-  city_id Int?
-  rider_id Int?
-  route_id Int?
-  actor String @db.VarChar(80)
-  action String @db.VarChar(40)
-  detail Json
+  id         Int      @id @default(autoincrement())
+  city_id    Int?
+  rider_id   Int?
+  route_id   Int?
+  actor      String   @db.VarChar(80)
+  action     String   @db.VarChar(40)
+  detail     Json
   created_at DateTime @default(now())
+
   @@index([city_id, created_at])
 }
 
@@ -216,19 +218,19 @@ model payout_setting {
 }
 
 model pkg_category {
-  cat_img       String   @db.Text
-  other_image   String?  @db.VarChar(255)
-  id            Int      @id @default(autoincrement())
-  cat_status    Int
-  cat_name      String   @db.Text
-  city_id       Int?
-  sort_order    Int?
-  max_load_kg   Decimal? @db.Decimal(10, 2)
-  dim_length    Decimal? @db.Decimal(10, 2)
-  dim_width     Decimal? @db.Decimal(10, 2)
-  dim_height    Decimal? @db.Decimal(10, 2)
-  dim_unit      String?  @db.VarChar(4)
-  detail_image  String?  @db.Text
+  cat_img      String   @db.Text
+  other_image  String?  @db.VarChar(255)
+  id           Int      @id @default(autoincrement())
+  cat_status   Int
+  cat_name     String   @db.Text
+  city_id      Int?
+  sort_order   Int?
+  max_load_kg  Decimal? @db.Decimal(10, 2)
+  dim_length   Decimal? @db.Decimal(10, 2)
+  dim_width    Decimal? @db.Decimal(10, 2)
+  dim_height   Decimal? @db.Decimal(10, 2)
+  dim_unit     String?  @db.VarChar(4)
+  detail_image String?  @db.Text
 }
 
 model pkg_order {
@@ -285,7 +287,7 @@ model pkg_order {
   user_reminder_sent     Boolean?           @default(false)
   driver_notify_sent     Boolean?           @default(false)
   priority_notify_sent   Boolean?           @default(false)
-  priority_started_at   DateTime?
+  priority_started_at    DateTime?
   loading_charge         Decimal?           @db.Decimal(8, 2)
   unloading_charge       Decimal?           @db.Decimal(8, 2)
   service_charge         Decimal?           @db.Decimal(8, 2)
@@ -318,28 +320,29 @@ model pkg_order {
 
 // Server-owned driver milestones. Global order_status=4 still means cancelled.
 model driver_trip_progress {
-  order_id          Int       @id
-  rider_id          Int
-  automation_enabled Boolean @default(false)
-  stop_step         Int       @default(0)
-  otp_verified_at   DateTime? @db.DateTime(3)
-  candidate_key     String?   @db.VarChar(50)
-  candidate_since   DateTime? @db.DateTime(3)
-  candidate_count   Int       @default(0)
-  last_sample_at    DateTime? @db.DateTime(3)
-  updated_at        DateTime  @updatedAt @db.DateTime(3)
+  order_id           Int       @id
+  rider_id           Int
+  automation_enabled Boolean   @default(false)
+  stop_step          Int       @default(0)
+  otp_verified_at    DateTime? @db.DateTime(3)
+  candidate_key      String?   @db.VarChar(50)
+  candidate_since    DateTime? @db.DateTime(3)
+  candidate_count    Int       @default(0)
+  last_sample_at     DateTime? @db.DateTime(3)
+  updated_at         DateTime  @updatedAt @db.DateTime(3)
 }
 
 model driver_trip_event {
-  id           Int       @id @default(autoincrement())
-  order_id     Int
-  rider_id     Int
-  user_id      Int
-  milestone    String    @db.VarChar(50)
-  payload      Json
-  created_at   DateTime  @default(now()) @db.DateTime(3)
-  sent_at      DateTime? @db.DateTime(3)
-  lease_until  DateTime? @db.DateTime(3)
+  id          Int       @id @default(autoincrement())
+  order_id    Int
+  rider_id    Int
+  user_id     Int
+  milestone   String    @db.VarChar(50)
+  payload     Json
+  created_at  DateTime  @default(now()) @db.DateTime(3)
+  sent_at     DateTime? @db.DateTime(3)
+  lease_until DateTime? @db.DateTime(3)
+
   @@unique([order_id, milestone])
   @@index([sent_at, lease_until])
 }
@@ -733,36 +736,36 @@ model tbl_payment_list {
 }
 
 model tbl_personal_doc {
-  id               Int     @id @default(autoincrement())
-  rider_id         Int
-  is_bycle         Int     @default(0)
-  residence_status Int     @default(0)
-  residence_id     String? @db.Text
-  residence_front  String? @db.Text
-  residence_back   String? @db.Text
-  address_status   Int     @default(0)
-  address_id       String? @db.Text
-  address_front    String? @db.Text
-  address_back     String? @db.Text
-  lic_status       Int     @default(0)
-  lic_id           String? @db.Text
-  lic_front        String? @db.Text
-  lic_back         String? @db.Text
-  status           Int     @default(0)
-  pan_status       Int?    @default(0)
-  pan_id           String? @db.VarChar(255)
-  pan_front        String? @db.Text
-  pan_back         String? @db.Text
-  aadhar_status    Int?    @default(0)
-  aadhar_id        String? @db.VarChar(255)
-  aadhar_front     String? @db.Text
-  aadhar_back      String? @db.Text
-  aadhaar_back     String? @db.VarChar(255)
-  upi_image        String? @db.VarChar(255)
+  id                     Int     @id @default(autoincrement())
+  rider_id               Int
+  is_bycle               Int     @default(0)
+  residence_status       Int     @default(0)
+  residence_id           String? @db.Text
+  residence_front        String? @db.Text
+  residence_back         String? @db.Text
+  address_status         Int     @default(0)
+  address_id             String? @db.Text
+  address_front          String? @db.Text
+  address_back           String? @db.Text
+  lic_status             Int     @default(0)
+  lic_id                 String? @db.Text
+  lic_front              String? @db.Text
+  lic_back               String? @db.Text
+  status                 Int     @default(0)
+  pan_status             Int?    @default(0)
+  pan_id                 String? @db.VarChar(255)
+  pan_front              String? @db.Text
+  pan_back               String? @db.Text
+  aadhar_status          Int?    @default(0)
+  aadhar_id              String? @db.VarChar(255)
+  aadhar_front           String? @db.Text
+  aadhar_back            String? @db.Text
+  aadhaar_back           String? @db.VarChar(255)
+  upi_image              String? @db.VarChar(255)
   // Optional, unverified vehicle documents - image only, no document number
   // or approval workflow, unlike Aadhaar/PAN/DL/RC above.
-  puc_image        String? @db.VarChar(255)
-  bima_image       String? @db.VarChar(255)
+  puc_image              String? @db.VarChar(255)
+  bima_image             String? @db.VarChar(255)
   // Populated only when the vehicle's RC owner isn't the driver themselves -
   // the app runs a separate UIDAI eKYC OTP verification against the RTO's
   // registered owner name before letting the driver proceed (see
@@ -916,20 +919,20 @@ model tbl_referral_point_log {
 }
 
 model tbl_driver_lead {
-  id                    Int       @id @default(autoincrement())
-  driver_id             Int       @default(0)
-  user_id               Int?      @default(0)
-  referrer_type         String    @default("driver") @db.VarChar(10)
-  lead_type             String    @default("customer") @db.VarChar(20)
-  name                  String    @db.VarChar(150)
-  phone                 String    @unique(map: "uniq_lead_phone") @db.VarChar(20)
-  status                String    @default("pending") @db.VarChar(15)
-  submitted_at          DateTime  @db.DateTime(0)
-  verified_at           DateTime? @db.DateTime(0)
-  verified_by_admin_id  Int?
-  expires_at            DateTime? @db.DateTime(0)
-  converted_user_id     Int?
-  converted_at          DateTime? @db.DateTime(0)
+  id                   Int       @id @default(autoincrement())
+  driver_id            Int       @default(0)
+  user_id              Int?      @default(0)
+  referrer_type        String    @default("driver") @db.VarChar(10)
+  lead_type            String    @default("customer") @db.VarChar(20)
+  name                 String    @db.VarChar(150)
+  phone                String    @unique(map: "uniq_lead_phone") @db.VarChar(20)
+  status               String    @default("pending") @db.VarChar(15)
+  submitted_at         DateTime  @db.DateTime(0)
+  verified_at          DateTime? @db.DateTime(0)
+  verified_by_admin_id Int?
+  expires_at           DateTime? @db.DateTime(0)
+  converted_user_id    Int?
+  converted_at         DateTime? @db.DateTime(0)
 
   @@index([driver_id], map: "idx_lead_driver")
   @@index([user_id], map: "idx_lead_user")
@@ -1077,7 +1080,7 @@ model tbl_user {
 }
 
 model tbl_user_device {
-  id            Int                     @id @default(autoincrement())
+  id            Int                       @id @default(autoincrement())
   uid           Int
   // Distinguishes which entity `uid` refers to (tbl_user.id vs tbl_rider.id)
   // - these are independent autoincrement sequences, so the same numeric id
@@ -1087,16 +1090,16 @@ model tbl_user_device {
   // field, not uid alone.
   user_type     tbl_user_device_user_type @default(customer)
   device_id     String
-  fcm_token     String?   @db.Text
-  platform      String?   @db.VarChar(20)
-  device_name   String?   @db.VarChar(100)
-  app_version   String?   @db.VarChar(20)
-  ip            String?   @db.VarChar(45)
-  is_active     Boolean   @default(true)
-  login_count   Int       @default(1)
-  last_login_at DateTime? @db.DateTime(0)
-  logged_out_at DateTime? @db.DateTime(0)
-  created_at    DateTime  @db.DateTime(0)
+  fcm_token     String?                   @db.Text
+  platform      String?                   @db.VarChar(20)
+  device_name   String?                   @db.VarChar(100)
+  app_version   String?                   @db.VarChar(20)
+  ip            String?                   @db.VarChar(45)
+  is_active     Boolean                   @default(true)
+  login_count   Int                       @default(1)
+  last_login_at DateTime?                 @db.DateTime(0)
+  logged_out_at DateTime?                 @db.DateTime(0)
+  created_at    DateTime                  @db.DateTime(0)
 
   @@index([uid, user_type, is_active], map: "idx_uid_type_active")
 }
@@ -1145,16 +1148,16 @@ model tbl_user_plan_subscription {
 }
 
 model tbl_pending_reward_plan {
-  id                Int                            @id @default(autoincrement())
+  id                Int                                 @id @default(autoincrement())
   user_id           Int
   plan_for          tbl_user_plan_subscription_plan_for
   plan_id           Int
   assigned_by_admin Int
-  status            tbl_pending_reward_plan_status @default(pending)
+  status            tbl_pending_reward_plan_status      @default(pending)
   applied_order_id  Int?
-  applied_at        DateTime?                      @db.Timestamp(0)
-  created_at        DateTime                       @default(now()) @db.Timestamp(0)
-  updated_at        DateTime                       @default(now()) @db.Timestamp(0)
+  applied_at        DateTime?                           @db.Timestamp(0)
+  created_at        DateTime                            @default(now()) @db.Timestamp(0)
+  updated_at        DateTime                            @default(now()) @db.Timestamp(0)
 
   @@index([user_id, plan_for, status], map: "idx_pending_user_status")
 }
@@ -1182,12 +1185,12 @@ model tbl_ride_milestone_reward {
 /// lifetime ride count crossing the same tier again (or two concurrent
 /// completions) never double-applies it.
 model tbl_ride_milestone_applied {
-  id           Int                          @id @default(autoincrement())
+  id           Int                               @id @default(autoincrement())
   user_id      Int
   milestone_id Int
   status       tbl_ride_milestone_applied_status
   order_id     Int?
-  applied_at   DateTime                     @default(now()) @db.Timestamp(0)
+  applied_at   DateTime                          @default(now()) @db.Timestamp(0)
 
   @@unique([user_id, milestone_id], map: "uniq_milestone_applied_user_milestone")
 }
@@ -1337,6 +1340,135 @@ model monthly_driver_ledger {
   created_at     DateTime  @default(now()) @db.DateTime(0)
 
   @@index([rider_id, created_at], map: "idx_ledger_rider_created")
+}
+
+model daily_driver_plan {
+  id                    Int      @id @default(autoincrement())
+  plan_name             String   @db.VarChar(150)
+  price                 Decimal  @default(0.00) @db.Decimal(10, 2)
+  duty_start_time       String   @default("10:00:00") @db.VarChar(20)
+  duty_end_time         String   @default("20:00:00") @db.VarChar(20)
+  required_duty_hours   Float    @default(10)
+  free_km               Int      @default(0)
+  extra_km_rate         Decimal  @default(0.00) @db.Decimal(10, 2)
+  shortfall_hourly_rate Decimal  @default(0.00) @db.Decimal(10, 2)
+  overtime_hourly_rate  Decimal  @default(0.00) @db.Decimal(10, 2)
+  max_drivers           Int      @default(1)
+  assigned_zone_id      Int?
+  city                  String   @default("all") @db.VarChar(255)
+  package_categories    String   @default("all") @db.VarChar(255)
+  sort_order            Int      @default(0)
+  status                Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.Timestamp(0)
+  updated_at            DateTime @default(now()) @updatedAt @db.Timestamp(0)
+
+  enrollments  daily_driver_enrollment[]
+  auto_enrolls daily_driver_auto_enroll[]
+
+  @@index([status], map: "idx_ddp_status")
+}
+
+enum daily_driver_enrollment_status {
+  pending_approval
+  enrolled
+  active
+  completed
+  settlement_pending
+  settlement_completed
+  rejected
+  cancelled
+}
+
+model daily_driver_enrollment {
+  id                Int                            @id @default(autoincrement())
+  rider_id          Int
+  plan_id           Int
+  enrollment_date   DateTime                       @db.Date
+  status            daily_driver_enrollment_status @default(pending_approval)
+  auto_enroll_id    Int?
+  approved_by_admin Int?
+  approved_at       DateTime?                      @db.DateTime(0)
+  created_at        DateTime                       @default(now()) @db.DateTime(0)
+  updated_at        DateTime                       @default(now()) @updatedAt @db.DateTime(0)
+
+  plan        daily_driver_plan         @relation(fields: [plan_id], references: [id])
+  auto_enroll daily_driver_auto_enroll? @relation(fields: [auto_enroll_id], references: [id])
+  duty_log    daily_driver_duty_log?
+
+  @@index([rider_id, enrollment_date], map: "idx_dde_rider_date")
+  @@index([plan_id, enrollment_date, status], map: "idx_dde_plan_date_status")
+}
+
+enum daily_driver_auto_enroll_status {
+  active
+  cancelled
+}
+
+model daily_driver_auto_enroll {
+  id         Int                             @id @default(autoincrement())
+  rider_id   Int
+  plan_id    Int
+  enabled    Boolean                         @default(true)
+  until_date DateTime                        @db.Date
+  status     daily_driver_auto_enroll_status @default(active)
+  created_at DateTime                        @default(now()) @db.DateTime(0)
+  updated_at DateTime                        @default(now()) @updatedAt @db.DateTime(0)
+
+  plan        daily_driver_plan         @relation(fields: [plan_id], references: [id])
+  enrollments daily_driver_enrollment[]
+
+  @@index([rider_id, status], map: "idx_ddae_rider_status")
+}
+
+enum daily_driver_settlement_direction {
+  none
+  company_pays
+  company_retains
+}
+
+model daily_driver_duty_log {
+  id                      Int                               @id @default(autoincrement())
+  enrollment_id           Int                               @unique
+  rider_id                Int
+  punch_in_at             DateTime?                         @db.DateTime(0)
+  punch_out_at            DateTime?                         @db.DateTime(0)
+  total_online_minutes    Int                               @default(0)
+  total_in_zone_minutes   Int                               @default(0)
+  total_out_zone_minutes  Int                               @default(0)
+  rides_completed         Int                               @default(0)
+  actual_km               Decimal                           @default(0.00) @db.Decimal(10, 2)
+  extra_km                Decimal                           @default(0.00) @db.Decimal(10, 2)
+  extra_km_charge         Decimal                           @default(0.00) @db.Decimal(10, 2)
+  shortfall_hours         Decimal                           @default(0.00) @db.Decimal(10, 2)
+  shortfall_deduction     Decimal                           @default(0.00) @db.Decimal(10, 2)
+  overtime_minutes        Int                               @default(0)
+  overtime_pay            Decimal                           @default(0.00) @db.Decimal(10, 2)
+  ride_earnings           Decimal                           @default(0.00) @db.Decimal(10, 2)
+  eligible_plan_amount    Decimal                           @default(0.00) @db.Decimal(10, 2)
+  final_settlement_amount Decimal                           @default(0.00) @db.Decimal(10, 2)
+  settlement_direction    daily_driver_settlement_direction @default(none)
+  status                  String                            @default("in_progress") @db.VarChar(20)
+  created_at              DateTime                          @default(now()) @db.DateTime(0)
+  updated_at              DateTime                          @default(now()) @updatedAt @db.DateTime(0)
+
+  enrollment daily_driver_enrollment @relation(fields: [enrollment_id], references: [id])
+
+  @@index([rider_id], map: "idx_ddl_rider")
+}
+
+model daily_driver_ledger {
+  id             Int      @id @default(autoincrement())
+  rider_id       Int
+  enrollment_id  Int?
+  order_id       Int?
+  entry_type     String   @db.VarChar(50)
+  amount         Decimal  @default(0.00) @db.Decimal(10, 2)
+  balance_effect String   @db.VarChar(10)
+  notes          String?  @db.Text
+  created_at     DateTime @default(now()) @db.DateTime(0)
+
+  @@index([rider_id, created_at], map: "idx_ddledger_rider_created")
+  @@index([enrollment_id], map: "idx_ddledger_enrollment")
 }
 
 model tbl_geofence_zones {
