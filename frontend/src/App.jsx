@@ -47,6 +47,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const ServiceZones = lazy(() => import('./pages/ServiceZones'))
 const MonthlyDrivers = lazy(() => import('./pages/MonthlyDrivers'))
 const MonthlyAttendanceReports = lazy(() => import('./pages/MonthlyAttendanceReports'))
+const ProfitAndRevenue = lazy(() => import('./pages/ProfitAndRevenue'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 function Gated({ roles, children }) {
@@ -97,6 +98,7 @@ function App() {
             <Route path="/cities" element={<Cities />} />
 
             {/* Financials & Growth */}
+            <Route path="/profit-revenue" element={<Gated roles={['superadmin', 'admin']}><ProfitAndRevenue /></Gated>} />
             <Route path="/monthly-attendance" element={<Gated roles={['superadmin', 'admin']}><MonthlyAttendanceReports /></Gated>} />
             <Route path="/payouts" element={<Gated roles={['superadmin', 'admin']}><Payouts /></Gated>} />
             <Route path="/wallet-adjustments" element={<Gated roles={['superadmin']}><WalletAdjustments /></Gated>} />

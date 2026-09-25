@@ -29,6 +29,7 @@ const uploadController = require("../controllers/uploadController");
 const adminNotificationController = require("../controllers/adminNotificationController");
 const rewardPlanController = require("../controllers/rewardPlanController");
 const walletAdjustmentController = require("../controllers/walletAdjustmentController");
+const financeLedgerController = require("../controllers/financeLedgerController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const scopeFilter = require("../middleware/scopeFilter");
@@ -233,6 +234,11 @@ router.get("/analytics/overview", auth, authorize("superadmin", "admin"), scopeF
 router.post("/analytics/sales-report", auth, authorize("superadmin", "admin"), analyticsController.salesReport);
 router.get("/analytics/month-comparison", auth, authorize("superadmin", "admin"), analyticsController.monthComparison);
 router.get("/analytics/city-comparison", auth, authorize("superadmin"), analyticsController.cityComparison);
+
+// --- Profit, Revenue & Financial Accounting Ledger ----------------------------
+router.get("/finance/ledger", auth, authorize("superadmin", "admin"), scopeFilter, financeLedgerController.getLedgerOverview);
+router.get("/finance/ledger/parties", auth, authorize("superadmin", "admin"), scopeFilter, financeLedgerController.getPartyBreakdown);
+router.get("/finance/ledger/export", auth, authorize("superadmin", "admin"), scopeFilter, financeLedgerController.exportLedgerCsv);
 
 // --- Live Fleet Tracking & Driver Activity -----------------------------------
 router.get("/fleet/live-tracking", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.liveTracking);

@@ -36,6 +36,7 @@ import {
   Smartphone,
   PhoneCall,
   History,
+  Receipt,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -76,6 +77,7 @@ export const NAV_GROUPS = [
   {
     group: 'Financials & Growth',
     items: [
+      { to: '/profit-revenue', label: 'Profit & Revenue (Ledger)', icon: Receipt, roles: MANAGERS, built: true },
       { to: '/monthly-attendance', label: 'Monthly Duty & Salary', icon: CalendarCheck, roles: MANAGERS, built: true },
       { to: '/payouts', label: 'Withdrawal Requests', icon: Wallet, roles: MANAGERS, built: true },
       { to: '/wallet-adjustments', label: 'Wallet Adjustments', icon: History, roles: SUPERADMIN_ONLY, built: true },
