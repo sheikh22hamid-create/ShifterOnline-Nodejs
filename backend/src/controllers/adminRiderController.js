@@ -46,10 +46,14 @@ async function list(req, res) {
       ];
     }
 
+    const STALE_PING_THRESHOLD_MS = 15 * 60 * 1000;
+    const freshSince = new Date(Date.now() - STALE_PING_THRESHOLD_MS);
+    const now = Date.now();
+
     const [rows, totalDrivers, onlineDrivers, pendingKyc] = await Promise.all([
       prisma.tbl_rider.findMany({ where, orderBy: { id: "desc" } }),
       prisma.tbl_rider.count({ where }),
-      prisma.tbl_rider.count({ where: { ...where, a_status: 1 } }),
+      prisma.tbl_rider.count({ where: { ...where, a_status: 1, rloc_updated_at: { gte: freshSince } } }),
       prisma.tbl_rider.count({ where: { ...where, verification_status: "pending" } }),
     ]);
 
@@ -68,23 +72,31 @@ async function list(req, res) {
       (categoriesByRider[dt.rider_id] ||= []).push(title);
     }
 
-    const data = withCity.map((r) => ({
-      id: r.id,
-      full_name: riderName(r),
-      fmobile: r.fmobile,
-      email: r.email,
-      vehicle: r.vehicle,
-      vehicle_no: r.vehicle_no,
-      city_id: r.city_id,
-      city_name: r.city_name,
-      a_status: r.a_status,
-      status: r.status,
-      wallet_balance: r.wallet_balance,
-      verification_status: r.verification_status,
-      all_verify: r.all_verify,
-      payment_complete: Number(r.payment_complete) === 1,
-      active_categories: categoriesByRider[r.id] || [],
-    }));
+    const data = withCity.map((r) => {
+      const isOnline =
+        r.a_status === 1 &&
+        r.rloc_updated_at &&
+        now - new Date(r.rloc_updated_at).getTime() < STALE_PING_THRESHOLD_MS;
+
+      return {
+        id: r.id,
+        full_name: riderName(r),
+        fmobile: r.fmobile,
+        email: r.email,
+        vehicle: r.vehicle,
+        vehicle_no: r.vehicle_no,
+        city_id: r.city_id,
+        city_name: r.city_name,
+        a_status: isOnline ? 1 : 0,
+        online: Boolean(isOnline),
+        status: r.status,
+        wallet_balance: r.wallet_balance,
+        verification_status: r.verification_status,
+        all_verify: r.all_verify,
+        payment_complete: Number(r.payment_complete) === 1,
+        active_categories: categoriesByRider[r.id] || [],
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -152,25 +164,31 @@ async function getOne(req, res) {
       enabled: deliveryStatusMap.has(String(pkg.id)) ? deliveryStatusMap.get(String(pkg.id)) : true,
     }));
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        id: rider.id,
-        full_name: riderName(rider),
-        fmobile: rider.fmobile,
-        smobile: rider.smobile,
-        email: rider.email,
-        dob: rider.dob,
-        nationality: rider.nationality,
-        full_address: rider.full_address,
-        profile_picture: rider.profile_picture,
-        city_id: rider.city_id,
-        city_name: cityName ? cityName.title : null,
-        vehicle: rider.vehicle,
-        vehicle_no: rider.vehicle_no,
-        a_status: rider.a_status,
-        status: rider.status,
-        all_verify: rider.all_verify,
+        const isOnline =
+          rider.a_status === 1 &&
+          rider.rloc_updated_at &&
+          Date.now() - new Date(rider.rloc_updated_at).getTime() < 15 * 60 * 1000;
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            id: rider.id,
+            full_name: riderName(rider),
+            fmobile: rider.fmobile,
+            smobile: rider.smobile,
+            email: rider.email,
+            dob: rider.dob,
+            nationality: rider.nationality,
+            full_address: rider.full_address,
+            profile_picture: rider.profile_picture,
+            city_id: rider.city_id,
+            city_name: cityName ? cityName.title : null,
+            vehicle: rider.vehicle,
+            vehicle_no: rider.vehicle_no,
+            a_status: isOnline ? 1 : 0,
+            online: Boolean(isOnline),
+            status: rider.status,
+            all_verify: rider.all_verify,
         verification_status: rider.verification_status,
         verification_type: rider.verification_type,
         payment_complete: Number(rider.payment_complete) === 1,

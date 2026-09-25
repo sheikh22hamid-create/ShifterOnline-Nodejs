@@ -88,8 +88,23 @@ function initSocket(httpServer) {
     registerOrderHandlers(ioInstance, socket);
     registerTrackingHandlers(ioInstance, socket);
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", async (reason) => {
       logger.info(`socket disconnected: ${socket.id} (${reason})`);
+      if (socket.data?.riderId) {
+        const riderId = socket.data.riderId;
+        const cityId = socket.data.riderCityId;
+        try {
+          const activeSockets = await ioInstance.in(`driver_${riderId}`).fetchSockets();
+          if (activeSockets.length === 0) {
+            adminSocket.notifyDriverStatusUpdate(riderId, cityId, {
+              rider_id: riderId,
+              socket_connected: false,
+            });
+          }
+        } catch (err) {
+          logger.error(`socket disconnect handler error for rider ${riderId}:`, err);
+        }
+      }
     });
   });
 

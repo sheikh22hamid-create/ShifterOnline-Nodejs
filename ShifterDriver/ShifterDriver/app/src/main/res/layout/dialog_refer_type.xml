@@ -550,7 +550,8 @@
                 <ImageView
                     android:layout_width="44dp"
                     android:layout_height="44dp"
-                    android:src="@drawable/ic_share_whatsapp" />
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_real_whatsapp" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -576,6 +577,7 @@
                 <ImageView
                     android:layout_width="44dp"
                     android:layout_height="44dp"
+                    android:scaleType="fitCenter"
                     android:src="@drawable/ic_share_link" />
 
                 <TextView
@@ -602,7 +604,8 @@
                 <ImageView
                     android:layout_width="44dp"
                     android:layout_height="44dp"
-                    android:src="@drawable/ic_share_facebook" />
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_real_facebook" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -628,7 +631,8 @@
                 <ImageView
                     android:layout_width="44dp"
                     android:layout_height="44dp"
-                    android:src="@drawable/ic_share_instagram" />
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_real_instagram" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -654,6 +658,7 @@
                 <ImageView
                     android:layout_width="44dp"
                     android:layout_height="44dp"
+                    android:scaleType="fitCenter"
                     android:src="@drawable/ic_share_more" />
 
                 <TextView

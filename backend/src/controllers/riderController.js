@@ -229,23 +229,22 @@ async function setStatus(req, res) {
       return res.status(400).json({ Result: false, msg: "rider_id and a_status (0 or 1) are required" });
     }
 
-    // Going offline blanks the last-known fix so it can never be read back as
-    // "current" once the driver goes online again elsewhere - see
-    // memory/driver_stale_location_dispatch.md. Going online leaves location
-    // untouched; the freshness check in dispatch/availability queries is what
-    // keeps a driver ineligible until their app sends a real ping.
-    const locationReset = Number(a_status) === 0 ? { rlats: null, rlongs: null, rloc_updated_at: null } : {};
-
+    // Preserve last known coordinates (rlats/rlongs) so Admin Live Fleet Radar
+    // can display the driver's last seen position with an offline marker.
+    // Dispatch safety is guaranteed by `WHERE r.a_status = 1 AND r.rloc_updated_at >= freshSince`.
     const updated = await prisma.tbl_rider.update({
       where: { id: Number(rider_id) },
-      data: { a_status: Number(a_status), ...locationReset },
-      select: { id: true, city_id: true, a_status: true, status: true },
+      data: { a_status: Number(a_status) },
+      select: { id: true, city_id: true, a_status: true, status: true, rlats: true, rlongs: true, rloc_updated_at: true },
     });
 
     adminSocket.notifyDriverStatusUpdate(updated.id, updated.city_id, {
       a_status: updated.a_status,
       online: updated.a_status === 1,
       status: updated.status,
+      lat: updated.rlats ? Number(updated.rlats) : null,
+      lng: updated.rlongs ? Number(updated.rlongs) : null,
+      rloc_updated_at: updated.rloc_updated_at,
     });
 
     // Same multi-device-login kickout check driverContentController.homeData

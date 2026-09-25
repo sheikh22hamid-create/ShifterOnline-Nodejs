@@ -6,21 +6,38 @@ import { useSocket } from '../../context/SocketContext'
 import useApiQuery from '../../hooks/useApiQuery'
 import useRealtimeSync from '../../hooks/useRealtimeSync'
 
-const IDLE_COLOR = '#34d399'
+const IDLE_COLOR = '#10b981'
 const TRIP_COLOR = '#e8871e'
+const OFFLINE_COLOR = '#64748b'
 
 const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'idle', label: 'Idle' },
   { key: 'on_trip', label: 'Busy' },
+  { key: 'offline', label: 'Offline' },
 ]
 
-function markerIcon(color) {
+function markerIcon(status) {
+  let color = IDLE_COLOR
+  let border = '#ffffff'
+  let shadow = '0 0 0 1px rgba(0,0,0,0.15)'
+
+  if (status === 'on_trip') {
+    color = TRIP_COLOR
+    shadow = '0 0 0 1.5px rgba(232,135,30,0.3)'
+  } else if (status === 'offline') {
+    color = OFFLINE_COLOR
+    border = '#cbd5e1'
+    shadow = '0 0 0 1.5px rgba(100,116,139,0.3)'
+  } else {
+    shadow = '0 0 0 1.5px rgba(16,185,129,0.3)'
+  }
+
   return L.divIcon({
     className: '',
-    html: `<span style="display:block;width:11px;height:11px;border-radius:9999px;background:${color};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.15)"></span>`,
-    iconSize: [11, 11],
-    iconAnchor: [5, 5],
+    html: `<span style="display:block;width:12px;height:12px;border-radius:9999px;background:${color};border:2px solid ${border};box-shadow:${shadow}"></span>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
   })
 }
 
@@ -30,7 +47,19 @@ function markerIcon(color) {
 // from ever being parsed as markup.
 function riderTooltipContent(r) {
   const el = document.createElement('span')
-  el.append(document.createTextNode(r.full_name || `Driver #${r.rider_id}`), document.createTextNode(' · '), document.createTextNode(r.vehicle || ''))
+  const statusLabel =
+    r.status === 'on_trip'
+      ? ' · 🚗 Busy (On Trip)'
+      : r.status === 'offline'
+        ? ' · ⚪ Offline (Last Location)'
+        : ' · 🟢 Idle (Online)'
+
+  el.append(
+    document.createTextNode(r.full_name || `Driver #${r.rider_id}`),
+    document.createTextNode(' · '),
+    document.createTextNode(r.vehicle || ''),
+    document.createTextNode(statusLabel)
+  )
   return el
 }
 
@@ -54,14 +83,18 @@ export default function LiveFleetMap() {
   const counts = useMemo(() => {
     const all = riders?.length ?? 0
     const onTrip = riders?.filter((r) => r.status === 'on_trip').length ?? 0
-    return { all, on_trip: onTrip, idle: all - onTrip }
+    const idle = riders?.filter((r) => r.status === 'idle').length ?? 0
+    const offline = riders?.filter((r) => r.status === 'offline').length ?? 0
+    return { all, on_trip: onTrip, idle, offline }
   }, [riders])
 
   const visibleRiders = useMemo(() => {
     if (!riders) return riders
     if (filter === 'all') return riders
     if (filter === 'on_trip') return riders.filter((r) => r.status === 'on_trip')
-    return riders.filter((r) => r.status !== 'on_trip')
+    if (filter === 'idle') return riders.filter((r) => r.status === 'idle')
+    if (filter === 'offline') return riders.filter((r) => r.status === 'offline')
+    return riders
   }, [riders, filter])
 
   // Init map once.
@@ -94,7 +127,7 @@ export default function LiveFleetMap() {
       const lat = Number(r.lat)
       const lng = Number(r.lng)
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue
-      const marker = L.marker([lat, lng], { icon: markerIcon(r.status === 'on_trip' ? TRIP_COLOR : IDLE_COLOR) })
+      const marker = L.marker([lat, lng], { icon: markerIcon(r.status) })
         .addTo(map)
         .bindTooltip(riderTooltipContent(r), { direction: 'top' })
       markersRef.current.set(Number(r.rider_id), marker)
@@ -159,16 +192,19 @@ export default function LiveFleetMap() {
           style={{ background: 'var(--surface)', borderColor: 'var(--border)', boxShadow: 'var(--shadow-sm)', color: 'var(--ink-muted)' }}
         >
           <span className="flex items-center gap-1">
-            <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: IDLE_COLOR }} /> Idle
+            <span className="h-2 w-2 rounded-full" style={{ background: IDLE_COLOR }} /> Idle
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: TRIP_COLOR }} /> On trip
+            <span className="h-2 w-2 rounded-full" style={{ background: TRIP_COLOR }} /> Busy
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-full" style={{ background: OFFLINE_COLOR }} /> Offline (Last loc)
           </span>
         </div>
       </div>
       {!loading && riders?.length === 0 && (
         <p className="shrink-0 px-4 py-2 text-center text-[12px]" style={{ color: 'var(--ink-faint)' }}>
-          No online drivers with a live location right now.
+          No drivers with location data available right now.
         </p>
       )}
     </div>

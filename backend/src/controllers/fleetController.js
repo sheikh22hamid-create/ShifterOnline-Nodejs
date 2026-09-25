@@ -8,12 +8,24 @@ function internalError(res, err, label) {
 
 async function liveTracking(req, res) {
   try {
-    const where = { a_status: 1 };
+    const where = {};
     if (req.scopedCityId) where.city_id = req.scopedCityId;
 
     const riders = await prisma.tbl_rider.findMany({
       where,
-      select: { id: true, full_name: true, first_name: true, last_name: true, city_id: true, rlats: true, rlongs: true, vehicle: true, vehicle_no: true },
+      select: {
+        id: true,
+        full_name: true,
+        first_name: true,
+        last_name: true,
+        city_id: true,
+        rlats: true,
+        rlongs: true,
+        rloc_updated_at: true,
+        a_status: true,
+        vehicle: true,
+        vehicle_no: true,
+      },
     });
 
     const riderIds = riders.map((r) => r.id);
@@ -27,23 +39,44 @@ async function liveTracking(req, res) {
       : [];
     const activeOrderByRider = Object.fromEntries(activeOrders.map((o) => [o.rid, o.id]));
 
+    // Drivers whose app stopped sending location pings (>15 mins) or who toggled offline
+    const STALE_PING_THRESHOLD_MS = 15 * 60 * 1000;
+    const now = Date.now();
+
     const data = riders
-      .filter((r) => r.rlats && r.rlongs)
-      .map((r) => ({
-        rider_id: r.id,
-        full_name: r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim(),
-        city_id: r.city_id,
-        vehicle: r.vehicle,
-        vehicle_no: r.vehicle_no,
-        lat: Number(r.rlats),
-        lng: Number(r.rlongs),
-        // Not tracked anywhere in the live schema (tbl_rider only stores
-        // rlats/rlongs) — omitted rather than fabricated.
-        heading: null,
-        battery_level: null,
-        status: activeOrderByRider[r.id] ? "on_trip" : "idle",
-        active_order_id: activeOrderByRider[r.id] || null,
-      }));
+      .filter((r) => r.rlats && r.rlongs && Number(r.rlats) !== 0 && Number(r.rlongs) !== 0)
+      .map((r) => {
+        const hasActiveOrder = Boolean(activeOrderByRider[r.id]);
+        const isFresh = r.rloc_updated_at
+          ? now - new Date(r.rloc_updated_at).getTime() < STALE_PING_THRESHOLD_MS
+          : false;
+
+        let status;
+        if (hasActiveOrder) {
+          status = "on_trip";
+        } else if (r.a_status === 1 && isFresh) {
+          status = "idle";
+        } else {
+          status = "offline";
+        }
+
+        return {
+          rider_id: r.id,
+          full_name: r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim(),
+          city_id: r.city_id,
+          vehicle: r.vehicle,
+          vehicle_no: r.vehicle_no,
+          lat: Number(r.rlats),
+          lng: Number(r.rlongs),
+          heading: null,
+          battery_level: null,
+          status, // 'on_trip' | 'idle' | 'offline'
+          online: status !== "offline",
+          a_status: r.a_status,
+          rloc_updated_at: r.rloc_updated_at,
+          active_order_id: activeOrderByRider[r.id] || null,
+        };
+      });
 
     return res.status(200).json({ success: true, total: data.length, data });
   } catch (err) {

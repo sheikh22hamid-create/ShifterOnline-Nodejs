@@ -341,11 +341,15 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         // 3. Refer & Earn (same detailed bottom sheet as the Profile section)
         binding.btnQuickIncentives.setOnClickListener(v -> {
-            if (riderData == null && sessionManager != null) {
+            if (sessionManager != null) {
                 riderData = sessionManager.getUserDetails();
             }
             com.shifter.driver.utility.ReferAndEarnBottomSheet.show(getActivity(), riderData, sessionManager,
-                    riderData != null ? riderData.getRefferCode() : null, null, null);
+                    riderData != null ? riderData.getRefferCode() : null, null, code -> {
+                        if (riderData != null) {
+                            riderData.setRefferCode(code);
+                        }
+                    });
         });
 
 

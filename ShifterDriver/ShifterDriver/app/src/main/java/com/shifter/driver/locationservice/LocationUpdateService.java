@@ -372,7 +372,7 @@ public class LocationUpdateService extends Service {
         if (locationCallback != null && fusedLocationClient != null) {
             fusedLocationClient.removeLocationUpdates(locationCallback);
             
-            // Mark rider as offline in Firestore
+            // Mark rider as offline in Firestore & Node Backend
             if (riderId != null && !riderId.isEmpty()) {
                 Map<String, Object> offlineData = new HashMap<>();
                 offlineData.put("isOnline", false);
@@ -381,8 +381,27 @@ public class LocationUpdateService extends Service {
                 db.collection("RiderLocations")
                         .document(riderId)
                         .update(offlineData)
-                        .addOnSuccessListener(aVoid -> Log.d(TAG, "Rider marked as offline"))
+                        .addOnSuccessListener(aVoid -> Log.d(TAG, "Rider marked as offline in Firestore"))
                         .addOnFailureListener(e -> Log.e(TAG, "Error marking rider offline: " + e.getMessage()));
+
+                // Sync offline status to Node backend
+                try {
+                    Map<String, Object> nodeBody = new HashMap<>();
+                    nodeBody.put("rider_id", Integer.parseInt(riderId));
+                    nodeBody.put("a_status", 0);
+                    com.shifter.driver.retrofit.NodeApiClient.getInterface().setStatus(nodeBody).enqueue(new Callback<JsonObject>() {
+                        @Override
+                        public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
+                            Log.d(TAG, "Rider marked as offline in Node backend");
+                        }
+                        @Override
+                        public void onFailure(Call<JsonObject> call, Throwable t) {
+                            Log.e(TAG, "Failed to mark rider offline in Node backend: " + t.getMessage());
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.e(TAG, "Error building offline payload for Node", e);
+                }
             }
         }
     }
