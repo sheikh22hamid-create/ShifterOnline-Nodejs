@@ -695,6 +695,53 @@
                 android:id="@+id/inc_queued_orders_drawer"
                 layout="@layout/layout_queued_orders_drawer"
                 android:visibility="gone" />
+            <!-- ================= DAILY DRIVER DUTY CARD (shown only when enrolled) ================= -->
+            <include
+                android:id="@+id/inc_daily_driver_duty_card"
+                layout="@layout/layout_daily_driver_duty_card"
+                android:visibility="gone" />
+            <!-- ================= DAILY DRIVER ENTRY POINT ================= -->
+            <LinearLayout
+                android:id="@+id/btn_daily_driver_entry"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:layout_marginEnd="14dp"
+                android:layout_marginBottom="8dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_home_surface"
+                android:padding="16dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground">
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Daily Driver"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Browse daily plans and enroll"
+                        android:textColor="@color/home_secondary"
+                        android:textSize="12sp" />
+                </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/profile_chevron"
+                    android:textColor="@color/driver_text_primary"
+                    android:textSize="22sp" />
+            </LinearLayout>
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

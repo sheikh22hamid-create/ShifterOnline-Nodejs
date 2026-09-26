@@ -3,7 +3,8 @@ const dutyService = require("../services/dailyDriverDutyService");
 const logger = require("../utils/logger");
 
 function driverId(req) {
-  return req.body.driver_id || req.body.rider_id || req.query.rider_id || req.params.riderId;
+  const body = req.body || {};
+  return body.driver_id || body.rider_id || req.query.rider_id || req.params.riderId;
 }
 
 async function listPlans(req, res) {

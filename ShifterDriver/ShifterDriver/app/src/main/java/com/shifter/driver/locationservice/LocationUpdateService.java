@@ -234,6 +234,9 @@ public class LocationUpdateService extends Service {
             // Live tracking for backend duty & active orders
             emitLocationPingToNode(location);
             com.shifter.driver.utility.TripProgressClient.recordLocation(getApplicationContext(), location);
+
+            // Daily Driver duty ping — throttled to roughly once every 90s while punched in.
+            maybeSendDailyDriverPing(location);
         } else {
             Log.w(TAG, "Rider ID not available, skipping location updates");
         }
@@ -279,6 +282,35 @@ public class LocationUpdateService extends Service {
                 });
     }
     
+    private static volatile long lastDailyDriverPingAt = 0L;
+    private static final long DAILY_DRIVER_PING_INTERVAL_MS = 90_000; // ~90s, within the 60-120s window
+
+    /**
+     * Calls POST /api/rider/daily-driver/duty/ping while the driver is
+     * punched in for a Daily Driver shift. Throttled independently of the
+     * regular (10s/5s) fused location cadence since the backend only needs
+     * this roughly every 60-120 seconds.
+     *
+     * Relies on DailyDriverManager's cached duty status, which HomeFragment
+     * keeps fresh via its existing 10s duty-status poll while visible. No
+     * dedicated Daily Driver background poller exists yet; if the app is
+     * fully backgrounded for a long time this cached flag can go stale.
+     */
+    private void maybeSendDailyDriverPing(Location location) {
+        try {
+            if (!com.shifter.driver.utility.DailyDriverManager.getInstance().isPunchedIn()) return;
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - lastDailyDriverPingAt < DAILY_DRIVER_PING_INTERVAL_MS) return;
+            lastDailyDriverPingAt = now;
+
+            if (riderId == null || riderId.isEmpty()) return;
+            int driverId = Integer.parseInt(riderId);
+            com.shifter.driver.utility.DailyDriverApiClient.ping(driverId, location.getLatitude(), location.getLongitude(), null);
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending daily driver duty ping", e);
+        }
+    }
+
     private void emitLocationPingToNode(Location location) {
         try {
             SessionManager sm = new SessionManager(getApplicationContext());

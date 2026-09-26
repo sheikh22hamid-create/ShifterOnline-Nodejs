@@ -45,6 +45,7 @@ import org.json.JSONObject;
 
 import com.shifter.driver.R;
 import com.shifter.driver.activity.CustomOrderListActivity;
+import com.shifter.driver.activity.DailyDriverPlansActivity;
 import com.shifter.driver.activity.LeadReferralActivity;
 import com.shifter.driver.activity.NotificationActivity;
 import com.shifter.driver.activity.OrderActivity;
@@ -55,6 +56,7 @@ import com.shifter.driver.activity.WalletActivity;
 import com.shifter.driver.adepter.RecentOrderHomeAdapter;
 import com.shifter.driver.databinding.FragmentHomeBinding;
 import com.shifter.driver.locationservice.LocationUpdateService;
+import com.shifter.driver.model.DailyDriverDutyStatus;
 import com.shifter.driver.model.HomeData;
 import com.shifter.driver.model.MonthlyDutyStatus;
 import com.shifter.driver.model.PackageData;
@@ -65,6 +67,7 @@ import com.shifter.driver.retrofit.GetResult;
 import com.shifter.driver.retrofit.NodeApiClient;
 import com.shifter.driver.socket.NodeSocketManager;
 import com.shifter.driver.utility.CustPrograssbar;
+import com.shifter.driver.utility.DailyDriverApiClient;
 import com.shifter.driver.utility.DeliveryPreferencesBottomSheet;
 import com.shifter.driver.utility.ModelInfoBottomSheet;
 import com.shifter.driver.utility.MonthlyDriverApiClient;
@@ -251,6 +254,15 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         // Initialize Monthly Duty UI
         setupMonthlyDriverUI();
 
+        // Daily Driver entry point — opens the plans/enrollment screen
+        if (binding.btnDailyDriverEntry != null) {
+            binding.btnDailyDriverEntry.setOnClickListener(v ->
+                    startActivity(new Intent(getActivity(), DailyDriverPlansActivity.class)));
+        }
+
+        // Initialize Daily Driver duty UI (independent of Monthly Driver)
+        setupDailyDriverUI();
+
         return binding.getRoot();
     }
 
@@ -260,6 +272,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         public void run() {
             if (isAdded() && getActivity() != null) {
                 setupMonthlyDriverUI();
+                setupDailyDriverUI();
                 dutyTickerHandler.postDelayed(this, 10000); // Live poll duty stats every 10s
             }
         }
@@ -1005,6 +1018,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         getPackageList();
         fetchCustomerSupportSettings();
         setupMonthlyDriverUI();
+        setupDailyDriverUI();
     }
 
     /**
@@ -1130,6 +1144,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             getHome();
         }
         setupMonthlyDriverUI();
+        setupDailyDriverUI();
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
         dutyTickerHandler.postDelayed(dutyTickerRunnable, 10000);
 
@@ -1557,6 +1572,147 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 }
             });
         }
+    }
+
+    // ============================================================
+    // DAILY DRIVER — duty card (punch in/out + live status)
+    // Independent of Monthly Driver; a driver may have neither, either,
+    // or (in theory) both systems relevant, so this never touches the
+    // Monthly Driver UI/state.
+    // ============================================================
+    private void setupDailyDriverUI() {
+        if (riderData == null || getActivity() == null || binding == null
+                || binding.incDailyDriverDutyCard == null
+                || binding.incDailyDriverDutyCard.cardDailyDriverDuty == null) {
+            return;
+        }
+
+        DailyDriverApiClient.getDutyStatus(riderData.getId(), new DailyDriverApiClient.DutyStatusCallback() {
+            @Override
+            public void onSuccess(DailyDriverDutyStatus status) {
+                if (!isAdded() || getActivity() == null || binding == null
+                        || binding.incDailyDriverDutyCard == null) return;
+
+                if (status != null && status.isHasActiveEnrollment()) {
+                    binding.incDailyDriverDutyCard.cardDailyDriverDuty.setVisibility(View.VISIBLE);
+
+                    String planName = (status.getPlan() != null && status.getPlan().getPlanName() != null)
+                            ? status.getPlan().getPlanName() : "Daily Plan";
+                    binding.incDailyDriverDutyCard.txtDailyPlanName.setText(planName);
+
+                    // Status badge from enrollment status
+                    String enrollStatus = status.getEnrollment() != null ? status.getEnrollment().getStatus() : "";
+                    binding.incDailyDriverDutyCard.badgeDailyStatus.setText(
+                            enrollStatus == null || enrollStatus.isEmpty() ? "Enrolled" : enrollStatus.toUpperCase(Locale.getDefault()));
+
+                    // Live online time / target
+                    int onlineMins = status.getTotalOnlineMinutes();
+                    int targetMins = status.getTargetMinutes();
+                    int hrs = onlineMins / 60;
+                    int mins = onlineMins % 60;
+                    int targetHrs = targetMins / 60;
+                    binding.incDailyDriverDutyCard.txtDailyOnlineHours.setText(
+                            String.format(Locale.getDefault(), "%02dh %02dm / %dh", hrs, mins, targetHrs));
+
+                    // Rides completed
+                    binding.incDailyDriverDutyCard.txtDailyRidesCompleted.setText(
+                            String.valueOf(status.getRidesCompleted()));
+
+                    // Punch button
+                    if (status.isCurrentlyPunchedIn()) {
+                        binding.incDailyDriverDutyCard.btnPunchDailyDuty.setText("END DUTY (PUNCH OUT)");
+                        binding.incDailyDriverDutyCard.btnPunchDailyDuty.setBackgroundTintList(
+                                ColorStateList.valueOf(Color.parseColor("#DC2626")));
+                    } else {
+                        binding.incDailyDriverDutyCard.btnPunchDailyDuty.setText("START DUTY (PUNCH IN)");
+                        binding.incDailyDriverDutyCard.btnPunchDailyDuty.setBackgroundTintList(
+                                ColorStateList.valueOf(Color.parseColor("#059669")));
+                    }
+                    binding.incDailyDriverDutyCard.btnPunchDailyDuty.setOnClickListener(v -> handlePunchDailyDuty(status));
+
+                    binding.incDailyDriverDutyCard.btnViewDailyPlans.setOnClickListener(v ->
+                            startActivity(new Intent(getActivity(), DailyDriverPlansActivity.class)));
+                } else {
+                    binding.incDailyDriverDutyCard.cardDailyDriverDuty.setVisibility(View.GONE);
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+                Log.e("HomeFragment", "Failed to fetch daily driver duty status: " + message);
+            }
+        });
+    }
+
+    private void handlePunchDailyDuty(DailyDriverDutyStatus status) {
+        if (riderData == null || getActivity() == null) return;
+
+        if (status.isCurrentlyPunchedIn()) {
+            DailyDriverApiClient.punchOut(riderData.getId(), new DailyDriverApiClient.PunchOutCallback() {
+                @Override
+                public void onSuccess(String message, org.json.JSONObject settlement) {
+                    if (getActivity() == null) return;
+                    showDailyDutySettlementDialog(message, settlement);
+                    setupDailyDriverUI();
+                }
+
+                @Override
+                public void onError(String message) {
+                    if (getActivity() != null) {
+                        Toast.makeText(getActivity(), "Punch out failed: " + message, Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        } else {
+            android.location.Location loc = LocationUpdateService.getLocation();
+            double lat = loc != null ? loc.getLatitude() : 0.0;
+            double lng = loc != null ? loc.getLongitude() : 0.0;
+
+            DailyDriverApiClient.punchIn(riderData.getId(), lat, lng, new DailyDriverApiClient.PunchInCallback() {
+                @Override
+                public void onSuccess(boolean isInsideZone, String message) {
+                    if (getActivity() != null) {
+                        Toast.makeText(getActivity(), message, Toast.LENGTH_SHORT).show();
+                        setupDailyDriverUI();
+                    }
+                }
+
+                @Override
+                public void onError(String message) {
+                    if (getActivity() != null) {
+                        Toast.makeText(getActivity(), "Punch in failed: " + message, Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        }
+    }
+
+    private void showDailyDutySettlementDialog(String message, org.json.JSONObject settlement) {
+        if (getActivity() == null) return;
+        StringBuilder msg = new StringBuilder();
+        if (settlement != null) {
+            int rides = settlement.optInt("rides_completed", -1);
+            double eligibleAmt = settlement.optDouble("eligible_plan_amount", Double.NaN);
+            double finalAmt = settlement.optDouble("final_settlement_amount", Double.NaN);
+            String direction = settlement.optString("settlement_direction", "");
+
+            if (rides >= 0) msg.append("Rides Completed: ").append(rides).append("\n");
+            if (!Double.isNaN(eligibleAmt)) msg.append("Eligible Plan Amount: ₹").append(String.format(Locale.getDefault(), "%.2f", eligibleAmt)).append("\n");
+            if (!Double.isNaN(finalAmt)) {
+                msg.append("Settlement: ₹").append(String.format(Locale.getDefault(), "%.2f", finalAmt));
+                if (!direction.isEmpty()) msg.append(" (").append(direction).append(")");
+            }
+        }
+        if (msg.length() == 0) {
+            msg.append(message != null ? message : "Duty completed.");
+        }
+
+        new android.app.AlertDialog.Builder(getActivity())
+                .setTitle("Duty Completed")
+                .setMessage(msg.toString())
+                .setPositiveButton("OK", (d, w) -> d.dismiss())
+                .setCancelable(true)
+                .show();
     }
 
     private void fetchDriverQueue() {
