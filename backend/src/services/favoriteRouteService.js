@@ -81,6 +81,13 @@ async function mutate(rider,action,body) {
     } else if(action==='activate') {
       if(!config.enabled||route.disabled) fail('This route is unavailable',409);
       if(route.expires_at && route.expires_at<=new Date()) fail('Route expired. Edit expiry first.',409);
+      // "only" mode excludes the rider from any non-matching order entirely -
+      // blocked while on Daily Driver duty so it can't be used to sit online
+      // without ever being dispatchable (mirrors the delivery-models lock).
+      if(route.mode==='only') {
+        const activeDuty=await tx.daily_driver_duty_log.findFirst({where:{rider_id:rider.id,status:'in_progress'}});
+        if(activeDuty) fail("Only-mode routes can't be activated while on Daily Driver duty",409);
+      }
       validate(route,config);
       await tx.driver_favorite_route_state.upsert({where:{rider_id:rider.id},create:{rider_id:rider.id,route_id:route.id},update:{route_id:route.id}});
     } else if(action==='pause') {

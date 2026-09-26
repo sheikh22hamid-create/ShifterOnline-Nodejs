@@ -42,6 +42,23 @@ async function enableAllDeliveryModels(riderId) {
 }
 
 /**
+ * A "only"-mode Favorite Route excludes the rider from any order that
+ * doesn't match it (see favoriteRouteService.matchCandidates) - same
+ * invisible-to-dispatch effect as disabling all delivery models, just via a
+ * different subsystem. Force-pause it on punch-in so it can't be used to
+ * sit on Daily Driver duty without ever being dispatchable. "prefer" mode
+ * only reorders candidates, never excludes, so it's left alone.
+ */
+async function pauseOnlyModeFavoriteRoute(riderId) {
+  const state = await prisma.driver_favorite_route_state.findUnique({ where: { rider_id: Number(riderId) } });
+  if (!state || !state.route_id) return;
+  const route = await prisma.driver_favorite_route.findUnique({ where: { id: state.route_id } });
+  if (route && route.mode === "only") {
+    await prisma.driver_favorite_route_state.update({ where: { rider_id: Number(riderId) }, data: { route_id: null } });
+  }
+}
+
+/**
  * Lazily closes out an enrollment whose duty window has ended but the
  * driver never explicitly punched out (app killed, phone died, etc). Called
  * from every read/ping path so no separate cron is required for this case -
@@ -95,6 +112,7 @@ async function punchIn(riderId, lat, lng) {
   if (lat && lng && zone) insideZone = geofenceService.isInsideZone(lat, lng, zone);
 
   await enableAllDeliveryModels(riderId);
+  await pauseOnlyModeFavoriteRoute(riderId);
 
   if (enrollment.status === "enrolled") {
     await prisma.daily_driver_enrollment.update({ where: { id: enrollment.id }, data: { status: "active" } });
