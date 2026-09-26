@@ -246,26 +246,25 @@ async function getDutyStatus(riderId) {
 
   let inZoneMinutes = log ? log.total_in_zone_minutes || 0 : 0;
   let totalOnlineMinutes = log ? log.total_online_minutes || 0 : 0;
-  // Fractional twin of inZoneMinutes, used only for the money calc below -
-  // flooring to whole minutes is fine for the hh:mm display, but it makes
-  // currentEarnings visibly stair-step once per minute instead of growing
-  // smoothly, which looks like it's "jumping around" next to a client-side
-  // ticker that (correctly) assumes continuous per-second growth.
-  let inZoneMinutesPrecise = inZoneMinutes;
   if (isPunchedIn) {
-    // total_online/in_zone_minutes only advance on each ~90s ping, so add the
-    // time elapsed since the current session started (punch-in or last
-    // resume, tracked via updated_at) as a live estimate on top of the
-    // accumulated total - using punch_in_at alone here would double-count any
-    // earlier pause/resume break as online time. in_zone is optimistically
-    // assumed to continue in whatever state the last ping found it in; the
-    // next real ping corrects it either way.
+    // total_online_minutes only advances on each ~90s ping, so add the time
+    // elapsed since the current session started (punch-in or last resume,
+    // tracked via updated_at) as a live estimate on top of the accumulated
+    // total - using punch_in_at alone here would double-count any earlier
+    // pause/resume break as online time.
+    //
+    // inZoneMinutes deliberately gets NO such live addition: whether the
+    // driver is actually inside the zone is only known from a real ping
+    // (recordDutyLocationPing), and this function has no way to tell which
+    // way that last real ping went - guessing "in zone" by default paid a
+    // driver who was genuinely outside the zone the whole time (see memory).
+    // So this - and therefore currentEarnings below - only ever reflects
+    // ping-confirmed in-zone minutes, updating roughly every ~90s for real
+    // instead of a live guess every request.
     const sessionStart = log.updated_at || log.punch_in_at;
     if (sessionStart) {
-      const elapsedMinutesExact = Math.max(0, (Date.now() - new Date(sessionStart).getTime()) / 60000);
-      totalOnlineMinutes += Math.floor(elapsedMinutesExact);
-      inZoneMinutes += Math.floor(elapsedMinutesExact);
-      inZoneMinutesPrecise += elapsedMinutesExact;
+      const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 60000));
+      totalOnlineMinutes += elapsedMinutes;
     }
   }
 
@@ -281,10 +280,11 @@ async function getDutyStatus(riderId) {
   });
 
   // Live preview of what settlement would pay right now - proportional to
-  // duty hours so far, no ride-completion gate. Driver is paid for
-  // availability (being online/in-zone), not for rides actually dispatched.
-  const payableMinutesPrecise = Math.min(inZoneMinutesPrecise, targetMinutes);
-  const currentEarnings = Math.round((payableMinutesPrecise / 60) * perHourRate * 100) / 100;
+  // ping-confirmed duty hours so far, no ride-completion gate. Driver is paid
+  // for availability (being online/in-zone), not for rides actually
+  // dispatched - but only for zone time a real ping actually confirmed.
+  const payableMinutes = Math.min(inZoneMinutes, targetMinutes);
+  const currentEarnings = Math.round((payableMinutes / 60) * perHourRate * 100) / 100;
 
   return {
     hasActiveEnrollment: true,

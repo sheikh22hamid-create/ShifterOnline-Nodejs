@@ -278,41 +278,22 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         }
     };
 
-    // Live Daily Driver earning ticker - extrapolates between the ~10s duty-status
-    // polls so the figure moves every second, and freezes the instant duty is paused.
-    private final android.os.Handler dailyEarningsTickerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private Runnable dailyEarningsTickerRunnable;
-    private double dailyEarningsBaseline = 0;
-    private long dailyEarningsBaselineAtMillis = 0;
-    private double dailyEarningsPerMinuteRate = 0;
+    // Live Daily Driver earning display - no client-side extrapolation. Every attempt
+    // to smoothly tick this between polls (per-second projection, fractional minute
+    // math) ended up visibly disagreeing with the server's next authoritative value
+    // and looking like it was fluctuating. Simplest fix: just show exactly what the
+    // server last reported, refreshed at most once a minute so it reads as a clean
+    // per-minute update instead of jittering on every ~10s duty-status poll.
+    private long dailyEarningsLastShownAtMillis = 0;
 
-    private void updateLiveDailyEarningText() {
+    private void showDailyEarning(double serverValue, boolean forceRefresh) {
         if (binding == null || binding.incDailyDriverDutyCard == null
                 || binding.incDailyDriverDutyCard.txtDailyLiveEarning == null) return;
-        double elapsedMinutes = Math.max(0, (System.currentTimeMillis() - dailyEarningsBaselineAtMillis) / 60000.0);
-        double liveValue = dailyEarningsBaseline + elapsedMinutes * dailyEarningsPerMinuteRate;
+        long now = System.currentTimeMillis();
+        if (!forceRefresh && now - dailyEarningsLastShownAtMillis < 60000) return;
+        dailyEarningsLastShownAtMillis = now;
         binding.incDailyDriverDutyCard.txtDailyLiveEarning.setText(
-                String.format(Locale.getDefault(), "₹%.2f", liveValue));
-    }
-
-    private void startDailyEarningsTicker() {
-        if (dailyEarningsTickerRunnable != null) return;
-        dailyEarningsTickerRunnable = new Runnable() {
-            @Override
-            public void run() {
-                updateLiveDailyEarningText();
-                dailyEarningsTickerHandler.postDelayed(this, 1000);
-            }
-        };
-        dailyEarningsTickerHandler.post(dailyEarningsTickerRunnable);
-    }
-
-    private void stopDailyEarningsTicker() {
-        if (dailyEarningsTickerRunnable != null) {
-            dailyEarningsTickerHandler.removeCallbacks(dailyEarningsTickerRunnable);
-            dailyEarningsTickerRunnable = null;
-        }
-        updateLiveDailyEarningText(); // freeze on whatever the last known baseline was
+                String.format(Locale.getDefault(), "₹%.2f", serverValue));
     }
 
     /**
@@ -1221,7 +1202,6 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         super.onPause();
         NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
-        if (dailyEarningsTickerRunnable != null) dailyEarningsTickerHandler.removeCallbacks(dailyEarningsTickerRunnable);
     }
 
     @Override
@@ -1229,7 +1209,6 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         super.onDestroyView();
         stopPulseAnimation();
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
-        if (dailyEarningsTickerRunnable != null) dailyEarningsTickerHandler.removeCallbacks(dailyEarningsTickerRunnable);
         NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         binding = null;
     }
@@ -1686,18 +1665,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     binding.incDailyDriverDutyCard.txtDailyRidesCompleted.setText(
                             String.valueOf(status.getRidesCompleted()));
 
-                    // Live earning - re-baseline from this poll's authoritative value, then
-                    // either keep ticking (still punched in) or freeze (paused/settled).
-                    dailyEarningsBaseline = status.getCurrentEarnings();
-                    dailyEarningsBaselineAtMillis = System.currentTimeMillis();
-                    dailyEarningsPerMinuteRate = status.getPerHourRate() / 60.0;
-                    // No zero-ride gate - driver is paid for being online/in-zone regardless
-                    // of whether a ride was actually dispatched, so this ticks purely on time.
-                    if (status.isCurrentlyPunchedIn()) {
-                        startDailyEarningsTicker();
-                    } else {
-                        stopDailyEarningsTicker();
-                    }
+                    // Live earning - show the server's authoritative value directly, at most
+                    // once a minute while punched in; force an immediate refresh the instant
+                    // duty pauses/settles so it doesn't wait up to 60s to show the final figure.
+                    showDailyEarning(status.getCurrentEarnings(), !status.isCurrentlyPunchedIn());
 
                     // Punch button
                     if (status.isCurrentlyPunchedIn()) {
@@ -1715,7 +1686,6 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             startActivity(new Intent(getActivity(), DailyDriverPlansActivity.class)));
                 } else {
                     binding.incDailyDriverDutyCard.cardDailyDriverDuty.setVisibility(View.GONE);
-                    stopDailyEarningsTicker();
                 }
             }
 
@@ -1738,8 +1708,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     // automatically once the plan's duty window actually ends, so there's
                     // nothing to show yet beyond confirming the pause.
                     Toast.makeText(getActivity(), message, Toast.LENGTH_LONG).show();
-                    stopDailyEarningsTicker(); // freeze instantly, don't wait for the next poll
-                    setupDailyDriverUI();
+                    setupDailyDriverUI(); // re-polls immediately; showDailyEarning force-refreshes since duty is now paused
                 }
 
                 @Override
