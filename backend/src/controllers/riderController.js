@@ -229,6 +229,21 @@ async function setStatus(req, res) {
       return res.status(400).json({ Result: false, msg: "rider_id and a_status (0 or 1) are required" });
     }
 
+    // Going offline mid-duty would let a Monthly/Daily Driver keep racking up
+    // "online minutes" toward their fixed payout while invisible to dispatch -
+    // duty must be explicitly ended (punch-out) before the driver can go offline.
+    if (Number(a_status) === 0) {
+      const [activeMonthlyLog, activeDailyLog] = await Promise.all([
+        prisma.driver_duty_log.findFirst({ where: { rider_id: Number(rider_id), status: "in_progress" } }),
+        prisma.daily_driver_duty_log.findFirst({ where: { rider_id: Number(rider_id), status: "in_progress" } }),
+      ]);
+      if (activeMonthlyLog || activeDailyLog) {
+        // 200 (not 400) so the app's existing "Result:false -> show msg" path renders this,
+        // matching how the success/failure branch already surfaces backend-provided messages.
+        return res.status(200).json({ Result: false, msg: "Please end your duty (punch out) before going offline." });
+      }
+    }
+
     // Preserve last known coordinates (rlats/rlongs) so Admin Live Fleet Radar
     // can display the driver's last seen position with an offline marker.
     // Dispatch safety is guaranteed by `WHERE r.a_status = 1 AND r.rloc_updated_at >= freshSince`.

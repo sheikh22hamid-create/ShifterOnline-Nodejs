@@ -50,6 +50,11 @@ async function punchIn(riderId, lat, lng) {
   const enrollment = await getTodayEnrollment(riderId);
   if (!enrollment) throw new Error("No active Daily Driver enrollment found for today.");
 
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: Number(riderId) }, select: { a_status: true } });
+  if (!rider || rider.a_status !== 1) {
+    throw new Error("Please go online before starting your Daily Driver duty.");
+  }
+
   const plan = enrollment.plan;
   let zone = null;
   if (plan.assigned_zone_id) {
@@ -68,32 +73,43 @@ async function punchIn(riderId, lat, lng) {
     log = await prisma.daily_driver_duty_log.create({
       data: { enrollment_id: enrollment.id, rider_id: Number(riderId), punch_in_at: istNow(), status: "in_progress" },
     });
-  } else if (!log.punch_in_at) {
+  } else if (log.status !== "in_progress") {
+    // Covers both the first punch-in (no punch_in_at yet) and resuming after
+    // a mid-day pause - either way the session (re)starts now. `updated_at`
+    // resets here too, which is what recordDutyLocationPing uses as the
+    // delta reference, so break time is never counted as online.
     log = await prisma.daily_driver_duty_log.update({
       where: { id: log.id },
-      data: { punch_in_at: istNow(), status: "in_progress" },
+      data: { punch_in_at: log.punch_in_at || istNow(), status: "in_progress" },
     });
   }
 
   return { success: true, message: "Duty punched in successfully", insideZone, log, plan, zone };
 }
 
+/**
+ * Punch-out only PAUSES the current duty session - it does not settle.
+ * The enrollment stays "active" so the driver can punch back in any number
+ * of times before the plan's duty window ends (e.g. a lunch break). Real
+ * settlement only happens once via maybeAutoSettle, lazily triggered by
+ * whichever API call (status/ping/punch-in) first lands after duty_end_time.
+ */
 async function punchOut(riderId) {
   const enrollment = await prisma.daily_driver_enrollment.findFirst({
     where: { rider_id: Number(riderId), enrollment_date: istDateOnly(), status: "active" },
     include: { plan: true, duty_log: true },
     orderBy: { id: "desc" },
   });
-  if (!enrollment || !enrollment.duty_log) throw new Error("No active duty log found to punch out.");
+  if (!enrollment || !enrollment.duty_log || enrollment.duty_log.status !== "in_progress") {
+    throw new Error("No active duty log found to punch out.");
+  }
 
   await prisma.daily_driver_duty_log.update({
     where: { id: enrollment.duty_log.id },
-    data: { punch_out_at: istNow(), status: "completed" },
+    data: { punch_out_at: istNow(), status: "paused" },
   });
-  await prisma.daily_driver_enrollment.update({ where: { id: enrollment.id }, data: { status: "settlement_pending" } });
 
-  const settled = await settlementService.settleEnrollment(enrollment.id);
-  return { success: true, message: "Duty punched out successfully", settlement: settled };
+  return { success: true, message: "Duty paused. You can punch in again before your duty window ends." };
 }
 
 /**
@@ -162,9 +178,17 @@ async function getDutyStatus(riderId) {
 
   let inZoneMinutes = log ? log.total_in_zone_minutes || 0 : 0;
   let totalOnlineMinutes = log ? log.total_online_minutes || 0 : 0;
-  if (isPunchedIn && log.punch_in_at) {
-    const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(log.punch_in_at).getTime()) / 60000));
-    totalOnlineMinutes = Math.max(totalOnlineMinutes, elapsedMinutes);
+  if (isPunchedIn) {
+    // total_online_minutes only advances on each ~90s ping, so add the time
+    // elapsed since the current session started (punch-in or last resume,
+    // tracked via updated_at) as a live estimate on top of the accumulated
+    // total - using punch_in_at alone here would double-count any earlier
+    // pause/resume break as online time.
+    const sessionStart = log.updated_at || log.punch_in_at;
+    if (sessionStart) {
+      const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 60000));
+      totalOnlineMinutes += elapsedMinutes;
+    }
   }
 
   const targetMinutes = Number(plan.required_duty_hours) * 60;

@@ -681,7 +681,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
                     if (!result.has("Result") || !"true".equalsIgnoreCase(result.get("Result").getAsString())) {
                         updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
-                        Toast.makeText(getActivity(), R.string.home_status_failed, Toast.LENGTH_LONG).show();
+                        String failMsg = (result.has("msg") && !result.get("msg").isJsonNull())
+                                ? result.get("msg").getAsString() : null;
+                        if (failMsg != null && !failMsg.isEmpty()) {
+                            Toast.makeText(getActivity(), failMsg, Toast.LENGTH_LONG).show();
+                        } else {
+                            Toast.makeText(getActivity(), R.string.home_status_failed, Toast.LENGTH_LONG).show();
+                        }
                         return;
                     }
                     if (online) {
@@ -1593,6 +1599,11 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 if (!isAdded() || getActivity() == null || binding == null
                         || binding.incDailyDriverDutyCard == null) return;
 
+                // Keep the cached status fresh so LocationUpdateService's
+                // maybeSendDailyDriverPing (which reads DailyDriverManager.isPunchedIn())
+                // knows whether a duty ping should go out on this fused-location tick.
+                com.shifter.driver.utility.DailyDriverManager.getInstance().setCurrentStatus(status);
+
                 if (status != null && status.isHasActiveEnrollment()) {
                     binding.incDailyDriverDutyCard.cardDailyDriverDuty.setVisibility(View.VISIBLE);
 
@@ -1652,7 +1663,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 @Override
                 public void onSuccess(String message, org.json.JSONObject settlement) {
                     if (getActivity() == null) return;
-                    showDailyDutySettlementDialog(message, settlement);
+                    // Punch-out only pauses the shift now - final settlement happens
+                    // automatically once the plan's duty window actually ends, so there's
+                    // nothing to show yet beyond confirming the pause.
+                    Toast.makeText(getActivity(), message, Toast.LENGTH_LONG).show();
                     setupDailyDriverUI();
                 }
 
