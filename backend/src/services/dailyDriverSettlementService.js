@@ -24,10 +24,11 @@ function dutyWindow(enrollmentDate, plan) {
  * Pure settlement math, split out from settleEnrollment so it can be unit
  * tested without a database. Pay is proportional to actual duty hours, not a
  * fixed daily price minus a penalty: e.g. price=1000 over a 10h plan, 2h
- * actually worked (all conditions met) -> 200, not 1000 minus some shortfall
- * charge. Hours beyond required are handled separately as overtime, and the
- * zero-ride rule still overrides everything - working hours with zero
- * completed rides pays nothing.
+ * actually worked -> 200, not 1000 minus some shortfall charge. Hours beyond
+ * required are handled separately as overtime. There is no zero-ride gate -
+ * the driver is paid for being online/in-zone regardless of whether any ride
+ * was actually dispatched to them (business decision: guaranteed pay for
+ * availability, not for completed rides).
  */
 function computeSettlement({ ridesCompleted, actualKm, rideEarnings, dutyHoursCounted, plan }) {
   const requiredHours = Number(plan.required_duty_hours) || 0;
@@ -42,11 +43,9 @@ function computeSettlement({ ridesCompleted, actualKm, rideEarnings, dutyHoursCo
   const payableHours = Math.min(dutyHoursCounted, requiredHours);
   // Kept as an informational figure (price minus this equals the proportional
   // eligible amount below) - no longer driven by plan.shortfall_hourly_rate.
-  // Zero-ride rule zeroes these too, same as eligiblePlanAmount, so they don't
-  // misleadingly suggest a shortfall charge on a day that pays nothing anyway.
-  const shortfallHours = ridesCompleted === 0 ? 0 : money(Math.max(0, requiredHours - dutyHoursCounted));
-  const shortfallDeduction = ridesCompleted === 0 ? 0 : money(shortfallHours * perHourRate);
-  const eligiblePlanAmount = ridesCompleted === 0 ? 0 : money(payableHours * perHourRate);
+  const shortfallHours = money(Math.max(0, requiredHours - dutyHoursCounted));
+  const shortfallDeduction = money(shortfallHours * perHourRate);
+  const eligiblePlanAmount = money(payableHours * perHourRate);
 
   const diff = money(eligiblePlanAmount - rideEarnings);
   let settlementDirection = "none";
@@ -165,29 +164,25 @@ async function writeLedgerEntries(tx, enrollment, plan, calc) {
   const existing = await tx.daily_driver_ledger.findFirst({ where: { enrollment_id: enrollment.id } });
   if (existing) return; // already ledgered - settleEnrollment being re-run after it already completed
 
-  const rows = [];
-  if (calc.ridesCompleted === 0) {
-    rows.push({
-      entry_type: "ZERO_RIDE_FORFEIT",
-      amount: Number(plan.price),
-      balance_effect: "DEBIT",
-      notes: `No rides completed during duty window on ${dateStr} - plan amount forfeited (₹${plan.price})`,
-    });
-  } else {
-    rows.push({
+  // No zero-ride gate: the driver is paid for duty hours regardless of
+  // whether any ride was dispatched to them, so this is always the full
+  // price credited, then debited down to the proportional eligible amount
+  // via the shortfall entry below (if hours fell short of required).
+  const rows = [
+    {
       entry_type: "PLAN_AMOUNT",
       amount: Number(plan.price),
       balance_effect: "CREDIT",
       notes: `Base plan amount for ${plan.plan_name} on ${dateStr}`,
+    },
+  ];
+  if (calc.shortfallDeduction > 0) {
+    rows.push({
+      entry_type: "SHORTFALL_DEDUCTION",
+      amount: calc.shortfallDeduction,
+      balance_effect: "DEBIT",
+      notes: `Shortfall deduction for ${dateStr}`,
     });
-    if (calc.shortfallDeduction > 0) {
-      rows.push({
-        entry_type: "SHORTFALL_DEDUCTION",
-        amount: calc.shortfallDeduction,
-        balance_effect: "DEBIT",
-        notes: `Shortfall deduction for ${dateStr}`,
-      });
-    }
   }
   if (calc.extraKmCharge > 0) {
     rows.push({ entry_type: "EXTRA_KM_CHARGE", amount: calc.extraKmCharge, balance_effect: "CREDIT", notes: `Extra KM charge for ${dateStr}` });

@@ -31,19 +31,21 @@ describe("dailyDriverSettlementService.computeSettlement", () => {
     expect(result.finalSettlementAmount).toBe(270);
   });
 
-  it("zero rides forfeits the entire plan amount regardless of online hours (spec section 17)", () => {
+  it("pays proportionally for duty hours even with zero completed rides (no zero-ride gate)", () => {
     const result = computeSettlement({
       ridesCompleted: 0,
       actualKm: 0,
       rideEarnings: 0,
-      dutyHoursCounted: 9, // stayed online 9/10 hours, but zero rides
+      dutyHoursCounted: 9, // stayed online 9/10 hours, zero rides dispatched
       plan: plan(),
     });
 
-    expect(result.eligiblePlanAmount).toBe(0);
-    expect(result.shortfallDeduction).toBe(0); // shortfall math never runs for zero rides
-    expect(result.settlementDirection).toBe("none");
-    expect(result.finalSettlementAmount).toBe(0);
+    // price=1400, required=10h -> 140/hr; 9h worked -> 1260, paid regardless of rides.
+    expect(result.shortfallHours).toBe(1);
+    expect(result.shortfallDeduction).toBe(140);
+    expect(result.eligiblePlanAmount).toBe(1260);
+    expect(result.settlementDirection).toBe("company_pays");
+    expect(result.finalSettlementAmount).toBe(1260);
   });
 
   it("retains the excess for the company when ride earnings exceed the eligible plan amount", () => {

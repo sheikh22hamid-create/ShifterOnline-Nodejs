@@ -1691,6 +1691,8 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     dailyEarningsBaseline = status.getCurrentEarnings();
                     dailyEarningsBaselineAtMillis = System.currentTimeMillis();
                     dailyEarningsPerMinuteRate = status.getPerHourRate() / 60.0;
+                    // No zero-ride gate - driver is paid for being online/in-zone regardless
+                    // of whether a ride was actually dispatched, so this ticks purely on time.
                     if (status.isCurrentlyPunchedIn()) {
                         startDailyEarningsTicker();
                     } else {

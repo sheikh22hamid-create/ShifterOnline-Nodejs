@@ -273,12 +273,11 @@ async function getDutyStatus(riderId) {
     where: { rid: Number(riderId), o_status: "Completed", ddate: { gte: start, lte: end } },
   });
 
-  // Live preview of what settlement would pay right now - same zero-ride
-  // gate and proportional-hours math as the real settlement calc, so it
-  // reads ₹0 until the first ride lands, matching the actual payout rule
-  // instead of implying money is accruing for merely staying online.
+  // Live preview of what settlement would pay right now - proportional to
+  // duty hours so far, no ride-completion gate. Driver is paid for
+  // availability (being online/in-zone), not for rides actually dispatched.
   const payableMinutes = Math.min(inZoneMinutes, targetMinutes);
-  const currentEarnings = ridesCompletedSoFar > 0 ? Math.round((payableMinutes / 60) * perHourRate * 100) / 100 : 0;
+  const currentEarnings = Math.round((payableMinutes / 60) * perHourRate * 100) / 100;
 
   return {
     hasActiveEnrollment: true,
