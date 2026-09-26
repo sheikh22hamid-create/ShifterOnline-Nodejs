@@ -1038,10 +1038,16 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         getActivity().runOnUiThread(() -> {
             try {
-                // If monthly driver, hide delivery types selection completely
+                // If monthly driver, or currently on Daily Driver duty, hide delivery
+                // types selection completely - Daily Driver punch-in force-enables every
+                // model server-side (see dailyDriverDutyService.enableAllDeliveryModels)
+                // precisely so a punched-in driver can't go invisible to dispatch while
+                // still racking up duty hours, so exposing the toggles here would just
+                // let the driver undo that from the UI.
                 MonthlyDutyStatus currentDuty = MonthlyDutyManager.getInstance().getCurrentStatus();
                 boolean isMonthly = (currentDuty != null && currentDuty.isMonthlyDriver());
-                if (isMonthly) {
+                boolean isDailyDriverOnDuty = com.shifter.driver.utility.DailyDriverManager.getInstance().isPunchedIn();
+                if (isMonthly || isDailyDriverOnDuty) {
                     if (binding.cardDeliveryTypesSection != null) {
                         binding.cardDeliveryTypesSection.setVisibility(View.GONE);
                     }
@@ -1117,6 +1123,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
      */
     private void openDeliveryPreferencesSheet() {
         if (getActivity() == null) return;
+        if (com.shifter.driver.utility.DailyDriverManager.getInstance().isPunchedIn()) {
+            Toast.makeText(getActivity(), "Delivery models are auto-enabled during Daily Driver duty.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (packageDataList == null || packageDataList.isEmpty()) {
             Toast.makeText(getActivity(), "Loading delivery types...", Toast.LENGTH_SHORT).show();
             getPackageList();
@@ -1603,6 +1613,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 // maybeSendDailyDriverPing (which reads DailyDriverManager.isPunchedIn())
                 // knows whether a duty ping should go out on this fused-location tick.
                 com.shifter.driver.utility.DailyDriverManager.getInstance().setCurrentStatus(status);
+                updateDeliveryTypesUI();
 
                 if (status != null && status.isHasActiveEnrollment()) {
                     binding.incDailyDriverDutyCard.cardDailyDriverDuty.setVisibility(View.VISIBLE);

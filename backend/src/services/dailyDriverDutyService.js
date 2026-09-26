@@ -12,6 +12,36 @@ function istDateOnly(d = istNow()) {
 }
 
 /**
+ * Forces every delivery model for the rider's vehicle category to enabled.
+ * Daily Driver duty guarantees a fixed payout for being dispatchable, so a
+ * driver punched in can't quietly disable all models and collect duty hours
+ * (and the zero-ride-forfeit-bypassing overtime pay) while invisible to
+ * dispatch - see memory on the Daily Driver abuse review.
+ */
+async function enableAllDeliveryModels(riderId) {
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: Number(riderId) }, select: { vehicle: true } });
+  if (!rider) return;
+
+  const category = await prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
+  if (!category) return;
+
+  const packages = await prisma.tbl_package.findMany({ where: { cat_id: category.id, status: 1 }, select: { id: true } });
+  for (const pkg of packages) {
+    const deliveryType = String(pkg.id);
+    const existing = await prisma.tbl_rider_delivery_type.findFirst({
+      where: { rider_id: Number(riderId), delivery_type: deliveryType },
+    });
+    if (existing) {
+      if (existing.status !== 1) {
+        await prisma.tbl_rider_delivery_type.update({ where: { id: existing.id }, data: { status: 1 } });
+      }
+    } else {
+      await prisma.tbl_rider_delivery_type.create({ data: { rider_id: Number(riderId), delivery_type: deliveryType, status: 1 } });
+    }
+  }
+}
+
+/**
  * Lazily closes out an enrollment whose duty window has ended but the
  * driver never explicitly punched out (app killed, phone died, etc). Called
  * from every read/ping path so no separate cron is required for this case -
@@ -63,6 +93,8 @@ async function punchIn(riderId, lat, lng) {
 
   let insideZone = true;
   if (lat && lng && zone) insideZone = geofenceService.isInsideZone(lat, lng, zone);
+
+  await enableAllDeliveryModels(riderId);
 
   if (enrollment.status === "enrolled") {
     await prisma.daily_driver_enrollment.update({ where: { id: enrollment.id }, data: { status: "active" } });
