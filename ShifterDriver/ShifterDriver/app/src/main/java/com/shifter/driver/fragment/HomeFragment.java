@@ -278,6 +278,43 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         }
     };
 
+    // Live Daily Driver earning ticker - extrapolates between the ~10s duty-status
+    // polls so the figure moves every second, and freezes the instant duty is paused.
+    private final android.os.Handler dailyEarningsTickerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable dailyEarningsTickerRunnable;
+    private double dailyEarningsBaseline = 0;
+    private long dailyEarningsBaselineAtMillis = 0;
+    private double dailyEarningsPerMinuteRate = 0;
+
+    private void updateLiveDailyEarningText() {
+        if (binding == null || binding.incDailyDriverDutyCard == null
+                || binding.incDailyDriverDutyCard.txtDailyLiveEarning == null) return;
+        double elapsedMinutes = Math.max(0, (System.currentTimeMillis() - dailyEarningsBaselineAtMillis) / 60000.0);
+        double liveValue = dailyEarningsBaseline + elapsedMinutes * dailyEarningsPerMinuteRate;
+        binding.incDailyDriverDutyCard.txtDailyLiveEarning.setText(
+                String.format(Locale.getDefault(), "₹%.2f", liveValue));
+    }
+
+    private void startDailyEarningsTicker() {
+        if (dailyEarningsTickerRunnable != null) return;
+        dailyEarningsTickerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                updateLiveDailyEarningText();
+                dailyEarningsTickerHandler.postDelayed(this, 1000);
+            }
+        };
+        dailyEarningsTickerHandler.post(dailyEarningsTickerRunnable);
+    }
+
+    private void stopDailyEarningsTicker() {
+        if (dailyEarningsTickerRunnable != null) {
+            dailyEarningsTickerHandler.removeCallbacks(dailyEarningsTickerRunnable);
+            dailyEarningsTickerRunnable = null;
+        }
+        updateLiveDailyEarningText(); // freeze on whatever the last known baseline was
+    }
+
     /**
      * Updates header greeting dynamically based on current time of day
      * and loads driver profile picture with presence dot tint.
@@ -1051,6 +1088,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     if (binding.cardDeliveryTypesSection != null) {
                         binding.cardDeliveryTypesSection.setVisibility(View.GONE);
                     }
+                    if (isDailyDriverOnDuty) {
+                        // Section (individual toggles) is hidden, but the online-status
+                        // card's "N delivery types active" summary is a separate view
+                        // that this early return would otherwise skip refreshing entirely -
+                        // it needs to reflect the just-force-enabled models too.
+                        updateActiveDeliveryTypesSummary();
+                    }
                     return;
                 } else {
                     if (binding.cardDeliveryTypesSection != null) {
@@ -1177,6 +1221,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         super.onPause();
         NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
+        if (dailyEarningsTickerRunnable != null) dailyEarningsTickerHandler.removeCallbacks(dailyEarningsTickerRunnable);
     }
 
     @Override
@@ -1184,6 +1229,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         super.onDestroyView();
         stopPulseAnimation();
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
+        if (dailyEarningsTickerRunnable != null) dailyEarningsTickerHandler.removeCallbacks(dailyEarningsTickerRunnable);
         NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         binding = null;
     }
@@ -1640,6 +1686,17 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     binding.incDailyDriverDutyCard.txtDailyRidesCompleted.setText(
                             String.valueOf(status.getRidesCompleted()));
 
+                    // Live earning - re-baseline from this poll's authoritative value, then
+                    // either keep ticking (still punched in) or freeze (paused/settled).
+                    dailyEarningsBaseline = status.getCurrentEarnings();
+                    dailyEarningsBaselineAtMillis = System.currentTimeMillis();
+                    dailyEarningsPerMinuteRate = status.getPerHourRate() / 60.0;
+                    if (status.isCurrentlyPunchedIn()) {
+                        startDailyEarningsTicker();
+                    } else {
+                        stopDailyEarningsTicker();
+                    }
+
                     // Punch button
                     if (status.isCurrentlyPunchedIn()) {
                         binding.incDailyDriverDutyCard.btnPunchDailyDuty.setText("END DUTY (PUNCH OUT)");
@@ -1656,6 +1713,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             startActivity(new Intent(getActivity(), DailyDriverPlansActivity.class)));
                 } else {
                     binding.incDailyDriverDutyCard.cardDailyDriverDuty.setVisibility(View.GONE);
+                    stopDailyEarningsTicker();
                 }
             }
 
@@ -1678,6 +1736,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     // automatically once the plan's duty window actually ends, so there's
                     // nothing to show yet beyond confirming the pause.
                     Toast.makeText(getActivity(), message, Toast.LENGTH_LONG).show();
+                    stopDailyEarningsTicker(); // freeze instantly, don't wait for the next poll
                     setupDailyDriverUI();
                 }
 

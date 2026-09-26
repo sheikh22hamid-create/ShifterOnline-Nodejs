@@ -247,19 +247,38 @@ async function getDutyStatus(riderId) {
   let inZoneMinutes = log ? log.total_in_zone_minutes || 0 : 0;
   let totalOnlineMinutes = log ? log.total_online_minutes || 0 : 0;
   if (isPunchedIn) {
-    // total_online_minutes only advances on each ~90s ping, so add the time
-    // elapsed since the current session started (punch-in or last resume,
-    // tracked via updated_at) as a live estimate on top of the accumulated
-    // total - using punch_in_at alone here would double-count any earlier
-    // pause/resume break as online time.
+    // total_online/in_zone_minutes only advance on each ~90s ping, so add the
+    // time elapsed since the current session started (punch-in or last
+    // resume, tracked via updated_at) as a live estimate on top of the
+    // accumulated total - using punch_in_at alone here would double-count any
+    // earlier pause/resume break as online time. in_zone is optimistically
+    // assumed to continue in whatever state the last ping found it in; the
+    // next real ping corrects it either way.
     const sessionStart = log.updated_at || log.punch_in_at;
     if (sessionStart) {
       const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(sessionStart).getTime()) / 60000));
       totalOnlineMinutes += elapsedMinutes;
+      inZoneMinutes += elapsedMinutes;
     }
   }
 
   const targetMinutes = Number(plan.required_duty_hours) * 60;
+  const perHourRate = Number(plan.required_duty_hours) > 0 ? Number(plan.price) / Number(plan.required_duty_hours) : 0;
+
+  // Live rides-completed count - duty_log.rides_completed is only ever
+  // written at final settlement, so without this the card would show 0
+  // rides all day even after the driver completes several.
+  const { start, end } = settlementService.dutyWindow(enrollment.enrollment_date, plan);
+  const ridesCompletedSoFar = await prisma.pkg_order.count({
+    where: { rid: Number(riderId), o_status: "Completed", ddate: { gte: start, lte: end } },
+  });
+
+  // Live preview of what settlement would pay right now - same zero-ride
+  // gate and proportional-hours math as the real settlement calc, so it
+  // reads ₹0 until the first ride lands, matching the actual payout rule
+  // instead of implying money is accruing for merely staying online.
+  const payableMinutes = Math.min(inZoneMinutes, targetMinutes);
+  const currentEarnings = ridesCompletedSoFar > 0 ? Math.round((payableMinutes / 60) * perHourRate * 100) / 100 : 0;
 
   return {
     hasActiveEnrollment: true,
@@ -275,6 +294,7 @@ async function getDutyStatus(riderId) {
       extra_km_rate: Number(plan.extra_km_rate),
       shortfall_hourly_rate: Number(plan.shortfall_hourly_rate),
       overtime_hourly_rate: Number(plan.overtime_hourly_rate),
+      per_hour_rate: Math.round(perHourRate * 100) / 100,
     },
     duty: {
       isPunchedIn,
@@ -282,7 +302,8 @@ async function getDutyStatus(riderId) {
       inZoneMinutes,
       totalOnlineMinutes,
       targetMinutes,
-      ridesCompleted: log ? log.rides_completed : 0,
+      ridesCompleted: ridesCompletedSoFar,
+      currentEarnings,
     },
   };
 }

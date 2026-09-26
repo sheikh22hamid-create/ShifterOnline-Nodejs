@@ -12,6 +12,7 @@ const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 const { sendPushNotification } = require("../config/firebase");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
+const orderDestinationService = require("../services/orderDestinationService");
 
 async function customerTripProgress(order) {
   if (!order.rid) return null;
@@ -680,6 +681,75 @@ async function customerCancel(req, res) {
   }
 }
 
+async function previewDestinationChange(req, res) {
+  try {
+    const { uid, order_id, new_dlat, new_dlong, new_daddress } = req.body;
+    const result = await orderDestinationService.previewDestinationChange({
+      uid,
+      orderId: order_id,
+      newDlat: new_dlat,
+      newDlong: new_dlong,
+      newDaddress: new_daddress,
+    });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Destination preview calculated successfully",
+      ...result,
+    });
+  } catch (err) {
+    const messages = {
+      INVALID_ORDER_ID: [400, "Valid order_id is required"],
+      INVALID_UID: [400, "Valid uid is required"],
+      INVALID_COORDINATES: [400, "Valid new_dlat and new_dlong are required"],
+      INVALID_ADDRESS: [400, "Valid new_daddress is required"],
+      ORDER_NOT_FOUND: [404, "Order not found"],
+      FORBIDDEN: [403, "You are not authorized to update this order"],
+      ORDER_NOT_ACTIVE: [409, "Destination can only be changed for active orders"],
+    };
+    if (messages[err.message]) {
+      const [status, message] = messages[err.message];
+      return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
+    }
+    logger.error("previewDestinationChange failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+async function confirmDestinationChange(req, res) {
+  try {
+    const { uid, order_id, new_dlat, new_dlong, new_daddress } = req.body;
+    const result = await orderDestinationService.confirmDestinationChange({
+      uid,
+      orderId: order_id,
+      newDlat: new_dlat,
+      newDlong: new_dlong,
+      newDaddress: new_daddress,
+    });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Destination updated successfully",
+      ...result,
+    });
+  } catch (err) {
+    const messages = {
+      INVALID_ORDER_ID: [400, "Valid order_id is required"],
+      INVALID_UID: [400, "Valid uid is required"],
+      INVALID_COORDINATES: [400, "Valid new_dlat and new_dlong are required"],
+      INVALID_ADDRESS: [400, "Valid new_daddress is required"],
+      ORDER_NOT_FOUND: [404, "Order not found"],
+      FORBIDDEN: [403, "You are not authorized to update this order"],
+      ORDER_NOT_ACTIVE: [409, "Destination can only be changed for active orders"],
+    };
+    if (messages[err.message]) {
+      const [status, message] = messages[err.message];
+      return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
+    }
+    logger.error("confirmDestinationChange failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
 
 async function driverCancel(req, res) {
   try {
@@ -1526,4 +1596,6 @@ module.exports = {
   advancePayment,
   redeemAdvanceWithPoints,
   referralDiscountInfo,
+  previewDestinationChange,
+  confirmDestinationChange,
 };

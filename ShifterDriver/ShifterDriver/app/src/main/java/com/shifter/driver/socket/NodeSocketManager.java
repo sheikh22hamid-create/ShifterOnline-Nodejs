@@ -69,6 +69,11 @@ public class NodeSocketManager {
         void onOrderCancelledByCustomer(JSONObject data);
     }
 
+    /** order:destination_updated — customer updated drop location on an active trip. */
+    public interface OrderDestinationUpdatedListener {
+        void onOrderDestinationUpdated(JSONObject data);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -78,6 +83,7 @@ public class NodeSocketManager {
     private QueueUpdateListener queueUpdateListener;
     private RoleChangeListener roleChangeListener;
     private OrderCancelledListener orderCancelledListener;
+    private OrderDestinationUpdatedListener orderDestinationUpdatedListener;
 
     private NodeSocketManager() {}
 
@@ -196,6 +202,13 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("order:destination_updated", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderDestinationUpdatedListener != null) {
+                orderDestinationUpdatedListener.onOrderDestinationUpdated(data);
+            }
+        }));
+
         socket.connect();
     }
 
@@ -222,6 +235,11 @@ public class NodeSocketManager {
     /** Listener for a customer cancelling an order this driver already accepted. */
     public void setOrderCancelledListener(OrderCancelledListener listener) {
         this.orderCancelledListener = listener;
+    }
+
+    /** Listener for a customer updating drop destination on an active trip. */
+    public void setOrderDestinationUpdatedListener(OrderDestinationUpdatedListener listener) {
+        this.orderDestinationUpdatedListener = listener;
     }
 
     public void emitAccept(JSONObject data, AckListener ackListener) {

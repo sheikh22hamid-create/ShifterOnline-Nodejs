@@ -14,7 +14,7 @@ function plan(overrides = {}) {
 }
 
 describe("dailyDriverSettlementService.computeSettlement", () => {
-  it("matches the spec's worked example exactly (8/10 hrs, 1 ride, earnings below eligible amount)", () => {
+  it("pays proportionally for actual duty hours out of the required hours (8/10 hrs -> 8/10 of price)", () => {
     const result = computeSettlement({
       ridesCompleted: 3,
       actualKm: 78,
@@ -23,11 +23,12 @@ describe("dailyDriverSettlementService.computeSettlement", () => {
       plan: plan(),
     });
 
+    // price=1400, required=10h -> 140/hr; 8h worked -> 1120, not 1400 minus a shortfall charge.
     expect(result.shortfallHours).toBe(2);
-    expect(result.shortfallDeduction).toBe(320);
-    expect(result.eligiblePlanAmount).toBe(1080);
+    expect(result.shortfallDeduction).toBe(280);
+    expect(result.eligiblePlanAmount).toBe(1120);
     expect(result.settlementDirection).toBe("company_pays");
-    expect(result.finalSettlementAmount).toBe(230);
+    expect(result.finalSettlementAmount).toBe(270);
   });
 
   it("zero rides forfeits the entire plan amount regardless of online hours (spec section 17)", () => {

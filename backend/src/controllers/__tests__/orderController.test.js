@@ -19,12 +19,24 @@ jest.mock("../../services/pricingEngine", () => ({
 jest.mock("../../services/dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyNewOrder: jest.fn() }));
 jest.mock("../../utils/geoDistance", () => ({ getRoadDistanceKm: jest.fn() }));
+jest.mock("../../services/orderDestinationService", () => ({
+  previewDestinationChange: jest.fn(),
+  confirmDestinationChange: jest.fn(),
+}));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
 const dispatchManager = require("../../services/dispatchManager");
+const orderDestinationService = require("../../services/orderDestinationService");
 const { getRoadDistanceKm } = require("../../utils/geoDistance");
-const { createOrderCore, createOrder, getOrderDetails, checkNextDayEligibility } = require("../orderController");
+const {
+  createOrderCore,
+  createOrder,
+  getOrderDetails,
+  checkNextDayEligibility,
+  previewDestinationChange,
+  confirmDestinationChange,
+} = require("../orderController");
 
 describe("orderController.createOrderCore", () => {
   beforeEach(() => {
@@ -455,4 +467,90 @@ describe("orderController.checkNextDayEligibility", () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
 });
+
+describe("destinationChange controller endpoints", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe("previewDestinationChange", () => {
+    it("returns 200 with preview data on success", async () => {
+      orderDestinationService.previewDestinationChange.mockResolvedValue({
+        order_id: 101,
+        old_distance: 10,
+        new_distance: 14,
+        distance_diff: 4,
+        old_fare: 150,
+        new_fare: 190,
+        fare_diff: 40,
+        new_dlat: "28.6",
+        new_dlong: "77.4",
+        new_daddress: "New Drop",
+      });
+
+      const req = {
+        body: {
+          uid: 55,
+          order_id: 101,
+          new_dlat: 28.6,
+          new_dlong: 77.4,
+          new_daddress: "New Drop",
+        },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+      await previewDestinationChange(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const json = res.json.mock.calls[0][0];
+      expect(json.ResponseCode).toBe("200");
+      expect(json.fare_diff).toBe(40);
+      expect(json.new_fare).toBe(190);
+    });
+
+    it("maps ORDER_NOT_ACTIVE to 409", async () => {
+      orderDestinationService.previewDestinationChange.mockRejectedValue(new Error("ORDER_NOT_ACTIVE"));
+
+      const req = { body: { uid: 55, order_id: 101, new_dlat: 28.6, new_dlong: 77.4, new_daddress: "New Drop" } };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+      await previewDestinationChange(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json.mock.calls[0][0].ResponseCode).toBe("409");
+    });
+  });
+
+  describe("confirmDestinationChange", () => {
+    it("returns 200 with updated order data on success", async () => {
+      orderDestinationService.confirmDestinationChange.mockResolvedValue({
+        order_id: 101,
+        old_fare: 150,
+        new_fare: 190,
+        fare_diff: 40,
+        new_daddress: "New Drop",
+      });
+
+      const req = {
+        body: {
+          uid: 55,
+          order_id: 101,
+          new_dlat: 28.6,
+          new_dlong: 77.4,
+          new_daddress: "New Drop",
+        },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+      await confirmDestinationChange(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const json = res.json.mock.calls[0][0];
+      expect(json.ResponseCode).toBe("200");
+      expect(json.new_fare).toBe(190);
+      expect(json.fare_diff).toBe(40);
+    });
+  });
+});
+
 

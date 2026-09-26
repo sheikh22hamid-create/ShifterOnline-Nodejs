@@ -101,6 +101,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // window, so a cancel landing while the screen is merely backgrounded
     // (not destroyed) still reaches it.
     private android.content.BroadcastReceiver orderCancelledReceiver;
+    private android.content.BroadcastReceiver destinationUpdatedReceiver;
     private final android.os.Handler tripHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private android.content.BroadcastReceiver tripProgressReceiver;
     private boolean tripActionPending;
@@ -249,6 +250,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             } catch (Exception ignored) {}
             orderCancelledReceiver = null;
         }
+        if (destinationUpdatedReceiver != null) {
+            try {
+                unregisterReceiver(destinationUpdatedReceiver);
+            } catch (Exception ignored) {}
+            destinationUpdatedReceiver = null;
+        }
     }
 
     private void registerOrderCancelledReceiver() {
@@ -276,6 +283,75 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 this, orderCancelledReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
+    private void registerDestinationUpdatedReceiver() {
+        destinationUpdatedReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context context, Intent intent) {
+                if (intent == null) return;
+                String incomingOrderId = intent.getStringExtra("order_id");
+                if (orderItem == null || incomingOrderId == null || !incomingOrderId.equals(orderItem.getId())) {
+                    return;
+                }
+                String newDlat = intent.getStringExtra("dlat");
+                String newDlong = intent.getStringExtra("dlong");
+                String newAddress = intent.getStringExtra("daddress");
+                String newFare = intent.getStringExtra("fare");
+                String newDistance = intent.getStringExtra("distance");
+                String fareDiff = intent.getStringExtra("fare_diff");
+
+                try {
+                    if (newDlat != null && !newDlat.isEmpty()) {
+                        orderItem.setDlat(Double.parseDouble(newDlat));
+                    }
+                    if (newDlong != null && !newDlong.isEmpty()) {
+                        orderItem.setDlong(Double.parseDouble(newDlong));
+                    }
+                } catch (Exception ignored) {}
+
+                if (newAddress != null && !newAddress.isEmpty()) {
+                    orderItem.setCustomerDaddress(newAddress);
+                }
+                if (newFare != null && !newFare.isEmpty()) {
+                    orderItem.setTotal(newFare);
+                }
+                if (newDistance != null && !newDistance.isEmpty()) {
+                    orderItem.setDistance(newDistance);
+                }
+
+                runOnUiThread(() -> onDestinationUpdatedFromCustomer(newAddress, newFare, fareDiff));
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter(
+                com.shifter.driver.socket.SocketOrderRouter.ACTION_ORDER_DESTINATION_UPDATED);
+        androidx.core.content.ContextCompat.registerReceiver(
+                this, destinationUpdatedReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    private void onDestinationUpdatedFromCustomer(String newAddress, String newFare, String fareDiff) {
+        if (orderItem == null) return;
+
+        setupUI();
+        updateLocationPath();
+
+        String currency = sessionManager != null ? sessionManager.getStringData(com.shifter.driver.utility.SessionManager.currency) : "₹";
+        String message = "Customer has changed the drop location to:\n" + (newAddress != null ? newAddress : "");
+        if (newFare != null && !newFare.isEmpty()) {
+            message += "\n\nRevised Fare: " + currency + newFare;
+            if (fareDiff != null && !fareDiff.isEmpty() && !fareDiff.equals("0")) {
+                try {
+                    double diff = Double.parseDouble(fareDiff);
+                    message += " (" + (diff > 0 ? "+" : "") + currency + fareDiff + ")";
+                } catch (Exception ignored) {}
+            }
+        }
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("📍 Drop Location Updated")
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -300,6 +376,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
 
         registerOrderCancelledReceiver();
+        registerDestinationUpdatedReceiver();
         registerTripProgress();
         registerLocationReceiver();
 

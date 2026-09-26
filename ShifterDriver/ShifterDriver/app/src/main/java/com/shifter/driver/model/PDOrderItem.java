@@ -16,7 +16,7 @@ public class PDOrderItem implements Parcelable {
 	private final String pickType;
 
 	@SerializedName("distance")
-	private final String distance;
+	private String distance;
 
 	@SerializedName("order_flow_id")
 	private String orderFlowId;
@@ -28,7 +28,7 @@ public class PDOrderItem implements Parcelable {
 	private final String description;
 
 	@SerializedName("customer_daddress")
-	private final String customerDaddress;
+	private String customerDaddress;
 
 	@SerializedName("customer_pmobile")
 	private final String customerPmobile;
@@ -49,13 +49,13 @@ public class PDOrderItem implements Parcelable {
 	private final String customerDmobile;
 
 	@SerializedName("total")
-	private final String total;
+	private String total;
 
 	@SerializedName("dlong")
-	private final double dlong;
+	private double dlong;
 
 	@SerializedName("dlat")
-	private final double dlat;
+	private double dlat;
 
 	@SerializedName("drop_name")
 	private final String dropName;
@@ -557,5 +557,25 @@ public class PDOrderItem implements Parcelable {
 		parcel.writeString(radiusRange);
 		parcel.writeString(radiusCharge);
 		parcel.writeString(paymentStatus);
+	}
+
+	public void setDlat(double dlat) {
+		this.dlat = dlat;
+	}
+
+	public void setDlong(double dlong) {
+		this.dlong = dlong;
+	}
+
+	public void setCustomerDaddress(String customerDaddress) {
+		this.customerDaddress = customerDaddress;
+	}
+
+	public void setTotal(String total) {
+		this.total = total;
+	}
+
+	public void setDistance(String distance) {
+		this.distance = distance;
 	}
 }

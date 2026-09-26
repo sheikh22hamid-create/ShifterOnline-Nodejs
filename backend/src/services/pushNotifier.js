@@ -198,10 +198,22 @@ async function notifyDriverForceAssigned(fcmToken, orderId) {
   );
 }
 
+/** Fired when customer updates the drop destination during an active trip. */
+async function notifyDriverDestinationUpdated(fcmToken, orderId, newAddress, revisedFare) {
+  return sendPushNotification(
+    fcmToken,
+    "Drop Location Updated",
+    `Customer updated drop to ${newAddress}. Revised Fare: ₹${revisedFare}`,
+    stringifyPayload({ type: "destination_updated", order_id: String(orderId), drop_address: String(newAddress), revised_fare: String(revisedFare) }),
+    "order_channel"
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
   notifyDriverForceAssigned,
+  notifyDriverDestinationUpdated,
   notifyCustomerOrderAssigned,
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,
@@ -217,3 +229,4 @@ module.exports = {
   notifyDriverWalletTransaction,
   notifyCustomerWalletTransaction,
 };
+

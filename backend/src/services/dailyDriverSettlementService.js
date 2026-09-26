@@ -22,13 +22,16 @@ function dutyWindow(enrollmentDate, plan) {
 
 /**
  * Pure settlement math, split out from settleEnrollment so it can be unit
- * tested without a database. Ordering follows spec sections 7/16/17: the
- * zero-ride rule overrides shortfall/eligible-amount math entirely, and
- * overtime/extra-KM are independent of the eligible-amount-vs-ride-earnings
- * comparison (see the design doc's settlement section for why).
+ * tested without a database. Pay is proportional to actual duty hours, not a
+ * fixed daily price minus a penalty: e.g. price=1000 over a 10h plan, 2h
+ * actually worked (all conditions met) -> 200, not 1000 minus some shortfall
+ * charge. Hours beyond required are handled separately as overtime, and the
+ * zero-ride rule still overrides everything - working hours with zero
+ * completed rides pays nothing.
  */
 function computeSettlement({ ridesCompleted, actualKm, rideEarnings, dutyHoursCounted, plan }) {
   const requiredHours = Number(plan.required_duty_hours) || 0;
+  const perHourRate = requiredHours > 0 ? Number(plan.price) / requiredHours : 0;
 
   const overtimeHours = Math.max(0, dutyHoursCounted - requiredHours);
   const overtimePay = money(overtimeHours * Number(plan.overtime_hourly_rate));
@@ -36,17 +39,14 @@ function computeSettlement({ ridesCompleted, actualKm, rideEarnings, dutyHoursCo
   const extraKm = money(Math.max(0, actualKm - plan.free_km));
   const extraKmCharge = money(extraKm * Number(plan.extra_km_rate));
 
-  let shortfallHours = 0;
-  let shortfallDeduction = 0;
-  let eligiblePlanAmount = 0;
-
-  if (ridesCompleted === 0) {
-    eligiblePlanAmount = 0;
-  } else {
-    shortfallHours = money(Math.max(0, requiredHours - dutyHoursCounted));
-    shortfallDeduction = money(shortfallHours * Number(plan.shortfall_hourly_rate));
-    eligiblePlanAmount = money(Math.max(0, Number(plan.price) - shortfallDeduction));
-  }
+  const payableHours = Math.min(dutyHoursCounted, requiredHours);
+  // Kept as an informational figure (price minus this equals the proportional
+  // eligible amount below) - no longer driven by plan.shortfall_hourly_rate.
+  // Zero-ride rule zeroes these too, same as eligiblePlanAmount, so they don't
+  // misleadingly suggest a shortfall charge on a day that pays nothing anyway.
+  const shortfallHours = ridesCompleted === 0 ? 0 : money(Math.max(0, requiredHours - dutyHoursCounted));
+  const shortfallDeduction = ridesCompleted === 0 ? 0 : money(shortfallHours * perHourRate);
+  const eligiblePlanAmount = ridesCompleted === 0 ? 0 : money(payableHours * perHourRate);
 
   const diff = money(eligiblePlanAmount - rideEarnings);
   let settlementDirection = "none";

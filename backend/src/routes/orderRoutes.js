@@ -16,6 +16,8 @@ router.post("/create", orderController.createOrder);
 router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);
 router.post("/driver-cancel", orderController.driverCancel);
+router.post("/destination-change/preview", orderController.previewDestinationChange);
+router.post("/destination-change/confirm", orderController.confirmDestinationChange);
 router.post("/verify-pickup-otp", orderController.verifyPickupOtp);
 router.post("/check-pickup-amount", orderController.checkPickupAmount);
 router.post("/cancel-reasons", orderController.getCancelReasons);
