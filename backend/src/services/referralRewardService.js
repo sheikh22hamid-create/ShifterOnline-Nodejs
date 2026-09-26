@@ -83,6 +83,54 @@ async function awardReferralReward({ referral, referredId, referredType, orderId
 }
 
 /**
+ * Credits a one-time "sign-up bonus" to the referred user/driver themselves,
+ * immediately on registration - distinct from awardReferralReward above,
+ * which pays the referrer once the referred person completes their first
+ * ride. Called right after a tbl_referral row is created in
+ * customerAuthController/riderAuthController's register handlers.
+ * Never throws - a bonus-crediting failure must not block signup.
+ */
+async function creditSignUpBonus({ referredId, referredType }) {
+  try {
+    referredId = Number(referredId);
+    if (!referredId) return 0;
+
+    const settings = await prisma.tbl_referral_setting.findFirst();
+    if (!settings || !settings.referral_enabled) return 0;
+
+    const bonus = Number(settings.signup_bonus_points) || 0;
+    if (bonus <= 0) return 0;
+
+    const model = referredType === "DRIVER" ? prisma.tbl_rider : prisma.tbl_user;
+    const entity = await model.findUnique({ where: { id: referredId } });
+    if (!entity) return 0;
+
+    const balanceAfter = (entity.referral_points || 0) + bonus;
+    await prisma.$transaction([
+      model.update({ where: { id: referredId }, data: { referral_points: balanceAfter } }),
+      prisma.tbl_referral_point_log.create({
+        data: {
+          user_id: referredId,
+          user_type: referredType,
+          points: bonus,
+          txn_type: "credit",
+          source: "signup_bonus",
+          balance_after: balanceAfter,
+          note: "Sign-up bonus for joining via referral",
+          created_at: new Date(),
+        },
+      }),
+    ]);
+
+    logger.info(`Sign-up bonus credited: ${bonus} points to ${referredType} #${referredId}`);
+    return bonus;
+  } catch (err) {
+    logger.error("creditSignUpBonus error:", err);
+    return 0;
+  }
+}
+
+/**
  * Checks and credits referral reward if the referred user/driver has completed at least 1 order.
  */
 async function creditReferralIfCompletedOrder({ referredId, referredType, orderId }) {
@@ -232,4 +280,5 @@ async function syncPendingReferralRewardsForDriver(riderId) {
 module.exports = {
   processReferralRewardsForCompletedOrder,
   syncPendingReferralRewardsForDriver,
+  creditSignUpBonus,
 };

@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
@@ -284,6 +285,7 @@ public class LocationUpdateService extends Service {
     
     private static volatile long lastDailyDriverPingAt = 0L;
     private static final long DAILY_DRIVER_PING_INTERVAL_MS = 90_000; // ~90s, within the 60-120s window
+    private static volatile boolean wasInsideDailyDriverZone = true;
 
     /**
      * Calls POST /api/rider/daily-driver/duty/ping while the driver is
@@ -305,7 +307,25 @@ public class LocationUpdateService extends Service {
 
             if (riderId == null || riderId.isEmpty()) return;
             int driverId = Integer.parseInt(riderId);
-            com.shifter.driver.utility.DailyDriverApiClient.ping(driverId, location.getLatitude(), location.getLongitude(), null);
+            com.shifter.driver.utility.DailyDriverApiClient.ping(driverId, location.getLatitude(), location.getLongitude(),
+                    new com.shifter.driver.utility.DailyDriverApiClient.PingCallback() {
+                        @Override
+                        public void onSuccess(boolean active, boolean insideZone, boolean inDelivery,
+                                               int totalInZoneMinutes, int totalOutZoneMinutes) {
+                            // Alert only on the inside->outside transition, not every ping,
+                            // so it doesn't spam a toast every ~90s while genuinely outside.
+                            if (active && !insideZone && wasInsideDailyDriverZone) {
+                                Toast.makeText(getApplicationContext(),
+                                        "You're outside your Daily Driver zone. Time won't be counted until you return.",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                            wasInsideDailyDriverZone = insideZone;
+                        }
+
+                        @Override
+                        public void onError(String message) {
+                        }
+                    });
         } catch (Exception e) {
             Log.e(TAG, "Error sending daily driver duty ping", e);
         }

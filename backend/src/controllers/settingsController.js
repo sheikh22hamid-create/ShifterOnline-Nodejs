@@ -37,7 +37,6 @@ const SETTING_PUBLIC_FIELDS = [
   "driver_pay",
   "refer_type",
   "refer_amount",
-  "refer_join_amount",
   "drive_cancellation",
   "user_cancellation",
 ];
@@ -137,7 +136,7 @@ const NULLABLE_INT_FIELDS = new Set([
 
 const FLOAT_FIELDS = new Set(["ukms", "utprice", "afprice"]);
 
-const DECIMAL_FIELDS = new Set(["refer_amount", "refer_join_amount"]);
+const DECIMAL_FIELDS = new Set(["refer_amount"]);
 
 const BOOLEAN_FIELDS = new Set(["refer_type", "status"]);
 

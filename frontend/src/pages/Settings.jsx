@@ -44,7 +44,7 @@ function Toggle({ label, checked, onChange }) {
 
 const SETTING_FIELDS = [
   'currency', 'd_title', 'd_s_title', 'timezone', 'service_charge', 'rider_commission', 'admin_earning', 'driver_pay',
-  'drive_cancellation', 'user_cancellation', 'reject_timer', 'refer_amount', 'refer_join_amount',
+  'drive_cancellation', 'user_cancellation', 'reject_timer', 'refer_amount',
   // Legacy pre-migration pricing columns - not read by the current pricing
   // engine (Rate Cards / distance slabs handle live fares now), but they're
   // real columns on the `setting` table with no other way to view/edit them.
@@ -418,10 +418,6 @@ function SettingsForm({ data, onSaved }) {
           <div>
             <Label htmlFor="refer_amount">Referral reward</Label>
             <Input id="refer_amount" type="number" value={form.refer_amount} onChange={(e) => setForm((f) => ({ ...f, refer_amount: e.target.value }))} />
-          </div>
-          <div>
-            <Label htmlFor="refer_join_amount">Sign-up bonus</Label>
-            <Input id="refer_join_amount" type="number" value={form.refer_join_amount} onChange={(e) => setForm((f) => ({ ...f, refer_join_amount: e.target.value }))} />
           </div>
         </Section>
 

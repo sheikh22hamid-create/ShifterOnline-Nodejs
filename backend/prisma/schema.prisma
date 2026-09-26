@@ -951,6 +951,7 @@ model tbl_referral_setting {
   referral_enabled              Boolean   @default(true)
   share_message                 String?   @db.Text
   ride_discount_percent         Decimal   @default(0.00) @db.Decimal(5, 2)
+  signup_bonus_points           Int       @default(0)
   updated_at                    DateTime? @db.DateTime(0)
 }
 

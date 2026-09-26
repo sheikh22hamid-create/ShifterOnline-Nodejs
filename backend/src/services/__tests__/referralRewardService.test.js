@@ -167,3 +167,52 @@ describe("referralRewardService.processReferralRewardsForCompletedOrder", () => 
     });
   });
 });
+
+describe("referralRewardService.creditSignUpBonus", () => {
+  const { creditSignUpBonus } = require("../referralRewardService");
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("credits signup_bonus_points to a referred customer and logs it", async () => {
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, signup_bonus_points: 25 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 20, referral_points: 0 });
+
+    const credited = await creditSignUpBonus({ referredId: 20, referredType: "USER" });
+
+    expect(credited).toBe(25);
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 20 }, data: { referral_points: 25 } });
+    expect(prisma.tbl_referral_point_log.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ user_id: 20, user_type: "USER", points: 25, source: "signup_bonus" }) })
+    );
+  });
+
+  it("credits a referred driver via tbl_rider", async () => {
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, signup_bonus_points: 10 });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 30, referral_points: 5 });
+
+    const credited = await creditSignUpBonus({ referredId: 30, referredType: "DRIVER" });
+
+    expect(credited).toBe(10);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 30 }, data: { referral_points: 15 } });
+  });
+
+  it("does nothing when signup_bonus_points is 0 or unset", async () => {
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, signup_bonus_points: 0 });
+
+    const credited = await creditSignUpBonus({ referredId: 20, referredType: "USER" });
+
+    expect(credited).toBe(0);
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when referrals are disabled", async () => {
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: false, signup_bonus_points: 25 });
+
+    const credited = await creditSignUpBonus({ referredId: 20, referredType: "USER" });
+
+    expect(credited).toBe(0);
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
+});

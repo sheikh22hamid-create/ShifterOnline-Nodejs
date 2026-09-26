@@ -9,6 +9,7 @@ const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const { getAutoVerificationSettings } = require("../utils/driverVerificationSettings");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
 const { normalizeToLast10Digits } = require("../utils/phone");
+const { creditSignUpBonus } = require("../services/referralRewardService");
 
 // Node port of the legacy PHP driver endpoints under
 // Php Backend/production/admin/rider_api/*.php. Response shape kept
@@ -551,6 +552,7 @@ async function registerHandler(req, res) {
           where: { id: riderId },
           data: { referred_by: referrerId, referred_by_type: refType, refer_by: referrerId },
         });
+        await creditSignUpBonus({ referredId: riderId, referredType: "DRIVER" });
       }
     } else if (riderId > 0) {
       // If no manual referral code was provided, check if a driver partner referred this phone as a driver lead
@@ -585,6 +587,7 @@ async function registerHandler(req, res) {
           where: { id: riderId },
           data: { referred_by: referrerId, referred_by_type: referrerType, refer_by: referrerId },
         });
+        await creditSignUpBonus({ referredId: riderId, referredType: "DRIVER" });
       }
     }
 

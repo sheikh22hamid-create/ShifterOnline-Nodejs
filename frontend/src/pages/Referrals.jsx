@@ -43,6 +43,7 @@ export default function Referrals() {
         driver_point: editable.driver_points_per_referral,
         lead_referral_points: editable.lead_referral_points,
         lead_verification_window_days: editable.lead_verification_window_days,
+        signup_bonus_points: editable.signup_bonus_points,
         point_value: editable.point_value,
         referral_enabled: editable.referral_enabled,
         share_message: editable.share_message,
@@ -157,6 +158,23 @@ export default function Referrals() {
                 className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
                 style={FIELD_STYLE}
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>
+                Sign-up bonus (points)
+              </label>
+              <input
+                type="number"
+                min="0"
+                disabled={!isSuperadmin}
+                value={editable.signup_bonus_points ?? 0}
+                onChange={(e) => setForm({ ...editable, signup_bonus_points: Number(e.target.value) })}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                style={FIELD_STYLE}
+              />
+              <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                Points credited immediately to a new user/driver who signs up using a referral code or matched lead.
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>

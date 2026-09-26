@@ -28,6 +28,7 @@ async function updateSettings(req, res) {
     if (driver_point !== undefined) data.driver_points_per_referral = Number(driver_point);
     if (req.body.lead_referral_points !== undefined) data.lead_referral_points = Number(req.body.lead_referral_points);
     if (req.body.lead_verification_window_days !== undefined) data.lead_verification_window_days = Number(req.body.lead_verification_window_days);
+    if (req.body.signup_bonus_points !== undefined) data.signup_bonus_points = Number(req.body.signup_bonus_points);
     if (point_value !== undefined) data.point_value = point_value;
     if (ride_discount_percent !== undefined) data.ride_discount_percent = ride_discount_percent;
     if (referral_enabled !== undefined) data.referral_enabled = Boolean(referral_enabled);

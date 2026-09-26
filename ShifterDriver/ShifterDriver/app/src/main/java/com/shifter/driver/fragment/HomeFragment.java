@@ -1652,14 +1652,30 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     binding.incDailyDriverDutyCard.badgeDailyStatus.setText(
                             enrollStatus == null || enrollStatus.isEmpty() ? "Enrolled" : enrollStatus.toUpperCase(Locale.getDefault()));
 
-                    // Live online time / target
-                    int onlineMins = status.getTotalOnlineMinutes();
+                    // Outside-zone warning - reflects the most recent duty ping's geofence
+                    // check (DailyDriverManager.isInsideZone(), updated ~every 90s by
+                    // LocationUpdateService), since getDutyStatus itself has no lat/lng to
+                    // check live. Only meaningful while actually punched in.
+                    if (binding.incDailyDriverDutyCard.txtDailyOutsideZoneWarning != null) {
+                        boolean showWarning = status.isCurrentlyPunchedIn()
+                                && !com.shifter.driver.utility.DailyDriverManager.getInstance().isInsideZone();
+                        binding.incDailyDriverDutyCard.txtDailyOutsideZoneWarning.setVisibility(
+                                showWarning ? View.VISIBLE : View.GONE);
+                    }
+
+                    // Duty progress toward the target - counts in-zone time only (ping-confirmed),
+                    // not raw online time, so this always matches what settlement actually pays for.
+                    int onlineMins = status.getInZoneMinutes();
                     int targetMins = status.getTargetMinutes();
                     int hrs = onlineMins / 60;
                     int mins = onlineMins % 60;
                     int targetHrs = targetMins / 60;
                     binding.incDailyDriverDutyCard.txtDailyOnlineHours.setText(
                             String.format(Locale.getDefault(), "%02dh %02dm / %dh", hrs, mins, targetHrs));
+                    if (binding.incDailyDriverDutyCard.progressDailyDuty != null) {
+                        int pct = targetMins > 0 ? Math.min(100, Math.round(onlineMins * 100f / targetMins)) : 0;
+                        binding.incDailyDriverDutyCard.progressDailyDuty.setProgress(pct);
+                    }
 
                     // Rides completed
                     binding.incDailyDriverDutyCard.txtDailyRidesCompleted.setText(

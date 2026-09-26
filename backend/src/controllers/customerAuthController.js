@@ -3,6 +3,7 @@ const logger = require("../utils/logger");
 const otpService = require("../services/otpService");
 const deviceSessionService = require("../services/deviceSessionService");
 const { normalizeToLast10Digits } = require("../utils/phone");
+const { creditSignUpBonus } = require("../services/referralRewardService");
 
 // Node port of the legacy PHP customer endpoints under
 // Php Backend/production/admin/cust_api/*.php. Response shape
@@ -308,6 +309,7 @@ async function register(req, res) {
         where: { id: newUser.id },
         data: { referred_by: referrerId, referred_by_type: refType },
       });
+      await creditSignUpBonus({ referredId: newUser.id, referredType: "USER" });
 
       if (referrerIsDriver) {
         const existingFav = await prisma.tbl_favorite_driver.findFirst({
@@ -356,6 +358,7 @@ async function register(req, res) {
         where: { id: matchedLead.id },
         data: { status: "converted", converted_user_id: newUser.id, converted_at: now },
       });
+      await creditSignUpBonus({ referredId: newUser.id, referredType: "USER" });
       if (!isUserReferrer && matchedLead.driver_id > 0) {
         await prisma.tbl_favorite_driver.create({
           data: { user_id: newUser.id, rider_id: matchedLead.driver_id, status: 1 },
