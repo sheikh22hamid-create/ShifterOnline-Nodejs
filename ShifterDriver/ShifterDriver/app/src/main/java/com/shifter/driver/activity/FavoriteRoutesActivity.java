@@ -558,7 +558,8 @@ public class FavoriteRoutesActivity extends AppCompatActivity {
             LinearLayout actions = row();
             Button toggle = active ? dangerButton("Pause", () -> request("pause", route, (d, e) -> load(null)))
                     : primaryButton("⚡ Activate", () -> request("activate", route, (d, e) -> load(null)));
-            toggle.setEnabled(active || (enabled && !disabled && !expired(route)));
+            boolean lockedForDailyDuty = isOnly && com.shifter.driver.utility.DailyDriverManager.getInstance().isPunchedIn();
+            toggle.setEnabled(active || (enabled && !disabled && !expired(route) && !lockedForDailyDuty));
             toggle.setAlpha(toggle.isEnabled() ? 1f : 0.45f);
             actions.addView(toggle);
 
@@ -810,13 +811,24 @@ public class FavoriteRoutesActivity extends AppCompatActivity {
         modeLbl.setPadding(0, dp(8), 0, dp(2));
         settingsCard.addView(modeLbl);
 
-        mode = spinner(config.get("allow_only").getAsBoolean()
+        // "Only my route" excludes the driver from every non-matching normal order
+        // (see backend favoriteRouteService.matchCandidates) - same invisible-to-dispatch
+        // effect as disabling all delivery models, so it's hidden while on Daily Driver
+        // duty (server also independently rejects activating it in this state).
+        boolean onDailyDriverDuty = com.shifter.driver.utility.DailyDriverManager.getInstance().isPunchedIn();
+        boolean allowOnly = config.get("allow_only").getAsBoolean() && !onDailyDriverDuty;
+        mode = spinner(allowOnly
                 ? new String[]{"Prefer my route (Normal orders also allowed)", "Only my route (Fewer requests, strict corridor)"}
                 : new String[]{"Prefer my route (Normal orders also allowed)"});
         if (route != null && route.get("mode").getAsString().equals("only") && mode.getCount() > 1) {
             mode.setSelection(1);
         }
         settingsCard.addView(mode);
+        if (onDailyDriverDuty) {
+            TextView onlyLockedNote = text("\"Only my route\" is unavailable while on Daily Driver duty.", 11);
+            onlyLockedNote.setPadding(0, dp(2), 0, 0);
+            settingsCard.addView(onlyLockedNote);
+        }
 
         forward = new CheckBox(this);
         forward.setText("Forward direction only (Accept trips heading same way)");

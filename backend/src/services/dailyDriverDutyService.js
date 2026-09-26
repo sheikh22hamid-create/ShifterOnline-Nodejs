@@ -134,7 +134,14 @@ async function punchIn(riderId, lat, lng) {
     });
   }
 
-  return { success: true, message: "Duty punched in successfully", insideZone, log, plan, zone };
+  return {
+    success: true,
+    message: "Duty punched in successfully. All delivery models have been enabled for the duration of your shift.",
+    insideZone,
+    log,
+    plan,
+    zone,
+  };
 }
 
 /**
@@ -186,9 +193,20 @@ async function recordDutyLocationPing(riderId, lat, lng) {
 
   const activeOrder = await prisma.pkg_order.findFirst({
     where: { rid: Number(riderId), o_status: { in: ["Processing", "On_Route", "Pickup"] } },
-    select: { id: true },
+    select: { id: true, accept_time: true, odate: true },
   });
-  const countAsInZone = insideZone || activeOrder != null;
+  // An active order grants in-zone credit without a real geofence check, but
+  // only for a bounded grace window from acceptance - otherwise a driver
+  // could accept one order and simply never complete it, farming unlimited
+  // "in zone" time (and dodging new dispatch, which also excludes riders
+  // with any non-terminal order) without ever actually being near the zone.
+  const ACTIVE_ORDER_IN_ZONE_GRACE_MS = 90 * 60 * 1000; // 90 minutes
+  let activeOrderWithinGrace = false;
+  if (activeOrder) {
+    const startedAt = activeOrder.accept_time || activeOrder.odate;
+    activeOrderWithinGrace = !!startedAt && (Date.now() - new Date(startedAt).getTime()) <= ACTIVE_ORDER_IN_ZONE_GRACE_MS;
+  }
+  const countAsInZone = insideZone || activeOrderWithinGrace;
 
   const lastTime = log.updated_at ? new Date(log.updated_at).getTime() : new Date(log.punch_in_at).getTime();
   const now = Date.now();

@@ -159,6 +159,11 @@ async function listDriverPlans(driverId, cityId) {
 async function enroll({ riderId, planId, enrollmentDate = null, autoEnrollId = null }) {
   const date = enrollmentDate ? istDateOnly(new Date(enrollmentDate)) : istDateOnly();
   return prisma.$transaction(async (tx) => {
+    // Serializes concurrent enroll attempts for this plan so two drivers
+    // racing for the last slot can't both read "capacity available" before
+    // either insert lands (see memory on the Daily Driver abuse review).
+    await tx.$queryRaw`SELECT id FROM daily_driver_plan WHERE id = ${Number(planId)} FOR UPDATE`;
+
     const plan = await tx.daily_driver_plan.findFirst({ where: { id: Number(planId), status: true } });
     if (!plan) throw new Error("Plan not found or inactive");
 
@@ -208,6 +213,10 @@ async function approveEnrollment({ enrollmentId, adminId }) {
   return prisma.$transaction(async (tx) => {
     const enrollment = await tx.daily_driver_enrollment.findUnique({ where: { id: Number(enrollmentId) }, include: { plan: true } });
     if (!enrollment || enrollment.status !== "pending_approval") throw new Error("Enrollment request not found or already resolved");
+
+    // Same per-plan lock as enroll() - two admins approving different pending
+    // requests for the same plan at once must not both pass the capacity check.
+    await tx.$queryRaw`SELECT id FROM daily_driver_plan WHERE id = ${enrollment.plan_id} FOR UPDATE`;
 
     // Re-check capacity at approval time - a slot may have freed up or filled
     // since the request was queued.

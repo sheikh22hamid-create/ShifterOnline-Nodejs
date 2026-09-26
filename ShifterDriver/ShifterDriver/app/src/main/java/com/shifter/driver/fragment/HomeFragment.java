@@ -1697,8 +1697,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 @Override
                 public void onSuccess(boolean isInsideZone, String message) {
                     if (getActivity() != null) {
-                        Toast.makeText(getActivity(), message, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getActivity(), message, Toast.LENGTH_LONG).show();
                         setupDailyDriverUI();
+                        // Punch-in force-enables every delivery model server-side; refetch
+                        // packageDataList so the cached "N delivery types active" summary
+                        // (and the now-hidden section, once this lands) reflect that instead
+                        // of whatever was cached from before punch-in.
+                        getPackageList();
                     }
                 }
 
