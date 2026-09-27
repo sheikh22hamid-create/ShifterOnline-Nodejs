@@ -1809,7 +1809,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               'Vehicle Body Type',
               style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14),
             ),
-            if (_selectedBodyType == 'covered')
+            if (_selectedBodyType == 'covered' || _selectedBodyType == 'half')
               Text(
                 'Surcharge applies',
                 style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Medium', fontSize: 11),
@@ -1819,11 +1819,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         const SizedBox(height: 6),
         Row(
           children: [
-            _bodyTypeChip('any', '⚡ Any', 'No preference'),
-            const SizedBox(width: 8),
-            _bodyTypeChip('open', '🛻 Open', 'Open bed'),
-            const SizedBox(width: 8),
-            _bodyTypeChip('covered', '📦 Covered', 'Closed / Tarpaulin'),
+            _bodyTypeChip('any', '⚡ Any', 'Flexible'),
+            const SizedBox(width: 6),
+            _bodyTypeChip('open', '🛻 Open', 'Open dala'),
+            const SizedBox(width: 6),
+            _bodyTypeChip('half', '🚚 Half', 'Half dala'),
+            const SizedBox(width: 6),
+            _bodyTypeChip('covered', '📦 Covered', 'Band / Tirpal'),
           ],
         ),
       ],

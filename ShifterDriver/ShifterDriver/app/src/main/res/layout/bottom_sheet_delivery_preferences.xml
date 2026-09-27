@@ -177,7 +177,7 @@
                         android:layout_height="wrap_content"
                         android:paddingTop="3dp"
                         android:paddingBottom="3dp"
-                        android:text="Both (Open &amp; Covered / Tirpal Available)"
+                        android:text="All (Open, Half &amp; Covered Available)"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="13sp" />
 
@@ -188,6 +188,16 @@
                         android:paddingTop="3dp"
                         android:paddingBottom="3dp"
                         android:text="Open Body Only (Khuli Dala)"
+                        android:textColor="@color/driver_text_primary"
+                        android:textSize="13sp" />
+
+                    <RadioButton
+                        android:id="@+id/rb_body_half"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="3dp"
+                        android:paddingBottom="3dp"
+                        android:text="Half Body Only (Half Dala)"
                         android:textColor="@color/driver_text_primary"
                         android:textSize="13sp" />
 

@@ -222,12 +222,12 @@ async function setDeliveryType(req, res) {
   }
 }
 
-/** Sets rider's vehicle body capability ('open', 'covered', 'both'). */
+/** Sets rider's vehicle body capability ('open', 'covered', 'half', 'both', 'all'). */
 async function setBodyType(req, res) {
   try {
     const { rider_id, body_type } = req.body;
-    if (!rider_id || !["open", "covered", "both"].includes(String(body_type || "").toLowerCase())) {
-      return res.status(400).json({ Result: false, msg: "rider_id and valid body_type ('open', 'covered', 'both') are required" });
+    if (!rider_id || !["open", "covered", "half", "both", "all"].includes(String(body_type || "").toLowerCase())) {
+      return res.status(400).json({ Result: false, msg: "rider_id and valid body_type ('open', 'covered', 'half', 'both', 'all') are required" });
     }
 
     const cleanType = String(body_type).toLowerCase();
@@ -449,7 +449,7 @@ async function updateProfile(req, res) {
     if (req.body.full_address !== undefined) data.full_address = String(req.body.full_address).trim();
     if (req.body.know_language !== undefined) data.know_language = String(req.body.know_language).trim();
     if (req.body.vehicle_no !== undefined) data.vehicle_no = String(req.body.vehicle_no).trim();
-    if (req.body.body_type !== undefined && ["open", "covered", "both"].includes(String(req.body.body_type).toLowerCase())) {
+    if (req.body.body_type !== undefined && ["open", "covered", "half", "both", "all"].includes(String(req.body.body_type).toLowerCase())) {
       data.body_type = String(req.body.body_type).toLowerCase();
     }
 

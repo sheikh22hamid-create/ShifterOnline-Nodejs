@@ -15,6 +15,8 @@ jest.mock("../../services/pricingEngine", () => ({
   getActiveCustomerPlan: jest.fn().mockResolvedValue(null),
   getSlabPricingConfig: jest.fn().mockResolvedValue({ slabRates: {}, modelMultipliers: null }),
   findVehicleSlabConfig: jest.fn().mockReturnValue(null),
+  getBodyTypeCharge: jest.fn().mockResolvedValue(0),
+  getCoveredBodyCharge: jest.fn().mockResolvedValue(0),
 }));
 jest.mock("../../services/dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyNewOrder: jest.fn() }));

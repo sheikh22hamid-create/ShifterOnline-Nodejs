@@ -384,19 +384,35 @@ function SettingsForm({ data, onSaved }) {
         </Section>
 
         <Section title="Vehicle & Body Type Surcharges">
-          <div>
-            <Label htmlFor="flag-covered_body_charge">Covered Body Surcharge (₹)</Label>
-            <Input
-              id="flag-covered_body_charge"
-              type="number"
-              min="0"
-              placeholder="e.g. 50"
-              value={flags.covered_body_charge ?? '0'}
-              onChange={(e) => setFlags((f) => ({ ...f, covered_body_charge: e.target.value }))}
-            />
-            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              Extra charge added to customer fare and credited to driver when customer books a Covered Body (closed container or tarpaulin) vehicle for commercial transport (E-loader, 3 Wheeler, 4 Wheeler).
-            </p>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="flag-covered_body_charge">Covered Body Surcharge (₹)</Label>
+              <Input
+                id="flag-covered_body_charge"
+                type="number"
+                min="0"
+                placeholder="e.g. 50"
+                value={flags.covered_body_charge ?? '0'}
+                onChange={(e) => setFlags((f) => ({ ...f, covered_body_charge: e.target.value }))}
+              />
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                Extra charge added to customer fare when customer books a Covered Body (closed container or tarpaulin) vehicle for commercial transport (E-loader, 3 Wheeler, Tata Ace, etc.).
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="flag-half_body_charge">Half Body Surcharge (₹)</Label>
+              <Input
+                id="flag-half_body_charge"
+                type="number"
+                min="0"
+                placeholder="e.g. 25"
+                value={flags.half_body_charge ?? '0'}
+                onChange={(e) => setFlags((f) => ({ ...f, half_body_charge: e.target.value }))}
+              />
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                Extra charge added to customer fare when customer books a Half Body (Half Dala) vehicle for commercial transport.
+              </p>
+            </div>
           </div>
         </Section>
 

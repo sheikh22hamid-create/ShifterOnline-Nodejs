@@ -42,6 +42,19 @@ describe("Vehicle Body Type & Surcharge", () => {
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true, body_type: "covered" }));
     });
 
+    it("updates driver body type to half", async () => {
+      prisma.tbl_rider.update.mockResolvedValue({ id: 10, body_type: "half" });
+      const res = makeRes();
+      await riderController.setBodyType({ body: { rider_id: 10, body_type: "half" } }, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+        where: { id: 10 },
+        data: { body_type: "half" },
+      });
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true, body_type: "half" }));
+    });
+
     it("rejects an invalid body type", async () => {
       const res = makeRes();
       await riderController.setBodyType({ body: { rider_id: 10, body_type: "invalid_type" } }, res);
@@ -52,7 +65,7 @@ describe("Vehicle Body Type & Surcharge", () => {
   });
 
   describe("orderController.createOrderCore with body_type", () => {
-    it("stores body_type and covered_charge on the created order", async () => {
+    it("stores body_type and covered_charge on the created order for covered", async () => {
       prisma.app_settings.findFirst.mockResolvedValue({ setting_key: "covered_body_charge", setting_value: "50" });
       prisma.tbl_package.findMany.mockResolvedValue([
         { id: 6, sort_order: 1, min_charge: 50, per_km_charge: 10, title: "Standard" },
@@ -78,6 +91,41 @@ describe("Vehicle Body Type & Surcharge", () => {
           data: expect.objectContaining({
             body_type: "covered",
             covered_charge: 50,
+          }),
+        })
+      );
+      expect(dispatchManager.startDispatch).toHaveBeenCalled();
+    });
+
+    it("stores body_type and half_body_charge on the created order for half", async () => {
+      prisma.app_settings.findFirst.mockImplementation(({ where }) => {
+        if (where.setting_key === "half_body_charge") return Promise.resolve({ setting_key: "half_body_charge", setting_value: "25" });
+        return Promise.resolve(null);
+      });
+      prisma.tbl_package.findMany.mockResolvedValue([
+        { id: 6, sort_order: 1, min_charge: 50, per_km_charge: 10, title: "Standard" },
+      ]);
+      prisma.pkg_order.create.mockImplementation(({ data }) => Promise.resolve({ id: 125, ...data }));
+
+      const result = await orderController.createOrderCore({
+        uid: 1,
+        category: "Tata Ace",
+        deliveryTypeIds: [6],
+        bookingType: 1,
+        plat: "28.61",
+        plong: "77.20",
+        dlat: "28.65",
+        dlong: "77.25",
+        distance: 5,
+        body_type: "half",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            body_type: "half",
+            covered_charge: 25,
           }),
         })
       );
@@ -134,6 +182,30 @@ describe("Vehicle Body Type & Surcharge", () => {
       expect(estimate.body_type).toBe("covered");
       expect(estimate.covered_body_charge).toBe(40);
       expect(estimate.packages[0].covered_charge_amount).toBe(40);
+    });
+
+    it("includes half_body_charge and updates package estimated_fare when body_type is half", async () => {
+      prisma.app_settings.findFirst.mockImplementation(({ where }) => {
+        if (where.setting_key === "half_body_charge") return Promise.resolve({ setting_key: "half_body_charge", setting_value: "20" });
+        return Promise.resolve(null);
+      });
+      prisma.tbl_package.findMany.mockResolvedValue([
+        { id: 6, cat_id: 24, title: "Standard", min_charge: 100, per_km_charge: 10, service_charge_percent: 0, night_charge_percent: 0 },
+      ]);
+
+      const estimate = await pricingEngine.getFareEstimate({
+        cat_id: 24,
+        plat: 28.61,
+        plong: 77.20,
+        dlat: 28.65,
+        dlong: 77.25,
+        body_type: "half",
+      });
+
+      expect(estimate.Result).toBe(true);
+      expect(estimate.body_type).toBe("half");
+      expect(estimate.body_type_charge).toBe(20);
+      expect(estimate.packages[0].body_charge_amount).toBe(20);
     });
   });
 });

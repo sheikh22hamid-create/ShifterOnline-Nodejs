@@ -302,7 +302,9 @@ public class OrderOverlayService extends Service {
             TextView txtVehicle = view.findViewById(R.id.txt_vehicle);
             if (txtVehicle != null) {
                 String currentVehicle = txtVehicle.getText().toString();
-                String badge = "covered".equalsIgnoreCase(bodyType) ? " [Covered Body]" : " [Open Body]";
+                String badge = "covered".equalsIgnoreCase(bodyType)
+                        ? " [Covered Body]"
+                        : ("half".equalsIgnoreCase(bodyType) ? " [Half Body]" : " [Open Body]");
                 if (!currentVehicle.contains(badge)) {
                     txtVehicle.setText(currentVehicle + badge);
                 }

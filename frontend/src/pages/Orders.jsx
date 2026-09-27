@@ -112,13 +112,26 @@ export default function Orders() {
                             className="text-[10px] px-1.5 py-0.2 rounded font-medium border"
                             style={{
                               background:
-                                o.body_type === 'covered' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(234, 88, 12, 0.1)',
-                              color: o.body_type === 'covered' ? '#2563eb' : '#ea580c',
+                                o.body_type === 'covered'
+                                  ? 'rgba(59, 130, 246, 0.1)'
+                                  : o.body_type === 'half'
+                                  ? 'rgba(147, 51, 234, 0.1)'
+                                  : 'rgba(234, 88, 12, 0.1)',
+                              color:
+                                o.body_type === 'covered'
+                                  ? '#2563eb'
+                                  : o.body_type === 'half'
+                                  ? '#9333ea'
+                                  : '#ea580c',
                               borderColor:
-                                o.body_type === 'covered' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(234, 88, 12, 0.25)',
+                                o.body_type === 'covered'
+                                  ? 'rgba(59, 130, 246, 0.25)'
+                                  : o.body_type === 'half'
+                                  ? 'rgba(147, 51, 234, 0.25)'
+                                  : 'rgba(234, 88, 12, 0.25)',
                             }}
                           >
-                            {o.body_type === 'covered' ? 'Covered' : 'Open'}
+                            {o.body_type === 'covered' ? 'Covered' : o.body_type === 'half' ? 'Half Body' : 'Open'}
                           </span>
                         )}
                       </div>

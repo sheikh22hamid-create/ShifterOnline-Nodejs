@@ -74,6 +74,7 @@ public class DeliveryPreferencesBottomSheet {
         RadioGroup rgBodyType = view.findViewById(R.id.rg_vehicle_body_type);
         RadioButton rbBoth = view.findViewById(R.id.rb_body_both);
         RadioButton rbOpen = view.findViewById(R.id.rb_body_open);
+        RadioButton rbHalf = view.findViewById(R.id.rb_body_half);
         RadioButton rbCovered = view.findViewById(R.id.rb_body_covered);
 
         boolean isCommercial = riderData != null && riderData.getVehicle() != null
@@ -84,6 +85,8 @@ public class DeliveryPreferencesBottomSheet {
             String currentBodyType = riderData.getBodyType();
             if ("open".equalsIgnoreCase(currentBodyType)) {
                 rbOpen.setChecked(true);
+            } else if ("half".equalsIgnoreCase(currentBodyType)) {
+                if (rbHalf != null) rbHalf.setChecked(true);
             } else if ("covered".equalsIgnoreCase(currentBodyType)) {
                 rbCovered.setChecked(true);
             } else {
@@ -94,6 +97,8 @@ public class DeliveryPreferencesBottomSheet {
                 String newBodyType = "both";
                 if (checkedId == R.id.rb_body_open) {
                     newBodyType = "open";
+                } else if (checkedId == R.id.rb_body_half) {
+                    newBodyType = "half";
                 } else if (checkedId == R.id.rb_body_covered) {
                     newBodyType = "covered";
                 }

@@ -95,14 +95,31 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
  * is priced off the identical number instead of a different, Node-only
  * formula that used to diverge from what the customer saw.
  */
-async function getCoveredBodyCharge() {
-  try {
-    const row = await prisma.app_settings.findFirst({ where: { setting_key: "covered_body_charge" } });
-    const charge = parseFloat(row?.setting_value);
-    return Number.isFinite(charge) && charge >= 0 ? charge : 0;
-  } catch (err) {
-    return 0;
+async function getBodyTypeCharge(bodyType) {
+  const cleanType = String(bodyType || "").toLowerCase();
+  if (cleanType === "covered") {
+    try {
+      const row = await prisma.app_settings.findFirst({ where: { setting_key: "covered_body_charge" } });
+      const charge = parseFloat(row?.setting_value);
+      return Number.isFinite(charge) && charge >= 0 ? charge : 0;
+    } catch (err) {
+      return 0;
+    }
   }
+  if (cleanType === "half") {
+    try {
+      const row = await prisma.app_settings.findFirst({ where: { setting_key: "half_body_charge" } });
+      const charge = parseFloat(row?.setting_value);
+      return Number.isFinite(charge) && charge >= 0 ? charge : 0;
+    } catch (err) {
+      return 0;
+    }
+  }
+  return 0;
+}
+
+async function getCoveredBodyCharge() {
+  return getBodyTypeCharge("covered");
 }
 
 function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0, coveredBodyCharge = 0) {
@@ -497,14 +514,15 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const stopSettings = await getAddStopSettings();
   if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
   const distancePoints = [{ lat: plat, lng: plong }, ...routeStops, { lat: dlat, lng: dlong }];
-  const cleanBodyType = String(body_type || "any").toLowerCase();
-  const isCovered = cleanBodyType === "covered";
-  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, coveredBodyCharge] = await Promise.all([
+  const cleanBodyType = ["open", "covered", "half"].includes(String(body_type || "").toLowerCase())
+    ? String(body_type).toLowerCase()
+    : "any";
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
-    isCovered ? getCoveredBodyCharge() : Promise.resolve(0),
+    getBodyTypeCharge(cleanBodyType),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
@@ -527,7 +545,8 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     plan_name: discount ? discount.planName : "",
     radius_km: resolvedRadiusKm,
     body_type: cleanBodyType,
-    covered_body_charge: coveredBodyCharge,
+    covered_body_charge: extraBodyCharge,
+    body_type_charge: extraBodyCharge,
     packages: packages.map((pkg) => {
       const discountedPkg = applyPlanDiscount(pkg, discount);
       const isNight = isNightNow(discountedPkg);
@@ -535,12 +554,12 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
 
       const grossBreakdown = calculateFareBreakdown(
         pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
-        vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, coveredBodyCharge
+        vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge
       );
       const isSlabPriced = vehicleSlabConfig && pkg?.use_linear_pricing !== true;
       const pkgForNet = isSlabPriced ? pkg : discountedPkg;
       const netBreakdown = discount
-        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, coveredBodyCharge)
+        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, extraBodyCharge)
         : grossBreakdown;
 
       return {
@@ -558,7 +577,8 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         service_charge_amount: grossBreakdown.serviceCharge,
         night_charge_amount: grossBreakdown.nightCharge,
         extra_charge_amount: grossBreakdown.extraCharge,
-        covered_charge_amount: coveredBodyCharge,
+        covered_charge_amount: extraBodyCharge,
+        body_charge_amount: extraBodyCharge,
         discount_amount: round2(Math.max(0, grossBreakdown.total - netBreakdown.total)),
         estimated_fare: netBreakdown.total,
         is_night: isNight,
@@ -752,6 +772,7 @@ module.exports = {
   getPackageListForCategory,
   getAddStopSettings,
   getCoveredBodyCharge,
+  getBodyTypeCharge,
   getSlabPricingConfig,
   findVehicleSlabConfig,
 };

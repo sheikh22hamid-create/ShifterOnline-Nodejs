@@ -321,11 +321,25 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                           <span
                             className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium"
                             style={{
-                              background: order.body_type === 'covered' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(234, 88, 12, 0.1)',
-                              color: order.body_type === 'covered' ? '#2563eb' : '#ea580c',
+                              background:
+                                order.body_type === 'covered'
+                                  ? 'rgba(59, 130, 246, 0.1)'
+                                  : order.body_type === 'half'
+                                  ? 'rgba(147, 51, 234, 0.1)'
+                                  : 'rgba(234, 88, 12, 0.1)',
+                              color:
+                                order.body_type === 'covered'
+                                  ? '#2563eb'
+                                  : order.body_type === 'half'
+                                  ? '#9333ea'
+                                  : '#ea580c',
                             }}
                           >
-                            {order.body_type === 'covered' ? 'Covered Body' : 'Open Body'}
+                            {order.body_type === 'covered'
+                              ? 'Covered Body'
+                              : order.body_type === 'half'
+                              ? 'Half Body'
+                              : 'Open Body'}
                           </span>
                         )
                       }

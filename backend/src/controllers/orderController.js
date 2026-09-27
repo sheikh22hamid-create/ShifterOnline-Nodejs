@@ -245,11 +245,12 @@ async function createOrderCore({
   }
 
   const rawBodyType = body_type || bodyType || "any";
-  const cleanBodyType = ["open", "covered", "both", "any"].includes(String(rawBodyType).toLowerCase())
+  const cleanBodyType = ["open", "covered", "half", "both", "any"].includes(String(rawBodyType).toLowerCase())
     ? String(rawBodyType).toLowerCase()
     : "any";
-  const isCovered = cleanBodyType === "covered";
-  const coveredBodyCharge = isCovered ? await pricingEngine.getCoveredBodyCharge() : 0;
+  const bodyTypeCharge = typeof pricingEngine.getBodyTypeCharge === "function"
+    ? await pricingEngine.getBodyTypeCharge(cleanBodyType)
+    : 0;
 
   // radiusRangeKm=1 (zero radius charge), not resolvedRadiusKm — no driver
   // is known yet at order-creation time, so there's no real pickup distance
@@ -266,9 +267,9 @@ async function createOrderCore({
         planDiscount,
         firstVehicleSlabConfig,
         slabPricingConfig?.modelMultipliers,
-        coveredBodyCharge
+        bodyTypeCharge
       )
-    : (coveredBodyCharge > 0
+    : (bodyTypeCharge > 0
         ? pricingEngine.priceForPackage(
             firstPkg,
             distanceKm,
@@ -277,7 +278,7 @@ async function createOrderCore({
             planDiscount,
             null,
             null,
-            coveredBodyCharge
+            bodyTypeCharge
           )
         : pricingEngine.priceForPackage(
             firstPkg,
@@ -407,7 +408,7 @@ async function createOrderCore({
       referral_points_used: referralPointsUsed,
       referral_points_amount: referralPointsAmount,
       body_type: cleanBodyType,
-      covered_charge: coveredBodyCharge,
+      covered_charge: bodyTypeCharge,
     },
   });
 

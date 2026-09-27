@@ -498,12 +498,16 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                           background:
                             rider.body_type === 'covered'
                               ? 'rgba(59, 130, 246, 0.1)'
+                              : rider.body_type === 'half'
+                              ? 'rgba(147, 51, 234, 0.1)'
                               : rider.body_type === 'open'
                               ? 'rgba(234, 88, 12, 0.1)'
                               : 'rgba(16, 185, 129, 0.1)',
                           color:
                             rider.body_type === 'covered'
                               ? '#2563eb'
+                              : rider.body_type === 'half'
+                              ? '#9333ea'
                               : rider.body_type === 'open'
                               ? '#ea580c'
                               : '#059669',
@@ -511,9 +515,11 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                       >
                         {rider.body_type === 'covered'
                           ? 'Covered Body'
+                          : rider.body_type === 'half'
+                          ? 'Half Body'
                           : rider.body_type === 'open'
                           ? 'Open Body'
-                          : 'Both (Open & Covered)'}
+                          : 'All (Open, Half & Covered)'}
                       </span>
                     )
                   }
@@ -1088,8 +1094,9 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                     className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
                     style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
                   >
-                    <option value="both">Both (Open Body & Covered / Tripal Available)</option>
+                    <option value="both">All Body Types (Open, Half & Covered Available)</option>
                     <option value="open">Open Body Only (Khuli Dala)</option>
+                    <option value="half">Half Body Only (Half Dala)</option>
                     <option value="covered">Covered Body Only (Band Container / Fixed Cover)</option>
                   </select>
                 </div>

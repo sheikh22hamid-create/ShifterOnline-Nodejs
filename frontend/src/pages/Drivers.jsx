@@ -223,24 +223,30 @@ export default function Drivers() {
                               background:
                                 d.body_type === 'covered'
                                   ? 'rgba(59, 130, 246, 0.1)'
+                                  : d.body_type === 'half'
+                                  ? 'rgba(147, 51, 234, 0.1)'
                                   : d.body_type === 'open'
                                   ? 'rgba(234, 88, 12, 0.1)'
                                   : 'rgba(16, 185, 129, 0.1)',
                               color:
                                 d.body_type === 'covered'
                                   ? '#2563eb'
+                                  : d.body_type === 'half'
+                                  ? '#9333ea'
                                   : d.body_type === 'open'
                                   ? '#ea580c'
                                   : '#059669',
                               borderColor:
                                 d.body_type === 'covered'
                                   ? 'rgba(59, 130, 246, 0.25)'
+                                  : d.body_type === 'half'
+                                  ? 'rgba(147, 51, 234, 0.25)'
                                   : d.body_type === 'open'
                                   ? 'rgba(234, 88, 12, 0.25)'
                                   : 'rgba(16, 185, 129, 0.25)',
                             }}
                           >
-                            {d.body_type === 'covered' ? 'Covered' : d.body_type === 'open' ? 'Open' : 'Open & Covered'}
+                            {d.body_type === 'covered' ? 'Covered' : d.body_type === 'half' ? 'Half Body' : d.body_type === 'open' ? 'Open' : 'All Body'}
                           </span>
                         )}
                       </div>
