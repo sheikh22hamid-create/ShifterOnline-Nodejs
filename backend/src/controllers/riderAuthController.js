@@ -167,6 +167,9 @@ async function verifyOtp(req, res) {
         auto_verification_charge: verificationCharge.charge,
         auto_verification_charge_old: verificationCharge.chargeOld,
         auto_verification_msg: verificationCharge.msg,
+        trial_status: driver.trial_status,
+        trial_orders_allowed: driver.trial_orders_allowed,
+        trial_orders_completed: driver.trial_orders_completed,
       };
 
       return res.status(200).json({
