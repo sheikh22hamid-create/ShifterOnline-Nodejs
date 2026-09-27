@@ -432,6 +432,16 @@ async function withdrawWallet(req, res) {
     // Payouts page already reads) closes that gap instead of inventing a
     // second, parallel approval mechanism.
     if (walletType === "driver") {
+      const isHeldForTrial = (account.trial_status === "active" || account.trial_status === "exhausted")
+        && account.verification_status !== "approved";
+      if (isHeldForTrial) {
+        return res.status(200).json({
+          ResponseCode: "403",
+          Result: "false",
+          ResponseMsg: "Your earnings are held until you complete KYC verification. Please finish your registration to withdraw.",
+        });
+      }
+
       if (currentBalance <= 0) {
         return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
       }

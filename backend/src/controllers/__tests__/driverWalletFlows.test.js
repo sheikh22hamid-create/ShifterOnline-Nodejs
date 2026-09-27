@@ -235,6 +235,48 @@ describe("customerWalletController.withdrawWallet", () => {
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ResponseCode: "402", Result: "false" }));
   });
+
+  it("blocks a driver withdrawal while trial is active and KYC isn't approved", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({
+      id: 7, wallet_balance: "500.00", trial_status: "active", verification_status: "pending",
+    });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(prisma.driver_withdraw_requests.create).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false" }));
+  });
+
+  it("blocks a driver withdrawal while trial is exhausted and KYC isn't approved", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({
+      id: 7, wallet_balance: "500.00", trial_status: "exhausted", verification_status: "pending",
+    });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(prisma.driver_withdraw_requests.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a driver withdrawal once trial was upgraded to full KYC approval", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({
+      id: 7, wallet_balance: "500.00", city_id: 3, trial_status: "upgraded", verification_status: "approved",
+    });
+    prisma.driver_withdraw_requests.create.mockResolvedValue({ id: 60 });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
+  });
+
+  it("does not apply the trial gate to a driver who was never in a trial (normal pending KYC)", async () => {
+    // Pre-existing behavior: a driver who is simply mid-KYC (never went
+    // through trial) is not affected by this guard - it only fires for
+    // trial_status active/exhausted.
+    prisma.tbl_rider.findFirst.mockResolvedValue({
+      id: 7, wallet_balance: "500.00", city_id: 3, trial_status: "none", verification_status: "pending",
+    });
+    prisma.driver_withdraw_requests.create.mockResolvedValue({ id: 61 });
+    const res = mockRes();
+    await withdrawWallet({ body: driverBody }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
+  });
 });
 
 describe("customerWalletController.walletHistory outstanding-due fields", () => {
