@@ -151,6 +151,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         if (riderData != null) {
             NodeSocketManager.getInstance().connectDriver(riderData.getId());
         }
+        updateTrialBanner();
 
         // 1. Dynamic Greeting & Driver Avatar with presence indicator
         updateGreetingAndAvatar();
@@ -266,6 +267,20 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         return binding.getRoot();
     }
 
+    private void updateTrialBanner() {
+        if (binding == null) return;
+        String trialStatus = riderData != null ? riderData.getTrialStatus() : null;
+        if (riderData == null || !"active".equalsIgnoreCase(trialStatus)) {
+            binding.layoutTrialBanner.setVisibility(View.GONE);
+            return;
+        }
+        Integer allowed = riderData.getTrialOrdersAllowed();
+        int completed = riderData.getTrialOrdersCompleted();
+        String allowedText = allowed != null ? String.valueOf(allowed) : "?";
+        binding.txtTrialBanner.setText("Unverified – Trial Mode: " + completed + "/" + allowedText + " orders used. Complete KYC to continue.");
+        binding.layoutTrialBanner.setVisibility(View.VISIBLE);
+    }
+
     private final android.os.Handler dutyTickerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable dutyTickerRunnable = new Runnable() {
         @Override
@@ -304,6 +319,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         if (binding == null) return;
         if (riderData == null && sessionManager != null) {
             riderData = sessionManager.getUserDetails();
+            updateTrialBanner();
         }
 
         // Determine greeting based on current local hour
@@ -673,6 +689,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     private void sendDriverStatusUpdateToBackend(boolean online) {
         if (riderData == null && sessionManager != null) {
             riderData = sessionManager.getUserDetails();
+            updateTrialBanner();
         }
         if (riderData == null || getActivity() == null) {
             updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
@@ -751,6 +768,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     private void getHome() {
         if (riderData == null && sessionManager != null) {
             riderData = sessionManager.getUserDetails();
+            updateTrialBanner();
         }
         if (riderData == null || riderData.getId() <= 0) {
             return;
@@ -1180,6 +1198,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             binding.txtFavoriteRoutesSubtitle.setText(subtitle);
         });
         NodeSocketManager.getInstance().addConnectionListener(connectionListener);
+        if (sessionManager != null) {
+            riderData = sessionManager.getUserDetails();
+            updateTrialBanner();
+        }
         updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
         if (isUpdateHome) {
             getHome();
