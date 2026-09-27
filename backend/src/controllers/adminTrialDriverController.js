@@ -73,6 +73,7 @@ async function create(req, res) {
           trial_orders_completed: 0,
         },
       });
+      await assignDefaultDeliveryTypes(existing.id);
       return res.status(200).json({
         success: true,
         message: `${riderName(updated)} activated for trial`,
@@ -80,7 +81,7 @@ async function create(req, res) {
       });
     }
 
-    const targetCityId = parseInt(city_id || req.scopedCityId || req.user.city_id, 10) || 1;
+    const targetCityId = parseInt(city_id || req.scopedCityId || req.user?.city_id, 10) || 1;
     const created = await prisma.tbl_rider.create({
       data: {
         full_name: trimmedName,
@@ -94,13 +95,17 @@ async function create(req, res) {
         status: 1,
         payment_complete: 0,
         password: "",
+        profile_picture: "",
+        fcm_token: "",
+        device_id: "",
         rdate: new Date(),
         trial_status: "active",
         trial_orders_allowed: allowedCount,
         trial_orders_completed: 0,
       },
     });
-    logger.info(`adminTrialDriverController.create: added trial driver #${created.id} by admin #${req.user.id}`);
+    await assignDefaultDeliveryTypes(created.id);
+    logger.info(`adminTrialDriverController.create: added trial driver #${created.id} by admin #${req.user?.id || "unknown"}`);
     return res.status(201).json({
       success: true,
       message: `${riderName(created)} added to trial`,
