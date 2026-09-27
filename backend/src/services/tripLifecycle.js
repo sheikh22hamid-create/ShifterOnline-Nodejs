@@ -5,6 +5,7 @@ const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
 const dailyDriverEnrollmentQuery = require("./dailyDriverCommissionExemption");
 const referralRewardService = require("./referralRewardService");
+const trialOrderTracker = require("../utils/trialOrderTracker");
 const rewardPlanService = require("./rewardPlanService");
 const pushNotifier = require("./pushNotifier");
 const walletNotifier = require("./walletNotifier");
@@ -702,6 +703,13 @@ async function updateStatus(orderId, riderId, status) {
     // Check & cascade next queued order if rider is a Monthly Driver
     processNextQueuedOrder(riderId, orderId).catch((err) => {
       logger.error(`processNextQueuedOrder error for rider ${riderId}:`, err);
+    });
+
+    // Fire-and-forget, same pattern as above - increments the driver's
+    // trial-order counter and auto-blocks them once the trial limit is hit.
+    // A no-op for any rider not currently in an active trial.
+    trialOrderTracker.recordTrialOrderCompletion(riderId).catch((err) => {
+      logger.error(`recordTrialOrderCompletion error for rider ${riderId}:`, err);
     });
 
     // Fire-and-forget like processNextQueuedOrder above - pays out a
