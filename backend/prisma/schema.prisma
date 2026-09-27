@@ -966,6 +966,9 @@ model tbl_rider {
   ifsc                   String?                        @db.VarChar(20)
   verification_type      tbl_rider_verification_type?   @default(manual)
   verification_status    tbl_rider_verification_status? @default(pending)
+  trial_status           tbl_rider_trial_status         @default(none)
+  trial_orders_allowed   Int?
+  trial_orders_completed Int                            @default(0)
   fmobile                String                         @db.Text
   smobile                String?                        @db.Text
   nationality            String?                        @db.Text
@@ -1583,6 +1586,14 @@ enum tbl_rider_verification_status {
   pending
   approved
   rejected
+}
+
+enum tbl_rider_trial_status {
+  none
+  active
+  exhausted
+  blocked
+  upgraded
 }
 
 enum tbl_joining_plan_plan_for {
