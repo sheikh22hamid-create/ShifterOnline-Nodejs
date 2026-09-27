@@ -36,6 +36,7 @@ router.post("/verification-payment/verify", driverVerificationPaymentController.
 router.get("/test-drivers", riderController.listTestDrivers);
 router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);
 router.post("/delivery-type", riderController.setDeliveryType);
+router.post("/body-type", riderController.setBodyType);
 router.post("/package-list", riderController.packageListForDriver);
 router.post("/scheduled-trips", driverScheduledTripsController.listScheduledTrips);
 router.post("/scheduled-trips/interest", driverScheduledTripsController.markInterest);

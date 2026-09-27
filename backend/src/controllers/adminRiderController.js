@@ -94,6 +94,7 @@ async function list(req, res) {
         verification_status: r.verification_status,
         all_verify: r.all_verify,
         payment_complete: Number(r.payment_complete) === 1,
+        body_type: r.body_type || "both",
         active_categories: categoriesByRider[r.id] || [],
       };
     });
@@ -185,6 +186,7 @@ async function getOne(req, res) {
             city_name: cityName ? cityName.title : null,
             vehicle: rider.vehicle,
             vehicle_no: rider.vehicle_no,
+            body_type: rider.body_type || "both",
             a_status: isOnline ? 1 : 0,
             online: Boolean(isOnline),
             status: rider.status,
@@ -348,6 +350,7 @@ const PROFILE_FIELDS = [
   "plan_type",
   "monthly_plan",
   "working_hours",
+  "body_type",
 ];
 const PROFILE_INT_FIELDS = new Set(["city_id", "monthly_plan", "working_hours"]);
 

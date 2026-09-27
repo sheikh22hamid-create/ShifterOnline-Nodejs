@@ -312,6 +312,24 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                   </h3>
                   <div className="surface-card grid grid-cols-2 gap-3 rounded-xl p-3.5">
                     <Field label="Vehicle Type" value={order.package?.title || order.category || 'Standard'} />
+                    <Field
+                      label="Body Type Required"
+                      value={
+                        !order.body_type || order.body_type === 'any' ? (
+                          <span style={{ color: 'var(--ink-muted)' }}>Any body type</span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium"
+                            style={{
+                              background: order.body_type === 'covered' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(234, 88, 12, 0.1)',
+                              color: order.body_type === 'covered' ? '#2563eb' : '#ea580c',
+                            }}
+                          >
+                            {order.body_type === 'covered' ? 'Covered Body' : 'Open Body'}
+                          </span>
+                        )
+                      }
+                    />
                     <Field label="Package Weight" value={order.package_weight ? `${order.package_weight} kg` : '—'} />
                     {order.package_cost > 0 && <Field label="Declared Value" value={formatCurrency(order.package_cost)} />}
                     {order.photos && (
@@ -373,6 +391,12 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                       <span style={{ color: 'var(--ink-muted)' }}>Delivery Fare</span>
                       <span className="font-mono-data">{formatCurrency(order.d_charge)}</span>
                     </div>
+                    {Number(order.covered_charge) > 0 && (
+                      <div className="flex justify-between text-[12.5px]" style={{ color: 'var(--brand)' }}>
+                        <span>Covered Body Surcharge</span>
+                        <span className="font-mono-data">+{formatCurrency(order.covered_charge)}</span>
+                      </div>
+                    )}
                     {order.cou_amt > 0 && (
                       <div className="flex justify-between text-[12.5px]" style={{ color: 'var(--success)' }}>
                         <span>Coupon Discount</span>

@@ -214,7 +214,36 @@ export default function Drivers() {
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
-                      {d.vehicle}
+                      <div className="flex items-center gap-1.5">
+                        <span>{d.vehicle}</span>
+                        {d.vehicle !== 'Bike' && d.body_type && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.2 rounded font-medium border"
+                            style={{
+                              background:
+                                d.body_type === 'covered'
+                                  ? 'rgba(59, 130, 246, 0.1)'
+                                  : d.body_type === 'open'
+                                  ? 'rgba(234, 88, 12, 0.1)'
+                                  : 'rgba(16, 185, 129, 0.1)',
+                              color:
+                                d.body_type === 'covered'
+                                  ? '#2563eb'
+                                  : d.body_type === 'open'
+                                  ? '#ea580c'
+                                  : '#059669',
+                              borderColor:
+                                d.body_type === 'covered'
+                                  ? 'rgba(59, 130, 246, 0.25)'
+                                  : d.body_type === 'open'
+                                  ? 'rgba(234, 88, 12, 0.25)'
+                                  : 'rgba(16, 185, 129, 0.25)',
+                            }}
+                          >
+                            {d.body_type === 'covered' ? 'Covered' : d.body_type === 'open' ? 'Open' : 'Open & Covered'}
+                          </span>
+                        )}
+                      </div>
                       <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
                         {d.vehicle_no}
                       </div>

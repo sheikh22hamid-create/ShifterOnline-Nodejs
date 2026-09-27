@@ -222,6 +222,27 @@ async function setDeliveryType(req, res) {
   }
 }
 
+/** Sets rider's vehicle body capability ('open', 'covered', 'both'). */
+async function setBodyType(req, res) {
+  try {
+    const { rider_id, body_type } = req.body;
+    if (!rider_id || !["open", "covered", "both"].includes(String(body_type || "").toLowerCase())) {
+      return res.status(400).json({ Result: false, msg: "rider_id and valid body_type ('open', 'covered', 'both') are required" });
+    }
+
+    const cleanType = String(body_type).toLowerCase();
+    await prisma.tbl_rider.update({
+      where: { id: Number(rider_id) },
+      data: { body_type: cleanType },
+    });
+
+    return res.status(200).json({ Result: true, msg: "Body type updated successfully", body_type: cleanType });
+  } catch (err) {
+    logger.error("setBodyType failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
 async function setStatus(req, res) {
   try {
     const { rider_id, a_status, device_id } = req.body;
@@ -428,6 +449,9 @@ async function updateProfile(req, res) {
     if (req.body.full_address !== undefined) data.full_address = String(req.body.full_address).trim();
     if (req.body.know_language !== undefined) data.know_language = String(req.body.know_language).trim();
     if (req.body.vehicle_no !== undefined) data.vehicle_no = String(req.body.vehicle_no).trim();
+    if (req.body.body_type !== undefined && ["open", "covered", "both"].includes(String(req.body.body_type).toLowerCase())) {
+      data.body_type = String(req.body.body_type).toLowerCase();
+    }
 
     const updated = Object.keys(data).length ? await prisma.tbl_rider.update({ where: { id: riderId }, data }) : rider;
 
@@ -627,6 +651,7 @@ module.exports = {
   listTestDrivers,
   getDeliveryTypes,
   setDeliveryType,
+  setBodyType,
   packageListForDriver,
   setStatus,
   updateLocation,

@@ -80,6 +80,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   // the banner never flashes for a non-eligible user while the check runs.
   bool _nextDayEligible = false;
 
+  String _selectedBodyType = 'any';
+
   bool _referralDiscountEnabled = false;
   double _referralDiscountPercent = 0;
   double _referralPointValue = 1;
@@ -576,6 +578,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         'contact_name': stop['c_name'], 'contact_number': stop['c_number'],
       }).toList(),
       'radius_km': _selectedRadiusKm,
+      'body_type': _selectedBodyType,
       if (uid != null) 'uid': int.tryParse(uid.toString()) ?? uid,
     });
     final rawModels = response is Map ? response['packages'] : null;
@@ -760,6 +763,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'category': _text(category['cat_name'] ?? category['name'], _vehicleName(_selected!)),
       'delivery_type': deliveryTypeIds,
       'booking_type': _currentBookingType,
+      'body_type': _selectedBodyType,
       // .toUtc() before .toIso8601String() is load-bearing, not cosmetic: a
       // local DateTime serialises WITHOUT any offset suffix, and every
       // downstream consumer then guesses a different timezone for it — the
@@ -1015,6 +1019,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final nightCharge = _number(model['night_charge_amount']);
     final serviceCharge = _number(model['service_charge_amount']);
     final extraCharge = _number(model['extra_charge_amount']);
+    final coveredCharge = _number(model['covered_charge_amount']);
     final discountSaved = _number(model['discount_amount']);
     final distance = _fareDistanceKm ?? _distanceKm ?? 0;
     // NOT model['original_per_km_charge'] — that's a single flat rate off the
@@ -1055,6 +1060,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       // the missing ₹3.43 was exactly this package's service charge).
       if (serviceCharge > 0) row('Service charge', '₹${serviceCharge.toStringAsFixed(2)}'),
       if (extraCharge > 0) row('Extra charge', '₹${extraCharge.toStringAsFixed(2)}'),
+      if (coveredCharge > 0) row('Covered body surcharge', '₹${coveredCharge.toStringAsFixed(2)}'),
       if (_hasPlanDiscount && discountSaved > 0)
         row(
           _planDiscountMaxCap > 0
@@ -1684,7 +1690,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       child: InkWell(
         onTap: available
             ? () {
-                setState(() { _selectedIndex = index; _selectedModelIndex = null; });
+                setState(() {
+                  _selectedIndex = index;
+                  _selectedModelIndex = null;
+                  if (_isTwoWheeler(_vehicles[index])) {
+                    _selectedBodyType = 'any';
+                  }
+                });
                 _loadModelsForSelectedVehicle();
               }
             : null,
@@ -1742,6 +1754,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ]),
       if (capacity.isNotEmpty) ...[const SizedBox(height: 4), Text('Up to $capacity kg', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12))],
       if (driverCount.isNotEmpty || eta.isNotEmpty) ...[const SizedBox(height: 8), Row(children: [if (driverCount.isNotEmpty) const Icon(Icons.people_alt_outlined, color: Colors.green, size: 16), if (driverCount.isNotEmpty) Text(' $driverCount nearby', style: TextStyle(color: greaycolor, fontSize: 11)), if (driverCount.isNotEmpty && eta.isNotEmpty) const SizedBox(width: 12), if (eta.isNotEmpty) Icon(Icons.schedule_rounded, color: greaycolor, size: 15), if (eta.isNotEmpty) Text(' ~$eta min', style: TextStyle(color: greaycolor, fontSize: 11))])],
+      if (!_isTwoWheeler(selected)) _bodyTypeSelector(),
       const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
@@ -1773,6 +1786,104 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         ),
       ],
     ]));
+  }
+
+  bool _isTwoWheeler(Map<String, dynamic> option) {
+    final name = _vehicleName(option).toLowerCase();
+    return name.contains('bike') ||
+        name.contains('2 wheeler') ||
+        name.contains('two wheeler') ||
+        name.contains('motorcycle') ||
+        name.contains('scooter');
+  }
+
+  Widget _bodyTypeSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Vehicle Body Type',
+              style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14),
+            ),
+            if (_selectedBodyType == 'covered')
+              Text(
+                'Surcharge applies',
+                style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Medium', fontSize: 11),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            _bodyTypeChip('any', '⚡ Any', 'No preference'),
+            const SizedBox(width: 8),
+            _bodyTypeChip('open', '🛻 Open', 'Open bed'),
+            const SizedBox(width: 8),
+            _bodyTypeChip('covered', '📦 Covered', 'Closed / Tarpaulin'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _bodyTypeChip(String type, String title, String subtitle) {
+    final isSelected = _selectedBodyType == type;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          if (_selectedBodyType == type) return;
+          setState(() {
+            _selectedBodyType = type;
+          });
+          _loadModelsForSelectedVehicle(
+            preserveModelKey: _selectedModel != null ? _modelKey(_selectedModel!) : null,
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          decoration: BoxDecoration(
+            color: isSelected ? linercolor.withOpacity(0.08) : notifier.getBgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? linercolor : notifier.bordecolor,
+              width: isSelected ? 1.6 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSelected ? linercolor : notifier.text,
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSelected ? linercolor : greaycolor,
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 9.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));

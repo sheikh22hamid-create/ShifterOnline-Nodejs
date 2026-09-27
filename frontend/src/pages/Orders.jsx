@@ -105,7 +105,23 @@ export default function Orders() {
                     onClick={() => setSelectedId(o.id)}
                   >
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
-                      #{o.id}
+                      <div className="flex items-center gap-1.5">
+                        <span>#{o.id}</span>
+                        {o.body_type && o.body_type !== 'any' && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.2 rounded font-medium border"
+                            style={{
+                              background:
+                                o.body_type === 'covered' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(234, 88, 12, 0.1)',
+                              color: o.body_type === 'covered' ? '#2563eb' : '#ea580c',
+                              borderColor:
+                                o.body_type === 'covered' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(234, 88, 12, 0.25)',
+                            }}
+                          >
+                            {o.body_type === 'covered' ? 'Covered' : 'Open'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       <div style={{ color: 'var(--ink)' }}>{o.customer_name || '—'}</div>

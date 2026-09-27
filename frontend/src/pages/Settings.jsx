@@ -383,6 +383,23 @@ function SettingsForm({ data, onSaved }) {
           </div>
         </Section>
 
+        <Section title="Vehicle & Body Type Surcharges">
+          <div>
+            <Label htmlFor="flag-covered_body_charge">Covered Body Surcharge (₹)</Label>
+            <Input
+              id="flag-covered_body_charge"
+              type="number"
+              min="0"
+              placeholder="e.g. 50"
+              value={flags.covered_body_charge ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, covered_body_charge: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Extra charge added to customer fare and credited to driver when customer books a Covered Body (closed container or tarpaulin) vehicle for commercial transport (E-loader, 3 Wheeler, 4 Wheeler).
+            </p>
+          </div>
+        </Section>
+
         <Section title="Model 1 reliability suspension">
           <div>
             <Label htmlFor="flag-model1_miss_limit">Max Model 1 rides a driver can ignore</Label>

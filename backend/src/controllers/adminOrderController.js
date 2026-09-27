@@ -92,6 +92,8 @@ async function list(req, res) {
         pmobile: o.pmobile,
         drop_name: o.drop_name,
         dmobile: o.dmobile,
+        body_type: o.body_type || "any",
+        covered_charge: o.covered_charge ? String(o.covered_charge) : "0.00",
       };
     });
 

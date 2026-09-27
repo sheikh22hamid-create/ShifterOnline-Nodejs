@@ -223,6 +223,7 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
       rc_number: rider.vehicle_details?.[0]?.reg_num || rider.personal_doc?.residence_id || rider.vehicle_no || '',
       rc_owner_name: rider.personal_doc?.rc_owner_name || '',
       rc_owner_aadhar_number: rider.personal_doc?.rc_owner_aadhar_number || '',
+      body_type: rider.body_type || 'both',
     })
     setEditModalOpen(true)
   }
@@ -485,6 +486,38 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                 />
                 <Field label="Nationality" value={rider.nationality || 'Indian'} />
                 <Field label="Vehicle type" value={rider.vehicle} />
+                <Field
+                  label="Body type"
+                  value={
+                    rider.vehicle === 'Bike' ? (
+                      'N/A (Two Wheeler)'
+                    ) : (
+                      <span
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium"
+                        style={{
+                          background:
+                            rider.body_type === 'covered'
+                              ? 'rgba(59, 130, 246, 0.1)'
+                              : rider.body_type === 'open'
+                              ? 'rgba(234, 88, 12, 0.1)'
+                              : 'rgba(16, 185, 129, 0.1)',
+                          color:
+                            rider.body_type === 'covered'
+                              ? '#2563eb'
+                              : rider.body_type === 'open'
+                              ? '#ea580c'
+                              : '#059669',
+                        }}
+                      >
+                        {rider.body_type === 'covered'
+                          ? 'Covered Body'
+                          : rider.body_type === 'open'
+                          ? 'Open Body'
+                          : 'Both (Open & Covered)'}
+                      </span>
+                    )
+                  }
+                />
                 <Field
                   label="Plate number"
                   value={<span className="font-mono-data font-semibold">{rider.vehicle_no}</span>}
@@ -1044,6 +1077,23 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
             <EditSection title="Vehicle">
               <EditField label="Vehicle type" value={editForm.vehicle} onChange={(v) => setEditForm((f) => ({ ...f, vehicle: v }))} />
               <EditField label="Plate number" value={editForm.vehicle_no} onChange={(v) => setEditForm((f) => ({ ...f, vehicle_no: v }))} />
+              {editForm.vehicle !== 'Bike' && (
+                <div className="col-span-2">
+                  <div className="mb-1 text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                    Vehicle Body Type
+                  </div>
+                  <select
+                    value={editForm.body_type || 'both'}
+                    onChange={(e) => setEditForm((f) => ({ ...f, body_type: e.target.value }))}
+                    className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+                    style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                  >
+                    <option value="both">Both (Open Body & Covered / Tripal Available)</option>
+                    <option value="open">Open Body Only (Khuli Dala)</option>
+                    <option value="covered">Covered Body Only (Band Container / Fixed Cover)</option>
+                  </select>
+                </div>
+              )}
             </EditSection>
 
             <EditSection title="Bank & UPI">

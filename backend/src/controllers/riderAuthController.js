@@ -170,6 +170,7 @@ async function verifyOtp(req, res) {
         trial_status: driver.trial_status,
         trial_orders_allowed: driver.trial_orders_allowed,
         trial_orders_completed: driver.trial_orders_completed,
+        body_type: driver.body_type || "both",
       };
 
       return res.status(200).json({

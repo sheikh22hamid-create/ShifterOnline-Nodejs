@@ -134,6 +134,13 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
     WHERE r.a_status = 1
       AND r.status = 1
       AND r.vehicle = ${order.category}
+      AND (
+        ${order.body_type || 'any'} = 'any'
+        OR r.vehicle = 'Bike'
+        OR r.body_type = 'both'
+        OR r.body_type IS NULL
+        OR r.body_type = ${order.body_type || 'any'}
+      )
       AND (dt.status = 1 OR dt.status IS NULL)
       AND r.rlats IS NOT NULL AND r.rlats != ''
       AND r.rlongs IS NOT NULL AND r.rlongs != ''
@@ -299,7 +306,9 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     driver_earning: String(tripTotal),
     trip_total: String(tripTotal),
     pickup_time: new Date().toISOString(),
-    order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}`,
+    body_type: String(order.body_type || "any"),
+    covered_charge: String(order.covered_charge || "0.00"),
+    order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}${order.body_type === "covered" ? " · [Covered Body]" : (order.body_type === "open" ? " · [Open Body]" : "")}`,
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
     // Absolute deadline (server epoch ms), armed off the same `armedAt` the
     // lock/scheduleExpiry/acceptOrder freshness check all share — NOT a

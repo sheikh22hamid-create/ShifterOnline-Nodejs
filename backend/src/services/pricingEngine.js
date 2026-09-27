@@ -95,7 +95,17 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
  * is priced off the identical number instead of a different, Node-only
  * formula that used to diverge from what the customer saw.
  */
-function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0) {
+async function getCoveredBodyCharge() {
+  try {
+    const row = await prisma.app_settings.findFirst({ where: { setting_key: "covered_body_charge" } });
+    const charge = parseFloat(row?.setting_value);
+    return Number.isFinite(charge) && charge >= 0 ? charge : 0;
+  } catch (err) {
+    return 0;
+  }
+}
+
+function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0, coveredBodyCharge = 0) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
   const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
@@ -139,8 +149,9 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
   const serviceCharge = (dCharge * servicePercent) / 100;
 
   const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
+  const coveredCharge = Number(coveredBodyCharge) || 0;
 
-  const total = dCharge + serviceCharge + nightCharge + (Number(extraMileCharge) || 0);
+  const total = dCharge + serviceCharge + nightCharge + (Number(extraMileCharge) || 0) + coveredCharge;
   return roundMoney(total);
 }
 
@@ -151,7 +162,7 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
  * calculateFare's own roundMoney(total)); components are 2-decimal so a UI
  * summing them lands on the same total calculateFare itself would produce.
  */
-function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0) {
+function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCharge = 0, slabConfig = null, modelMultipliers = null, discountPercent = 0, maxDiscountCap = 0, coveredBodyCharge = 0) {
   const radiusCharge = calculateRadiusCharge(pkg, radiusRangeKm);
   const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
@@ -194,7 +205,8 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
   const serviceCharge = (dCharge * servicePercent) / 100;
   const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
   const extraCharge = Number(extraMileCharge) || 0;
-  const total = roundMoney(dCharge + serviceCharge + nightCharge + extraCharge);
+  const coveredCharge = Number(coveredBodyCharge) || 0;
+  const total = roundMoney(dCharge + serviceCharge + nightCharge + extraCharge + coveredCharge);
 
   return {
     baseFare: round2(baseFare),
@@ -203,6 +215,7 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
     serviceCharge: round2(serviceCharge),
     nightCharge: round2(nightCharge),
     extraCharge: round2(extraCharge),
+    coveredCharge: round2(coveredCharge),
     total,
   };
 }
@@ -424,7 +437,7 @@ function commissionAmount(dCharge, commissionPercent) {
  * discount themselves (via getActivePlanDiscount) rather than this function
  * looking it up, to keep it free of DB access.
  */
-function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, discount = null, slabConfig = null, modelMultipliers = null) {
+function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, discount = null, slabConfig = null, modelMultipliers = null, coveredBodyCharge = 0) {
   const isSlabPriced = slabConfig && pkg?.use_linear_pricing !== true;
   const discountedPkg = applyPlanDiscount(pkg, discount);
   const pkgToPrice = isSlabPriced ? pkg : discountedPkg;
@@ -435,13 +448,13 @@ function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0
   // passed through too so the slab branch, which never reads those two
   // fields, can apply the same discount to its own base/distance charge
   // instead of silently ignoring it (see calculateFare's comment).
-  const fare = calculateFare(pkgToPrice, distanceKm, isNight, radiusRangeKm, extraMileCharge, slabConfig, modelMultipliers, discount?.percent || 0, discount?.maxCap || 0);
+  const fare = calculateFare(pkgToPrice, distanceKm, isNight, radiusRangeKm, extraMileCharge, slabConfig, modelMultipliers, discount?.percent || 0, discount?.maxCap || 0, coveredBodyCharge);
   const driverEarning = calculateDriverEarning(discountedPkg, fare);
   const commission = calculateCommissionPercent(fare, driverEarning);
   const packageTitle = pkg?.title || `Model ${pkg?.id || ""}`;
   const userTitle = pkg?.user_title || packageTitle;
   const driverTitle = pkg?.driver_title || packageTitle;
-  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, userTitle, driverTitle, radiusCharge };
+  return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, userTitle, driverTitle, radiusCharge, coveredBodyCharge };
 }
 
 /** `uid`, when given, looks up that customer's active plan discount (if any) and applies it — see priceForPackage. */
@@ -479,16 +492,19 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
  * at its default (1 -> zero radius charge) quotes the best-case "starting
  * from" fare when no radius is supplied.
  */
-async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [] }) {
+async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [], body_type = "any" }) {
   const routeStops = Array.isArray(stops) ? stops : [];
   const stopSettings = await getAddStopSettings();
   if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
   const distancePoints = [{ lat: plat, lng: plong }, ...routeStops, { lat: dlat, lng: dlong }];
-  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig] = await Promise.all([
+  const cleanBodyType = String(body_type || "any").toLowerCase();
+  const isCovered = cleanBodyType === "covered";
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, coveredBodyCharge] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
+    isCovered ? getCoveredBodyCharge() : Promise.resolve(0),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
@@ -510,6 +526,8 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     plan_discount_max_cap: discount ? (discount.maxCap || 0) : 0,
     plan_name: discount ? discount.planName : "",
     radius_km: resolvedRadiusKm,
+    body_type: cleanBodyType,
+    covered_body_charge: coveredBodyCharge,
     packages: packages.map((pkg) => {
       const discountedPkg = applyPlanDiscount(pkg, discount);
       const isNight = isNightNow(discountedPkg);
@@ -517,12 +535,12 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
 
       const grossBreakdown = calculateFareBreakdown(
         pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
-        vehicleSlabConfig, slabPricingConfig.modelMultipliers
+        vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, coveredBodyCharge
       );
       const isSlabPriced = vehicleSlabConfig && pkg?.use_linear_pricing !== true;
       const pkgForNet = isSlabPriced ? pkg : discountedPkg;
       const netBreakdown = discount
-        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap)
+        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, coveredBodyCharge)
         : grossBreakdown;
 
       return {
@@ -534,18 +552,13 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         per_km_charge: Number(discountedPkg.per_km_charge),
         original_min_charge: Number(pkg.min_charge),
         original_per_km_charge: Number(pkg.per_km_charge),
-        // Gross (pre-discount) search-radius charge — matches the other
-        // itemized components below, which are all gross; the discount on
-        // this, if any, is folded into discount_amount same as the rest.
         radius_charge: roundMoney(calculateRadiusCharge(pkg, resolvedRadiusKm)),
-        // Itemized GROSS components — sum to estimated_fare + discount_amount
-        // (± a paisa from the single final rounding), for the client to
-        // display directly instead of recomputing.
         base_fare_charge: grossBreakdown.baseFare,
         distance_charge_amount: grossBreakdown.distanceCharge,
         service_charge_amount: grossBreakdown.serviceCharge,
         night_charge_amount: grossBreakdown.nightCharge,
         extra_charge_amount: grossBreakdown.extraCharge,
+        covered_charge_amount: coveredBodyCharge,
         discount_amount: round2(Math.max(0, grossBreakdown.total - netBreakdown.total)),
         estimated_fare: netBreakdown.total,
         is_night: isNight,
@@ -738,6 +751,7 @@ module.exports = {
   getDistanceEstimate,
   getPackageListForCategory,
   getAddStopSettings,
+  getCoveredBodyCharge,
   getSlabPricingConfig,
   findVehicleSlabConfig,
 };

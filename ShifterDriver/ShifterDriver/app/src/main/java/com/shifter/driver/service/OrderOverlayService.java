@@ -297,6 +297,18 @@ public class OrderOverlayService extends Service {
         // Favorite Route match banner (server-side dispatch match — see dispatchManager.js)
         com.shifter.driver.utility.OrderDialogHelper.configureFavoriteRouteBanner(view, intent.getStringExtra("favorite_route_match"));
 
+        String bodyType = intent.getStringExtra("body_type");
+        if (bodyType != null && !"any".equalsIgnoreCase(bodyType)) {
+            TextView txtVehicle = view.findViewById(R.id.txt_vehicle);
+            if (txtVehicle != null) {
+                String currentVehicle = txtVehicle.getText().toString();
+                String badge = "covered".equalsIgnoreCase(bodyType) ? " [Covered Body]" : " [Open Body]";
+                if (!currentVehicle.contains(badge)) {
+                    txtVehicle.setText(currentVehicle + badge);
+                }
+            }
+        }
+
         if (txtDetails != null) {
             String details = intent.getStringExtra("order_details");
             if (details != null && !details.isEmpty() && !"No additional details".equalsIgnoreCase(details)) {

@@ -82,6 +82,9 @@ public interface NodeService {
     @POST("api/rider/delivery-type")
     Call<JsonObject> updateDeliveryType(@Body Map<String, Object> body);
 
+    @POST("api/rider/body-type")
+    Call<JsonObject> setBodyType(@Body Map<String, Object> body);
+
     // Node port of rider_api/reg_user.php's "automatic" registration path
     // (document numbers + isVerified flags in `documents`, not raw card
     // images - see riderAuthController.js registerHandler). The "manual"

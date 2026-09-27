@@ -105,6 +105,9 @@ public class RiderData implements Parcelable {
     @SerializedName("trial_orders_completed")
     @Expose
     private int trialOrdersCompleted;
+    @SerializedName("body_type")
+    @Expose
+    private String bodyType;
 
     public RiderData() {
     }
@@ -145,6 +148,7 @@ public class RiderData implements Parcelable {
         } else {
             trialOrdersAllowed = null;
         }
+        bodyType = in.readString();
     }
 
     public static final Creator<RiderData> CREATOR = new Creator<RiderData>() {
@@ -402,6 +406,7 @@ public class RiderData implements Parcelable {
         } else {
             parcel.writeByte((byte) 0);
         }
+        parcel.writeString(bodyType);
     }
 
     public String getDob() {
@@ -450,5 +455,13 @@ public class RiderData implements Parcelable {
 
     public void setRefferCode(String refferCode) {
         this.refferCode = refferCode;
+    }
+
+    public String getBodyType() {
+        return bodyType != null && !bodyType.isEmpty() ? bodyType : "both";
+    }
+
+    public void setBodyType(String bodyType) {
+        this.bodyType = bodyType;
     }
 }

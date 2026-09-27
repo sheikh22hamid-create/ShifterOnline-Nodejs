@@ -149,6 +149,18 @@ public class OrderDialogHelper {
         // Favorite Route match banner (server-side dispatch match — see dispatchManager.js)
         configureFavoriteRouteBanner(view, getMapValue(orderData, "favorite_route_match", null));
 
+        String bodyType = getMapValue(orderData, "body_type", null);
+        if (bodyType != null && !"any".equalsIgnoreCase(bodyType)) {
+            android.widget.TextView txtVehicle = view.findViewById(com.shifter.driver.R.id.txt_vehicle);
+            if (txtVehicle != null) {
+                String currentVehicle = txtVehicle.getText().toString();
+                String badge = "covered".equalsIgnoreCase(bodyType) ? " [Covered Body]" : " [Open Body]";
+                if (!currentVehicle.contains(badge)) {
+                    txtVehicle.setText(currentVehicle + badge);
+                }
+            }
+        }
+
         if (txtDetails != null && orderData != null) {
             String details = getMapValue(orderData, "order_details", null);
             if (details != null && !details.isEmpty() && !"No additional details".equalsIgnoreCase(details)) {

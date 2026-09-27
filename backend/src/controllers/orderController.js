@@ -88,7 +88,7 @@ async function getCategories(req, res) {
 
 async function fareEstimate(req, res) {
   try {
-    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km, stops } = req.body;
+    const { cat_id, plat, plong, dlat, dlong, uid, extra_mile_charge, radius_km, stops, body_type } = req.body;
 
     if (
       !cat_id ||
@@ -99,19 +99,10 @@ async function fareEstimate(req, res) {
 
     const estimate = await pricingEngine.getFareEstimate({
       cat_id, plat, plong, dlat, dlong, uid,
-      // Product decision: this pre-booking quote intentionally scales with
-      // the customer's own chosen SEARCH radius, as a disclosed "cost to
-      // search this far" preview — NOT a prediction of which driver will
-      // actually be dispatched. Real billing never uses this value: order
-      // creation, dispatch, and accept each reprice off whichever driver
-      // actually gets assigned (their real pickup distance), via
-      // orderController.createOrderCore / dispatchManager.runBatchInner /
-      // tripLifecycle.acceptOrder — none of which call getFareEstimate — so
-      // a wide search radius here can never overcharge the customer if a
-      // nearby driver ends up accepting.
       radiusRangeKm: radius_km,
       extraMileCharge: extra_mile_charge,
       stops,
+      body_type: body_type || "any",
     });
     return res.status(200).json(estimate);
   } catch (err) {
@@ -165,7 +156,7 @@ async function createOrderCore({
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
-  stops = [], useReferralPoints = false,
+  stops = [], useReferralPoints = false, body_type, bodyType,
 }) {
   if (
     !uid ||
@@ -253,6 +244,13 @@ async function createOrderCore({
     }
   }
 
+  const rawBodyType = body_type || bodyType || "any";
+  const cleanBodyType = ["open", "covered", "both", "any"].includes(String(rawBodyType).toLowerCase())
+    ? String(rawBodyType).toLowerCase()
+    : "any";
+  const isCovered = cleanBodyType === "covered";
+  const coveredBodyCharge = isCovered ? await pricingEngine.getCoveredBodyCharge() : 0;
+
   // radiusRangeKm=1 (zero radius charge), not resolvedRadiusKm — no driver
   // is known yet at order-creation time, so there's no real pickup distance
   // to bill. resolvedRadiusKm remains the search-filter radius stored below
@@ -267,14 +265,27 @@ async function createOrderCore({
         (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
         planDiscount,
         firstVehicleSlabConfig,
-        slabPricingConfig?.modelMultipliers
+        slabPricingConfig?.modelMultipliers,
+        coveredBodyCharge
       )
-    : pricingEngine.priceForPackage(
-        firstPkg,
-        distanceKm,
-        1,
-        (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
-        planDiscount
+    : (coveredBodyCharge > 0
+        ? pricingEngine.priceForPackage(
+            firstPkg,
+            distanceKm,
+            1,
+            (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
+            planDiscount,
+            null,
+            null,
+            coveredBodyCharge
+          )
+        : pricingEngine.priceForPackage(
+            firstPkg,
+            distanceKm,
+            1,
+            (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
+            planDiscount
+          )
       );
 
   const clientTotal = Number(totalDcharge);
@@ -395,6 +406,8 @@ async function createOrderCore({
       otp: crypto.randomInt(1000, 10000),
       referral_points_used: referralPointsUsed,
       referral_points_amount: referralPointsAmount,
+      body_type: cleanBodyType,
+      covered_charge: coveredBodyCharge,
     },
   });
 
@@ -452,7 +465,7 @@ async function createOrder(req, res) {
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
-      stops,
+      stops, body_type, bodyType,
     } = req.body;
 
     const result = await createOrderCore({
@@ -463,6 +476,7 @@ async function createOrder(req, res) {
       couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
       scheduleDateTime: schedule_date_time || scheduleDateTime || null,
       stops, useReferralPoints: Boolean(use_referral_points),
+      body_type: body_type || bodyType,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
@@ -487,6 +501,8 @@ async function createOrder(req, res) {
       booking_type: order.booking_type,
       referral_points_used: order.referral_points_used || 0,
       referral_points_amount: Number(order.referral_points_amount) || 0,
+      body_type: order.body_type || "any",
+      covered_charge: Number(order.covered_charge) || 0,
       ResponseMsg: "Package Order Placed Successfully!!!",
     });
   } catch (err) {
@@ -653,6 +669,8 @@ async function getOrderDetails(req, res) {
           dlong: order.dlong,
           drop_mobile: order.dmobile,
           stops,
+          body_type: order.body_type || "any",
+          covered_charge: order.covered_charge ? String(order.covered_charge) : "0",
         },
       ],
     });

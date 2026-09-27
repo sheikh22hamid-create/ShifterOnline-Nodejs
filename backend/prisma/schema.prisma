@@ -314,6 +314,8 @@ model pkg_order {
   scheduled_at           DateTime?          @db.DateTime(0)
   referral_points_used   Int                @default(0)
   referral_points_amount Decimal            @default(0.00) @db.Decimal(10, 2)
+  body_type              String?            @default("any") @db.VarChar(20)
+  covered_charge         Decimal?           @default(0.00) @db.Decimal(10, 2)
 
   @@index([rid, order_status], map: "idx_rid_status")
 }
@@ -969,6 +971,7 @@ model tbl_rider {
   trial_status           tbl_rider_trial_status         @default(none)
   trial_orders_allowed   Int?
   trial_orders_completed Int                            @default(0)
+  body_type              String                         @default("both") @db.VarChar(20)
   fmobile                String                         @db.Text
   smobile                String?                        @db.Text
   nationality            String?                        @db.Text
