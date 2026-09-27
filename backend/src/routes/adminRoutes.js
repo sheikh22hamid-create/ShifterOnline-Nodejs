@@ -18,6 +18,7 @@ const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
 const adminDriverLeadController = require("../controllers/adminDriverLeadController");
+const adminTrialDriverController = require("../controllers/adminTrialDriverController");
 const adminUserLeadController = require("../controllers/adminUserLeadController");
 const multer = require("multer");
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -141,6 +142,13 @@ router.post("/riders/:id/kyc-decision", auth, authorize(...RIDER_ROLES), scopeFi
 router.patch("/riders/:id/status", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.toggleStatus);
 router.patch("/riders/:id/payment", auth, authorize("superadmin", "admin"), scopeFilter, adminRiderController.setPaymentComplete);
 router.delete("/riders/:id", auth, authorize("superadmin"), adminRiderController.remove);
+
+// --- Trial Drivers (limited real orders before full KYC) --------------------
+router.get("/trial-drivers", auth, authorize(...RIDER_ROLES), adminTrialDriverController.list);
+router.post("/trial-drivers", auth, authorize("superadmin", "admin"), scopeFilter, adminTrialDriverController.create);
+router.post("/trial-drivers/:id/block", auth, authorize("superadmin", "admin"), adminTrialDriverController.block);
+router.post("/trial-drivers/:id/remove", auth, authorize("superadmin", "admin"), adminTrialDriverController.remove);
+router.post("/trial-drivers/:id/upgrade", auth, authorize("superadmin", "admin"), adminTrialDriverController.upgrade);
 
 // --- Driver Training Video & Progress ---------------------------------------
 router.get("/training/config", auth, adminTrainingController.getConfig);
