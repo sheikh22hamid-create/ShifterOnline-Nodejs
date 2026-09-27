@@ -229,6 +229,18 @@ async function setStatus(req, res) {
       return res.status(400).json({ Result: false, msg: "rider_id and a_status (0 or 1) are required" });
     }
 
+    if (Number(a_status) === 1) {
+      const rider = await prisma.tbl_rider.findUnique({
+        where: { id: Number(rider_id) },
+        select: { trial_status: true, verification_status: true },
+      });
+      const isApproved = rider?.verification_status === "approved";
+      const isActiveTrial = rider?.trial_status === "active";
+      if (!isApproved && !isActiveTrial) {
+        return res.status(200).json({ Result: false, msg: "Your account isn't verified yet. Please complete KYC to go online." });
+      }
+    }
+
     // Going offline mid-duty would let a Monthly/Daily Driver keep racking up
     // "online minutes" toward their fixed payout while invisible to dispatch -
     // duty must be explicitly ended (punch-out) before the driver can go offline.

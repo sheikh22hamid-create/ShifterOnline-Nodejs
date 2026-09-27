@@ -1,6 +1,11 @@
 jest.mock("../../config/db", () => ({
-  tbl_rider: { update: jest.fn() },
+  tbl_rider: {
+    update: jest.fn(),
+    findUnique: jest.fn().mockResolvedValue({ id: 5, verification_status: "approved" }),
+  },
   tbl_user_device: { findFirst: jest.fn() },
+  driver_duty_log: { findFirst: jest.fn().mockResolvedValue(null) },
+  daily_driver_duty_log: { findFirst: jest.fn().mockResolvedValue(null) },
 }));
 jest.mock("../../sockets/adminSocket", () => ({
   notifyDriverStatusUpdate: jest.fn(),
@@ -17,10 +22,10 @@ function makeRes() {
   return { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
 }
 
-describe("riderController.setStatus location reset", () => {
+describe("riderController.setStatus location", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("blanks rlats/rlongs/rloc_updated_at when a driver goes offline", async () => {
+  it("updates a_status to 0 when a driver goes offline", async () => {
     prisma.tbl_rider.update.mockResolvedValue({ id: 5, city_id: 1, a_status: 0, status: 1 });
     const req = { body: { rider_id: 5, a_status: 0 } };
 
@@ -28,12 +33,13 @@ describe("riderController.setStatus location reset", () => {
 
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
       where: { id: 5 },
-      data: { a_status: 0, rlats: null, rlongs: null, rloc_updated_at: null },
-      select: { id: true, city_id: true, a_status: true, status: true },
+      data: { a_status: 0 },
+      select: { id: true, city_id: true, a_status: true, status: true, rlats: true, rlongs: true, rloc_updated_at: true },
     });
   });
 
   it("leaves location untouched when a driver goes online", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 5, verification_status: "approved" });
     prisma.tbl_rider.update.mockResolvedValue({ id: 5, city_id: 1, a_status: 1, status: 1 });
     const req = { body: { rider_id: 5, a_status: 1 } };
 
@@ -42,7 +48,7 @@ describe("riderController.setStatus location reset", () => {
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
       where: { id: 5 },
       data: { a_status: 1 },
-      select: { id: true, city_id: true, a_status: true, status: true },
+      select: { id: true, city_id: true, a_status: true, status: true, rlats: true, rlongs: true, rloc_updated_at: true },
     });
   });
 });
