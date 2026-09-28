@@ -232,11 +232,11 @@ describe("adminOrderController next-day orders", () => {
       ]);
       expect(prisma.pkg_order.update).toHaveBeenNthCalledWith(1, {
         where: { id: 200 },
-        data: { rid: 2, next_day_sequence: 1, driver_earning: 250 },
+        data: expect.objectContaining({ rid: 2, next_day_sequence: 1, driver_earning: 250, order_status: 1, o_status: "Processing" }),
       });
       expect(prisma.pkg_order.update).toHaveBeenNthCalledWith(2, {
         where: { id: 100 },
-        data: { rid: 2, next_day_sequence: 2, driver_earning: 300 },
+        data: expect.objectContaining({ rid: 2, next_day_sequence: 2, driver_earning: 300, order_status: 1, o_status: "Processing" }),
       });
       expect(prisma.tbl_rnoti.create).toHaveBeenCalledTimes(1);
       const io = getIO.mock.results[0].value;

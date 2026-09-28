@@ -596,12 +596,25 @@ async function assignNextDayBatch(req, res) {
       return res.status(409).json({ success: false, message: "One or more orders are already assigned, completed, or cancelled" });
     }
 
+    // Next-day assignment is forced (no accept/reject step - see design spec
+    // §1), so this write has to do what tripLifecycle's "accept" status
+    // transition normally does, or the order is left stuck at the default
+    // order_status=0 and the driver's "Continue Delivery" action (which
+    // requires order_status in [1,2,3]) fails with "This trip is no longer
+    // active".
     await prisma.$transaction(
       sequence.map((s) => {
         const order = orders.find((o) => o.id === Number(s.order_id));
         return prisma.pkg_order.update({
           where: { id: Number(s.order_id) },
-          data: { rid: riderId, next_day_sequence: Number(s.position), driver_earning: order?.total_dcharge },
+          data: {
+            rid: riderId,
+            next_day_sequence: Number(s.position),
+            driver_earning: order?.total_dcharge,
+            order_status: 1,
+            o_status: "Processing",
+            accept_time: new Date(),
+          },
         });
       })
     );
