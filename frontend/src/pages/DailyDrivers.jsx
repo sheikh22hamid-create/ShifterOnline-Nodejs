@@ -47,6 +47,7 @@ export default function DailyDrivers() {
   const [plans, setPlans] = useState([])
   const [plansLoading, setPlansLoading] = useState(true)
   const [zones, setZones] = useState([])
+  const [categories, setCategories] = useState([])
 
   const [pendingRequests, setPendingRequests] = useState([])
   const [requestsLoading, setRequestsLoading] = useState(false)
@@ -74,6 +75,7 @@ export default function DailyDrivers() {
     fetchPlans()
     api.get('/service-zones').then((res) => setZones(res.data.data || [])).catch(() => {})
     api.get('/riders').then((res) => setAllRiders(res.data.data || res.data || [])).catch(() => {})
+    api.get('/categories').then((res) => setCategories(res.data?.data || res.data || [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -419,8 +421,28 @@ export default function DailyDrivers() {
                 <Field label="City (comma-separated ids, or 'all')">
                   <input type="text" value={planForm.city} onChange={(e) => setPlanForm({ ...planForm, city: e.target.value })} className={inputClass} style={inputStyle} />
                 </Field>
-                <Field label="Vehicle Categories (comma-separated, or 'all')">
-                  <input type="text" value={planForm.package_categories} onChange={(e) => setPlanForm({ ...planForm, package_categories: e.target.value })} className={inputClass} style={inputStyle} />
+                <Field label="Vehicle Categories">
+                  <select
+                    multiple
+                    value={
+                      planForm.package_categories === 'all' || !planForm.package_categories
+                        ? []
+                        : planForm.package_categories.split(',').map((s) => s.trim())
+                    }
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions).map((o) => o.value)
+                      setPlanForm({ ...planForm, package_categories: selected.length ? selected.join(',') : 'all' })
+                    }}
+                    className={inputClass}
+                    style={{ ...inputStyle, height: '84px' }}
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.cat_name}>{cat.cat_name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+                    Ctrl/Cmd-click to select multiple. Leave nothing selected for "All Categories".
+                  </p>
                 </Field>
               </div>
 
