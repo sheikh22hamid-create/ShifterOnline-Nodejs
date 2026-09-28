@@ -59,6 +59,8 @@ export default function DailyDrivers() {
   const [allRiders, setAllRiders] = useState([])
   const [forceAssignForm, setForceAssignForm] = useState({ order_id: '', rider_id: '' })
   const [forceAssignBusy, setForceAssignBusy] = useState(false)
+  const [forceAssignOrderType, setForceAssignOrderType] = useState('scheduled') // 'scheduled' | 'next_day'
+  const [nextDayOrders, setNextDayOrders] = useState([])
 
   // Plan create/edit modal
   const [planModalOpen, setPlanModalOpen] = useState(false)
@@ -81,7 +83,10 @@ export default function DailyDrivers() {
   useEffect(() => {
     if (tab === 'requests') fetchPendingRequests()
     if (tab === 'enrollments') fetchEnrollments()
-    if (tab === 'force-assign') fetchScheduledOrders()
+    if (tab === 'force-assign') {
+      fetchScheduledOrders()
+      fetchNextDayOrders()
+    }
   }, [tab])
 
   function fetchPlans() {
@@ -116,6 +121,13 @@ export default function DailyDrivers() {
     api
       .get('/daily-driver/scheduled-orders/pending')
       .then((res) => setScheduledOrders(res.data.data || []))
+      .catch(() => {})
+  }
+
+  function fetchNextDayOrders() {
+    api
+      .get('/orders/next-day', { params: { status: 'unassigned' } })
+      .then((res) => setNextDayOrders(res.data.data || []))
       .catch(() => {})
   }
 
@@ -208,10 +220,19 @@ export default function DailyDrivers() {
     if (!forceAssignForm.order_id || !forceAssignForm.rider_id) return
     setForceAssignBusy(true)
     try {
-      await api.post('/daily-driver/force-assign', forceAssignForm)
+      if (forceAssignOrderType === 'next_day') {
+        await api.post('/orders/next-day/assign-batch', {
+          rider_id: forceAssignForm.rider_id,
+          notify_driver_now: true,
+          sequence: [{ order_id: Number(forceAssignForm.order_id), position: 1 }],
+        })
+        fetchNextDayOrders()
+      } else {
+        await api.post('/daily-driver/force-assign', forceAssignForm)
+        fetchScheduledOrders()
+      }
       toast.success('Order force-assigned to driver')
       setForceAssignForm({ order_id: '', rider_id: '' })
-      fetchScheduledOrders()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to force-assign order')
     } finally {
@@ -323,6 +344,12 @@ export default function DailyDrivers() {
       {tab === 'force-assign' && (
         <ForceAssignTab
           scheduledOrders={scheduledOrders}
+          nextDayOrders={nextDayOrders}
+          orderType={forceAssignOrderType}
+          setOrderType={(type) => {
+            setForceAssignOrderType(type)
+            setForceAssignForm({ order_id: '', rider_id: forceAssignForm.rider_id })
+          }}
           allRiders={allRiders}
           form={forceAssignForm}
           setForm={setForceAssignForm}
@@ -717,24 +744,52 @@ function EnrollmentsTab({ enrollments, loading, riderName, statusPill, onOpenLed
   )
 }
 
-function ForceAssignTab({ scheduledOrders, allRiders, form, setForm, onSubmit, busy }) {
+function ForceAssignTab({ scheduledOrders, nextDayOrders, orderType, setOrderType, allRiders, form, setForm, onSubmit, busy }) {
+  const isNextDay = orderType === 'next_day'
+  const orders = isNextDay ? nextDayOrders : scheduledOrders
+
   return (
     <div className="rounded-2xl border p-6 shadow-sm max-w-2xl" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
       <h3 className="text-sm font-bold flex items-center gap-2 mb-1" style={{ color: 'var(--ink)' }}>
         <Navigation size={16} className="text-emerald-600" />
-        Force Assign Scheduled Booking
+        Force Assign Booking
       </h3>
       <p className="text-xs mb-4" style={{ color: 'var(--ink-muted)' }}>
-        Directly assigns a still-pending scheduled order to a specific driver, bypassing the normal priority/dispatch round. Any driver already offered this order loses their popup immediately.
+        {isNextDay
+          ? "Directly assigns a still-unassigned next-day order to a specific driver. Next-day orders are manual-only (no accept/reject) - the driver is notified immediately."
+          : 'Directly assigns a still-pending scheduled order to a specific driver, bypassing the normal priority/dispatch round. Any driver already offered this order loses their popup immediately.'}
       </p>
 
+      <div className="mb-4 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setOrderType('scheduled')}
+          className={`rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
+            !isNextDay ? 'bg-emerald-600 text-white' : 'border'
+          }`}
+          style={isNextDay ? { borderColor: 'var(--border)', color: 'var(--ink-muted)' } : {}}
+        >
+          Scheduled
+        </button>
+        <button
+          type="button"
+          onClick={() => setOrderType('next_day')}
+          className={`rounded-lg px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors ${
+            isNextDay ? 'bg-emerald-600 text-white' : 'border'
+          }`}
+          style={!isNextDay ? { borderColor: 'var(--border)', color: 'var(--ink-muted)' } : {}}
+        >
+          Next Day
+        </button>
+      </div>
+
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field label="Scheduled Order">
+        <Field label={isNextDay ? 'Next Day Order' : 'Scheduled Order'}>
           <select required value={form.order_id} onChange={(e) => setForm({ ...form, order_id: e.target.value })} className={inputClass} style={inputStyle}>
-            <option value="">-- Select a pending scheduled order --</option>
-            {scheduledOrders.map((o) => (
+            <option value="">-- Select a pending {isNextDay ? 'next-day' : 'scheduled'} order --</option>
+            {orders.map((o) => (
               <option key={o.id} value={o.id}>
-                #{o.id} - {o.pick_name?.slice(0, 24)} to {o.drop_name?.slice(0, 24)} @ {o.schedule_date_time} (₹{o.total_dcharge})
+                #{o.id} - {o.pick_name?.slice(0, 24) || o.paddress?.slice(0, 24)} to {o.drop_name?.slice(0, 24) || o.daddress?.slice(0, 24)} @ {o.schedule_date_time} (₹{o.total_dcharge})
               </option>
             ))}
           </select>
