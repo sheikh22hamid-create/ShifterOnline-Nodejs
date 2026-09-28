@@ -113,7 +113,7 @@ async function parseMessageWithGroq(userText, sessionContext = {}) {
       const client = getGroqClientForKey(apiKey);
 
       const response = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL || "groq/compound-mini",
+        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: systemPromptWithKnowledge },
           {
