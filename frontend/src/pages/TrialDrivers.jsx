@@ -36,7 +36,11 @@ export default function TrialDrivers() {
   const { data, loading, error, refetch } = useApiQuery(fetcher)
   const drivers = data?.data ?? []
 
-  const vehiclesFetcher = useCallback(() => api.get('/vehicles').then((res) => res.data.data), [])
+  // Package Categories (pkg_category) is the real, actively-maintained
+  // vehicle-type list the rest of the app (Rate Cards, customer app) uses -
+  // the separate "Vehicle Types" master table (tbl_vechicle, /vehicles) is
+  // unpopulated/unused here.
+  const vehiclesFetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
   const { data: vehicles } = useApiQuery(vehiclesFetcher)
 
   async function handleAdd() {
@@ -245,13 +249,13 @@ export default function TrialDrivers() {
                       key={v.id}
                       type="button"
                       onClick={() => {
-                        setForm((f) => ({ ...f, vehicle: v.title }))
+                        setForm((f) => ({ ...f, vehicle: v.cat_name }))
                         setVehicleMenuOpen(false)
                       }}
                       className="block w-full px-3 py-1.5 text-left text-[13px] hover:bg-[var(--brand-soft)]"
-                      style={{ color: 'var(--ink)', background: form.vehicle === v.title ? 'var(--bg)' : 'transparent' }}
+                      style={{ color: 'var(--ink)', background: form.vehicle === v.cat_name ? 'var(--bg)' : 'transparent' }}
                     >
-                      {v.title}
+                      {v.cat_name}
                     </button>
                   ))}
                 </div>
