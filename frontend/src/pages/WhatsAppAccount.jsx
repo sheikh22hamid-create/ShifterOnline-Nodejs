@@ -12,8 +12,10 @@ import {
   ShieldCheck,
   Info,
   KeyRound,
-  MessageSquare
+  MessageSquare,
+  Sparkles
 } from 'lucide-react'
+import QRCode from 'react-qr-code'
 import api from '../services/api'
 
 export default function WhatsAppAccount() {
@@ -26,9 +28,15 @@ export default function WhatsAppAccount() {
   })
   const [message, setMessage] = useState(null) // { type: 'success' | 'error', text: '' }
 
-  // Pairing Code Modal/State
+  // Connection Method Toggle: 'qr' | 'pairing'
+  const [connectTab, setConnectTab] = useState('qr')
+
+  // Pairing Code State
   const [phoneInput, setPhoneInput] = useState('')
   const [pairingLoading, setPairingLoading] = useState(false)
+
+  // QR Code Generation State
+  const [qrLoading, setQrLoading] = useState(false)
 
   // Account Switch Modal/State
   const [showSwitchModal, setShowSwitchModal] = useState(false)
@@ -46,13 +54,12 @@ export default function WhatsAppAccount() {
 
   useEffect(() => {
     fetchStatus()
-    const interval = setInterval(fetchStatus, 5000) // Auto refresh status every 5s
+    const interval = setInterval(fetchStatus, 4000) // Auto refresh status every 4s
     return () => clearInterval(interval)
   }, [])
 
   async function fetchStatus() {
     try {
-      // Use relative endpoint to whatsapp status
       const res = await api.get('/../whatsapp/status')
       if (res.data.success || res.data.Result) {
         setStatusData(res.data.data || {})
@@ -81,6 +88,23 @@ export default function WhatsAppAccount() {
       setMessage({ type: 'error', text: err.response?.data?.msg || 'Failed to request pairing code.' })
     } finally {
       setPairingLoading(false)
+    }
+  }
+
+  async function handleRequestQrCode() {
+    setQrLoading(true)
+    setMessage(null)
+    try {
+      const res = await api.post('/../whatsapp/request-qr')
+      if (res.data.success || res.data.Result) {
+        setMessage({ type: 'success', text: '🔄 Fresh QR code generation initiated. Scan below with WhatsApp!' })
+        fetchStatus()
+      }
+    } catch (err) {
+      console.error('Failed to request QR code:', err)
+      setMessage({ type: 'error', text: err.response?.data?.msg || 'Failed to generate QR code.' })
+    } finally {
+      setQrLoading(false)
     }
   }
 
@@ -170,7 +194,7 @@ export default function WhatsAppAccount() {
               </span>
             </div>
             <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
-              Super Admin Control: Securely monitor, pair, switch, or logout the WhatsApp Bot account.
+              Super Admin Control: Securely monitor, pair with QR / Code, switch, or logout the WhatsApp Bot account.
             </p>
           </div>
         </div>
@@ -233,125 +257,228 @@ export default function WhatsAppAccount() {
         </div>
       )}
 
-      {/* Account Status Grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {/* Connection Status Card */}
-        <div className="rounded-xl border p-5 surface-card md:col-span-2">
-          <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--border)' }}>
-            <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--ink)' }}>
-              <ShieldCheck size={18} style={{ color: 'var(--brand)' }} />
-              <span>Active WhatsApp Session Overview</span>
+      {/* Main Account & Authentication Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Left Column: Connection Overview & Method Selector (7 cols) */}
+        <div className="space-y-6 lg:col-span-7">
+          {/* Active Session Overview */}
+          <div className="rounded-xl border p-5 surface-card">
+            <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+                <ShieldCheck size={18} style={{ color: 'var(--brand)' }} />
+                <span>Active WhatsApp Session Overview</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-medium">
+                <Lock size={13} />
+                <span>Super Admin Secured</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-medium">
-              <Lock size={13} />
-              <span>Super Admin Secured</span>
+
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border p-4" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                  Connection State
+                </div>
+                <div className="mt-1.5 flex items-center gap-2 text-base font-bold" style={{ color: isConnected ? 'var(--success)' : 'var(--ink)' }}>
+                  <span className={`h-3 w-3 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  {statusData.status}
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                  Connected Phone Number
+                </div>
+                <div className="mt-1.5 font-mono-data text-base font-bold" style={{ color: 'var(--ink)' }}>
+                  {statusData.connectedPhone ? `+${statusData.connectedPhone}` : 'No phone linked'}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border p-4" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                Connection State
-              </div>
-              <div className="mt-1.5 flex items-center gap-2 text-base font-bold" style={{ color: isConnected ? 'var(--success)' : 'var(--ink)' }}>
-                <span className={`h-3 w-3 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                {statusData.status}
-              </div>
-            </div>
-
-            <div className="rounded-lg border p-4" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                Connected Phone Number
-              </div>
-              <div className="mt-1.5 font-mono-data text-base font-bold" style={{ color: 'var(--ink)' }}>
-                {statusData.connectedPhone ? `+${statusData.connectedPhone}` : 'No phone linked'}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Pairing / Instructions if disconnected */}
+          {/* Connection Mode Selection (When Not Connected) */}
           {!isConnected && (
-            <div className="mt-5 rounded-xl border p-4" style={{ background: 'var(--brand-soft)', borderColor: 'var(--border)' }}>
-              <h3 className="text-xs font-bold text-amber-700 flex items-center gap-1.5">
-                <KeyRound size={15} />
-                Connect WhatsApp Account via Phone Pairing Code
-              </h3>
-              <p className="mt-1 text-[12px] text-amber-800/80">
-                Enter the target business WhatsApp phone number (with country code, e.g. <code>919109114515</code>) to generate an 8-digit pairing code.
-              </p>
+            <div className="rounded-xl border p-5 surface-card">
+              <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--ink)' }}>
+                  <Sparkles size={16} style={{ color: 'var(--brand)' }} />
+                  <span>Choose Connection Method</span>
+                </div>
 
-              <form onSubmit={handleRequestPairingCode} className="mt-3 flex gap-2">
-                <input
-                  type="text"
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  placeholder="Enter phone with country code (e.g. 919876543210)"
-                  className="w-full rounded-lg border px-3.5 py-2 text-xs outline-none focus:border-amber-500"
-                  style={{ background: 'var(--surface)', color: 'var(--ink)', borderColor: 'var(--border)' }}
-                />
-                <button
-                  type="submit"
-                  disabled={pairingLoading || !phoneInput.trim()}
-                  className="rounded-lg px-4 py-2 text-xs font-semibold whitespace-nowrap transition-opacity disabled:opacity-50"
-                  style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
-                >
-                  {pairingLoading ? 'Requesting…' : 'Get Pairing Code'}
-                </button>
-              </form>
+                {/* Tabs */}
+                <div className="flex items-center rounded-lg p-0.5 border" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConnectTab('qr')}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      connectTab === 'qr'
+                        ? 'bg-[var(--brand)] text-[var(--brand-ink)] shadow-sm'
+                        : 'text-[var(--ink-muted)] hover:text-[var(--ink)]'
+                    }`}
+                  >
+                    <QrCode size={14} />
+                    Scan QR Code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConnectTab('pairing')}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      connectTab === 'pairing'
+                        ? 'bg-[var(--brand)] text-[var(--brand-ink)] shadow-sm'
+                        : 'text-[var(--ink-muted)] hover:text-[var(--ink)]'
+                    }`}
+                  >
+                    <KeyRound size={14} />
+                    Phone Pairing Code
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab 1: QR Code Instructions & Refresh */}
+              {connectTab === 'qr' && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                    Scan the live QR Code shown on the right panel using WhatsApp on your mobile device:
+                  </p>
+                  <div className="rounded-lg border p-3.5 space-y-2 text-xs" style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[11px] font-bold text-[var(--brand)]">1</span>
+                      <span style={{ color: 'var(--ink)' }}>Open <strong>WhatsApp</strong> on your mobile phone.</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[11px] font-bold text-[var(--brand)]">2</span>
+                      <span style={{ color: 'var(--ink)' }}>Tap <strong>Menu (⋮)</strong> or <strong>Settings ➔ Linked Devices</strong>.</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[11px] font-bold text-[var(--brand)]">3</span>
+                      <span style={{ color: 'var(--ink)' }}>Tap <strong>Link a Device</strong> and point your camera at the QR code.</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={handleRequestQrCode}
+                      disabled={qrLoading}
+                      className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+                      style={{ background: 'var(--brand)', color: 'var(--brand-ink)', borderColor: 'var(--brand)' }}
+                    >
+                      <RefreshCw size={14} className={qrLoading ? 'animate-spin' : ''} />
+                      {qrLoading ? 'Generating QR Code…' : '🔄 Refresh / Generate New QR Code'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Phone Pairing Code Form */}
+              {connectTab === 'pairing' && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                    Enter target WhatsApp phone number with country code (e.g. <code>919109114515</code>) to generate an 8-digit pairing code:
+                  </p>
+
+                  <form onSubmit={handleRequestPairingCode} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={phoneInput}
+                      onChange={(e) => setPhoneInput(e.target.value)}
+                      placeholder="Enter phone with country code (e.g. 919876543210)"
+                      className="w-full rounded-lg border px-3.5 py-2.5 text-xs outline-none focus:border-amber-500"
+                      style={{ background: 'var(--surface)', color: 'var(--ink)', borderColor: 'var(--border)' }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={pairingLoading || !phoneInput.trim()}
+                      className="rounded-lg px-4 py-2.5 text-xs font-semibold whitespace-nowrap transition-opacity disabled:opacity-50"
+                      style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
+                    >
+                      {pairingLoading ? 'Generating…' : 'Get Pairing Code'}
+                    </button>
+                  </form>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Pairing / QR Code Display Panel */}
-        <div className="rounded-xl border p-5 surface-card flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 border-b pb-3 text-xs font-semibold" style={{ color: 'var(--ink)', borderColor: 'var(--border)' }}>
-              <QrCode size={16} style={{ color: 'var(--brand)' }} />
-              <span>Authentication Pairing State</span>
+        {/* Right Column: Live QR Code & Pairing Code Visual Display (5 cols) */}
+        <div className="lg:col-span-5">
+          <div className="rounded-xl border p-5 surface-card h-full flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b pb-3 text-xs font-semibold" style={{ color: 'var(--ink)', borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-2">
+                  <QrCode size={16} style={{ color: 'var(--brand)' }} />
+                  <span>WhatsApp Authentication Screen</span>
+                </div>
+                {statusData.qrCode && !isConnected && (
+                  <span className="rounded-full bg-emerald-500/10 text-emerald-600 px-2 py-0.5 text-[10px] font-bold animate-pulse">
+                    Live QR Ready
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 flex flex-col items-center justify-center text-center">
+                {/* 1. If Connected */}
+                {isConnected ? (
+                  <div className="my-8 flex flex-col items-center">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+                      <CheckCircle2 size={50} />
+                    </div>
+                    <p className="mt-3 text-sm font-bold text-emerald-600">WhatsApp Bot Connected</p>
+                    <p className="mt-1 max-w-xs text-xs" style={{ color: 'var(--ink-muted)' }}>
+                      Bot is online, listening to user queries and ready to assist.
+                    </p>
+                  </div>
+                ) : statusData.pairingCode ? (
+                  /* 2. Pairing Code View */
+                  <div className="my-3 w-full rounded-2xl border p-5 surface-card text-center shadow-md">
+                    <div className="text-xs font-bold uppercase tracking-wider text-amber-600">
+                      Your 8-Digit Pairing Code
+                    </div>
+                    <div className="mt-3 font-mono-data text-4xl font-extrabold tracking-widest text-amber-600 select-all">
+                      {statusData.pairingCode}
+                    </div>
+                    <p className="mt-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                      Open WhatsApp ➔ Linked Devices ➔ <strong>Link with phone number instead</strong> ➔ Enter code above.
+                    </p>
+                  </div>
+                ) : statusData.qrCode ? (
+                  /* 3. Real Interactive QR Code Display */
+                  <div className="my-2 flex flex-col items-center">
+                    <div className="p-4 rounded-2xl bg-white border shadow-lg">
+                      <QRCode
+                        value={statusData.qrCode}
+                        size={210}
+                        bgColor="#ffffff"
+                        fgColor="#0f172a"
+                        level="M"
+                      />
+                    </div>
+                    <p className="mt-3 text-xs font-bold" style={{ color: 'var(--ink)' }}>
+                      📱 Scan QR code with WhatsApp Camera
+                    </p>
+                    <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                      QR code updates automatically.
+                    </p>
+                  </div>
+                ) : (
+                  /* 4. Waiting State */
+                  <div className="my-8 flex flex-col items-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10 text-amber-500 mb-3">
+                      <Info size={36} />
+                    </div>
+                    <p className="text-xs font-bold text-amber-600">Waiting for Authentication</p>
+                    <p className="mt-1 max-w-xs text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                      Click <strong>"Refresh / Generate QR Code"</strong> or enter your phone number to start pairing.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="mt-4 flex flex-col items-center justify-center text-center">
-              {statusData.pairingCode ? (
-                <div className="my-2 w-full rounded-xl border p-4 surface-card text-center">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-600">
-                    Your 8-Digit Pairing Code
-                  </div>
-                  <div className="mt-2 font-mono-data text-3xl font-extrabold tracking-widest text-amber-600">
-                    {statusData.pairingCode}
-                  </div>
-                  <p className="mt-2 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-                    Open WhatsApp ➔ Linked Devices ➔ Link with phone number instead ➔ Enter this code.
-                  </p>
-                </div>
-              ) : statusData.qrCode ? (
-                <div className="my-2 p-2 rounded-xl border bg-white shadow-sm">
-                  <p className="text-[11px] font-bold text-gray-700 mb-2">Scan QR Code in WhatsApp</p>
-                  <pre className="text-[9px] font-mono leading-none bg-black text-white p-2 rounded overflow-x-auto">
-                    {statusData.qrCode.slice(0, 40)}…
-                  </pre>
-                </div>
-              ) : isConnected ? (
-                <div className="my-6 flex flex-col items-center">
-                  <CheckCircle2 size={44} className="text-emerald-500" />
-                  <p className="mt-2 text-xs font-bold text-emerald-600">Bot Session Active</p>
-                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    WhatsApp bot is currently running & responsive.
-                  </p>
-                </div>
-              ) : (
-                <div className="my-6 flex flex-col items-center">
-                  <Info size={40} className="text-amber-500" />
-                  <p className="mt-2 text-xs font-bold text-amber-600">Waiting for Pairing</p>
-                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    Request pairing code or start account switch to connect.
-                  </p>
-                </div>
-              )}
+            <div className="mt-4 rounded-lg p-3 text-[11px]" style={{ background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
+              🔒 Credentials authenticate directly with WhatsApp Web Multi-Device protocol.
             </div>
-          </div>
-
-          <div className="mt-4 rounded-lg p-3 text-[11px]" style={{ background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}>
-            🔒 Credentials are authenticated directly with WhatsApp Web endpoints. No raw session keys are exposed to frontend.
           </div>
         </div>
       </div>
@@ -419,7 +546,7 @@ export default function WhatsAppAccount() {
                   Switch WhatsApp Account
                 </h3>
                 <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                  Replace current connected account with a new number.
+                  Replace current connected account with a new number or fresh QR.
                 </p>
               </div>
             </div>
@@ -430,13 +557,13 @@ export default function WhatsAppAccount() {
 
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--ink)' }}>
-                New WhatsApp Phone Number (Optional)
+                New WhatsApp Phone Number (Optional - Leave blank for QR scan)
               </label>
               <input
                 type="text"
                 value={switchPhoneInput}
                 onChange={(e) => setSwitchPhoneInput(e.target.value)}
-                placeholder="Enter phone with country code (e.g. 919876543210)"
+                placeholder="Enter phone (e.g. 919876543210) or leave blank for QR"
                 className="w-full rounded-lg border px-3.5 py-2.5 text-xs outline-none focus:border-amber-500"
                 style={{ background: 'var(--surface)', color: 'var(--ink)', borderColor: 'var(--border)' }}
               />
@@ -456,16 +583,16 @@ export default function WhatsAppAccount() {
                 onClick={handleSwitchAccount}
                 disabled={switchLoading}
                 className="rounded-lg px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-50"
-                style={{ background: 'var(--brand)' }}
+                style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
               >
-                {switchLoading ? 'Switching…' : 'Confirm & Switch Account'}
+                {switchLoading ? 'Switching…' : 'Proceed to Switch'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Logout Confirmation Modal */}
+      {/* Logout Account Modal */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border p-6 surface-card shadow-2xl space-y-4">
@@ -475,16 +602,16 @@ export default function WhatsAppAccount() {
               </div>
               <div>
                 <h3 className="text-base font-bold" style={{ color: 'var(--ink)' }}>
-                  Logout Connected WhatsApp Account?
+                  Disconnect WhatsApp Account
                 </h3>
                 <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                  Confirm session termination
+                  Are you sure you want to log out the WhatsApp bot?
                 </p>
               </div>
             </div>
 
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-              Are you sure you want to logout the connected WhatsApp account? The active session will be disconnected and stored credentials will be safely deleted.
+            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              This will immediately disconnect the active WhatsApp bot session and invalidate authentication credentials.
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -503,7 +630,7 @@ export default function WhatsAppAccount() {
                 className="rounded-lg px-4 py-2 text-xs font-semibold text-white transition-opacity disabled:opacity-50"
                 style={{ background: 'var(--danger)' }}
               >
-                {logoutLoading ? 'Disconnecting…' : 'Yes, Logout & Disconnect'}
+                {logoutLoading ? 'Disconnecting…' : 'Confirm Logout'}
               </button>
             </div>
           </div>

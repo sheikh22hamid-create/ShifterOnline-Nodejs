@@ -211,7 +211,7 @@ function fallbackRuleBasedParser(text) {
     return {
       intent: "DRIVER_ONBOARDING",
       entities: {},
-      aiResponse: "🚚 *Shifter Online Driver Partner Program*\n\nAap Shifter Online ke saath judein aur apni gadi se daily achhi kamai karein!\n\n📋 *Required Documents*:\n1️⃣ Driving License (DL)\n2️⃣ Aadhaar Card / Govt ID Proof\n3️⃣ Vehicle RC Book\n4️⃣ Bank Account / UPI Details\n5️⃣ Profile & Vehicle Photo\n\n📲 *Registration Link*:\nhttps://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 *Driver Support*: 9109114515",
+      aiResponse: "🚚 *Shifter Online Driver Partner Program*\n\nAap Shifter Online ke saath judein aur apni gadi (Bike, 3-Wheeler, 4-Wheeler, E-Loader) se daily achhi kamai karein!\n\n📋 *Required Documents*:\n1️⃣ Driving License (DL)\n2️⃣ Aadhaar Card / Govt ID Proof\n3️⃣ Vehicle RC Book\n4️⃣ Bank Account / UPI Details\n5️⃣ Profile & Vehicle Photo\n6️⃣ PAN Card\n\n📲 *Registration Kaise Karein?*\nDirect humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n🔗 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 *Driver Support*: 9109114515",
     };
   }
 
@@ -246,7 +246,8 @@ function fallbackRuleBasedParser(text) {
   return {
     intent: "FAQ_QUERY",
     entities: {},
-    aiResponse: "Main Shifter Online Bot hoon! Main aapko Fare Calculation, Order Tracking, Driver Details aur Support me madad kar sakta hoon.",
+    aiResponse:
+      "Main Shifter Online Bot hoon! Main abhi training phase mein hoon. Hamari technical team aapki sahayata Se mujhe develop aur advance banaa rahi hai\nAap mujhse koi bhi sawal poochh sakte hain\nAapke sawal ka hamari team uchit jawab degi.",
   };
 }
 
