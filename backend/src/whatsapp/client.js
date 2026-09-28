@@ -114,6 +114,7 @@ async function initWhatsAppBot() {
       }
 
       if (connection === "close") {
+        notifications.setWhatsAppClient(null);
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut =
           statusCode === DisconnectReason.loggedOut ||
@@ -423,7 +424,7 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
             `2️⃣ Aadhaar Card / Govt ID Proof\n` +
             `3️⃣ Vehicle RC Book\n` +
             `4️⃣ Bank Account / UPI Details\n` +
-            `5️⃣ Profile & Vehicle Photo\n` +
+            `5️⃣ Live Face verification\n` +
             `6️⃣ PAN Card\n\n` +
             `📲 *Registration Kaise Karein?*\n` +
             `Direct humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n` +
@@ -549,7 +550,7 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
               `2️⃣ Aadhaar Card / Govt ID Proof\n` +
               `3️⃣ Vehicle RC Book\n` +
               `4️⃣ Bank Account / UPI Details\n` +
-              `5️⃣ Profile & Vehicle Photo\n` +
+              `5️⃣ Live Face verification\n` +
               `6️⃣ PAN Card\n\n` +
               `📲 *Registration Kaise Karein?*\n` +
               `Direct humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n` +
@@ -993,6 +994,7 @@ async function logoutWhatsAppBot() {
       sock = null;
     }
 
+    notifications.setWhatsAppClient(null);
     clearAuthDirectory();
 
     connectionStatus = "DISCONNECTED";
@@ -1022,6 +1024,7 @@ async function switchWhatsAppAccount(targetPhone = null) {
       sock = null;
     }
 
+    notifications.setWhatsAppClient(null);
     clearAuthDirectory();
 
     connectionStatus = "DISCONNECTED";
