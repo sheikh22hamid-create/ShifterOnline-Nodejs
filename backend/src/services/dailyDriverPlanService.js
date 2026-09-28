@@ -160,8 +160,9 @@ async function enroll({ riderId, planId, enrollmentDate = null, autoEnrollId = n
   const date = enrollmentDate ? istDateOnly(new Date(enrollmentDate)) : istDateOnly();
   return prisma.$transaction(async (tx) => {
     // Serializes concurrent enroll attempts for this plan so two drivers
-    // racing for the last slot can't both read "capacity available" before
-    // either insert lands (see memory on the Daily Driver abuse review).
+    // racing for the last application slot can't both read "capacity
+    // available" before either insert lands (see memory on the Daily Driver
+    // abuse review).
     await tx.$queryRaw`SELECT id FROM daily_driver_plan WHERE id = ${Number(planId)} FOR UPDATE`;
 
     const plan = await tx.daily_driver_plan.findFirst({ where: { id: Number(planId), status: true } });
@@ -178,17 +179,25 @@ async function enroll({ riderId, planId, enrollmentDate = null, autoEnrollId = n
       throw new Error("This plan is not available for your vehicle category");
     }
 
-    const canEnrollDirectly = await hasCapacity(plan.id, date, plan, tx);
+    // max_drivers now caps the number of drivers who can even APPLY for this
+    // plan/date (pending_approval + already-enrolled, per OCCUPIED_STATUSES),
+    // not just the number admin approves - every application always needs
+    // admin review, there is no auto-enroll path any more. A rejected
+    // application frees its slot immediately since "rejected" isn't in
+    // OCCUPIED_STATUSES, letting another driver apply in its place.
+    const hasSlot = await hasCapacity(plan.id, date, plan, tx);
+    if (!hasSlot) throw new Error("This plan has reached its application limit for this date");
+
     const enrollment = await tx.daily_driver_enrollment.create({
       data: {
         rider_id: Number(riderId),
         plan_id: plan.id,
         enrollment_date: date,
-        status: canEnrollDirectly ? "enrolled" : "pending_approval",
+        status: "pending_approval",
         auto_enroll_id: autoEnrollId ? Number(autoEnrollId) : null,
       },
     });
-    return { enrollment, plan, autoApproved: canEnrollDirectly };
+    return { enrollment, plan };
   });
 }
 
@@ -201,11 +210,47 @@ async function cancelEnrollment({ riderId, enrollmentId }) {
   return prisma.daily_driver_enrollment.update({ where: { id: enrollment.id }, data: { status: "cancelled" } });
 }
 
+/**
+ * Pending requests enriched with rider identity + a quick order-history
+ * summary (total/completed/cancelled counts), so admin can review a driver's
+ * track record before approving them into a Daily Driver slot.
+ */
 async function listPendingRequests(planId = null) {
-  return prisma.daily_driver_enrollment.findMany({
+  const rows = await prisma.daily_driver_enrollment.findMany({
     where: { status: "pending_approval", ...(planId ? { plan_id: Number(planId) } : {}) },
     include: { plan: true },
     orderBy: { created_at: "asc" },
+  });
+  if (!rows.length) return rows;
+
+  const riderIds = [...new Set(rows.map((r) => r.rider_id))];
+  const [riders, orderCounts] = await Promise.all([
+    prisma.tbl_rider.findMany({
+      where: { id: { in: riderIds } },
+      select: { id: true, first_name: true, last_name: true, full_name: true, fmobile: true, vehicle: true },
+    }),
+    prisma.pkg_order.groupBy({ by: ["rid", "o_status"], where: { rid: { in: riderIds } }, _count: { id: true } }),
+  ]);
+
+  const riderMap = new Map(riders.map((r) => [r.id, r]));
+  const statsMap = new Map();
+  for (const row of orderCounts) {
+    const stats = statsMap.get(row.rid) || { total: 0, completed: 0, cancelled: 0 };
+    stats.total += row._count.id;
+    if (row.o_status === "Completed") stats.completed += row._count.id;
+    if (row.o_status === "Cancelled") stats.cancelled += row._count.id;
+    statsMap.set(row.rid, stats);
+  }
+
+  return rows.map((r) => {
+    const rider = riderMap.get(r.rider_id);
+    return {
+      ...r,
+      rider_name: rider ? rider.full_name || `${rider.first_name || ""} ${rider.last_name || ""}`.trim() || `Driver #${r.rider_id}` : `Driver #${r.rider_id}`,
+      rider_mobile: rider ? rider.fmobile : null,
+      rider_vehicle: rider ? rider.vehicle : null,
+      rider_order_stats: statsMap.get(r.rider_id) || { total: 0, completed: 0, cancelled: 0 },
+    };
   });
 }
 
@@ -264,8 +309,9 @@ async function cancelAutoEnroll({ riderId }) {
 
 /**
  * Daily job: for every active, non-expired auto-enroll row, create
- * tomorrow's enrollment (direct if capacity allows, else pending_approval -
- * auto-enroll never bypasses the admin capacity limit, per spec section 4).
+ * tomorrow's enrollment as a pending_approval request - auto-enroll never
+ * bypasses either the admin capacity limit or the admin approval step, per
+ * spec section 4.
  * Idempotent: enroll() itself rejects a duplicate enrollment for the same
  * rider+date, so re-running this job for the same day is a safe no-op for
  * riders already processed.
@@ -279,13 +325,13 @@ async function runAutoEnrollJob(forDate = null) {
   const results = [];
   for (const candidate of candidates) {
     try {
-      const { enrollment, autoApproved } = await enroll({
+      const { enrollment } = await enroll({
         riderId: candidate.rider_id,
         planId: candidate.plan_id,
         enrollmentDate: targetDate,
         autoEnrollId: candidate.id,
       });
-      results.push({ riderId: candidate.rider_id, enrollmentId: enrollment.id, autoApproved });
+      results.push({ riderId: candidate.rider_id, enrollmentId: enrollment.id });
     } catch (err) {
       // Already enrolled for that date (e.g. manually), plan gone inactive,
       // vehicle mismatch, etc. - log and move to the next candidate rather

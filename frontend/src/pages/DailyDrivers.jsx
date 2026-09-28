@@ -414,8 +414,11 @@ export default function DailyDrivers() {
                 <Field label="Required Duty Hours">
                   <input type="number" step="0.5" required value={planForm.required_duty_hours} onChange={(e) => setPlanForm({ ...planForm, required_duty_hours: e.target.value })} className={inputClass} style={inputStyle} />
                 </Field>
-                <Field label="Max Drivers">
+                <Field label="Max Applications (pending + approved)">
                   <input type="number" required value={planForm.max_drivers} onChange={(e) => setPlanForm({ ...planForm, max_drivers: e.target.value })} className={inputClass} style={inputStyle} />
+                  <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+                    Caps how many drivers can even apply per date. Every application still needs your approval - a rejected one frees its slot for someone else.
+                  </p>
                 </Field>
               </div>
 
@@ -674,10 +677,16 @@ function RequestsTab({ requests, loading, riderName, onApprove, onReject }) {
       {requests.map((r) => (
         <div key={r.id} className="flex items-center justify-between rounded-2xl border p-4 shadow-sm" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
           <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{riderName(r.rider_id)}</p>
+            <p className="text-sm font-semibold" style={{ color: 'var(--ink)' }}>{r.rider_name || riderName(r.rider_id)}</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
               {r.plan?.plan_name} - {new Date(r.enrollment_date).toLocaleDateString()} - requested {new Date(r.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+              {r.rider_mobile ? ` - ${r.rider_mobile}` : ''}
             </p>
+            {r.rider_order_stats && (
+              <p className="text-[11px] mt-1 font-medium" style={{ color: 'var(--ink-muted)' }}>
+                Order history: {r.rider_order_stats.total} total · {r.rider_order_stats.completed} completed · {r.rider_order_stats.cancelled} cancelled
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => onApprove(r.id)} className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition">

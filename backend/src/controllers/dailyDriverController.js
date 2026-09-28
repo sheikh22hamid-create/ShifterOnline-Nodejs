@@ -24,11 +24,11 @@ async function enroll(req, res) {
     const id = driverId(req);
     const { plan_id } = req.body;
     if (!id || !plan_id) return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "driver_id and plan_id are required" });
-    const { enrollment, autoApproved } = await planService.enroll({ riderId: id, planId: plan_id });
+    const { enrollment } = await planService.enroll({ riderId: id, planId: plan_id });
     return res.status(201).json({
       ResponseCode: "200",
       Result: "true",
-      ResponseMsg: autoApproved ? "Enrolled successfully." : "Enrollment limit reached - request sent for admin approval.",
+      ResponseMsg: "Enrollment request submitted - waiting for admin approval.",
       Enrollment: { enrollment_id: enrollment.id, status: enrollment.status, enrollment_date: enrollment.enrollment_date },
     });
   } catch (err) {

@@ -138,6 +138,7 @@ export default function AppShell() {
 
       {activeOrderDrawerId && (
         <OrderDetailDrawer
+          key={activeOrderDrawerId}
           orderId={activeOrderDrawerId}
           onClose={() => setActiveOrderDrawerId(null)}
         />

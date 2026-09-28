@@ -10,13 +10,19 @@ import { useEffect, useState } from 'react'
  * `fetcher` must be a useCallback'd function returning a promise of the
  * data; its identity change is what triggers a refetch.
  */
-export default function useApiQuery(fetcher) {
+export default function useApiQuery(fetcher, options = {}) {
+  const { enabled = true } = options
   const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(enabled && typeof fetcher === 'function'))
   const [error, setError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
+    if (!enabled || typeof fetcher !== 'function') {
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     // This effect's entire purpose is running an async fetch against an
     // external system (the API) — the loading/error flags it sets ARE the
@@ -39,7 +45,7 @@ export default function useApiQuery(fetcher) {
     return () => {
       cancelled = true
     }
-  }, [fetcher, reloadToken])
+  }, [fetcher, reloadToken, enabled])
 
   return { data, setData, loading, error, refetch: () => setReloadToken((t) => t + 1) }
 }

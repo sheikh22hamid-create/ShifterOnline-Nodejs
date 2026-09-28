@@ -25,8 +25,9 @@ export default function useRealtimeSync(events, refetch, options = {}) {
   }, [refetch])
 
   // Real-time socket event listeners
+  const eventsKey = Array.isArray(events) ? events.join(',') : String(events || '')
   useEffect(() => {
-    if (!socket) return
+    if (!socket || !eventsKey) return
 
     const eventList = Array.isArray(events) ? events : [events]
     const handler = () => {
@@ -44,7 +45,7 @@ export default function useRealtimeSync(events, refetch, options = {}) {
         socket.off(evt, handler)
       })
     }
-  }, [socket, events])
+  }, [socket, eventsKey])
 
   // Trigger refetch when connection is restored
   useEffect(() => {

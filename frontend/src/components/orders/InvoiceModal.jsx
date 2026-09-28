@@ -6,8 +6,12 @@ import Modal from '../common/Modal'
 import { formatCurrency, formatDateTime } from '../../utils/format'
 
 export default function InvoiceModal({ open, orderId, onClose }) {
-  const fetcher = useCallback(() => api.get(`/orders/${orderId}/invoice`).then((res) => res.data.data), [orderId])
-  const { data: invoice, loading, error } = useApiQuery(open ? fetcher : () => Promise.resolve(null))
+  const fetcher = useCallback(() => {
+    if (!open || !orderId) return Promise.resolve(null)
+    return api.get(`/orders/${orderId}/invoice`).then((res) => res.data.data)
+  }, [open, orderId])
+
+  const { data: invoice, loading, error } = useApiQuery(fetcher, { enabled: Boolean(open && orderId) })
 
   function handlePrint() {
     window.print()

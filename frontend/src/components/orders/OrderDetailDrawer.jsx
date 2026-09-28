@@ -49,6 +49,8 @@ function buildMilestones(order) {
   ]
 }
 
+const ORDER_REALTIME_EVENTS = ['admin:order_status_update', 'admin:driver_status_update']
+
 export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
   const { hasRole } = useAuth()
   const toast = useToast()
@@ -65,7 +67,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
   const { data: order, loading, refetch } = useApiQuery(fetcher)
 
   // Real-time live update of order details while drawer is open
-  useRealtimeSync(['admin:order_status_update', 'admin:driver_status_update'], refetch)
+  useRealtimeSync(ORDER_REALTIME_EVENTS, refetch)
 
   function startEdit() {
     setForm(Object.fromEntries(EDIT_FIELDS.map(({ key }) => [key, order[key] ?? ''])))
@@ -455,33 +457,39 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
         )}
       </Drawer>
 
-      <AssignDriverModal
-        open={assignOpen}
-        order={order}
-        onClose={() => setAssignOpen(false)}
-        onAssigned={() => {
-          setAssignOpen(false)
-          toast.success('Driver assigned.')
-          refetch()
-          onChanged?.()
-        }}
-      />
-      <CancelOrderModal
-        open={cancelOpen}
-        order={order}
-        onClose={() => setCancelOpen(false)}
-        onCancelled={() => {
-          setCancelOpen(false)
-          toast.success('Order cancelled.')
-          refetch()
-          onChanged?.()
-        }}
-      />
-      <InvoiceModal
-        open={invoiceOpen}
-        orderId={orderId}
-        onClose={() => setInvoiceOpen(false)}
-      />
+      {assignOpen && (
+        <AssignDriverModal
+          open={assignOpen}
+          order={order}
+          onClose={() => setAssignOpen(false)}
+          onAssigned={() => {
+            setAssignOpen(false)
+            toast.success('Driver assigned.')
+            refetch()
+            onChanged?.()
+          }}
+        />
+      )}
+      {cancelOpen && (
+        <CancelOrderModal
+          open={cancelOpen}
+          order={order}
+          onClose={() => setCancelOpen(false)}
+          onCancelled={() => {
+            setCancelOpen(false)
+            toast.success('Order cancelled.')
+            refetch()
+            onChanged?.()
+          }}
+        />
+      )}
+      {invoiceOpen && (
+        <InvoiceModal
+          open={invoiceOpen}
+          orderId={orderId}
+          onClose={() => setInvoiceOpen(false)}
+        />
+      )}
     </>
   )
 }
