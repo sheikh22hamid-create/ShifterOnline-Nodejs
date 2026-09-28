@@ -38,7 +38,7 @@ function getAdvancePaymentTimerInfo(order) {
 
   return {
     advance_payment: advAmount.toFixed(2),
-    payment_status: isClosed ? 1 : payStatus,
+    payment_status: (isClosed || (order.advance_payment !== null && advAmount === 0)) ? 1 : payStatus,
     accept_time: order.accept_time || "",
     advance_timeout_seconds: timeoutSeconds,
     time_passed_seconds: timePassed,

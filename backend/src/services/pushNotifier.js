@@ -209,6 +209,30 @@ async function notifyDriverDestinationUpdated(fcmToken, orderId, newAddress, rev
   );
 }
 
+/** Fired by adminRiderController.kycDecision - a driver's KYC document (RC, license, ...) was approved or rejected. */
+async function notifyDriverKycDocumentDecision(fcmToken, documentLabel, isApproved, reason) {
+  return sendPushNotification(
+    fcmToken,
+    isApproved ? "Document approved" : "Document rejected",
+    isApproved
+      ? `Your ${documentLabel} has been approved.`
+      : `Your ${documentLabel} was rejected${reason ? `: ${reason}` : "."} Please re-upload from the app.`,
+    stringifyPayload({ type: "kyc_document_decision", is_approved: isApproved ? "1" : "0", reason: reason || "" })
+  );
+}
+
+/** Fired by adminRiderController.toggleStatus - admin blocked or reactivated a driver account. */
+async function notifyDriverAccountStatus(fcmToken, isBlocked, reason) {
+  return sendPushNotification(
+    fcmToken,
+    isBlocked ? "Account blocked" : "Account reactivated",
+    isBlocked
+      ? `Your driver account was blocked${reason ? `: ${reason}` : "."} Contact support to resolve this.`
+      : "Your driver account has been reactivated.",
+    stringifyPayload({ type: "account_status", is_blocked: isBlocked ? "1" : "0", reason: reason || "" })
+  );
+}
+
 module.exports = {
   notifyDriverOrderRequest,
   notifyDriverDismiss,
@@ -228,5 +252,7 @@ module.exports = {
   notifyDriverModel1Suspended,
   notifyDriverWalletTransaction,
   notifyCustomerWalletTransaction,
+  notifyDriverKycDocumentDecision,
+  notifyDriverAccountStatus,
 };
 

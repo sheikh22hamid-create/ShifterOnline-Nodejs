@@ -1005,6 +1005,7 @@ model tbl_rider {
   survey_status          Int                            @default(0)
   status                 Int                            @default(1)
   a_status               Int                            @default(1)
+  block_reason           String?                        @db.VarChar(255)
   rlats                  String?                        @db.Text
   rlongs                 String?                        @db.Text
   rloc_updated_at        DateTime?                      @db.DateTime(0)
@@ -1250,12 +1251,14 @@ model tbl_vechicle {
 }
 
 model tbl_vehicle_details {
-  id       Int    @id @default(autoincrement())
-  rider_id Int
-  type_id  Int
-  reg_num  String @db.Text
-  v_pic    String @db.Text
-  status   Int    @default(0)
+  id                Int     @id @default(autoincrement())
+  rider_id          Int
+  type_id           Int
+  reg_num           String  @db.Text
+  v_pic             String  @db.Text
+  status            Int     @default(0)
+  rejection_reason  String? @db.VarChar(255)
+  name_mismatch     Boolean @default(false)
 }
 
 model tbl_wallet_history {

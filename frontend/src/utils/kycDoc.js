@@ -47,6 +47,10 @@ export const KYC_DOC_TYPES = [
     getStatus: (r) => r.vehicle_details?.[0]?.status,
     getRecordId: (r) => r.vehicle_details?.[0]?.id,
     getImages: (r) => splitVehiclePics(r.vehicle_details?.[0]?.v_pic),
+    // Set by the driver app when this RC was uploaded via the name-mismatch
+    // fallback (automatic Acko owner-name match failed) - worth flagging
+    // since these need a closer look than a routine RC submission.
+    getNameMismatch: (r) => !!r.vehicle_details?.[0]?.name_mismatch,
   },
   {
     key: 'vehicle_photo',

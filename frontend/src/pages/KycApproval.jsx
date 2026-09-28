@@ -42,7 +42,13 @@ export default function KycApproval() {
   const { data: rider, loading: detailLoading, refetch: refetchDetail } = useApiQuery(detailFetcher)
 
   const docTypes = rider
-    ? KYC_DOC_TYPES.map((d) => ({ ...d, status: d.getStatus(rider), recordId: d.getRecordId ? d.getRecordId(rider) : undefined, images: d.getImages(rider) }))
+    ? KYC_DOC_TYPES.map((d) => ({
+        ...d,
+        status: d.getStatus(rider),
+        recordId: d.getRecordId ? d.getRecordId(rider) : undefined,
+        images: d.getImages(rider),
+        nameMismatch: d.getNameMismatch ? d.getNameMismatch(rider) : false,
+      }))
     : []
 
   useEffect(() => {

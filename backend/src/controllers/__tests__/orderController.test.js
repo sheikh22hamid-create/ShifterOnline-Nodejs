@@ -8,6 +8,7 @@ jest.mock("../../config/db", () => ({
   tbl_referral_point_log: { create: jest.fn() },
   pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn() },
   $queryRaw: jest.fn(),
+  $executeRaw: jest.fn(),
 }));
 jest.mock("../../services/pricingEngine", () => ({
   priceForPackage: jest.fn(),

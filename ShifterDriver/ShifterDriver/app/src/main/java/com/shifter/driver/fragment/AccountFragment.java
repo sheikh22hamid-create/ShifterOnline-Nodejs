@@ -31,6 +31,7 @@ import com.shifter.driver.activity.LoginActivity;
 import com.shifter.driver.activity.PremiumPlansActivity;
 import com.shifter.driver.activity.ProfileActivity;
 import com.shifter.driver.activity.TrainingVideoActivity;
+import com.shifter.driver.activity.VehicleDetailsActivity;
 import com.shifter.driver.activity.WalletActivity;
 import com.shifter.driver.databinding.FragmentAccountBinding;
 import com.shifter.driver.model.Help;
@@ -81,6 +82,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
 
         binding.cardProfile.setOnClickListener(this::onBindClick);
         binding.lvlEdit.setOnClickListener(this::onBindClick);
+        binding.lvlDocuments.setOnClickListener(this::onBindClick);
         binding.lvlLogout.setOnClickListener(this::onBindClick);
         binding.lvlLanguage.setOnClickListener(this::onBindClick);
         binding.lvlPremiumPlans.setOnClickListener(this::onBindClick);
@@ -157,6 +159,8 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
             startActivity(new Intent(getActivity(), ProfileActivity.class));
         } else if (id == R.id.lvl_payout) {
             startActivity(new Intent(getActivity(), WalletActivity.class));
+        } else if (id == R.id.lvl_documents) {
+            startActivity(new Intent(getActivity(), VehicleDetailsActivity.class));
         } else if (id == R.id.lvl_premium_plans) {
             startActivity(new Intent(getActivity(), PremiumPlansActivity.class));
         } else if (id == R.id.lvl_refer_earn) {

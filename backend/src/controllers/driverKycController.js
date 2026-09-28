@@ -194,6 +194,12 @@ function handleVehicleDetailSave(req, res) {
       const riderId = Number(b.rider_id || 0);
       if (!typeId || !regNum || !riderId) return fail(res, "Something Went Wrong!");
 
+      // Set by the app when this upload is the RC-photo fallback offered
+      // after the automatic Acko owner-name match failed, so the admin
+      // review queue can flag/prioritize it instead of treating it the
+      // same as a routine first-time RC submission.
+      const nameMismatch = b.name_mismatch === "1" || b.name_mismatch === "true" || b.name_mismatch === true;
+
       const files = (req.files || []).filter((f) => /^image\d+$/.test(f.fieldname));
       const paths = await saveFilesToFolder(files, "vehicle");
       if (!paths.length) return fail(res, "Vehicle Image Sent Null Please Check!!");
@@ -203,12 +209,16 @@ function handleVehicleDetailSave(req, res) {
       if (existing) {
         await prisma.tbl_vehicle_details.update({
           where: { id: existing.id },
-          data: { type_id: typeId, v_pic: joined, reg_num: regNum, status: 0 },
+          // Resubmitting clears any prior rejection reason - it's back to
+          // pending review, and the old reason no longer applies.
+          data: { type_id: typeId, v_pic: joined, reg_num: regNum, status: 0, rejection_reason: null, name_mismatch: nameMismatch },
         });
         return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Vehicle Details Update Successfully!!" });
       }
 
-      await prisma.tbl_vehicle_details.create({ data: { rider_id: riderId, type_id: typeId, v_pic: joined, reg_num: regNum } });
+      await prisma.tbl_vehicle_details.create({
+        data: { rider_id: riderId, type_id: typeId, v_pic: joined, reg_num: regNum, name_mismatch: nameMismatch },
+      });
       return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Vehicle Details Add Successfully!!" });
     } catch (e) {
       logger.error("driverKycController.saveVehicleDetail failed:", e);

@@ -380,7 +380,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         registerTripProgress();
         registerLocationReceiver();
 
-        if (getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false) || isAdvancePaymentRequired(orderItem)) {
+        if (isAdvancePaymentRequired(orderItem)) {
             // Show waiting for advance payment screen and start polling server
             showWaitingForPaymentScreen(null, null);
             pollPaymentStatusFromApi();
@@ -417,14 +417,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (adv != null && !adv.trim().isEmpty()) {
             try {
                 double advAmt = Double.parseDouble(adv.trim());
-                if (advAmt > 0) return true;
-                if (advAmt == 0 && "1".equals(paymentStatus)) return false;
+                if (advAmt <= 0) return false; // ₹0 advance payment means no advance is required (e.g. premium customer)
+                return !"1".equals(paymentStatus);
             } catch (Exception ignored) {}
-        }
-
-        // If paymentStatus is 0 (unpaid) or null/empty and order is at initial step (flow <= 1), advance is pending
-        if ("0".equals(paymentStatus) || paymentStatus == null || paymentStatus.trim().isEmpty()) {
-            return true;
         }
 
         return false;

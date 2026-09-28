@@ -1,3 +1,4 @@
+const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const dispatchManager = require("../services/dispatchManager");
@@ -200,11 +201,25 @@ async function assignRider(req, res) {
       return res.status(409).json({ success: false, message: "Driver already has an active trip" });
     }
 
+    const customerPlan = typeof pricingEngine.getActiveCustomerPlan === "function"
+      ? await pricingEngine.getActiveCustomerPlan(order.uid)
+      : null;
+    const isNoAdvance = Boolean(
+      customerPlan &&
+      (customerPlan.noAdvancePayment === true ||
+       customerPlan.noAdvancePayment === 1 ||
+       String(customerPlan.noAdvancePayment) === "1" ||
+       String(customerPlan.noAdvancePayment) === "true")
+    );
+    const paymentStatus = isNoAdvance ? 1 : (Number(order.payment_status) || 0);
+    const advancePayment = isNoAdvance ? "0" : (order.advance_payment != null ? String(order.advance_payment) : "0");
+
     // Same atomic-conditional-UPDATE pattern as tripLifecycle.acceptOrder —
     // wins the race against the live dispatch cascade if it's still running.
     const affectedRows = await prisma.$executeRaw`
       UPDATE pkg_order
-      SET rid = ${riderId}, order_status = 1, o_status = 'Processing', accept_time = NOW()
+      SET rid = ${riderId}, order_status = 1, o_status = 'Processing', accept_time = NOW(),
+          payment_status = ${paymentStatus}, advance_payment = ${advancePayment}
       WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
     `;
     if (affectedRows === 0) {
@@ -482,6 +497,20 @@ async function assignScheduledDriver(req, res) {
     // is the only notification path currently available.
     const updated = await prisma.pkg_order.update({ where: { id }, data: { rid: riderId } });
 
+    const customerPlan = typeof pricingEngine.getActiveCustomerPlan === "function"
+      ? await pricingEngine.getActiveCustomerPlan(order.uid)
+      : null;
+    const isNoAdvance = Boolean(
+      customerPlan &&
+      (customerPlan.noAdvancePayment === true ||
+       customerPlan.noAdvancePayment === 1 ||
+       String(customerPlan.noAdvancePayment) === "1" ||
+       String(customerPlan.noAdvancePayment) === "true")
+    );
+    if (isNoAdvance && typeof prisma.$executeRaw === "function") {
+      await prisma.$executeRaw`UPDATE pkg_order SET payment_status = 1, advance_payment = '0' WHERE id = ${id}`;
+    }
+
     if (req.body.notify_driver_now) {
       await prisma.tbl_rnoti.create({
         data: {
@@ -618,6 +647,14 @@ async function assignNextDayBatch(req, res) {
         });
       })
     );
+
+    if (orderIds.length > 0 && typeof prisma.$executeRaw === "function") {
+      await prisma.$executeRaw`
+        UPDATE pkg_order
+        SET payment_status = 1, advance_payment = '0'
+        WHERE id IN (${Prisma.join(orderIds)})
+      `;
+    }
 
     if (req.body.notify_driver_now) {
       try {

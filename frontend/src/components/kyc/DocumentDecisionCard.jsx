@@ -42,8 +42,9 @@ export default function DocumentDecisionCard({ docType, active, onFocus, onDecid
       onClick={() => onFocus(docType.key)}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>
+        <span className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: 'var(--ink)' }}>
           {docType.label}
+          {docType.nameMismatch && <Badge tone="warning">name mismatch</Badge>}
         </span>
         {hasRecord ? (
           <Badge tone={DOC_STATUS_TONES[status]}>{DOC_STATUS_LABELS[status]}</Badge>

@@ -104,7 +104,8 @@ async function pkgHistoryDriver(req, res) {
 function formatPkgOrderForDriver(row, ctx) {
   const { stopsByOrder, benefitByOrder, planNameCache, globalComm } = ctx;
   const timerInfo = getAdvancePaymentTimerInfo(row);
-  const isPaid = Number(row.payment_status || 0) === 1;
+  const advAmount = Number(row.advance_payment || 0);
+  const isPaid = Number(row.payment_status || 0) === 1 || (row.advance_payment !== null && advAmount === 0);
   let isAdvRequired = isPaid ? false : timerInfo.is_advance_required;
 
   if (isAdvRequired && timerInfo.remaining_seconds === 0) {

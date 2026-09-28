@@ -4,6 +4,7 @@ const logger = require("../utils/logger");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
 const { uniqueRefferCode } = require("./riderAuthController");
 const walletNotifier = require("../services/walletNotifier");
+const pushNotifier = require("../services/pushNotifier");
 
 // Legacy convention shared by every doc-status column touched here
 // (tbl_personal_doc.*_status, tbl_vehicle_details.status, tbl_bank_account.status,
@@ -431,17 +432,19 @@ async function updateProfile(req, res) {
 }
 
 const DOC_TYPE_HANDLERS = {
-  aadhar: { table: "tbl_personal_doc", statusField: "aadhar_status", keyedByRider: true },
-  pan: { table: "tbl_personal_doc", statusField: "pan_status", keyedByRider: true },
-  address: { table: "tbl_personal_doc", statusField: "address_status", keyedByRider: true },
-  residence: { table: "tbl_personal_doc", statusField: "residence_status", keyedByRider: true },
-  license: { table: "tbl_personal_doc", statusField: "lic_status", keyedByRider: true },
+  aadhar: { table: "tbl_personal_doc", statusField: "aadhar_status", keyedByRider: true, label: "aadhar card" },
+  pan: { table: "tbl_personal_doc", statusField: "pan_status", keyedByRider: true, label: "PAN card" },
+  address: { table: "tbl_personal_doc", statusField: "address_status", keyedByRider: true, label: "address proof" },
+  residence: { table: "tbl_personal_doc", statusField: "residence_status", keyedByRider: true, label: "residence proof" },
+  license: { table: "tbl_personal_doc", statusField: "lic_status", keyedByRider: true, label: "driving license" },
   // The live schema has one status per tbl_vehicle_details row (no separate
   // RC vs. photo columns), so both spec doc types resolve to the same field.
-  rc: { table: "tbl_vehicle_details", statusField: "status", keyedByRider: false },
-  vehicle_photo: { table: "tbl_vehicle_details", statusField: "status", keyedByRider: false },
-  bank: { table: "tbl_bank_account", statusField: "status", keyedByRider: false },
-  kit: { table: "tbl_kit", statusField: "kit_status", keyedByRider: false },
+  // reasonField lets a rejection message persist past the one-time
+  // notification text, so the driver app can show it on re-upload.
+  rc: { table: "tbl_vehicle_details", statusField: "status", keyedByRider: false, reasonField: "rejection_reason", label: "vehicle RC" },
+  vehicle_photo: { table: "tbl_vehicle_details", statusField: "status", keyedByRider: false, reasonField: "rejection_reason", label: "vehicle photo" },
+  bank: { table: "tbl_bank_account", statusField: "status", keyedByRider: false, label: "bank account" },
+  kit: { table: "tbl_kit", statusField: "kit_status", keyedByRider: false, label: "delivery kit" },
 };
 
 async function kycDecision(req, res) {
@@ -471,13 +474,15 @@ async function kycDecision(req, res) {
     const newStatus = is_approve ? DOC_STATUS.APPROVED : DOC_STATUS.REJECTED;
     const model = prisma[handler.table];
     let updated;
+    const updateData = { [handler.statusField]: newStatus };
+    if (handler.reasonField) updateData[handler.reasonField] = is_approve ? null : rejection_reason || null;
 
     if (handler.keyedByRider) {
       const existing = await model.findFirst({ where: { rider_id: riderId } });
       if (!existing) {
         return res.status(404).json({ success: false, message: `No ${handler.table} record found for this driver` });
       }
-      updated = await model.update({ where: { id: existing.id }, data: { [handler.statusField]: newStatus } });
+      updated = await model.update({ where: { id: existing.id }, data: updateData });
     } else {
       if (!record_id) {
         return res.status(400).json({ success: false, message: `record_id is required for document_type "${document_type}"` });
@@ -486,7 +491,7 @@ async function kycDecision(req, res) {
       if (!existing || existing.rider_id !== riderId) {
         return res.status(404).json({ success: false, message: `${handler.table} record ${record_id} not found for this driver` });
       }
-      updated = await model.update({ where: { id: existing.id }, data: { [handler.statusField]: newStatus } });
+      updated = await model.update({ where: { id: existing.id }, data: updateData });
     }
 
     await prisma.tbl_rnoti.create({
@@ -506,6 +511,15 @@ async function kycDecision(req, res) {
       status: newStatus,
       is_approved: is_approve,
     });
+
+    // rnoti/adminSocket above only reach the admin panel and an
+    // already-open app screen - an FCM push is what actually wakes a
+    // backgrounded/killed driver app so they see this without opening it.
+    if (rider.fcm_token) {
+      pushNotifier
+        .notifyDriverKycDocumentDecision(rider.fcm_token, handler.label || document_type.replace("_", " "), !!is_approve, rejection_reason)
+        .catch((err) => logger.error("riders.kycDecision push failed:", err));
+    }
 
     return res.status(200).json({
       success: true,
@@ -534,7 +548,12 @@ async function toggleStatus(req, res) {
     }
 
     const data = { status };
-    if (status === 0) data.a_status = 0; // a blocked driver can't stay visible as online
+    if (status === 0) {
+      data.a_status = 0; // a blocked driver can't stay visible as online
+      data.block_reason = reason || null;
+    } else {
+      data.block_reason = null; // cleared on reactivation so a stale reason never lingers
+    }
 
     const updated = await prisma.tbl_rider.update({ where: { id }, data });
 
@@ -555,7 +574,17 @@ async function toggleStatus(req, res) {
       active: updated.status === 1,
     });
 
-    return res.status(200).json({ success: true, message: "Driver status updated", data: { id: updated.id, status: updated.status, a_status: updated.a_status } });
+    if (rider.fcm_token) {
+      pushNotifier
+        .notifyDriverAccountStatus(rider.fcm_token, status === 0, reason)
+        .catch((err) => logger.error("riders.toggleStatus push failed:", err));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Driver status updated",
+      data: { id: updated.id, status: updated.status, a_status: updated.a_status, block_reason: updated.block_reason },
+    });
   } catch (err) {
     return internalError(res, err, "riders.toggleStatus");
   }

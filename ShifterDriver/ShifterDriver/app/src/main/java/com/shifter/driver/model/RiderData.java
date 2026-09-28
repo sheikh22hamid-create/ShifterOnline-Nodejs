@@ -59,6 +59,9 @@ public class RiderData implements Parcelable {
     @SerializedName("status")
     @Expose
     private int status;
+    @SerializedName("block_reason")
+    @Expose
+    private String blockReason;
     @SerializedName("wallet_balance")
     @Expose
     private String walletBalance;
@@ -261,6 +264,14 @@ public class RiderData implements Parcelable {
 
     public void setStatus(int status) {
         this.status = status;
+    }
+
+    public String getBlockReason() {
+        return blockReason;
+    }
+
+    public void setBlockReason(String blockReason) {
+        this.blockReason = blockReason;
     }
 
     public String getWalletBalance() {

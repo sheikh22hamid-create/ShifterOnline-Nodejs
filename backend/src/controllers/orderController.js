@@ -420,6 +420,21 @@ async function createOrderCore({
   }
   order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
 
+  const isNoAdvanceCustomer = Boolean(
+    customerPlan &&
+    (customerPlan.noAdvancePayment === true ||
+     customerPlan.noAdvancePayment === 1 ||
+     String(customerPlan.noAdvancePayment) === "1" ||
+     String(customerPlan.noAdvancePayment) === "true")
+  );
+  if (isNoAdvanceCustomer) {
+    if (typeof prisma.$executeRaw === "function") {
+      await prisma.$executeRaw`UPDATE pkg_order SET payment_status = 1, advance_payment = '0' WHERE id = ${order.id}`;
+    }
+    order.payment_status = 1;
+    order.advance_payment = "0";
+  }
+
   // Next-day orders (booking_type 3) are never auto-dispatched — admin
   // assigns them manually, individually or as a sequenced batch, from the
   // Next Day Orders admin panel. See docs/superpowers/specs/2026-09-10-next-day-booking-design.md §5.

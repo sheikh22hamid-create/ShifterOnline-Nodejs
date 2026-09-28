@@ -232,10 +232,17 @@ async function login(req, res) {
     const anyActive = await prisma.tbl_rider.findFirst({ where: { status: 1 } });
     if (!anyActive) return fail(res, "Your Status Deactivate!!!");
 
+    // Matched on credentials first, regardless of status, so a blocked
+    // driver gets told they're blocked (and why) instead of the generic
+    // "invalid credentials" message a status:1 filter would produce for
+    // them (their row just wouldn't match).
     const rider = await prisma.tbl_rider.findFirst({
-      where: { fmobile: String(mobile), status: 1, password: String(password) },
+      where: { fmobile: String(mobile), password: String(password) },
     });
     if (!rider) return fail(res, "Invalid Email/Mobile No or Password!!!");
+    if (rider.status === 0) {
+      return fail(res, `Your account has been blocked${rider.block_reason ? `: ${rider.block_reason}` : "."} Please contact support.`);
+    }
 
     const data = {};
     if (fcmToken) data.fcm_token = fcmToken;
