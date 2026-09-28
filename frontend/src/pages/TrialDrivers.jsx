@@ -23,6 +23,9 @@ export default function TrialDrivers() {
   const { data, loading, error, refetch } = useApiQuery(fetcher)
   const drivers = data?.data ?? []
 
+  const vehiclesFetcher = useCallback(() => api.get('/vehicles').then((res) => res.data.data), [])
+  const { data: vehicles } = useApiQuery(vehiclesFetcher)
+
   async function handleAdd() {
     setBusy(true)
     try {
@@ -187,12 +190,18 @@ export default function TrialDrivers() {
             </div>
             <div>
               <label className="mb-1 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Vehicle</label>
-              <input
+              <select
                 className="w-full rounded-lg border px-3 py-1.5 text-[13px]"
                 style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
                 value={form.vehicle}
                 onChange={(e) => setForm((f) => ({ ...f, vehicle: e.target.value }))}
-              />
+              >
+                {vehicles?.map((v) => (
+                  <option key={v.id} value={v.title}>
+                    {v.title}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Number of Trial Orders</label>
