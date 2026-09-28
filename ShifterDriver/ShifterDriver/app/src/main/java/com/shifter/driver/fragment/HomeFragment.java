@@ -76,8 +76,10 @@ import com.shifter.driver.utility.SessionManager;
 
 import java.text.DecimalFormat;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import okhttp3.MediaType;
 import okhttp3.RequestBody;
@@ -170,11 +172,6 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         // 4. Quick Actions (Orders, Wallet, Incentives, Support)
         setupQuickActions();
-        binding.btnMoreOptions.setOnClickListener(v -> {
-            boolean expanded = binding.layoutMoreOptions.getVisibility() == View.VISIBLE;
-            binding.layoutMoreOptions.setVisibility(expanded ? View.GONE : View.VISIBLE);
-            binding.btnMoreOptions.setText(expanded ? R.string.home_more_options : R.string.home_fewer_options);
-        });
 
         // 5. Swipe refresh & initial data fetch
         sessionManager.setStringData(SessionManager.currency, "₹");
@@ -263,6 +260,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         // Initialize Daily Driver duty UI (independent of Monthly Driver)
         setupDailyDriverUI();
+
+        // Initialize Vehicle Body Type selector on Home Screen
+        setupHomeBodyTypeUI();
 
         return binding.getRoot();
     }
@@ -1061,6 +1061,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         fetchCustomerSupportSettings();
         setupMonthlyDriverUI();
         setupDailyDriverUI();
+        setupHomeBodyTypeUI();
     }
 
     /**
@@ -1180,9 +1181,86 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         });
     }
 
+    /**
+     * Sets up and synchronizes the Vehicle Body Type selector directly on the Home Screen.
+     */
+    private void setupHomeBodyTypeUI() {
+        if (binding == null || binding.cardHomeBodyType == null || binding.rgHomeBodyType == null) {
+            return;
+        }
+
+        if (riderData == null && sessionManager != null) {
+            riderData = sessionManager.getUserDetails();
+        }
+
+        String currentBody = (riderData != null && riderData.getBodyType() != null)
+                ? riderData.getBodyType()
+                : "both";
+
+        binding.rgHomeBodyType.setOnCheckedChangeListener(null);
+
+        if ("open".equalsIgnoreCase(currentBody)) {
+            binding.rbHomeBodyOpen.setChecked(true);
+        } else if ("half".equalsIgnoreCase(currentBody)) {
+            binding.rbHomeBodyHalf.setChecked(true);
+        } else if ("covered".equalsIgnoreCase(currentBody)) {
+            binding.rbHomeBodyCovered.setChecked(true);
+        } else {
+            binding.rbHomeBodyBoth.setChecked(true);
+        }
+
+        binding.rgHomeBodyType.setOnCheckedChangeListener((group, checkedId) -> {
+            String newBodyType = "both";
+            String toastName = "All (Open, Half & Covered)";
+            if (checkedId == R.id.rb_home_body_open) {
+                newBodyType = "open";
+                toastName = "Open Body Only";
+            } else if (checkedId == R.id.rb_home_body_half) {
+                newBodyType = "half";
+                toastName = "Half Body Only";
+            } else if (checkedId == R.id.rb_home_body_covered) {
+                newBodyType = "covered";
+                toastName = "Covered Body Only";
+            }
+
+            if (riderData != null) {
+                riderData.setBodyType(newBodyType);
+                if (sessionManager != null) {
+                    sessionManager.setUserDetails(riderData);
+                }
+
+                if (getActivity() != null) {
+                    Toast.makeText(getActivity(), "Vehicle Body: " + toastName, Toast.LENGTH_SHORT).show();
+                }
+
+                if (riderData.getId() > 0) {
+                    final String finalBodyType = newBodyType;
+                    Map<String, Object> body = new HashMap<>();
+                    body.put("rider_id", riderData.getId());
+                    body.put("body_type", finalBodyType);
+
+                    NodeApiClient.getInterface().setBodyType(body).enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
+                        @Override
+                        public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
+                            if (response.isSuccessful()) {
+                                android.util.Log.d("HomeFragment", "Vehicle body type updated to: " + finalBodyType);
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
+                            android.util.Log.e("HomeFragment", "Failed to update vehicle body type", t);
+                        }
+                    });
+                }
+            }
+        });
+    }
+
     @Override
     public void onResume() {
         super.onResume();
+        setupHomeBodyTypeUI();
         com.shifter.driver.utility.FavoriteRouteClient.request(requireContext(), "list", null, (data, error) -> {
             if (!isAdded() || binding == null) return;
             String subtitle = "Get preferred orders along a route you drive";

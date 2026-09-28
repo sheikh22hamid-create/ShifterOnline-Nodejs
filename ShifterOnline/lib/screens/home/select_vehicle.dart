@@ -478,11 +478,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         }
       }
       if (retainedIndex < 0 && _selectedIndex < 0 && refreshed.isNotEmpty) {
-        // Only auto-select a vehicle that actually has drivers nearby - falling
-        // back to index 0 when NONE are available pre-selected an unavailable
-        // vehicle (e.g. "Bike - No drivers nearby") and still let the user see
-        // "Choose delivery option" / "Book now" for it, as if it were bookable.
         retainedIndex = refreshed.indexWhere((option) => _isAvailable(option['availability']));
+        if (retainedIndex < 0) {
+          retainedIndex = 0;
+        }
+      }
+      if (retainedIndex < 0 && refreshed.isNotEmpty) {
+        retainedIndex = 0;
       }
       final rawSuggestion = decoded['radius_suggestion'];
       final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
@@ -1686,20 +1688,18 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final selected = index == _selectedIndex;
     final image = _image(option);
     return Opacity(
-      opacity: available ? 1 : 0.45,
+      opacity: available ? 1 : 0.65,
       child: InkWell(
-        onTap: available
-            ? () {
-                setState(() {
-                  _selectedIndex = index;
-                  _selectedModelIndex = null;
-                  if (_isTwoWheeler(_vehicles[index])) {
-                    _selectedBodyType = 'any';
-                  }
-                });
-                _loadModelsForSelectedVehicle();
-              }
-            : null,
+        onTap: () {
+          setState(() {
+            _selectedIndex = index;
+            _selectedModelIndex = null;
+            if (_isTwoWheeler(_vehicles[index])) {
+              _selectedBodyType = 'any';
+            }
+          });
+          _loadModelsForSelectedVehicle();
+        },
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -1754,7 +1754,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ]),
       if (capacity.isNotEmpty) ...[const SizedBox(height: 4), Text('Up to $capacity kg', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12))],
       if (driverCount.isNotEmpty || eta.isNotEmpty) ...[const SizedBox(height: 8), Row(children: [if (driverCount.isNotEmpty) const Icon(Icons.people_alt_outlined, color: Colors.green, size: 16), if (driverCount.isNotEmpty) Text(' $driverCount nearby', style: TextStyle(color: greaycolor, fontSize: 11)), if (driverCount.isNotEmpty && eta.isNotEmpty) const SizedBox(width: 12), if (eta.isNotEmpty) Icon(Icons.schedule_rounded, color: greaycolor, size: 15), if (eta.isNotEmpty) Text(' ~$eta min', style: TextStyle(color: greaycolor, fontSize: 11))])],
-      if (!_isTwoWheeler(selected)) _bodyTypeSelector(),
+      if (!_isTwoWheeler(selected))
+        _bodyTypeSelector()
+      else
+        _twoWheelerBodyTypeNotice(),
       const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
@@ -1797,38 +1800,90 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         name.contains('scooter');
   }
 
-  Widget _bodyTypeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Vehicle Body Type',
-              style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14),
-            ),
-            if (_selectedBodyType == 'covered' || _selectedBodyType == 'half')
-              Text(
-                'Surcharge applies',
-                style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Medium', fontSize: 11),
+  Widget _twoWheelerBodyTypeNotice() {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: notifier.isDark ? Colors.white.withOpacity(0.05) : const Color(0xffF4F6F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: linercolor, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Open, Half & Covered Body configurations are available for 3-Wheeler and 4-Wheeler commercial vehicles.',
+              style: TextStyle(
+                color: notifier.text.withOpacity(0.85),
+                fontFamily: 'Gilroy_Medium',
+                fontSize: 11.5,
               ),
-          ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bodyTypeSelector() {
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: notifier.isDark ? Colors.white.withOpacity(0.04) : const Color(0xffFAFBFD),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _selectedBodyType != 'any' ? linercolor.withOpacity(0.4) : notifier.bordecolor,
+          width: _selectedBodyType != 'any' ? 1.4 : 1,
         ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            _bodyTypeChip('any', '⚡ Any', 'Flexible'),
-            const SizedBox(width: 6),
-            _bodyTypeChip('open', '🛻 Open', 'Open dala'),
-            const SizedBox(width: 6),
-            _bodyTypeChip('half', '🚚 Half', 'Half dala'),
-            const SizedBox(width: 6),
-            _bodyTypeChip('covered', '📦 Covered', 'Band / Tirpal'),
-          ],
-        ),
-      ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.tune_rounded, color: linercolor, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Vehicle Body Type (बॉडी प्रकार)',
+                    style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13.5),
+                  ),
+                ],
+              ),
+              if (_selectedBodyType == 'covered' || _selectedBodyType == 'half')
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: linercolor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '+ Extra fare',
+                    style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _bodyTypeChip('any', '⚡ Any', 'Flexible'),
+              const SizedBox(width: 6),
+              _bodyTypeChip('open', '🛻 Open', 'Open dala'),
+              const SizedBox(width: 6),
+              _bodyTypeChip('half', '🚚 Half', 'Half dala'),
+              const SizedBox(width: 6),
+              _bodyTypeChip('covered', '📦 Covered', 'Band / Tirpal'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { UserPlus, Ban, XCircle, ShieldCheck, RefreshCw, Users } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { UserPlus, Ban, XCircle, ShieldCheck, RefreshCw, Users, ChevronDown } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
 import { useToast } from '../context/ToastContext'
@@ -18,6 +18,17 @@ export default function TrialDrivers() {
   const [addOpen, setAddOpen] = useState(false)
   const [form, setForm] = useState({ full_name: '', fmobile: '', vehicle: 'Bike', trial_orders_allowed: '5' })
   const [busy, setBusy] = useState(false)
+  const [vehicleMenuOpen, setVehicleMenuOpen] = useState(false)
+  const vehicleFieldRef = useRef(null)
+
+  useEffect(() => {
+    if (!vehicleMenuOpen) return
+    function onOutsideClick(e) {
+      if (vehicleFieldRef.current && !vehicleFieldRef.current.contains(e.target)) setVehicleMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onOutsideClick)
+    return () => document.removeEventListener('mousedown', onOutsideClick)
+  }, [vehicleMenuOpen])
 
   const fetcher = useCallback(() => api.get('/trial-drivers').then((res) => res.data), [])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
@@ -188,24 +199,43 @@ export default function TrialDrivers() {
                 onChange={(e) => setForm((f) => ({ ...f, fmobile: e.target.value }))}
               />
             </div>
-            <div>
+            <div className="relative" ref={vehicleFieldRef}>
               <label className="mb-1 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Vehicle</label>
-              <select
-                className="w-full rounded-lg border px-3 py-1.5 text-[13px]"
-                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-                value={form.vehicle}
-                onChange={(e) => setForm((f) => ({ ...f, vehicle: e.target.value }))}
+              {/* Native <select> popups render their <option> rows with the
+                  browser/OS's own styling in Chromium - the page's CSS
+                  variables on background/color aren't reliably applied,
+                  producing unreadable text regardless of theme or
+                  extensions. A fully custom list sidesteps that. */}
+              <button
+                type="button"
+                onClick={() => setVehicleMenuOpen((o) => !o)}
+                className="flex w-full items-center justify-between rounded-lg border px-3 py-1.5 text-[13px]"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: form.vehicle ? 'var(--ink)' : 'var(--ink-faint)' }}
               >
-                {vehicles?.map((v) => (
-                  // The popup's own <option> rows don't reliably inherit the
-                  // <select>'s CSS-variable background/color in Chromium, so
-                  // without this they can render as unreadable dark-on-dark
-                  // (or light-on-light) text - style each row explicitly.
-                  <option key={v.id} value={v.title} style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
-                    {v.title}
-                  </option>
-                ))}
-              </select>
+                <span>{form.vehicle || 'Select vehicle'}</span>
+                <ChevronDown size={14} style={{ color: 'var(--ink-faint)' }} />
+              </button>
+              {vehicleMenuOpen && (
+                <div
+                  className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border"
+                  style={{ borderColor: 'var(--border)', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}
+                >
+                  {vehicles?.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => {
+                        setForm((f) => ({ ...f, vehicle: v.title }))
+                        setVehicleMenuOpen(false)
+                      }}
+                      className="block w-full px-3 py-1.5 text-left text-[13px] hover:bg-[var(--bg-hover)]"
+                      style={{ color: 'var(--ink)', background: form.vehicle === v.title ? 'var(--bg)' : 'transparent' }}
+                    >
+                      {v.title}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Number of Trial Orders</label>

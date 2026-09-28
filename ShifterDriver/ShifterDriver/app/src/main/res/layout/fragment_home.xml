@@ -1388,7 +1388,7 @@
                 android:layout_marginBottom="12dp"
                 app:cardCornerRadius="14dp"
                 app:cardElevation="2dp"
-                app:cardBackgroundColor="@color/driver_surface">
+                app:cardBackgroundColor="@color/driver_card_bg">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -1403,10 +1403,9 @@
                         android:orientation="horizontal">
 
                         <ImageView
-                            android:layout_width="24dp"
-                            android:layout_height="24dp"
-                            android:src="@drawable/ic_delivery_truck"
-                            app:tint="@color/shifter_orange" />
+                            android:layout_width="26dp"
+                            android:layout_height="26dp"
+                            android:src="@drawable/ic_delivery_truck_hero" />
 
                         <LinearLayout
                             android:layout_width="0dp"
