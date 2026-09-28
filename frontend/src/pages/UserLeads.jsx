@@ -168,7 +168,7 @@ export default function UserLeads() {
   function getWhatsAppUrl(item) {
     const isDriver = item.lead_type === 'driver'
     const referrer = item.user?.name ? `Aapke dost *${item.user.name}*` : 'Aapke ek saathi'
-    const greeting = item.name ? `Namaste *${item.name}* ji! 🙏` : 'Namaste ji! 🙏'
+    const greeting = item.name ? `Hello *${item.name}* ji! 🙏` : 'Hello ji! 🙏'
 
     const text = isDriver
       ? `${greeting}\n\n` +

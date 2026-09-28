@@ -141,7 +141,7 @@ export default function DriverLeads() {
   function getWhatsAppWebLink(item) {
     const leadName = item.name || ''
     const driverName = item.driver?.name || ''
-    const greeting = leadName ? `Namaste ${leadName} ji! 🙏` : `Namaste! 🙏`
+    const greeting = leadName ? `Hello ${leadName} ji! 🙏` : `Hello! 🙏`
     const referrer = driverName ? `Aapke dost *${driverName}* (Shifter Partner)` : `Shifter Partner`
     const isDriverLead = item.lead_type === 'driver'
 

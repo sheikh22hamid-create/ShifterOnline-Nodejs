@@ -11,7 +11,7 @@ const DRIVER_APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=c
  * Builds attractive WhatsApp message for the referred customer or driver partner.
  */
 function buildWhatsAppInviteText(leadName, driverName, leadType = "customer", helplineNumber = "+91 9109114515") {
-  const greeting = leadName ? `Namaste ${leadName} ji! 🙏` : `Namaste! 🙏`;
+  const greeting = leadName ? `Hello ${leadName} ji! 🙏` : `Hello! 🙏`;
   const referrer = driverName ? `Aapke dost *${driverName}* (Shifter Partner)` : `Shifter Partner`;
 
   if (leadType === "driver") {
@@ -43,9 +43,9 @@ function buildWhatsAppInviteText(leadName, driverName, leadType = "customer", he
 function buildSmsInviteText(leadName, driverName, leadType = "customer") {
   const driverStr = driverName ? ` ${driverName}` : "";
   if (leadType === "driver") {
-    return `Namaste! Aapke dost${driverStr} ne aapko Shifter Driver Partner banne ke liye invite kiya hai. Gadi jodne ke liye Driver App download karein: ${DRIVER_APP_DOWNLOAD_URL} - Shifter Online`;
+    return `Hello! Aapke dost${driverStr} ne aapko Shifter Driver Partner banne ke liye invite kiya hai. Gadi jodne ke liye Driver App download karein: ${DRIVER_APP_DOWNLOAD_URL} - Shifter Online`;
   }
-  return `Namaste! Aapke dost${driverStr} ne aapko Shifter Online recommend kiya hai. Mini-truck/tempo booking ke liye app download karein: ${CUSTOMER_APP_DOWNLOAD_URL} - Shifter Online`;
+  return `Hello! Aapke dost${driverStr} ne aapko Shifter Online recommend kiya hai. Mini-truck/tempo booking ke liye app download karein: ${CUSTOMER_APP_DOWNLOAD_URL} - Shifter Online`;
 }
 
 /**
