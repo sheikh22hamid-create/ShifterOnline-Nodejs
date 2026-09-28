@@ -465,8 +465,8 @@ class SampleStrategy extends OTPStrategy {
 
 FirebaseAuthService authService = FirebaseAuthService();
 
-Future singUpApi(
-  context,{
+Future<bool> singUpApi(
+  BuildContext context, {
   required String name,
   required String email,
   required String mobile,
@@ -476,6 +476,7 @@ Future singUpApi(
   String cityId = '',
   String refferalCode = '',
 }) async {
+  try {
     // Ensure FCM token is available
     if (fcmToken.isEmpty) {
       try {
@@ -502,37 +503,75 @@ Future singUpApi(
       "device_id": deviceId,
     };
     debugPrint("SIGNUP request payload => $data");
-    ApiWrapper.dataPostNode(Config.nodeRegister, data).then((value) {
-      log(value.toString(), name: "Register Api ");
-      save("UserLogin", value["UserLogin"]);
-      if ((value != null) && (value.isNotEmpty)) {
-        if ((value['ResponseCode'] == "200") && (value['Result'] == "true")) {
-          save("firstLogin", true);
-          save("Uid", value["UserLogin"]["id"].toString());
-          NodeSocketManager.instance.connectCustomer(int.tryParse(value["UserLogin"]["id"].toString()) ?? 0);
-          save("UserLogin", value["UserLogin"]);
+
+    // Properly await the network response
+    final value = await ApiWrapper.dataPostNode(Config.nodeRegister, data);
+    log(value.toString(), name: "Register Api ");
+
+    if (value != null && value is Map) {
+      final isSuccess = (value['ResponseCode'] == "200" || value['ResponseCode'] == 200) &&
+          (value['Result'] == "true" || value['Result'] == true);
+
+      if (isSuccess && value["UserLogin"] != null && value["UserLogin"] is Map) {
+        final userLogin = Map<String, dynamic>.from(value["UserLogin"]);
+        save("UserLogin", userLogin);
+        save("firstLogin", true);
+        save("Uid", userLogin["id"]?.toString() ?? "");
+
+        try {
+          final uidInt = int.tryParse(userLogin["id"]?.toString() ?? "0") ?? 0;
+          if (uidInt > 0) NodeSocketManager.instance.connectCustomer(uidInt);
+        } catch (e) {
+          debugPrint("NodeSocketManager error: $e");
+        }
+
+        try {
           initPlatformState();
-          var sendTags = {'userid': '${value["UserLogin"]["id"]}'};
+        } catch (e) {
+          debugPrint("initPlatformState error: $e");
+        }
+
+        try {
+          var sendTags = {'userid': '${userLogin["id"]}'};
           OneSignal.User.addTags(sendTags);
-          authService.singUpAndStore(name: getdata.read("UserLogin")["name"], uid: getdata.read("UserLogin")["id"].toString(), proPicPath: getdata.read("UserLogin")["r_img"] ?? "");
+        } catch (e) {
+          debugPrint("OneSignal error: $e");
+        }
+
+        try {
+          authService.singUpAndStore(
+            name: userLogin["name"] ?? name,
+            uid: userLogin["id"]?.toString() ?? "",
+            proPicPath: userLogin["r_img"] ?? "",
+          );
+        } catch (e) {
+          debugPrint("authService error: $e");
+        }
+
+        if (context.mounted) {
           successfullBottomSheets(
             context,
             tital: "Registered Successfully".tr,
             subtitle: "Congratulation! your account already has been created. Please login to get amazing experience.".tr,
             buttonText: "GOTO HOME".tr,
             ontap: () {
-              debugPrint(ptype);
-              if (ptype == "payment") {
-                Get.offAll(() => const Bottombar());
-              } else if (ptype == "BuyAnything") {
-              } else {
-                Get.back();
-                Get.off(() => Bottombar());
-              }
+              Get.offAll(() => const Bottombar());
             },
           );
         }
+        return true;
+      } else {
+        final msg = value["ResponseMsg"]?.toString() ?? "Registration failed";
+        ApiWrapper.showToastMessage(msg);
+        return false;
       }
-      ApiWrapper.showToastMessage(value["ResponseMsg"].toString());
-    });
+    } else {
+      ApiWrapper.showToastMessage("Server did not respond. Please try again.");
+      return false;
+    }
+  } catch (e) {
+    debugPrint("singUpApi exception: $e");
+    ApiWrapper.showToastMessage("Registration error: $e");
+    return false;
   }
+}

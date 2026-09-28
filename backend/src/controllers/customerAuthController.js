@@ -221,7 +221,36 @@ async function register(req, res) {
     if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
 
     const mobileTaken = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
-    if (mobileTaken) return fail(res, "Mobile Number Already Used!");
+    if (mobileTaken) {
+      // Idempotency: If this exact user was registered within the last 2 minutes from the same device,
+      // treat it as an idempotent retry/duplicate submission instead of an error!
+      const userAgeMs = Date.now() - new Date(mobileTaken.rdate).getTime();
+      const isRecent = userAgeMs >= 0 && userAgeMs < 120000; // within 2 minutes
+      const isSameDevice = !deviceId || !mobileTaken.device_id || mobileTaken.device_id === deviceId;
+
+      if (isRecent && isSameDevice) {
+        logger.info(`customerAuthController.register: Idempotent duplicate register for mobile ${mobile} (${Math.round(userAgeMs / 1000)}s ago) - returning existing user session`);
+        await deviceSessionService.registerDevice({
+          uid: mobileTaken.id,
+          userType: "customer",
+          deviceId,
+          fcmToken,
+          platform: req.body?.platform,
+          deviceName: req.body?.device_name,
+          appVersion: req.body?.app_version,
+        });
+
+        const refreshed = await prisma.tbl_user.findUnique({ where: { id: mobileTaken.id } });
+        return res.status(200).json({
+          UserLogin: { ...refreshed, wallet: refreshed.wallet?.toString?.() ?? refreshed.wallet },
+          ResponseCode: "200",
+          Result: "true",
+          ResponseMsg: "Sign Up Done Successfully!",
+        });
+      }
+
+      return fail(res, "Mobile Number Already Used!");
+    }
 
     // Skip email-uniqueness check when email is not provided
     if (email) {

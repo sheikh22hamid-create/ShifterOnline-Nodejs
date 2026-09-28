@@ -131,7 +131,15 @@ public interface NodeService {
             @Part("type_id") RequestBody typeId,
             @Part("reg_num") RequestBody regNum,
             @Part("size") RequestBody size,
+            @Part("name_mismatch") RequestBody nameMismatch,
             @Part List<MultipartBody.Part> parts);
+
+    // Node port of rider_api/document_check.php - onboarding-progress dashboard,
+    // used by VehicleDetailsActivity to show the RC rejection reason (if any)
+    // before the driver re-uploads.
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/kyc/document-check")
+    Call<JsonObject> documentCheck(@Body RequestBody body);
 
     @Headers("Authorization: genie_rest_key")
     @POST("api/rider/emergency-contact")

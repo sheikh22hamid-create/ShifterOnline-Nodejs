@@ -173,6 +173,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
   }
 
   Future<bool> _handlePop() async {
+    if (_isCreatingAccount) return false;
     if (_currentStep > 0) {
       _goToPage(_currentStep - 1);
       return false;
@@ -340,22 +341,32 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
   }
 
   Future<void> _handleCreateAccount() async {
+    if (_isCreatingAccount) return;
     FocusScope.of(context).unfocus();
     if (!_validateProfile()) return;
 
     setState(() => _isCreatingAccount = true);
-    await singUpApi(
-      context,
-      name:         fullName.text.trim(),
-      email:        email.text.trim(),
-      ccode:        dropdownvalue,
-      mobile:       number.text.trim(),
-      password:     '',
-      cityId:       selectedCity?.id ?? '',
-      refferalCode: referralCode.text.trim(),
-      ptype:        widget.type,
-    );
-    if (mounted) setState(() => _isCreatingAccount = false);
+    try {
+      final success = await singUpApi(
+        context,
+        name:         fullName.text.trim(),
+        email:        email.text.trim(),
+        ccode:        dropdownvalue,
+        mobile:       number.text.trim(),
+        password:     '',
+        cityId:       selectedCity?.id ?? '',
+        refferalCode: referralCode.text.trim(),
+        ptype:        widget.type,
+      );
+      if (success) {
+        // Keep _isCreatingAccount = true so user cannot tap again while bottomsheet/transition is showing
+        return;
+      }
+    } catch (e) {
+      debugPrint("Error in _handleCreateAccount: $e");
+    } finally {
+      if (mounted) setState(() => _isCreatingAccount = false);
+    }
   }
 
   // ── Web View Dialog ────────────────────────────────────────────────────────
@@ -1117,6 +1128,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                     ),
                     recognizer: TapGestureRecognizer()
                       ..onTap = () {
+                        if (_isCreatingAccount) return;
                         if (widget.type == 'onboarding') {
                           Get.offAll(SignIn(paymenttype: widget.type));
                         } else {
