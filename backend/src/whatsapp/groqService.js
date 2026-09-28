@@ -211,7 +211,7 @@ function fallbackRuleBasedParser(text) {
     return {
       intent: "DRIVER_ONBOARDING",
       entities: {},
-      aiResponse: "🚚 *Shifter Online Driver Partner Program*\n\nAap Shifter Online ke saath judein aur apni gadi (Bike, 3-Wheeler, 4-Wheeler, E-Loader) se daily achhi kamai karein!\n\n📋 *Required Documents*:\n1️⃣ Driving License (DL)\n2️⃣ Aadhaar Card / Govt ID Proof\n3️⃣ Vehicle RC Book\n4️⃣ Bank Account / UPI Details\n5️⃣ Profile & Vehicle Photo\n6️⃣ PAN Card\n\n📲 *Registration Kaise Karein?*\nDirect humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n🔗 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 *Driver Support*: 9109114515",
+      aiResponse: "🚚 *Shifter Online Driver Partner Program*\n\nAap Shifter Online ke saath judein aur apni gadi (Bike, 3-Wheeler, 4-Wheeler, E-Loader) se daily achhi kamai karein!\n\n📋 *Required Documents*:\n1️⃣ Driving License (DL)\n2️⃣ Aadhaar Card / Govt ID Proof\n3️⃣ Vehicle RC Book\n4️⃣ Bank Account / UPI Details\n5️⃣ Live Face verification\n6️⃣ PAN Card\n\n📲 *Registration Kaise Karein?*\nDirect humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n🔗 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 *Driver Support*: 9109114515",
     };
   }
 
