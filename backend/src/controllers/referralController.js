@@ -290,4 +290,74 @@ async function adjustPoints(req, res) {
   }
 }
 
-module.exports = { getSettings, updateSettings, listUserReferrals, searchTarget, adjustPoints };
+/**
+ * Admin ledger view of every referral-points credit/debit (GET /admin/referrals/point-log) -
+ * shows exactly who received a signup bonus, referral reward, admin
+ * adjustment, etc. tbl_referral_point_log has no FK relation to tbl_user/
+ * tbl_rider, so entity names are resolved the same way listUserReferrals does.
+ */
+async function listPointLog(req, res) {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+    const source = req.query.source;
+    const userType = req.query.user_type;
+
+    const where = {};
+    if (source && source !== "all") where.source = source;
+    if (userType && userType !== "all") where.user_type = userType;
+
+    const allRows = await prisma.tbl_referral_point_log.findMany({ where, orderBy: { id: "desc" } });
+
+    const userIds = allRows.filter((r) => r.user_type === "USER").map((r) => r.user_id);
+    const driverIds = allRows.filter((r) => r.user_type === "DRIVER").map((r) => r.user_id);
+    const [users, drivers] = await Promise.all([
+      prisma.tbl_user.findMany({ where: { id: { in: [...new Set(userIds)] } }, select: { id: true, name: true, mobile: true, city_id: true } }),
+      prisma.tbl_rider.findMany({ where: { id: { in: [...new Set(driverIds)] } }, select: { id: true, full_name: true, first_name: true, last_name: true, account_name: true, fmobile: true, city_id: true } }),
+    ]);
+    const userById = Object.fromEntries(users.map((u) => [u.id, u]));
+    const driverById = Object.fromEntries(drivers.map((d) => [d.id, d]));
+
+    function describeLogEntity(r) {
+      if (r.user_type === "DRIVER") {
+        const d = driverById[r.user_id];
+        if (!d) return { name: `Driver #${r.user_id}`, mobile: "", city_id: null };
+        const name = d.full_name || `${d.first_name || ""} ${d.last_name || ""}`.trim() || d.account_name || `Driver #${d.id}`;
+        return { name, mobile: d.fmobile || "", city_id: d.city_id };
+      }
+      const u = userById[r.user_id];
+      if (!u) return { name: `Customer #${r.user_id}`, mobile: "", city_id: null };
+      const mobile = u.mobile ? String(u.mobile).replace(/\.0$/, "") : "";
+      return { name: (u.name && u.name.trim()) || (mobile ? `Customer (${mobile})` : `Customer #${u.id}`), mobile, city_id: u.city_id };
+    }
+
+    let scopedRows = allRows;
+    if (req.scopedCityId) {
+      scopedRows = allRows.filter((r) => describeLogEntity(r).city_id === req.scopedCityId);
+    }
+
+    const total = scopedRows.length;
+    const pageRows = scopedRows.slice((page - 1) * limit, (page - 1) * limit + limit);
+
+    const data = pageRows.map((r) => {
+      const { city_id, ...entity } = describeLogEntity(r);
+      return {
+        id: r.id,
+        user: { id: r.user_id, type: r.user_type, ...entity },
+        points: r.points,
+        txn_type: r.txn_type,
+        source: r.source,
+        ref_id: r.ref_id,
+        balance_after: r.balance_after,
+        note: r.note,
+        created_at: r.created_at,
+      };
+    });
+
+    return res.status(200).json({ success: true, total, page, limit, data });
+  } catch (err) {
+    return internalError(res, err, "referrals.listPointLog");
+  }
+}
+
+module.exports = { getSettings, updateSettings, listUserReferrals, searchTarget, adjustPoints, listPointLog };
