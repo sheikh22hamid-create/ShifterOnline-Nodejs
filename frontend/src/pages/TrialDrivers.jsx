@@ -197,7 +197,11 @@ export default function TrialDrivers() {
                 onChange={(e) => setForm((f) => ({ ...f, vehicle: e.target.value }))}
               >
                 {vehicles?.map((v) => (
-                  <option key={v.id} value={v.title}>
+                  // The popup's own <option> rows don't reliably inherit the
+                  // <select>'s CSS-variable background/color in Chromium, so
+                  // without this they can render as unreadable dark-on-dark
+                  // (or light-on-light) text - style each row explicitly.
+                  <option key={v.id} value={v.title} style={{ background: 'var(--bg)', color: 'var(--ink)' }}>
                     {v.title}
                   </option>
                 ))}

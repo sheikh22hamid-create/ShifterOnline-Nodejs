@@ -1378,13 +1378,110 @@
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
-            <Button android:id="@+id/btn_more_options"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp" android:minHeight="48dp"
-                android:text="@string/home_more_options" android:textAllCaps="false" />
-            <LinearLayout android:id="@+id/layout_more_options"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:orientation="vertical" android:visibility="gone">
+            <!-- ================= VEHICLE BODY TYPE SECTION ================= -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_home_body_type"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                app:cardCornerRadius="14dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/driver_surface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_delivery_truck"
+                            app:tint="@color/shifter_orange" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Vehicle Body Type (बॉडी प्रकार)"
+                                android:textColor="@color/driver_text_primary"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/txt_home_body_type_desc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="Select vehicle configuration to receive matching orders"
+                                android:textColor="@color/home_secondary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <RadioGroup
+                        android:id="@+id/rg_home_body_type"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp">
+
+                        <RadioButton
+                            android:id="@+id/rb_home_body_both"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="3dp"
+                            android:paddingBottom="3dp"
+                            android:text="All (Open, Half &amp; Covered Available)"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="13.5sp" />
+
+                        <RadioButton
+                            android:id="@+id/rb_home_body_open"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="3dp"
+                            android:paddingBottom="3dp"
+                            android:text="Open Body Only (Khuli Dala)"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="13.5sp" />
+
+                        <RadioButton
+                            android:id="@+id/rb_home_body_half"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="3dp"
+                            android:paddingBottom="3dp"
+                            android:text="Half Body Only (Half Dala)"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="13.5sp" />
+
+                        <RadioButton
+                            android:id="@+id/rb_home_body_covered"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="3dp"
+                            android:paddingBottom="3dp"
+                            android:text="Covered Body Only (Band Container / Fixed Cover)"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="13.5sp" />
+                    </RadioGroup>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
             <!-- ================= DELIVERY TYPES SECTION ================= -->
             <LinearLayout
                 android:id="@+id/card_delivery_types_section"
@@ -1565,7 +1662,6 @@
                     android:layout_height="20dp"
                     android:src="@drawable/arow_right"
                     app:tint="@color/white" />
-            </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
