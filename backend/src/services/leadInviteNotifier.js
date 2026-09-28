@@ -18,7 +18,7 @@ function buildWhatsAppInviteText(leadName, driverName, leadType = "customer", he
     return (
       `${greeting}\n\n` +
       `${referrer} ne aapko *Shifter Online Driver Partner* ke roop me judne ke liye invite kiya hai. 🚚\n\n` +
-      `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily behtareen kamai karein!\n\n` +
+      `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily earning kare!\n\n` +
       `📲 *Shifter Driver App* abhi download karein aur aasaani se register karein:\n` +
       `👉 ${DRIVER_APP_DOWNLOAD_URL}\n\n` +
       `Helpline: ${helplineNumber}\n` +

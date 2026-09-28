@@ -148,7 +148,7 @@ export default function DriverLeads() {
     const text = isDriverLead
       ? `${greeting}\n\n` +
         `${referrer} ne aapko *Shifter Online Driver Partner* ke roop me judne ke liye invite kiya hai. 🚚\n\n` +
-        `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily behtareen kamai karein!\n\n` +
+        `Apni gadi (Tata Ace, Pickup, Bolero, 3-Wheeler) Shifter ke sath jodein aur daily earning kare!\n\n` +
         `📲 *Shifter Driver App* abhi download karein aur direct register karein:\n` +
         `👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n` +
         `Helpline: +91 9109114515\n` +
