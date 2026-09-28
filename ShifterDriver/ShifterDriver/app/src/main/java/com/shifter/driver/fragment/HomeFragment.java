@@ -843,13 +843,16 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             sessionManager.setCustomerCareNumber(careNum);
                         }
                     }
+                    if (result.has("vehicle") && !result.get("vehicle").isJsonNull()) {
+                        String v = result.get("vehicle").getAsString();
+                        if (riderData != null && (riderData.getVehicle() == null || riderData.getVehicle().isEmpty())) {
+                            riderData.setVehicle(v);
+                        }
+                    }
                     if (result.has("allowed_body_types") && !result.get("allowed_body_types").isJsonNull()) {
                         String allowed = result.get("allowed_body_types").getAsString();
                         if (riderData != null) {
                             riderData.setAllowedBodyTypes(allowed);
-                            if (sessionManager != null) {
-                                sessionManager.setUserDetails(riderData);
-                            }
                         }
                     }
                     if (result.has("body_type") && !result.get("body_type").isJsonNull()) {
@@ -857,6 +860,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         if (riderData != null && (riderData.getBodyType() == null || riderData.getBodyType().isEmpty())) {
                             riderData.setBodyType(bType);
                         }
+                    }
+                    if (riderData != null && sessionManager != null) {
+                        sessionManager.setUserDetails(riderData);
                     }
                     setupHomeBodyTypeUI();
                     boolean apiOnline = false;
@@ -1214,32 +1220,41 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             return;
         }
 
-        String vehicleName = riderData.getVehicle() != null ? riderData.getVehicle().toLowerCase() : "";
-        boolean isTwoWheeler = vehicleName.contains("bike") || vehicleName.contains("scooter")
-                || vehicleName.contains("motorcycle") || vehicleName.contains("2 wheeler");
+        String vehicleName = riderData.getVehicle() != null ? riderData.getVehicle().toLowerCase().trim() : "";
+        boolean isTwoWheeler = vehicleName.contains("bike") 
+                || vehicleName.contains("scooter")
+                || vehicleName.contains("motorcycle") 
+                || vehicleName.contains("2 wheeler")
+                || vehicleName.contains("two wheeler")
+                || vehicleName.contains("cycle");
 
         String allowed = riderData.getAllowedBodyTypes();
         if (allowed == null) {
-            allowed = isTwoWheeler ? "" : "open,half,covered";
+            allowed = "";
         }
         allowed = allowed.toLowerCase().trim();
 
-        if (isTwoWheeler || allowed.isEmpty()) {
+        // If two-wheeler or no body types are configured/allowed, strictly GONE
+        if (isTwoWheeler || allowed.isEmpty() || "none".equals(allowed)) {
+            binding.cardHomeBodyType.setVisibility(View.GONE);
+            return;
+        }
+
+        boolean allowOpen = allowed.contains("open");
+        boolean allowHalf = allowed.contains("half");
+        boolean allowCovered = allowed.contains("covered");
+        int allowedCount = (allowOpen ? 1 : 0) + (allowHalf ? 1 : 0) + (allowCovered ? 1 : 0);
+
+        if (allowedCount == 0) {
             binding.cardHomeBodyType.setVisibility(View.GONE);
             return;
         }
 
         binding.cardHomeBodyType.setVisibility(View.VISIBLE);
 
-        boolean allowOpen = allowed.contains("open");
-        boolean allowHalf = allowed.contains("half");
-        boolean allowCovered = allowed.contains("covered");
-
         if (binding.rbHomeBodyOpen != null) binding.rbHomeBodyOpen.setVisibility(allowOpen ? View.VISIBLE : View.GONE);
         if (binding.rbHomeBodyHalf != null) binding.rbHomeBodyHalf.setVisibility(allowHalf ? View.VISIBLE : View.GONE);
         if (binding.rbHomeBodyCovered != null) binding.rbHomeBodyCovered.setVisibility(allowCovered ? View.VISIBLE : View.GONE);
-
-        int allowedCount = (allowOpen ? 1 : 0) + (allowHalf ? 1 : 0) + (allowCovered ? 1 : 0);
         if (binding.rbHomeBodyBoth != null) binding.rbHomeBodyBoth.setVisibility(allowedCount > 1 ? View.VISIBLE : View.GONE);
 
         String currentBody = (riderData.getBodyType() != null && !riderData.getBodyType().isEmpty())

@@ -136,6 +136,22 @@ async function verifyOtp(req, res) {
         }).catch(() => {});
       }
 
+      let allowedBodyTypes = "";
+      if (driver.vehicle) {
+        const cleanV = String(driver.vehicle).trim();
+        const is2W = /bike|scooter|motorcycle|2\s*wheeler|two\s*wheeler|cycle/i.test(cleanV);
+        if (!is2W) {
+          const cat = await prisma.pkg_category.findFirst({
+            where: {
+              cat_status: 1,
+              OR: [{ cat_name: cleanV }, { cat_name: { contains: cleanV } }],
+            },
+            select: { allowed_body_types: true },
+          });
+          allowedBodyTypes = (cat && cat.allowed_body_types) ? cat.allowed_body_types : "";
+        }
+      }
+
       const driverResponse = {
         id: driver.id,
         full_name: driver.full_name,
@@ -151,6 +167,7 @@ async function verifyOtp(req, res) {
         account_number: driver.account_number,
         ifsc: driver.ifsc,
         vehicle: driver.vehicle,
+        allowed_body_types: allowedBodyTypes,
         profile_picture: driver.profile_picture,
         verification_type: driver.verification_type,
         verification_status: driver.verification_status,
@@ -240,15 +257,17 @@ async function login(req, res) {
 
     let allowedBodyTypes = "";
     if (rider.vehicle) {
-      const cat = await prisma.pkg_category.findFirst({
-        where: { cat_name: rider.vehicle, cat_status: 1 },
-        select: { allowed_body_types: true },
-      });
-      if (cat) {
-        allowedBodyTypes = cat.allowed_body_types ?? "";
-      } else {
-        const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(rider.vehicle);
-        allowedBodyTypes = is2W ? "" : "open,half,covered";
+      const cleanV = String(rider.vehicle).trim();
+      const is2W = /bike|scooter|motorcycle|2\s*wheeler|two\s*wheeler|cycle/i.test(cleanV);
+      if (!is2W) {
+        const cat = await prisma.pkg_category.findFirst({
+          where: {
+            cat_status: 1,
+            OR: [{ cat_name: cleanV }, { cat_name: { contains: cleanV } }],
+          },
+          select: { allowed_body_types: true },
+        });
+        allowedBodyTypes = (cat && cat.allowed_body_types) ? cat.allowed_body_types : "";
       }
     }
 

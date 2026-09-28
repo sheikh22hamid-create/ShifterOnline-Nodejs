@@ -1386,6 +1386,7 @@
                 android:layout_marginStart="16dp"
                 android:layout_marginEnd="16dp"
                 android:layout_marginBottom="12dp"
+                android:visibility="gone"
                 app:cardCornerRadius="14dp"
                 app:cardElevation="2dp"
                 app:cardBackgroundColor="@color/driver_card_bg">

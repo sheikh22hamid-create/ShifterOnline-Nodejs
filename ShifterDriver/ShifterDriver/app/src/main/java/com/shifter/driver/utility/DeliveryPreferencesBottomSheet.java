@@ -78,16 +78,20 @@ public class DeliveryPreferencesBottomSheet {
         RadioButton rbCovered = view.findViewById(R.id.rb_body_covered);
 
         String allowed = riderData != null ? riderData.getAllowedBodyTypes() : null;
-        String vehicleName = riderData != null && riderData.getVehicle() != null ? riderData.getVehicle().toLowerCase() : "";
-        boolean isTwoWheeler = vehicleName.contains("bike") || vehicleName.contains("scooter")
-                || vehicleName.contains("motorcycle") || vehicleName.contains("2 wheeler");
+        String vehicleName = riderData != null && riderData.getVehicle() != null ? riderData.getVehicle().toLowerCase().trim() : "";
+        boolean isTwoWheeler = vehicleName.contains("bike") 
+                || vehicleName.contains("scooter")
+                || vehicleName.contains("motorcycle") 
+                || vehicleName.contains("2 wheeler")
+                || vehicleName.contains("two wheeler")
+                || vehicleName.contains("cycle");
 
         if (allowed == null) {
-            allowed = isTwoWheeler ? "" : "open,half,covered";
+            allowed = "";
         }
         allowed = allowed.toLowerCase().trim();
 
-        boolean showBodyType = !isTwoWheeler && !allowed.isEmpty();
+        boolean showBodyType = !isTwoWheeler && !allowed.isEmpty() && !"none".equals(allowed);
 
         if (cardBodyType != null) {
             cardBodyType.setVisibility(showBodyType ? View.VISIBLE : View.GONE);

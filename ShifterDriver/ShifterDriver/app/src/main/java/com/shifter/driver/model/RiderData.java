@@ -152,6 +152,7 @@ public class RiderData implements Parcelable {
             trialOrdersAllowed = null;
         }
         bodyType = in.readString();
+        allowedBodyTypes = in.readString();
     }
 
     public static final Creator<RiderData> CREATOR = new Creator<RiderData>() {
@@ -410,6 +411,7 @@ public class RiderData implements Parcelable {
             parcel.writeByte((byte) 0);
         }
         parcel.writeString(bodyType);
+        parcel.writeString(allowedBodyTypes);
     }
 
     public String getDob() {
