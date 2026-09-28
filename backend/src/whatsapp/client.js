@@ -114,6 +114,7 @@ async function initWhatsAppBot() {
       }
 
       if (connection === "close") {
+        notifications.setWhatsAppClient(null);
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut =
           statusCode === DisconnectReason.loggedOut ||
@@ -993,6 +994,7 @@ async function logoutWhatsAppBot() {
       sock = null;
     }
 
+    notifications.setWhatsAppClient(null);
     clearAuthDirectory();
 
     connectionStatus = "DISCONNECTED";
@@ -1022,6 +1024,7 @@ async function switchWhatsAppAccount(targetPhone = null) {
       sock = null;
     }
 
+    notifications.setWhatsAppClient(null);
     clearAuthDirectory();
 
     connectionStatus = "DISCONNECTED";
