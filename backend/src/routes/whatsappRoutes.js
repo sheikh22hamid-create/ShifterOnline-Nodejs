@@ -11,7 +11,10 @@ const logger = require("../utils/logger");
 // Helper to validate and normalize phone numbers (10 to 15 numeric digits)
 function validatePhoneNumber(phone) {
   if (!phone) return null;
-  const clean = String(phone).replace(/\D/g, "");
+  let clean = String(phone).replace(/\D/g, "");
+  if (clean.length === 10) {
+    clean = `91${clean}`;
+  }
   if (clean.length < 10 || clean.length > 15) return null;
   return clean;
 }
@@ -71,6 +74,33 @@ router.post(
     } catch (err) {
       logger.error("Error requesting WhatsApp pairing code:", err);
       return res.status(500).json({ Result: false, success: false, msg: err.message || "Failed to request pairing code" });
+    }
+  }
+);
+
+/**
+ * POST /api/v1/whatsapp/request-qr
+ * Generates/refreshes a live QR code for WhatsApp scanning.
+ * Requires Authentication + Super Admin Role.
+ */
+router.post(
+  "/request-qr",
+  auth,
+  authorize("superadmin"),
+  rateLimiter({ windowMs: 60 * 1000, max: 10, message: "Too many QR requests. Please wait a minute." }),
+  async (req, res) => {
+    try {
+      logger.info(`[AUDIT] WhatsApp QR code request initiated by user ${req.user.username} (${req.user.id})`);
+      const result = await whatsappClient.switchWhatsAppAccount(null);
+      return res.json({
+        Result: true,
+        success: true,
+        msg: "Fresh WhatsApp QR code generation initiated",
+        data: result,
+      });
+    } catch (err) {
+      logger.error("Error requesting WhatsApp QR code:", err);
+      return res.status(500).json({ Result: false, success: false, msg: err.message || "Failed to generate QR code" });
     }
   }
 );

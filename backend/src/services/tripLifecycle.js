@@ -21,28 +21,11 @@ const {
   SCHEDULED_ORDER_LATE_ACCEPT_BUFFER_MS,
 } = require("../config/constants");
 
-const whatsappNotifications = require("../whatsapp/notifications");
-
 function notifyAdminStatus(order) {
   try {
     adminSocket.notifyOrderStatusUpdate(order);
-    if (order && order.id) {
-      const orderId = order.id;
-      const status = Number(order.order_status);
-      if (status === 1) {
-        whatsappNotifications.notifyDriverAssigned(orderId);
-      } else if (status === 2) {
-        whatsappNotifications.notifyDriverArrived(orderId);
-      } else if (status === 3) {
-        whatsappNotifications.notifyTripStarted(orderId);
-      } else if (status === 5) {
-        whatsappNotifications.notifyTripCompleted(orderId);
-      } else if (status === 4) {
-        whatsappNotifications.notifyOrderCancelled(orderId, order.cancel_reason);
-      }
-    }
   } catch (err) {
-    logger.error(`notifyAdminStatus / WhatsApp notification failed for order ${order?.id}:`, err);
+    logger.error(`notifyAdminStatus failed for order ${order?.id}:`, err);
   }
 }
 
