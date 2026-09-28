@@ -549,15 +549,22 @@ Future<bool> singUpApi(
         }
 
         if (context.mounted) {
-          successfullBottomSheets(
-            context,
-            tital: "Registered Successfully".tr,
-            subtitle: "Congratulation! your account already has been created. Please login to get amazing experience.".tr,
-            buttonText: "GOTO HOME".tr,
-            ontap: () {
-              Get.offAll(() => const Bottombar());
-            },
-          );
+          try {
+            successfullBottomSheets(
+              context,
+              tital: "Registered Successfully".tr,
+              subtitle: "Congratulation! your account already has been created. Please login to get amazing experience.".tr,
+              buttonText: "GOTO HOME".tr,
+              ontap: () {
+                Get.offAll(() => const Bottombar());
+              },
+            );
+          } catch (sheetErr) {
+            debugPrint("successfullBottomSheets error: $sheetErr");
+            Get.offAll(() => const Bottombar());
+          }
+        } else {
+          Get.offAll(() => const Bottombar());
         }
         return true;
       } else {

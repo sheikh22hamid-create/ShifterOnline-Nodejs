@@ -406,7 +406,7 @@ async function saveBufferedFile(file, folder) {
 async function registerHandler(req, res) {
   try {
     const body = req.body || {};
-    const required = ["email", "mobile", "account_name", "account_number", "ifsc", "vehicle", "vehicle_no", "device_id", "city_id"];
+    const required = ["email", "mobile", "vehicle", "vehicle_no", "device_id", "city_id"];
     const missing = required.filter((k) => !String(body[k] || "").trim());
     if (missing.length) {
       return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Missing Parameters", missing_params: missing });
@@ -416,9 +416,9 @@ async function registerHandler(req, res) {
     const email = String(body.email).trim();
     const mobile = String(body.mobile).trim();
     const dob = String(body.dob || "").trim();
-    const accountName = String(body.account_name).trim();
-    const accountNumber = String(body.account_number).trim();
-    const ifsc = String(body.ifsc).trim().toUpperCase();
+    const accountName = String(body.account_name || "").trim();
+    const accountNumber = String(body.account_number || "").trim();
+    const ifsc = String(body.ifsc || "").trim().toUpperCase();
     const vehicle = String(body.vehicle).trim();
     const vehicleNo = String(body.vehicle_no).trim();
     const deviceId = String(body.device_id).trim();
