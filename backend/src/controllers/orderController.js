@@ -66,10 +66,11 @@ async function getCategories(req, res) {
     const rawCategories = await prisma.pkg_category.findMany({
       where: { cat_status: 1 },
       orderBy: { sort_order: "asc" },
-      select: { id: true, cat_name: true, cat_img: true, other_image: true, cat_status: true },
+      select: { id: true, cat_name: true, cat_img: true, other_image: true, cat_status: true, allowed_body_types: true },
     });
     const categories = rawCategories.map((cat) => ({
       ...cat,
+      allowed_body_types: cat.allowed_body_types ? cat.allowed_body_types.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : [],
       img: cat.cat_img,
       image: cat.cat_img,
       icon: cat.cat_img,

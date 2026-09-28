@@ -843,6 +843,22 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             sessionManager.setCustomerCareNumber(careNum);
                         }
                     }
+                    if (result.has("allowed_body_types") && !result.get("allowed_body_types").isJsonNull()) {
+                        String allowed = result.get("allowed_body_types").getAsString();
+                        if (riderData != null) {
+                            riderData.setAllowedBodyTypes(allowed);
+                            if (sessionManager != null) {
+                                sessionManager.setUserDetails(riderData);
+                            }
+                        }
+                    }
+                    if (result.has("body_type") && !result.get("body_type").isJsonNull()) {
+                        String bType = result.get("body_type").getAsString();
+                        if (riderData != null && (riderData.getBodyType() == null || riderData.getBodyType().isEmpty())) {
+                            riderData.setBodyType(bType);
+                        }
+                    }
+                    setupHomeBodyTypeUI();
                     boolean apiOnline = false;
                     if (result.has("Online") && !result.get("Online").isJsonNull()) {
                         try {
@@ -1193,17 +1209,54 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             riderData = sessionManager.getUserDetails();
         }
 
-        String currentBody = (riderData != null && riderData.getBodyType() != null)
+        if (riderData == null) {
+            binding.cardHomeBodyType.setVisibility(View.GONE);
+            return;
+        }
+
+        String vehicleName = riderData.getVehicle() != null ? riderData.getVehicle().toLowerCase() : "";
+        boolean isTwoWheeler = vehicleName.contains("bike") || vehicleName.contains("scooter")
+                || vehicleName.contains("motorcycle") || vehicleName.contains("2 wheeler");
+
+        String allowed = riderData.getAllowedBodyTypes();
+        if (allowed == null) {
+            allowed = isTwoWheeler ? "" : "open,half,covered";
+        }
+        allowed = allowed.toLowerCase().trim();
+
+        if (isTwoWheeler || allowed.isEmpty()) {
+            binding.cardHomeBodyType.setVisibility(View.GONE);
+            return;
+        }
+
+        binding.cardHomeBodyType.setVisibility(View.VISIBLE);
+
+        boolean allowOpen = allowed.contains("open");
+        boolean allowHalf = allowed.contains("half");
+        boolean allowCovered = allowed.contains("covered");
+
+        if (binding.rbHomeBodyOpen != null) binding.rbHomeBodyOpen.setVisibility(allowOpen ? View.VISIBLE : View.GONE);
+        if (binding.rbHomeBodyHalf != null) binding.rbHomeBodyHalf.setVisibility(allowHalf ? View.VISIBLE : View.GONE);
+        if (binding.rbHomeBodyCovered != null) binding.rbHomeBodyCovered.setVisibility(allowCovered ? View.VISIBLE : View.GONE);
+
+        int allowedCount = (allowOpen ? 1 : 0) + (allowHalf ? 1 : 0) + (allowCovered ? 1 : 0);
+        if (binding.rbHomeBodyBoth != null) binding.rbHomeBodyBoth.setVisibility(allowedCount > 1 ? View.VISIBLE : View.GONE);
+
+        String currentBody = (riderData.getBodyType() != null && !riderData.getBodyType().isEmpty())
                 ? riderData.getBodyType()
                 : "both";
 
+        if ("open".equalsIgnoreCase(currentBody) && !allowOpen) currentBody = "both";
+        if ("half".equalsIgnoreCase(currentBody) && !allowHalf) currentBody = "both";
+        if ("covered".equalsIgnoreCase(currentBody) && !allowCovered) currentBody = "both";
+
         binding.rgHomeBodyType.setOnCheckedChangeListener(null);
 
-        if ("open".equalsIgnoreCase(currentBody)) {
+        if ("open".equalsIgnoreCase(currentBody) && allowOpen) {
             binding.rbHomeBodyOpen.setChecked(true);
-        } else if ("half".equalsIgnoreCase(currentBody)) {
+        } else if ("half".equalsIgnoreCase(currentBody) && allowHalf) {
             binding.rbHomeBodyHalf.setChecked(true);
-        } else if ("covered".equalsIgnoreCase(currentBody)) {
+        } else if ("covered".equalsIgnoreCase(currentBody) && allowCovered) {
             binding.rbHomeBodyCovered.setChecked(true);
         } else {
             binding.rbHomeBodyBoth.setChecked(true);
@@ -1211,7 +1264,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         binding.rgHomeBodyType.setOnCheckedChangeListener((group, checkedId) -> {
             String newBodyType = "both";
-            String toastName = "All (Open, Half & Covered)";
+            String toastName = "All Options";
             if (checkedId == R.id.rb_home_body_open) {
                 newBodyType = "open";
                 toastName = "Open Body Only";
@@ -1223,36 +1276,34 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 toastName = "Covered Body Only";
             }
 
-            if (riderData != null) {
-                riderData.setBodyType(newBodyType);
-                if (sessionManager != null) {
-                    sessionManager.setUserDetails(riderData);
-                }
+            riderData.setBodyType(newBodyType);
+            if (sessionManager != null) {
+                sessionManager.setUserDetails(riderData);
+            }
 
-                if (getActivity() != null) {
-                    Toast.makeText(getActivity(), "Vehicle Body: " + toastName, Toast.LENGTH_SHORT).show();
-                }
+            if (getActivity() != null) {
+                Toast.makeText(getActivity(), "Vehicle Body: " + toastName, Toast.LENGTH_SHORT).show();
+            }
 
-                if (riderData.getId() > 0) {
-                    final String finalBodyType = newBodyType;
-                    Map<String, Object> body = new HashMap<>();
-                    body.put("rider_id", riderData.getId());
-                    body.put("body_type", finalBodyType);
+            if (riderData.getId() > 0) {
+                final String finalBodyType = newBodyType;
+                Map<String, Object> body = new HashMap<>();
+                body.put("rider_id", riderData.getId());
+                body.put("body_type", finalBodyType);
 
-                    NodeApiClient.getInterface().setBodyType(body).enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
-                        @Override
-                        public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
-                            if (response.isSuccessful()) {
-                                android.util.Log.d("HomeFragment", "Vehicle body type updated to: " + finalBodyType);
-                            }
+                NodeApiClient.getInterface().setBodyType(body).enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
+                    @Override
+                    public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
+                        if (response.isSuccessful()) {
+                            android.util.Log.d("HomeFragment", "Vehicle body type updated to: " + finalBodyType);
                         }
+                    }
 
-                        @Override
-                        public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
-                            android.util.Log.e("HomeFragment", "Failed to update vehicle body type", t);
-                        }
-                    });
-                }
+                    @Override
+                    public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
+                        android.util.Log.e("HomeFragment", "Failed to update vehicle body type", t);
+                    }
+                });
             }
         });
     }

@@ -50,6 +50,17 @@ function formatVehicleSpecs(category) {
   return { max_weight_kg: maxLoadKg, max_dimensions: maxDimensions, detail_image: category.detail_image || null };
 }
 
+function parseAllowedBodyTypes(category) {
+  if (category && category.allowed_body_types !== undefined && category.allowed_body_types !== null) {
+    const raw = String(category.allowed_body_types).trim();
+    if (!raw) return [];
+    return raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  }
+  const name = String(category?.cat_name || "").toLowerCase();
+  const isTwoWheeler = name.includes("bike") || name.includes("scooter") || name.includes("motorcycle") || name.includes("2 wheeler");
+  return isTwoWheeler ? [] : ["open", "half", "covered"];
+}
+
 // One global list, admin-edited under Settings > "Vehicle Detail Notes"
 // (Task 5) — stored via the existing generic app_settings key/value
 // mechanism settingsController already exposes as `flags`, newline-
@@ -307,6 +318,7 @@ async function availableVehicles(req, res) {
         max_dimensions: specs.max_dimensions,
         detail_image: specs.detail_image,
         reason_unavailable: reasonUnavailable,
+        allowed_body_types: parseAllowedBodyTypes(category),
       });
     }
 
@@ -325,6 +337,7 @@ async function availableVehicles(req, res) {
           max_load_kg: v.max_weight_kg,
           max_dimensions: v.max_dimensions,
           detail_image: v.detail_image,
+          allowed_body_types: v.allowed_body_types,
           available: false,
           is_available: 0,
           live_supply: "none",

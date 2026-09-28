@@ -77,20 +77,47 @@ public class DeliveryPreferencesBottomSheet {
         RadioButton rbHalf = view.findViewById(R.id.rb_body_half);
         RadioButton rbCovered = view.findViewById(R.id.rb_body_covered);
 
-        boolean isCommercial = riderData != null && riderData.getVehicle() != null
-                && !riderData.getVehicle().equalsIgnoreCase("Bike");
+        String allowed = riderData != null ? riderData.getAllowedBodyTypes() : null;
+        String vehicleName = riderData != null && riderData.getVehicle() != null ? riderData.getVehicle().toLowerCase() : "";
+        boolean isTwoWheeler = vehicleName.contains("bike") || vehicleName.contains("scooter")
+                || vehicleName.contains("motorcycle") || vehicleName.contains("2 wheeler");
 
-        if (isCommercial && cardBodyType != null && rgBodyType != null) {
-            cardBodyType.setVisibility(View.VISIBLE);
+        if (allowed == null) {
+            allowed = isTwoWheeler ? "" : "open,half,covered";
+        }
+        allowed = allowed.toLowerCase().trim();
+
+        boolean showBodyType = !isTwoWheeler && !allowed.isEmpty();
+
+        if (cardBodyType != null) {
+            cardBodyType.setVisibility(showBodyType ? View.VISIBLE : View.GONE);
+        }
+
+        if (showBodyType && cardBodyType != null && rgBodyType != null) {
+            boolean allowOpen = allowed.contains("open");
+            boolean allowHalf = allowed.contains("half");
+            boolean allowCovered = allowed.contains("covered");
+
+            if (rbOpen != null) rbOpen.setVisibility(allowOpen ? View.VISIBLE : View.GONE);
+            if (rbHalf != null) rbHalf.setVisibility(allowHalf ? View.VISIBLE : View.GONE);
+            if (rbCovered != null) rbCovered.setVisibility(allowCovered ? View.VISIBLE : View.GONE);
+
+            int allowedCount = (allowOpen ? 1 : 0) + (allowHalf ? 1 : 0) + (allowCovered ? 1 : 0);
+            if (rbBoth != null) rbBoth.setVisibility(allowedCount > 1 ? View.VISIBLE : View.GONE);
+
             String currentBodyType = riderData.getBodyType();
-            if ("open".equalsIgnoreCase(currentBodyType)) {
-                rbOpen.setChecked(true);
-            } else if ("half".equalsIgnoreCase(currentBodyType)) {
+            if ("open".equalsIgnoreCase(currentBodyType) && !allowOpen) currentBodyType = "both";
+            if ("half".equalsIgnoreCase(currentBodyType) && !allowHalf) currentBodyType = "both";
+            if ("covered".equalsIgnoreCase(currentBodyType) && !allowCovered) currentBodyType = "both";
+
+            if ("open".equalsIgnoreCase(currentBodyType) && allowOpen) {
+                if (rbOpen != null) rbOpen.setChecked(true);
+            } else if ("half".equalsIgnoreCase(currentBodyType) && allowHalf) {
                 if (rbHalf != null) rbHalf.setChecked(true);
-            } else if ("covered".equalsIgnoreCase(currentBodyType)) {
-                rbCovered.setChecked(true);
+            } else if ("covered".equalsIgnoreCase(currentBodyType) && allowCovered) {
+                if (rbCovered != null) rbCovered.setChecked(true);
             } else {
-                rbBoth.setChecked(true);
+                if (rbBoth != null) rbBoth.setChecked(true);
             }
 
             rgBodyType.setOnCheckedChangeListener((group, checkedId) -> {

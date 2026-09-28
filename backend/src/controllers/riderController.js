@@ -231,6 +231,29 @@ async function setBodyType(req, res) {
     }
 
     const cleanType = String(body_type).toLowerCase();
+    let rider = null;
+    try {
+      if (typeof prisma.tbl_rider?.findUnique === "function") {
+        const res = prisma.tbl_rider.findUnique({ where: { id: Number(rider_id) } });
+        rider = res && typeof res.then === "function" ? await res : null;
+      }
+    } catch (_) {}
+
+    if (rider && rider.vehicle && !["both", "all"].includes(cleanType)) {
+      try {
+        if (typeof prisma.pkg_category?.findFirst === "function") {
+          const catRes = prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
+          const cat = catRes && typeof catRes.then === "function" ? await catRes : null;
+          if (cat && cat.allowed_body_types !== null && cat.allowed_body_types !== undefined) {
+            const allowed = cat.allowed_body_types.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+            if (allowed.length > 0 && !allowed.includes(cleanType)) {
+              return res.status(400).json({ Result: false, msg: `Body type '${cleanType}' is not supported for your vehicle (${rider.vehicle})` });
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     await prisma.tbl_rider.update({
       where: { id: Number(rider_id) },
       data: { body_type: cleanType },
@@ -407,12 +430,27 @@ async function getProfile(req, res) {
       logger.error("getProfile: syncPendingReferralRewardsForDriver error:", syncErr);
     }
 
+    let allowedBodyTypes = "";
+    if (rider.vehicle) {
+      const cat = await prisma.pkg_category.findFirst({
+        where: { cat_name: rider.vehicle, cat_status: 1 },
+        select: { allowed_body_types: true },
+      });
+      if (cat) {
+        allowedBodyTypes = cat.allowed_body_types ?? "";
+      } else {
+        const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(rider.vehicle);
+        allowedBodyTypes = is2W ? "" : "open,half,covered";
+      }
+    }
+
     return res.status(200).json({
       Result: "true",
       ResponseCode: "200",
       ResponseMsg: "Profile fetched successfully",
       rider_data: {
         ...rider,
+        allowed_body_types: allowedBodyTypes,
         reffer_code: refferCode,
         referral_code: refferCode,
         mobile: rider.fmobile,

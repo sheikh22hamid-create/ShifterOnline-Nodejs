@@ -2,6 +2,8 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_user: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+  tbl_referral_setting: { findFirst: jest.fn() },
+  tbl_referral_point_log: { create: jest.fn() },
   driver_withdraw_requests: { aggregate: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
   tbl_bank_account: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
   app_settings: { findFirst: jest.fn() },
@@ -507,5 +509,105 @@ describe("customerWalletController.clearOutstandingDue", () => {
     const res = mockRes();
     await clearOutstandingDue({ body }, res);
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function));
+  });
+});
+
+describe("customerWalletController.clearDueWithPoints", () => {
+  const { clearDueWithPoints } = require("../customerWalletController");
+  const body = { mobile: "9000000000" };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, point_value: "1.00" });
+  });
+
+  it("clears the full due when points cover it entirely", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00", referral_points: 100 });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_rider.findFirst.mockResolvedValueOnce({ id: 7, wallet_balance: "-70.00", referral_points: 100 });
+    // Fresh re-read inside the transaction, after the debit/credit.
+    prisma.tbl_rider.findFirst.mockResolvedValueOnce({ id: 7, wallet_balance: "0.00", referral_points: 30 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    prisma.tbl_referral_point_log.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    expect(prisma.tbl_rider.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, referral_points: { gte: 70 } },
+      data: { referral_points: { decrement: 70 }, wallet_balance: { increment: 70 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 70, type: "credit", remark: "Outstanding Due Cleared (Referral Points)" }) })
+    );
+    expect(prisma.tbl_referral_point_log.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ user_id: 7, user_type: "DRIVER", points: -70, txn_type: "debit", source: "due_clearance", balance_after: 30 }) })
+    );
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true, balance: 0, points_used: 70, remaining_due: 0 }));
+  });
+
+  it("partially clears the due when points are insufficient, leaving a remaining_due", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValueOnce({ id: 7, wallet_balance: "-70.00", referral_points: 30 });
+    prisma.tbl_rider.findFirst.mockResolvedValueOnce({ id: 7, wallet_balance: "-40.00", referral_points: 0 });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    prisma.tbl_referral_point_log.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    expect(prisma.tbl_rider.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, referral_points: { gte: 30 } },
+      data: { referral_points: { decrement: 30 }, wallet_balance: { increment: 30 } },
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true, balance: -40, points_used: 30, remaining_due: 40 }));
+  });
+
+  it("uses the admin-configured point_value instead of a hardcoded rate", async () => {
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, point_value: "2.00" });
+    prisma.tbl_rider.findFirst.mockResolvedValueOnce({ id: 7, wallet_balance: "-70.00", referral_points: 50 });
+    prisma.tbl_rider.findFirst.mockResolvedValueOnce({ id: 7, wallet_balance: "0.00", referral_points: 15 });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
+    prisma.tbl_referral_point_log.create.mockResolvedValue({ id: 1 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    // ceil(70/2)=35 needed, capped at 50 available -> 35 used, 35*2=70 credited
+    expect(prisma.tbl_rider.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, referral_points: { gte: 35 } },
+      data: { referral_points: { decrement: 35 }, wallet_balance: { increment: 70 } },
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true, balance: 0, points_used: 35, remaining_due: 0 }));
+  });
+
+  it("rejects when there is no outstanding due", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "0.00", referral_points: 100 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    expect(prisma.tbl_rider.updateMany).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
+  });
+
+  it("rejects when the driver has zero referral points", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00", referral_points: 0 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    expect(prisma.tbl_rider.updateMany).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false, msg: "No referral points available." }));
+  });
+
+  it("rejects when the referral program is disabled", async () => {
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: false, point_value: "1.00" });
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00", referral_points: 100 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    expect(prisma.tbl_rider.updateMany).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
+  });
+
+  it("reports a retry-me failure on a lost race against a concurrent point spend", async () => {
+    prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "-70.00", referral_points: 100 });
+    prisma.tbl_rider.updateMany.mockResolvedValue({ count: 0 });
+    const res = mockRes();
+    await clearDueWithPoints({ body }, res);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: false }));
   });
 });

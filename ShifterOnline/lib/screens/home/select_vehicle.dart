@@ -1700,7 +1700,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 setState(() {
                   _selectedIndex = index;
                   _selectedModelIndex = null;
-                  if (_isTwoWheeler(_vehicles[index])) {
+                  final allowed = _getAllowedBodyTypes(_vehicles[index]);
+                  if (allowed.isEmpty || (_selectedBodyType != 'any' && !allowed.contains(_selectedBodyType))) {
                     _selectedBodyType = 'any';
                   }
                 });
@@ -1777,10 +1778,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         ),
       ]),
       if (capacity.isNotEmpty) ...[const SizedBox(height: 4), Text('Up to $capacity kg', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12))],
-      if (driverCount.isNotEmpty || eta.isNotEmpty) ...[const SizedBox(height: 8), Row(children: [if (driverCount.isNotEmpty) const Icon(Icons.people_alt_outlined, color: Colors.green, size: 16), if (driverCount.isNotEmpty) Text(' $driverCount nearby', style: TextStyle(color: greaycolor, fontSize: 11)), if (driverCount.isNotEmpty && eta.isNotEmpty) const SizedBox(width: 12), if (eta.isNotEmpty) Icon(Icons.schedule_rounded, color: greaycolor, size: 15), if (eta.isNotEmpty) Text(' ~$eta min', style: TextStyle(color: greaycolor, fontSize: 11))])],
-      if (!_isTwoWheeler(selected))
-        _bodyTypeSelector()
-      else
+      if (_getAllowedBodyTypes(selected).isNotEmpty)
+        _bodyTypeSelector(_getAllowedBodyTypes(selected))
+      else if (_isTwoWheeler(selected))
         _twoWheelerBodyTypeNotice(),
       const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
@@ -1815,6 +1815,21 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     ]));
   }
 
+  List<String> _getAllowedBodyTypes(Map<String, dynamic>? option) {
+    if (option == null) return [];
+    final category = _categoryOf(option);
+    final availability = option['availability'] is Map ? option['availability'] as Map<String, dynamic> : null;
+    final raw = category['allowed_body_types'] ?? availability?['allowed_body_types'];
+    if (raw is List) {
+      return raw.map((e) => e.toString().trim().toLowerCase()).where((e) => e.isNotEmpty).toList();
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      return raw.split(',').map((e) => e.trim().toLowerCase()).where((e) => e.isNotEmpty).toList();
+    }
+    if (_isTwoWheeler(option)) return [];
+    return ['open', 'half', 'covered'];
+  }
+
   bool _isTwoWheeler(Map<String, dynamic> option) {
     final name = _vehicleName(option).toLowerCase();
     return name.contains('bike') ||
@@ -1839,7 +1854,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Open, Half & Covered Body configurations are available for 3-Wheeler and 4-Wheeler commercial vehicles.',
+              'Open, Half & Covered Body configurations are available for commercial vehicles configured by admin.',
               style: TextStyle(
                 color: notifier.text.withOpacity(0.85),
                 fontFamily: 'Gilroy_Medium',
@@ -1852,7 +1867,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
   }
 
-  Widget _bodyTypeSelector() {
+  Widget _bodyTypeSelector(List<String> allowed) {
+    if (allowed.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(12),
@@ -1897,13 +1913,20 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           const SizedBox(height: 10),
           Row(
             children: [
-              _bodyTypeChip('any', '⚡ Any', 'Flexible'),
-              const SizedBox(width: 6),
-              _bodyTypeChip('open', '🛻 Open', 'Open dala'),
-              const SizedBox(width: 6),
-              _bodyTypeChip('half', '🚚 Half', 'Half dala'),
-              const SizedBox(width: 6),
-              _bodyTypeChip('covered', '📦 Covered', 'Band / Tirpal'),
+              if (allowed.length > 1) ...[
+                _bodyTypeChip('any', '⚡ Any', 'Flexible'),
+                const SizedBox(width: 6),
+              ],
+              if (allowed.contains('open')) ...[
+                _bodyTypeChip('open', '🛻 Open', 'Open dala'),
+                if (allowed.contains('half') || allowed.contains('covered')) const SizedBox(width: 6),
+              ],
+              if (allowed.contains('half')) ...[
+                _bodyTypeChip('half', '🚚 Half', 'Half dala'),
+                if (allowed.contains('covered')) const SizedBox(width: 6),
+              ],
+              if (allowed.contains('covered'))
+                _bodyTypeChip('covered', '📦 Covered', 'Band / Tirpal'),
             ],
           ),
         ],

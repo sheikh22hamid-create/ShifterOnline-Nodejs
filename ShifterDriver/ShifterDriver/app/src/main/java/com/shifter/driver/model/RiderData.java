@@ -108,6 +108,9 @@ public class RiderData implements Parcelable {
     @SerializedName("body_type")
     @Expose
     private String bodyType;
+    @SerializedName("allowed_body_types")
+    @Expose
+    private String allowedBodyTypes;
 
     public RiderData() {
     }
@@ -463,5 +466,13 @@ public class RiderData implements Parcelable {
 
     public void setBodyType(String bodyType) {
         this.bodyType = bodyType;
+    }
+
+    public String getAllowedBodyTypes() {
+        return allowedBodyTypes;
+    }
+
+    public void setAllowedBodyTypes(String allowedBodyTypes) {
+        this.allowedBodyTypes = allowedBodyTypes;
     }
 }

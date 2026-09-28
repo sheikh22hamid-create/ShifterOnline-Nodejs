@@ -36,6 +36,7 @@ router.post("/wallet/withdraw", customerWalletController.withdrawWallet);
 router.post("/wallet/create-order", customerWalletController.createRazorpayOrder);
 router.post("/wallet/clear-due/create-order", customerWalletController.createClearDueOrder);
 router.post("/wallet/clear-due/verify", customerWalletController.clearOutstandingDue);
+router.post("/wallet/clear-due/points", customerWalletController.clearDueWithPoints);
 
 // Favorites / coupons / notifications / static content / home
 router.post("/favorites/toggle", customerContentController.toggleFavoriteDriver);

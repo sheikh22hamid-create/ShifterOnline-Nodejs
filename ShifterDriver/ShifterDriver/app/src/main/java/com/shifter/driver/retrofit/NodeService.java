@@ -180,6 +180,13 @@ public interface NodeService {
     @POST("api/users/wallet/clear-due/verify")
     Call<JsonObject> clearOutstandingDue(@Body RequestBody body);
 
+    // Clears the due using the driver's own referral_points balance instead of
+    // Razorpay (customerWalletController.clearDueWithPoints) - partial clearing
+    // allowed. Body: {mobile}. Response: {Result, balance, points_used,
+    // remaining_due, referral_points, msg}.
+    @POST("api/users/wallet/clear-due/points")
+    Call<JsonObject> clearDueWithPoints(@Body RequestBody body);
+
     // Node port of cust_api/custom_order_list_driver.php / custom_order_bid.php.
     @POST("api/rider/custom-order/open")
     Call<JsonObject> getCustomOrderList(@Body RequestBody body);

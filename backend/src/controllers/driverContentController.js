@@ -160,6 +160,20 @@ async function homeData(req, res) {
     const monthEarningStr = monthEarning.toFixed(2);
     const walletStr = Number(rider.wallet_balance || 0).toFixed(2);
 
+    let allowedBodyTypes = "";
+    if (rider.vehicle) {
+      const cat = await prisma.pkg_category.findFirst({
+        where: { cat_name: rider.vehicle, cat_status: 1 },
+        select: { allowed_body_types: true },
+      });
+      if (cat) {
+        allowedBodyTypes = cat.allowed_body_types ?? "";
+      } else {
+        const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(rider.vehicle);
+        allowedBodyTypes = is2W ? "" : "open,half,covered";
+      }
+    }
+
     return res.status(200).json({
       today_order: todayOrderStr,
       today_orders: todayOrderStr,
@@ -192,6 +206,9 @@ async function homeData(req, res) {
       device_match: deviceMatch,
       isHowUse: 1,
       Online: rider.a_status === 1,
+      vehicle: rider.vehicle || "",
+      body_type: rider.body_type || "all",
+      allowed_body_types: allowedBodyTypes,
       OrderHistory: activeOrderHistory,
       BuyOrderHistory: activeBuyOrderHistory,
       referral_code: referralCode,

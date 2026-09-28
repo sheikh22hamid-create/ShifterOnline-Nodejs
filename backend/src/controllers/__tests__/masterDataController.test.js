@@ -102,4 +102,35 @@ describe("masterDataController category detail specs", () => {
     expect(data.dim_height).toBe(null);
     expect(data.dim_height).not.toBe(0);
   });
+
+  it("createCategory stores allowed_body_types when provided", async () => {
+    prisma.pkg_category.create.mockResolvedValue({ id: 1 });
+    const req = {
+      body: {
+        cat_name: "Tata Ace",
+        cat_img: "images/category/tata_ace.png",
+        allowed_body_types: "open,covered",
+      },
+    };
+
+    await createCategory(req, makeRes());
+
+    const data = prisma.pkg_category.create.mock.calls[0][0].data;
+    expect(data.allowed_body_types).toBe("open,covered");
+  });
+
+  it("updateCategory updates allowed_body_types", async () => {
+    prisma.pkg_category.findUnique.mockResolvedValue({ id: 1, cat_name: "Tata Ace" });
+    prisma.pkg_category.update.mockResolvedValue({ id: 1 });
+    const req = {
+      params: { id: "1" },
+      body: { allowed_body_types: ["open", "half"] },
+    };
+
+    await updateCategory(req, makeRes());
+
+    const data = prisma.pkg_category.update.mock.calls[0][0].data;
+    expect(data.allowed_body_types).toBe("open,half");
+  });
 });
+

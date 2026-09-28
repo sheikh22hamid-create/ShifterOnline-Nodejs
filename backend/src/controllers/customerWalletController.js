@@ -237,6 +237,91 @@ async function clearOutstandingDue(req, res) {
   }
 }
 
+// --- Clear Outstanding Due with referral points (driver-only) ---
+// Same due computation/clamping discipline as clearOutstandingDue above,
+// but the payment instrument is the driver's own referral_points balance
+// instead of a Razorpay payment. Partial clearing is allowed (mirrors the
+// min(available, needed) capping pattern used for ride-discount and
+// driver-plan-purchase point spending elsewhere) - a driver short on
+// points clears what they can and still owes `remaining_due`.
+async function clearDueWithPoints(req, res) {
+  try {
+    const mobile = String(req.body?.mobile || "");
+    if (!mobile) return fail(res, "Missing Data");
+
+    const rider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (!rider) return fail(res, "No driver found with this mobile number!");
+
+    const actualDue = Math.max(0, -Number(rider.wallet_balance || 0));
+    if (actualDue <= 0) return fail(res, "No outstanding dues to clear.");
+
+    const settings = await prisma.tbl_referral_setting.findFirst();
+    if (!settings || !settings.referral_enabled) {
+      return fail(res, "Paying with referral points is not available right now.");
+    }
+    const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
+    const pointsNeeded = Math.ceil(actualDue / pointValue);
+    const pointsUsed = Math.min(Number(rider.referral_points) || 0, pointsNeeded);
+    if (pointsUsed <= 0) return fail(res, "No referral points available.");
+
+    const creditAmount = Math.min(actualDue, Math.round(pointsUsed * pointValue * 100) / 100);
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Atomic guarded decrement: only proceeds if the points balance read
+      // above still holds at commit time, so a concurrent spend of the
+      // same points (another due-clear, a plan purchase, an admin debit)
+      // can't double-spend them.
+      const decremented = await tx.tbl_rider.updateMany({
+        where: { id: rider.id, referral_points: { gte: pointsUsed } },
+        data: { referral_points: { decrement: pointsUsed }, wallet_balance: { increment: creditAmount } },
+      });
+      if (decremented.count === 0) return null;
+
+      const fresh = await tx.tbl_rider.findFirst({ where: { id: rider.id } });
+
+      await tx.tbl_wallet_history.create({
+        data: {
+          user_id: rider.id,
+          mobile,
+          amount: creditAmount,
+          type: "credit",
+          remark: "Outstanding Due Cleared (Referral Points)",
+          wallet_type: "driver",
+          created_at: new Date(),
+        },
+      });
+      await tx.tbl_referral_point_log.create({
+        data: {
+          user_id: rider.id,
+          user_type: "DRIVER",
+          points: -pointsUsed,
+          txn_type: "debit",
+          source: "due_clearance",
+          balance_after: Number(fresh.referral_points),
+          note: `Cleared ₹${creditAmount} outstanding due using ${pointsUsed} referral points`,
+          created_at: new Date(),
+        },
+      });
+
+      return { wallet_balance: Number(fresh.wallet_balance), referral_points: Number(fresh.referral_points) };
+    });
+
+    if (!result) return fail(res, "Referral point balance changed - please retry.");
+
+    return res.status(200).json({
+      Result: true,
+      msg: "Outstanding due cleared using referral points",
+      balance: result.wallet_balance,
+      points_used: pointsUsed,
+      remaining_due: Math.max(0, actualDue - creditAmount),
+      referral_points: result.referral_points,
+    });
+  } catch (err) {
+    logger.error("customerWalletController.clearDueWithPoints failed:", err);
+    return fail(res, "Internal server error");
+  }
+}
+
 // --- add_wallet.php ---
 async function addWallet(req, res) {
   try {
@@ -589,4 +674,4 @@ async function withdrawWallet(req, res) {
   }
 }
 
-module.exports = { addWallet, walletHistory, withdrawWallet, createRazorpayOrder, createClearDueOrder, clearOutstandingDue };
+module.exports = { addWallet, walletHistory, withdrawWallet, createRazorpayOrder, createClearDueOrder, clearOutstandingDue, clearDueWithPoints };

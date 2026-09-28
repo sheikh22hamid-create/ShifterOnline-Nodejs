@@ -8,6 +8,7 @@ const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', col
 const EMPTY_FORM = {
   cat_name: '', cat_img: '', city_id: '', sort_order: '0', cat_status: 1,
   max_load_kg: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '',
+  allowed_body_types: 'open,half,covered',
 }
 
 export default function CategoryFormModal({ open, category, onClose, onSaved }) {
@@ -21,22 +22,24 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
 
   useEffect(() => {
     if (!open) return
-    // This modal stays mounted across open/close and across which category
-    // it targets — re-seeding the form when either changes is a real
-    // sync-to-props transition, not a first-render duplicate.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError('')
-    setForm(
-      category
-        ? {
-            cat_name: category.cat_name, cat_img: category.cat_img, city_id: category.city_id ?? '',
-            sort_order: String(category.sort_order ?? 0), cat_status: category.cat_status,
-            max_load_kg: category.max_load_kg ?? '', dim_length: category.dim_length ?? '',
-            dim_width: category.dim_width ?? '', dim_height: category.dim_height ?? '',
-            dim_unit: category.dim_unit || 'ft', detail_image: category.detail_image ?? '',
-          }
-        : EMPTY_FORM
-    )
+    if (category) {
+      let resolvedAllowed = category.allowed_body_types;
+      if (resolvedAllowed === undefined || resolvedAllowed === null) {
+        const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(category.cat_name || '');
+        resolvedAllowed = is2W ? '' : 'open,half,covered';
+      }
+      setForm({
+        cat_name: category.cat_name, cat_img: category.cat_img, city_id: category.city_id ?? '',
+        sort_order: String(category.sort_order ?? 0), cat_status: category.cat_status,
+        max_load_kg: category.max_load_kg ?? '', dim_length: category.dim_length ?? '',
+        dim_width: category.dim_width ?? '', dim_height: category.dim_height ?? '',
+        dim_unit: category.dim_unit || 'ft', detail_image: category.detail_image ?? '',
+        allowed_body_types: resolvedAllowed,
+      })
+    } else {
+      setForm(EMPTY_FORM)
+    }
   }, [open, category])
 
   async function handleSubmit() {
@@ -158,6 +161,60 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
             <option value="ft">ft</option>
             <option value="cm">cm</option>
           </select>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="mb-1 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+          Allowed Vehicle Body Types (बॉडी प्रकार)
+        </label>
+        <p className="mb-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+          Enable options that user can choose and drivers can register for this vehicle. Uncheck all for 2-Wheelers (Bikes/Scooters).
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { id: 'open', label: '🛻 Open Body', desc: 'Open dala' },
+            { id: 'half', label: '🚚 Half Body', desc: 'Half dala' },
+            { id: 'covered', label: '📦 Covered', desc: 'Closed / Tirpal' },
+          ].map((type) => {
+            const currentList = form.allowed_body_types
+              ? form.allowed_body_types.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+              : [];
+            const isChecked = currentList.includes(type.id);
+            return (
+              <label
+                key={type.id}
+                className="flex cursor-pointer items-start gap-2 rounded-lg border p-2 transition-all select-none"
+                style={{
+                  borderColor: isChecked ? 'var(--brand)' : 'var(--border)',
+                  background: isChecked ? 'rgba(37,99,235,0.06)' : 'var(--bg)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={(e) => {
+                    let updated;
+                    if (e.target.checked) {
+                      updated = [...currentList, type.id];
+                    } else {
+                      updated = currentList.filter((t) => t !== type.id);
+                    }
+                    setForm((f) => ({ ...f, allowed_body_types: updated.join(',') }));
+                  }}
+                  className="mt-0.5 rounded cursor-pointer"
+                />
+                <div>
+                  <div className="text-[12px] font-medium leading-tight" style={{ color: isChecked ? 'var(--brand)' : 'var(--ink)' }}>
+                    {type.label}
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>
+                    {type.desc}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
         </div>
       </div>
 

@@ -229,10 +229,25 @@ async function login(req, res) {
       });
     }
 
+    let allowedBodyTypes = "";
+    if (rider.vehicle) {
+      const cat = await prisma.pkg_category.findFirst({
+        where: { cat_name: rider.vehicle, cat_status: 1 },
+        select: { allowed_body_types: true },
+      });
+      if (cat) {
+        allowedBodyTypes = cat.allowed_body_types ?? "";
+      } else {
+        const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(rider.vehicle);
+        allowedBodyTypes = is2W ? "" : "open,half,covered";
+      }
+    }
+
     return res.status(200).json({
       rider_data: {
         ...rider,
         ...data,
+        allowed_body_types: allowedBodyTypes,
         mobile: rider.fmobile,
         fmobile: rider.fmobile,
         dob: rider.dob || "",

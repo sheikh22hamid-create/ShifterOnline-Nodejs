@@ -166,10 +166,20 @@ async function createCategory(req, res) {
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
+      allowed_body_types,
     } = req.body;
     if (!cat_name || !cat_img) {
       return res.status(400).json({ success: false, message: "cat_name and cat_img are required" });
     }
+    const cleanName = String(cat_name).toLowerCase();
+    const isTwoWheeler = cleanName.includes("bike") || cleanName.includes("scooter") || cleanName.includes("motorcycle") || cleanName.includes("2 wheeler");
+    let resolvedAllowedBodyTypes = isTwoWheeler ? "" : "open,half,covered";
+    if (allowed_body_types !== undefined && allowed_body_types !== null) {
+      resolvedAllowedBodyTypes = Array.isArray(allowed_body_types)
+        ? allowed_body_types.join(",")
+        : String(allowed_body_types).trim();
+    }
+
     const created = await prisma.pkg_category.create({
       data: {
         cat_name,
@@ -184,6 +194,7 @@ async function createCategory(req, res) {
         dim_height: (dim_height === undefined || dim_height === null || dim_height === "") ? null : Number(dim_height),
         dim_unit: dim_unit || null,
         detail_image: detail_image || null,
+        allowed_body_types: resolvedAllowedBodyTypes,
       },
     });
     return res.status(201).json({ success: true, message: "Category created", data: created });
@@ -202,6 +213,7 @@ async function updateCategory(req, res) {
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
+      allowed_body_types,
     } = req.body;
     const data = {};
     if (cat_name !== undefined) data.cat_name = cat_name;
@@ -216,6 +228,11 @@ async function updateCategory(req, res) {
     if (dim_height !== undefined) data.dim_height = (dim_height === null || dim_height === "") ? null : Number(dim_height);
     if (dim_unit !== undefined) data.dim_unit = dim_unit || null;
     if (detail_image !== undefined) data.detail_image = detail_image || null;
+    if (allowed_body_types !== undefined) {
+      data.allowed_body_types = Array.isArray(allowed_body_types)
+        ? allowed_body_types.join(",")
+        : (allowed_body_types === null ? null : String(allowed_body_types).trim());
+    }
 
     const updated = await prisma.pkg_category.update({ where: { id }, data });
     return res.status(200).json({ success: true, message: "Category updated", data: updated });

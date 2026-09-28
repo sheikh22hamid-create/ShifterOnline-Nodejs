@@ -75,7 +75,7 @@ export default function Categories() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['', 'Category', 'City', 'Sort', 'Status', canManage ? '' : undefined].filter((h) => h !== undefined).map((h, i) => (
+                {['', 'Category', 'Body Types', 'City', 'Sort', 'Status', canManage ? '' : undefined].filter((h) => h !== undefined).map((h, i) => (
                   <th key={h || i} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -86,14 +86,14 @@ export default function Categories() {
               {loading &&
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={6} className="px-4 py-3">
+                    <td colSpan={7} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
@@ -105,8 +105,33 @@ export default function Categories() {
                     <td className="px-4 py-2.5">
                       <Thumb src={c.cat_img} />
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
+                    <td className="whitespace-nowrap px-4 py-2.5 font-medium" style={{ color: 'var(--ink)' }}>
                       {c.cat_name}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5">
+                      {(() => {
+                        const raw = c.allowed_body_types;
+                        const types = raw ? raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+                        if (types.length === 0) {
+                          return <span className="text-[11.5px] italic opacity-60" style={{ color: 'var(--ink-muted)' }}>None (2-Wheeler)</span>;
+                        }
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {types.map((t) => (
+                              <span
+                                key={t}
+                                className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold tracking-wide"
+                                style={{
+                                  background: t === 'covered' ? 'rgba(147, 51, 234, 0.1)' : t === 'half' ? 'rgba(217, 119, 6, 0.1)' : 'rgba(37, 99, 235, 0.1)',
+                                  color: t === 'covered' ? '#7e22ce' : t === 'half' ? '#b45309' : '#1d4ed8',
+                                }}
+                              >
+                                {t === 'covered' ? '📦 Covered' : t === 'half' ? '🚚 Half' : '🛻 Open'}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
                       {c.city_id ? `#${c.city_id}` : 'All cities'}
