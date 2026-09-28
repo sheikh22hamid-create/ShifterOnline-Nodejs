@@ -18,6 +18,7 @@ const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
 const adminDriverLeadController = require("../controllers/adminDriverLeadController");
+const adminRegistrationLeadController = require("../controllers/adminRegistrationLeadController");
 const adminTrialDriverController = require("../controllers/adminTrialDriverController");
 const adminUserLeadController = require("../controllers/adminUserLeadController");
 const multer = require("multer");
@@ -237,6 +238,10 @@ router.get("/driver-leads", auth, authorize(...RIDER_ROLES), adminDriverLeadCont
 router.post("/driver-leads/:id/verify", auth, authorize(...RIDER_ROLES), adminDriverLeadController.verifyLead);
 router.post("/driver-leads/:id/reject", auth, authorize(...RIDER_ROLES), adminDriverLeadController.rejectLead);
 router.post("/driver-leads/:id/send-invite", auth, authorize(...RIDER_ROLES), adminDriverLeadController.sendInvite);
+
+router.get("/registration-leads", auth, authorize(...RIDER_ROLES), adminRegistrationLeadController.listLeads);
+router.post("/registration-leads/:id/send-reminder", auth, authorize(...RIDER_ROLES), adminRegistrationLeadController.sendReminder);
+router.post("/registration-leads/:id/status", auth, authorize(...RIDER_ROLES), adminRegistrationLeadController.updateStatus);
 
 // --- User Referral Leads Queue (User-Submitted Contacts) ----------------------
 router.get("/user-leads", auth, authorize(...RIDER_ROLES), adminUserLeadController.listUserLeads);

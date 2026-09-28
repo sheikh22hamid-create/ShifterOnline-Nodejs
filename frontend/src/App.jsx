@@ -34,6 +34,7 @@ const PushNotifications = lazy(() => import('./pages/PushNotifications'))
 const Referrals = lazy(() => import('./pages/Referrals'))
 const RideMilestones = lazy(() => import('./pages/RideMilestones'))
 const DriverLeads = lazy(() => import('./pages/DriverLeads'))
+const RegistrationLeads = lazy(() => import('./pages/RegistrationLeads'))
 const UserLeads = lazy(() => import('./pages/UserLeads'))
 const TrialDrivers = lazy(() => import('./pages/TrialDrivers'))
 const Reports = lazy(() => import('./pages/Reports'))
@@ -112,6 +113,7 @@ function App() {
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/ride-milestones" element={<RideMilestones />} />
             <Route path="/driver-leads" element={<DriverLeads />} />
+            <Route path="/registration-leads" element={<RegistrationLeads />} />
             <Route path="/user-leads" element={<UserLeads />} />
             <Route path="/trial-drivers" element={<TrialDrivers />} />
 

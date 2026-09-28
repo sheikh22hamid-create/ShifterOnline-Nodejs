@@ -944,6 +944,27 @@ model tbl_driver_lead {
   @@index([lead_type], map: "idx_lead_type")
 }
 
+// Created the moment an unregistered mobile number clears OTP verification
+// during driver signup (see riderAuthController.verifyOtp) - lets admin see
+// and follow up on drivers who verified but abandoned the registration form,
+// separate from tbl_driver_lead which is the referral-program queue.
+model tbl_registration_lead {
+  id                  Int       @id @default(autoincrement())
+  phone               String    @unique(map: "uniq_registration_lead_phone") @db.VarChar(20)
+  device_id           String?   @db.VarChar(191)
+  status              String    @default("pending") @db.VarChar(15)
+  otp_verified_at     DateTime  @db.DateTime(0)
+  last_reminder_sent_at DateTime? @db.DateTime(0)
+  reminder_count      Int       @default(0)
+  registered_rider_id Int?
+  registered_at       DateTime? @db.DateTime(0)
+  created_at          DateTime  @default(now()) @db.DateTime(0)
+  updated_at          DateTime  @updatedAt @db.DateTime(0)
+
+  @@index([status], map: "idx_registration_lead_status")
+  @@index([otp_verified_at], map: "idx_registration_lead_otp_verified_at")
+}
+
 model tbl_referral_setting {
   id                            Int       @id @default(autoincrement())
   user_points_per_referral      Int       @default(100)

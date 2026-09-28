@@ -10,6 +10,7 @@ const { getAutoVerificationSettings } = require("../utils/driverVerificationSett
 const { evaluateDriverApproval } = require("../utils/driverApproval");
 const { normalizeToLast10Digits } = require("../utils/phone");
 const { creditSignUpBonus } = require("../services/referralRewardService");
+const registrationLeadService = require("../services/registrationLeadService");
 
 // Node port of the legacy PHP driver endpoints under
 // Php Backend/production/admin/rider_api/*.php. Response shape kept
@@ -180,6 +181,14 @@ async function verifyOtp(req, res) {
         Is_New_User: "0",
         DriverData: driverResponse,
       });
+    }
+
+    // Track this as an incomplete registration so admin can follow up if the
+    // driver never finishes the form (see registrationLeadService).
+    try {
+      await registrationLeadService.upsertOnOtpVerify({ phone: mobile, deviceId });
+    } catch (leadErr) {
+      logger.warn("riderAuthController.verifyOtp: registration lead tracking failed:", leadErr.message);
     }
 
     return res.status(200).json({
@@ -677,6 +686,12 @@ async function registerHandler(req, res) {
     // (see evaluateDriverApproval) - docsVerified alone used to be enough,
     // which let a driver skip the Razorpay charge entirely by force-quitting
     // the app right after eKYC succeeded.
+    try {
+      await registrationLeadService.markRegistered({ phone: mobile, riderId });
+    } catch (leadErr) {
+      logger.warn("riderAuthController.registerHandler: registration lead cleanup failed:", leadErr.message);
+    }
+
     const { isAllVerified, docsVerified } = await evaluateDriverApproval(riderId);
 
     const riderData = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
