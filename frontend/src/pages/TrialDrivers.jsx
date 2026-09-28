@@ -19,7 +19,9 @@ export default function TrialDrivers() {
   const [form, setForm] = useState({ full_name: '', fmobile: '', vehicle: 'Bike', trial_orders_allowed: '5' })
   const [busy, setBusy] = useState(false)
   const [vehicleMenuOpen, setVehicleMenuOpen] = useState(false)
+  const [vehicleMenuPos, setVehicleMenuPos] = useState(null)
   const vehicleFieldRef = useRef(null)
+  const vehicleButtonRef = useRef(null)
 
   useEffect(() => {
     if (!vehicleMenuOpen) return
@@ -207,18 +209,36 @@ export default function TrialDrivers() {
                   producing unreadable text regardless of theme or
                   extensions. A fully custom list sidesteps that. */}
               <button
+                ref={vehicleButtonRef}
                 type="button"
-                onClick={() => setVehicleMenuOpen((o) => !o)}
+                onClick={() => {
+                  if (!vehicleMenuOpen && vehicleButtonRef.current) {
+                    const rect = vehicleButtonRef.current.getBoundingClientRect()
+                    setVehicleMenuPos({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+                  }
+                  setVehicleMenuOpen((o) => !o)
+                }}
                 className="flex w-full items-center justify-between rounded-lg border px-3 py-1.5 text-[13px]"
                 style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: form.vehicle ? 'var(--ink)' : 'var(--ink-faint)' }}
               >
                 <span>{form.vehicle || 'Select vehicle'}</span>
                 <ChevronDown size={14} style={{ color: 'var(--ink-faint)' }} />
               </button>
-              {vehicleMenuOpen && (
+              {vehicleMenuOpen && vehicleMenuPos && (
+                // position: fixed (not absolute) so this escapes Modal's own
+                // overflow-hidden/overflow-y-auto wrappers - an absolutely
+                // positioned dropdown was getting clipped to invisible inside
+                // them, which looked like "clicking does nothing".
                 <div
-                  className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border"
-                  style={{ borderColor: 'var(--border)', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}
+                  className="fixed z-[60] max-h-48 overflow-y-auto rounded-lg border"
+                  style={{
+                    top: vehicleMenuPos.top,
+                    left: vehicleMenuPos.left,
+                    width: vehicleMenuPos.width,
+                    borderColor: 'var(--border)',
+                    background: 'var(--surface)',
+                    boxShadow: 'var(--shadow-md)',
+                  }}
                 >
                   {vehicles?.map((v) => (
                     <button
@@ -228,7 +248,7 @@ export default function TrialDrivers() {
                         setForm((f) => ({ ...f, vehicle: v.title }))
                         setVehicleMenuOpen(false)
                       }}
-                      className="block w-full px-3 py-1.5 text-left text-[13px] hover:bg-[var(--bg-hover)]"
+                      className="block w-full px-3 py-1.5 text-left text-[13px] hover:bg-[var(--brand-soft)]"
                       style={{ color: 'var(--ink)', background: form.vehicle === v.title ? 'var(--bg)' : 'transparent' }}
                     >
                       {v.title}
