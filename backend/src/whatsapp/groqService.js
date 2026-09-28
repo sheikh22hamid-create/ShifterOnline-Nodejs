@@ -88,6 +88,10 @@ You MUST reply strictly in valid JSON format:
   },
   "aiResponse": "A polite, accurate, detailed 1-3 sentence response in natural Hinglish directly answering the user's question using the Official Company Knowledge Base provided below."
 }
+
+CRITICAL GREETING RULE:
+- ALWAYS start greetings with "Hello!" or "Hello ji!".
+- NEVER use "Namaste" or "Namaskar" under any circumstances.
 `;
 
 /**
