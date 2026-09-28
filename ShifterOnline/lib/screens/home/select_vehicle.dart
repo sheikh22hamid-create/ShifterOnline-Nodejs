@@ -472,19 +472,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (!mounted) return;
       int retainedIndex = -1;
       if (previousVehicleKey != null) {
-        retainedIndex = refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey && _isAvailable(option['availability']));
-        if (retainedIndex < 0) {
-          retainedIndex = refreshed.indexWhere((option) => _vehicleKey(option) == previousVehicleKey);
-        }
-      }
-      if (retainedIndex < 0 && _selectedIndex < 0 && refreshed.isNotEmpty) {
-        retainedIndex = refreshed.indexWhere((option) => _isAvailable(option['availability']));
-        if (retainedIndex < 0) {
-          retainedIndex = 0;
-        }
+        retainedIndex = refreshed.indexWhere((option) =>
+            _vehicleKey(option) == previousVehicleKey && _isAvailable(option['availability']));
       }
       if (retainedIndex < 0 && refreshed.isNotEmpty) {
-        retainedIndex = 0;
+        retainedIndex = refreshed.indexWhere((option) => _isAvailable(option['availability']));
       }
       final rawSuggestion = decoded['radius_suggestion'];
       final radiusSuggestion = rawSuggestion is Map && rawSuggestion['shown'] == true
@@ -494,7 +486,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final notes = rawNotes is List ? rawNotes.map((n) => n.toString()).where((n) => n.trim().isNotEmpty).toList() : <String>[];
       setState(() {
         _vehicles = refreshed;
-        _availabilityError = decoded['serviceable'] == true || refreshed.isNotEmpty ? null : "We couldn't find an available vehicle near your pickup location right now.";
+        _availabilityError = decoded['serviceable'] == true || refreshed.any((v) => _isAvailable(v['availability']))
+            ? null
+            : "No drivers available near your pickup location right now.";
         _selectedIndex = retainedIndex >= 0 ? retainedIndex : -1;
         _selectedModelIndex = null;
         _vehicleDetailNotes = notes;
@@ -504,12 +498,19 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _showRadiusSuggestionDialog(radiusSuggestion);
       }
       if (_vehicles.isNotEmpty && retainedIndex >= 0) {
-        await _loadModelsForSelectedVehicle(preserveModelKey: retainedIndex >= 0 ? previousModelKey : null);
+        await _loadModelsForSelectedVehicle(preserveModelKey: previousModelKey);
       } else if (mounted) {
-        setState(() { _models = []; _selectedModelIndex = null; _loadingAvailability = false; });
+        setState(() {
+          _models = [];
+          _selectedModelIndex = null;
+          _loadingAvailability = false;
+        });
       }
-      if (mounted && _selected == null) {
-        setState(() => _models = []);
+      if (mounted && (_selected == null || !_isAvailable(_selected!['availability']))) {
+        setState(() {
+          _models = [];
+          _selectedModelIndex = null;
+        });
       }
     } catch (error) {
       if (!mounted) return;
@@ -1158,11 +1159,15 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                       ),
                     ),
                   const SizedBox(height: 14),
-                  if (_selected != null) _selectedVehicleSection(),
+                  if (_selected != null && _isAvailable(_selected!['availability']))
+                    _selectedVehicleSection()
+                  else if (_vehicles.isNotEmpty && !_vehicles.any((v) => _isAvailable(v['availability'])))
+                    _noDriversAvailableCard(),
                 ],
               ),
             ),
-            if (_selected != null && _selectedModel != null) _bottomCta(),
+            if (_selected != null && _isAvailable(_selected!['availability']) && _selectedModel != null)
+              _bottomCta(),
           ],
         ),
       ),
@@ -1685,21 +1690,35 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Widget _vehicleCard(int index, Map<String, dynamic> option) {
     final available = _isAvailable(option['availability']);
-    final selected = index == _selectedIndex;
+    final selected = index == _selectedIndex && available;
     final image = _image(option);
     return Opacity(
-      opacity: available ? 1 : 0.65,
+      opacity: available ? 1 : 0.45,
       child: InkWell(
-        onTap: () {
-          setState(() {
-            _selectedIndex = index;
-            _selectedModelIndex = null;
-            if (_isTwoWheeler(_vehicles[index])) {
-              _selectedBodyType = 'any';
-            }
-          });
-          _loadModelsForSelectedVehicle();
-        },
+        onTap: available
+            ? () {
+                setState(() {
+                  _selectedIndex = index;
+                  _selectedModelIndex = null;
+                  if (_isTwoWheeler(_vehicles[index])) {
+                    _selectedBodyType = 'any';
+                  }
+                });
+                _loadModelsForSelectedVehicle();
+              }
+            : () {
+                Get.snackbar(
+                  'Driver Unavailable',
+                  'No ${_vehicleName(option)} drivers found within $_selectedRadiusKm km. Please select an available vehicle or tap "Search area" to expand radius.',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: notifier.isDark ? const Color(0xff2A2A2A) : Colors.white,
+                  colorText: notifier.text,
+                  icon: const Icon(Icons.info_outline_rounded, color: Colors.orange),
+                  margin: const EdgeInsets.all(16),
+                  borderRadius: 12,
+                  duration: const Duration(seconds: 3),
+                );
+              },
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -1708,7 +1727,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           decoration: BoxDecoration(
             color: selected ? linercolor.withOpacity(.06) : notifier.getBgColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: selected ? linercolor : notifier.bordecolor, width: selected ? 1.6 : 1),
+            border: Border.all(
+              color: selected
+                  ? linercolor
+                  : (available ? notifier.bordecolor : notifier.bordecolor.withOpacity(0.4)),
+              width: selected ? 1.6 : 1,
+            ),
           ),
           child: Column(children: [
             Expanded(
@@ -1717,7 +1741,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                   : FadeInImage.assetNetwork(placeholder: 'assets/loading.gif', image: Config.resolveImageUrl(image), fit: BoxFit.contain, imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)),
             ),
             Row(children: [
-              Expanded(child: Text(_vehicleName(option), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: notifier.text, fontSize: 12, fontFamily: 'Gilroy_Bold'))),
+              Expanded(child: Text(_vehicleName(option), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: available ? notifier.text : greaycolor, fontSize: 12, fontFamily: 'Gilroy_Bold'))),
               if (selected) Icon(Icons.check_circle_rounded, color: linercolor, size: 17),
             ]),
             const SizedBox(height: 3),
@@ -1727,7 +1751,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 available ? _startingFare(option) : _unavailableReason(option),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: greaycolor, fontSize: 10, fontFamily: 'Gilroy_Medium'),
+                style: TextStyle(color: available ? greaycolor : const Color(0xffE53935), fontSize: 10, fontFamily: 'Gilroy_Medium'),
               ),
             ),
           ]),
@@ -1942,6 +1966,54 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ),
     );
   }
+
+  Widget _noDriversAvailableCard() => Container(
+    margin: const EdgeInsets.only(top: 8),
+    padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+    decoration: BoxDecoration(
+      color: notifier.getBgColor,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+    ),
+    child: Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.location_off_rounded, color: Colors.orange, size: 30),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'No Drivers Available Nearby',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: notifier.text, fontSize: 16, fontFamily: 'Gilroy_Bold'),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Currently no drivers are online within $_selectedRadiusKm km for the vehicles shown. Please expand your search area to find available drivers.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: greaycolor, height: 1.35, fontSize: 12.5, fontFamily: 'Gilroy_Medium'),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _openSearchAreaSheet,
+            icon: const Icon(Icons.my_location_rounded, size: 16, color: Colors.white),
+            label: Text('Expand Search Area (${_selectedRadiusKm} km)', style: const TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 13)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: linercolor,
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
   Widget _bottomCta() => Container(
