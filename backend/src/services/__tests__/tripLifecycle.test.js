@@ -1121,8 +1121,13 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
       order_id: 400,
       o_status: "Cancelled",
     }));
+    expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(3, "order:customer_cancelled", expect.objectContaining({
+      order_id: "400",
+      order_status: 4,
+      o_status: "Cancelled",
+    }));
     expect(pushNotifier.notifyCustomerPickupTimeoutCancel).toHaveBeenCalledWith("customer_tok", 400, 30);
-    expect(pushNotifier.notifyDriverPickupTimeoutCancel).toHaveBeenCalledWith("rider_tok", 400);
+    expect(pushNotifier.notifyDriverPickupTimeoutCancel).toHaveBeenCalledWith("rider_tok", 400, 10);
   });
 
   it("does nothing when the order already moved past Pickup (OTP verified or cancelled first — race with the sweep)", async () => {

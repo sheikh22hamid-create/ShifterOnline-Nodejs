@@ -74,14 +74,25 @@ async function notifyCustomerPickupTimeoutCancel(fcmToken, orderId, cancellation
   );
 }
 
-/** Driver-side counterpart of notifyCustomerPickupTimeoutCancel — same event, told from the driver's side. */
-async function notifyDriverPickupTimeoutCancel(fcmToken, orderId) {
+/**
+ * Driver-side counterpart of notifyCustomerPickupTimeoutCancel — same event,
+ * told from the driver's side. type "order_cancelled" (not "order_dismiss")
+ * deliberately - this order was already accepted and may have
+ * OrderDetailsActivity's OTP dialog open on screen; "order_dismiss" only
+ * closes a still-pending pre-acceptance popup (see
+ * MyFirebaseMessagingService's routing), which left that screen stuck
+ * showing an expired countdown with no cancellation ever surfacing
+ * (confirmed live: order #199) when the driver was backgrounded/killed at
+ * the moment of cancellation and only this push - not the live socket event
+ * tripLifecycle.cancelOverduePickup also emits - reached them.
+ */
+async function notifyDriverPickupTimeoutCancel(fcmToken, orderId, timeoutMinutes) {
+  const minutesText = timeoutMinutes ? `${timeoutMinutes} minutes` : "the allowed time";
   return sendPushNotification(
     fcmToken,
-    "Trip Cancelled",
-    "Customer did not provide the OTP within 10 minutes. This trip has been cancelled and you're free for new orders.",
-    { type: "order_dismiss", order_id: String(orderId), reason: "pickup_otp_timeout" },
-    "order_dismiss_channel_v1"
+    "Order Cancelled",
+    `Customer did not provide the OTP within ${minutesText}. This trip has been cancelled and you're free for new orders.`,
+    { type: "order_cancelled", order_id: String(orderId), reason: "pickup_otp_timeout" }
   );
 }
 

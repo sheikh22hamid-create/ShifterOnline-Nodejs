@@ -1195,12 +1195,27 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
     o_status: "Cancelled",
   });
 
+  // Without this, the driver's OrderDetailsActivity/OTP dialog had no
+  // real-time signal that the order was just cancelled - it doesn't poll on
+  // its own once the OTP countdown reaches zero, so the screen stayed stuck
+  // showing an expired 00:00 timer indefinitely (confirmed live: order #199).
+  // cancelExpiredAdvancePayment already emits this same event for its own
+  // timeout path; this one was missed when that fix was made.
+  if (riderId) {
+    dispatchManager.emitDriverEvent(riderId, "order:customer_cancelled", {
+      order_id: String(orderId),
+      reason: `Customer did not provide OTP within ${timeoutMinutes} minutes of driver arrival`,
+      order_status: 4,
+      o_status: "Cancelled",
+    });
+  }
+
   const [customer, rider] = await Promise.all([
     prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } }),
     riderId ? prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { fcm_token: true } }) : Promise.resolve(null),
   ]);
   await pushNotifier.notifyCustomerPickupTimeoutCancel(customer?.fcm_token, orderId, cancellationCharge);
-  if (rider) await pushNotifier.notifyDriverPickupTimeoutCancel(rider.fcm_token, orderId);
+  if (rider) await pushNotifier.notifyDriverPickupTimeoutCancel(rider.fcm_token, orderId, timeoutMinutes);
 
   notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
 

@@ -110,6 +110,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // Guards showOtpDialog() from re-popping on every trip-progress poll once
     // the driver has already dismissed it once for this pickup arrival.
     private boolean otpDialogAutoShownForPickup;
+    private android.os.Handler otpTimeoutPollHandler;
     private com.google.android.gms.maps.model.Circle driverAccuracyCircle;
     private final Runnable tripPoll = new Runnable() {
         @Override public void run() {
@@ -1496,6 +1497,35 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         });
     }
 
+    /**
+     * Fallback for when the local countdown hits zero but the order:customer_cancelled
+     * socket event never arrives (app was briefly backgrounded, connection
+     * hiccup, etc.) - the server-side sweep (tripLifecycle.sweepOverduePickups)
+     * runs on its own ~60s interval and may not have processed the cancel
+     * the instant this local timer reaches 00:00, so this keeps re-syncing
+     * every few seconds until the order actually shows as resolved, instead
+     * of leaving the dialog stuck at 00:00 with nothing ever happening.
+     */
+    private void pollUntilOtpTimeoutResolved(android.app.Dialog dialog) {
+        if (otpTimeoutPollHandler == null) otpTimeoutPollHandler = new android.os.Handler();
+        otpTimeoutPollHandler.removeCallbacksAndMessages(null);
+        Runnable poll = new Runnable() {
+            @Override public void run() {
+                if (isFinishing() || isDestroyed() || !dialog.isShowing()) return;
+                com.shifter.driver.utility.TripProgressClient.request(
+                        OrderDetailsActivity.this, orderItem.getId(), "sync", null, (data, error) -> {
+                            if (isFinishing() || isDestroyed() || !dialog.isShowing()) return;
+                            if (data != null && !data.get("active").getAsBoolean()) {
+                                dialog.dismiss();
+                                return;
+                            }
+                            otpTimeoutPollHandler.postDelayed(this, 5000);
+                        });
+            }
+        };
+        otpTimeoutPollHandler.postDelayed(poll, 3000);
+    }
+
     private void updateOtpCountdownText(TextView txtCountdown, long seconds) {
         long m = Math.max(0, seconds) / 60;
         long s = Math.max(0, seconds) % 60;
@@ -1541,14 +1571,23 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     }
                     @Override public void onFinish() {
                         updateOtpCountdownText(txtCountdown, 0);
+                        pollUntilOtpTimeoutResolved(dialog);
                     }
                 }.start();
+            } else {
+                // Dialog reopened after the local countdown had already run
+                // out (e.g. app was backgrounded and just resumed) - the
+                // server-side sweep may not have processed the cancel yet,
+                // so start the same fallback poll instead of just sitting at
+                // 00:00 indefinitely.
+                pollUntilOtpTimeoutResolved(dialog);
             }
         } else if (txtCountdown != null) {
             txtCountdown.setVisibility(View.GONE);
         }
         dialog.setOnDismissListener(d -> {
             if (otpCountdownHolder[0] != null) otpCountdownHolder[0].cancel();
+            if (otpTimeoutPollHandler != null) otpTimeoutPollHandler.removeCallbacksAndMessages(null);
         });
 
         EditText[] boxes = {
