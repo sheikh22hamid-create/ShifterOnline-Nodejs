@@ -12,6 +12,7 @@ const walletNotifier = require("./walletNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
+const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const {
   PICKUP_OTP_TIMEOUT_MS,
   ADVANCE_PAYMENT_TIMEOUT_MS,
@@ -1217,18 +1218,6 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
  * timestamp), so a sweep that runs late — or resumes after a restart —
  * still finds and cancels every order that's actually overdue.
  */
-async function getPickupOtpTimeoutMinutes() {
-  const defaultMinutes = PICKUP_OTP_TIMEOUT_MS / 60000;
-  try {
-    const row = await prisma.app_settings.findFirst({ where: { setting_key: "pickup_otp_timeout_minutes" } });
-    const parsed = parseFloat(row?.setting_value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMinutes;
-  } catch (err) {
-    logger.error("getPickupOtpTimeoutMinutes: failed to read admin setting, using default:", err);
-    return defaultMinutes;
-  }
-}
-
 async function sweepOverduePickups() {
   // Re-read every tick (not captured once at import time) so an admin
   // changing this in Settings takes effect on the very next sweep, no

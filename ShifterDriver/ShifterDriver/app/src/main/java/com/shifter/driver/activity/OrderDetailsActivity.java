@@ -1496,6 +1496,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         });
     }
 
+    private void updateOtpCountdownText(TextView txtCountdown, long seconds) {
+        long m = Math.max(0, seconds) / 60;
+        long s = Math.max(0, seconds) % 60;
+        txtCountdown.setText(String.format(java.util.Locale.getDefault(), "%02d:%02d", m, s));
+    }
+
     private String otpFromBoxes(EditText[] boxes) {
         StringBuilder sb = new StringBuilder();
         for (EditText box : boxes) sb.append(box.getText().toString().trim());
@@ -1514,6 +1520,36 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
         TextView submit = dialog.findViewById(R.id.txt_submit_otp);
         dialog.findViewById(R.id.txt_cancel_otp).setOnClickListener(v -> dialog.dismiss());
+
+        // Live countdown synced from the server's admin-configured pickup-OTP
+        // timeout (see driverTripService.snapshot's pickup_otp_remaining_seconds
+        // and tripLifecycle.sweepOverduePickups, which is what actually
+        // auto-cancels the trip once this reaches zero) - same "seed from a
+        // server value, then run a local ticking timer" pattern as the
+        // waiting-for-advance-payment screen's own countdown.
+        TextView txtCountdown = dialog.findViewById(R.id.txt_otp_countdown);
+        final android.os.CountDownTimer[] otpCountdownHolder = new android.os.CountDownTimer[1];
+        JsonObject cachedProgress = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
+        long remainingSeconds = cachedProgress != null && cachedProgress.has("pickup_otp_remaining_seconds")
+                ? cachedProgress.get("pickup_otp_remaining_seconds").getAsLong() : -1;
+        if (txtCountdown != null && remainingSeconds >= 0) {
+            updateOtpCountdownText(txtCountdown, remainingSeconds);
+            if (remainingSeconds > 0) {
+                otpCountdownHolder[0] = new android.os.CountDownTimer(remainingSeconds * 1000L, 1000) {
+                    @Override public void onTick(long millisUntilFinished) {
+                        updateOtpCountdownText(txtCountdown, millisUntilFinished / 1000);
+                    }
+                    @Override public void onFinish() {
+                        updateOtpCountdownText(txtCountdown, 0);
+                    }
+                }.start();
+            }
+        } else if (txtCountdown != null) {
+            txtCountdown.setVisibility(View.GONE);
+        }
+        dialog.setOnDismissListener(d -> {
+            if (otpCountdownHolder[0] != null) otpCountdownHolder[0].cancel();
+        });
 
         EditText[] boxes = {
                 dialog.findViewById(R.id.ed_otp_1), dialog.findViewById(R.id.ed_otp_2),

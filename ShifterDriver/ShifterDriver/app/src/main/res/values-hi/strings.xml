@@ -659,6 +659,7 @@
     <string name="withdraw_plain">निकासी</string>
     <string name="within_24_hours">24 घंटों के भीतर</string>
     <string name="otp_10min_penalty_notice">आपके पास ग्राहक से जुड़ने और OTP प्राप्त करने के लिए 10 मिनट हैं। यदि ग्राहक 10 मिनट के भीतर OTP नहीं देता है, तो यह ट्रिप स्वतः रद्द हो जाएगी और ग्राहक पर जुर्माना लगाया जाएगा।</string>
+    <string name="otp_penalty_notice">ग्राहक से जुड़ने और OTP प्राप्त करने के लिए शेष है। समय समाप्त होने पर यह ट्रिप स्वतः रद्द हो जाएगी और ग्राहक पर जुर्माना लगाया जाएगा।</string>
     <string name="documents_under_review_team">आपके दस्तावेज़
 हमारी टीम द्वारा
 समीक्षा किए जा रहे हैं।</string>

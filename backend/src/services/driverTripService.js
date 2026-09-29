@@ -1,16 +1,29 @@
 const prisma = require('../config/db');
 const { observeArrival } = require('./tripArrivalPolicy');
 const { getAdvancePaymentTimerInfo } = require('../utils/advancePaymentTimer');
+const { getPickupOtpTimeoutMinutes } = require('../utils/pickupOtpTimeout');
 
 function fail(message) { const error = new Error(message); error.statusCode = 409; throw error; }
-function snapshot(order, progress, timer, stopCount) {
+async function snapshot(order, progress, timer, stopCount) {
   const active = [1, 2, 3].includes(order.order_status);
+  // Waiting-for-OTP countdown, admin-configurable (Settings > Pickup OTP
+  // timeout) - same source tripLifecycle.sweepOverduePickups enforces
+  // against, so the driver's on-screen timer never drifts from when the
+  // trip would actually auto-cancel. Only meaningful while arrived at
+  // pickup and still waiting (pickup_wait_start set, not yet handed over).
+  let pickupOtpRemainingSeconds = 0;
+  if (timer?.pickup_wait_start && !timer?.pickup_wait_end) {
+    const timeoutMinutes = await getPickupOtpTimeoutMinutes();
+    const elapsedMs = Date.now() - new Date(timer.pickup_wait_start).getTime();
+    pickupOtpRemainingSeconds = Math.max(0, Math.round(timeoutMinutes * 60 - elapsedMs / 1000));
+  }
   return {
     order_id: order.id, order_status: order.order_status, o_status: order.o_status, city_id: order.city_id,
     active, driver_flow_id: active && timer?.drop_wait_start ? 4 : order.order_status,
     stop_step: progress?.stop_step || 0, stop_count: stopCount,
     pickup_wait_start: timer?.pickup_wait_start ? new Date(timer.pickup_wait_start).getTime() : 0,
     pickup_wait_seconds: timer?.pickup_wait_seconds || 0,
+    pickup_otp_remaining_seconds: pickupOtpRemainingSeconds,
     drop_wait_start: timer?.drop_wait_start ? new Date(timer.drop_wait_start).getTime() : 0,
     server_time: Date.now(), version: progress?.updated_at ? new Date(progress.updated_at).getTime() : 0,
   };
@@ -30,7 +43,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
     let progress = await tx.driver_trip_progress.findUnique({ where: { order_id: orderId } });
     if (![1, 2, 3].includes(order.order_status)) {
       if (action !== 'sync') fail('This trip is no longer active');
-      return snapshot(order, progress, timer, stops.length);
+      return await snapshot(order, progress, timer, stops.length);
     }
     if (progress && progress.rider_id !== riderId) fail('Trip belongs to a different driver');
     if (!progress) progress = await tx.driver_trip_progress.create({ data: { order_id: orderId, rider_id: riderId } });
@@ -46,7 +59,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
       await tx.driver_trip_event.upsert({
         where: { order_id_milestone: { order_id: orderId, milestone } }, update: {},
         create: { order_id: orderId, rider_id: riderId, user_id: order.uid, milestone,
-          payload: { ...snapshot(order, progress, timer, stops.length), milestone, message } },
+          payload: { ...(await snapshot(order, progress, timer, stops.length)), milestone, message } },
       });
     }
     async function arrive(target, at) {
@@ -141,7 +154,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
 
     const { order_id, rider_id, updated_at, ...changes } = progress;
     progress = await tx.driver_trip_progress.update({ where: { order_id: orderId }, data: changes });
-    return snapshot(order, progress, timer, stops.length);
+    return await snapshot(order, progress, timer, stops.length);
   }, { maxWait: 5000, timeout: 15000 });
   // Commit first. Outbox retries independently if FCM/network is unavailable.
   void require('./tripEventNotifier').flushTripEvents().catch(() => {});

@@ -621,6 +621,7 @@
     <string name="withdraw_plain">Withdraw</string>
     <string name="within_24_hours">Within 24 Hours</string>
     <string name="otp_10min_penalty_notice">You have 10 minutes to connect with the customer and get the OTP. If the customer doesn\'t provide it within 10 minutes, this trip will be automatically cancelled and a penalty will be charged to the customer.</string>
+    <string name="otp_penalty_notice">left to connect with the customer and get the OTP. If time runs out, this trip will be automatically cancelled and a penalty will be charged to the customer.</string>
     <string name="documents_under_review_team">Your documents are\nunder review by\nour team.</string>
     <string name="outstanding_dues_cleared_successfully">Your outstanding dues have been cleared successfully.</string>
     <string name="request_processed_wait_approval">Your request is being processed. Please wait for admin approval.</string>
