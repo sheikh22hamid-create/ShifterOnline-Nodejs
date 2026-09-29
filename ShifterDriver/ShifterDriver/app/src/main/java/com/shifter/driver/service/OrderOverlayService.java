@@ -481,23 +481,18 @@ public class OrderOverlayService extends Service {
 
     private void playVoiceAnnouncement(Intent intent) {
         try {
-            AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            if (audioManager != null && audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
-                String announcement = com.shifter.driver.utility.OrderVoiceAnnouncer.buildAnnouncement(
-                        intent.getStringExtra("pickup_address"),
-                        intent.getStringExtra("delivery_address"),
-                        intent.getStringExtra("distance"),
-                        intent.getStringExtra("estimated_earning") != null ? intent.getStringExtra("estimated_earning") : "0",
-                        parseNullableDouble(intent.getStringExtra("pickup_latitude")),
-                        parseNullableDouble(intent.getStringExtra("pickup_longitude")),
-                        com.shifter.driver.locationservice.LocationUpdateService.getLocation());
-                com.shifter.driver.utility.OrderVoiceAnnouncer.announce(announcement);
-                Log.d(TAG, "Order overlay voice announcement started: " + announcement);
-            } else {
-                Log.d(TAG, "STREAM_RING volume is 0 — skipping voice announcement");
-            }
+            String announcement = com.shifter.driver.utility.OrderVoiceAnnouncer.buildAnnouncement(
+                    intent.getStringExtra("pickup_address"),
+                    intent.getStringExtra("delivery_address"),
+                    intent.getStringExtra("distance"),
+                    intent.getStringExtra("estimated_earning") != null ? intent.getStringExtra("estimated_earning") : "0",
+                    parseNullableDouble(intent.getStringExtra("pickup_latitude")),
+                    parseNullableDouble(intent.getStringExtra("pickup_longitude")),
+                    com.shifter.driver.locationservice.LocationUpdateService.getLocation());
+            com.shifter.driver.utility.OrderAlertPlayer.playOrderAlert(this, announcement);
+            Log.d(TAG, "Order overlay alert started: " + announcement);
         } catch (Exception e) {
-            Log.e(TAG, "Error playing voice announcement", e);
+            Log.e(TAG, "Error playing overlay alert", e);
         }
     }
 
@@ -514,7 +509,7 @@ public class OrderOverlayService extends Service {
         if (countDownTimer != null) {
             countDownTimer.cancel();
         }
-        com.shifter.driver.utility.OrderVoiceAnnouncer.stop();
+        com.shifter.driver.utility.OrderAlertPlayer.stop();
         
         try {
             NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);

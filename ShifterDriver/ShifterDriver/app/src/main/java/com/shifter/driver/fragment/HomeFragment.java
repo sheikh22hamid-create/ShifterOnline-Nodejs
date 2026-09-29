@@ -72,6 +72,7 @@ import com.shifter.driver.utility.DeliveryPreferencesBottomSheet;
 import com.shifter.driver.utility.ModelInfoBottomSheet;
 import com.shifter.driver.utility.MonthlyDriverApiClient;
 import com.shifter.driver.utility.MonthlyDutyManager;
+import com.shifter.driver.utility.OrderAlertPlayer;
 import com.shifter.driver.utility.SessionManager;
 
 import java.text.DecimalFormat;
@@ -1407,20 +1408,67 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         updateVolumePercentage(txtVolumePercentage, currentVolume, maxVolume);
         updateVolumeIcon(imgVolumeIcon, currentVolume, maxVolume);
 
-        // Initialize preview ringtone
-        final android.media.Ringtone previewRingtone = android.media.RingtoneManager.getRingtone(
-                getActivity(), 
-                android.net.Uri.parse("android.resource://" + getActivity().getPackageName() + "/" + R.raw.movigo_ringtone)
-        );
-        if (previewRingtone != null) {
-            previewRingtone.setStreamType(AudioManager.STREAM_RING);
+        // Sound Mode options
+        LinearLayout layoutOptionVoice = dialog.findViewById(R.id.layout_option_voice);
+        LinearLayout layoutOptionRingtone = dialog.findViewById(R.id.layout_option_ringtone);
+        ImageView imgRadioVoice = dialog.findViewById(R.id.img_radio_voice);
+        ImageView imgRadioRingtone = dialog.findViewById(R.id.img_radio_ringtone);
+        ImageView btnPreviewVoice = dialog.findViewById(R.id.btn_preview_voice);
+        ImageView btnPreviewRingtone = dialog.findViewById(R.id.btn_preview_ringtone);
+
+        final String[] selectedMode = {OrderAlertPlayer.getSoundMode(getActivity())};
+
+        Runnable updateSoundModeUI = () -> {
+            boolean isVoice = OrderAlertPlayer.MODE_VOICE.equalsIgnoreCase(selectedMode[0]);
+            if (layoutOptionVoice != null && layoutOptionRingtone != null) {
+                if (isVoice) {
+                    layoutOptionVoice.setBackgroundResource(R.drawable.bg_card_selectable);
+                    if (imgRadioVoice != null) imgRadioVoice.setImageResource(R.drawable.bg_radio_selected);
+                    layoutOptionRingtone.setBackgroundResource(R.drawable.bg_card_unselected);
+                    if (imgRadioRingtone != null) imgRadioRingtone.setImageResource(R.drawable.bg_radio_unselected);
+                } else {
+                    layoutOptionVoice.setBackgroundResource(R.drawable.bg_card_unselected);
+                    if (imgRadioVoice != null) imgRadioVoice.setImageResource(R.drawable.bg_radio_unselected);
+                    layoutOptionRingtone.setBackgroundResource(R.drawable.bg_card_selectable);
+                    if (imgRadioRingtone != null) imgRadioRingtone.setImageResource(R.drawable.bg_radio_selected);
+                }
+            }
+        };
+        updateSoundModeUI.run();
+
+        if (layoutOptionVoice != null) {
+            layoutOptionVoice.setOnClickListener(v -> {
+                selectedMode[0] = OrderAlertPlayer.MODE_VOICE;
+                OrderAlertPlayer.setSoundMode(getActivity(), OrderAlertPlayer.MODE_VOICE);
+                updateSoundModeUI.run();
+                OrderAlertPlayer.playPreview(getActivity(), OrderAlertPlayer.MODE_VOICE);
+            });
+        }
+
+        if (layoutOptionRingtone != null) {
+            layoutOptionRingtone.setOnClickListener(v -> {
+                selectedMode[0] = OrderAlertPlayer.MODE_RINGTONE;
+                OrderAlertPlayer.setSoundMode(getActivity(), OrderAlertPlayer.MODE_RINGTONE);
+                updateSoundModeUI.run();
+                OrderAlertPlayer.playPreview(getActivity(), OrderAlertPlayer.MODE_RINGTONE);
+            });
+        }
+
+        if (btnPreviewVoice != null) {
+            btnPreviewVoice.setOnClickListener(v -> {
+                OrderAlertPlayer.playPreview(getActivity(), OrderAlertPlayer.MODE_VOICE);
+            });
+        }
+
+        if (btnPreviewRingtone != null) {
+            btnPreviewRingtone.setOnClickListener(v -> {
+                OrderAlertPlayer.playPreview(getActivity(), OrderAlertPlayer.MODE_RINGTONE);
+            });
         }
 
         // Helper to play preview sound
         Runnable playPreview = () -> {
-            if (previewRingtone != null && !previewRingtone.isPlaying()) {
-                previewRingtone.play();
-            }
+            OrderAlertPlayer.playPreview(getActivity(), selectedMode[0]);
         };
 
         // SeekBar change listener
@@ -1479,11 +1527,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             }
         });
 
-        // Stop ringtone when dialog dismisses
+        // Stop alert when dialog dismisses
         dialog.setOnDismissListener(d -> {
-            if (previewRingtone != null && previewRingtone.isPlaying()) {
-                previewRingtone.stop();
-            }
+            OrderAlertPlayer.stop();
         });
 
         // Close button

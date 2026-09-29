@@ -380,7 +380,23 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         registerTripProgress();
         registerLocationReceiver();
 
-        if (isAdvancePaymentRequired(orderItem)) {
+        // orderItem right after an accept is seeded from the pre-accept popup
+        // payload (OrderDialogHelper/buildOrderRequestPayload), which never
+        // carries advance_payment - that column is only written later by
+        // finalizeAcceptedOrder, in the background, after the accept ack
+        // already fired (see EXTRA_JUST_ACCEPTED comment above). Running the
+        // amount-based isAdvancePaymentRequired() check against that stale
+        // "0" here meant the waiting screen never showed for a freshly
+        // accepted order that actually needed advance payment. Use the
+        // amount-agnostic check instead so the waiting screen renders
+        // immediately without blocking on a network round trip, and let the
+        // poll it starts self-correct within ~2s once the real amount lands.
+        boolean justAccepted = getIntent().getBooleanExtra(EXTRA_JUST_ACCEPTED, false);
+        boolean showWaiting = justAccepted
+                ? isAdvancePaymentPossiblyRequired(orderItem)
+                : isAdvancePaymentRequired(orderItem);
+
+        if (showWaiting) {
             // Show waiting for advance payment screen and start polling server
             showWaitingForPaymentScreen(null, null);
             pollPaymentStatusFromApi();
@@ -388,6 +404,35 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
             initOrderDetailsScreen();
         }
+    }
+
+    /**
+     * Same exemption checks as isAdvancePaymentRequired() (monthly driver,
+     * scheduled booking type, already-paid, already past the acceptance
+     * step) minus the advance-amount check - the amount genuinely isn't
+     * known yet for a just-accepted order (see call site above). Errs
+     * toward showing the waiting screen; pollPaymentStatusFromApi()
+     * corrects it within ~2s if this particular order needs no advance.
+     */
+    private boolean isAdvancePaymentPossiblyRequired(PDOrderItem item) {
+        if (item == null) return false;
+        try {
+            if (new SessionManager(this).isMonthlyDriver()) return false;
+        } catch (Exception ignored) {}
+
+        String bookingType = item.getBookingType();
+        if ("2".equals(bookingType) || "3".equals(bookingType)) return false;
+
+        if ("1".equals(item.getPaymentStatus())) return false;
+
+        String flowId = item.getOrderFlowId();
+        if (flowId != null && !flowId.trim().isEmpty()) {
+            try {
+                if (Integer.parseInt(flowId.trim()) > 1) return false;
+            } catch (Exception ignored) {}
+        }
+
+        return true;
     }
 
     private boolean isAdvancePaymentRequired(PDOrderItem item) {

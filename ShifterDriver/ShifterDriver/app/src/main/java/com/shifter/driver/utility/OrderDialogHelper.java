@@ -279,26 +279,21 @@ public class OrderDialogHelper {
         }
         Log.d(TAG, "dialog.show() returned at t=" + System.currentTimeMillis() + " orderId=" + orderId);
 
-        // Voice announcement
+        // Order Alert Sound (Voice Announcement or Classic Ringtone)
         try {
-            AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-            if (audioManager != null && audioManager.getStreamVolume(AudioManager.STREAM_RING) > 0) {
-                String announcement = OrderVoiceAnnouncer.buildAnnouncement(
-                        pickupAddress, deliveryAddress, tripDistanceKm,
-                        getMapValue(orderData, "estimated_earning", "0"),
-                        pickupLat, pickupLng, driverLocation);
-                OrderVoiceAnnouncer.announce(announcement);
-                Log.d(TAG, "Order voice announcement started: " + announcement);
-            } else {
-                Log.d(TAG, "STREAM_RING volume is 0 — skipping voice announcement");
-            }
+            String announcement = OrderVoiceAnnouncer.buildAnnouncement(
+                    pickupAddress, deliveryAddress, tripDistanceKm,
+                    getMapValue(orderData, "estimated_earning", "0"),
+                    pickupLat, pickupLng, driverLocation);
+            OrderAlertPlayer.playOrderAlert(context, announcement);
+            Log.d(TAG, "Order alert playback started: " + announcement);
         } catch (Exception e) {
-            Log.e(TAG, "Error playing voice announcement", e);
+            Log.e(TAG, "Error playing order alert", e);
         }
 
         dialog.setOnDismissListener(d -> {
             countDownTimer.cancel();
-            OrderVoiceAnnouncer.stop();
+            OrderAlertPlayer.stop();
             if (currentDialog == dialog) {
                 currentDialog = null;
                 currentOrderId = null;
