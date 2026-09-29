@@ -233,6 +233,12 @@
     <string name="sound_mode_voice_desc">पिकअप, ड्रॉप और कमाई बोलकर बताएगा</string>
     <string name="sound_mode_ringtone">क्लासिक रिंगटोन</string>
     <string name="sound_mode_ringtone_desc">सामान्य रिंगटोन ट्यून बजेगी</string>
+    <string name="select_body_type_title">वाहन का बॉडी प्रकार चुनें</string>
+    <string name="select_body_type_desc">सटीक और सही ऑर्डर प्राप्त करने के लिए कृपया अपने वाहन की बॉडी का प्रकार चुनें</string>
+    <string name="body_type_open_label">🛻 खुली डाला (Open Body)</string>
+    <string name="body_type_half_label">🚚 हाफ डाला (Half Body)</string>
+    <string name="body_type_covered_label">📦 बंद कंटेनर / तिरपाल (Covered Body)</string>
+    <string name="confirm_and_continue">पुष्टि करें और आगे बढ़ें</string>
     <string name="select_location_caps">स्थान चुनें</string>
     <string name="bank_account_details_title">बैंक खाता विवरण</string>
     <string name="enter_bank_account_info">अपनी बैंक खाता जानकारी दर्ज करें</string>

@@ -449,6 +449,13 @@ async function updateStatus(orderId, riderId, status) {
         ddate: istNow(),
         drop_time: istNow(),
         total_dcharge: finalTotal,
+        // finalizeAcceptedOrder sets driver_earning === d_charge === total_dcharge
+        // at accept time (all three equal the gross fare) and never touches
+        // it again - left stale here, driverPayoutController.totalEarning()
+        // (SUM(driver_earning) for Completed orders) undercounted every
+        // trip that actually had waiting time by exactly the waiting
+        // charge, even though total_dcharge/finalTotal already includes it.
+        driver_earning: finalTotal,
         commission: effectiveCommissionPercent,
       },
     });

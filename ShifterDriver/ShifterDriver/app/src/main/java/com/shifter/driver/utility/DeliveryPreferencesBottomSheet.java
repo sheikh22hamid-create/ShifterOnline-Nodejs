@@ -105,14 +105,18 @@ public class DeliveryPreferencesBottomSheet {
             if (rbOpen != null) rbOpen.setVisibility(allowOpen ? View.VISIBLE : View.GONE);
             if (rbHalf != null) rbHalf.setVisibility(allowHalf ? View.VISIBLE : View.GONE);
             if (rbCovered != null) rbCovered.setVisibility(allowCovered ? View.VISIBLE : View.GONE);
-
-            int allowedCount = (allowOpen ? 1 : 0) + (allowHalf ? 1 : 0) + (allowCovered ? 1 : 0);
-            if (rbBoth != null) rbBoth.setVisibility(allowedCount > 1 ? View.VISIBLE : View.GONE);
+            if (rbBoth != null) rbBoth.setVisibility(View.GONE); // Removed: All/Both option
 
             String currentBodyType = riderData.getBodyType();
-            if ("open".equalsIgnoreCase(currentBodyType) && !allowOpen) currentBodyType = "both";
-            if ("half".equalsIgnoreCase(currentBodyType) && !allowHalf) currentBodyType = "both";
-            if ("covered".equalsIgnoreCase(currentBodyType) && !allowCovered) currentBodyType = "both";
+            if (currentBodyType == null || "both".equalsIgnoreCase(currentBodyType) || "all".equalsIgnoreCase(currentBodyType)) {
+                if (allowOpen) currentBodyType = "open";
+                else if (allowHalf) currentBodyType = "half";
+                else if (allowCovered) currentBodyType = "covered";
+            } else {
+                if ("open".equalsIgnoreCase(currentBodyType) && !allowOpen) currentBodyType = allowHalf ? "half" : (allowCovered ? "covered" : null);
+                if ("half".equalsIgnoreCase(currentBodyType) && !allowHalf) currentBodyType = allowOpen ? "open" : (allowCovered ? "covered" : null);
+                if ("covered".equalsIgnoreCase(currentBodyType) && !allowCovered) currentBodyType = allowOpen ? "open" : (allowHalf ? "half" : null);
+            }
 
             if ("open".equalsIgnoreCase(currentBodyType) && allowOpen) {
                 if (rbOpen != null) rbOpen.setChecked(true);
@@ -120,12 +124,10 @@ public class DeliveryPreferencesBottomSheet {
                 if (rbHalf != null) rbHalf.setChecked(true);
             } else if ("covered".equalsIgnoreCase(currentBodyType) && allowCovered) {
                 if (rbCovered != null) rbCovered.setChecked(true);
-            } else {
-                if (rbBoth != null) rbBoth.setChecked(true);
             }
 
             rgBodyType.setOnCheckedChangeListener((group, checkedId) -> {
-                String newBodyType = "both";
+                String newBodyType = null;
                 if (checkedId == R.id.rb_body_open) {
                     newBodyType = "open";
                 } else if (checkedId == R.id.rb_body_half) {
@@ -133,6 +135,7 @@ public class DeliveryPreferencesBottomSheet {
                 } else if (checkedId == R.id.rb_body_covered) {
                     newBodyType = "covered";
                 }
+                if (newBodyType == null) return;
 
                 riderData.setBodyType(newBodyType);
                 try {
