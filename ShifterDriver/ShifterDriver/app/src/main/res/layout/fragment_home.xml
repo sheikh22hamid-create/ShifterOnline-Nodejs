@@ -1444,6 +1444,7 @@
                             android:id="@+id/rb_home_body_both"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:visibility="gone"
                             android:paddingTop="3dp"
                             android:paddingBottom="3dp"
                             android:text="All (Open, Half &amp; Covered Available)"

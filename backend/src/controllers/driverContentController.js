@@ -170,9 +170,9 @@ async function homeData(req, res) {
             cat_status: 1,
             OR: [{ cat_name: cleanV }, { cat_name: { contains: cleanV } }],
           },
-          select: { allowed_body_types: true },
+          select: { allowed_body_types: true, driver_body_types: true },
         });
-        allowedBodyTypes = (cat && cat.allowed_body_types) ? cat.allowed_body_types : "";
+        allowedBodyTypes = (cat && (cat.driver_body_types || cat.allowed_body_types)) ? (cat.driver_body_types || cat.allowed_body_types) : "";
       }
     }
 

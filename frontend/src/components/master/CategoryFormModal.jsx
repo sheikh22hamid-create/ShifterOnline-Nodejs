@@ -5,10 +5,17 @@ import Modal from '../common/Modal'
 import ImageUploadField from '../common/ImageUploadField'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
+const BODY_TYPES = [
+  { id: 'open', label: '🛻 Open Body', desc: 'Open dala' },
+  { id: 'half', label: '🚚 Half Body', desc: 'Half dala' },
+  { id: 'covered', label: '📦 Covered', desc: 'Closed / Tirpal' },
+]
+
 const EMPTY_FORM = {
   cat_name: '', cat_img: '', city_id: '', sort_order: '0', cat_status: 1,
   max_load_kg: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '',
   allowed_body_types: 'open,half,covered',
+  driver_body_types: 'open,half,covered',
 }
 
 export default function CategoryFormModal({ open, category, onClose, onSaved }) {
@@ -25,9 +32,13 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
     setError('')
     if (category) {
       let resolvedAllowed = category.allowed_body_types;
+      let resolvedDriver = category.driver_body_types;
+      const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(category.cat_name || '');
       if (resolvedAllowed === undefined || resolvedAllowed === null) {
-        const is2W = /bike|scooter|motorcycle|2\s*wheeler/i.test(category.cat_name || '');
         resolvedAllowed = is2W ? '' : 'open,half,covered';
+      }
+      if (resolvedDriver === undefined || resolvedDriver === null) {
+        resolvedDriver = resolvedAllowed;
       }
       setForm({
         cat_name: category.cat_name, cat_img: category.cat_img, city_id: category.city_id ?? '',
@@ -36,6 +47,7 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
         dim_width: category.dim_width ?? '', dim_height: category.dim_height ?? '',
         dim_unit: category.dim_unit || 'ft', detail_image: category.detail_image ?? '',
         allowed_body_types: resolvedAllowed,
+        driver_body_types: resolvedDriver,
       })
     } else {
       setForm(EMPTY_FORM)
@@ -164,19 +176,18 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
         </div>
       </div>
 
-      <div className="mb-3">
-        <label className="mb-1 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
-          Allowed Vehicle Body Types (बॉडी प्रकार)
-        </label>
+      {/* Customer Body Types */}
+      <div className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'rgba(0,0,0,0.015)' }}>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[12px] font-semibold flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
+            <span>👤 Customer Body Types (कस्टमर को दिखने वाले विकल्प)</span>
+          </label>
+        </div>
         <p className="mb-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-          Enable options that user can choose and drivers can register for this vehicle. Uncheck all for 2-Wheelers (Bikes/Scooters).
+          Customer ride booking screen par ye options chun sakega. 2-Wheeler ke liye sabhi uncheck rakhein.
         </p>
         <div className="grid grid-cols-3 gap-2">
-          {[
-            { id: 'open', label: '🛻 Open Body', desc: 'Open dala' },
-            { id: 'half', label: '🚚 Half Body', desc: 'Half dala' },
-            { id: 'covered', label: '📦 Covered', desc: 'Closed / Tirpal' },
-          ].map((type) => {
+          {BODY_TYPES.map((type) => {
             const currentList = form.allowed_body_types
               ? form.allowed_body_types.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
               : [];
@@ -194,18 +205,65 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
                   type="checkbox"
                   checked={isChecked}
                   onChange={(e) => {
-                    let updated;
-                    if (e.target.checked) {
-                      updated = [...currentList, type.id];
-                    } else {
-                      updated = currentList.filter((t) => t !== type.id);
-                    }
+                    let updated = e.target.checked
+                      ? [...currentList, type.id]
+                      : currentList.filter((t) => t !== type.id);
                     setForm((f) => ({ ...f, allowed_body_types: updated.join(',') }));
                   }}
                   className="mt-0.5 rounded cursor-pointer"
                 />
                 <div>
                   <div className="text-[12px] font-medium leading-tight" style={{ color: isChecked ? 'var(--brand)' : 'var(--ink)' }}>
+                    {type.label}
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>
+                    {type.desc}
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Driver Body Types */}
+      <div className="mb-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'rgba(0,0,0,0.015)' }}>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[12px] font-semibold flex items-center gap-1.5" style={{ color: 'var(--ink)' }}>
+            <span>🚚 Driver Body Types (ड्राइवर को दिखने वाले विकल्प)</span>
+          </label>
+        </div>
+        <p className="mb-2 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+          Driver app me vehicle selection popup aur settings me driver inme se apna body type chun sakega.
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {BODY_TYPES.map((type) => {
+            const currentList = form.driver_body_types
+              ? form.driver_body_types.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+              : [];
+            const isChecked = currentList.includes(type.id);
+            return (
+              <label
+                key={type.id}
+                className="flex cursor-pointer items-start gap-2 rounded-lg border p-2 transition-all select-none"
+                style={{
+                  borderColor: isChecked ? '#ea580c' : 'var(--border)',
+                  background: isChecked ? 'rgba(234,88,12,0.06)' : 'var(--bg)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={(e) => {
+                    let updated = e.target.checked
+                      ? [...currentList, type.id]
+                      : currentList.filter((t) => t !== type.id);
+                    setForm((f) => ({ ...f, driver_body_types: updated.join(',') }));
+                  }}
+                  className="mt-0.5 rounded cursor-pointer"
+                />
+                <div>
+                  <div className="text-[12px] font-medium leading-tight" style={{ color: isChecked ? '#ea580c' : 'var(--ink)' }}>
                     {type.label}
                   </div>
                   <div className="text-[10px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>

@@ -166,7 +166,7 @@ async function createCategory(req, res) {
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
-      allowed_body_types,
+      allowed_body_types, driver_body_types,
     } = req.body;
     if (!cat_name || !cat_img) {
       return res.status(400).json({ success: false, message: "cat_name and cat_img are required" });
@@ -178,6 +178,14 @@ async function createCategory(req, res) {
       resolvedAllowedBodyTypes = Array.isArray(allowed_body_types)
         ? allowed_body_types.join(",")
         : String(allowed_body_types).trim();
+    }
+    let resolvedDriverBodyTypes = isTwoWheeler ? "" : "open,half,covered";
+    if (driver_body_types !== undefined && driver_body_types !== null) {
+      resolvedDriverBodyTypes = Array.isArray(driver_body_types)
+        ? driver_body_types.join(",")
+        : String(driver_body_types).trim();
+    } else if (allowed_body_types !== undefined && allowed_body_types !== null) {
+      resolvedDriverBodyTypes = resolvedAllowedBodyTypes;
     }
 
     const created = await prisma.pkg_category.create({
@@ -195,6 +203,7 @@ async function createCategory(req, res) {
         dim_unit: dim_unit || null,
         detail_image: detail_image || null,
         allowed_body_types: resolvedAllowedBodyTypes,
+        driver_body_types: resolvedDriverBodyTypes,
       },
     });
     return res.status(201).json({ success: true, message: "Category created", data: created });
@@ -213,7 +222,7 @@ async function updateCategory(req, res) {
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
-      allowed_body_types,
+      allowed_body_types, driver_body_types,
     } = req.body;
     const data = {};
     if (cat_name !== undefined) data.cat_name = cat_name;
@@ -232,6 +241,11 @@ async function updateCategory(req, res) {
       data.allowed_body_types = Array.isArray(allowed_body_types)
         ? allowed_body_types.join(",")
         : (allowed_body_types === null ? null : String(allowed_body_types).trim());
+    }
+    if (driver_body_types !== undefined) {
+      data.driver_body_types = Array.isArray(driver_body_types)
+        ? driver_body_types.join(",")
+        : (driver_body_types === null ? null : String(driver_body_types).trim());
     }
 
     const updated = await prisma.pkg_category.update({ where: { id }, data });

@@ -211,7 +211,7 @@
     <string name="discount_price">छूट मूल्य:</string>
     <string name="vehicle_type">वाहन प्रकार</string>
     <string name="please_fill_up_survey">कृपया सर्वेक्षण भरें</string>
-    <string name="pan_card">PAN कार्ड</string>
+    <string name="pan_card">PAN कार्ड (वैकल्पिक)</string>
     <string name="puc_certificate">PUC प्रमाणपत्र (वैकल्पिक)</string>
     <string name="bima_insurance">वाहन बीमा (वैकल्पिक)</string>
     <string name="vehicle_details_title">वाहन विवरण</string>

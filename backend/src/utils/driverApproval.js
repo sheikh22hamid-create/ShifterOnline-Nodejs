@@ -21,9 +21,13 @@ async function evaluateDriverApproval(riderId) {
   const panApproved = doc?.pan_status === 1;
   const residenceApproved = doc?.residence_status === 1;
   const licApproved = doc?.lic_status === 1;
+  // PAN is optional at registration (see NewRegistrationActivity's
+  // validateAndRegister) - approval no longer waits on it; admin can follow
+  // up with the driver for it later via the existing docs review in the
+  // admin panel.
   const docsVerified = isBicycle
     ? residenceApproved && (aadharApproved || panApproved)
-    : aadharApproved && panApproved && residenceApproved && licApproved;
+    : aadharApproved && residenceApproved && licApproved;
 
   const paymentComplete = Number(rider.payment_complete) === 1;
   const isAllVerified = docsVerified && paymentComplete;

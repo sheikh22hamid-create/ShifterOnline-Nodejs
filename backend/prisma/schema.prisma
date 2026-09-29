@@ -232,6 +232,7 @@ model pkg_category {
   dim_unit           String?  @db.VarChar(4)
   detail_image       String?  @db.Text
   allowed_body_types String?  @db.VarChar(255)
+  driver_body_types  String?  @db.VarChar(255)
 }
 
 model pkg_order {

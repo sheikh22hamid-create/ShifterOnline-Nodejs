@@ -918,6 +918,19 @@ async function customerCancel(uid, orderId, comment) {
       order_status: 4,
       o_status: "Cancelled",
     });
+
+    // The socket event above only reaches the driver while the app is in
+    // the foreground with a live connection - the same gap
+    // notifyDriverPickupTimeoutCancel/notifyDriverAdvancePaymentTimeoutCancel
+    // already cover for their own cancel paths. A push here gets the driver
+    // a heads-up/full-screen alert (with vibration) even backgrounded or
+    // killed, via MyFirebaseMessagingService's existing "order_cancelled" routing.
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: Number(orderBefore.rid) }, select: { fcm_token: true } });
+    if (rider?.fcm_token) {
+      pushNotifier.notifyDriverCustomerCancelled(rider.fcm_token, orderId, comment).catch((err) => {
+        logger.error(`customerCancel: push notify failed for rider ${orderBefore.rid}:`, err);
+      });
+    }
   }
 
   return { success: true };

@@ -106,6 +106,28 @@ async function notifyDriverAdvancePaymentTimeoutCancel(fcmToken, orderId) {
   );
 }
 
+/**
+ * See tripLifecycle.customerCancel — the customer cancelled an order this
+ * driver already accepted, tapping Cancel themselves (not a timeout). The
+ * "order:customer_cancelled" socket event alone only reaches the driver if
+ * OrderDetailsActivity happens to be open in the foreground (confirmed
+ * live: order stayed on screen as if still active otherwise). type
+ * "order_cancelled" matches MyFirebaseMessagingService's existing routing
+ * to SocketOrderRouter.handleOrderCancelledByCustomer, which shows the same
+ * "Order Cancelled" dialog the socket path does, plus a heads-up/full-screen
+ * notification with vibration when the app is backgrounded or killed.
+ */
+async function notifyDriverCustomerCancelled(fcmToken, orderId, reason) {
+  return sendPushNotification(
+    fcmToken,
+    "Order Cancelled",
+    reason
+      ? `Order #${orderId} was cancelled by the customer: ${reason}`
+      : `Order #${orderId} was cancelled by the customer.`,
+    { type: "order_cancelled", order_id: String(orderId), reason: String(reason || "") }
+  );
+}
+
 /** See tripLifecycle.sendScheduledOrderReminders — booking_type=2 order's schedule_date_time is ~10 minutes away. */
 async function notifyCustomerScheduleReminder(fcmToken, orderId, scheduleTimeLabel) {
   return sendPushNotification(
@@ -244,6 +266,7 @@ module.exports = {
   notifyDriverPickupTimeoutCancel,
   notifyCustomerAdvancePaymentTimeoutCancel,
   notifyDriverAdvancePaymentTimeoutCancel,
+  notifyDriverCustomerCancelled,
   notifyCustomerScheduleReminder,
   notifyCustomerOrderLive,
   notifyCustomerLatePickup,

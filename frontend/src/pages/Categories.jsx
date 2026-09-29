@@ -110,25 +110,57 @@ export default function Categories() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       {(() => {
-                        const raw = c.allowed_body_types;
-                        const types = raw ? raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
-                        if (types.length === 0) {
+                        const rawCust = c.allowed_body_types;
+                        const rawDriver = c.driver_body_types || c.allowed_body_types;
+                        const custTypes = rawCust ? rawCust.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+                        const driverTypes = rawDriver ? rawDriver.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : [];
+                        if (custTypes.length === 0 && driverTypes.length === 0) {
                           return <span className="text-[11.5px] italic opacity-60" style={{ color: 'var(--ink-muted)' }}>None (2-Wheeler)</span>;
                         }
                         return (
-                          <div className="flex flex-wrap gap-1">
-                            {types.map((t) => (
-                              <span
-                                key={t}
-                                className="rounded px-1.5 py-0.5 text-[10.5px] font-semibold tracking-wide"
-                                style={{
-                                  background: t === 'covered' ? 'rgba(147, 51, 234, 0.1)' : t === 'half' ? 'rgba(217, 119, 6, 0.1)' : 'rgba(37, 99, 235, 0.1)',
-                                  color: t === 'covered' ? '#7e22ce' : t === 'half' ? '#b45309' : '#1d4ed8',
-                                }}
-                              >
-                                {t === 'covered' ? '📦 Covered' : t === 'half' ? '🚚 Half' : '🛻 Open'}
-                              </span>
-                            ))}
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-medium" style={{ color: 'var(--ink-muted)' }}>Cust:</span>
+                              {custTypes.length === 0 ? (
+                                <span className="text-[10px] italic opacity-50">None</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1">
+                                  {custTypes.map((t) => (
+                                    <span
+                                      key={t}
+                                      className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                      style={{
+                                        background: t === 'covered' ? 'rgba(147, 51, 234, 0.1)' : t === 'half' ? 'rgba(217, 119, 6, 0.1)' : 'rgba(37, 99, 235, 0.1)',
+                                        color: t === 'covered' ? '#7e22ce' : t === 'half' ? '#b45309' : '#1d4ed8',
+                                      }}
+                                    >
+                                      {t === 'covered' ? '📦 Covered' : t === 'half' ? '🚚 Half' : '🛻 Open'}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-medium" style={{ color: 'var(--ink-muted)' }}>Driver:</span>
+                              {driverTypes.length === 0 ? (
+                                <span className="text-[10px] italic opacity-50">None</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1">
+                                  {driverTypes.map((t) => (
+                                    <span
+                                      key={t}
+                                      className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                      style={{
+                                        background: 'rgba(234, 88, 12, 0.1)',
+                                        color: '#c2410c',
+                                      }}
+                                    >
+                                      {t === 'covered' ? '📦 Covered' : t === 'half' ? '🚚 Half' : '🛻 Open'}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })()}

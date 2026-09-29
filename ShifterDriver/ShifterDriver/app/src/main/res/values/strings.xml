@@ -175,7 +175,7 @@
     <string name="discount_price">Discount Price:</string>
     <string name="vehicle_type">Vehicle Type</string>
     <string name="please_fill_up_survey">Please fill up the survey</string>
-    <string name="pan_card">PAN Card</string>
+    <string name="pan_card">PAN Card (Optional)</string>
     <string name="puc_certificate">PUC Certificate (Optional)</string>
     <string name="bima_insurance">Vehicle Insurance / Bima (Optional)</string>
     <string name="vehicle_details_title">Vehicle Details</string>

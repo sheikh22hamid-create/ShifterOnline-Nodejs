@@ -341,6 +341,22 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         }
         binding.txtTitle.setText(greetingPrefix + ", " + driverName + " 👋");
 
+        // Vehicle number + body type under the greeting, when known. "both"
+        // is the unset/no-preference default (see RiderData.getBodyType())
+        // and isn't a real body type worth showing, same as the badges in
+        // OrderDialogHelper/OrderOverlayService only label covered/half.
+        String vehicleNo = riderData != null && riderData.getVehicleNo() != null ? riderData.getVehicleNo().trim() : "";
+        String bodyType = riderData != null ? riderData.getBodyType() : null;
+        String bodyLabel = "covered".equalsIgnoreCase(bodyType) ? "Covered Body"
+                : "half".equalsIgnoreCase(bodyType) ? "Half Body"
+                : "open".equalsIgnoreCase(bodyType) ? "Open Body"
+                : null;
+        if (!vehicleNo.isEmpty()) {
+            binding.txtGreetingSubtitle.setText(bodyLabel != null ? (vehicleNo + " · " + bodyLabel) : vehicleNo);
+        } else {
+            binding.txtGreetingSubtitle.setText(R.string.home_day_overview);
+        }
+
         // Profile Avatar loading with fallback
         if (riderData != null && riderData.getProfilePicture() != null && !riderData.getProfilePicture().trim().isEmpty() && getActivity() != null) {
             String pic = riderData.getProfilePicture().trim();

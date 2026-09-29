@@ -267,8 +267,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     return;
                 }
                 String reason = intent.getStringExtra("reason");
+                vibrateForCancelAlert();
                 new android.app.AlertDialog.Builder(OrderDetailsActivity.this)
-                        .setTitle("Order Cancelled")
+                        .setTitle("⚠️ Order Cancelled")
                         .setMessage((reason == null || reason.isEmpty())
                                 ? "This order was cancelled by the customer."
                                 : "This order was cancelled by the customer: " + reason)
@@ -281,6 +282,26 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 com.shifter.driver.socket.SocketOrderRouter.ACTION_ORDER_CANCELLED);
         androidx.core.content.ContextCompat.registerReceiver(
                 this, orderCancelledReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    /**
+     * The foreground cancel dialog used to be silent - easy to miss if the
+     * driver isn't looking at the screen right when it appears (e.g. mounted
+     * on a bike handlebar). A short vibration pattern matches the urgency
+     * the background push notification already gets (see
+     * MyFirebaseMessagingService's order_cancelled channel vibration).
+     */
+    private void vibrateForCancelAlert() {
+        try {
+            android.os.Vibrator vibrator = (android.os.Vibrator) getSystemService(android.content.Context.VIBRATOR_SERVICE);
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            long[] pattern = {0, 400, 200, 400};
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(android.os.VibrationEffect.createWaveform(pattern, -1));
+            } else {
+                vibrator.vibrate(pattern, -1);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void registerDestinationUpdatedReceiver() {
