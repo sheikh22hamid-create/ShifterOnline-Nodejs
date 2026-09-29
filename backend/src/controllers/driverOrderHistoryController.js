@@ -120,6 +120,13 @@ function formatPkgOrderForDriver(row, ctx) {
 
   const fare = Number(row.total_dcharge) > 0 ? Number(row.total_dcharge) : Number(row.d_charge || 0);
 
+  // updateStatus's "complete" handler adds the waiting charge into
+  // total_dcharge only, leaving d_charge as the pre-waiting-charge fare (see
+  // tripLifecycle.js) - the gap between the two is exactly what was billed
+  // for waiting, in rupees. Zero before completion (both still equal at that
+  // point), which is correct - no waiting charge has been assessed yet.
+  const waitingChargeBilled = Math.max(0, Math.round((Number(row.total_dcharge || 0) - Number(row.d_charge || 0)) * 100) / 100);
+
   let commPct;
   if (row.o_status === "Completed" && row.commission !== null && row.commission !== "") {
     commPct = Number(row.commission);
@@ -237,7 +244,7 @@ function formatPkgOrderForDriver(row, ctx) {
         actual_pickup_charge: Number(row.pickup_charge || 0),
         pickup_to_drop_charge: Number(row.distance_charge || row.d_charge || 0),
         add_stop_charge: 0,
-        extra_waiting_time_charge: Number(row.wating_charge || 0),
+        extra_waiting_time_charge: waitingChargeBilled,
         night_charge: Number(row.night_charge || 0),
         loading_charge: Number(row.loading_charge || 0),
         unloading_charge: Number(row.unloading_charge || 0),
