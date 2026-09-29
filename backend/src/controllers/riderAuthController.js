@@ -406,14 +406,14 @@ async function saveBufferedFile(file, folder) {
 async function registerHandler(req, res) {
   try {
     const body = req.body || {};
-    const required = ["email", "mobile", "vehicle", "vehicle_no", "device_id", "city_id"];
+    const required = ["mobile", "vehicle", "vehicle_no", "device_id", "city_id"];
     const missing = required.filter((k) => !String(body[k] || "").trim());
     if (missing.length) {
       return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Missing Parameters", missing_params: missing });
     }
 
     const fullName = String(body.full_name || "").trim();
-    const email = String(body.email).trim();
+    const email = String(body.email || "").trim();
     const mobile = String(body.mobile).trim();
     const dob = String(body.dob || "").trim();
     const accountName = String(body.account_name || "").trim();
