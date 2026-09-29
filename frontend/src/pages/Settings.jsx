@@ -71,6 +71,11 @@ const HANDLED_FLAG_KEYS = [
   'driver_max_due_limit',
   'model1_miss_limit',
   'model1_suspension_hours',
+  'covered_body_charge',
+  'half_body_charge',
+  'pickup_otp_timeout_minutes',
+  'max_extra_stops',
+  'extra_stop_charge',
 ]
 
 function PaymentGateways() {
@@ -182,7 +187,7 @@ function SettingsForm({ data, onSaved }) {
   const [deletingFlagKey, setDeletingFlagKey] = useState(null)
 
   function handleAddFlag(e) {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
     const key = newFlagKey.trim().toLowerCase().replace(/\s+/g, '_')
     if (!key) return
     if (key in flags) {
@@ -413,6 +418,37 @@ function SettingsForm({ data, onSaved }) {
                 Extra charge added to customer fare when customer books a Half Body (Half Dala) vehicle for commercial transport.
               </p>
             </div>
+          </div>
+        </Section>
+
+        <Section title="Multi-Stop / Extra Stops (Add Stop)">
+          <div>
+            <Label htmlFor="flag-max_extra_stops">Maximum Extra Stops</Label>
+            <Input
+              id="flag-max_extra_stops"
+              type="number"
+              min="0"
+              placeholder="e.g. 5"
+              value={flags.max_extra_stops ?? '2'}
+              onChange={(e) => setFlags((f) => ({ ...f, max_extra_stops: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Maximum number of extra drop points a customer can add during booking in the app.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-extra_stop_charge">Extra Stop Charge (₹)</Label>
+            <Input
+              id="flag-extra_stop_charge"
+              type="number"
+              min="0"
+              placeholder="e.g. 0"
+              value={flags.extra_stop_charge ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, extra_stop_charge: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Fixed charge added to the customer fare for each extra stop added.
+            </p>
           </div>
         </Section>
 
@@ -1009,24 +1045,47 @@ function SettingsForm({ data, onSaved }) {
             </button>
           </div>
 
-          <form onSubmit={handleAddFlag} className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border p-2.5" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+          <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border p-2.5" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
             <div className="min-w-[160px] flex-1">
               <Label htmlFor="new-flag-key">New setting key</Label>
-              <Input id="new-flag-key" placeholder="e.g. max_extra_stops" value={newFlagKey} onChange={(e) => setNewFlagKey(e.target.value)} />
+              <Input
+                id="new-flag-key"
+                placeholder="e.g. default_search_radius"
+                value={newFlagKey}
+                onChange={(e) => setNewFlagKey(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddFlag(e)
+                  }
+                }}
+              />
             </div>
             <div className="min-w-[160px] flex-1">
               <Label htmlFor="new-flag-value">Value</Label>
-              <Input id="new-flag-value" placeholder="e.g. 2" value={newFlagValue} onChange={(e) => setNewFlagValue(e.target.value)} />
+              <Input
+                id="new-flag-value"
+                placeholder="e.g. 2"
+                value={newFlagValue}
+                onChange={(e) => setNewFlagValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddFlag(e)
+                  }
+                }}
+              />
             </div>
             <button
-              type="submit"
+              type="button"
+              onClick={handleAddFlag}
               disabled={!newFlagKey.trim()}
               className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
               style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
             >
               <Plus size={13} /> Add
             </button>
-          </form>
+          </div>
 
           {Object.keys(flags).filter((k) => !HANDLED_FLAG_KEYS.includes(k)).length === 0 ? (
             <p className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
