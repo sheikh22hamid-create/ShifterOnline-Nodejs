@@ -121,10 +121,29 @@ async function verifyOtp(req, res) {
       // charge straight back to the payment screen on re-login, instead of
       // stuck on a "Mobile Number Already Used!" resubmit of the registration
       // form (see registerHandler - full_name is already set for these rows).
-      const paymentComplete = Number(driver.payment_complete) === 1;
+      let paymentComplete = Number(driver.payment_complete) === 1;
       let verificationCharge = { charge: 0, chargeOld: 0, msg: "" };
       if (!paymentComplete) {
         verificationCharge = await getAutoVerificationSettings();
+
+        // The charge that was owed at registration time may have since been
+        // lowered to 0 / disabled by the admin. Nothing is actually due
+        // anymore, so treat payment as satisfied instead of leaving the
+        // driver stuck: the app's routing only sends them to the payment
+        // screen when charge > 0, and otherwise falls back to the
+        // registration form (see SendOTPActivity.handleExistingUser) even
+        // though they're already registered.
+        if (verificationCharge.charge <= 0) {
+          await prisma.tbl_rider.update({ where: { id: driver.id }, data: { payment_complete: 1 } });
+          paymentComplete = true;
+          // Docs may already be verified and were only waiting on payment -
+          // re-run the same approval gate registration/payment use so
+          // verification_status/all_verify flip to "approved" immediately
+          // instead of on some later request.
+          await evaluateDriverApproval(driver.id);
+          const refreshed = await prisma.tbl_rider.findUnique({ where: { id: driver.id } });
+          if (refreshed) Object.assign(driver, refreshed);
+        }
       }
 
       let driverRefferCode = driver.reffer_code || driver.referral_code;
