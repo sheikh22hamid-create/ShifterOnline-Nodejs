@@ -366,6 +366,22 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                   </h3>
                   <div className="surface-card space-y-2.5 rounded-xl p-3.5">
                     <Field label="Pickup Location" value={order.paddress} />
+                    {order.wait_timer?.otp_verify_lat && order.wait_timer?.otp_verify_lng && (
+                      <Field
+                        label="Driver's Location at OTP Entry"
+                        value={
+                          <a
+                            href={`https://www.google.com/maps?q=${order.wait_timer.otp_verify_lat},${order.wait_timer.otp_verify_lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                            style={{ color: 'var(--brand, #2563eb)' }}
+                          >
+                            {order.wait_timer.otp_verify_lat}, {order.wait_timer.otp_verify_lng}
+                          </a>
+                        }
+                      />
+                    )}
                     <Field label="Delivery Location" value={order.daddress} />
                     {order.stops?.length > 0 && (
                       <div className="mt-3 rounded-lg border border-[var(--line)] p-3">

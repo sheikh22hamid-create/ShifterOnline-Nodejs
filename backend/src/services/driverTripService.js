@@ -16,7 +16,7 @@ function snapshot(order, progress, timer, stopCount) {
   };
 }
 
-async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = [], managed = false }) {
+async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = [], managed = false, lat, lng }) {
   if (!Number.isSafeInteger(orderId) || orderId <= 0 || !Number.isSafeInteger(riderId) || riderId <= 0) fail('Invalid order or driver');
   if (!Array.isArray(samples) || samples.length > 120 || samples.some(s => !s || typeof s !== 'object' || Array.isArray(s))) fail('At most 120 valid location samples are allowed');
   const result = await prisma.$transaction(async tx => {
@@ -110,8 +110,15 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
         if (order.order_status !== 2) fail('Mark pickup arrival before verifying handover');
         const now = new Date();
         Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 3, o_status: 'On_Route', pickup_time: now } }));
+        // Reporting-only snapshot of where the driver actually was when they
+        // confirmed the pickup OTP - never used for pricing (see the
+        // otp_verify_lat/lng schema comment). Silently skipped if the app
+        // didn't send a fix (older app version, or no GPS available at that
+        // instant) - never blocks OTP verification itself.
+        const hasFix = Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
         timer = await tx.pkg_order_wait_timer.update({ where: timerKey, data: {
           pickup_wait_end: now, pickup_wait_seconds: timer?.pickup_wait_start ? Math.max(0, Math.floor((now - new Date(timer.pickup_wait_start)) / 1000)) : 0,
+          ...(hasFix ? { otp_verify_lat: String(lat), otp_verify_lng: String(lng), otp_verify_at: now } : {}),
         } });
         progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
         progress.last_sample_at = now;

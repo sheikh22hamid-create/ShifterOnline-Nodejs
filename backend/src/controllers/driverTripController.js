@@ -15,7 +15,10 @@ async function syncProgress(req, res) {
     if (!rider?.device_id || rider.device_id !== String(req.body.device_id || '')) {
       return res.status(403).json({ success: false, message: 'Please sign in on this device again' });
     }
-    const data = await progressTrip({ orderId, riderId, action: req.body.action || 'sync', otp: req.body.otp, samples: req.body.samples || [], managed: true });
+    const data = await progressTrip({
+      orderId, riderId, action: req.body.action || 'sync', otp: req.body.otp, samples: req.body.samples || [], managed: true,
+      lat: req.body.lat, lng: req.body.lng,
+    });
     return res.json({ success: true, data });
   } catch (error) {
     if (!error.statusCode) logger.error('Driver trip sync failed:', error);

@@ -19,6 +19,7 @@ const EMPTY_FORM = {
   min_charge: '',
   per_km_charge: '',
   pickup_per_km_charge: '',
+  use_linear_pricing: false,
   cancellation_charge_customer: '0',
   admin_earning: '0',
   driver_earning: '0',
@@ -309,6 +310,7 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
             min_charge: rateCard.min_charge,
             per_km_charge: rateCard.per_km_charge,
             pickup_per_km_charge: rateCard.pickup_per_km_charge ?? '',
+            use_linear_pricing: Boolean(rateCard.use_linear_pricing),
             cancellation_charge_customer: rateCard.cancellation_charge_customer ?? '0',
             admin_earning: rateCard.admin_earning ?? '0',
             driver_earning: rateCard.driver_earning ?? '0',
@@ -693,6 +695,26 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
               <Sparkles size={11} /> Autofill Slabs
             </button>
           </div>
+        )}
+
+        {slabCalculation && (
+          <label className="flex items-start gap-2 rounded-lg border p-2.5 text-[12px] cursor-pointer" style={{ borderColor: 'var(--border)' }}>
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={Boolean(form.use_linear_pricing)}
+              onChange={(e) => set('use_linear_pricing', e.target.checked)}
+            />
+            <span>
+              <strong>Use Min fare / Per km below instead of Slabs Rate</strong>
+              <br />
+              <span className="opacity-70">
+                By default this vehicle's fare is calculated from the Slabs Rate above, not the fields below — editing Min
+                fare/Per km only has an effect once this is checked. Leave unchecked unless you specifically want a flat
+                manual rate for this model.
+              </span>
+            </span>
+          </label>
         )}
 
         <div className="grid grid-cols-2 gap-3">

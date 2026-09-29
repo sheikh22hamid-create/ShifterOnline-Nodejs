@@ -107,6 +107,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private boolean tripActionPending;
     private boolean terminalProgressHandled;
     private String renderedTripState = "";
+    // Guards showOtpDialog() from re-popping on every trip-progress poll once
+    // the driver has already dismissed it once for this pickup arrival.
+    private boolean otpDialogAutoShownForPickup;
     private com.google.android.gms.maps.model.Circle driverAccuracyCircle;
     private final Runnable tripPoll = new Runnable() {
         @Override public void run() {
@@ -196,6 +199,19 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                         : "Stop progress updated";
                 Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             }
+        }
+        // Auto-open the OTP popup the moment pickup arrival is detected (GPS
+        // auto-arrival or manual) instead of waiting for the driver to
+        // notice the screen and tap "VERIFY OTP & START DELIVERY" first.
+        // Guarded by otpDialogAutoShownForPickup, not renderedTripState/
+        // "changed" above, so it still fires on a fresh screen open (app
+        // reopened, or launched via the trip_progress notification) where
+        // flow is already "2" and no transition happens in this call.
+        if ("2".equals(flow) && !otpDialogAutoShownForPickup) {
+            otpDialogAutoShownForPickup = true;
+            showOtpDialog();
+        } else if (!"2".equals(flow)) {
+            otpDialogAutoShownForPickup = false;
         }
     }
 
@@ -1480,6 +1496,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         });
     }
 
+    private String otpFromBoxes(EditText[] boxes) {
+        StringBuilder sb = new StringBuilder();
+        for (EditText box : boxes) sb.append(box.getText().toString().trim());
+        return sb.toString();
+    }
+
     // ------------------------------------------------ MAP
     private void showOtpDialog() {
         android.app.Dialog dialog = new android.app.Dialog(this);
@@ -1488,13 +1510,45 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (dialog.getWindow() != null) {
             dialog.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
             dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
         }
-        EditText input = dialog.findViewById(R.id.ed_otp);
         TextView submit = dialog.findViewById(R.id.txt_submit_otp);
         dialog.findViewById(R.id.txt_cancel_otp).setOnClickListener(v -> dialog.dismiss());
+
+        EditText[] boxes = {
+                dialog.findViewById(R.id.ed_otp_1), dialog.findViewById(R.id.ed_otp_2),
+                dialog.findViewById(R.id.ed_otp_3), dialog.findViewById(R.id.ed_otp_4)
+        };
+
+        for (int i = 0; i < boxes.length; i++) {
+            final int index = i;
+            boxes[i].addTextChangedListener(new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    for (EditText box : boxes) box.setBackground(getDrawable(R.drawable.bg_input_white));
+                    if (s.length() == 1 && index < boxes.length - 1) boxes[index + 1].requestFocus();
+                    if (otpFromBoxes(boxes).length() == 4 && !tripActionPending) submit.performClick();
+                }
+                @Override public void afterTextChanged(android.text.Editable s) {}
+            });
+            boxes[i].setOnKeyListener((v, keyCode, event) -> {
+                if (keyCode == android.view.KeyEvent.KEYCODE_DEL && event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && boxes[index].getText().toString().isEmpty() && index > 0) {
+                    boxes[index - 1].requestFocus();
+                    boxes[index - 1].setText("");
+                }
+                return false;
+            });
+        }
+        boxes[0].requestFocus();
+
         submit.setOnClickListener(v -> {
-            String otp = input.getText().toString().trim();
-            if (!otp.matches("[0-9]{4}")) { input.setError("Enter the 4-digit pickup OTP"); return; }
+            String otp = otpFromBoxes(boxes);
+            if (!otp.matches("[0-9]{4}")) {
+                for (EditText box : boxes) box.setBackground(getDrawable(R.drawable.bg_input_error));
+                Toast.makeText(this, "Enter the 4-digit pickup OTP", Toast.LENGTH_SHORT).show();
+                return;
+            }
             if (tripActionPending) return;
             submit.setEnabled(false);
             tripActionPending = true;
@@ -1504,7 +1558,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 if (isFinishing() || isDestroyed()) return;
                 submit.setEnabled(true);
                 binding.txtConfirm.setEnabled(true);
-                if (error != null) { input.setError(error); return; }
+                if (error != null) {
+                    for (EditText box : boxes) { box.setBackground(getDrawable(R.drawable.bg_input_error)); box.setText(""); }
+                    boxes[0].requestFocus();
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                    return;
+                }
                 dialog.dismiss();
                 applyTripProgress();
             });

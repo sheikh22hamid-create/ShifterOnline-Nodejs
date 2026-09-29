@@ -182,6 +182,7 @@ async function create(req, res) {
         city_id: String(b.city_id),
         min_charge: b.min_charge,
         per_km_charge: b.per_km_charge,
+        use_linear_pricing: b.use_linear_pricing === true || b.use_linear_pricing === "true",
         driver_per_trip: b.driver_per_trip !== undefined ? String(b.driver_per_trip) : "0",
         driver_per_percent: (() => {
           if (b.commission_percent !== undefined && b.commission_percent !== "") {
@@ -303,6 +304,7 @@ async function update(req, res) {
       throw e;
     }
     if (b.type !== undefined) data.type = b.type;
+    if (b.use_linear_pricing !== undefined) data.use_linear_pricing = b.use_linear_pricing === true || b.use_linear_pricing === "true";
     if (b.cat_id !== undefined) data.cat_id = parseInt(b.cat_id, 10);
     if (b.city_id !== undefined) data.city_id = String(b.city_id);
     if (b.driver_per_trip !== undefined) data.driver_per_trip = String(b.driver_per_trip);
