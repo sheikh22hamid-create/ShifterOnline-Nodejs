@@ -25,7 +25,7 @@ jest.mock("../dispatchManager", () => ({
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
 jest.mock("../pricingEngine", () => ({
-  priceForPackageId: jest.fn().mockResolvedValue({ pkg: {}, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 0 }),
+  priceForPackageId: jest.fn().mockResolvedValue({ pkg: { waiting_charge: "2.00", free_waiting_time: 5 }, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 0 }),
   getPackageById: jest.fn(),
   getActiveCustomerPlan: jest.fn().mockResolvedValue(null),
   commissionAmount: jest.fn((dCharge, commissionPercent) => Math.round(((Number(dCharge) * Number(commissionPercent)) / 100) * 100) / 100),
@@ -79,6 +79,14 @@ describe("tripLifecycle.acceptOrder", () => {
     // `driverEarning: 42` — see tripLifecycle.acceptOrder).
     expect(result.order.driver_earning).toBe(24.78);
     expect(result.order.delivery_type).toBe(6);
+    // Regression: createOrderCore never wrote wating_charge/free_waiting_time
+    // onto pkg_order, so every completed trip's waiting-charge calculation
+    // (updateStatus's "complete" handler) always read them as null/0 and
+    // computed a waiting charge of 0 no matter how long the driver actually
+    // waited. Must be copied from the ACCEPTED package (not the first-tier
+    // package priced at order creation).
+    expect(result.order.wating_charge).toBe("2.00");
+    expect(result.order.free_waiting_time).toBe("5");
     // radiusRangeKm=1 (fallback), not order.radius_range (3) — neither the
     // order nor the rider fixture here carries lat/lng, so the accepting
     // driver's real pickup distance can't be computed and the standard

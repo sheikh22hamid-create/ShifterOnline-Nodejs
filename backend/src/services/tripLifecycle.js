@@ -206,7 +206,19 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // amount — commission is instead clawed back separately at ride
   // completion (see updateStatus's cash-order wallet debit below), net of
   // any advance_payment already collected.
-  const priced = { d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission };
+  //
+  // wating_charge/free_waiting_time: createOrderCore never wrote these onto
+  // pkg_order at all (only tbl_package has them) - updateStatus's "complete"
+  // handler reads order.wating_charge/order.free_waiting_time straight off
+  // the order row, which were always null/undefined, so every completed
+  // trip's waitingCharge computed to 0 regardless of actual wait time,
+  // however long the driver was kept waiting. Copied here from the
+  // ACCEPTED package (not the first-tier package priced at order creation -
+  // the driver may have accepted a different tier with a different rate).
+  const priced = {
+    d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission,
+    wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
+  };
   await prisma.pkg_order.update({ where: { id: orderId }, data: priced });
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
