@@ -26,6 +26,8 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -1470,7 +1472,6 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         mandatoryBodyTypeDialog = dialog;
         dialog.show();
-    }
     }
 
     @Override
