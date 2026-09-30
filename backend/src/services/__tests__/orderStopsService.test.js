@@ -151,5 +151,20 @@ describe("orderStopsService", () => {
         expect.objectContaining({ data: expect.objectContaining({ sequence: 2 }) })
       );
     });
+
+    it("gives each stop's driver_trip_event its own milestone so a second stop doesn't collide with driver_trip_event's (order_id, milestone) unique constraint", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(baseOrder);
+      prisma.pkg_order_stops.findMany.mockResolvedValue([{ id: 1, sequence: 1, lat: "28.56", lng: "77.36" }]);
+      prisma.pkg_order.update.mockResolvedValue({ ...baseOrder, extra_mile_charge: 10 });
+
+      await orderStopsService.confirmAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 2" });
+
+      // A shared "stop_added" milestone for every stop throws on the second
+      // one (schema.prisma: driver_trip_event @@unique([order_id, milestone])) -
+      // each stop needs its own milestone name.
+      expect(prisma.driver_trip_event.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ milestone: "stop_added_2" }) })
+      );
+    });
   });
 });

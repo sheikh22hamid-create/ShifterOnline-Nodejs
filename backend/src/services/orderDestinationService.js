@@ -176,24 +176,30 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     });
 
     if (order.rid && order.rid > 0) {
-      await tx.driver_trip_event.create({
-        data: {
+      // upsert, not create: driver_trip_event has a unique (order_id, milestone)
+      // constraint, so a second destination change on the same order would
+      // throw on a plain .create() here.
+      const eventPayload = {
+        order_id: numericOrderId,
+        old_address: order.daddress || "",
+        new_address: cleanAddress,
+        old_fare: oldFare,
+        new_fare: newFare,
+        fare_diff: fareDiff,
+        old_distance: oldDistance,
+        new_distance: newDistance,
+        updated_at: new Date().toISOString(),
+      };
+      await tx.driver_trip_event.upsert({
+        where: { order_id_milestone: { order_id: numericOrderId, milestone: "destination_updated" } },
+        create: {
           order_id: numericOrderId,
           rider_id: order.rid,
           user_id: numericUid,
           milestone: "destination_updated",
-          payload: {
-            order_id: numericOrderId,
-            old_address: order.daddress || "",
-            new_address: cleanAddress,
-            old_fare: oldFare,
-            new_fare: newFare,
-            fare_diff: fareDiff,
-            old_distance: oldDistance,
-            new_distance: newDistance,
-            updated_at: new Date().toISOString(),
-          },
+          payload: eventPayload,
         },
+        update: { payload: eventPayload },
       });
     }
 

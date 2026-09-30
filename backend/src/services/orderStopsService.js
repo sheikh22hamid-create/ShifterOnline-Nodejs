@@ -167,12 +167,16 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
     });
 
     if (order.rid && order.rid > 0) {
+      // Each stop gets its own milestone name (stop_added_<sequence>), not a
+      // shared "stop_added" - driver_trip_event has a unique (order_id,
+      // milestone) constraint, so a second stop on the same order would
+      // throw on a shared milestone with a plain .create().
       await tx.driver_trip_event.create({
         data: {
           order_id: numericOrderId,
           rider_id: order.rid,
           user_id: numericUid,
-          milestone: "stop_added",
+          milestone: `stop_added_${existingStops.length + 1}`,
           payload: {
             order_id: numericOrderId,
             stop_address: cleanAddress,

@@ -12,6 +12,7 @@ jest.mock("../../config/db", () => {
     },
     driver_trip_event: {
       create: jest.fn().mockResolvedValue({ id: 1 }),
+      upsert: jest.fn().mockResolvedValue({ id: 1 }),
     },
     $queryRaw: jest.fn(),
     $transaction: jest.fn((cb) => cb(mockPrisma)),
@@ -202,10 +203,11 @@ describe("orderDestinationService", () => {
         })
       );
 
-      // Verify audit event creation
-      expect(prisma.driver_trip_event.create).toHaveBeenCalledWith(
+      // Verify audit event upsert
+      expect(prisma.driver_trip_event.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
+          where: { order_id_milestone: { order_id: 101, milestone: "destination_updated" } },
+          create: expect.objectContaining({
             order_id: 101,
             rider_id: 22,
             milestone: "destination_updated",
@@ -239,6 +241,30 @@ describe("orderDestinationService", () => {
         "New Drop Address, Sector 62",
         195
       );
+    });
+
+    it("records the destination_updated milestone as an upsert so a second destination change on the same order doesn't collide with driver_trip_event's (order_id, milestone) unique constraint", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(mockActiveOrder);
+      prisma.pkg_order.update.mockResolvedValue({
+        ...mockActiveOrder,
+        dlat: "28.65", dlong: "77.45", daddress: "New Drop Address, Sector 62",
+        distance: 14.5, d_charge: 195, total_dcharge: 195, driver_earning: 165, commission: 15.38,
+      });
+      prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: "test_driver_fcm_token" });
+
+      await orderDestinationService.confirmDestinationChange({
+        uid: 55, orderId: 101, newDlat: 28.65, newDlong: 77.45, newDaddress: "New Drop Address, Sector 62",
+      });
+
+      // A plain .create() here throws on a second call for the same order
+      // (schema.prisma: driver_trip_event @@unique([order_id, milestone])) -
+      // must be an upsert so a repeated destination change never 500s.
+      expect(prisma.driver_trip_event.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { order_id_milestone: { order_id: 101, milestone: "destination_updated" } },
+        })
+      );
+      expect(prisma.driver_trip_event.create).not.toHaveBeenCalled();
     });
   });
 });

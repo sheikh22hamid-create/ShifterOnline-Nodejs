@@ -16,6 +16,7 @@ jest.mock("../../config/db", () => {
     },
     driver_trip_event: {
       create: jest.fn().mockResolvedValue({ id: 1 }),
+      upsert: jest.fn().mockResolvedValue({ id: 1 }),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     $queryRaw: jest.fn(),
@@ -206,6 +207,28 @@ describe("orderPickupService", () => {
       expect(prisma.driver_trip_event.deleteMany).toHaveBeenCalledWith({
         where: { order_id: 101, milestone: "arrived" },
       });
+    });
+
+    it("records the pickup_updated milestone as an upsert so a second pickup change on the same order doesn't collide with driver_trip_event's (order_id, milestone) unique constraint", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(baseOrder);
+      prisma.pkg_order.update.mockResolvedValue({
+        ...baseOrder, plat: "28.6", plong: "77.45", paddress: "New Pickup Address",
+        distance: 8.5, d_charge: 180, total_dcharge: 180, driver_earning: 150, commission: 15,
+      });
+
+      await orderPickupService.confirmPickupChange({
+        uid: 55, orderId: 101, newPlat: 28.6, newPlong: 77.45, newPaddress: "New Pickup Address",
+      });
+
+      // A plain .create() here throws on a second call for the same order
+      // (schema.prisma: driver_trip_event @@unique([order_id, milestone])) -
+      // must be an upsert so a repeated pickup change never 500s.
+      expect(prisma.driver_trip_event.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { order_id_milestone: { order_id: 101, milestone: "pickup_updated" } },
+        })
+      );
+      expect(prisma.driver_trip_event.create).not.toHaveBeenCalled();
     });
 
     it("rejects a pickup change once the driver has already picked up (order_status 3)", async () => {
