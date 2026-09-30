@@ -2,6 +2,9 @@ const prisma = require('../config/db');
 const { observeArrival } = require('./tripArrivalPolicy');
 const { getAdvancePaymentTimerInfo } = require('../utils/advancePaymentTimer');
 const { getPickupOtpTimeoutMinutes } = require('../utils/pickupOtpTimeout');
+const { getPickupRelocateSettings } = require('../utils/pickupRelocateSettings');
+const { getDriverRealDistanceKm, computeRouteDistanceKm } = require('./orderRouteRepricing');
+const { haversineKm } = require('../utils/geoDistance');
 
 function fail(message) { const error = new Error(message); error.statusCode = 409; throw error; }
 async function snapshot(order, progress, timer, stopCount) {
@@ -139,6 +142,26 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
           pickup_wait_end: now, pickup_wait_seconds: timer?.pickup_wait_start ? Math.max(0, Math.floor((now - new Date(timer.pickup_wait_start)) / 1000)) : 0,
           ...(hasFix ? { otp_verify_lat: String(lat), otp_verify_lng: String(lng), otp_verify_at: now } : {}),
         } });
+        if (hasFix) {
+          const oldLat = Number(order.plat), oldLng = Number(order.plong);
+          const mismatchDistanceM = [oldLat, oldLng].every(Number.isFinite)
+            ? haversineKm(oldLat, oldLng, Number(lat), Number(lng)) * 1000
+            : Infinity;
+          const { otpMismatchFlagM } = await getPickupRelocateSettings();
+          if (mismatchDistanceM > otpMismatchFlagM) {
+            const newDistanceKm = await computeRouteDistanceKm({ plat: lat, plong: lng, stops, dlat: order.dlat, dlong: order.dlong });
+            const radiusKm = await getDriverRealDistanceKm(order.rid, lat, lng);
+            const packageId = Number(order.delivery_type) || 1;
+            const { fare, driverEarning, commission } = await require('./pricingEngine').priceForPackageId(
+              packageId, newDistanceKm, radiusKm, Number(order.extra_mile_charge) || 0, order.uid
+            );
+            Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: {
+              plat: String(lat), plong: String(lng), distance: Math.round(newDistanceKm * 100) / 100,
+              d_charge: Math.round(fare), total_dcharge: Math.round(fare),
+              driver_earning: driverEarning, commission, pickup_otp_mismatch_flag: true,
+            } }));
+          }
+        }
         progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
         progress.last_sample_at = now;
         await event('pickup', 'Your goods have been picked up. Your driver is starting the delivery.');

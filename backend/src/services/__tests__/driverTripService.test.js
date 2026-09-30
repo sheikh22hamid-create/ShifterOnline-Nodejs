@@ -7,6 +7,18 @@ jest.mock('../../config/db', () => ({
   driver_trip_event: { upsert: jest.fn() },
 }));
 jest.mock('../tripEventNotifier', () => ({ flushTripEvents: jest.fn().mockResolvedValue() }));
+jest.mock('../pricingEngine', () => ({
+  priceForPackageId: jest.fn().mockResolvedValue({ fare: 300, driverEarning: 270, commission: 30 }),
+}));
+jest.mock('../orderRouteRepricing', () => ({
+  getDriverRealDistanceKm: jest.fn().mockResolvedValue(1),
+  computeRouteDistanceKm: jest.fn().mockResolvedValue(12.5),
+}));
+jest.mock('../../utils/pickupRelocateSettings', () => ({
+  getPickupRelocateSettings: jest.fn().mockResolvedValue({
+    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+  }),
+}));
 const db = require('../../config/db');
 const { progressTrip } = require('../driverTripService');
 let order, progress, timer, stops;
@@ -58,6 +70,28 @@ test('correct OTP starts pickup atomically; incorrect or missing OTP cannot', as
   expect((await call('pickup', { otp: '1234' })).driver_flow_id).toBe(3);
   await call('pickup', { otp: '1234' });
   expect(db.driver_trip_event.upsert).toHaveBeenCalledTimes(2);
+});
+test('OTP verified far from the confirmed pickup reprices the trip and sets the mismatch flag', async () => {
+  const pricingEngine = require('../pricingEngine');
+  await call('arrived');
+  // order.plat/plong are '28.6'/'77.2' (from beforeEach); ~1.1km away.
+  await call('pickup', { otp: '1234', lat: 28.61, lng: 77.2 });
+
+  expect(pricingEngine.priceForPackageId).toHaveBeenCalled();
+  expect(order.plat).toBe('28.61');
+  expect(order.plong).toBe('77.2');
+  expect(order.pickup_otp_mismatch_flag).toBe(true);
+  expect(order.d_charge).toBe(300);
+});
+
+test('OTP verified near the confirmed pickup does not reprice or flag', async () => {
+  const pricingEngine = require('../pricingEngine');
+  await call('arrived');
+  // ~10m away - well under the 500m default threshold.
+  await call('pickup', { otp: '1234', lat: 28.6001, lng: 77.2 });
+
+  expect(pricingEngine.priceForPackageId).not.toHaveBeenCalled();
+  expect(order.pickup_otp_mismatch_flag).toBeFalsy();
 });
 test('does not skip pickup arrival or pending payment', async () => {
   await expect(call('pickup', { otp: '1234' })).rejects.toThrow('arrival');
