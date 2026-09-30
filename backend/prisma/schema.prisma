@@ -318,16 +318,12 @@ model pkg_order {
   referral_points_amount Decimal            @default(0.00) @db.Decimal(10, 2)
   body_type              String?            @default("any") @db.VarChar(20)
   covered_charge         Decimal?           @default(0.00) @db.Decimal(10, 2)
-  // otp_verify_lat/lng/at record where the driver actually was when they
-  // confirmed the pickup OTP. As of 2026-09-30 this DOES drive pricing:
-  // driverTripService.progressTrip reprices the trip against this point
-  // when it differs materially (pickup_otp_mismatch_flag_m app_setting)
-  // from the last confirmed pickup point, and sets the flag below so an
-  // admin can review moves that happened without an explicit customer
-  // pickup-change confirmation.
-  otp_verify_lat         String?            @db.VarChar(30)
-  otp_verify_lng         String?            @db.VarChar(30)
-  otp_verify_at          DateTime?          @db.DateTime(0)
+  // Set when driverTripService.progressTrip reprices the trip against
+  // pkg_order_wait_timer.otp_verify_lat/lng (where the driver actually was
+  // when they confirmed the pickup OTP), because that point differed
+  // materially (pickup_otp_mismatch_flag_m app_setting) from the last
+  // confirmed pickup point — flags the move for admin review since it
+  // happened without an explicit customer pickup-change confirmation.
   pickup_otp_mismatch_flag Boolean           @default(false)
 
   @@index([rid, order_status], map: "idx_rid_status")
@@ -405,13 +401,13 @@ model pkg_order_wait_timer {
   pickup_distance     Decimal?  @db.Decimal(10, 2)
   drop_distance       Decimal?  @db.Decimal(10, 2)
   total_distance      Decimal?  @db.Decimal(10, 2)
-  // Reporting-only snapshot of the driver's GPS at the moment they entered
-  // the pickup OTP - deliberately separate from pricingEngine's radius
-  // charge (which stays locked at accept-time location; see
-  // tripLifecycle.finalizeAcceptedOrder's comment on why recalculating fare
-  // off a later location is out of scope). Lets admin compare "where pickup
-  // was" (pkg_order.plat/plong) against "where the driver actually was when
-  // they confirmed handover", without touching money anywhere.
+  // Snapshot of where the driver actually was when they confirmed the
+  // pickup OTP. Always recorded for reporting; driverTripService's mismatch
+  // check additionally reprices the trip against this point when it
+  // differs materially from the last confirmed pickup (pkg_order.plat/
+  // plong) and sets pkg_order.pickup_otp_mismatch_flag so an admin can
+  // review moves that happened without an explicit customer pickup-change
+  // confirmation.
   otp_verify_lat      String?   @db.VarChar(30)
   otp_verify_lng      String?   @db.VarChar(30)
   otp_verify_at       DateTime? @db.DateTime(0)
@@ -421,6 +417,10 @@ model pkg_order_wait_timer {
   // (tripLifecycle.sweepPickupRelocationCeiling) measures against, distinct
   // from pickup_wait_start which DOES get cleared on every pause.
   first_arrival_at    DateTime? @db.DateTime(0)
+  // Wait time banked across a pickup-location change while the driver was
+  // already parked at the old pickup point — see orderPickupService and
+  // sql/20260929_pickup_change_wait_banking.sql.
+  pickup_wait_banked_seconds Int @default(0)
 
   @@unique([order_id, rid], map: "order_rid_unique")
   @@unique([order_id, rid], map: "uniq_order_rid")

@@ -13,6 +13,8 @@ const { sendPushNotification } = require("../config/firebase");
 const logger = require("../utils/logger");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 const orderDestinationService = require("../services/orderDestinationService");
+const orderPickupService = require("../services/orderPickupService");
+const orderStopsService = require("../services/orderStopsService");
 
 async function customerTripProgress(order) {
   if (!order.rid) return null;
@@ -782,6 +784,122 @@ async function confirmDestinationChange(req, res) {
       return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
     }
     logger.error("confirmDestinationChange failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+const PICKUP_CHANGE_ERROR_MESSAGES = {
+  INVALID_ORDER_ID: [400, "Valid order_id is required"],
+  INVALID_UID: [400, "Valid uid is required"],
+  INVALID_COORDINATES: [400, "Valid new_plat and new_plong are required"],
+  INVALID_ADDRESS: [400, "Valid new_paddress is required"],
+  ORDER_NOT_FOUND: [404, "Order not found"],
+  FORBIDDEN: [403, "You are not authorized to update this order"],
+  ORDER_NOT_ACTIVE: [409, "Pickup location can only be changed before the goods are picked up"],
+};
+
+async function previewPickupChange(req, res) {
+  try {
+    const { uid, order_id, new_plat, new_plong, new_paddress } = req.body;
+    const result = await orderPickupService.previewPickupChange({
+      uid,
+      orderId: order_id,
+      newPlat: new_plat,
+      newPlong: new_plong,
+      newPaddress: new_paddress,
+    });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Pickup preview calculated successfully",
+      ...result,
+    });
+  } catch (err) {
+    if (PICKUP_CHANGE_ERROR_MESSAGES[err.message]) {
+      const [status, message] = PICKUP_CHANGE_ERROR_MESSAGES[err.message];
+      return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
+    }
+    logger.error("previewPickupChange failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+async function confirmPickupChange(req, res) {
+  try {
+    const { uid, order_id, new_plat, new_plong, new_paddress } = req.body;
+    const result = await orderPickupService.confirmPickupChange({
+      uid,
+      orderId: order_id,
+      newPlat: new_plat,
+      newPlong: new_plong,
+      newPaddress: new_paddress,
+    });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Pickup location updated successfully",
+      ...result,
+    });
+  } catch (err) {
+    if (PICKUP_CHANGE_ERROR_MESSAGES[err.message]) {
+      const [status, message] = PICKUP_CHANGE_ERROR_MESSAGES[err.message];
+      return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
+    }
+    logger.error("confirmPickupChange failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+const ADD_STOP_ERROR_MESSAGES = {
+  INVALID_ORDER_ID: [400, "Valid order_id is required"],
+  INVALID_UID: [400, "Valid uid is required"],
+  INVALID_COORDINATES: [400, "Valid lat and lng are required"],
+  ORDER_NOT_FOUND: [404, "Order not found"],
+  FORBIDDEN: [403, "You are not authorized to update this order"],
+  ORDER_NOT_ACTIVE: [409, "Stops can only be added before the goods are picked up"],
+  MAX_STOPS_EXCEEDED: [409, "Maximum number of extra stops already reached"],
+};
+
+async function previewAddStop(req, res) {
+  try {
+    const { uid, order_id, lat, lng, address, hno, landmark, contact_name, contact_number } = req.body;
+    const result = await orderStopsService.previewAddStop({
+      uid, orderId: order_id, lat, lng, address, hno, landmark, contact_name, contact_number,
+    });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Stop preview calculated successfully",
+      ...result,
+    });
+  } catch (err) {
+    if (ADD_STOP_ERROR_MESSAGES[err.message]) {
+      const [status, message] = ADD_STOP_ERROR_MESSAGES[err.message];
+      return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
+    }
+    logger.error("previewAddStop failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+async function confirmAddStop(req, res) {
+  try {
+    const { uid, order_id, lat, lng, address, hno, landmark, contact_name, contact_number } = req.body;
+    const result = await orderStopsService.confirmAddStop({
+      uid, orderId: order_id, lat, lng, address, hno, landmark, contact_name, contact_number,
+    });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Stop added successfully",
+      ...result,
+    });
+  } catch (err) {
+    if (ADD_STOP_ERROR_MESSAGES[err.message]) {
+      const [status, message] = ADD_STOP_ERROR_MESSAGES[err.message];
+      return res.status(status).json({ ResponseCode: String(status), Result: "false", ResponseMsg: message });
+    }
+    logger.error("confirmAddStop failed:", err);
     return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
@@ -1633,4 +1751,8 @@ module.exports = {
   referralDiscountInfo,
   previewDestinationChange,
   confirmDestinationChange,
+  previewPickupChange,
+  confirmPickupChange,
+  previewAddStop,
+  confirmAddStop,
 };

@@ -3,7 +3,7 @@ const pricingEngine = require("./pricingEngine");
 const dispatchManager = require("./dispatchManager");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
-const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
+const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRouteRepricing");
 const logger = require("../utils/logger");
 
 function isValidCoord(val, min, max) {
@@ -25,27 +25,9 @@ async function computeNewRouteDistance(order, newDlat, newDlong) {
     orderBy: { sequence: "asc" },
   });
 
-  const plat = Number(order.plat);
-  const plong = Number(order.plong);
-  const dlat = Number(newDlat);
-  const dlong = Number(newDlong);
-
-  if (stops.length > 0) {
-    const points = [
-      { lat: plat, lng: plong },
-      ...stops.map((s) => ({ lat: Number(s.lat), lng: Number(s.lng) })),
-      { lat: dlat, lng: dlong },
-    ];
-    const multiResult = await getMultiStopDistanceKm(points);
-    return Math.max(0.1, Number(multiResult.distanceKm) || 0.1);
-  }
-
-  const roadResult = await getRoadDistanceKm(plat, plong, dlat, dlong);
-  let distanceKm = Number(roadResult.distanceKm);
-  if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
-    distanceKm = haversineKm(plat, plong, dlat, dlong) * 1.3;
-  }
-  return Math.max(0.1, Math.round(distanceKm * 100) / 100);
+  return computeRouteDistanceKm({
+    plat: order.plat, plong: order.plong, stops, dlat: newDlat, dlong: newDlong,
+  });
 }
 
 /**
@@ -87,7 +69,7 @@ async function previewDestinationChange({ uid, orderId, newDlat, newDlong, newDa
   }
 
   const newDistanceKm = await computeNewRouteDistance(order, newDlat, newDlong);
-  const radiusKm = Number(order.pickup_distance_km) || Number(order.radius_range) || 1;
+  const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
   const packageId = Number(order.delivery_type) || 1;
 
   const { fare, driverEarning, commission } = await pricingEngine.priceForPackageId(
@@ -162,7 +144,7 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     }
 
     const newDistanceKm = await computeNewRouteDistance(order, newDlat, newDlong);
-    const radiusKm = Number(order.pickup_distance_km) || Number(order.radius_range) || 1;
+    const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
     const packageId = Number(order.delivery_type) || 1;
 
     const { fare, driverEarning, commission } = await pricingEngine.priceForPackageId(
