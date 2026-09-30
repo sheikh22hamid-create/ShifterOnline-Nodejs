@@ -4,6 +4,8 @@ const dispatchManager = require("./dispatchManager");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRouteRepricing");
+const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
+const { haversineKm } = require("../utils/geoDistance");
 const logger = require("../utils/logger");
 
 // Pickup can move while the order is still pending (0), while the driver is
@@ -144,7 +146,15 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
     const newDistance = Math.round(newDistanceKm * 100) / 100;
     const fareDiff = newFare - oldFare;
 
-    const wasWaitingAtPickup = order.order_status === 2 && order.rid > 0;
+    let wasWaitingAtPickup = false;
+    if (order.order_status === 2 && order.rid > 0) {
+      const { smallMoveThresholdM } = await getPickupRelocateSettings();
+      const oldLat = Number(order.plat), oldLng = Number(order.plong);
+      const moveDistanceM = [oldLat, oldLng].every(Number.isFinite)
+        ? haversineKm(oldLat, oldLng, Number(newPlat), Number(newPlong)) * 1000
+        : Infinity; // missing/invalid old coordinates -> always treat as a large move
+      wasWaitingAtPickup = moveDistanceM > smallMoveThresholdM;
+    }
     const updateData = {
       plat: String(newPlat),
       plong: String(newPlong),

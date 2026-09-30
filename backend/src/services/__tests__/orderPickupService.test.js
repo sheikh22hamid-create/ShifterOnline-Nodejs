@@ -47,11 +47,17 @@ jest.mock("../../utils/geoDistance", () => ({
   haversineKm: jest.fn().mockReturnValue(5),
 }));
 
+jest.mock("../../utils/pickupRelocateSettings", () => ({
+  getPickupRelocateSettings: jest.fn().mockResolvedValue({
+    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+  }),
+}));
+
 const prisma = require("../../config/db");
 const pricingEngine = require("../pricingEngine");
 const dispatchManager = require("../dispatchManager");
 const pushNotifier = require("../pushNotifier");
-const { getRoadDistanceKm } = require("../../utils/geoDistance");
+const { getRoadDistanceKm, haversineKm } = require("../../utils/geoDistance");
 const orderPickupService = require("../orderPickupService");
 
 describe("orderPickupService", () => {
@@ -210,6 +216,54 @@ describe("orderPickupService", () => {
           uid: 55, orderId: 101, newPlat: 28.6, newPlong: 77.45, newPaddress: "New Pickup Address",
         })
       ).rejects.toThrow("ORDER_NOT_ACTIVE");
+    });
+
+    it("does NOT bank/revert when the new pickup is within the small-move threshold", async () => {
+      const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
+      // Original pickup at 28.6000/77.2000; new point ~90m away.
+      haversineKm.mockReturnValueOnce(0.09);
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 101, uid: 22, rid: 22, order_status: 2, o_status: "Pickup",
+        plat: "28.6000", plong: "77.2000", dlat: "28.7", dlong: "77.3",
+        extra_mile_charge: 0, delivery_type: 1, distance: 5, total_dcharge: 100, d_charge: 100,
+      });
+      prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({
+        order_id: 101, rid: 22, pickup_wait_start: new Date(), pickup_wait_end: null, pickup_wait_banked_seconds: 0,
+      });
+
+      await orderPickupService.confirmPickupChange({
+        uid: 22, orderId: 101, newPlat: "28.6008", newPlong: "77.2000", newPaddress: "Nearby spot",
+      });
+
+      expect(getPickupRelocateSettings).toHaveBeenCalled();
+      expect(prisma.pkg_order.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.not.objectContaining({ order_status: 1 }),
+      }));
+      expect(prisma.pkg_order_wait_timer.update).not.toHaveBeenCalled();
+      expect(prisma.driver_trip_event.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("still banks/reverts when the new pickup is beyond the small-move threshold", async () => {
+      // ~1.1km away
+      haversineKm.mockReturnValueOnce(1.1);
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 102, uid: 22, rid: 22, order_status: 2, o_status: "Pickup",
+        plat: "28.6000", plong: "77.2000", dlat: "28.7", dlong: "77.3",
+        extra_mile_charge: 0, delivery_type: 1, distance: 5, total_dcharge: 100, d_charge: 100,
+      });
+      prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({
+        order_id: 102, rid: 22, pickup_wait_start: new Date(), pickup_wait_end: null, pickup_wait_banked_seconds: 0,
+      });
+
+      await orderPickupService.confirmPickupChange({
+        uid: 22, orderId: 102, newPlat: "28.6100", newPlong: "77.2000", newPaddress: "Far spot",
+      });
+
+      expect(prisma.pkg_order.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ order_status: 1, o_status: "Processing" }),
+      }));
+      expect(prisma.pkg_order_wait_timer.update).toHaveBeenCalled();
+      expect(prisma.driver_trip_event.deleteMany).toHaveBeenCalled();
     });
   });
 });
