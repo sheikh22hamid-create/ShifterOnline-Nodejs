@@ -9,17 +9,34 @@ const userSchema = new Schema(
       required: true,
       trim: true,
     },
-    email: {
+    mobile: {
       type: String,
       required: true,
+      trim: true,
       unique: true,
+      index: true,
+    },
+    email: {
+      type: String,
+      required: false,
       trim: true,
       lowercase: true,
-      match: EMAIL_RE,
+      unique: true,
+      sparse: true,
     },
     passwordHash: {
       type: String,
       required: true,
+    },
+    status: {
+      type: String,
+      enum: ['Pending', 'Completed'],
+      default: 'Pending',
+      index: true,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true }

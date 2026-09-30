@@ -1,29 +1,52 @@
 import mongoose from 'mongoose';
 
-let connectPromise = null;
+let isConnecting = false;
 
-export function connectDB() {
+export async function connectDB() {
   if (!process.env.MONGODB_URI) {
-    throw new Error(
-      'Missing required environment variable MONGODB_URI. Set it in server/.env — see server/.env.example.'
-    );
+    console.error('Missing required environment variable MONGODB_URI.');
+    return;
   }
 
-  if (!connectPromise) {
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err.message);
-    });
+  if (mongoose.connection.readyState === 1) {
+    return; // Already connected
+  }
 
-    connectPromise = mongoose.connect(process.env.MONGODB_URI, {
+  if (isConnecting) return;
+  isConnecting = true;
+
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
       dbName: process.env.MONGODB_DB_NAME ?? 'shifter_online',
+      serverSelectionTimeoutMS: 8000,
     });
+    console.log('Successfully connected to MongoDB Atlas.');
+  } catch (err) {
+    console.error('MongoDB connection error (will retry in 5s):', err.message);
+    setTimeout(() => {
+      isConnecting = false;
+      connectDB().catch(() => {});
+    }, 5000);
+  } finally {
+    isConnecting = false;
   }
-
-  return connectPromise;
 }
 
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected. Attempting to reconnect...');
+  setTimeout(() => connectDB().catch(() => {}), 5000);
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB runtime error:', err.message);
+});
+
 export async function disconnectDB() {
-  await mongoose.disconnect();
+  try {
+    await mongoose.disconnect();
+  } catch (err) {
+    console.error('Error disconnecting MongoDB:', err);
+  }
 }
 
 export default mongoose;

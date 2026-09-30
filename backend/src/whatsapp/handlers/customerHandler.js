@@ -1,183 +1,20 @@
 const prisma = require("../../config/db");
-const pricingEngine = require("../../services/pricingEngine");
 const logger = require("../../utils/logger");
 
 /**
  * Handles Instant Fare Estimate via WhatsApp
  */
 async function handleFareCalculation(phoneNumber, entities, session) {
-  try {
-    const categories = await prisma.pkg_category.findMany({
-      where: { cat_status: 1 },
-      orderBy: { sort_order: "asc" },
-    });
-
-    if (categories.length === 0) {
-      return "⚠️ Abhi koi vehicle category active nahi hai. Kripya baad me try karein.";
-    }
-
-    let categoryListText = "📦 *Shifter Online — Fare Estimator*:\n\n";
-    categoryListText += "Pickup aur Drop location enter karke aasan steps me fare calculate karein!\n\n";
-    categoryListText += "💡 *Start karne ke liye reply karein*:\n*<Pickup Location> to <Drop Location>* (e.g. Connaught Place to Noida Sector 62)\n\n";
-    categoryListText += "Ya apna *Pickup Location* write karein:";
-    return categoryListText;
-  } catch (err) {
-    logger.error("WhatsApp handleFareCalculation error:", err);
-    return "⚠️ Fare calculate karne me error aaya. Kripya punah prayaas karein.";
-  }
-}
-
-/**
- * Fetches all active vehicle categories from DB for WhatsApp prompt
- */
-async function getActiveCategories() {
-  try {
-    const categories = await prisma.pkg_category.findMany({
-      where: { cat_status: 1 },
-      orderBy: { sort_order: "asc" },
-    });
-    return categories;
-  } catch (err) {
-    logger.error("getActiveCategories error:", err);
-    return [];
-  }
-}
-
-/**
- * Formats active categories into a numbered WhatsApp prompt string
- */
-function formatCategoriesPrompt(categories, radiusKm = 5) {
-  if (!categories || categories.length === 0) {
-    return "⚠️ Abhi koi vehicle category active nahi hai. Kripya baad me try karein.";
-  }
-
-  let text = `⭕ *Driver Search Radius*: *${radiusKm} km* set ho gaya hai!\n\n` +
-             `🛵 *Vehicle Category Choose Karein*:\n\n`;
-
-  categories.forEach((cat, idx) => {
-    text += `${idx + 1}. *${cat.cat_name}*\n`;
-  });
-
-  text += `\n(Reply 1, 2, 3, etc. ya category ka naam write karein)`;
-  return text;
-}
-
-/**
- * Fetches models & calculated fares for a chosen category and trip route
- */
-async function getCategoryModels(categoryId, bookingData) {
-  try {
-    const {
-      pickupLat = "28.6139",
-      pickupLng = "77.2090",
-      dropLat = "28.5355",
-      dropLng = "77.3910",
-      searchRadius = 5,
-    } = bookingData;
-
-    const radiusKm = parseInt(searchRadius, 10) || 5;
-
-    const estimate = await pricingEngine.getFareEstimate({
-      cat_id: Number(categoryId),
-      plat: parseFloat(pickupLat),
-      plong: parseFloat(pickupLng),
-      dlat: parseFloat(dropLat),
-      dlong: parseFloat(dropLng),
-      radiusRangeKm: radiusKm,
-    });
-
-    const models = estimate.packages || [];
-    return {
-      distanceKm: estimate.distance_km || 0,
-      models,
-    };
-  } catch (err) {
-    logger.error("getCategoryModels error:", err);
-    return { distanceKm: 0, models: [] };
-  }
-}
-
-/**
- * Formats available models for a category into a numbered WhatsApp prompt
- */
-function formatModelsPrompt(categoryName, models, distanceKm) {
-  if (!models || models.length === 0) {
-    return `⚠️ *${categoryName}* category me abhi koi vehicle model active nahi hai.\nKripya koi doosri category select karein.`;
-  }
-
-  let text = `🚚 *${categoryName} ke Available Vehicle Models*:\n`;
-  if (distanceKm > 0) {
-    text += `🛣️ *Route Distance*: ${distanceKm} km\n\n`;
-  } else {
-    text += `\n`;
-  }
-
-  models.forEach((mod, idx) => {
-    const radiusNote = mod.radius_charge > 0 ? ` (Radius Charge: ₹${mod.radius_charge})` : ` (1st km Free)`;
-    const hasCustomTitle = mod.user_title && mod.user_title !== mod.title && mod.user_title !== "undefined";
-    const displayName = hasCustomTitle ? `${mod.title} (${mod.user_title})` : mod.title;
-    text += `${idx + 1}. *${displayName}* — ₹${mod.estimated_fare}${radiusNote}\n`;
-  });
-
-  text += `\nKripya apne pasand ka *Model Number* select karne ke liye reply karein (e.g. 1, 2, 3):`;
-  return text;
-}
-
-/**
- * Generates the final Fare Estimate Result & App Redirect response for WhatsApp
- */
-async function getFareEstimateResult(bookingData) {
-  try {
-    const {
-      pickupAddress = "Customer Specified Pickup",
-      dropAddress = "Customer Specified Drop",
-      vehicleCategory = "Vehicle",
-      selectedModel,
-      searchRadius = 5,
-      distanceKm = 0,
-    } = bookingData;
-
-    const radiusKm = parseInt(searchRadius, 10) || 5;
-    const hasCustomTitle = selectedModel?.user_title && selectedModel.user_title !== selectedModel.title && selectedModel.user_title !== "undefined";
-    const modelTitle = selectedModel
-      ? (hasCustomTitle ? `${selectedModel.title} (${selectedModel.user_title})` : selectedModel.title)
-      : "Standard Model";
-
-    const fare = selectedModel ? parseFloat(selectedModel.estimated_fare || selectedModel.min_charge) : 0;
-    const radiusCharge = selectedModel ? parseFloat(selectedModel.radius_charge || 0) : 0;
-    const dist = distanceKm || bookingData.distanceKm || 0;
-
-    const radiusChargeText = radiusCharge > 0 ? ` (Radius Charge: ₹${radiusCharge})` : ` (1st km Free)`;
-
-    const appDownloadUrl = process.env.USER_APP_DOWNLOAD_URL || "https://play.google.com/store/apps/details?id=com.shifter.online";
-
-    let text = `💰 *Your Estimated Fare is ₹${fare}*\n\n` +
-               `📋 *Trip Details & Fare Breakdown*:\n` +
-               `📍 *Pickup*: ${pickupAddress}\n` +
-               `🎯 *Drop*: ${dropAddress}\n`;
-
-    if (dist > 0) {
-      text += `🛣️ *Distance*: ${dist} km\n`;
-    }
-
-    text += `⭕ *Search Radius*: ${radiusKm} km${radiusChargeText}\n` +
-            `🚗 *Vehicle Category*: ${vehicleCategory}\n` +
-            `🚚 *Vehicle Model*: ${modelTitle}\n` +
-            `💵 *Estimated Total Fare*: *₹${fare}*\n\n` +
-            `----------------------------------------\n` +
-            `ℹ️ *WhatsApp par direct booking available nahi hai.*\n` +
-            `Agar aap booking karna chahte hain, toh hamari official application se booking kar sakte hain.\n\n` +
-            `📲 *Download / Open Shifter App to Book*:\n` +
-            `🔗 ${appDownloadUrl}\n` +
-            `----------------------------------------`;
-
-    return text;
-  } catch (err) {
-    logger.error("getFareEstimateResult error:", err);
-    return `💰 *Fare Calculation Error*\n\n` +
-           `Kripya hamari official application download karke exact fare check karein:\n` +
-           `🔗 https://play.google.com/store/apps/details?id=com.shifter.online`;
-  }
+  const appDownloadUrl = process.env.USER_APP_DOWNLOAD_URL || "https://play.google.com/store/apps/details?id=com.shifter.online";
+  return (
+    `📦 *Shifter Online Booking*\n\n` +
+    `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
+    `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+    `📲 *Download Shifter App*:\n` +
+    `👉 ${appDownloadUrl}\n\n` +
+    `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
+    `📞 *Customer Care*: 9109114515`
+  );
 }
 
 /**
@@ -222,7 +59,8 @@ function matchesOrderPhone(senderPhone, order, user) {
 
 /**
  * Order Tracking Query (For orders created via official mobile app)
- * Returns order tracking details for any valid Order ID requested by user
+ * Returns order tracking details ONLY if the senderPhone matches the order's
+ * sender mobile, receiver mobile, user account mobile, or stop contact number.
  */
 async function handleTrackingQuery(orderId, senderPhone) {
   try {
@@ -237,37 +75,80 @@ async function handleTrackingQuery(orderId, senderPhone) {
       return `❌ Order #${id} nahi mila. Kripya sahi Order ID check karein.`;
     }
 
-    let riderText = "Abhi driver search me hai...";
+    const user = order.uid
+      ? await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { id: true, name: true, mobile: true } }).catch(() => null)
+      : null;
+
+    const senderClean = normalizePhone10(senderPhone);
+    let isAuthorized = matchesOrderPhone(senderClean, order, user);
+
+    if (!isAuthorized) {
+      // Also check any extra stop contact numbers
+      const stops = await prisma.pkg_order_stops
+        .findMany({
+          where: { order_id: order.id },
+          select: { contact_number: true },
+        })
+        .catch(() => []);
+      isAuthorized = stops.some((s) => normalizePhone10(s.contact_number) === senderClean);
+    }
+
+    if (!isAuthorized) {
+      logger.warn(`Unauthorized tracking attempt for Order #${order.id} by WhatsApp number: ${senderPhone}`);
+      return (
+        `❌ *This order was not booked using your WhatsApp number.*\n\n` +
+        `Aap sirf wahi orders track kar sakte hain jisme aapka WhatsApp number Sender ya Receiver ke roop me registered ho.\n\n` +
+        `📞 Kisi sahayata ke liye hamare Customer Care 9109114515 par call karein.`
+      );
+    }
+
+    let riderText = "Abhi driver search / assign ho raha hai...";
     if (order.rid > 0) {
-      const rider = await prisma.tbl_rider.findUnique({
-        where: { id: order.rid },
-      });
+      const rider = await prisma.tbl_rider
+        .findUnique({
+          where: { id: order.rid },
+          select: { first_name: true, last_name: true, vehicle_no: true, fmobile: true },
+        })
+        .catch(() => null);
       if (rider) {
         riderText = `*${rider.first_name || ""} ${rider.last_name || ""}* (${rider.vehicle_no || "N/A"}) — 📞 ${rider.fmobile}`;
       }
     }
 
-    const trackingUrl = process.env.PUBLIC_TRACKING_URL || `https://shifter.online/track/${order.id}`;
+    const statusMap = {
+      Pending: "Pending (Searching Driver)",
+      Processing: "Driver Assigned",
+      Pickup: "Driver Arrived at Pickup Point",
+      On_Route: "In Transit (On the way to drop)",
+      Completed: "Delivered Successfully ✅",
+      Cancelled: "Cancelled ❌",
+    };
+    const friendlyStatus = statusMap[order.o_status] || order.o_status;
 
-    return `📦 *Order #${order.id} Tracking Status*\n\n` +
-           `📌 *Status*: *${order.o_status}*\n` +
-           `🛵 *Driver*: ${riderText}\n` +
-           `📍 *Pickup*: ${order.paddress}\n` +
-           `🎯 *Drop*: ${order.daddress}\n` +
-           `💰 *Total Amount*: ₹${order.total_dcharge}\n\n` +
-           `🗺️ *Live Location Tracking*: ${trackingUrl}`;
+    let reply =
+      `📦 *Order #${order.id} Tracking Status*\n\n` +
+      `📌 *Status*: *${friendlyStatus}*\n` +
+      `🛵 *Driver*: ${riderText}\n` +
+      `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
+      `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
+      `💰 *Total Amount*: ₹${order.total_dcharge}\n`;
+
+    // Show pickup OTP only if pending pickup and requester is the pickup party
+    const isSenderParty = senderClean === normalizePhone10(order.pmobile) || senderClean === normalizePhone10(user?.mobile);
+    if (isSenderParty && order.order_status < 3 && order.otp) {
+      reply += `🔑 *Pickup OTP*: *${order.otp}*\n`;
+    }
+
+    reply += `\n📞 Customer Care: 9109114515`;
+
+    return reply;
   } catch (err) {
     logger.error("handleTrackingQuery error:", err);
-    return "⚠️ Order status fetch karne me error aaya.";
+    return "⚠️ Order status fetch karne me error aaya. Kripya thodi der baad prayas karein.";
   }
 }
 
 module.exports = {
   handleFareCalculation,
-  getActiveCategories,
-  formatCategoriesPrompt,
-  getCategoryModels,
-  formatModelsPrompt,
-  getFareEstimateResult,
   handleTrackingQuery,
 };

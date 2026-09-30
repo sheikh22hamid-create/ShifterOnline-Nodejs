@@ -23,7 +23,8 @@ const columns = [
   {
     title: 'Support & Contact',
     links: [
-      { label: '📞 +91 9109114515', href: 'tel:9109114515' },
+      { label: '📞 Helpline: +91 9109114515', href: 'tel:9109114515' },
+      { label: '💬 WhatsApp: +91 9644423533', href: 'https://wa.me/919644423533?text=Hello%20Shifter%20Online' },
       { label: '✉️ support@shifteronline.com', href: 'mailto:support@shifteronline.com' },
       { label: 'Privacy Policy', href: '/privacy-policy.html' },
       { label: 'Terms & Conditions', href: '/terms.html' },
@@ -93,15 +94,14 @@ export function Footer() {
             © {new Date().getFullYear()} Movigo Logistics Aggregator Pvt. Ltd. All rights reserved.
           </p>
           <div className="flex items-center gap-4 text-xs text-white/45">
-            <a href="/privacy-policy.html" className="hover:text-white">
+            <SmartLink href="/privacy-policy.html" className="hover:text-white">
               Privacy Policy
-            </a>
-            <a href="/terms.html" className="hover:text-white">
+            </SmartLink>
+            <SmartLink href="/terms.html" className="hover:text-white">
               Terms & Conditions
-            </a>
-            <a href="/refund.html" className="hover:text-white">
-              Refund Policy
-            </a>
+            </SmartLink>
+            <span className="text-white/20">|</span>
+            <span>Made with ❤️ in Indore</span>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { Groq } = require("groq-sdk");
 const logger = require("../utils/logger");
+const geminiService = require("./geminiService");
 
 let groqClient = null;
 let cachedKnowledge = null;
@@ -92,61 +93,85 @@ You MUST reply strictly in valid JSON format:
 CRITICAL GREETING RULE:
 - ALWAYS start greetings with "Hello!" or "Hello ji!".
 - NEVER use "Namaste" or "Namaskar" under any circumstances.
+
+CRITICAL BOOKING & FARE ESTIMATE RULE:
+- The WhatsApp Bot CANNOT book rides/orders, cannot take pickup/drop locations, and cannot calculate custom trip fares directly.
+- NEVER ask the user for their pickup/drop location or attempt to initiate a booking in chat.
+- If the user asks to book a vehicle/delivery or asks for prices/fare, ALWAYS state that WhatsApp direct booking is not available and instruct them to download the official Shifter Online Customer App: https://play.google.com/store/apps/details?id=com.shifter.online and mention Customer Care 9109114515.
+
+CRITICAL DRIVER WALLET & PROFILE RULE:
+- The WhatsApp Bot CANNOT display driver wallet balances, profile status, or earnings in chat.
+- If a driver asks about wallet, earnings, balance, or profile, instruct them to open/download the official Shifter Driver Partner App: https://play.google.com/store/apps/details?id=com.shifter.driver and contact Driver Support 9109114515.
 `;
 
 /**
- * Parses user input using Groq AI API with Multi-Key Failover
+ * Parses user input using:
+ * 1. Tier 1: Google Gemini AI (Primary) with multi-model cascade
+ * 2. Tier 2: Groq AI (Secondary Failover) with multi-key failover
+ * 3. Tier 3: Rule-based fallback parser (Guaranteed Offline Safety Net)
  */
-async function parseMessageWithGroq(userText, sessionContext = {}) {
-  const apiKeys = getGroqApiKeys();
-
-  if (apiKeys.length === 0) {
-    logger.warn("No GROQ_API_KEY configured in .env. Using rule-based fallback parser.");
-    return fallbackRuleBasedParser(userText);
+async function parseMessageWithAI(userText, sessionContext = {}) {
+  // 1. Tier 1: Google Gemini AI
+  try {
+    const geminiResult = await geminiService.parseMessageWithGemini(userText, sessionContext);
+    if (geminiResult && geminiResult.intent) {
+      return geminiResult;
+    }
+  } catch (err) {
+    logger.warn(`⚠️ Gemini parsing error: ${err.message}. Proceeding to Groq failover.`);
   }
 
-  const knowledgeBase = getBotKnowledge();
-  const systemPromptWithKnowledge = SYSTEM_PROMPT + (knowledgeBase ? `\n\nOFFICIAL COMPANY KNOWLEDGE BASE:\n"""\n${knowledgeBase.slice(0, 10000)}\n"""` : "");
+  // 2. Tier 2: Groq AI Multi-Key Failover
+  const apiKeys = getGroqApiKeys();
+  if (apiKeys.length > 0) {
+    const knowledgeBase = getBotKnowledge();
+    const systemPromptWithKnowledge =
+      SYSTEM_PROMPT +
+      (knowledgeBase ? `\n\nOFFICIAL COMPANY KNOWLEDGE BASE:\n"""\n${knowledgeBase.slice(0, 10000)}\n"""` : "");
 
-  // Multi-Key Failover Loop
-  for (let i = 0; i < apiKeys.length; i++) {
-    const apiKey = apiKeys[i];
-    const keyLabel = `Key #${i + 1} (${apiKey.slice(0, 7)}...${apiKey.slice(-4)})`;
+    for (let i = 0; i < apiKeys.length; i++) {
+      const apiKey = apiKeys[i];
+      const keyLabel = `Groq Key #${i + 1} (${apiKey.slice(0, 7)}...${apiKey.slice(-4)})`;
 
-    try {
-      const client = getGroqClientForKey(apiKey);
+      try {
+        const client = getGroqClientForKey(apiKey);
 
-      const response = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
-        messages: [
-          { role: "system", content: systemPromptWithKnowledge },
-          {
-            role: "user",
-            content: `Session Context: ${JSON.stringify(sessionContext)}\nUser Message: "${userText}"`,
-          },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 500,
-      });
+        const response = await client.chat.completions.create({
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+          messages: [
+            { role: "system", content: systemPromptWithKnowledge },
+            {
+              role: "user",
+              content: `Session Context: ${JSON.stringify(sessionContext)}\nUser Message: "${userText}"`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_tokens: 500,
+        });
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) throw new Error("Empty content returned from Groq API");
+        const content = response.choices[0]?.message?.content;
+        if (!content) throw new Error("Empty content returned from Groq API");
 
-      const parsed = JSON.parse(content);
-      logger.info(`✅ Groq AI parsing successful using ${keyLabel} (Intent: ${parsed.intent})`);
-      return parsed;
-    } catch (error) {
-      logger.warn(`⚠️ Groq AI API error with ${keyLabel}: ${error.message}`);
-      if (i < apiKeys.length - 1) {
-        logger.info(`🔄 Failing over to next Groq API key #${i + 2}...`);
+        const parsed = JSON.parse(content);
+        logger.info(`✅ Groq AI parsing successful using ${keyLabel} (Intent: ${parsed.intent})`);
+        return parsed;
+      } catch (error) {
+        logger.warn(`⚠️ Groq AI API error with ${keyLabel}: ${error.message}`);
+        if (i < apiKeys.length - 1) {
+          logger.info(`🔄 Failing over to next Groq API key #${i + 2}...`);
+        }
       }
     }
   }
 
-  logger.error("❌ All configured Groq API keys failed or hit limits. Falling back to rule-based parser.");
+  // 3. Tier 3: Deterministic Rule-Based Fallback
+  logger.warn("⚠️ Both Gemini and Groq AI unavailable or exhausted. Using rule-based fallback parser.");
   return fallbackRuleBasedParser(userText);
 }
+
+// Backward compatibility alias
+const parseMessageWithGroq = parseMessageWithAI;
 
 /**
  * Fallback intent classifier if GROQ_API_KEY is not configured
@@ -159,7 +184,7 @@ function fallbackRuleBasedParser(text) {
     return {
       intent: "CANCEL_RESET",
       entities: {},
-      aiResponse: "Bilkul! Aapka current process cancel kar diya gaya hai.\n\nAap kya help chahte hain?\n\n• *Fare* / *Book* — Fare estimate calculate karein\n• *Track <OrderId>* — Order tracking status check karein\n• *Driver* — Driver partner registration & app link\n• *Support* — Customer care & driver helpline numbers",
+      aiResponse: "Bilkul! Aapka current process cancel kar diya gaya hai.\n\nAap kya help chahte hain?\n\n• *App* — Delivery booking ke liye Shifter App link\n• *Track <OrderId>* — Order tracking status check karein\n• *Driver* — Driver partner registration & app link\n• *Support* — Customer care & driver helpline numbers",
     };
   }
 
@@ -220,8 +245,8 @@ function fallbackRuleBasedParser(text) {
   }
 
   // 5. TRACK ORDER
-  if (t.includes("track") || t.includes("kahan") || t.includes("order status") || t.match(/#?\d{4,6}/)) {
-    const match = text.match(/\d{4,6}/);
+  if (t.includes("track") || t.includes("kahan") || t.includes("order status") || t.match(/#?\d+/)) {
+    const match = text.match(/\d+/);
     return {
       intent: "TRACK_ORDER",
       entities: { orderId: match ? match[0] : null },
@@ -230,20 +255,20 @@ function fallbackRuleBasedParser(text) {
   }
 
   // 6. FARE CALCULATION / BOOKING
-  if (t.includes("fare") || t.includes("kitna") || t.includes("price") || t.includes("cost") || t.includes("rate") || t.includes("book") || t.includes("gadi") || t.includes("truck") || t.includes("tempo")) {
+  if (t.includes("fare") || t.includes("kitna") || t.includes("price") || t.includes("cost") || t.includes("rate") || t.includes("book") || t.includes("gadi") || t.includes("truck") || t.includes("tempo") || t.includes("pickup") || t.includes("drop")) {
     return {
       intent: "CALCULATE_FARE",
       entities: {},
-      aiResponse: "Aapki booking ke liye fare calculate karte hain.",
+      aiResponse: "📦 *Shifter Online Booking*\n\nWhatsApp par direct booking ya fare calculation uplabdh nahi hai. Delivery booking aur live fare ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\nApp me aapko transparent fare aur instant driver allocation milta hai!\n📞 Customer Care: 9109114515",
     };
   }
 
   // 7. CHECK WALLET
-  if (t.includes("earning") || t.includes("wallet") || t.includes("payout") || t.includes("kamai")) {
+  if (t.includes("earning") || t.includes("wallet") || t.includes("payout") || t.includes("kamai") || t.includes("balance")) {
     return {
       intent: "CHECK_WALLET",
       entities: {},
-      aiResponse: "Aapki daily earnings aur wallet balance check ho raha hai.",
+      aiResponse: "🚚 *Shifter Driver Partner App*\n\nWallet balance, daily kamai aur duty status sirf official *Shifter Partner App* me dekhi ja sakti hai.\n\n📲 *Download / Open Driver App*:\n👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 Driver Helpline: 9109114515",
     };
   }
 
@@ -256,6 +281,7 @@ function fallbackRuleBasedParser(text) {
 }
 
 module.exports = {
+  parseMessageWithAI,
   parseMessageWithGroq,
   fallbackRuleBasedParser,
   getBotKnowledge,

@@ -8,7 +8,6 @@ const chatControl = require("./chatControl");
 const customerHandler = require("./handlers/customerHandler");
 const driverHandler = require("./handlers/driverHandler");
 const notifications = require("./notifications");
-const googleMapsLocation = require("../utils/googleMapsLocation");
 
 let sock = null;
 let latestQrCode = null;
@@ -354,12 +353,12 @@ function detectGlobalIntent(text, sessionStep) {
   }
 
   // 5. TRACK ORDER
-  if (t.startsWith("track") || t.includes("order status") || t.match(/^#?\d{4,6}$/)) {
+  if (t.startsWith("track") || t.includes("order status") || t.match(/^#?\d+$/)) {
     return { isGlobalSwitch: true, intent: "TRACK_ORDER" };
   }
 
-  // 6. START NEW FARE / BOOKING
-  if (t.startsWith("fare") || t.startsWith("book") || (t.includes("pickup") && t.includes("drop"))) {
+  // 6. START NEW FARE / BOOKING OR APP LINK
+  if (t.startsWith("fare") || t.startsWith("book") || t === "app" || (t.includes("pickup") && t.includes("drop"))) {
     return { isGlobalSwitch: true, intent: "CALCULATE_FARE" };
   }
 
@@ -388,7 +387,7 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
           replyText =
             `Bilkul! Aapka current process cancel kar diya gaya hai.\n\n` +
             `Aap kya help chahte hain?\n\n` +
-            `• *Fare* ya *Book* — Fare estimate calculate karein\n` +
+            `• *App* — Delivery booking ke liye Customer App link\n` +
             `• *Track <OrderId>* — Order tracking status check karein\n` +
             `• *Driver* — Driver partner registration & app link\n` +
             `• *Support* — Customer care & driver helpline numbers`;
@@ -433,45 +432,47 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
           break;
 
         case "TRACK_ORDER": {
-          const orderId = cleanText.match(/\d{4,6}/)?.[0];
+          const orderId = cleanText.match(/\d+/)?.[0];
           if (orderId) {
             replyText = await customerHandler.handleTrackingQuery(orderId, senderPhone);
           } else {
-            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 1024*).";
+            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 244*).";
           }
           break;
         }
 
-        case "CALCULATE_FARE": {
-          const parsed = parseFullBookingData(cleanText);
-          if (parsed.pickup && parsed.drop) {
-            sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_RADIUS", {
-              pickupAddress: parsed.pickup,
-              dropAddress: parsed.drop,
-              vehicleCategory: parsed.vehicle || null,
-            });
-            replyText = `📍 *Pickup*: ${parsed.pickup}\n🎯 *Drop*: ${parsed.drop}\n\n` +
-              `⭕ *Driver Search Radius*\n\n` +
-              `Aapka driver search radius kitna hai? (1 km se 30 km ke beech enter karein, e.g. 1, 5, 10, 30):`;
-          } else {
-            replyText = await customerHandler.handleFareCalculation(senderPhone, {}, session);
-            sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_PICKUP");
-          }
+        case "CALCULATE_FARE":
+        case "BOOK_TRIP": {
+          sessionManager.clearSession(senderPhone);
+          replyText =
+            `📦 *Shifter Online Booking*\n\n` +
+            `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
+            `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+            `📲 *Download Shifter App*:\n` +
+            `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
+            `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
+            `📞 *Customer Care*: 9109114515`;
           break;
         }
 
         default:
           break;
       }
-    } else if (session.step !== "IDLE") {
-      // User is in active wizard step and message is not a global intent switch
-      replyText = await handleWizardSteps(senderPhone, cleanText, session, fullMsg);
+    } else if (cleanText.startsWith("LOCATION_PIN:")) {
+      replyText =
+        `📍 *Location Received*\n\n` +
+        `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
+        `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+        `📲 *Download Shifter App*:\n` +
+        `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
+        `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
+        `📞 *Customer Care*: 9109114515`;
     } else {
-      // Session is IDLE - parse intent using Groq AI / Fallback parser
-      const aiAnalysis = await groqService.parseMessageWithGroq(cleanText, session);
+      // Session is IDLE - parse intent using Gemini AI / Groq AI / Fallback parser
+      const aiAnalysis = await groqService.parseMessageWithAI(cleanText, session);
       const { intent, entities, aiResponse } = aiAnalysis;
 
-      logger.info(`Groq AI Classified Intent: ${intent}`);
+      logger.info(`AI Classified Intent: ${intent}`);
 
       switch (intent) {
         case "DRIVER_SUPPORT":
@@ -499,41 +500,32 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
           replyText =
             `Bilkul! Aapka current process cancel kar diya gaya hai.\n\n` +
             `Aap kya help chahte hain?\n\n` +
-            `• *Fare* ya *Book* — Fare estimate calculate karein\n` +
+            `• *App* — Delivery booking ke liye Customer App link\n` +
             `• *Track <OrderId>* — Order tracking status check karein\n` +
             `• *Driver* — Driver partner registration & app link\n` +
             `• *Support* — Customer care & driver helpline numbers`;
           break;
 
         case "CALCULATE_FARE":
-          replyText = await customerHandler.handleFareCalculation(senderPhone, entities, session);
-          sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_PICKUP");
-          break;
-
         case "BOOK_TRIP": {
-          const parsed = parseFullBookingData(cleanText);
-          if (parsed.pickup && parsed.drop) {
-            sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_RADIUS", {
-              pickupAddress: parsed.pickup,
-              dropAddress: parsed.drop,
-              vehicleCategory: parsed.vehicle || null,
-            });
-            replyText = `📍 *Pickup*: ${parsed.pickup}\n🎯 *Drop*: ${parsed.drop}\n\n` +
-              `⭕ *Driver Search Radius*\n\n` +
-              `Aapka driver search radius kitna hai? (1 km se 30 km ke beech enter karein, e.g. 1, 5, 10, 30):`;
-          } else {
-            replyText = "📦 *Shifter Online Booking*\n\nAapka Pickup location specify karein:\n• Text address likhein (e.g. *Pickup: CP Delhi, Drop: Noida Sector 18*)\n• Ya WhatsApp me 📎 *(Paperclip / +)* ➔ *Location* ➔ *Send Location* map se pin share karein!";
-            sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_PICKUP");
-          }
+          sessionManager.clearSession(senderPhone);
+          replyText =
+            `📦 *Shifter Online Booking*\n\n` +
+            `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
+            `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+            `📲 *Download Shifter App*:\n` +
+            `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
+            `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
+            `📞 *Customer Care*: 9109114515`;
           break;
         }
 
         case "TRACK_ORDER": {
-          const orderId = entities.orderId || cleanText.match(/\d{4,6}/)?.[0];
+          const orderId = entities?.orderId || cleanText.match(/\d+/)?.[0];
           if (orderId) {
             replyText = await customerHandler.handleTrackingQuery(orderId, senderPhone);
           } else {
-            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 1024*).";
+            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 244*).";
           }
           break;
         }
@@ -596,326 +588,9 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
     logger.error(`Error handling WhatsApp message from ${senderPhone}:`, err);
     if (sock) {
       await sock.sendMessage(remoteJid, {
-        text: "⚠️ Samajh nahi aaya. Kripya punah prayaas karein ya type *Book* to start.",
+        text: "⚠️ Samajh nahi aaya. Kripya punah prayaas karein ya type *Help* karein.",
       });
     }
-  }
-}
-
-/**
- * Intelligently cleans location text by stripping prefixes like "Pickup:", "*Pickup*:", "Drop location:", etc.
- */
-function cleanLocationString(str) {
-  if (!str) return "";
-  let clean = String(str).trim();
-
-  // Strip markdown formatting symbols (* _ ~ `)
-  clean = clean.replace(/[*_~`]/g, "");
-
-  // Strip prefix words like "Pickup:", "Pickup address:", "Drop location:", "From:", "To:"
-  clean = clean.replace(/^(?:pickup|drop|location|address|from|to)\s*(?:address|location)?\s*[:=\-]*\s*/i, "");
-  clean = clean.replace(/^(?:pickup|drop|location|address|from|to)\s*[:=\-]*\s*/i, "");
-  clean = clean.replace(/^(?:pickup|drop|location|address|from|to)\s*(?:address|location)?\s*[:=\-]*\s*/i, "");
-
-  // Trim colons, hyphens, commas, or spaces
-  clean = clean.replace(/^[:=\-\s,]+/, "").replace(/[:=\-\s,]+$/, "").trim();
-
-  return clean;
-}
-
-/**
- * Helper to parse vehicle type from text
- */
-function parseVehicleType(text) {
-  if (!text) return null;
-  const t = text.toLowerCase();
-
-  if (t.includes("bike") || t.includes("two wheeler") || t.includes("2 wheeler") || t === "1") {
-    return "Bike";
-  }
-  if (t.includes("3 wheeler") || t.includes("three wheeler") || t.includes("auto") || t.includes("tempo") || t === "2") {
-    return "3 wheeler";
-  }
-  if (t.includes("4 wheeler") || t.includes("four wheeler") || t.includes("tata ace") || t.includes("truck") || t === "3") {
-    return "4 wheeler";
-  }
-  if (t.includes("loader") || t.includes("e loader") || t.includes("eloader") || t === "4") {
-    return "E loader";
-  }
-
-  const vehicleMatch = text.match(/vehicle\s*:\s*([^\n,]+)/i);
-  if (vehicleMatch && vehicleMatch[1]) {
-    const v = vehicleMatch[1].trim();
-    return parseVehicleType(v) || v;
-  }
-
-  return null;
-}
-
-/**
- * Helper to smart-parse Pickup, Drop, and Vehicle from a single text string
- */
-function parseFullBookingData(text) {
-  if (!text) return { pickup: null, drop: null, vehicle: null };
-  const t = text.trim();
-
-  let pickup = null;
-  let drop = null;
-  let vehicle = parseVehicleType(t);
-
-  // Pattern 1: Explicit "Pickup: <location>" and "Drop: <location>"
-  const pickupMatch = t.match(/pickup\s*:\s*([^🎯\n,]+(?:,[^🎯\n,]+)*)/i);
-  const dropMatch = t.match(/drop\s*:\s*([^🛵\n,]+(?:,[^🛵\n,]+)*)/i);
-
-  if (pickupMatch && pickupMatch[1]) {
-    pickup = pickupMatch[1].replace(/^pickup\s*:\s*/i, "").trim();
-    if (/drop\s*:/i.test(pickup)) {
-      pickup = pickup.split(/drop\s*:/i)[0].trim();
-    }
-  }
-
-  if (dropMatch && dropMatch[1]) {
-    drop = dropMatch[1].replace(/^drop\s*:\s*/i, "").trim();
-    if (/vehicle\s*:/i.test(drop)) {
-      drop = drop.split(/vehicle\s*:/i)[0].trim();
-    }
-  }
-
-  if (pickup) pickup = cleanLocationString(pickup);
-  if (drop) drop = cleanLocationString(drop);
-
-  // Pattern 2: "<Pickup> to <Drop>" if regex didn't extract both
-  if ((!pickup || !drop) && /\bto\b/i.test(t) && !t.toLowerCase().startsWith("track") && !t.toLowerCase().startsWith("book")) {
-    const parts = t.split(/\bto\b/i);
-    if (parts.length >= 2) {
-      if (!pickup) pickup = cleanLocationString(parts[0]);
-      if (!drop) drop = cleanLocationString(parts[1]);
-    }
-  }
-
-  return { pickup, drop, vehicle };
-}
-
-/**
- * Handles Step-by-Step Multi-Turn Dialog Wizard
- */
-async function handleWizardSteps(senderPhone, text, session, fullMsg) {
-  const t = text ? text.trim() : "";
-  const parsed = parseFullBookingData(t);
-
-  // Handle Native WhatsApp Location Pin (Shared via 📎 Paperclip -> Location / Map Picker)
-  if (t.startsWith("LOCATION_PIN:")) {
-    const parts = t.replace("LOCATION_PIN:", "").split(":");
-    const coords = parts[0].split(",");
-    const lat = parseFloat(coords[0]);
-    const lng = parseFloat(coords[1]);
-    const pinName = parts[1] || "";
-
-    const geoResult = await googleMapsLocation.reverseGeocodeLocation(lat, lng);
-    const verifiedAddress = pinName ? `${pinName}, ${geoResult.formattedAddress}` : geoResult.formattedAddress;
-
-    if (session.step === "BOOKING_AWAIT_DROP") {
-      const p = session.data.pickupAddress || "Pickup Location";
-      sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_RADIUS", {
-        dropAddress: verifiedAddress,
-        dropLat: lat,
-        dropLng: lng,
-      });
-      return `🎯 *Drop Location Confirmed via Map Pin!*\n\n🏠 *Address*: ${verifiedAddress}\n📍 *Coordinates*: ${lat.toFixed(4)}, ${lng.toFixed(4)}\n\n` +
-        `⭕ *Driver Search Radius*\n\n` +
-        `Aapka driver search radius kitna hai?\n` +
-        `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
-    } else {
-      sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_DROP", {
-        pickupAddress: verifiedAddress,
-        pickupLat: lat,
-        pickupLng: lng,
-      });
-      return `📍 *Pickup Location Confirmed via Map Pin!*\n\n🏠 *Address*: ${verifiedAddress}\n📍 *Coordinates*: ${lat.toFixed(4)}, ${lng.toFixed(4)}\n\nAb *Drop Address* reply karein (ya WhatsApp 📎 -> Location se drop pin share karein):`;
-    }
-  }
-
-  // Answer user questions mid-wizard
-  if (
-    t.toLowerCase().includes("kya save") ||
-    t.toLowerCase().includes("kya tha") ||
-    t.toLowerCase().includes("show address") ||
-    t.toLowerCase().includes("meraa address")
-  ) {
-    const p = session.data.pickupAddress || "Not set yet";
-    const d = session.data.dropAddress || "Not set yet";
-    const r = session.data.searchRadius ? `${session.data.searchRadius} km` : "Not set yet";
-    const v = session.data.vehicleCategory || "Not selected";
-    return `📍 *Saved Pickup*: ${p}\n🎯 *Saved Drop*: ${d}\n⭕ *Saved Radius*: ${r}\n🛵 *Saved Vehicle*: ${v}\n\nKripya agla details reply karein!`;
-  }
-
-  switch (session.step) {
-    case "BOOKING_AWAIT_PICKUP": {
-      const p = cleanLocationString(parsed.pickup || (parsed.drop ? null : t));
-      const d = cleanLocationString(parsed.drop);
-      const v = parsed.vehicle;
-
-      // Verify Pickup location with Google Maps
-      const geoPickup = await googleMapsLocation.verifyAndGeocodeLocation(p);
-      if (!geoPickup.isValid) {
-        return `⚠️ *Location Not Found on Google Maps*\n\n"${p}" Google Maps par nahi mili.\nKripya landmark ya city ke saath sahi address reply karein (e.g. *Khajrana Police Station, Indore*):`;
-      }
-
-      const verifiedPickup = geoPickup.formattedAddress || p;
-
-      if (d) {
-        const geoDrop = await googleMapsLocation.verifyAndGeocodeLocation(d);
-        if (!geoDrop.isValid) {
-          return `⚠️ *Drop Location Not Found on Google Maps*\n\n"${d}" Google Maps par nahi mili.\nKripya landmark ya city ke saath sahi drop address reply karein:`;
-        }
-        const verifiedDrop = geoDrop.formattedAddress || d;
-
-        sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_RADIUS", {
-          pickupAddress: verifiedPickup,
-          dropAddress: verifiedDrop,
-          pickupLat: geoPickup.lat,
-          pickupLng: geoPickup.lng,
-          dropLat: geoDrop.lat,
-          dropLng: geoDrop.lng,
-          vehicleCategory: v || null,
-        });
-        return `📍 *Pickup*: ${verifiedPickup}\n🎯 *Drop*: ${verifiedDrop}\n\n` +
-          `⭕ *Driver Search Radius*\n\n` +
-          `Aapka driver search radius kitna hai?\n` +
-          `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
-      }
-
-      sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_DROP", {
-        pickupAddress: verifiedPickup,
-        pickupLat: geoPickup.lat,
-        pickupLng: geoPickup.lng,
-      });
-      return `📍 Pickup address verified!\n*${verifiedPickup}*\n\nAb *Drop Address* reply karein:`;
-    }
-
-    case "BOOKING_AWAIT_DROP": {
-      const d = cleanLocationString(parsed.drop || t);
-      const v = parsed.vehicle;
-      const p = cleanLocationString(session.data.pickupAddress) || "Customer Specified Pickup";
-
-      // Verify Drop location with Google Maps
-      const geoDrop = await googleMapsLocation.verifyAndGeocodeLocation(d);
-      if (!geoDrop.isValid) {
-        return `⚠️ *Location Not Found on Google Maps*\n\n"${d}" Google Maps par nahi mili.\nKripya landmark ya city ke saath sahi drop address reply karein (e.g. *Noida Sector 62*):`;
-      }
-
-      const verifiedDrop = geoDrop.formattedAddress || d;
-
-      sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_RADIUS", {
-        pickupAddress: p,
-        dropAddress: verifiedDrop,
-        dropLat: geoDrop.lat,
-        dropLng: geoDrop.lng,
-        vehicleCategory: v || session.data.vehicleCategory || null,
-      });
-      return `🎯 Drop address verified!\n*${verifiedDrop}*\n\n` +
-        `⭕ *Driver Search Radius*\n\n` +
-        `Aapka driver search radius kitna hai?\n` +
-        `Kripya 1 km se 30 km ke beech value enter karein (e.g. 1, 5, 10, 30):`;
-    }
-
-    case "BOOKING_AWAIT_RADIUS": {
-      const rawMatch = t.match(/(\d+(?:\.\d+)?)/);
-      const radiusVal = rawMatch ? parseFloat(rawMatch[1]) : NaN;
-
-      if (isNaN(radiusVal) || radiusVal < 1 || radiusVal > 30) {
-        return `⚠️ *Invalid Driver Search Radius!*\n\n` +
-          `Driver search radius *1 km se 30 km* ke beech hona chahiye.\n` +
-          `Kripya 1 se 30 ke beech ki value enter karein (e.g. 1, 5, 10, 30):`;
-      }
-
-      const validRadius = Math.round(radiusVal);
-      const categories = await customerHandler.getActiveCategories();
-
-      sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_CATEGORY", {
-        searchRadius: validRadius,
-        availableCategories: categories,
-      });
-
-      return customerHandler.formatCategoriesPrompt(categories, validRadius);
-    }
-
-    case "BOOKING_AWAIT_CATEGORY": {
-      const categories = session.data.availableCategories || (await customerHandler.getActiveCategories());
-      let selectedCat = null;
-
-      const numMatch = t.match(/^(\d+)$/);
-      if (numMatch) {
-        const idx = parseInt(numMatch[1], 10) - 1;
-        if (idx >= 0 && idx < categories.length) {
-          selectedCat = categories[idx];
-        }
-      }
-
-      if (!selectedCat) {
-        selectedCat = categories.find((c) => c.cat_name.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(c.cat_name.toLowerCase()));
-      }
-
-      if (!selectedCat) {
-        return `⚠️ Invalid selection! Kripya list me se sahi Category number ya naam reply karein.\n\n` +
-          customerHandler.formatCategoriesPrompt(categories, session.data.searchRadius || 5);
-      }
-
-      const { distanceKm, models } = await customerHandler.getCategoryModels(selectedCat.id, session.data);
-
-      if (!models || models.length === 0) {
-        return `⚠️ *${selectedCat.cat_name}* category me abhi koi vehicle model active nahi hai.\nKripya koi doosri category choose karein:\n\n` +
-          customerHandler.formatCategoriesPrompt(categories, session.data.searchRadius || 5);
-      }
-
-      sessionManager.updateSession(senderPhone, "BOOKING_AWAIT_MODEL", {
-        vehicleCategory: selectedCat.cat_name,
-        categoryId: selectedCat.id,
-        distanceKm,
-        availableModels: models,
-      });
-
-      return customerHandler.formatModelsPrompt(selectedCat.cat_name, models, distanceKm);
-    }
-
-    case "BOOKING_AWAIT_MODEL": {
-      const models = session.data.availableModels || [];
-      let selectedModel = null;
-
-      const numMatch = t.match(/^(\d+)$/);
-      if (numMatch) {
-        const idx = parseInt(numMatch[1], 10) - 1;
-        if (idx >= 0 && idx < models.length) {
-          selectedModel = models[idx];
-        }
-      }
-
-      if (!selectedModel) {
-        selectedModel = models.find((m) => m.title.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(m.title.toLowerCase()));
-      }
-
-      if (!selectedModel) {
-        return `⚠️ Invalid Model Selection! Kripya list me se valid Model Number reply karein (1 se ${models.length} ke beech).\n\n` +
-          customerHandler.formatModelsPrompt(session.data.vehicleCategory, models, session.data.distanceKm || 0);
-      }
-
-      const updatedSession = {
-        ...session.data,
-        selectedModel,
-      };
-
-      // Calculate final estimated fare result & app redirect link
-      const fareResultText = await customerHandler.getFareEstimateResult(updatedSession);
-
-      // Clear session - WhatsApp bot does NOT create actual orders or trigger dispatch!
-      sessionManager.clearSession(senderPhone);
-
-      return fareResultText;
-    }
-
-    default:
-      sessionManager.clearSession(senderPhone);
-      return "Session reset ho gaya hai. Aap *Book* ya *Fare* write karke start kar sakte hain.";
   }
 }
 
