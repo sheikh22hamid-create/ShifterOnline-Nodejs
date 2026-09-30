@@ -353,7 +353,7 @@ function detectGlobalIntent(text, sessionStep) {
   }
 
   // 5. TRACK ORDER
-  if (t.startsWith("track") || t.includes("order status") || t.match(/^#?\d{4,6}$/)) {
+  if (t.startsWith("track") || t.includes("order status") || t.match(/^#?\d+$/)) {
     return { isGlobalSwitch: true, intent: "TRACK_ORDER" };
   }
 
@@ -432,11 +432,11 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
           break;
 
         case "TRACK_ORDER": {
-          const orderId = cleanText.match(/\d{4,6}/)?.[0];
+          const orderId = cleanText.match(/\d+/)?.[0];
           if (orderId) {
             replyText = await customerHandler.handleTrackingQuery(orderId, senderPhone);
           } else {
-            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 1024*).";
+            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 244*).";
           }
           break;
         }
@@ -521,11 +521,11 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
         }
 
         case "TRACK_ORDER": {
-          const orderId = entities.orderId || cleanText.match(/\d{4,6}/)?.[0];
+          const orderId = entities?.orderId || cleanText.match(/\d+/)?.[0];
           if (orderId) {
             replyText = await customerHandler.handleTrackingQuery(orderId, senderPhone);
           } else {
-            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 1024*).";
+            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 244*).";
           }
           break;
         }

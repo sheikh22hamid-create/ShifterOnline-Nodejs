@@ -245,8 +245,8 @@ function fallbackRuleBasedParser(text) {
   }
 
   // 5. TRACK ORDER
-  if (t.includes("track") || t.includes("kahan") || t.includes("order status") || t.match(/#?\d{4,6}/)) {
-    const match = text.match(/\d{4,6}/);
+  if (t.includes("track") || t.includes("kahan") || t.includes("order status") || t.match(/#?\d+/)) {
+    const match = text.match(/\d+/);
     return {
       intent: "TRACK_ORDER",
       entities: { orderId: match ? match[0] : null },
