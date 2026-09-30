@@ -37,6 +37,19 @@ test('auto arrival persists exactly one milestone and retry does not reset timer
   expect(db.driver_trip_event.upsert).toHaveBeenCalledTimes(1);
   expect(db.$queryRaw).toHaveBeenCalled();
 });
+test('first arrival stamps first_arrival_at once; later pauses/re-arrivals never overwrite it', async () => {
+  const samples = [0, 10000, 20000, 30000].map(t => ({ timestamp: now - 30000 + t, lat: 28.6, lng: 77.2, accuracy: 10, speed: 0 }));
+  await call('sync', { samples });
+  const firstStamp = timer.first_arrival_at;
+  expect(firstStamp).toBeTruthy();
+
+  // Simulate a pickup-change revert (Task 4/5's territory) clearing pickup_wait_start
+  // but NOT first_arrival_at, then a second arrival at a new point.
+  timer.pickup_wait_start = null;
+  order.order_status = 1;
+  await call('sync', { samples });
+  expect(timer.first_arrival_at).toEqual(firstStamp);
+});
 test('correct OTP starts pickup atomically; incorrect or missing OTP cannot', async () => {
   await call('arrived');
   await expect(call('pickup')).rejects.toThrow('OTP');

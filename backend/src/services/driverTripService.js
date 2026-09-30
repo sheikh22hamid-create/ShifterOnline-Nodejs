@@ -67,8 +67,12 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
         if (order.order_status !== 1) return;
         Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 2, o_status: 'Pickup' } }));
         timer = await tx.pkg_order_wait_timer.upsert({ where: timerKey,
-          create: { order_id: orderId, rid: riderId, pickup_wait_start: at, created_at: new Date() },
-          update: { pickup_wait_start: at, pickup_wait_end: null, pickup_wait_seconds: 0, updated_at: new Date() } });
+          create: { order_id: orderId, rid: riderId, pickup_wait_start: at, first_arrival_at: at, created_at: new Date() },
+          update: { pickup_wait_start: at, pickup_wait_end: null, pickup_wait_seconds: 0, updated_at: new Date(),
+            // Only set on the row's FIRST arrival — an upsert's `update`
+            // branch means the row already existed, so only stamp this if
+            // a prior cycle (pause/relocation) left it unset.
+            ...(timer?.first_arrival_at ? {} : { first_arrival_at: at }) } });
         await event('arrived', 'Your driver has arrived at the pickup location.');
       } else if (target === 'arrived_drop') {
         if (order.order_status !== 3 || progress.stop_step !== stops.length * 2) fail('Finish the active stop first');
