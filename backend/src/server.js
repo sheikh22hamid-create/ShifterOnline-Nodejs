@@ -23,6 +23,7 @@ const driverLeadService = require("./services/driverLeadService");
 const dailyDriverPlanService = require("./services/dailyDriverPlanService");
 const {
   PICKUP_TIMEOUT_SWEEP_INTERVAL_MS,
+  PICKUP_RELOCATION_CEILING_SWEEP_INTERVAL_MS,
   ADVANCE_PAYMENT_SWEEP_INTERVAL_MS,
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS,
   LEAD_EXPIRY_SWEEP_INTERVAL_MS,
@@ -59,6 +60,16 @@ setInterval(() => {
     logger.error("sweepOverduePickups interval failed:", err)
   );
 }, PICKUP_TIMEOUT_SWEEP_INTERVAL_MS);
+
+// Outer ceiling on how long a pickup relocation can be strung out across
+// pause/resume cycles - see tripLifecycle.sweepPickupRelocationCeiling doc
+// comment. Independent sweep from sweepOverduePickups above (different
+// timestamp column, different admin-configured window).
+setInterval(() => {
+  tripLifecycle.sweepPickupRelocationCeiling().catch((err) =>
+    logger.error("sweepPickupRelocationCeiling interval failed:", err)
+  );
+}, PICKUP_RELOCATION_CEILING_SWEEP_INTERVAL_MS);
 
 // Advance-payment timeout auto-cancel — see tripLifecycle.sweepExpiredAdvancePayments
 // doc comment. Same DB-anchored periodic-sweep pattern as sweepOverduePickups

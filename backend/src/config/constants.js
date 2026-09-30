@@ -54,6 +54,11 @@ module.exports = {
   PICKUP_OTP_TIMEOUT_MS: 10 * 60 * 1000,
   PICKUP_TIMEOUT_SWEEP_INTERVAL_MS: 60 * 1000,
 
+  // Independent ceiling sweep (tripLifecycle.sweepPickupRelocationCeiling) -
+  // same 60s cadence as PICKUP_TIMEOUT_SWEEP_INTERVAL_MS is fine since the
+  // ceiling itself is tens of minutes; no need for a coarser interval.
+  PICKUP_RELOCATION_CEILING_SWEEP_INTERVAL_MS: 60 * 1000,
+
   // How long a customer has to pay the advance (shown on accept, e.g. a
   // cancellation-charge/radius-charge hold) before the order auto-cancels —
   // see tripLifecycle.sweepExpiredAdvancePayments. Node port of the legacy

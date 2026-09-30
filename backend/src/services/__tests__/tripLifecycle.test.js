@@ -1253,6 +1253,64 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
   });
 });
 
+describe("tripLifecycle.sweepPickupRelocationCeiling", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$executeRaw.mockResolvedValue(1);
+    pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_customer: 30 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "customer_tok" });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: "rider_tok" });
+  });
+
+  it("cancels orders whose first_arrival_at is older than the ceiling, regardless of pause state", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 500, rid: 8 }, // pickup_wait_start may be null (mid-pause) - irrelevant here
+    ]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 500, uid: 11, rid: 8, delivery_type: 6, o_status: "Pickup" });
+
+    await tripLifecycle.sweepPickupRelocationCeiling();
+
+    expect(prisma.pkg_order_wait_timer.findMany).toHaveBeenCalledWith({
+      where: { first_arrival_at: { lte: expect.any(Date) } },
+    });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // cancelOverduePickup ran
+  });
+
+  it("uses the admin-configured ceiling minutes", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 60, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([]);
+
+    const before = Date.now();
+    await tripLifecycle.sweepPickupRelocationCeiling();
+
+    const cutoffArg = prisma.pkg_order_wait_timer.findMany.mock.calls[0][0].where.first_arrival_at.lte;
+    expect(before - cutoffArg.getTime()).toBeGreaterThan(59 * 60 * 1000);
+    expect(before - cutoffArg.getTime()).toBeLessThan(61 * 60 * 1000);
+  });
+
+  it("doesn't let one failing cancellation stop the rest", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 500, rid: 8 },
+      { order_id: 501, rid: 9 },
+    ]);
+    prisma.pkg_order.findUnique
+      .mockRejectedValueOnce(new Error("db hiccup"))
+      .mockResolvedValueOnce({ id: 501, uid: 12, rid: 9, delivery_type: 6, o_status: "Pickup" });
+
+    await tripLifecycle.sweepPickupRelocationCeiling();
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
   const NOW = new Date("2026-09-22T14:30:00.000Z").getTime(); // 30 min before a 3:00 PM pickup
 

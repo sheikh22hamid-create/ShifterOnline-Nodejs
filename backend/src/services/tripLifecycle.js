@@ -1293,6 +1293,39 @@ async function sweepOverduePickups() {
 }
 
 /**
+ * Independent from sweepOverduePickups' 10-minute-since-arrival clock:
+ * this measures total elapsed time since the FIRST arrival
+ * (pkg_order_wait_timer.first_arrival_at, set once in driverTripService and
+ * never touched by any pause/relocation cycle), so however many times a
+ * pickup change pauses/resumes the OTP-timeout timer, the order is
+ * guaranteed to resolve once this outer ceiling passes. Queries every row
+ * with a first_arrival_at old enough regardless of current pickup_wait_start
+ * state (paused orders have pickup_wait_start === null and would otherwise
+ * never be swept by anything).
+ */
+async function sweepPickupRelocationCeiling() {
+  const { ceilingMinutes } = await getPickupRelocateSettings();
+  const cutoff = new Date(Date.now() - ceilingMinutes * 60000);
+  let overdue;
+  try {
+    overdue = await prisma.pkg_order_wait_timer.findMany({
+      where: { first_arrival_at: { lte: cutoff } },
+    });
+  } catch (err) {
+    logger.error("sweepPickupRelocationCeiling: failed to query overdue wait timers:", err);
+    return;
+  }
+
+  for (const waitRow of overdue) {
+    try {
+      await cancelOverduePickup(waitRow.order_id, waitRow.rid, ceilingMinutes);
+    } catch (err) {
+      logger.error(`sweepPickupRelocationCeiling: failed cancelling order ${waitRow.order_id}:`, err);
+    }
+  }
+}
+
+/**
  * Node port of the legacy PHP's checkAndCancelAdvancePaymentTimeout()
  * (admin/include/advance_payment_helper.php) — a driver accepting an order
  * that carries an advance_payment (a cancellation-charge/radius-charge
@@ -1590,6 +1623,7 @@ module.exports = {
   rateOrder,
   cancelOverduePickup,
   sweepOverduePickups,
+  sweepPickupRelocationCeiling,
   cancelExpiredAdvancePayment,
   sweepExpiredAdvancePayments,
   sendScheduledOrderReminders,
