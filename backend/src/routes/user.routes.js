@@ -28,6 +28,7 @@ router.post("/profile/update", customerProfileController.updateProfile);
 router.post("/profile/image", customerProfileController.updateProfileImage);
 router.post("/address/list", customerProfileController.addressList);
 router.post("/address/save", customerProfileController.saveAddress);
+router.post("/address/delete", customerProfileController.deleteAddress);
 
 // Wallet
 router.post("/wallet/add", customerWalletController.addWallet);

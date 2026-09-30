@@ -94,9 +94,21 @@ async function addressList(req, res) {
     if (!uid) return fail(res, "Something Went wrong  try again !");
 
     const rows = await prisma.tbl_address.findMany({ where: { uid }, orderBy: { id: "desc" } });
-    if (!rows.length) return fail(res, "Address List Not Found!!");
+    if (!rows.length) {
+      return res.status(200).json({
+        ResponseCode: "200",
+        Result: "true",
+        ResponseMsg: "Address List Not Found!!",
+        AddressList: [],
+      });
+    }
 
-    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Address List Get Successfully!!!", AddressList: rows.map(mapAddress) });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Address List Get Successfully!!!",
+      AddressList: rows.map(mapAddress),
+    });
   } catch (err) {
     logger.error("customerProfileController.addressList failed:", err);
     return fail(res, "Internal server error", 500);
@@ -108,8 +120,10 @@ async function saveAddress(req, res) {
   try {
     const b = req.body || {};
     const uid = Number(b.uid || 0);
-    const aid = Number(b.aid ?? -1);
-    if (!uid || !b.address || !b.type || !b.lat_map || !b.long_map || b.aid === undefined || b.aid === null || b.aid === "") {
+    const rawAid = b.aid;
+    const aid = (rawAid === undefined || rawAid === null || rawAid === "" || rawAid === 0 || rawAid === "0") ? 0 : Number(rawAid);
+
+    if (!uid || !b.address || !b.type || !b.lat_map || !b.long_map) {
       return fail(res, "Something Went Wrong!");
     }
 
@@ -117,27 +131,56 @@ async function saveAddress(req, res) {
     if (!activeUser) return fail(res, "User Either Not Exit OR Deactivated From Admin!");
 
     const fields = {
-      address: b.address || null,
-      houseno: b.houseno || null,
-      landmark: b.landmark || null,
-      type: b.type || null,
-      lat_map: b.lat_map || null,
-      long_map: b.long_map || null,
-      c_name: b.c_name || null,
-      c_number: b.c_number || null,
-      is_tracking: b.is_tracking ? Number(b.is_tracking) : null,
+      address: String(b.address || ""),
+      houseno: String(b.houseno || ""),
+      landmark: b.landmark ? String(b.landmark) : null,
+      type: String(b.type || "Home"),
+      lat_map: String(b.lat_map || ""),
+      long_map: String(b.long_map || ""),
+      c_name: String(b.c_name || activeUser.name || ""),
+      c_number: String(b.c_number || activeUser.mobile || ""),
+      is_tracking: Number(b.is_tracking || 0),
     };
 
     if (aid === 0) {
-      await prisma.tbl_address.create({ data: { uid, ...fields } });
-      return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Address Saved Successfully!!!" });
+      const created = await prisma.tbl_address.create({ data: { uid, ...fields } });
+      return res.status(200).json({
+        AddressData: mapAddress(created),
+        ResponseCode: "200",
+        Result: "true",
+        ResponseMsg: "Address Saved Successfully!!!",
+      });
     }
 
     await prisma.tbl_address.updateMany({ where: { id: aid, uid }, data: fields });
     const updated = await prisma.tbl_address.findUnique({ where: { id: aid } });
-    return res.status(200).json({ AddressData: updated ? mapAddress(updated) : null, ResponseCode: "200", Result: "true", ResponseMsg: "Address Updated Successfully!!!" });
+    return res.status(200).json({
+      AddressData: updated ? mapAddress(updated) : null,
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Address Updated Successfully!!!",
+    });
   } catch (err) {
     logger.error("customerProfileController.saveAddress failed:", err);
+    return fail(res, "Internal server error", 500);
+  }
+}
+
+// --- address delete ---
+async function deleteAddress(req, res) {
+  try {
+    const uid = Number(req.body?.uid || 0);
+    const aid = Number(req.body?.aid || 0);
+    if (!uid || !aid) return fail(res, "Something Went Wrong!");
+
+    await prisma.tbl_address.deleteMany({ where: { id: aid, uid } });
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Address Deleted Successfully!!!",
+    });
+  } catch (err) {
+    logger.error("customerProfileController.deleteAddress failed:", err);
     return fail(res, "Internal server error", 500);
   }
 }
@@ -286,5 +329,5 @@ async function profileOverview(req, res) {
   }
 }
 
-module.exports = { updateProfile, updateProfileImage, addressList, saveAddress, profileOverview };
+module.exports = { updateProfile, updateProfileImage, addressList, saveAddress, deleteAddress, profileOverview };
 

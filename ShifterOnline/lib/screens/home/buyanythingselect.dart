@@ -1927,26 +1927,28 @@ class _BuyAnythingSelectState extends State<BuyAnythingSelect> with SingleTicker
         if ((val['ResponseCode'] == "200") && (val['Result'] == "true")) {
           setState(() {});
           addressList = val["AddressList"];
-          addressID = val["AddressList"][0]["id"];
-          dropaddress = val["AddressList"][0]["address"];
-          daddresstype = val["AddressList"][0]["type"];
-          hno = val["AddressList"][0]["hno"];
-          daddress = val["AddressList"][0]["landmark"];
-          lat2 = double.parse(val["AddressList"][0]["lat_map"].toString());
-          lon2 = double.parse(val["AddressList"][0]["long_map"].toString());
-          customerName = val["AddressList"][0]["c_name"];
-          customerMobileNumber = val["AddressList"][0]["c_number"];
-          switch (val["AddressList"][0]["type"]) {
-            case "Home":
-              iconImage1 = "assets/selecthome.png";
-              break;
-            case "Office":
-              iconImage1 = "assets/selectoffice.png";
-              break;
-            case "Other":
-              iconImage1 = "assets/selectothers.png";
-              break;
-            default:
+          if (addressList is List && (addressList as List).isNotEmpty) {
+            addressID = val["AddressList"][0]["id"];
+            dropaddress = val["AddressList"][0]["address"];
+            daddresstype = val["AddressList"][0]["type"];
+            hno = val["AddressList"][0]["hno"];
+            daddress = val["AddressList"][0]["landmark"];
+            lat2 = double.parse(val["AddressList"][0]["lat_map"].toString());
+            lon2 = double.parse(val["AddressList"][0]["long_map"].toString());
+            customerName = val["AddressList"][0]["c_name"];
+            customerMobileNumber = val["AddressList"][0]["c_number"];
+            switch (val["AddressList"][0]["type"]) {
+              case "Home":
+                iconImage1 = "assets/selecthome.png";
+                break;
+              case "Office":
+                iconImage1 = "assets/selectoffice.png";
+                break;
+              case "Other":
+                iconImage1 = "assets/selectothers.png";
+                break;
+              default:
+            }
           }
           setState(() {});
         }

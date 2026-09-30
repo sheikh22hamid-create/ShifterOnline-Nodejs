@@ -203,13 +203,13 @@ class _HomeState extends State<Home> {
 
   Future<void> _loadSavedLocations() async {
     final uid = getdata.read("Uid");
-    if (uid == null || uid.toString().isEmpty) {
+    if (uid == null || uid.toString().isEmpty || uid.toString() == "0") {
       if (mounted) setState(() => _isLoadingSavedLocations = false);
       return;
     }
 
     try {
-      final response = await ApiWrapper.dataPostNode(Config.nodeAddressList, {"uid": uid});
+      final response = await ApiWrapper.dataPostNode(Config.nodeAddressList, {"uid": uid.toString()});
       final rawLocations = response is Map ? response["AddressList"] : null;
       final locations = rawLocations is List
           ? rawLocations
@@ -225,13 +225,22 @@ class _HomeState extends State<Home> {
       });
     } catch (error) {
       debugPrint("Saved locations failed: $error");
-      if (mounted) setState(() => _isLoadingSavedLocations = false);
+      if (mounted) {
+        setState(() {
+          _savedLocations = [];
+          _isLoadingSavedLocations = false;
+        });
+      }
     }
   }
 
   Future<void> _selectSavedDropLocation(Map<String, dynamic> location) async {
     await _ensureCurrentPickup();
-    if (_confirmedPickupData == null) return;
+    if (_confirmedPickupData == null) {
+      ApiWrapper.showToastMessage("Please select pickup location first".tr);
+      await _changePickupLocation();
+      if (_confirmedPickupData == null) return;
+    }
 
     final drop = Map<String, dynamic>.from(location);
     await getdata.write("DropeAddress", [drop]);
@@ -252,7 +261,14 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _addQuickLocation() async {
-    await Get.to(() => const LocationSearchScreen(locationType: "Drop"));
+    final uid = getdata.read("Uid");
+    if (uid == null || uid.toString().isEmpty || uid.toString() == "0") {
+      ApiWrapper.showToastMessage("Please login to save locations".tr);
+      await Get.to(() => SignIn());
+      final newUid = getdata.read("Uid");
+      if (newUid == null || newUid.toString().isEmpty || newUid.toString() == "0") return;
+    }
+    await Get.to(() => const Traking(type2: "Add"));
     await _loadSavedLocations();
   }
 
