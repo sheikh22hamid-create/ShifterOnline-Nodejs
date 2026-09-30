@@ -8,6 +8,7 @@ const DEFAULTS = {
   smallMoveThresholdM: 200,
   otpMismatchFlagM: 500,
   driverCompensation: 0,
+  autoCompleteDistanceM: 150,
 };
 
 const KEYS = {
@@ -15,6 +16,7 @@ const KEYS = {
   pickup_small_move_threshold_m: "smallMoveThresholdM",
   pickup_otp_mismatch_flag_m: "otpMismatchFlagM",
   pickup_timeout_driver_compensation: "driverCompensation",
+  pickup_complete_auto_distance_m: "autoCompleteDistanceM",
 };
 
 function parsePositive(value, fallback) {

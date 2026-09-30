@@ -1547,6 +1547,13 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             if (tripActionPending) return;
             if ("pickup".equals(status)) {
                 showOtpDialog();
+            } else if ("pickup_complete".equals(status)) {
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Pickup complete?")
+                        .setMessage("Confirm the goods are loaded and you're ready to start the delivery.")
+                        .setNegativeButton("Not yet", null)
+                        .setPositiveButton("Pickup Complete", (dialog, which) -> sendTripAction("pickup_complete", null, null))
+                        .show();
             } else if ("complete".equals(status)) {
                 new android.app.AlertDialog.Builder(this)
                         .setTitle("Complete delivery?")
@@ -1728,7 +1735,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             submit.setEnabled(false);
             tripActionPending = true;
             binding.txtConfirm.setEnabled(false);
-            com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "pickup", otp, (data, error) -> {
+            // "verify_otp" only verifies and starts the loading-wait clock -
+            // it does NOT start the trip. The driver confirms the goods are
+            // loaded with a separate "Pickup Complete" tap (or, if they
+            // forget, leaving the pickup vicinity auto-completes it
+            // server-side) - see updateTripControls()'s "pickup_complete" status.
+            com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "verify_otp", otp, (data, error) -> {
                 tripActionPending = false;
                 if (isFinishing() || isDestroyed()) return;
                 submit.setEnabled(true);
@@ -1741,6 +1753,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 }
                 dialog.dismiss();
                 applyTripProgress();
+                // order_status/driver_flow_id stays "2" across a verify_otp
+                // call (the trip doesn't start until "Pickup Complete"), so
+                // applyTripProgress()'s state-change guard won't re-run
+                // setupUI() on its own - refresh the button text explicitly
+                // so "VERIFY OTP..." swaps to "PICKUP COMPLETE" right away.
+                updateTripControls();
             });
         });
         dialog.show();
@@ -1909,6 +1927,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         currentPolyline = mMap.addPolyline((PolylineOptions) values[0]);
     }
 
+    private boolean isOtpVerifiedForCurrentOrder() {
+        if (orderItem == null) return false;
+        JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
+        return cached != null && cached.has("otp_verified") && cached.get("otp_verified").getAsBoolean();
+    }
+
     private void updateTripControls() {
         List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
         switch (orderItem.getOrderFlowId()) {
@@ -1927,8 +1951,17 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 break;
 
             case "2":
-                status = "pickup";
-                binding.txtConfirm.setText("VERIFY OTP & START DELIVERY");
+                // OTP already verified (driver dismissed the OTP dialog) but
+                // hasn't tapped "Pickup Complete" yet - flow stays "2" until
+                // that tap (or the leave-the-vicinity auto-trigger, backend
+                // side) actually starts the trip.
+                if (isOtpVerifiedForCurrentOrder()) {
+                    status = "pickup_complete";
+                    binding.txtConfirm.setText("PICKUP COMPLETE");
+                } else {
+                    status = "pickup";
+                    binding.txtConfirm.setText("VERIFY OTP & START DELIVERY");
+                }
                 binding.txtReject.setText(getString(R.string.cancel));
                 binding.txtReject.setVisibility(View.VISIBLE);
                 break;

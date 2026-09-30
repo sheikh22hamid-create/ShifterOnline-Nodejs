@@ -16,7 +16,7 @@ jest.mock('../orderRouteRepricing', () => ({
 }));
 jest.mock('../../utils/pickupRelocateSettings', () => ({
   getPickupRelocateSettings: jest.fn().mockResolvedValue({
-    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0, autoCompleteDistanceM: 150,
   }),
 }));
 jest.mock('../../utils/pickupOtpTimeout', () => ({
@@ -176,6 +176,60 @@ test('OTP countdown subtracts pickup_wait_banked_seconds (time already waited be
   const fresh = await snapshot(waitingOrder, null, { pickup_wait_start: new Date(now - 120000), pickup_wait_end: null, pickup_wait_banked_seconds: 0 }, 0);
   expect(fresh.pickup_otp_remaining_seconds).toBe(480);
 });
+test('verify_otp alone starts the loading-wait clock without starting the trip; pickup_complete then starts it', async () => {
+  await call('arrived');
+  const afterVerify = await call('verify_otp', { otp: '1234' });
+  expect(afterVerify.order_status).toBe(2); // trip not started yet
+  expect(afterVerify.otp_verified).toBe(true);
+  expect(afterVerify.pickup_load_wait_start).toBeTruthy();
+  expect(order.order_status).toBe(2);
+
+  const afterComplete = await call('pickup_complete');
+  expect(afterComplete.order_status).toBe(3);
+  expect(order.order_status).toBe(3);
+  expect(order.pickup_time).toBeInstanceOf(Date);
+});
+
+test('pickup_complete records how long the loading wait actually lasted', async () => {
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+  jest.setSystemTime(now);
+  try {
+    await call('arrived');
+    await call('verify_otp', { otp: '1234' });
+    jest.setSystemTime(now + 45000); // 45s of loading later
+    await call('pickup_complete');
+    expect(timer.pickup_load_wait_seconds).toBe(45);
+    expect(timer.pickup_load_wait_start).toBeNull();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('pickup_complete without a prior verify_otp still requires the OTP (rejects with no otp given)', async () => {
+  await call('arrived');
+  await expect(call('pickup_complete')).rejects.toThrow('OTP');
+});
+
+test('leaving the pickup vicinity after verifying OTP auto-completes the pickup even if the driver never taps the button', async () => {
+  await call('arrived');
+  await call('verify_otp', { otp: '1234' });
+  // order.plat/plong are '28.6'/'77.2'; ~300m away, past the 150m default.
+  const samples = [{ timestamp: now + 5000, lat: 28.603, lng: 77.2, accuracy: 10, speed: 1 }];
+  const result = await call('sync', { samples });
+  expect(result.order_status).toBe(3);
+  expect(order.order_status).toBe(3);
+});
+
+test('staying within the pickup vicinity after verifying OTP does not auto-complete', async () => {
+  await call('arrived');
+  await call('verify_otp', { otp: '1234' });
+  // ~10m away - well under the 150m default.
+  const samples = [{ timestamp: now + 5000, lat: 28.6001, lng: 77.2, accuracy: 10, speed: 0 }];
+  const result = await call('sync', { samples });
+  expect(result.order_status).toBe(2);
+  expect(order.order_status).toBe(2);
+});
+
 test('malformed observations are rejected without writing trip state', async () => {
   await expect(call('sync', { samples: [null] })).rejects.toThrow('valid location');
   expect(db.$transaction).not.toHaveBeenCalled();

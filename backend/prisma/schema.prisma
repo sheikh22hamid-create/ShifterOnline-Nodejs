@@ -421,6 +421,13 @@ model pkg_order_wait_timer {
   // already parked at the old pickup point — see orderPickupService and
   // sql/20260929_pickup_change_wait_banking.sql.
   pickup_wait_banked_seconds Int @default(0)
+  // Loading-wait phase: starts the moment the OTP is verified (driver
+  // hasn't yet tapped "Pickup Complete"), ends when pickup_complete fires
+  // (manual tap or auto-trigger on leaving the pickup vicinity). Billed at
+  // trip completion alongside pickup_wait_seconds/drop_wait_seconds - see
+  // tripLifecycle.js's waiting-charge calc.
+  pickup_load_wait_start   DateTime? @db.DateTime(0)
+  pickup_load_wait_seconds Int       @default(0)
 
   @@unique([order_id, rid], map: "order_rid_unique")
   @@unique([order_id, rid], map: "uniq_order_rid")

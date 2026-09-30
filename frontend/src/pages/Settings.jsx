@@ -78,6 +78,7 @@ const HANDLED_FLAG_KEYS = [
   'pickup_small_move_threshold_m',
   'pickup_otp_mismatch_flag_m',
   'pickup_timeout_driver_compensation',
+  'pickup_complete_auto_distance_m',
   'max_extra_stops',
   'extra_stop_charge',
 ]
@@ -416,6 +417,20 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Paid to the driver's wallet if an order auto-cancels because the customer never handed over the OTP. Set to 0 to pay nothing (today's behavior).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_complete_auto_distance_m">Pickup-complete auto-trigger distance (m)</Label>
+            <Input
+              id="flag-pickup_complete_auto_distance_m"
+              type="number"
+              min="1"
+              placeholder="e.g. 150"
+              value={flags.pickup_complete_auto_distance_m ?? '150'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_complete_auto_distance_m: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              If the driver verifies the OTP but never taps "Pickup Complete", leaving the pickup point by this much automatically marks the pickup complete and starts the trip.
             </p>
           </div>
           <div>

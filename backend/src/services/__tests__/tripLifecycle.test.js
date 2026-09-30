@@ -987,6 +987,27 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     });
   });
 
+  it("includes pickup_load_wait_seconds (post-OTP loading wait, before the driver tapped Pickup Complete) in the billed waiting charge", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 305,
+      rid: 1,
+      city_id: 1,
+      d_charge: 100,
+      total_dcharge: 100,
+      commission: 10,
+      trans_id: "cash_payment",
+      free_waiting_time: "0",
+      wating_charge: "60",
+    });
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 0, pickup_load_wait_seconds: 60 });
+
+    const result = await tripLifecycle.updateStatus(305, 1, "complete");
+
+    expect(result.success).toBe(true);
+    // finalTotal = 100 + 60 = 160; commissionAmount(160, 10) = 16
+    expect(pricingEngine.commissionAmount).toHaveBeenCalledWith(160, 10);
+  });
+
   it("includes unloading in the shared waiting allowance and records its end", async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-24T10:00:00Z'));
     try {

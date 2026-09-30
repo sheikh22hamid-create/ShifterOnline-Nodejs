@@ -31,6 +31,11 @@ async function snapshot(order, progress, timer, stopCount) {
     pickup_wait_start: timer?.pickup_wait_start ? new Date(timer.pickup_wait_start).getTime() : 0,
     pickup_wait_seconds: timer?.pickup_wait_seconds || 0,
     pickup_otp_remaining_seconds: pickupOtpRemainingSeconds,
+    // otp_verified/pickup_load_wait_start let the driver app know when to
+    // swap the OTP-entry UI for the "Pickup Complete" button, and show its
+    // own loading-time counter - see the 'pickup_complete' action below.
+    otp_verified: !!progress?.otp_verified_at,
+    pickup_load_wait_start: timer?.pickup_load_wait_start ? new Date(timer.pickup_load_wait_start).getTime() : 0,
     drop_wait_start: timer?.drop_wait_start ? new Date(timer.drop_wait_start).getTime() : 0,
     server_time: Date.now(), version: progress?.updated_at ? new Date(progress.updated_at).getTime() : 0,
   };
@@ -97,6 +102,18 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
       progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
     }
 
+    async function completePickup(at) {
+      Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 3, o_status: 'On_Route', pickup_time: at } }));
+      const loadWaitSeconds = timer?.pickup_load_wait_start
+        ? Math.max(0, Math.floor((at - new Date(timer.pickup_load_wait_start)) / 1000)) : 0;
+      timer = await tx.pkg_order_wait_timer.update({ where: timerKey, data: {
+        pickup_load_wait_seconds: loadWaitSeconds, pickup_load_wait_start: null,
+      } });
+      progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
+      progress.last_sample_at = at;
+      await event('pickup', 'Your goods have been picked up. Your driver is starting the delivery.');
+    }
+
     if (action === 'sync' && !blocked) {
       let target = null;
       if (order.order_status === 1) target = { key: 'arrived', lat: order.plat, lng: order.plong };
@@ -122,29 +139,54 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
           }
         }
       }
+      // Driver verified the OTP but never tapped "Pickup Complete" - if they
+      // physically leave the pickup vicinity, treat that as an implicit
+      // confirmation instead of leaving the trip stuck waiting on a tap that
+      // may never come.
+      if (order.order_status === 2 && progress.otp_verified_at && timer?.pickup_load_wait_start) {
+        const { autoCompleteDistanceM } = await getPickupRelocateSettings();
+        const pLat = Number(order.plat), pLng = Number(order.plong);
+        if ([pLat, pLng].every(Number.isFinite)) {
+          for (const sample of [...samples].sort((a, b) => Number(a.timestamp) - Number(b.timestamp))) {
+            const sLat = Number(sample.lat), sLng = Number(sample.lng);
+            if (![sLat, sLng].every(Number.isFinite)) continue;
+            const distanceM = haversineKm(pLat, pLng, sLat, sLng) * 1000;
+            if (distanceM > autoCompleteDistanceM) {
+              await completePickup(new Date(sample.timestamp));
+              break;
+            }
+          }
+        }
+      }
     } else if (action === 'arrived') {
       await arrive(action, new Date()); // explicit manual fallback for weak GPS/wrong pins
-    } else if (action === 'verify_otp' || action === 'pickup') {
+    } else if (action === 'verify_otp' || action === 'pickup' || action === 'pickup_complete') {
+      const wasVerified = !!progress.otp_verified_at;
       if (otp !== undefined) {
         if (!order.otp || String(otp).trim() !== String(order.otp).trim()) fail('Invalid pickup OTP');
         progress.otp_verified_at = progress.otp_verified_at || new Date();
       }
       if (!progress.otp_verified_at) fail('Verify the pickup OTP after goods are handed over');
-      if (action === 'pickup' && order.order_status !== 3) {
+      const newlyVerified = !wasVerified && !!progress.otp_verified_at;
+
+      if (newlyVerified) {
         if (order.order_status !== 2) fail('Mark pickup arrival before verifying handover');
-        const now = new Date();
-        Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 3, o_status: 'On_Route', pickup_time: now } }));
+        const verifiedAt = new Date();
         // Snapshot of where the driver actually was when they confirmed the
-        // pickup OTP. Always recorded for reporting; Task 7's mismatch check
-        // (below) additionally reprices the trip against this point when it
+        // pickup OTP. Always recorded for reporting; the mismatch check
+        // below additionally reprices the trip against this point when it
         // differs materially from the last confirmed pickup (see the
         // otp_verify_lat/lng schema comment). Silently skipped if the app
         // didn't send a fix (older app version, or no GPS available at that
         // instant) - never blocks OTP verification itself.
         const hasFix = Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
         timer = await tx.pkg_order_wait_timer.update({ where: timerKey, data: {
-          pickup_wait_end: now, pickup_wait_seconds: timer?.pickup_wait_start ? Math.max(0, Math.floor((now - new Date(timer.pickup_wait_start)) / 1000)) : 0,
-          ...(hasFix ? { otp_verify_lat: String(lat), otp_verify_lng: String(lng), otp_verify_at: now } : {}),
+          pickup_wait_end: verifiedAt, pickup_wait_seconds: timer?.pickup_wait_start ? Math.max(0, Math.floor((verifiedAt - new Date(timer.pickup_wait_start)) / 1000)) : 0,
+          // Starts the loading-wait clock - ends in completePickup(), whether
+          // from an explicit "Pickup Complete" tap or the leave-the-vicinity
+          // auto-trigger above.
+          pickup_load_wait_start: verifiedAt,
+          ...(hasFix ? { otp_verify_lat: String(lat), otp_verify_lng: String(lng), otp_verify_at: verifiedAt } : {}),
         } });
         if (hasFix) {
           const oldLat = Number(order.plat), oldLng = Number(order.plong);
@@ -183,9 +225,11 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
             } }));
           }
         }
-        progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
-        progress.last_sample_at = now;
-        await event('pickup', 'Your goods have been picked up. Your driver is starting the delivery.');
+      }
+
+      if ((action === 'pickup' || action === 'pickup_complete') && order.order_status !== 3) {
+        if (order.order_status !== 2) fail('Mark pickup arrival before verifying handover');
+        await completePickup(new Date());
       }
     } else if (/^arrived_stop_[1-9]\d*$/.test(action) || action === 'arrived_drop') {
       const requestedStep = action === 'arrived_drop' ? stops.length * 2 : (Number(action.split('_').pop()) - 1) * 2;

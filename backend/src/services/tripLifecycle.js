@@ -444,7 +444,7 @@ async function updateStatus(orderId, riderId, status) {
     const freeWaitSeconds = parseFloat(order.free_waiting_time) || 0;
     const dropWaitSeconds = waitTimer?.drop_wait_start
       ? Math.max(0, Math.floor((now - new Date(waitTimer.drop_wait_start)) / 1000)) : 0;
-    const totalWaitSeconds = (waitTimer?.pickup_wait_seconds || 0) + dropWaitSeconds;
+    const totalWaitSeconds = (waitTimer?.pickup_wait_seconds || 0) + (waitTimer?.pickup_load_wait_seconds || 0) + dropWaitSeconds;
     if (waitTimer?.drop_wait_start) {
       await prisma.pkg_order_wait_timer.update({ where: { order_id_rid: { order_id: orderId, rid: riderId } }, data: {
         drop_wait_end: now, drop_wait_seconds: dropWaitSeconds, total_wait_seconds: totalWaitSeconds,
