@@ -80,6 +80,17 @@ function notifyNewOrder(order) {
     odate: order?.odate,
     timestamp: Date.now(),
   });
+
+  if (order?.id) {
+    try {
+      const whatsapp = require("../whatsapp/notifications");
+      void Promise.resolve(whatsapp.notifyOrderBooked(order.id)).catch((err) => {
+        logger.error(`WhatsApp notifyOrderBooked failed for order #${order.id}:`, err);
+      });
+    } catch (e) {
+      logger.error("Failed to require whatsapp notifications in notifyNewOrder:", e);
+    }
+  }
 }
 
 function notifyOrderStatusUpdate(order) {

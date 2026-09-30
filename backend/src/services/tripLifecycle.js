@@ -21,11 +21,28 @@ const {
   SCHEDULED_ORDER_LATE_ACCEPT_BUFFER_MS,
 } = require("../config/constants");
 
+const whatsappNotifications = require("../whatsapp/notifications");
+
 function notifyAdminStatus(order) {
   try {
     adminSocket.notifyOrderStatusUpdate(order);
+    if (order && order.id) {
+      const orderId = order.id;
+      const status = Number(order.order_status);
+      if (status === 1) {
+        whatsappNotifications.notifyDriverAssigned(orderId);
+      } else if (status === 2) {
+        whatsappNotifications.notifyDriverArrived(orderId);
+      } else if (status === 3) {
+        whatsappNotifications.notifyTripStarted(orderId);
+      } else if (status === 5) {
+        whatsappNotifications.notifyTripCompleted(orderId);
+      } else if (status === 4) {
+        whatsappNotifications.notifyOrderCancelled(orderId, order.cancel_reason);
+      }
+    }
   } catch (err) {
-    logger.error(`notifyAdminStatus failed for order ${order?.id}:`, err);
+    logger.error(`notifyAdminStatus / WhatsApp notification failed for order ${order?.id}:`, err);
   }
 }
 
@@ -379,10 +396,6 @@ async function updateStatus(orderId, riderId, status) {
       },
     });
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 1, o_status: "Processing", rid: riderId });
-    try {
-      const whatsapp = require("../whatsapp/notifications");
-      void whatsapp.notifyDriverAssigned(orderId).catch(() => {});
-    } catch (e) {}
     return { success: true, order_status: 1, o_status: "Processing" };
   }
 
@@ -403,10 +416,6 @@ async function updateStatus(orderId, riderId, status) {
     const progress = await prisma.driver_trip_progress.findUnique({ where: { order_id: orderId } });
     if (order.order_status === 5) {
       if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
-      try {
-        const whatsapp = require("../whatsapp/notifications");
-        void whatsapp.notifyTripCompleted(orderId).catch(() => {});
-      } catch (e) {}
       return { success: true, order_status: 5, o_status: "Completed" };
     }
     if (progress?.automation_enabled) {
@@ -728,10 +737,6 @@ async function updateStatus(orderId, riderId, status) {
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
-    try {
-      const whatsapp = require("../whatsapp/notifications");
-      void whatsapp.notifyTripCompleted(orderId).catch(() => {});
-    } catch (e) {}
     return { success: true, order_status: 5, o_status: "Completed" };
   }
 
