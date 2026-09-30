@@ -74,6 +74,10 @@ const HANDLED_FLAG_KEYS = [
   'covered_body_charge',
   'half_body_charge',
   'pickup_otp_timeout_minutes',
+  'pickup_relocate_ceiling_minutes',
+  'pickup_small_move_threshold_m',
+  'pickup_otp_mismatch_flag_m',
+  'pickup_timeout_driver_compensation',
   'max_extra_stops',
   'extra_stop_charge',
 ]
@@ -356,6 +360,62 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               If the customer doesn't hand over the pickup OTP within this many minutes of the driver arriving, the ride auto-cancels from the customer's side.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_relocate_ceiling_minutes">Pickup relocation ceiling (min)</Label>
+            <Input
+              id="flag-pickup_relocate_ceiling_minutes"
+              type="number"
+              min="1"
+              placeholder="e.g. 35"
+              value={flags.pickup_relocate_ceiling_minutes ?? '35'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_relocate_ceiling_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              However many times a pickup change pauses/resumes the OTP timer, the order is force-resolved once this many minutes have passed since the driver's first arrival.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_small_move_threshold_m">Pickup small-move threshold (m)</Label>
+            <Input
+              id="flag-pickup_small_move_threshold_m"
+              type="number"
+              min="1"
+              placeholder="e.g. 200"
+              value={flags.pickup_small_move_threshold_m ?? '200'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_small_move_threshold_m: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              A pickup-location change within this distance keeps the OTP timer running as-is; beyond it, the timer pauses until the driver reaches the new point.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_otp_mismatch_flag_m">OTP-location mismatch flag distance (m)</Label>
+            <Input
+              id="flag-pickup_otp_mismatch_flag_m"
+              type="number"
+              min="1"
+              placeholder="e.g. 500"
+              value={flags.pickup_otp_mismatch_flag_m ?? '500'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_otp_mismatch_flag_m: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              If the driver verifies the OTP this far from the last confirmed pickup point, the trip re-prices against where the OTP was actually verified and is flagged for review.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_timeout_driver_compensation">Driver OTP-timeout compensation (₹)</Label>
+            <Input
+              id="flag-pickup_timeout_driver_compensation"
+              type="number"
+              min="0"
+              placeholder="e.g. 0"
+              value={flags.pickup_timeout_driver_compensation ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_timeout_driver_compensation: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Paid to the driver's wallet if an order auto-cancels because the customer never handed over the OTP. Set to 0 to pay nothing (today's behavior).
             </p>
           </div>
           <div>
