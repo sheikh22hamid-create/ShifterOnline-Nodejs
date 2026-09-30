@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { Groq } = require("groq-sdk");
 const logger = require("../utils/logger");
+const geminiService = require("./geminiService");
 
 let groqClient = null;
 let cachedKnowledge = null;
@@ -104,58 +105,73 @@ CRITICAL DRIVER WALLET & PROFILE RULE:
 `;
 
 /**
- * Parses user input using Groq AI API with Multi-Key Failover
+ * Parses user input using:
+ * 1. Tier 1: Google Gemini AI (Primary) with multi-model cascade
+ * 2. Tier 2: Groq AI (Secondary Failover) with multi-key failover
+ * 3. Tier 3: Rule-based fallback parser (Guaranteed Offline Safety Net)
  */
-async function parseMessageWithGroq(userText, sessionContext = {}) {
-  const apiKeys = getGroqApiKeys();
-
-  if (apiKeys.length === 0) {
-    logger.warn("No GROQ_API_KEY configured in .env. Using rule-based fallback parser.");
-    return fallbackRuleBasedParser(userText);
+async function parseMessageWithAI(userText, sessionContext = {}) {
+  // 1. Tier 1: Google Gemini AI
+  try {
+    const geminiResult = await geminiService.parseMessageWithGemini(userText, sessionContext);
+    if (geminiResult && geminiResult.intent) {
+      return geminiResult;
+    }
+  } catch (err) {
+    logger.warn(`⚠️ Gemini parsing error: ${err.message}. Proceeding to Groq failover.`);
   }
 
-  const knowledgeBase = getBotKnowledge();
-  const systemPromptWithKnowledge = SYSTEM_PROMPT + (knowledgeBase ? `\n\nOFFICIAL COMPANY KNOWLEDGE BASE:\n"""\n${knowledgeBase.slice(0, 10000)}\n"""` : "");
+  // 2. Tier 2: Groq AI Multi-Key Failover
+  const apiKeys = getGroqApiKeys();
+  if (apiKeys.length > 0) {
+    const knowledgeBase = getBotKnowledge();
+    const systemPromptWithKnowledge =
+      SYSTEM_PROMPT +
+      (knowledgeBase ? `\n\nOFFICIAL COMPANY KNOWLEDGE BASE:\n"""\n${knowledgeBase.slice(0, 10000)}\n"""` : "");
 
-  // Multi-Key Failover Loop
-  for (let i = 0; i < apiKeys.length; i++) {
-    const apiKey = apiKeys[i];
-    const keyLabel = `Key #${i + 1} (${apiKey.slice(0, 7)}...${apiKey.slice(-4)})`;
+    for (let i = 0; i < apiKeys.length; i++) {
+      const apiKey = apiKeys[i];
+      const keyLabel = `Groq Key #${i + 1} (${apiKey.slice(0, 7)}...${apiKey.slice(-4)})`;
 
-    try {
-      const client = getGroqClientForKey(apiKey);
+      try {
+        const client = getGroqClientForKey(apiKey);
 
-      const response = await client.chat.completions.create({
-        model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
-        messages: [
-          { role: "system", content: systemPromptWithKnowledge },
-          {
-            role: "user",
-            content: `Session Context: ${JSON.stringify(sessionContext)}\nUser Message: "${userText}"`,
-          },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 500,
-      });
+        const response = await client.chat.completions.create({
+          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+          messages: [
+            { role: "system", content: systemPromptWithKnowledge },
+            {
+              role: "user",
+              content: `Session Context: ${JSON.stringify(sessionContext)}\nUser Message: "${userText}"`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_tokens: 500,
+        });
 
-      const content = response.choices[0]?.message?.content;
-      if (!content) throw new Error("Empty content returned from Groq API");
+        const content = response.choices[0]?.message?.content;
+        if (!content) throw new Error("Empty content returned from Groq API");
 
-      const parsed = JSON.parse(content);
-      logger.info(`✅ Groq AI parsing successful using ${keyLabel} (Intent: ${parsed.intent})`);
-      return parsed;
-    } catch (error) {
-      logger.warn(`⚠️ Groq AI API error with ${keyLabel}: ${error.message}`);
-      if (i < apiKeys.length - 1) {
-        logger.info(`🔄 Failing over to next Groq API key #${i + 2}...`);
+        const parsed = JSON.parse(content);
+        logger.info(`✅ Groq AI parsing successful using ${keyLabel} (Intent: ${parsed.intent})`);
+        return parsed;
+      } catch (error) {
+        logger.warn(`⚠️ Groq AI API error with ${keyLabel}: ${error.message}`);
+        if (i < apiKeys.length - 1) {
+          logger.info(`🔄 Failing over to next Groq API key #${i + 2}...`);
+        }
       }
     }
   }
 
-  logger.error("❌ All configured Groq API keys failed or hit limits. Falling back to rule-based parser.");
+  // 3. Tier 3: Deterministic Rule-Based Fallback
+  logger.warn("⚠️ Both Gemini and Groq AI unavailable or exhausted. Using rule-based fallback parser.");
   return fallbackRuleBasedParser(userText);
 }
+
+// Backward compatibility alias
+const parseMessageWithGroq = parseMessageWithAI;
 
 /**
  * Fallback intent classifier if GROQ_API_KEY is not configured
@@ -265,6 +281,7 @@ function fallbackRuleBasedParser(text) {
 }
 
 module.exports = {
+  parseMessageWithAI,
   parseMessageWithGroq,
   fallbackRuleBasedParser,
   getBotKnowledge,

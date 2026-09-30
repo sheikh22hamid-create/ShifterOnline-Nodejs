@@ -468,11 +468,11 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
         `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
         `📞 *Customer Care*: 9109114515`;
     } else {
-      // Session is IDLE - parse intent using Groq AI / Fallback parser
-      const aiAnalysis = await groqService.parseMessageWithGroq(cleanText, session);
+      // Session is IDLE - parse intent using Gemini AI / Groq AI / Fallback parser
+      const aiAnalysis = await groqService.parseMessageWithAI(cleanText, session);
       const { intent, entities, aiResponse } = aiAnalysis;
 
-      logger.info(`Groq AI Classified Intent: ${intent}`);
+      logger.info(`AI Classified Intent: ${intent}`);
 
       switch (intent) {
         case "DRIVER_SUPPORT":
