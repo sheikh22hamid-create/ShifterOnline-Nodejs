@@ -39,6 +39,8 @@ async function flushTripEvents() {
           const whatsapp = require('../whatsapp/notifications');
           if (event.milestone === 'arrived') void Promise.resolve(whatsapp.notifyDriverArrived(event.order_id)).catch(() => {});
           if (event.milestone === 'pickup') void Promise.resolve(whatsapp.notifyTripStarted(event.order_id)).catch(() => {});
+          if (event.milestone === 'arrived_drop') void Promise.resolve(whatsapp.notifyDriverArrivedDrop(event.order_id)).catch(() => {});
+          if (event.milestone === 'complete') void Promise.resolve(whatsapp.notifyTripCompleted(event.order_id)).catch(() => {});
           dispatch.emitCustomerEvent(event.user_id, 'order:status_changed', payload);
           dispatch.emitDriverEvent(event.rider_id, 'order:trip_progress', payload);
         } catch (error) { logger.error(`Trip live event ${event.id} failed:`, error); }
@@ -54,6 +56,10 @@ async function flushTripEvents() {
   }
 }
 async function recordCompletion(order) {
+  try {
+    const whatsapp = require('../whatsapp/notifications');
+    void Promise.resolve(whatsapp.notifyTripCompleted(order.id)).catch(() => {});
+  } catch (e) {}
   await prisma.driver_trip_event.upsert({
     where: { order_id_milestone: { order_id: order.id, milestone: 'complete' } }, update: {},
     create: { order_id: order.id, rider_id: order.rid, user_id: order.uid, milestone: 'complete',

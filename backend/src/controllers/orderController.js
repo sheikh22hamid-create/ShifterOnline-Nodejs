@@ -194,7 +194,7 @@ async function createOrderCore({
 
   const [validPackages, customer, distanceResult, planDiscount, customerPlan, slabPricingConfig] = await Promise.all([
     prisma.tbl_package.findMany({ where: { id: { in: requestedPackageIds }, status: 1 } }),
-    cityId ? Promise.resolve(null) : prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }),
+    prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true, mobile: true, name: true } }),
     distancePromise,
     pricingEngine.getActivePlanDiscount(uid),
     pricingEngine.getActiveCustomerPlan(uid),
@@ -379,11 +379,11 @@ async function createOrderCore({
       dlong: String(dlong),
       paddress: paddress || null,
       daddress: daddress || null,
-      pmobile: pmobile || null,
+      pmobile: pmobile || customer?.mobile || null,
       dmobile: dmobile || null,
       pick_type: pickType || "",
       drop_type: dropType || "",
-      pick_name: pickName || "",
+      pick_name: pickName || customer?.name || "",
       drop_name: dropName || "",
       description: description || null,
       distance: distanceKm,
@@ -419,6 +419,16 @@ async function createOrderCore({
     });
   }
   order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
+
+  // Automated WhatsApp Notification: notify sender and receiver on confirmed booking
+  try {
+    const notifications = require("../whatsapp/notifications");
+    void notifications.notifyOrderBooked(order.id).catch((err) => {
+      logger.error(`Error sending WhatsApp booking notification for order #${order.id}:`, err);
+    });
+  } catch (notifyErr) {
+    logger.error("Failed to invoke WhatsApp notifyOrderBooked:", notifyErr);
+  }
 
   // Next-day orders (booking_type 3) are never auto-dispatched — admin
   // assigns them manually, individually or as a sequenced batch, from the
@@ -468,12 +478,16 @@ async function createOrder(req, res) {
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType,
+      d_mobile, drop_mobile, receiver_mobile, receiver_phone, p_mobile, pick_mobile, sender_mobile, sender_phone,
     } = req.body;
+
+    const resolvedPmobile = pmobile || p_mobile || pick_mobile || sender_mobile || sender_phone || null;
+    const resolvedDmobile = dmobile || d_mobile || drop_mobile || receiver_mobile || receiver_phone || null;
 
     const result = await createOrderCore({
       uid, category, deliveryTypeIds: delivery_type, bookingType: booking_type, plat, plong, paddress,
-      pickName: pick_name, pmobile, pickType: pick_type, dlat, dlong, daddress, dropName: drop_name,
-      dmobile, dropType: drop_type, packageWeight: package_weight, packageCost: package_cost, description,
+      pickName: pick_name, pmobile: resolvedPmobile, pickType: pick_type, dlat, dlong, daddress, dropName: drop_name,
+      dmobile: resolvedDmobile, dropType: drop_type, packageWeight: package_weight, packageCost: package_cost, description,
       pMethodId: p_method_id, transactionId: transaction_id, extraMileCharge: extra_mile_charge,
       couId: cou_id, couAmt: cou_amt, radiusKm: radius_km, cityId: city_id, photos: photos || null,
       scheduleDateTime: schedule_date_time || scheduleDateTime || null,

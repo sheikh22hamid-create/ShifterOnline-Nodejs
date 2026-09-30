@@ -379,6 +379,10 @@ async function updateStatus(orderId, riderId, status) {
       },
     });
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 1, o_status: "Processing", rid: riderId });
+    try {
+      const whatsapp = require("../whatsapp/notifications");
+      void whatsapp.notifyDriverAssigned(orderId).catch(() => {});
+    } catch (e) {}
     return { success: true, order_status: 1, o_status: "Processing" };
   }
 
@@ -399,6 +403,10 @@ async function updateStatus(orderId, riderId, status) {
     const progress = await prisma.driver_trip_progress.findUnique({ where: { order_id: orderId } });
     if (order.order_status === 5) {
       if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
+      try {
+        const whatsapp = require("../whatsapp/notifications");
+        void whatsapp.notifyTripCompleted(orderId).catch(() => {});
+      } catch (e) {}
       return { success: true, order_status: 5, o_status: "Completed" };
     }
     if (progress?.automation_enabled) {
@@ -720,6 +728,10 @@ async function updateStatus(orderId, riderId, status) {
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
+    try {
+      const whatsapp = require("../whatsapp/notifications");
+      void whatsapp.notifyTripCompleted(orderId).catch(() => {});
+    } catch (e) {}
     return { success: true, order_status: 5, o_status: "Completed" };
   }
 

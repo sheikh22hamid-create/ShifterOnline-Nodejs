@@ -59,7 +59,8 @@ function matchesOrderPhone(senderPhone, order, user) {
 
 /**
  * Order Tracking Query (For orders created via official mobile app)
- * Returns order tracking details for any valid Order ID requested by user
+ * Returns order tracking details ONLY if the senderPhone matches the order's
+ * sender mobile, receiver mobile, user account mobile, or stop contact number.
  */
 async function handleTrackingQuery(orderId, senderPhone) {
   try {
@@ -74,28 +75,80 @@ async function handleTrackingQuery(orderId, senderPhone) {
       return `❌ Order #${id} nahi mila. Kripya sahi Order ID check karein.`;
     }
 
-    let riderText = "Abhi driver search me hai...";
+    const user = order.uid
+      ? await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { id: true, name: true, mobile: true } }).catch(() => null)
+      : null;
+
+    const senderClean = normalizePhone10(senderPhone);
+    let isAuthorized = matchesOrderPhone(senderClean, order, user);
+
+    if (!isAuthorized) {
+      // Also check any extra stop contact numbers
+      const stops = await prisma.pkg_order_stops
+        .findMany({
+          where: { order_id: order.id },
+          select: { contact_number: true },
+        })
+        .catch(() => []);
+      isAuthorized = stops.some((s) => normalizePhone10(s.contact_number) === senderClean);
+    }
+
+    if (!isAuthorized) {
+      logger.warn(`Unauthorized tracking attempt for Order #${order.id} by WhatsApp number: ${senderPhone}`);
+      return (
+        `❌ *This order was not booked using your WhatsApp number.*\n\n` +
+        `Aap sirf wahi orders track kar sakte hain jisme aapka WhatsApp number Sender ya Receiver ke roop me registered ho.\n\n` +
+        `📞 Kisi sahayata ke liye hamare Customer Care 9109114515 par call karein.`
+      );
+    }
+
+    let riderText = "Abhi driver search / assign ho raha hai...";
     if (order.rid > 0) {
-      const rider = await prisma.tbl_rider.findUnique({
-        where: { id: order.rid },
-      });
+      const rider = await prisma.tbl_rider
+        .findUnique({
+          where: { id: order.rid },
+          select: { first_name: true, last_name: true, vehicle_no: true, fmobile: true },
+        })
+        .catch(() => null);
       if (rider) {
         riderText = `*${rider.first_name || ""} ${rider.last_name || ""}* (${rider.vehicle_no || "N/A"}) — 📞 ${rider.fmobile}`;
       }
     }
 
+    const statusMap = {
+      Pending: "Pending (Searching Driver)",
+      Processing: "Driver Assigned",
+      Pickup: "Driver Arrived at Pickup Point",
+      On_Route: "In Transit (On the way to drop)",
+      Completed: "Delivered Successfully ✅",
+      Cancelled: "Cancelled ❌",
+    };
+    const friendlyStatus = statusMap[order.o_status] || order.o_status;
     const trackingUrl = process.env.PUBLIC_TRACKING_URL || `https://shifter.online/track/${order.id}`;
 
-    return `📦 *Order #${order.id} Tracking Status*\n\n` +
-           `📌 *Status*: *${order.o_status}*\n` +
-           `🛵 *Driver*: ${riderText}\n` +
-           `📍 *Pickup*: ${order.paddress}\n` +
-           `🎯 *Drop*: ${order.daddress}\n` +
-           `💰 *Total Amount*: ₹${order.total_dcharge}\n\n` +
-           `🗺️ *Live Location Tracking*: ${trackingUrl}`;
+    let reply =
+      `📦 *Order #${order.id} Tracking Status*\n\n` +
+      `📌 *Status*: *${friendlyStatus}*\n` +
+      `🛵 *Driver*: ${riderText}\n` +
+      `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
+      `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
+      `💰 *Total Amount*: ₹${order.total_dcharge}\n`;
+
+    // Show pickup OTP only if pending pickup and requester is the pickup party
+    const isSenderParty = senderClean === normalizePhone10(order.pmobile) || senderClean === normalizePhone10(user?.mobile);
+    if (isSenderParty && order.order_status < 3 && order.otp) {
+      reply += `🔑 *Pickup OTP*: *${order.otp}*\n`;
+    }
+
+    reply +=
+      `\n🗺️ *Live Location Tracking Link*:\n` +
+      `👉 ${trackingUrl}\n\n` +
+      `📞 Customer Care: 9109114515`;
+
+    return reply;
   } catch (err) {
     logger.error("handleTrackingQuery error:", err);
-    return "⚠️ Order status fetch karne me error aaya.";
+    return "⚠️ Order status fetch karne me error aaya. Kripya thodi der baad prayas karein.";
   }
 }
 
