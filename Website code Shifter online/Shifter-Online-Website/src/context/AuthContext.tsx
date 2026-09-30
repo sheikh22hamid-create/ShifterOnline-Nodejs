@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, type AuthUser } from '../lib/api';
+import { api, type AuthUser, type SignupPayload } from '../lib/api';
 
 interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
+  signup: (payload: SignupPayload) => Promise<void>;
   logout: () => void;
 }
 
@@ -30,14 +30,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { token, user } = await api.login({ email, password });
+  const login = useCallback(async (identifier: string, password: string) => {
+    const { token, user } = await api.login({ identifier, password });
     localStorage.setItem(TOKEN_KEY, token);
     setUser(user);
   }, []);
 
-  const signup = useCallback(async (name: string, email: string, password: string) => {
-    const { token, user } = await api.signup({ name, email, password });
+  const signup = useCallback(async (payload: SignupPayload) => {
+    const { token, user } = await api.signup(payload);
     localStorage.setItem(TOKEN_KEY, token);
     setUser(user);
   }, []);

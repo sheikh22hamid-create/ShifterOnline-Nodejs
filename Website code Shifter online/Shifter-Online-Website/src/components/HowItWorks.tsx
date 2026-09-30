@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ScrollReveal } from './ui/ScrollReveal';
 
 const steps = [
-  { number: '01', icon: Package, title: 'Book Delivery', description: 'Schedule a pickup in seconds from web or app.' },
+  { number: '01', icon: Package, title: 'Request on App', description: 'Schedule a pickup in seconds via the Shifter Mobile App.' },
   { number: '02', icon: UserCheck, title: 'Assign Driver Partner', description: 'A verified driver partner is matched to your shipment.' },
   { number: '03', icon: MapPinned, title: 'Track Shipment', description: 'Follow your package live, every step of the way.' },
   { number: '04', icon: CheckCircle2, title: 'Delivered Safely', description: 'Signed, confirmed, and closed out with proof of delivery.' },
@@ -11,7 +11,7 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <section className="py-24 md:py-32">
+    <section id="how-it-works" className="py-24 md:py-32">
       <div className="container-shifter">
         <ScrollReveal className="mx-auto max-w-2xl text-center">
           <span className="text-xs font-bold tracking-[0.14em] text-orange">HOW IT WORKS</span>
