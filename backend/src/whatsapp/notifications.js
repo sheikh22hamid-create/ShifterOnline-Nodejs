@@ -138,7 +138,6 @@ async function getOrderDetailsWithParticipants(orderId) {
     const receiverPhone = normalizePhone10(order.dmobile);
     const senderName = order.pick_name || user?.name || "Customer";
     const receiverName = order.drop_name || "Receiver";
-    const trackingUrl = process.env.PUBLIC_TRACKING_URL || `https://shifter.online/track/${order.id}`;
 
     return {
       order,
@@ -149,7 +148,6 @@ async function getOrderDetailsWithParticipants(orderId) {
       receiverPhone,
       senderName,
       receiverName,
-      trackingUrl,
     };
   } catch (err) {
     logger.error(`Error loading order participants for #${orderId}:`, err);
@@ -165,7 +163,7 @@ async function notifyOrderBooked(orderId) {
   const data = await getOrderDetailsWithParticipants(orderId);
   if (!data) return false;
 
-  const { order, categoryTitle, senderPhone, receiverPhone, senderName, receiverName, trackingUrl } = data;
+  const { order, categoryTitle, senderPhone, receiverPhone, senderName, receiverName } = data;
 
   const senderMsg =
     `Hello! 👋\n` +
@@ -177,8 +175,7 @@ async function notifyOrderBooked(orderId) {
     `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
     `👤 *Receiver*: ${receiverName}${receiverPhone ? ` (📞 ${receiverPhone})` : ""}\n\n` +
     `Aapko jaldi hi driver assign ho jayega!\n` +
-    `Live tracking ke liye is chat me *Track ${order.id}* likhkar bhejein ya link open karein:\n` +
-    `👉 ${trackingUrl}\n\n` +
+    `Live status ke liye is chat me *Track ${order.id}* likhkar bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Customer Care: 9109114515`;
 
@@ -191,8 +188,7 @@ async function notifyOrderBooked(orderId) {
     `🚗 *Vehicle*: ${categoryTitle}\n\n` +
     `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
     `🎯 *Drop*: ${order.daddress || "N/A"}\n\n` +
-    `Parcel live track karne ke liye is chat me *Track ${order.id}* bhejein ya link dekhein:\n` +
-    `👉 ${trackingUrl}\n\n` +
+    `Parcel live status check karne ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Customer Care: 9109114515`;
 
@@ -267,7 +263,7 @@ async function notifyTripStarted(orderId) {
   const data = await getOrderDetailsWithParticipants(orderId);
   if (!data) return false;
 
-  const { order, rider, senderPhone, receiverPhone, receiverName, trackingUrl } = data;
+  const { order, rider, senderPhone, receiverPhone, receiverName } = data;
   const riderName = rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "Driver";
   const riderPhone = rider?.fmobile || "9109114515";
   const riderVehicle = rider?.vehicle_no ? `(${rider.vehicle_no})` : "";
@@ -281,9 +277,7 @@ async function notifyTripStarted(orderId) {
     `📍 *From*: ${order.paddress || "N/A"}\n` +
     `🎯 *To*: ${order.daddress || "N/A"}\n` +
     `👤 *Receiver*: ${receiverName}${receiverPhone ? ` (📞 ${receiverPhone})` : ""}\n\n` +
-    `🗺️ *Live Tracking Link*:\n` +
-    `👉 ${trackingUrl}\n` +
-    `(Ya is chat me *Track ${order.id}* bhej kar status check karein)\n\n` +
+    `Live status check karne ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
 
@@ -380,7 +374,7 @@ async function notifyDriverAssigned(orderId) {
   const data = await getOrderDetailsWithParticipants(orderId);
   if (!data) return false;
 
-  const { order, rider, senderPhone, trackingUrl } = data;
+  const { order, rider, senderPhone } = data;
   if (!rider || !senderPhone) return false;
 
   const riderName = `${rider.first_name || ""} ${rider.last_name || ""}`.trim();
@@ -393,7 +387,7 @@ async function notifyDriverAssigned(orderId) {
     `*Driver*: ${riderName} ${riderVehicle}\n` +
     `📱 *Phone*: ${riderPhone}\n\n` +
     `Driver jald hi aapke pickup point par pahunchenge.\n` +
-    `🗺️ *Live Tracking*: ${trackingUrl}\n\n` +
+    `Live status ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*`;
 
   if (!wasMilestoneSent(order.id, "assigned", senderPhone)) {

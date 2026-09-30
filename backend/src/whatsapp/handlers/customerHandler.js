@@ -124,7 +124,6 @@ async function handleTrackingQuery(orderId, senderPhone) {
       Cancelled: "Cancelled ❌",
     };
     const friendlyStatus = statusMap[order.o_status] || order.o_status;
-    const trackingUrl = process.env.PUBLIC_TRACKING_URL || `https://shifter.online/track/${order.id}`;
 
     let reply =
       `📦 *Order #${order.id} Tracking Status*\n\n` +
@@ -140,10 +139,7 @@ async function handleTrackingQuery(orderId, senderPhone) {
       reply += `🔑 *Pickup OTP*: *${order.otp}*\n`;
     }
 
-    reply +=
-      `\n🗺️ *Live Location Tracking Link*:\n` +
-      `👉 ${trackingUrl}\n\n` +
-      `📞 Customer Care: 9109114515`;
+    reply += `\n📞 Customer Care: 9109114515`;
 
     return reply;
   } catch (err) {
