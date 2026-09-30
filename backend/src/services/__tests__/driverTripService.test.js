@@ -19,8 +19,11 @@ jest.mock('../../utils/pickupRelocateSettings', () => ({
     ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
   }),
 }));
+jest.mock('../../utils/pickupOtpTimeout', () => ({
+  getPickupOtpTimeoutMinutes: jest.fn().mockResolvedValue(10),
+}));
 const db = require('../../config/db');
-const { progressTrip } = require('../driverTripService');
+const { progressTrip, snapshot } = require('../driverTripService');
 let order, progress, timer, stops;
 const now = Date.parse('2026-09-24T10:00:00Z');
 const call = (action = 'sync', extra = {}) => progressTrip({ orderId: 7, riderId: 9, action, ...extra });
@@ -133,6 +136,15 @@ test('automatically arrives at the active stop before the final drop', async () 
   expect(result.driver_flow_id).toBe(4);
   expect(result.stop_step).toBe(3);
   expect(timer.drop_wait_start).toEqual(new Date(now));
+});
+test('OTP countdown subtracts pickup_wait_banked_seconds (time already waited before a large-move pause)', async () => {
+  const waitingOrder = { ...order, order_status: 2, o_status: 'Pickup' };
+  // 2 min since re-arrival + 3 min banked from before the pause = 5 of 10 min used.
+  const banked = await snapshot(waitingOrder, null, { pickup_wait_start: new Date(now - 120000), pickup_wait_end: null, pickup_wait_banked_seconds: 180 }, 0);
+  expect(banked.pickup_otp_remaining_seconds).toBe(300);
+  // Nothing banked -> only the 2 min since arrival counts.
+  const fresh = await snapshot(waitingOrder, null, { pickup_wait_start: new Date(now - 120000), pickup_wait_end: null, pickup_wait_banked_seconds: 0 }, 0);
+  expect(fresh.pickup_otp_remaining_seconds).toBe(480);
 });
 test('malformed observations are rejected without writing trip state', async () => {
   await expect(call('sync', { samples: [null] })).rejects.toThrow('valid location');

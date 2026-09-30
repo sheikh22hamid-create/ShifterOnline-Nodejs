@@ -14,10 +14,14 @@ async function snapshot(order, progress, timer, stopCount) {
   // against, so the driver's on-screen timer never drifts from when the
   // trip would actually auto-cancel. Only meaningful while arrived at
   // pickup and still waiting (pickup_wait_start set, not yet handed over).
+  // pickup_wait_banked_seconds is time already spent waiting at a previous
+  // pickup point before a large relocation paused the clock - it still
+  // counts, exactly as sweepOverduePickups counts it.
   let pickupOtpRemainingSeconds = 0;
   if (timer?.pickup_wait_start && !timer?.pickup_wait_end) {
     const timeoutMinutes = await getPickupOtpTimeoutMinutes();
-    const elapsedMs = Date.now() - new Date(timer.pickup_wait_start).getTime();
+    const elapsedMs = (Date.now() - new Date(timer.pickup_wait_start).getTime())
+      + (Number(timer.pickup_wait_banked_seconds) || 0) * 1000;
     pickupOtpRemainingSeconds = Math.max(0, Math.round(timeoutMinutes * 60 - elapsedMs / 1000));
   }
   return {
