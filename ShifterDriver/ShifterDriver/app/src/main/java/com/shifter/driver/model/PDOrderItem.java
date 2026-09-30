@@ -90,6 +90,9 @@ public class PDOrderItem implements Parcelable {
 	@SerializedName("free_waiting_time")
 	private final String freeWaitingTime;
 
+	@SerializedName("goods_type")
+	private String goodsType;
+
 	@SerializedName("radius_range")
 	private final String radiusRange;
 
@@ -269,6 +272,7 @@ public class PDOrderItem implements Parcelable {
 		radiusRange = in.readString();
 		radiusCharge = in.readString();
 		paymentStatus = in.readString();
+		goodsType = in.readString();
 	}
 
 	public static final Creator<PDOrderItem> CREATOR = new Creator<PDOrderItem>() {
@@ -398,6 +402,14 @@ public class PDOrderItem implements Parcelable {
 
 	public String getFreeWaitingTime() {
 		return freeWaitingTime;
+	}
+
+	public String getGoodsType() {
+		return goodsType;
+	}
+
+	public void setGoodsType(String goodsType) {
+		this.goodsType = goodsType;
 	}
 
 	public String getRadiusRange() {
@@ -557,6 +569,7 @@ public class PDOrderItem implements Parcelable {
 		parcel.writeString(radiusRange);
 		parcel.writeString(radiusCharge);
 		parcel.writeString(paymentStatus);
+		parcel.writeString(goodsType);
 	}
 
 	public void setDlat(double dlat) {

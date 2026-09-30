@@ -548,24 +548,8 @@ Future<bool> singUpApi(
           debugPrint("authService error: $e");
         }
 
-        if (context.mounted) {
-          try {
-            successfullBottomSheets(
-              context,
-              tital: "Registered Successfully".tr,
-              subtitle: "Congratulation! your account already has been created. Please login to get amazing experience.".tr,
-              buttonText: "GOTO HOME".tr,
-              ontap: () {
-                Get.offAll(() => const Bottombar());
-              },
-            );
-          } catch (sheetErr) {
-            debugPrint("successfullBottomSheets error: $sheetErr");
-            Get.offAll(() => const Bottombar());
-          }
-        } else {
-          Get.offAll(() => const Bottombar());
-        }
+        tostmsg("Welcome! Account registered successfully.".tr);
+        Get.offAll(() => const Bottombar());
         return true;
       } else {
         final msg = value["ResponseMsg"]?.toString() ?? "Registration failed";

@@ -87,6 +87,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   double _referralPointValue = 1;
   double _referralPointsAvailable = 0;
   bool _useReferralPoints = false;
+  List<Map<String, dynamic>> _goodsTypes = [];
+  int? _goodsTypeId;
+  bool _goodsOtherSelected = false;
+  final TextEditingController _goodsOtherController = TextEditingController();
 
   double _number(dynamic value) => double.tryParse(value?.toString() ?? '') ?? 0;
   LatLng get _pickup => LatLng(_number(_pickupData['lat_map']), _number(_pickupData['long_map']));
@@ -126,8 +130,25 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       _loadRoute();
       _refreshAvailability();
       _fetchReferralDiscountInfo();
+      _fetchGoodsTypes();
       _fetchNextDayEligibility();
     });
+  }
+
+  @override
+  void dispose() {
+    _goodsOtherController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchGoodsTypes() async {
+    final response = await ApiWrapper.dataGetNode(Config.nodeGoodsTypes);
+    if (!mounted) return;
+    if (response is Map && (response['Result'] == true || response['Result'] == 'true') && response['data'] is List) {
+      setState(() {
+        _goodsTypes = (response['data'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      });
+    }
   }
 
   // Same eligibility rule as home.dart's _checkNextDayEligibility: active
@@ -783,6 +804,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
       'extra_mile_charge': 0, 'cou_id': 0, 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
+      if (_goodsTypeId != null) 'goods_type_id': _goodsTypeId,
+      if (_goodsOtherSelected && _goodsOtherController.text.trim().isNotEmpty) 'goods_type_other': _goodsOtherController.text.trim(),
       'stops': _stopsData.map((stop) => {
         'lat': stop['lat_map'], 'lng': stop['long_map'], 'address': stop['address'],
         'hno': stop['hno'], 'landmark': stop['landmark'],
@@ -1812,6 +1835,37 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           ),
         ),
       ],
+      const SizedBox(height: 14),
+      Text('Goods type (optional)', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)),
+      const SizedBox(height: 8),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        ..._goodsTypes.map((t) {
+          final id = int.tryParse(t['id'].toString());
+          final selected = !_goodsOtherSelected && _goodsTypeId == id;
+          return ChoiceChip(
+            label: Text(_text(t['name'])),
+            selected: selected,
+            selectedColor: linercolor.withValues(alpha: .15),
+            // Tapping the selected chip again clears it — the field is optional.
+            onSelected: (_) => setState(() { _goodsOtherSelected = false; _goodsTypeId = selected ? null : id; }),
+          );
+        }),
+        ChoiceChip(
+          label: const Text('Other'),
+          selected: _goodsOtherSelected,
+          selectedColor: linercolor.withValues(alpha: .15),
+          onSelected: (_) => setState(() { _goodsOtherSelected = !_goodsOtherSelected; if (_goodsOtherSelected) _goodsTypeId = null; }),
+        ),
+      ]),
+      if (_goodsOtherSelected) Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: TextField(
+          controller: _goodsOtherController,
+          maxLength: 100,
+          style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium'),
+          decoration: InputDecoration(hintText: 'Describe your goods', hintStyle: TextStyle(color: greaycolor), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+        ),
+      ),
     ]));
   }
 

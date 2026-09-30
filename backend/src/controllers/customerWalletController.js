@@ -366,32 +366,50 @@ async function addWallet(req, res) {
     // concurrent requests replaying the same payment_id can no longer both
     // succeed, since the second insert hits the unique index and fails with
     // P2002 regardless of what either request read beforehand.
+    const charge = Math.round(amount * 0.025 * 100) / 100;
+    const netCredit = Math.round((amount - charge) * 100) / 100;
+
+    let newBalance;
     try {
-      await prisma.tbl_wallet_history.create({
-        data: {
-          user_id: account.id,
-          mobile,
-          amount,
-          type: "credit",
-          remark: "Wallet Recharge",
-          payment_id: razorpayPaymentId,
-          razorpay_payment_id: razorpayPaymentId,
-          wallet_type: walletType,
-          created_at: new Date(),
-        },
+      await prisma.$transaction(async (tx) => {
+        // 1. Credit the recharge transaction
+        await tx.tbl_wallet_history.create({
+          data: {
+            user_id: account.id,
+            mobile,
+            amount,
+            type: "credit",
+            remark: "Recharge via Razorpay",
+            payment_id: razorpayPaymentId,
+            razorpay_payment_id: razorpayPaymentId,
+            wallet_type: walletType,
+            created_at: new Date(),
+          },
+        });
+
+        // 2. Debit the 2.5% Payment Gateway Charge
+        await tx.tbl_wallet_history.create({
+          data: {
+            user_id: account.id,
+            mobile,
+            amount: charge,
+            type: "debit",
+            remark: "Payment Gateway Charge (2.5%)",
+            wallet_type: walletType,
+            created_at: new Date(),
+          },
+        });
+
+        // 3. Increment user balance by netCredit (amount - 2.5% charge)
+        const updated = await tx.tbl_user.update({
+          where: { id: account.id },
+          data: { wallet: { increment: netCredit } },
+        });
+        newBalance = Number(updated.wallet);
       });
     } catch (e) {
       if (e.code === "P2002") return fail(res, "This payment has already been credited.");
       throw e;
-    }
-
-    let newBalance;
-    if (walletType === "user") {
-      const updated = await prisma.tbl_user.update({ where: { id: account.id }, data: { wallet: { increment: amount } } });
-      newBalance = Number(updated.wallet);
-    } else {
-      const updated = await prisma.tbl_rider.update({ where: { id: account.id }, data: { wallet_balance: { increment: amount } } });
-      newBalance = Number(updated.wallet_balance);
     }
 
     return res.status(200).json({ Result: true, msg: "Wallet Recharge Success", balance: newBalance });

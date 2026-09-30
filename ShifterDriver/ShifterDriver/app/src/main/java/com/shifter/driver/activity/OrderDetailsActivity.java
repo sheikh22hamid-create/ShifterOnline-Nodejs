@@ -1037,7 +1037,15 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (dAddress != null) {
             dAddress = dAddress.replaceAll("^[\\s,]+", "").trim();
         }
-        buildDeliveryTimeline(pAddress, dAddress, orderItem.getStops(), orderItem.getDescription());
+        String packageNote = orderItem.getDescription();
+        String goodsType = orderItem.getGoodsType();
+        // The socket/FCM payload already appends "Goods: …" to order_details
+        // (which becomes the description); only add it when it is missing so
+        // it never shows twice.
+        if (!TextUtils.isEmpty(goodsType) && (packageNote == null || !packageNote.contains("Goods: "))) {
+            packageNote = "Goods: " + goodsType + (TextUtils.isEmpty(packageNote) ? "" : "\n" + packageNote);
+        }
+        buildDeliveryTimeline(pAddress, dAddress, orderItem.getStops(), packageNote);
 
         if (orderItem.getOrderFlowId().equals("1") || orderItem.getOrderFlowId().equals("2")) {
             dialPhone = orderItem.getCustomerPmobile();
@@ -2405,6 +2413,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                         // Stops are not constructor parameters, so preserve them explicitly;
                         // otherwise pickup-complete would rebuild the item as pickup -> drop.
                         List<com.shifter.driver.model.OrderStop> existingStops = orderItem.getStops();
+                        String existingGoodsType = orderItem.getGoodsType();
                         orderItem = new PDOrderItem(
                                 orderItem.getId(),
                                 nextFlowId,
@@ -2437,6 +2446,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                                 orderItem.getPaymentStatus()
                         );
                         orderItem.setStops(existingStops);
+                        orderItem.setGoodsType(existingGoodsType);
 
                         // Save updated order with next flow step
                         new SessionManager(this).setActiveOrder(orderItem);

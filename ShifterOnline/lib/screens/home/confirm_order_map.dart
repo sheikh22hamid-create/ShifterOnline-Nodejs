@@ -651,6 +651,43 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                   const SizedBox(height: 14),
 
                   // Terms & Notice
+                  // ── BOOKING GUIDELINES / IMPORTANT NOTICE ─────────────
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xffFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xffFED7AA)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xffC2410C)),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Important Booking Guidelines".tr,
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 12.5,
+                                color: Color(0xff9A3412),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _buildGuidelineRow(Icons.no_accounts_outlined, "Fare does not include loading / unloading labour charges.".tr),
+                        const SizedBox(height: 5),
+                        _buildGuidelineRow(Icons.local_parking_outlined, "Toll, state taxes & parking charges to be borne by customer.".tr),
+                        const SizedBox(height: 5),
+                        _buildGuidelineRow(Icons.warning_amber_rounded, "No toxic, hazardous, illegal, or explosive items permitted.".tr),
+                      ],
+                    ),
+                  ),
+
                   Center(
                     child: Text(
                       "By booking, you agree to our Terms of Service & Cancellation Policy",
@@ -806,6 +843,27 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildGuidelineRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: const Color(0xffC2410C)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontFamily: 'Gilroy_Medium',
+              color: Color(0xff7C2D12),
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
