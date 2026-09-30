@@ -563,7 +563,7 @@ async function runBatchInner(orderId) {
           prisma.pkg_order.count({
             where: {
               uid: Number(currentOrder.uid),
-              o_status: "Complete",
+              o_status: "Completed",
             },
           }),
           prisma.pkg_order.aggregate({
