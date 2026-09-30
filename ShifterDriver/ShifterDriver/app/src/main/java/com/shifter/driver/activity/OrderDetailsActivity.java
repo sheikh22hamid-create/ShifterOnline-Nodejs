@@ -111,6 +111,10 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // Guards showOtpDialog() from re-popping on every trip-progress poll once
     // the driver has already dismissed it once for this pickup arrival.
     private boolean otpDialogAutoShownForPickup;
+    // Currently/last shown OTP dialog, so a large-move pickup change arriving
+    // over the socket (onPickupUpdatedFromCustomer) can close it - the server
+    // reverts the order to en-route and would reject an OTP entered here.
+    private android.app.Dialog activeOtpDialog;
     private android.os.Handler otpTimeoutPollHandler;
     private com.google.android.gms.maps.model.Circle driverAccuracyCircle;
     private final Runnable tripPoll = new Runnable() {
@@ -442,6 +446,21 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     private void onPickupUpdatedFromCustomer(String newAddress, String newFare, String fareDiff, boolean isSmallMove) {
         if (orderItem == null) return;
+
+        if (!isSmallMove) {
+            // Large move: the server reverted the order to en-route
+            // (order_status 1) and paused the OTP timer, so an open OTP
+            // dialog is now stale - its countdown would keep ticking and any
+            // OTP entered would be rejected. Close it (its dismiss listener
+            // also cancels the countdown), stop its timeout poll, and clear
+            // the auto-show guard so the trip-progress poll re-opens it once
+            // the driver re-arrives and flow is "2" again.
+            if (activeOtpDialog != null && activeOtpDialog.isShowing()) {
+                activeOtpDialog.dismiss();
+            }
+            if (otpTimeoutPollHandler != null) otpTimeoutPollHandler.removeCallbacksAndMessages(null);
+            otpDialogAutoShownForPickup = false;
+        }
 
         setupUI();
         updateLocationPath();
@@ -1621,6 +1640,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // ------------------------------------------------ MAP
     private void showOtpDialog() {
         android.app.Dialog dialog = new android.app.Dialog(this);
+        activeOtpDialog = dialog;
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.dialog_enter_otp);
         if (dialog.getWindow() != null) {
