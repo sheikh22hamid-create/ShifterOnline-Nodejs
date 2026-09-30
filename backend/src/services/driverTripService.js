@@ -123,8 +123,10 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
         if (order.order_status !== 2) fail('Mark pickup arrival before verifying handover');
         const now = new Date();
         Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 3, o_status: 'On_Route', pickup_time: now } }));
-        // Reporting-only snapshot of where the driver actually was when they
-        // confirmed the pickup OTP - never used for pricing (see the
+        // Snapshot of where the driver actually was when they confirmed the
+        // pickup OTP. Always recorded for reporting; Task 7's mismatch check
+        // (below) additionally reprices the trip against this point when it
+        // differs materially from the last confirmed pickup (see the
         // otp_verify_lat/lng schema comment). Silently skipped if the app
         // didn't send a fix (older app version, or no GPS available at that
         // instant) - never blocks OTP verification itself.

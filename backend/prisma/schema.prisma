@@ -318,6 +318,17 @@ model pkg_order {
   referral_points_amount Decimal            @default(0.00) @db.Decimal(10, 2)
   body_type              String?            @default("any") @db.VarChar(20)
   covered_charge         Decimal?           @default(0.00) @db.Decimal(10, 2)
+  // otp_verify_lat/lng/at record where the driver actually was when they
+  // confirmed the pickup OTP. As of 2026-09-30 this DOES drive pricing:
+  // driverTripService.progressTrip reprices the trip against this point
+  // when it differs materially (pickup_otp_mismatch_flag_m app_setting)
+  // from the last confirmed pickup point, and sets the flag below so an
+  // admin can review moves that happened without an explicit customer
+  // pickup-change confirmation.
+  otp_verify_lat         String?            @db.VarChar(30)
+  otp_verify_lng         String?            @db.VarChar(30)
+  otp_verify_at          DateTime?          @db.DateTime(0)
+  pickup_otp_mismatch_flag Boolean           @default(false)
 
   @@index([rid, order_status], map: "idx_rid_status")
 }
@@ -404,6 +415,12 @@ model pkg_order_wait_timer {
   otp_verify_lat      String?   @db.VarChar(30)
   otp_verify_lng      String?   @db.VarChar(30)
   otp_verify_at       DateTime? @db.DateTime(0)
+  // Set once, the very first time this order's wait-timer row is created
+  // (the first 1->2 arrival). Never touched by any later pause/resume or
+  // small-move relocation cycle - this is what the relocation ceiling sweep
+  // (tripLifecycle.sweepPickupRelocationCeiling) measures against, distinct
+  // from pickup_wait_start which DOES get cleared on every pause.
+  first_arrival_at    DateTime? @db.DateTime(0)
 
   @@unique([order_id, rid], map: "order_rid_unique")
   @@unique([order_id, rid], map: "uniq_order_rid")
