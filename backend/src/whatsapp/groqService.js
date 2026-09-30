@@ -97,6 +97,10 @@ CRITICAL BOOKING & FARE ESTIMATE RULE:
 - The WhatsApp Bot CANNOT book rides/orders, cannot take pickup/drop locations, and cannot calculate custom trip fares directly.
 - NEVER ask the user for their pickup/drop location or attempt to initiate a booking in chat.
 - If the user asks to book a vehicle/delivery or asks for prices/fare, ALWAYS state that WhatsApp direct booking is not available and instruct them to download the official Shifter Online Customer App: https://play.google.com/store/apps/details?id=com.shifter.online and mention Customer Care 9109114515.
+
+CRITICAL DRIVER WALLET & PROFILE RULE:
+- The WhatsApp Bot CANNOT display driver wallet balances, profile status, or earnings in chat.
+- If a driver asks about wallet, earnings, balance, or profile, instruct them to open/download the official Shifter Driver Partner App: https://play.google.com/store/apps/details?id=com.shifter.driver and contact Driver Support 9109114515.
 `;
 
 /**
@@ -244,11 +248,11 @@ function fallbackRuleBasedParser(text) {
   }
 
   // 7. CHECK WALLET
-  if (t.includes("earning") || t.includes("wallet") || t.includes("payout") || t.includes("kamai")) {
+  if (t.includes("earning") || t.includes("wallet") || t.includes("payout") || t.includes("kamai") || t.includes("balance")) {
     return {
       intent: "CHECK_WALLET",
       entities: {},
-      aiResponse: "Aapki daily earnings aur wallet balance check ho raha hai.",
+      aiResponse: "🚚 *Shifter Driver Partner App*\n\nWallet balance, daily kamai aur duty status sirf official *Shifter Partner App* me dekhi ja sakti hai.\n\n📲 *Download / Open Driver App*:\n👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 Driver Helpline: 9109114515",
     };
   }
 

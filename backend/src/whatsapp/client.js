@@ -8,7 +8,6 @@ const chatControl = require("./chatControl");
 const customerHandler = require("./handlers/customerHandler");
 const driverHandler = require("./handlers/driverHandler");
 const notifications = require("./notifications");
-const googleMapsLocation = require("../utils/googleMapsLocation");
 
 let sock = null;
 let latestQrCode = null;
@@ -459,9 +458,15 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
         default:
           break;
       }
-    } else if (session.step !== "IDLE") {
-      // User is in active wizard step and message is not a global intent switch
-      replyText = await handleWizardSteps(senderPhone, cleanText, session, fullMsg);
+    } else if (cleanText.startsWith("LOCATION_PIN:")) {
+      replyText =
+        `📍 *Location Received*\n\n` +
+        `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
+        `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+        `📲 *Download Shifter App*:\n` +
+        `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
+        `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
+        `📞 *Customer Care*: 9109114515`;
     } else {
       // Session is IDLE - parse intent using Groq AI / Fallback parser
       const aiAnalysis = await groqService.parseMessageWithGroq(cleanText, session);
@@ -587,116 +592,6 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
       });
     }
   }
-}
-
-/**
- * Intelligently cleans location text by stripping prefixes like "Pickup:", "*Pickup*:", "Drop location:", etc.
- */
-function cleanLocationString(str) {
-  if (!str) return "";
-  let clean = String(str).trim();
-
-  // Strip markdown formatting symbols (* _ ~ `)
-  clean = clean.replace(/[*_~`]/g, "");
-
-  // Strip prefix words like "Pickup:", "Pickup address:", "Drop location:", "From:", "To:"
-  clean = clean.replace(/^(?:pickup|drop|location|address|from|to)\s*(?:address|location)?\s*[:=\-]*\s*/i, "");
-  clean = clean.replace(/^(?:pickup|drop|location|address|from|to)\s*[:=\-]*\s*/i, "");
-  clean = clean.replace(/^(?:pickup|drop|location|address|from|to)\s*(?:address|location)?\s*[:=\-]*\s*/i, "");
-
-  // Trim colons, hyphens, commas, or spaces
-  clean = clean.replace(/^[:=\-\s,]+/, "").replace(/[:=\-\s,]+$/, "").trim();
-
-  return clean;
-}
-
-/**
- * Helper to parse vehicle type from text
- */
-function parseVehicleType(text) {
-  if (!text) return null;
-  const t = text.toLowerCase();
-
-  if (t.includes("bike") || t.includes("two wheeler") || t.includes("2 wheeler") || t === "1") {
-    return "Bike";
-  }
-  if (t.includes("3 wheeler") || t.includes("three wheeler") || t.includes("auto") || t.includes("tempo") || t === "2") {
-    return "3 wheeler";
-  }
-  if (t.includes("4 wheeler") || t.includes("four wheeler") || t.includes("tata ace") || t.includes("truck") || t === "3") {
-    return "4 wheeler";
-  }
-  if (t.includes("loader") || t.includes("e loader") || t.includes("eloader") || t === "4") {
-    return "E loader";
-  }
-
-  const vehicleMatch = text.match(/vehicle\s*:\s*([^\n,]+)/i);
-  if (vehicleMatch && vehicleMatch[1]) {
-    const v = vehicleMatch[1].trim();
-    return parseVehicleType(v) || v;
-  }
-
-  return null;
-}
-
-/**
- * Helper to smart-parse Pickup, Drop, and Vehicle from a single text string
- */
-function parseFullBookingData(text) {
-  if (!text) return { pickup: null, drop: null, vehicle: null };
-  const t = text.trim();
-
-  let pickup = null;
-  let drop = null;
-  let vehicle = parseVehicleType(t);
-
-  // Pattern 1: Explicit "Pickup: <location>" and "Drop: <location>"
-  const pickupMatch = t.match(/pickup\s*:\s*([^🎯\n,]+(?:,[^🎯\n,]+)*)/i);
-  const dropMatch = t.match(/drop\s*:\s*([^🛵\n,]+(?:,[^🛵\n,]+)*)/i);
-
-  if (pickupMatch && pickupMatch[1]) {
-    pickup = pickupMatch[1].replace(/^pickup\s*:\s*/i, "").trim();
-    if (/drop\s*:/i.test(pickup)) {
-      pickup = pickup.split(/drop\s*:/i)[0].trim();
-    }
-  }
-
-  if (dropMatch && dropMatch[1]) {
-    drop = dropMatch[1].replace(/^drop\s*:\s*/i, "").trim();
-    if (/vehicle\s*:/i.test(drop)) {
-      drop = drop.split(/vehicle\s*:/i)[0].trim();
-    }
-  }
-
-  if (pickup) pickup = cleanLocationString(pickup);
-  if (drop) drop = cleanLocationString(drop);
-
-  // Pattern 2: "<Pickup> to <Drop>" if regex didn't extract both
-  if ((!pickup || !drop) && /\bto\b/i.test(t) && !t.toLowerCase().startsWith("track") && !t.toLowerCase().startsWith("book")) {
-    const parts = t.split(/\bto\b/i);
-    if (parts.length >= 2) {
-      if (!pickup) pickup = cleanLocationString(parts[0]);
-      if (!drop) drop = cleanLocationString(parts[1]);
-    }
-  }
-
-  return { pickup, drop, vehicle };
-}
-
-/**
- * Handles Step-by-Step Multi-Turn Dialog Wizard (Deprecated: Bot does not perform bookings)
- */
-async function handleWizardSteps(senderPhone, text, session, fullMsg) {
-  sessionManager.clearSession(senderPhone);
-  return (
-    `📦 *Shifter Online Booking*\n\n` +
-    `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
-    `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
-    `📲 *Download Shifter App*:\n` +
-    `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-    `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
-    `📞 *Customer Care*: 9109114515`
-  );
 }
 
 async function requestPairingCodeForPhone(phone) {

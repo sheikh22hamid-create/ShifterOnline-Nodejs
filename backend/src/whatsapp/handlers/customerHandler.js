@@ -1,5 +1,4 @@
 const prisma = require("../../config/db");
-const pricingEngine = require("../../services/pricingEngine");
 const logger = require("../../utils/logger");
 
 /**
@@ -16,159 +15,6 @@ async function handleFareCalculation(phoneNumber, entities, session) {
     `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
     `📞 *Customer Care*: 9109114515`
   );
-}
-
-/**
- * Fetches all active vehicle categories from DB for WhatsApp prompt
- */
-async function getActiveCategories() {
-  try {
-    const categories = await prisma.pkg_category.findMany({
-      where: { cat_status: 1 },
-      orderBy: { sort_order: "asc" },
-    });
-    return categories;
-  } catch (err) {
-    logger.error("getActiveCategories error:", err);
-    return [];
-  }
-}
-
-/**
- * Formats active categories into a numbered WhatsApp prompt string
- */
-function formatCategoriesPrompt(categories, radiusKm = 5) {
-  if (!categories || categories.length === 0) {
-    return "⚠️ Abhi koi vehicle category active nahi hai. Kripya baad me try karein.";
-  }
-
-  let text = `⭕ *Driver Search Radius*: *${radiusKm} km* set ho gaya hai!\n\n` +
-             `🛵 *Vehicle Category Choose Karein*:\n\n`;
-
-  categories.forEach((cat, idx) => {
-    text += `${idx + 1}. *${cat.cat_name}*\n`;
-  });
-
-  text += `\n(Reply 1, 2, 3, etc. ya category ka naam write karein)`;
-  return text;
-}
-
-/**
- * Fetches models & calculated fares for a chosen category and trip route
- */
-async function getCategoryModels(categoryId, bookingData) {
-  try {
-    const {
-      pickupLat = "28.6139",
-      pickupLng = "77.2090",
-      dropLat = "28.5355",
-      dropLng = "77.3910",
-      searchRadius = 5,
-    } = bookingData;
-
-    const radiusKm = parseInt(searchRadius, 10) || 5;
-
-    const estimate = await pricingEngine.getFareEstimate({
-      cat_id: Number(categoryId),
-      plat: parseFloat(pickupLat),
-      plong: parseFloat(pickupLng),
-      dlat: parseFloat(dropLat),
-      dlong: parseFloat(dropLng),
-      radiusRangeKm: radiusKm,
-    });
-
-    const models = estimate.packages || [];
-    return {
-      distanceKm: estimate.distance_km || 0,
-      models,
-    };
-  } catch (err) {
-    logger.error("getCategoryModels error:", err);
-    return { distanceKm: 0, models: [] };
-  }
-}
-
-/**
- * Formats available models for a category into a numbered WhatsApp prompt
- */
-function formatModelsPrompt(categoryName, models, distanceKm) {
-  if (!models || models.length === 0) {
-    return `⚠️ *${categoryName}* category me abhi koi vehicle model active nahi hai.\nKripya koi doosri category select karein.`;
-  }
-
-  let text = `🚚 *${categoryName} ke Available Vehicle Models*:\n`;
-  if (distanceKm > 0) {
-    text += `🛣️ *Route Distance*: ${distanceKm} km\n\n`;
-  } else {
-    text += `\n`;
-  }
-
-  models.forEach((mod, idx) => {
-    const radiusNote = mod.radius_charge > 0 ? ` (Radius Charge: ₹${mod.radius_charge})` : ` (1st km Free)`;
-    const hasCustomTitle = mod.user_title && mod.user_title !== mod.title && mod.user_title !== "undefined";
-    const displayName = hasCustomTitle ? `${mod.title} (${mod.user_title})` : mod.title;
-    text += `${idx + 1}. *${displayName}* — ₹${mod.estimated_fare}${radiusNote}\n`;
-  });
-
-  text += `\nKripya apne pasand ka *Model Number* select karne ke liye reply karein (e.g. 1, 2, 3):`;
-  return text;
-}
-
-/**
- * Generates the final Fare Estimate Result & App Redirect response for WhatsApp
- */
-async function getFareEstimateResult(bookingData) {
-  try {
-    const {
-      pickupAddress = "Customer Specified Pickup",
-      dropAddress = "Customer Specified Drop",
-      vehicleCategory = "Vehicle",
-      selectedModel,
-      searchRadius = 5,
-      distanceKm = 0,
-    } = bookingData;
-
-    const radiusKm = parseInt(searchRadius, 10) || 5;
-    const hasCustomTitle = selectedModel?.user_title && selectedModel.user_title !== selectedModel.title && selectedModel.user_title !== "undefined";
-    const modelTitle = selectedModel
-      ? (hasCustomTitle ? `${selectedModel.title} (${selectedModel.user_title})` : selectedModel.title)
-      : "Standard Model";
-
-    const fare = selectedModel ? parseFloat(selectedModel.estimated_fare || selectedModel.min_charge) : 0;
-    const radiusCharge = selectedModel ? parseFloat(selectedModel.radius_charge || 0) : 0;
-    const dist = distanceKm || bookingData.distanceKm || 0;
-
-    const radiusChargeText = radiusCharge > 0 ? ` (Radius Charge: ₹${radiusCharge})` : ` (1st km Free)`;
-
-    const appDownloadUrl = process.env.USER_APP_DOWNLOAD_URL || "https://play.google.com/store/apps/details?id=com.shifter.online";
-
-    let text = `💰 *Your Estimated Fare is ₹${fare}*\n\n` +
-               `📋 *Trip Details & Fare Breakdown*:\n` +
-               `📍 *Pickup*: ${pickupAddress}\n` +
-               `🎯 *Drop*: ${dropAddress}\n`;
-
-    if (dist > 0) {
-      text += `🛣️ *Distance*: ${dist} km\n`;
-    }
-
-    text += `⭕ *Search Radius*: ${radiusKm} km${radiusChargeText}\n` +
-            `🚗 *Vehicle Category*: ${vehicleCategory}\n` +
-            `🚚 *Vehicle Model*: ${modelTitle}\n` +
-            `💵 *Estimated Total Fare*: *₹${fare}*\n\n` +
-            `----------------------------------------\n` +
-            `ℹ️ *WhatsApp par direct booking available nahi hai.*\n` +
-            `Agar aap booking karna chahte hain, toh hamari official application se booking kar sakte hain.\n\n` +
-            `📲 *Download / Open Shifter App to Book*:\n` +
-            `🔗 ${appDownloadUrl}\n` +
-            `----------------------------------------`;
-
-    return text;
-  } catch (err) {
-    logger.error("getFareEstimateResult error:", err);
-    return `💰 *Fare Calculation Error*\n\n` +
-           `Kripya hamari official application download karke exact fare check karein:\n` +
-           `🔗 https://play.google.com/store/apps/details?id=com.shifter.online`;
-  }
 }
 
 /**
@@ -255,10 +101,5 @@ async function handleTrackingQuery(orderId, senderPhone) {
 
 module.exports = {
   handleFareCalculation,
-  getActiveCategories,
-  formatCategoriesPrompt,
-  getCategoryModels,
-  formatModelsPrompt,
-  getFareEstimateResult,
   handleTrackingQuery,
 };
