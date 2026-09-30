@@ -70,6 +70,8 @@ router.delete("/service-zones/:id", auth, authorize("superadmin"), serviceZoneCo
 router.get("/monthly-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.listMonthlyDrivers);
 router.post("/monthly-drivers/promote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.promoteDriver);
 router.post("/monthly-drivers/demote", auth, authorize("superadmin", "admin"), scopeFilter, monthlyDriverController.demoteDriver);
+router.get("/monthly-drivers/early-start-requests", auth, authorize(...RIDER_ROLES), monthlyDriverController.listEarlyStartRequests);
+router.post("/monthly-drivers/early-start-requests/:id/decision", auth, authorize("superadmin", "admin"), monthlyDriverController.decideEarlyStartRequest);
 router.get("/monthly-drivers/attendance", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.getAttendanceReport);
 router.get("/monthly-drivers/:riderId/duty", auth, authorize(...RIDER_ROLES), monthlyDriverController.getDutyStatus);
 router.get("/monthly-drivers/:riderId/ledger", auth, authorize(...RIDER_ROLES), monthlyDriverController.getMonthlyDriverLedger);

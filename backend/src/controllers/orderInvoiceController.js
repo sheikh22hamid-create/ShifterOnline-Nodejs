@@ -113,6 +113,7 @@ async function renderInvoice(req, res) {
       ["Waiting charge", row.wating_charge],
       ["Extra mile charge", row.extra_mile_charge],
       ["Coupon discount", row.cou_amt ? -Number(row.cou_amt) : 0],
+      [`Coins redeemed (${Number(row.referral_points_used) || 0} points)`, Number(row.referral_points_amount) ? -Number(row.referral_points_amount) : 0],
     ].filter(([, v]) => Number(v));
 
     const chargeRows = charges
@@ -125,7 +126,15 @@ async function renderInvoice(req, res) {
       })
       .join("");
 
-    const total = Number(row.total_dcharge || row.d_charge || 0).toFixed(2);
+    const fareTotal = Number(row.total_dcharge || row.d_charge || 0);
+    const coinsAmount = Number(row.referral_points_amount) || 0;
+    const coinsPoints = Number(row.referral_points_used) || 0;
+    // Coins pay part of the fare without touching the wallet/cash, so the
+    // customer's actual payable is the fare minus the coins value.
+    const total = Math.max(0, fareTotal - coinsAmount).toFixed(2);
+    const coinsNote = coinsAmount > 0
+      ? `<div class="paid-via" style="text-align:left;line-height:1.5">Coins: you redeemed ${coinsPoints} referral points worth ₹${coinsAmount.toFixed(2)} against this ride. The trip fare was ₹${fareTotal.toFixed(2)}; the coins value is deducted from it, so you pay ₹${total}.</div>`
+      : "";
 
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Invoice - ${esc(bookingId)}</title>
@@ -243,6 +252,7 @@ async function renderInvoice(req, res) {
         <span class="amt mono">₹${total}</span>
       </div>
       <div class="paid-via">Paid via ${esc(paymentMethodName)}</div>
+      ${coinsNote}
     </div>
 
     <div class="footer">

@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const dutyTrackingService = require("../services/dutyTrackingService");
 const logger = require("../utils/logger");
+const pushNotifier = require("../services/pushNotifier");
 
 /**
  * Lists all Monthly Drivers with their contracts, assigned zones, and current status.
@@ -452,7 +453,74 @@ async function addLedgerAdjustment(req, res) {
   }
 }
 
+/**
+ * Early duty-start requests (driver tried to start before the contract shift
+ * start). Admin lists the pending ones and approves / rejects them.
+ */
+async function listEarlyStartRequests(req, res) {
+  try {
+    const status = String(req.query?.status || "pending");
+    const rows = await prisma.duty_early_start_request.findMany({
+      where: status === "all" ? {} : { status },
+      orderBy: { id: "desc" },
+      take: 100,
+    });
+    const riders = await prisma.tbl_rider.findMany({
+      where: { id: { in: rows.map((r) => r.rider_id) } },
+      select: { id: true, first_name: true, last_name: true, fmobile: true },
+    });
+    const byId = new Map(riders.map((r) => [r.id, r]));
+    const contracts = await prisma.monthly_driver_contract.findMany({ where: { rider_id: { in: rows.map((r) => r.rider_id) } } });
+    const contractByRider = new Map(contracts.map((c) => [c.rider_id, c]));
+    const data = rows.map((r) => {
+      const rider = byId.get(r.rider_id);
+      return {
+        ...r,
+        rider_name: rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : `Rider #${r.rider_id}`,
+        rider_mobile: rider?.fmobile || "",
+        shift_start_time: contractByRider.get(r.rider_id)?.shift_start_time || null,
+      };
+    });
+    return res.json({ success: true, data });
+  } catch (err) {
+    logger.error("listEarlyStartRequests failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+async function decideEarlyStartRequest(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const decision = String(req.body?.decision || "").toLowerCase();
+    if (!["approve", "reject"].includes(decision)) {
+      return res.status(400).json({ success: false, message: "decision must be approve or reject" });
+    }
+    const existing = await prisma.duty_early_start_request.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ success: false, message: "Request not found" });
+    if (existing.status !== "pending") {
+      return res.status(409).json({ success: false, message: `Request was already ${existing.status}` });
+    }
+    const status = decision === "approve" ? "approved" : "rejected";
+    const updated = await prisma.duty_early_start_request.update({
+      where: { id },
+      data: { status, decided_at: new Date(), decided_by: req.user?.email || req.user?.name || String(req.user?.id || "admin") },
+    });
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: existing.rider_id }, select: { fcm_token: true } });
+    if (rider?.fcm_token) {
+      pushNotifier
+        .notifyDriverEarlyStartDecision(rider.fcm_token, status === "approved")
+        .catch((err) => logger.error("decideEarlyStartRequest: push failed:", err));
+    }
+    return res.json({ success: true, message: `Early start ${status}`, data: updated });
+  } catch (err) {
+    logger.error("decideEarlyStartRequest failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
+  listEarlyStartRequests,
+  decideEarlyStartRequest,
   listMonthlyDrivers,
   promoteDriver,
   demoteDriver,

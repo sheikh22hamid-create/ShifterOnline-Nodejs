@@ -159,6 +159,16 @@ async function notifyCustomerScheduleConfirm(fcmToken, orderId, scheduleTimeLabe
   );
 }
 
+/** Admin answered a monthly driver's early duty-start request. */
+async function notifyDriverEarlyStartDecision(fcmToken, approved) {
+  return sendPushNotification(
+    fcmToken,
+    approved ? "Early start approved" : "Early start declined",
+    approved ? "The admin approved your early duty start. You can start duty now." : "The admin declined your early duty start request.",
+    { type: "early_start_decision", approved: approved ? "1" : "0" }
+  );
+}
+
 /** A scheduled order the driver had pre-accepted was cancelled by the customer. */
 async function notifyDriverScheduledCancelled(fcmToken, orderId) {
   return sendPushNotification(
@@ -323,6 +333,7 @@ module.exports = {
   notifyCustomerScheduleReminder,
   notifyCustomerScheduleConfirm,
   notifyDriverScheduledCancelled,
+  notifyDriverEarlyStartDecision,
   notifyCustomerOrderLive,
   notifyCustomerLatePickup,
   notifyCustomerNextDayAssigned,

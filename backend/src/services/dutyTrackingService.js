@@ -37,6 +37,44 @@ async function getTodayDutyLog(riderId) {
   return log;
 }
 
+/** Minutes since midnight for an "HH:MM[:SS]" shift time; null when unparseable. */
+function shiftTimeToMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(value || ""));
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+/** Current IST time as minutes since midnight. */
+function istMinutesNow() {
+  const ist = new Date(Date.now() + 330 * 60 * 1000);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+}
+
+/**
+ * Before the contract's shift start a driver may only start duty with the
+ * admin's approval. The first early attempt files a pending request (shown
+ * in the admin panel); the driver retries once it is approved.
+ */
+async function assertShiftStartAllowed(riderId, contract) {
+  const startMinutes = shiftTimeToMinutes(contract.shift_start_time);
+  if (startMinutes === null || istMinutesNow() >= startMinutes) return;
+
+  const dutyDate = new Date(getTodayDateIST());
+  const existing = await prisma.duty_early_start_request.findUnique({
+    where: { rider_id_duty_date: { rider_id: Number(riderId), duty_date: dutyDate } },
+  });
+  if (existing?.status === "approved") return;
+
+  const startLabel = String(contract.shift_start_time).slice(0, 5);
+  if (existing?.status === "rejected") {
+    throw new Error(`Your shift starts at ${startLabel}. The admin declined your early start request.`);
+  }
+  if (existing?.status === "pending") {
+    throw new Error(`Your shift starts at ${startLabel}. Your early start request is waiting for admin approval.`);
+  }
+  await prisma.duty_early_start_request.create({ data: { rider_id: Number(riderId), duty_date: dutyDate } });
+  throw new Error(`Your shift starts at ${startLabel}. An early start request has been sent to the admin - you can start duty once it is approved.`);
+}
+
 /**
  * Handles Driver Punch-In.
  */
@@ -45,6 +83,13 @@ async function punchIn(riderId, lat, lng) {
   if (!contract || contract.status !== "active") {
     throw new Error("No active monthly driver contract found for this rider.");
   }
+
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: Number(riderId) }, select: { a_status: true } });
+  if (!rider || rider.a_status !== 1) {
+    throw new Error("Please go online before starting your duty.");
+  }
+
+  await assertShiftStartAllowed(riderId, contract);
 
   let zone = null;
   if (contract.assigned_zone_id) {

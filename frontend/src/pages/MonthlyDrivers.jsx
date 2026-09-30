@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
+import EarlyStartRequests from '../components/drivers/EarlyStartRequests'
 
 export default function MonthlyDrivers() {
   const toast = useToast()
@@ -208,6 +209,7 @@ export default function MonthlyDrivers() {
 
   return (
     <div className="space-y-6">
+      <EarlyStartRequests />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[19px] font-semibold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink)' }}>
