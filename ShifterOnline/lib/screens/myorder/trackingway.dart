@@ -1139,7 +1139,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   bool get _canChangePickup {
     if (orderProduc == null) return false;
-    final orderStatusNum = int.tryParse(orderProduc?["order_status"]?.toString() ?? "");
+    // The order-details response exposes the numeric status as
+    // "Order_flow_id" (see orderController.js: `Order_flow_id: order.order_status`),
+    // not a literal "order_status" key - mirrors the same fallback already
+    // used elsewhere in this file (e.g. Order_flow_id ?? order_status).
+    final orderStatusNum = int.tryParse(
+      (orderProduc?["Order_flow_id"] ?? orderProduc?["order_status"])?.toString() ?? "",
+    );
     // Pickup can only move before goods are picked up (backend
     // PICKUP_EDITABLE_STATUSES: 0 pending, 1 en route, 2 waiting at pickup) -
     // a stricter window than drop, which stays open right up to completion.
