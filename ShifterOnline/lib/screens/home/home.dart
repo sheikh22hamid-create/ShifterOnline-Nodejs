@@ -261,15 +261,17 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _addQuickLocation() async {
-    final uid = getdata.read("Uid");
+    final uid = getdata.read("Uid") ?? getdata.read("UserLogin")?["id"];
     if (uid == null || uid.toString().isEmpty || uid.toString() == "0") {
       ApiWrapper.showToastMessage("Please login to save locations".tr);
       await Get.to(() => SignIn());
-      final newUid = getdata.read("Uid");
+      final newUid = getdata.read("Uid") ?? getdata.read("UserLogin")?["id"];
       if (newUid == null || newUid.toString().isEmpty || newUid.toString() == "0") return;
     }
-    await Get.to(() => const Traking(type2: "Add"));
-    await _loadSavedLocations();
+    final result = await Get.to(() => const LocationSearchScreen(locationType: "Address"));
+    if (result != null) {
+      await _loadSavedLocations();
+    }
   }
 
   String _quickLocationTitle(Map<String, dynamic> location) {

@@ -1012,7 +1012,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     jest.useFakeTimers().setSystemTime(new Date('2026-09-24T10:00:00Z'));
     try {
       prisma.pkg_order.findUnique.mockResolvedValue({ id: 304, rid: 1, d_charge: 100, total_dcharge: 100, commission: 0,
-        trans_id: 'wallet_paid', free_waiting_time: '60', wating_charge: '60' });
+        trans_id: 'wallet_paid', free_waiting_time: '1', wating_charge: '60' }); // free_waiting_time is in minutes
       prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 60, drop_wait_start: new Date('2026-09-24T09:58:00Z') });
       const result = await tripLifecycle.updateStatus(304, 1, 'complete');
       expect(result.success).toBe(true);

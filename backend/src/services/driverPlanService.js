@@ -359,7 +359,25 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
         start_date: today, end_date: endDate, guaranteed_target: target, status: "active",
       },
     });
-    if (pointsUsed) await tx.tbl_rider.update({ where: { id: Number(driverId) }, data: { referral_points: { decrement: pointsUsed } } });
+    if (pointsUsed) {
+      // Guarded decrement (same as clearDueWithPoints): only proceeds if the
+      // balance read above still holds, so concurrent spends can't double-spend
+      // the same points. Throwing rolls back the subscription created above.
+      const decremented = await tx.tbl_rider.updateMany({
+        where: { id: Number(driverId), referral_points: { gte: pointsUsed } },
+        data: { referral_points: { decrement: pointsUsed } },
+      });
+      if (decremented.count === 0) throw new Error("Referral points balance changed - please retry");
+      const fresh = await tx.tbl_rider.findFirst({ where: { id: Number(driverId) }, select: { referral_points: true } });
+      await tx.tbl_referral_point_log.create({
+        data: {
+          user_id: Number(driverId), user_type: "DRIVER", points: -pointsUsed, txn_type: "debit",
+          source: "plan_purchase", ref_id: subscription.id, balance_after: Number(fresh?.referral_points) || 0,
+          note: `Used ${pointsUsed} referral points (₹${pointsAmount}) for ${plan.plan_name}`,
+          created_at: new Date(),
+        },
+      });
+    }
     if (plan.wallet_bonus_enabled && Number(plan.wallet_bonus_amount) > 0) {
       const bonus = Number(plan.wallet_bonus_amount);
       await tx.tbl_rider.update({ where: { id: Number(driverId) }, data: { wallet_balance: { increment: bonus } } });

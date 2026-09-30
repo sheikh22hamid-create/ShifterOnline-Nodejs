@@ -154,6 +154,58 @@ async function packageListEstimate(req, res) {
   }
 }
 
+async function autoSaveOrderAddress({ uid, address, lat, lng, type, contactName, contactNumber, houseno, landmark }) {
+  if (!prisma.tbl_address || typeof prisma.tbl_address.findFirst !== "function") return null;
+  if (!uid || !address || lat === undefined || lng === undefined) return null;
+  const numUid = Number(uid);
+  if (!numUid) return null;
+
+  const addrStr = String(address).trim();
+  if (!addrStr) return null;
+
+  const latStr = String(lat).trim();
+  const lngStr = String(lng).trim();
+
+  try {
+    const existing = await prisma.tbl_address.findFirst({
+      where: {
+        uid: numUid,
+        OR: [
+          { address: addrStr },
+          { AND: [{ lat_map: latStr }, { long_map: lngStr }] },
+        ],
+      },
+    });
+
+    if (!existing) {
+      let cleanType = String(type || "Other").trim();
+      const lower = cleanType.toLowerCase();
+      if (lower.includes("home") || lower.includes("घर")) cleanType = "Home";
+      else if (lower.includes("office") || lower.includes("work") || lower.includes("दफ़्तर") || lower.includes("shop")) cleanType = "Office";
+      else cleanType = "Other";
+
+      return await prisma.tbl_address.create({
+        data: {
+          uid: numUid,
+          address: addrStr,
+          houseno: String(houseno || "").trim(),
+          landmark: landmark ? String(landmark).trim() : null,
+          type: cleanType,
+          lat_map: latStr,
+          long_map: lngStr,
+          c_name: String(contactName || "").trim(),
+          c_number: String(contactNumber || "").trim(),
+          is_tracking: 0,
+        },
+      });
+    }
+    return existing;
+  } catch (err) {
+    logger.warn(`autoSaveOrderAddress failed for user ${uid}: ${err.message}`);
+    return null;
+  }
+}
+
 async function createOrderCore({
   uid, category, deliveryTypeIds, bookingType, plat, plong, paddress, pickName, pmobile, pickType,
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
@@ -421,6 +473,45 @@ async function createOrderCore({
     });
   }
   order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
+
+  // Automatically save pickup, drop, and extra stops to customer's saved address book (tbl_address)
+  await Promise.allSettled([
+    autoSaveOrderAddress({
+      uid,
+      address: paddress,
+      lat: plat,
+      lng: plong,
+      type: pickType,
+      contactName: pickName,
+      contactNumber: pmobile,
+      houseno: "",
+      landmark: null,
+    }),
+    autoSaveOrderAddress({
+      uid,
+      address: daddress,
+      lat: dlat,
+      lng: dlong,
+      type: dropType,
+      contactName: dropName,
+      contactNumber: dmobile,
+      houseno: "",
+      landmark: null,
+    }),
+    ...validStops.map((stop) =>
+      autoSaveOrderAddress({
+        uid,
+        address: stop.address,
+        lat: stop.lat,
+        lng: stop.lng,
+        type: "Other",
+        contactName: stop.contact_name,
+        contactNumber: stop.contact_number,
+        houseno: stop.hno,
+        landmark: stop.landmark,
+      })
+    ),
+  ]);
 
   const isNoAdvanceCustomer = Boolean(
     customerPlan &&
@@ -1755,4 +1846,5 @@ module.exports = {
   confirmPickupChange,
   previewAddStop,
   confirmAddStop,
+  autoSaveOrderAddress,
 };

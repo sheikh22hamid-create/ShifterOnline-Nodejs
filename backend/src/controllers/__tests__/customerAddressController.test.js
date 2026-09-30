@@ -160,4 +160,52 @@ describe("customerProfileController - Address APIs", () => {
       });
     });
   });
+
+  describe("autoSaveOrderAddress (from orderController)", () => {
+    const { autoSaveOrderAddress } = require("../orderController");
+
+    it("auto-saves pickup/drop address if not already present", async () => {
+      prisma.tbl_address.findFirst.mockResolvedValue(null);
+      prisma.tbl_address.create.mockResolvedValue({ id: 99, uid: 12, address: "Malviya Nagar, Jaipur" });
+
+      const saved = await autoSaveOrderAddress({
+        uid: 12,
+        address: "Malviya Nagar, Jaipur",
+        lat: 26.85,
+        lng: 75.82,
+        type: "Home",
+        contactName: "John Doe",
+        contactNumber: "9876543210",
+      });
+
+      expect(prisma.tbl_address.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            uid: 12,
+            address: "Malviya Nagar, Jaipur",
+            type: "Home",
+            lat_map: "26.85",
+            long_map: "75.82",
+            c_name: "John Doe",
+            c_number: "9876543210",
+          }),
+        })
+      );
+      expect(saved).toEqual(expect.objectContaining({ id: 99 }));
+    });
+
+    it("does not create duplicate address if already exists for user", async () => {
+      prisma.tbl_address.findFirst.mockResolvedValue({ id: 50, uid: 12, address: "Malviya Nagar, Jaipur" });
+
+      const res = await autoSaveOrderAddress({
+        uid: 12,
+        address: "Malviya Nagar, Jaipur",
+        lat: 26.85,
+        lng: 75.82,
+      });
+
+      expect(prisma.tbl_address.create).not.toHaveBeenCalled();
+      expect(res).toEqual(expect.objectContaining({ id: 50 }));
+    });
+  });
 });

@@ -441,7 +441,9 @@ async function updateStatus(orderId, riderId, status) {
       where: { order_id_rid: { order_id: orderId, rid: riderId } },
     });
 
-    const freeWaitSeconds = parseFloat(order.free_waiting_time) || 0;
+    // free_waiting_time is set in MINUTES on the rate card (admin + driver app
+    // both show "Free: N mins"); the wait totals below are in seconds.
+    const freeWaitSeconds = (parseFloat(order.free_waiting_time) || 0) * 60;
     const dropWaitSeconds = waitTimer?.drop_wait_start
       ? Math.max(0, Math.floor((now - new Date(waitTimer.drop_wait_start)) / 1000)) : 0;
     const totalWaitSeconds = (waitTimer?.pickup_wait_seconds || 0) + (waitTimer?.pickup_load_wait_seconds || 0) + dropWaitSeconds;
