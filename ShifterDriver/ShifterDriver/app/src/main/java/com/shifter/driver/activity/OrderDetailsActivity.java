@@ -102,6 +102,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // (not destroyed) still reaches it.
     private android.content.BroadcastReceiver orderCancelledReceiver;
     private android.content.BroadcastReceiver destinationUpdatedReceiver;
+    private android.content.BroadcastReceiver pickupUpdatedReceiver;
     private final android.os.Handler tripHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private android.content.BroadcastReceiver tripProgressReceiver;
     private boolean tripActionPending;
@@ -273,6 +274,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             } catch (Exception ignored) {}
             destinationUpdatedReceiver = null;
         }
+        if (pickupUpdatedReceiver != null) {
+            try {
+                unregisterReceiver(pickupUpdatedReceiver);
+            } catch (Exception ignored) {}
+            pickupUpdatedReceiver = null;
+        }
     }
 
     private void registerOrderCancelledReceiver() {
@@ -365,6 +372,49 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 this, destinationUpdatedReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
+    private void registerPickupUpdatedReceiver() {
+        pickupUpdatedReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context context, Intent intent) {
+                if (intent == null) return;
+                String incomingOrderId = intent.getStringExtra("order_id");
+                if (orderItem == null || incomingOrderId == null || !incomingOrderId.equals(orderItem.getId())) {
+                    return;
+                }
+                String newPlat = intent.getStringExtra("plat");
+                String newPlong = intent.getStringExtra("plong");
+                String newAddress = intent.getStringExtra("paddress");
+                String newFare = intent.getStringExtra("fare");
+                String fareDiff = intent.getStringExtra("fare_diff");
+                int newOrderStatus = intent.getIntExtra("order_status", 0);
+
+                try {
+                    if (newPlat != null && !newPlat.isEmpty()) orderItem.setPlat(Double.parseDouble(newPlat));
+                    if (newPlong != null && !newPlong.isEmpty()) orderItem.setPlong(Double.parseDouble(newPlong));
+                } catch (Exception ignored) {}
+
+                if (newAddress != null && !newAddress.isEmpty()) {
+                    orderItem.setCustomerPaddress(newAddress);
+                }
+                if (newFare != null && !newFare.isEmpty()) {
+                    orderItem.setTotal(newFare);
+                }
+                orderItem.setOrderFlowId(String.valueOf(newOrderStatus));
+
+                // order_status 2 = small move, OTP-timeout timer kept running (no
+                // pause happened server-side); anything else (1) = a large move,
+                // the timer is paused server-side until GPS arrival-detection
+                // fires again at the new point (normal 1->2 flow, unchanged).
+                boolean isSmallMove = newOrderStatus == 2;
+                runOnUiThread(() -> onPickupUpdatedFromCustomer(newAddress, newFare, fareDiff, isSmallMove));
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter(
+                com.shifter.driver.socket.SocketOrderRouter.ACTION_ORDER_PICKUP_UPDATED);
+        androidx.core.content.ContextCompat.registerReceiver(
+                this, pickupUpdatedReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
     private void onDestinationUpdatedFromCustomer(String newAddress, String newFare, String fareDiff) {
         if (orderItem == null) return;
 
@@ -387,6 +437,35 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 .setTitle("📍 Drop Location Updated")
                 .setMessage(message)
                 .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+
+    private void onPickupUpdatedFromCustomer(String newAddress, String newFare, String fareDiff, boolean isSmallMove) {
+        if (orderItem == null) return;
+
+        setupUI();
+        updateLocationPath();
+        updateTripControls();
+        updateArrivalHint();
+
+        String currency = sessionManager != null ? sessionManager.getStringData(com.shifter.driver.utility.SessionManager.currency) : "₹";
+        String message = isSmallMove
+                ? "Pickup location updated nearby:\n" + (newAddress != null ? newAddress : "") + "\n\nContinue as normal - your OTP timer keeps running."
+                : "Pickup location changed to:\n" + (newAddress != null ? newAddress : "") + "\n\nYour OTP timer is paused - navigate to the new location. It resumes automatically when you arrive.";
+        if (newFare != null && !newFare.isEmpty()) {
+            message += "\n\nRevised Fare: " + currency + newFare;
+            if (fareDiff != null && !fareDiff.isEmpty() && !fareDiff.equals("0")) {
+                try {
+                    double diff = Double.parseDouble(fareDiff);
+                    message += diff > 0 ? " (+" + currency + fareDiff + ")" : " (-" + currency + Math.abs(diff) + ")";
+                } catch (Exception ignored) {}
+            }
+        }
+
+        new android.app.AlertDialog.Builder(OrderDetailsActivity.this)
+                .setTitle(isSmallMove ? "Pickup Updated" : "Pickup Moved — Navigate to New Location")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
                 .show();
     }
 
@@ -415,6 +494,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
         registerOrderCancelledReceiver();
         registerDestinationUpdatedReceiver();
+        registerPickupUpdatedReceiver();
         registerTripProgress();
         registerLocationReceiver();
 

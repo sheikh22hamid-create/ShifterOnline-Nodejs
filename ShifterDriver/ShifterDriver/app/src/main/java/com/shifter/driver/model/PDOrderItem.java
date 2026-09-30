@@ -22,7 +22,7 @@ public class PDOrderItem implements Parcelable {
 	private String orderFlowId;
 
 	@SerializedName("customer_paddress")
-	private final String customerPaddress;
+	private String customerPaddress;
 
 	@SerializedName("description")
 	private final String description;
@@ -43,7 +43,7 @@ public class PDOrderItem implements Parcelable {
 	private final String orderDate;
 
 	@SerializedName("plong")
-	private final double plong;
+	private double plong;
 
 	@SerializedName("customer_dmobile")
 	private final String customerDmobile;
@@ -67,7 +67,7 @@ public class PDOrderItem implements Parcelable {
 	private final String id;
 
 	@SerializedName("plat")
-	private final double plat;
+	private double plat;
 
 	@SerializedName("status")
 	private final String status;
@@ -569,6 +569,18 @@ public class PDOrderItem implements Parcelable {
 
 	public void setCustomerDaddress(String customerDaddress) {
 		this.customerDaddress = customerDaddress;
+	}
+
+	public void setPlat(double plat) {
+		this.plat = plat;
+	}
+
+	public void setPlong(double plong) {
+		this.plong = plong;
+	}
+
+	public void setCustomerPaddress(String customerPaddress) {
+		this.customerPaddress = customerPaddress;
 	}
 
 	public void setTotal(String total) {
