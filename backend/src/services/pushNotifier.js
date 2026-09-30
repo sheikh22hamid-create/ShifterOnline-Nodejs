@@ -242,6 +242,26 @@ async function notifyDriverDestinationUpdated(fcmToken, orderId, newAddress, rev
   );
 }
 
+async function notifyDriverPickupUpdated(fcmToken, orderId, newAddress, revisedFare) {
+  return sendPushNotification(
+    fcmToken,
+    "Pickup Location Updated",
+    `Customer updated pickup to ${newAddress}. Revised Fare: ₹${revisedFare}`,
+    stringifyPayload({ type: "pickup_updated", order_id: String(orderId), pickup_address: String(newAddress), revised_fare: String(revisedFare) }),
+    "order_channel"
+  );
+}
+
+async function notifyDriverStopAdded(fcmToken, orderId, stopAddress, revisedFare) {
+  return sendPushNotification(
+    fcmToken,
+    "Stop Added",
+    `Customer added a stop at ${stopAddress}. Revised Fare: ₹${revisedFare}`,
+    stringifyPayload({ type: "stop_added", order_id: String(orderId), stop_address: String(stopAddress), revised_fare: String(revisedFare) }),
+    "order_channel"
+  );
+}
+
 /** Fired by adminRiderController.kycDecision - a driver's KYC document (RC, license, ...) was approved or rejected. */
 async function notifyDriverKycDocumentDecision(fcmToken, documentLabel, isApproved, reason) {
   return sendPushNotification(
@@ -271,6 +291,8 @@ module.exports = {
   notifyDriverDismiss,
   notifyDriverForceAssigned,
   notifyDriverDestinationUpdated,
+  notifyDriverPickupUpdated,
+  notifyDriverStopAdded,
   notifyCustomerOrderAssigned,
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,

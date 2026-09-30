@@ -26,6 +26,14 @@ jest.mock("../../services/orderDestinationService", () => ({
   previewDestinationChange: jest.fn(),
   confirmDestinationChange: jest.fn(),
 }));
+jest.mock("../../services/orderPickupService", () => ({
+  previewPickupChange: jest.fn(),
+  confirmPickupChange: jest.fn(),
+}));
+jest.mock("../../services/orderStopsService", () => ({
+  previewAddStop: jest.fn(),
+  confirmAddStop: jest.fn(),
+}));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");

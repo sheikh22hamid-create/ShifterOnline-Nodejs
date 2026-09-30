@@ -404,6 +404,10 @@ model pkg_order_wait_timer {
   otp_verify_lat      String?   @db.VarChar(30)
   otp_verify_lng      String?   @db.VarChar(30)
   otp_verify_at       DateTime? @db.DateTime(0)
+  // Wait time banked across a pickup-location change while the driver was
+  // already parked at the old pickup point — see orderPickupService and
+  // sql/20260929_pickup_change_wait_banking.sql.
+  pickup_wait_banked_seconds Int @default(0)
 
   @@unique([order_id, rid], map: "order_rid_unique")
   @@unique([order_id, rid], map: "uniq_order_rid")
