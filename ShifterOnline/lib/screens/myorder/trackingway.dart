@@ -1137,6 +1137,498 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     );
   }
 
+  bool get _canChangePickup {
+    if (orderProduc == null) return false;
+    final orderStatusNum = int.tryParse(orderProduc?["order_status"]?.toString() ?? "");
+    // Pickup can only move before goods are picked up (backend
+    // PICKUP_EDITABLE_STATUSES: 0 pending, 1 en route, 2 waiting at pickup) -
+    // a stricter window than drop, which stays open right up to completion.
+    return orderStatusNum != null && (orderStatusNum == 0 || orderStatusNum == 1 || orderStatusNum == 2);
+  }
+
+  Future<void> _handleChangePickupLocation() async {
+    if (!_canChangePickup) {
+      ApiWrapper.showToastMessage("Pickup location cannot be changed for this order".tr);
+      return;
+    }
+
+    final pAddress = (orderProduc?['customer_paddress'] ?? orderProduc?['store_paddress'] ?? '').toString();
+    final currentPlat = double.tryParse(orderProduc?['plat']?.toString() ?? '');
+    final currentPlong = double.tryParse(orderProduc?['plong']?.toString() ?? '');
+
+    final selected = await Get.to<Map<String, dynamic>>(
+      () => const LocationSearchScreen(locationType: "Pickup"),
+    );
+
+    if (!mounted || selected == null) return;
+
+    final newLat = double.tryParse(selected["lat_map"]?.toString() ?? selected["lat"]?.toString() ?? "");
+    final newLng = double.tryParse(selected["long_map"]?.toString() ?? selected["lng"]?.toString() ?? "");
+    final newAddress = selected["address"]?.toString() ?? "";
+
+    if (newLat == null || newLng == null || newAddress.trim().isEmpty) {
+      ApiWrapper.showToastMessage("Please select a valid pickup location".tr);
+      return;
+    }
+
+    if (currentPlat != null && currentPlong != null) {
+      final double latDiff = (currentPlat - newLat).abs();
+      final double lngDiff = (currentPlong - newLng).abs();
+      if (latDiff < 0.0001 && lngDiff < 0.0001 && newAddress.trim() == pAddress.trim()) {
+        ApiWrapper.showToastMessage("The selected location is the same as the current pickup location".tr);
+        return;
+      }
+    }
+
+    final targetOrderId = (orderid.isNotEmpty && orderid != "0")
+        ? orderid
+        : (orderProduc?["order_id"] ?? orderProduc?["id"] ?? "").toString();
+    final targetUid = (uid.isNotEmpty && uid != "0")
+        ? uid
+        : (orderProduc?["uid"] ?? getdata.read("Uid") ?? "").toString();
+
+    Get.dialog(
+      const Center(child: CircularProgressIndicator(color: Colors.deepOrange)),
+      barrierDismissible: false,
+    );
+
+    final previewRes = await ApiWrapper.dataPostNode(Config.nodePickupPreview, {
+      "uid": targetUid,
+      "order_id": targetOrderId,
+      "new_plat": newLat,
+      "new_plong": newLng,
+      "new_paddress": newAddress.trim(),
+    });
+
+    if (Get.isDialogOpen ?? false) {
+      Get.back();
+    }
+
+    if (!mounted) return;
+
+    final isSuccess = previewRes is Map &&
+        (previewRes["Result"] == true || previewRes["Result"] == "true" || previewRes["status"] == "success");
+
+    if (!isSuccess) {
+      final errMsg = (previewRes is Map ? (previewRes["ResponseMsg"] ?? previewRes["message"]) : null) ??
+          "Failed to calculate revised route and fare".tr;
+      ApiWrapper.showToastMessage(errMsg.toString());
+      return;
+    }
+
+    _showPickupChangeConfirmSheet(
+      newLat: newLat,
+      newLng: newLng,
+      newAddress: newAddress.trim(),
+      targetOrderId: targetOrderId,
+      targetUid: targetUid,
+      previewData: Map<String, dynamic>.from(previewRes),
+    );
+  }
+
+  void _showPickupChangeConfirmSheet({
+    required double newLat,
+    required double newLng,
+    required String newAddress,
+    required String targetOrderId,
+    required String targetUid,
+    required Map<String, dynamic> previewData,
+  }) {
+    final double distDiff = double.tryParse((previewData["distance_diff"] ?? 0).toString()) ?? 0.0;
+    final double fDiff = double.tryParse((previewData["fare_diff"] ?? 0).toString()) ?? 0.0;
+    final String oldFare = (previewData["old_fare"] ?? 0).toString();
+    final String newFare = (previewData["new_fare"] ?? 0).toString();
+    final String oldDist = (previewData["old_distance"] ?? 0).toString();
+    final String newDist = (previewData["new_distance"] ?? 0).toString();
+
+    bool isSubmitting = false;
+
+    Get.bottomSheet(
+      StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            decoration: BoxDecoration(
+              color: notifier.getBgColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(9),
+                        decoration: BoxDecoration(
+                          color: linercolor.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.alt_route_rounded, color: linercolor, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Update Pickup Location".tr,
+                              style: TextStyle(
+                                color: notifier.text,
+                                fontFamily: "Gilroy_Bold",
+                                fontSize: 18,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "Review revised distance and fare breakdown".tr,
+                              style: TextStyle(
+                                color: greaycolor,
+                                fontFamily: "Gilroy_Medium",
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: notifier.lightBgColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.location_on_rounded, color: Colors.orange, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "New Pickup Address".tr,
+                                style: TextStyle(
+                                  color: greaycolor,
+                                  fontFamily: "Gilroy_Medium",
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                newAddress,
+                                style: TextStyle(
+                                  color: notifier.text,
+                                  fontFamily: "Gilroy_Bold",
+                                  fontSize: 13,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: notifier.lightBgColor,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.route_rounded, size: 14, color: greaycolor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "Distance".tr,
+                                    style: TextStyle(
+                                      color: greaycolor,
+                                      fontFamily: "Gilroy_Medium",
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  Text(
+                                    "$newDist km",
+                                    style: TextStyle(
+                                      color: notifier.text,
+                                      fontFamily: "Gilroy_Bold",
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "($oldDist km)",
+                                    style: TextStyle(
+                                      color: greaycolor,
+                                      decoration: TextDecoration.lineThrough,
+                                      fontFamily: "Gilroy_Medium",
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: (distDiff >= 0 ? Colors.orange : Colors.green).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  distDiff >= 0 ? "+${distDiff.toStringAsFixed(2)} km" : "${distDiff.toStringAsFixed(2)} km",
+                                  style: TextStyle(
+                                    color: distDiff >= 0 ? Colors.deepOrange : Colors.green,
+                                    fontFamily: "Gilroy_Bold",
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: notifier.lightBgColor,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.payments_rounded, size: 14, color: greaycolor),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "Revised Fare".tr,
+                                    style: TextStyle(
+                                      color: greaycolor,
+                                      fontFamily: "Gilroy_Medium",
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  Text(
+                                    "₹$newFare",
+                                    style: TextStyle(
+                                      color: linercolor,
+                                      fontFamily: "Gilroy_Bold",
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "₹$oldFare",
+                                    style: TextStyle(
+                                      color: greaycolor,
+                                      decoration: TextDecoration.lineThrough,
+                                      fontFamily: "Gilroy_Medium",
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: (fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? Colors.green : Colors.grey)).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  fDiff > 0
+                                      ? "+₹${fDiff.toStringAsFixed(0)} Difference"
+                                      : (fDiff < 0 ? "-₹${(-fDiff).toStringAsFixed(0)} Reduced" : "No Change"),
+                                  style: TextStyle(
+                                    color: fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? Colors.green : Colors.grey.shade700),
+                                    fontFamily: "Gilroy_Bold",
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff0D47A1).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xff0D47A1).withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline_rounded, color: Color(0xff0D47A1), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Driver's map navigation and fare will immediately update. Any fare difference will be settled on trip completion."
+                                .tr,
+                            style: const TextStyle(
+                              color: Color(0xff0D47A1),
+                              fontFamily: "Gilroy_Medium",
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isSubmitting ? null : () => Get.back(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: notifier.bordecolor),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Text(
+                            "Cancel".tr,
+                            style: TextStyle(
+                              color: notifier.text,
+                              fontFamily: "Gilroy_Bold",
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  setSheetState(() => isSubmitting = true);
+                                  try {
+                                    final confirmRes = await ApiWrapper.dataPostNode(Config.nodePickupConfirm, {
+                                      "uid": targetUid,
+                                      "order_id": targetOrderId,
+                                      "new_plat": newLat,
+                                      "new_plong": newLng,
+                                      "new_paddress": newAddress,
+                                    });
+
+                                    final isConfirmSuccess = confirmRes is Map &&
+                                        (confirmRes["Result"] == true ||
+                                            confirmRes["Result"] == "true" ||
+                                            confirmRes["status"] == "success");
+
+                                    if (isConfirmSuccess) {
+                                      Get.back();
+                                      ApiWrapper.showToastMessage(
+                                        confirmRes["ResponseMsg"]?.toString() ??
+                                            "Pickup location updated successfully!".tr,
+                                      );
+                                      pageRefresh();
+                                    } else {
+                                      final err = (confirmRes is Map
+                                              ? (confirmRes["ResponseMsg"] ?? confirmRes["message"])
+                                              : null) ??
+                                          "Failed to update pickup location".tr;
+                                      ApiWrapper.showToastMessage(err.toString());
+                                      setSheetState(() => isSubmitting = false);
+                                    }
+                                  } catch (e) {
+                                    debugPrint("Error confirming pickup: $e");
+                                    ApiWrapper.showToastMessage("Error updating pickup location".tr);
+                                    setSheetState(() => isSubmitting = false);
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: linercolor,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : Text(
+                                  "Confirm & Update".tr,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: "Gilroy_Bold",
+                                    fontSize: 14,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: MediaQuery.of(context).padding.bottom + 6),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+  }
+
   void _showHelpAndSupportSheet() {
     final careNumber = (orderProduc?["customer_care_number"] ?? "+91 9999908008").toString();
     Get.bottomSheet(
@@ -1870,13 +2362,45 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                "Pickup Location".tr,
-                                style: TextStyle(
-                                  color: greaycolor,
-                                  fontFamily: "Gilroy_Medium",
-                                  fontSize: 10.5,
-                                ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Pickup Location".tr,
+                                    style: TextStyle(
+                                      color: greaycolor,
+                                      fontFamily: "Gilroy_Medium",
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                                  if (_canChangePickup)
+                                    InkWell(
+                                      onTap: _handleChangePickupLocation,
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                        decoration: BoxDecoration(
+                                          color: linercolor.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.edit_location_alt_rounded, size: 10, color: linercolor),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              "Change".tr,
+                                              style: TextStyle(
+                                                color: linercolor,
+                                                fontFamily: "Gilroy_Bold",
+                                                fontSize: 9.5,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                               const SizedBox(height: 2),
                               Text(
@@ -3589,42 +4113,78 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     }
 
     // 4. Default active order buttons
-    if (_canChangeDestination) {
+    if (_canChangePickup || _canChangeDestination) {
       return Column(
         children: [
-          SizedBox(
-            width: double.infinity,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _handleChangeDropLocation,
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(
-                    color: linercolor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: linercolor.withOpacity(0.6), width: 1.2),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.edit_location_alt_rounded, color: linercolor, size: 19),
-                      const SizedBox(width: 8),
-                      Text(
-                        "Change Drop Location".tr,
-                        style: TextStyle(
-                          color: linercolor,
-                          fontFamily: "Gilroy_Bold",
-                          fontSize: 14.5,
+          if (_canChangePickup)
+            SizedBox(
+              width: double.infinity,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _handleChangePickupLocation,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: linercolor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: linercolor.withOpacity(0.6), width: 1.2),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.edit_location_alt_rounded, color: linercolor, size: 19),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Change Pickup Location".tr,
+                          style: TextStyle(
+                            color: linercolor,
+                            fontFamily: "Gilroy_Bold",
+                            fontSize: 14.5,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          if (_canChangePickup && _canChangeDestination) const SizedBox(height: 10),
+          if (_canChangeDestination)
+            SizedBox(
+              width: double.infinity,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _handleChangeDropLocation,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: linercolor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: linercolor.withOpacity(0.6), width: 1.2),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.edit_location_alt_rounded, color: linercolor, size: 19),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Change Drop Location".tr,
+                          style: TextStyle(
+                            color: linercolor,
+                            fontFamily: "Gilroy_Bold",
+                            fontSize: 14.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: 10),
           _buildCancelButton(),
         ],
