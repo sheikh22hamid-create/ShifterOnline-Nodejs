@@ -92,6 +92,11 @@ You MUST reply strictly in valid JSON format:
 CRITICAL GREETING RULE:
 - ALWAYS start greetings with "Hello!" or "Hello ji!".
 - NEVER use "Namaste" or "Namaskar" under any circumstances.
+
+CRITICAL BOOKING & FARE ESTIMATE RULE:
+- The WhatsApp Bot CANNOT book rides/orders, cannot take pickup/drop locations, and cannot calculate custom trip fares directly.
+- NEVER ask the user for their pickup/drop location or attempt to initiate a booking in chat.
+- If the user asks to book a vehicle/delivery or asks for prices/fare, ALWAYS state that WhatsApp direct booking is not available and instruct them to download the official Shifter Online Customer App: https://play.google.com/store/apps/details?id=com.shifter.online and mention Customer Care 9109114515.
 `;
 
 /**
@@ -159,7 +164,7 @@ function fallbackRuleBasedParser(text) {
     return {
       intent: "CANCEL_RESET",
       entities: {},
-      aiResponse: "Bilkul! Aapka current process cancel kar diya gaya hai.\n\nAap kya help chahte hain?\n\n• *Fare* / *Book* — Fare estimate calculate karein\n• *Track <OrderId>* — Order tracking status check karein\n• *Driver* — Driver partner registration & app link\n• *Support* — Customer care & driver helpline numbers",
+      aiResponse: "Bilkul! Aapka current process cancel kar diya gaya hai.\n\nAap kya help chahte hain?\n\n• *App* — Delivery booking ke liye Shifter App link\n• *Track <OrderId>* — Order tracking status check karein\n• *Driver* — Driver partner registration & app link\n• *Support* — Customer care & driver helpline numbers",
     };
   }
 
@@ -230,11 +235,11 @@ function fallbackRuleBasedParser(text) {
   }
 
   // 6. FARE CALCULATION / BOOKING
-  if (t.includes("fare") || t.includes("kitna") || t.includes("price") || t.includes("cost") || t.includes("rate") || t.includes("book") || t.includes("gadi") || t.includes("truck") || t.includes("tempo")) {
+  if (t.includes("fare") || t.includes("kitna") || t.includes("price") || t.includes("cost") || t.includes("rate") || t.includes("book") || t.includes("gadi") || t.includes("truck") || t.includes("tempo") || t.includes("pickup") || t.includes("drop")) {
     return {
       intent: "CALCULATE_FARE",
       entities: {},
-      aiResponse: "Aapki booking ke liye fare calculate karte hain.",
+      aiResponse: "📦 *Shifter Online Booking*\n\nWhatsApp par direct booking ya fare calculation uplabdh nahi hai. Delivery booking aur live fare ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\nApp me aapko transparent fare aur instant driver allocation milta hai!\n📞 Customer Care: 9109114515",
     };
   }
 

@@ -6,25 +6,16 @@ const logger = require("../../utils/logger");
  * Handles Instant Fare Estimate via WhatsApp
  */
 async function handleFareCalculation(phoneNumber, entities, session) {
-  try {
-    const categories = await prisma.pkg_category.findMany({
-      where: { cat_status: 1 },
-      orderBy: { sort_order: "asc" },
-    });
-
-    if (categories.length === 0) {
-      return "⚠️ Abhi koi vehicle category active nahi hai. Kripya baad me try karein.";
-    }
-
-    let categoryListText = "📦 *Shifter Online — Fare Estimator*:\n\n";
-    categoryListText += "Pickup aur Drop location enter karke aasan steps me fare calculate karein!\n\n";
-    categoryListText += "💡 *Start karne ke liye reply karein*:\n*<Pickup Location> to <Drop Location>* (e.g. Connaught Place to Noida Sector 62)\n\n";
-    categoryListText += "Ya apna *Pickup Location* write karein:";
-    return categoryListText;
-  } catch (err) {
-    logger.error("WhatsApp handleFareCalculation error:", err);
-    return "⚠️ Fare calculate karne me error aaya. Kripya punah prayaas karein.";
-  }
+  const appDownloadUrl = process.env.USER_APP_DOWNLOAD_URL || "https://play.google.com/store/apps/details?id=com.shifter.online";
+  return (
+    `📦 *Shifter Online Booking*\n\n` +
+    `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
+    `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+    `📲 *Download Shifter App*:\n` +
+    `👉 ${appDownloadUrl}\n\n` +
+    `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
+    `📞 *Customer Care*: 9109114515`
+  );
 }
 
 /**
