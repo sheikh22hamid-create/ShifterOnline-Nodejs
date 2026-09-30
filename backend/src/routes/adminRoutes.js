@@ -14,6 +14,7 @@ const settingsController = require("../controllers/settingsController");
 const analyticsController = require("../controllers/analyticsController");
 const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
+const goodsTypeController = require("../controllers/goodsTypeController");
 const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
@@ -278,6 +279,11 @@ router.get("/cancel-reasons", auth, cmsController.listCancelReasons);
 router.post("/cancel-reasons", auth, authorize("superadmin"), cmsController.createCancelReason);
 router.put("/cancel-reasons/:id", auth, authorize("superadmin"), cmsController.updateCancelReason);
 router.delete("/cancel-reasons/:id", auth, authorize("superadmin"), cmsController.deleteCancelReason);
+
+router.get("/goods-types", auth, goodsTypeController.listGoodsTypes);
+router.post("/goods-types", auth, authorize("superadmin"), goodsTypeController.createGoodsType);
+router.put("/goods-types/:id", auth, authorize("superadmin"), goodsTypeController.updateGoodsType);
+router.delete("/goods-types/:id", auth, authorize("superadmin"), goodsTypeController.deleteGoodsType);
 
 router.get("/pages", auth, cmsController.listPages);
 router.post("/pages", auth, authorize("superadmin"), cmsController.createPage);

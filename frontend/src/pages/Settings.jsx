@@ -80,6 +80,8 @@ const HANDLED_FLAG_KEYS = [
   'pickup_timeout_driver_compensation',
   'pickup_complete_auto_distance_m',
   'max_extra_stops',
+  'customer_wallet_max_topup',
+  'scheduled_confirm_popup_minutes',
   'extra_stop_charge',
 ]
 
@@ -459,6 +461,40 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Maximum negative wallet balance allowed for a driver before they are blocked from receiving new ride offers (Default: 100).
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Scheduled Rides">
+          <div>
+            <Label htmlFor="flag-scheduled_confirm_popup_minutes">Confirmation popup lead time (minutes)</Label>
+            <Input
+              id="flag-scheduled_confirm_popup_minutes"
+              type="number"
+              min="1"
+              placeholder="e.g. 30"
+              value={flags.scheduled_confirm_popup_minutes ?? '30'}
+              onChange={(e) => setFlags((f) => ({ ...f, scheduled_confirm_popup_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              This many minutes before the scheduled time, the customer is asked "Do you still want to continue with this scheduled ride?" (Continue / Cancel). Cancelling also removes the booking from drivers who had pre-accepted it. The order always goes LIVE exactly at the selected time (Default: 30).
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Customer Ledger (Wallet)">
+          <div>
+            <Label htmlFor="flag-customer_wallet_max_topup">Maximum amount per add-money (₹)</Label>
+            <Input
+              id="flag-customer_wallet_max_topup"
+              type="number"
+              min="1"
+              placeholder="e.g. 50000"
+              value={flags.customer_wallet_max_topup ?? '50000'}
+              onChange={(e) => setFlags((f) => ({ ...f, customer_wallet_max_topup: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Highest amount a customer can add to their ledger in a single transaction (Default: 50000).
             </p>
           </div>
         </Section>

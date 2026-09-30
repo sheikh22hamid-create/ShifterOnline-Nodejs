@@ -166,7 +166,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:text="No Scheduled Trips Right Now"
+                    android:text="No scheduled order right now"
                     android:textColor="@color/driver_text_primary"
                     android:textSize="16.5sp"
                     android:textStyle="bold" />

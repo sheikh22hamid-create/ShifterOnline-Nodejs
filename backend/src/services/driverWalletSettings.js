@@ -24,7 +24,23 @@ async function getDriverMinWithdrawalAmount() {
   return Number.isNaN(parsed) ? DEFAULT_DRIVER_MIN_WITHDRAWAL_AMOUNT : parsed;
 }
 
+const CUSTOMER_WALLET_MAX_TOPUP_KEY = "customer_wallet_max_topup";
+const DEFAULT_CUSTOMER_WALLET_MAX_TOPUP = 50000;
+
+async function getCustomerWalletMaxTopup() {
+  let row = null;
+  try {
+    row = await prisma.app_settings.findFirst({ where: { setting_key: CUSTOMER_WALLET_MAX_TOPUP_KEY } });
+  } catch (_) {
+    // Settings table unreachable - fall back to the default cap rather than blocking top-ups.
+  }
+  const parsed = parseFloat(row?.setting_value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CUSTOMER_WALLET_MAX_TOPUP;
+}
+
 module.exports = {
+  getCustomerWalletMaxTopup,
+  CUSTOMER_WALLET_MAX_TOPUP_KEY,
   getDriverMaxDueLimit,
   DRIVER_MAX_DUE_LIMIT_KEY,
   DEFAULT_DRIVER_MAX_DUE_LIMIT,

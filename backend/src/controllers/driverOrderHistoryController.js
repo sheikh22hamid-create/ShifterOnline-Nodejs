@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
+const { formatGoodsType } = require("../services/goodsTypeService");
 
 // Node port of rider_api/pkg_history.php - the driver's order history /
 // "Trip Payment Details" screen. Ported carefully rather than skipped
@@ -212,6 +213,7 @@ function formatPkgOrderForDriver(row, ctx) {
     pick_type: row.pick_type,
     drop_type: row.drop_type,
     description: row.description,
+    goods_type: formatGoodsType(row),
     distance: row.distance,
     loading_charge: row.loading_charge,
     unloading_charge: row.unloading_charge,

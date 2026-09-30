@@ -2,6 +2,7 @@ jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { findUnique: jest.fn().mockResolvedValue(null) },
   driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
   tbl_package: { findMany: jest.fn() },
+  tbl_goods_type: { findFirst: jest.fn() },
   tbl_user: { findUnique: jest.fn(), updateMany: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
   tbl_referral_setting: { findFirst: jest.fn() },
@@ -112,6 +113,30 @@ describe("orderController.createOrderCore", () => {
     expect(prisma.pkg_order.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ photos: "images/pack_img/a.jpg,images/pack_img/b.jpg" }) })
     );
+  });
+
+  it("stores the goods type id, snapshot name and Other text on the order", async () => {
+    prisma.tbl_goods_type.findFirst.mockResolvedValue({ id: 4, name: "Construction" });
+    await createOrderCore({ ...baseInput, goodsTypeId: "4", goodsTypeOther: " Tiles " });
+    expect(prisma.pkg_order.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ goods_type_id: 4, goods_type_name: "Construction", goods_type_other: "Tiles" }),
+    });
+  });
+
+  it("books normally with all-null goods columns when no goods type is sent", async () => {
+    const result = await createOrderCore({ ...baseInput, goodsTypeId: "", goodsTypeOther: undefined });
+    expect(result.ok).toBe(true);
+    expect(prisma.pkg_order.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ goods_type_id: null, goods_type_name: null, goods_type_other: null }),
+    });
+  });
+
+  it("rejects an unknown goods type id and creates no order", async () => {
+    prisma.tbl_goods_type.findFirst.mockResolvedValue(null);
+    const result = await createOrderCore({ ...baseInput, goodsTypeId: 99 });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("INVALID_GOODS_TYPE");
+    expect(prisma.pkg_order.create).not.toHaveBeenCalled();
   });
 
   it("fails validation when deliveryTypeIds is empty", async () => {

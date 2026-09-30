@@ -50,6 +50,7 @@ const lockManager = require("../lockManager");
 const pricingEngine = require("../pricingEngine");
 const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
+const { SCHEDULED_ORDER_PRIORITY_WINDOW_MS } = require("../../config/constants");
 const { haversineKm } = require("../../utils/geoDistance");
 const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
 
@@ -1392,7 +1393,7 @@ describe("tripLifecycle.sweepPickupRelocationCeiling", () => {
 });
 
 describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
-  const NOW = new Date("2026-09-22T14:30:00.000Z").getTime(); // 30 min before a 3:00 PM pickup
+  const NOW = new Date("2026-09-22T15:00:00.000Z").getTime(); // exactly the 3:00 PM scheduled time (no advance dispatch)
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -1461,11 +1462,11 @@ describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
     });
   });
 
-  it("starts the fallback cascade once the 15-minute priority window has elapsed unaccepted", async () => {
+  it("starts the fallback cascade once the priority window has elapsed unaccepted", async () => {
     prisma.pkg_order.findMany.mockResolvedValueOnce([
       {
         id: 12, booking_type: 2, o_status: "Pending", driver_notify_sent: false,
-        priority_notify_sent: true, priority_started_at: new Date(NOW - 15 * 60 * 1000),
+        priority_notify_sent: true, priority_started_at: new Date(NOW - SCHEDULED_ORDER_PRIORITY_WINDOW_MS),
         schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1,
       },
     ]);
@@ -1483,7 +1484,7 @@ describe("dispatchDueScheduledOrders — two-stage priority sweep", () => {
     prisma.pkg_order.findMany.mockResolvedValueOnce([
       {
         id: 13, booking_type: 2, o_status: "Pending", driver_notify_sent: false,
-        priority_notify_sent: true, priority_started_at: new Date(NOW - 5 * 60 * 1000),
+        priority_notify_sent: true, priority_started_at: new Date(NOW - SCHEDULED_ORDER_PRIORITY_WINDOW_MS / 2),
         schedule_date_time: "2026-09-22T15:00:00.000Z", uid: 1,
       },
     ]);

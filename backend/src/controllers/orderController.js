@@ -15,6 +15,7 @@ const { SEARCH_RADIUS_KM } = require("../config/constants");
 const orderDestinationService = require("../services/orderDestinationService");
 const orderPickupService = require("../services/orderPickupService");
 const orderStopsService = require("../services/orderStopsService");
+const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 
 async function customerTripProgress(order) {
   if (!order.rid) return null;
@@ -211,7 +212,7 @@ async function createOrderCore({
   dlat, dlong, daddress, dropName, dmobile, dropType, packageWeight, packageCost, description,
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
-  stops = [], useReferralPoints = false, body_type, bodyType,
+  stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
 }) {
   if (
     !uid ||
@@ -222,6 +223,9 @@ async function createOrderCore({
   ) {
     return { ok: false, code: "VALIDATION", msg: "uid, category, a non-empty delivery_type array, and valid coordinates are required" };
   }
+
+  const goods = await resolveGoodsType({ goodsTypeId, goodsTypeOther });
+  if (!goods.ok) return goods;
 
   const requestedPackageIds = deliveryTypeIds.map(Number);
 
@@ -440,6 +444,9 @@ async function createOrderCore({
       pick_name: pickName || "",
       drop_name: dropName || "",
       description: description || null,
+      goods_type_id: goods.goods_type_id,
+      goods_type_name: goods.goods_type_name,
+      goods_type_other: goods.goods_type_other,
       distance: distanceKm,
       d_charge: finalDCharge,
       total_dcharge: finalTotalCharge,
@@ -575,7 +582,7 @@ async function createOrder(req, res) {
       dlat, dlong, daddress, drop_name, dmobile, drop_type, package_weight, package_cost, description,
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
-      stops, body_type, bodyType,
+      stops, body_type, bodyType, goods_type_id, goods_type_other,
     } = req.body;
 
     const result = await createOrderCore({
@@ -587,9 +594,13 @@ async function createOrder(req, res) {
       scheduleDateTime: schedule_date_time || scheduleDateTime || null,
       stops, useReferralPoints: Boolean(use_referral_points),
       body_type: body_type || bodyType,
+      goodsTypeId: goods_type_id, goodsTypeOther: goods_type_other,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "INVALID_GOODS_TYPE") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "PREMIUM_PLAN_REQUIRED") {
@@ -760,6 +771,9 @@ async function getOrderDetails(req, res) {
           booking_type: order.booking_type,
           schedule_date_time: order.schedule_date_time,
           description: order.description,
+          goods_type: formatGoodsType(order),
+          goods_type_id: order.goods_type_id,
+          goods_type_other: order.goods_type_other,
           photos: parsePhotos(order.photos),
           order_date: order.odate,
           order_deliver_date: order.ddate,
@@ -805,6 +819,43 @@ async function customerCancel(req, res) {
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Order Cancelled Successfully!!!" });
   } catch (err) {
     logger.error("customerCancel failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+// Scheduled-ride confirmation prompt ("Do you still want to continue?") -
+// see tripLifecycle.sendScheduledOrderReminders.
+async function getPendingScheduleConfirmations(req, res) {
+  try {
+    const uid = Number(req.body?.uid);
+    if (!uid) return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid is required" });
+    const data = await tripLifecycle.getPendingScheduleConfirmations(uid);
+    return res.status(200).json({ ResponseCode: "200", Result: "true", data });
+  } catch (err) {
+    logger.error("getPendingScheduleConfirmations failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+async function respondScheduleConfirmation(req, res) {
+  try {
+    const uid = Number(req.body?.uid);
+    const orderId = Number(req.body?.order_id);
+    const action = String(req.body?.action || "").toLowerCase();
+    if (!uid || !orderId) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid and order_id are required" });
+    }
+    const result = await tripLifecycle.respondToScheduleConfirmation(uid, orderId, action);
+    if (!result.success) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: action === "cancel" ? "Scheduled ride cancelled" : "Scheduled ride confirmed",
+    });
+  } catch (err) {
+    logger.error("respondScheduleConfirmation failed:", err);
     return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
@@ -1822,6 +1873,8 @@ module.exports = {
   packageListEstimate,
   createOrder,
   createOrderCore,
+  getPendingScheduleConfirmations,
+  respondScheduleConfirmation,
   getOrderDetails,
   customerCancel,
   driverCancel,

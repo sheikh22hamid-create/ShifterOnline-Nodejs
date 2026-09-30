@@ -76,17 +76,19 @@ module.exports = {
   // polled every 60s). How long before schedule_date_time the customer gets
   // a reminder push, and how often the sweep checks for orders whose
   // reminder/dispatch is due.
-  SCHEDULED_ORDER_REMINDER_LEAD_MS: 10 * 60 * 1000,
+  SCHEDULED_ORDER_REMINDER_LEAD_MS: 30 * 60 * 1000, // default for the admin-configurable scheduled_confirm_popup_minutes
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS: 30 * 1000,
 
   // Driver priority-interest dispatch (booking_type=2) — see
   // docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md §3/§6.
-  // An order "goes live" this long before schedule_date_time; drivers who
+  // An order "goes live" this long before schedule_date_time (0 = exactly at
+  // the customer's selected time; the old 30-minute advance dispatch was
+  // removed on purpose). Drivers who
   // marked interest ahead of time get an exclusive popup window this long
   // before it falls back to the normal radius-based cascade every instant
   // order already uses.
-  SCHEDULED_ORDER_GO_LIVE_LEAD_MS: 30 * 60 * 1000,
-  SCHEDULED_ORDER_PRIORITY_WINDOW_MS: 15 * 60 * 1000,
+  SCHEDULED_ORDER_GO_LIVE_LEAD_MS: 0,
+  SCHEDULED_ORDER_PRIORITY_WINDOW_MS: 2 * 60 * 1000,
   // How long the DRIVER'S POPUP for a priority offer stays on screen before
   // auto-closing — deliberately NOT SCHEDULED_ORDER_PRIORITY_WINDOW_MS.
   // The offer stays server-side-acceptable for the full 15 minutes (that's

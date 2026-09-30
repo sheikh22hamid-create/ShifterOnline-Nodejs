@@ -57,8 +57,8 @@ async function notifyCustomerOrderAssigned(fcmToken, data) {
 async function notifyCustomerNoDriverFound(fcmToken, orderId) {
   return sendPushNotification(
     fcmToken,
-    "No Driver Found",
-    "We couldn't find a driver for your order. Please try again.",
+    "No drivers found",
+    "No drivers found. None of the available drivers accepted your order. Please try again.",
     { type: "no_driver_found", order_id: String(orderId) }
   );
 }
@@ -146,6 +146,26 @@ async function notifyCustomerScheduleReminder(fcmToken, orderId, scheduleTimeLab
     "Upcoming Scheduled Order",
     `Your scheduled order #${orderId} will be picked up around ${scheduleTimeLabel} (10 minutes left).`,
     { type: "schedule_reminder", order_id: String(orderId) }
+  );
+}
+
+/** Scheduled ride confirmation prompt ("Do you still want to continue?") - see tripLifecycle.sendScheduledOrderReminders. */
+async function notifyCustomerScheduleConfirm(fcmToken, orderId, scheduleTimeLabel) {
+  return sendPushNotification(
+    fcmToken,
+    "Scheduled ride confirmation",
+    `Your scheduled order #${orderId} is set for ${scheduleTimeLabel}. Do you still want to continue with this scheduled ride?`,
+    { type: "schedule_confirm", order_id: String(orderId) }
+  );
+}
+
+/** A scheduled order the driver had pre-accepted was cancelled by the customer. */
+async function notifyDriverScheduledCancelled(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Scheduled trip cancelled",
+    `The customer cancelled scheduled order #${orderId} that you had accepted.`,
+    { type: "scheduled_cancelled", order_id: String(orderId) }
   );
 }
 
@@ -301,6 +321,8 @@ module.exports = {
   notifyDriverAdvancePaymentTimeoutCancel,
   notifyDriverCustomerCancelled,
   notifyCustomerScheduleReminder,
+  notifyCustomerScheduleConfirm,
+  notifyDriverScheduledCancelled,
   notifyCustomerOrderLive,
   notifyCustomerLatePickup,
   notifyCustomerNextDayAssigned,

@@ -15,6 +15,8 @@ router.post("/packagelist", orderController.packageListEstimate);
 router.post("/create", orderController.createOrder);
 router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);
+router.post("/schedule-confirmations", orderController.getPendingScheduleConfirmations);
+router.post("/schedule-confirm", orderController.respondScheduleConfirmation);
 router.post("/driver-cancel", orderController.driverCancel);
 router.post("/destination-change/preview", orderController.previewDestinationChange);
 router.post("/destination-change/confirm", orderController.confirmDestinationChange);
@@ -45,6 +47,7 @@ router.post("/map-info", orderController.getMapInfo);
 router.post("/advance-payment", orderController.advancePayment);
 router.post("/advance-payment/redeem-points", orderController.redeemAdvanceWithPoints);
 router.get("/referral-discount-info", orderController.referralDiscountInfo);
+router.get("/goods-types", require("../controllers/goodsTypeController").listActiveGoodsTypes);
 
 // My-orders list (was missing entirely - see legacyOrderController.js header)
 router.post("/history", legacyOrderController.pkgHistory);

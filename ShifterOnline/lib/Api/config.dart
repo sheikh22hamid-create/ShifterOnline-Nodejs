@@ -168,6 +168,8 @@ class Config {
   static const String nodeNextDayEligibility = "api/order/next-day-eligibility";
   static const String nodeReferralDiscountInfo = "api/order/referral-discount-info";
   static const String nodeGoodsTypes = "api/order/goods-types";
+  static const String nodeScheduleConfirmations = "api/order/schedule-confirmations";
+  static const String nodeScheduleConfirm = "api/order/schedule-confirm";
   // Node mirrors of the legacy PHP wallet / premium-plan / custom-order-bid
   // endpoints (customerWalletController.js, customerPlanController.js,
   // customOrderBiddingController.js - mounted under /api/users in app.js).

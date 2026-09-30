@@ -6,6 +6,7 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
+const { formatGoodsType } = require("./goodsTypeService");
 const {
   POPUP_TIMEOUT_MS,
   BATCH_GAP_MS,
@@ -309,7 +310,8 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     pickup_time: new Date().toISOString(),
     body_type: String(order.body_type || "any"),
     covered_charge: String(order.covered_charge || "0.00"),
-    order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}${order.body_type === "covered" ? " · [Covered Body]" : (order.body_type === "half" ? " · [Half Body]" : (order.body_type === "open" ? " · [Open Body]" : ""))}`,
+    order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}${order.body_type === "covered" ? " · [Covered Body]" : (order.body_type === "half" ? " · [Half Body]" : (order.body_type === "open" ? " · [Open Body]" : ""))}${formatGoodsType(order) ? `\nGoods: ${formatGoodsType(order)}` : ""}`,
+    goods_type: formatGoodsType(order),
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
     // Absolute deadline (server epoch ms), armed off the same `armedAt` the
     // lock/scheduleExpiry/acceptOrder freshness check all share — NOT a

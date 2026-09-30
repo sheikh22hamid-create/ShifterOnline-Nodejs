@@ -763,7 +763,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee) async {
     if (_currentBookingType == 2 && _scheduledFor == null) {
+      // Came here from the confirm screen's "Confirm and place order" with no
+      // date/time chosen - send the customer back to the date & time picker
+      // instead of just toasting.
       ApiWrapper.showToastMessage('Please pick a pickup date & time first.');
+      Get.back();
+      await _pickScheduleDateTime();
       return;
     }
     if (_booking) return;
@@ -851,7 +856,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           badgeText: "Scheduled Booking",
           message: _scheduledFor == null
               ? "Your order #$orderId has been scheduled. A driver will be assigned closer to your pickup time."
-              : "Your order #$orderId is scheduled for ${DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!)}. A driver will be assigned closer to your pickup time.",
+              : "Your order #$orderId is scheduled for ${DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!)}. It will go live at exactly that time, and a driver will then be assigned.",
         );
       } else {
         Get.offAll(() => WaitingScreen(orderId: orderId));
@@ -2107,25 +2112,44 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                border: Border.all(color: linercolor),
+                color: _scheduledFor == null ? null : linercolor.withOpacity(.10),
+                border: Border.all(color: linercolor, width: _scheduledFor == null ? 1 : 1.6),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.schedule_rounded, color: linercolor, size: 18),
+                  Icon(Icons.schedule_rounded, color: linercolor, size: 20),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      _scheduledFor == null
-                          ? 'Pick pickup date & time'
-                          : DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!),
-                      style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 13),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pickup Date & Time',
+                          style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11),
+                        ),
+                        Text(
+                          _scheduledFor == null
+                              ? 'Pick pickup date & time'
+                              : DateFormat('EEE, d MMM yyyy · h:mm a').format(_scheduledFor!),
+                          style: TextStyle(
+                            color: _scheduledFor == null ? notifier.text : linercolor,
+                            fontFamily: 'Gilroy_Bold',
+                            fontSize: _scheduledFor == null ? 13 : 15,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   Icon(Icons.chevron_right, color: greaycolor, size: 18),
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Your order will go LIVE at the selected time. Once a driver accepts your order, the driver will take some time to reach your pickup location from their current location.',
+            style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11, height: 1.3),
           ),
           const SizedBox(height: 10),
         ],

@@ -49,6 +49,8 @@ public class LocationUpdateService extends Service {
     private static final int NOTIFICATION_ID = 1001;
     private static final long UPDATE_INTERVAL = 10000; // 10 seconds
     private static final long FASTEST_INTERVAL = 5000; // 5 seconds
+    private static final long IDLE_UPDATE_INTERVAL = 20000; // online, no active trip
+    private static final long IDLE_FASTEST_INTERVAL = 10000;
     public static final String ACTION_LOCATION_UPDATED = "com.shifter.driver.LOCATION_UPDATED";
     public static final String ACTION_REFRESH_LOCATION = "com.shifter.driver.REFRESH_TRIP_LOCATION";
 
@@ -161,11 +163,19 @@ public class LocationUpdateService extends Service {
     private void startLocationUpdates() {
         LocationRequest locationRequest = LocationRequest.create();
         boolean activeTrip = sessionManager.getActiveOrder() != null;
-        locationRequest.setInterval(activeTrip ? 5000 : UPDATE_INTERVAL);
-        locationRequest.setFastestInterval(activeTrip ? 3000 : FASTEST_INTERVAL);
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setWaitForAccurateLocation(true);
-        locationRequest.setMaxWaitTime(0);
+        // Battery: GPS-grade, 5s updates are only needed while a trip is being
+        // driven (arrival/OTP/drop detection). While merely online and waiting
+        // for orders, the balanced (network + fused) provider at a longer
+        // interval is enough for dispatch and saves a lot of power.
+        locationRequest.setInterval(activeTrip ? 5000 : IDLE_UPDATE_INTERVAL);
+        locationRequest.setFastestInterval(activeTrip ? 3000 : IDLE_FASTEST_INTERVAL);
+        locationRequest.setPriority(activeTrip
+                ? LocationRequest.PRIORITY_HIGH_ACCURACY
+                : LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
+        if (activeTrip) {
+            locationRequest.setWaitForAccurateLocation(true);
+            locationRequest.setMaxWaitTime(0);
+        }
         
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
                 != PackageManager.PERMISSION_GRANTED 

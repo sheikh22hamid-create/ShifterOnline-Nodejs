@@ -11,7 +11,7 @@ jest.mock("../../config/db", () => ({
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn() }));
 jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn(), fetchRazorpayOrder: jest.fn() }));
-jest.mock("../../services/driverWalletSettings", () => ({ getDriverMaxDueLimit: jest.fn(), getDriverMinWithdrawalAmount: jest.fn() }));
+jest.mock("../../services/driverWalletSettings", () => ({ getDriverMaxDueLimit: jest.fn(), getDriverMinWithdrawalAmount: jest.fn(), getCustomerWalletMaxTopup: jest.fn().mockResolvedValue(50000) }));
 
 const prisma = require("../../config/db");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../../utils/razorpayVerify");

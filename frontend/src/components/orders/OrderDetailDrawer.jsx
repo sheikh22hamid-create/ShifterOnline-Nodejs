@@ -347,6 +347,17 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                       }
                     />
                     <Field label="Package Weight" value={order.package_weight ? `${order.package_weight} kg` : '—'} />
+                    <Field
+                      label="Goods Type"
+                      value={
+                        [
+                          order.goods_type_name,
+                          order.goods_type_other && (order.goods_type_name ? order.goods_type_other : `Other: ${order.goods_type_other}`),
+                        ]
+                          .filter(Boolean)
+                          .join(' - ') || '—'
+                      }
+                    />
                     {order.package_cost > 0 && <Field label="Declared Value" value={formatCurrency(order.package_cost)} />}
                     {order.photos && (
                       <div className="col-span-2">

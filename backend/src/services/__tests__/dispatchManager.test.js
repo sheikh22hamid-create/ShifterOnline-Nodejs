@@ -270,6 +270,32 @@ describe("dispatchManager overlapping batch cascade", () => {
     }
   });
 
+  it("adds the goods type to the driver payload and order_details", async () => {
+    const goodsOrder = { ...order, goods_type_name: "Clothing", goods_type_other: null };
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...goodsOrder });
+    await dispatchManager.startDispatch(goodsOrder);
+    await flush();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.payload.goods_type).toBe("Clothing");
+      expect(request.payload.order_details).toContain("\nGoods: Clothing");
+    }
+  });
+
+  it("leaves order_details untouched and goods_type empty when the order has no goods info", async () => {
+    await dispatchManager.startDispatch(order);
+    await flush();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.payload.goods_type).toBe("");
+      expect(request.payload.order_details).not.toContain("Goods:");
+    }
+  });
+
   it("pushes an FCM notification to each driver locked in a batch, alongside the socket emit", async () => {
     await dispatchManager.startDispatch(order);
     await flush();
@@ -1605,7 +1631,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       expect(requests.map((r) => r.room).sort()).toEqual(["driver_5", "driver_6"]);
       expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
       // Priority offers use a longer expiry than the normal 15s cascade popup.
-      expect(Number(requests[0].payload.expires_at)).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
+      expect(Number(requests[0].payload.expires_at)).toBeGreaterThan(Date.now() + (SCHEDULED_ORDER_PRIORITY_WINDOW_MS - 30 * 1000));
       // And the DB row itself — the column claimOrderForRider actually reads
       // to decide freshness — carries that same longer window, not just the
       // driver-facing payload.
@@ -1613,7 +1639,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       expect(writtenRows).toHaveLength(2);
       for (const row of writtenRows) {
         expect(row.expires_at).toBeInstanceOf(Date);
-        expect(row.expires_at.getTime()).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
+        expect(row.expires_at.getTime()).toBeGreaterThan(Date.now() + (SCHEDULED_ORDER_PRIORITY_WINDOW_MS - 30 * 1000));
       }
     });
 
@@ -1630,7 +1656,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       expect(Number(payload.popup_duration) * 1000).toBeLessThan(SCHEDULED_ORDER_PRIORITY_WINDOW_MS);
       // ...but the offer underneath it is still good for the full window, so
       // the popup closing is not the offer expiring.
-      expect(Number(payload.expires_at) - Date.now()).toBeGreaterThan(14 * 60 * 1000);
+      expect(Number(payload.expires_at) - Date.now()).toBeGreaterThan((SCHEDULED_ORDER_PRIORITY_WINDOW_MS - 30 * 1000));
     });
 
     it("dismisses the other interested riders' popups when one of them accepts (they hold no lock)", async () => {

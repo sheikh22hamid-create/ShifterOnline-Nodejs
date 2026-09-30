@@ -14,6 +14,7 @@ const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
+const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
   PICKUP_OTP_TIMEOUT_MS,
   ADVANCE_PAYMENT_TIMEOUT_MS,
@@ -945,6 +946,10 @@ async function customerCancel(uid, orderId, comment) {
     dispatchManager.stopDispatch(orderId, "cancelled_by_user");
   }
 
+  if (Number(orderBefore.booking_type) === 2) {
+    await releaseScheduledInterest(orderId);
+  }
+
   // The driver has no other real-time signal that the customer cancelled
   // after accepting — their app doesn't poll once past the advance-payment
   // screen (see OrderDetailsActivity), and nothing else in this function
@@ -1505,14 +1510,21 @@ async function sweepExpiredAdvancePayments() {
  * "already due" rather than silently never firing.
  */
 
-// STEP 1 (PHP): reminder push to the customer ~10 minutes before schedule_date_time.
+// STEP 1 (PHP): reminder push to the customer before schedule_date_time.
+// Now a confirmation prompt: "Do you still want to continue with this
+// scheduled ride?" (Continue / Cancel), sent the admin-configured number of
+// minutes (scheduled_confirm_popup_minutes) before the scheduled time. The
+// customer app shows the popup on the socket event, and also fetches any
+// unanswered prompt on start-up (see getPendingScheduleConfirmations), so a
+// closed app still gets asked. Not answering keeps the booking active and it
+// still goes live at the selected time.
 async function sendScheduledOrderReminders() {
-  const leadMs = SCHEDULED_ORDER_REMINDER_LEAD_MS;
+  const leadMs = await getScheduledConfirmLeadMs();
   let candidates;
   try {
     candidates = await prisma.pkg_order.findMany({
       where: { booking_type: 2, o_status: "Pending", user_reminder_sent: false, schedule_date_time: { not: null } },
-      select: { id: true, uid: true, schedule_date_time: true },
+      select: { id: true, uid: true, schedule_date_time: true, odate: true },
     });
   } catch (err) {
     logger.error("sendScheduledOrderReminders: failed to query candidates:", err);
@@ -1524,9 +1536,17 @@ async function sendScheduledOrderReminders() {
     const scheduleMs = Date.parse(row.schedule_date_time);
     if (Number.isNaN(scheduleMs)) continue; // unparseable - let the dispatch sweep below treat it as due instead
     const msUntil = scheduleMs - now;
-    if (msUntil > leadMs || msUntil < 0) continue; // not within the reminder window yet, or already past (dispatch sweep handles that)
+    if (msUntil > leadMs || msUntil < 0) continue; // not within the prompt window yet, or already past (dispatch sweep handles that)
 
     try {
+      // Booked inside the prompt window (the customer only just picked this
+      // time) - asking "still want to continue?" right away would be silly.
+      const bookedMs = row.odate ? new Date(row.odate).getTime() : NaN;
+      if (Number.isFinite(bookedMs) && scheduleMs - bookedMs <= leadMs + 60 * 1000) {
+        await prisma.pkg_order.update({ where: { id: row.id }, data: { user_reminder_sent: true } });
+        continue;
+      }
+
       const customer = await prisma.tbl_user.findUnique({ where: { id: row.uid }, select: { name: true, fcm_token: true } });
       const timeLabel = new Date(scheduleMs).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
 
@@ -1534,18 +1554,77 @@ async function sendScheduledOrderReminders() {
         data: {
           uid: row.uid,
           datetime: new Date(),
-          title: "Upcoming Scheduled Order",
-          description: `${customer?.name || "Customer"}, your scheduled package order #${row.id} will be picked up around ${timeLabel} (10 minutes left).`,
+          title: "Scheduled ride confirmation",
+          description: `${customer?.name || "Customer"}, your scheduled order #${row.id} is set for ${timeLabel}. Do you still want to continue with this scheduled ride?`,
         },
       });
+      await prisma.pkg_order.update({ where: { id: row.id }, data: { user_reminder_sent: true, schedule_confirm_status: 1 } });
+      dispatchManager.emitCustomerEvent(row.uid, "order:schedule_confirm", {
+        order_id: String(row.id),
+        schedule_date_time: row.schedule_date_time,
+        time_label: timeLabel,
+      });
       if (customer?.fcm_token) {
-        await pushNotifier.notifyCustomerScheduleReminder(customer.fcm_token, row.id, timeLabel);
+        await pushNotifier.notifyCustomerScheduleConfirm(customer.fcm_token, row.id, timeLabel);
       }
-      await prisma.pkg_order.update({ where: { id: row.id }, data: { user_reminder_sent: true } });
     } catch (err) {
       logger.error(`sendScheduledOrderReminders: failed for order ${row.id}:`, err);
     }
   }
+}
+
+// Orders the customer was asked about but has not answered yet (for the
+// app-start catch-up fetch).
+async function getPendingScheduleConfirmations(uid) {
+  const rows = await prisma.pkg_order.findMany({
+    where: { uid: Number(uid), booking_type: 2, o_status: "Pending", schedule_confirm_status: 1 },
+    select: { id: true, schedule_date_time: true, paddress: true, daddress: true },
+    orderBy: { id: "asc" },
+  });
+  return rows.map((r) => ({
+    order_id: r.id, schedule_date_time: r.schedule_date_time, paddress: r.paddress, daddress: r.daddress,
+  }));
+}
+
+// Drivers who marked interest in a scheduled order ("pre-accepted") must
+// lose it when the customer cancels it: drop their interest rows and tell
+// them. (The scheduled-trips list only shows Pending orders, so the trip
+// itself disappears from their list as soon as the order is Cancelled.)
+async function releaseScheduledInterest(orderId) {
+  try {
+    const rows = await prisma.pkg_order_interest.findMany({ where: { order_id: orderId } });
+    if (rows.length === 0) return;
+    await prisma.pkg_order_interest.deleteMany({ where: { order_id: orderId } });
+    const riders = await prisma.tbl_rider.findMany({
+      where: { id: { in: rows.map((r) => Number(r.rider_id)) } },
+      select: { id: true, fcm_token: true },
+    });
+    for (const rider of riders) {
+      dispatchManager.emitDriverEvent(rider.id, "order:scheduled_cancelled", { order_id: orderId });
+      pushNotifier.notifyDriverScheduledCancelled(rider.fcm_token, orderId).catch((err) =>
+        logger.error(`releaseScheduledInterest: push failed for rider ${rider.id}:`, err)
+      );
+    }
+  } catch (err) {
+    logger.error(`releaseScheduledInterest: failed for order ${orderId}:`, err);
+  }
+}
+
+// Customer answer to the confirmation prompt. "continue" keeps the booking
+// (it goes live at the selected time); "cancel" cancels it and releases the
+// pre-accepted drivers.
+async function respondToScheduleConfirmation(uid, orderId, action) {
+  const order = await prisma.pkg_order.findFirst({ where: { id: orderId, uid } });
+  if (!order || Number(order.booking_type) !== 2) return { success: false, msg: "Scheduled order not found" };
+  if (action === "continue") {
+    if (order.o_status !== "Pending") return { success: false, msg: "This order is no longer pending" };
+    await prisma.pkg_order.update({ where: { id: orderId }, data: { schedule_confirm_status: 2 } });
+    return { success: true, action };
+  }
+  if (action === "cancel") {
+    return customerCancel(uid, orderId, "Scheduled ride cancelled by customer");
+  }
+  return { success: false, msg: "action must be continue or cancel" };
 }
 
 // Fire-and-forget "your scheduled order is now being dispatched" push —
@@ -1668,4 +1747,7 @@ module.exports = {
   sweepExpiredAdvancePayments,
   sendScheduledOrderReminders,
   dispatchDueScheduledOrders,
+  getPendingScheduleConfirmations,
+  respondToScheduleConfirmation,
+  releaseScheduledInterest,
 };

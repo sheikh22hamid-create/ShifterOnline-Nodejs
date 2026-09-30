@@ -3435,6 +3435,14 @@ class _HomeState extends State<Home> {
               }
             }
 
+            // Sync wallet max top-up limit from admin settings
+            if (val["ResultData"]["wallet_max_topup"] != null) {
+              final parsedTopup = double.tryParse(val["ResultData"]["wallet_max_topup"].toString());
+              if (parsedTopup != null && parsedTopup > 0) {
+                save("wallet_max_topup", parsedTopup.toString());
+              }
+            }
+
             // Sync default search radius from admin settings
             if (val["ResultData"]["default_search_radius"] != null) {
               final parsedRadius = int.tryParse(val["ResultData"]["default_search_radius"].toString());

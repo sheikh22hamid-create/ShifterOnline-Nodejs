@@ -599,7 +599,7 @@
     <string name="i_understand_and_agree">I Understand &amp; Agree</string>
     <string name="landmark_optional_field">Landmark (Optional)</string>
     <string name="no_custom_orders_available">No Custom Orders Available</string>
-    <string name="no_scheduled_trips_right_now">No scheduled trips right now.</string>
+    <string name="no_scheduled_trips_right_now">No scheduled order right now</string>
     <string name="okay_btn">Okay</string>
     <string name="pan_verification_income_tax_title">PAN Verification (Income Tax)</string>
     <string name="payment_successful_title">Payment Successful!</string>

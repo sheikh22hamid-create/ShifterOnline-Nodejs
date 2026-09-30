@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
 
 // Node port of several small read-mostly cust_api/*.php endpoints:
 // add_favorite_driver.php, get_favorite_drivers.php, couponlist.php,
@@ -419,6 +420,8 @@ async function homeData(req, res) {
       ? Math.floor(Number(stopSetting.setting_value))
       : 2;
 
+    const walletMaxTopup = await getCustomerWalletMaxTopup();
+
     const radiusSetting = await prisma.app_settings.findUnique({ where: { setting_key: "default_search_radius" } });
     const defaultSearchRadius = radiusSetting && Number(radiusSetting.setting_value) > 0
       ? Math.floor(Number(radiusSetting.setting_value))
@@ -474,6 +477,7 @@ async function homeData(req, res) {
       plan_discount_percent: planDiscountPercent,
       plan_name: planName,
       max_extra_stops: maxExtraStops,
+      wallet_max_topup: walletMaxTopup,
       default_search_radius: defaultSearchRadius,
       isHowUse: isHowUseEnabled ? 1 : "true",
       how_to_use_url: howToUseUrl,

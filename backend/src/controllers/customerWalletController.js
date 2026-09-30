@@ -1,7 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
-const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount } = require("../services/driverWalletSettings");
+const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount, getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
 const walletNotifier = require("../services/walletNotifier");
 
 // Node port of cust_api/add_wallet.php, wallet_history.php,
@@ -36,6 +36,10 @@ async function createRazorpayOrder(req, res) {
     const amount = Number(req.body?.amount || 0);
     if (!amount || amount <= 0) {
       return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "Valid amount is required" });
+    }
+    const maxTopup = await getCustomerWalletMaxTopup();
+    if (amount > maxTopup) {
+      return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: `Maximum amount limit is ₹${maxTopup} per transaction` });
     }
 
     const keyId = process.env.RAZORPAY_KEY_ID;
@@ -339,6 +343,11 @@ async function addWallet(req, res) {
 
     if (walletType === "driver") {
       return fail(res, "Drivers cannot add money to their ledger.");
+    }
+
+    const maxTopup = await getCustomerWalletMaxTopup();
+    if (amount > maxTopup) {
+      return fail(res, `Maximum amount limit is ₹${maxTopup} per transaction`);
     }
 
     let verification;

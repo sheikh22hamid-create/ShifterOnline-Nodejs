@@ -248,6 +248,9 @@ model pkg_order {
   pmobile                String?            @db.Text
   dmobile                String?            @db.Text
   description            String?            @db.Text
+  goods_type_id          Int?
+  goods_type_name        String?            @db.VarChar(100)
+  goods_type_other       String?            @db.VarChar(100)
   photos                 String?            @db.Text
   o_status               pkg_order_o_status
   cancel_reason          String?            @db.VarChar(255)
@@ -287,6 +290,7 @@ model pkg_order {
   schedule_date_time     String?            @db.VarChar(255)
   allowed_delivery_types String?            @db.Text
   user_reminder_sent     Boolean?           @default(false)
+  schedule_confirm_status Int?              @default(0)
   driver_notify_sent     Boolean?           @default(false)
   priority_notify_sent   Boolean?           @default(false)
   priority_started_at    DateTime?
@@ -529,6 +533,14 @@ model tbl_cancel_reason {
   status     Boolean                @default(true)
   created_at DateTime?              @default(now()) @db.DateTime(0)
   updated_at DateTime?              @default(now()) @db.DateTime(0)
+}
+
+model tbl_goods_type {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(100)
+  status     Boolean  @default(true)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.DateTime(0)
 }
 
 model tbl_city {
