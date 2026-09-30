@@ -1190,34 +1190,53 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
     expect(prisma.tbl_wallet_history.create).toHaveBeenCalledTimes(1); // only the customer's debit
   });
 
-  it("sweepOverduePickups only queries pickup_wait_start rows still unresolved (pickup_wait_end null) and cancels each", async () => {
+  const minutesAgo = (m) => new Date(Date.now() - m * 60 * 1000);
+
+  it("sweepOverduePickups only queries arrived rows still unresolved (pickup_wait_start set, pickup_wait_end null) and cancels each overdue one", async () => {
     prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
-      { order_id: 400, rid: 3 },
-      { order_id: 401, rid: 5 },
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(11), pickup_wait_banked_seconds: 0 },
+      { order_id: 401, rid: 5, pickup_wait_start: minutesAgo(12), pickup_wait_banked_seconds: 0 },
     ]);
     prisma.pkg_order.findUnique.mockResolvedValue({ id: 401, uid: 10, rid: 5, delivery_type: 6, o_status: "Pickup" });
 
     await tripLifecycle.sweepOverduePickups();
 
     expect(prisma.pkg_order_wait_timer.findMany).toHaveBeenCalledWith({
-      where: { pickup_wait_start: { lte: expect.any(Date) }, pickup_wait_end: null },
+      where: { pickup_wait_start: { not: null }, pickup_wait_end: null },
     });
     // Both rows attempted — one cancellation call per overdue order.
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
   });
 
+  it("sweepOverduePickups counts pickup_wait_banked_seconds toward elapsed time (large-move pause doesn't grant a fresh window)", async () => {
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      // 5 min since re-arrival alone is under the 10-min timeout, but 6 min
+      // banked from before the pause pushes it to 11 -> overdue.
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(5), pickup_wait_banked_seconds: 360 },
+      // Same 5 min with nothing banked -> still inside the window.
+      { order_id: 401, rid: 5, pickup_wait_start: minutesAgo(5), pickup_wait_banked_seconds: 0 },
+    ]);
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), expect.any(String), 400);
+    expect(prisma.pkg_order.findUnique).toHaveBeenCalledWith({ where: { id: 400 } });
+    expect(prisma.pkg_order.findUnique).not.toHaveBeenCalledWith({ where: { id: 401 } });
+  });
+
   it("sweepOverduePickups uses the admin-configured pickup OTP timeout when set", async () => {
     prisma.app_settings.findFirst.mockResolvedValueOnce({ setting_value: "15" });
-    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([{ order_id: 400, rid: 3 }]);
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(16), pickup_wait_banked_seconds: 0 },
+      // 12 min would be overdue under the default 10, but not under 15.
+      { order_id: 401, rid: 5, pickup_wait_start: minutesAgo(12), pickup_wait_banked_seconds: 0 },
+    ]);
 
-    const before = Date.now();
     await tripLifecycle.sweepOverduePickups();
 
     expect(prisma.app_settings.findFirst).toHaveBeenCalledWith({ where: { setting_key: "pickup_otp_timeout_minutes" } });
-    const cutoffArg = prisma.pkg_order_wait_timer.findMany.mock.calls[0][0].where.pickup_wait_start.lte;
-    // ~15 minutes back, not the hardcoded 10.
-    expect(before - cutoffArg.getTime()).toBeGreaterThan(14 * 60 * 1000);
-    expect(before - cutoffArg.getTime()).toBeLessThan(16 * 60 * 1000);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(prisma.$executeRaw).toHaveBeenCalledWith(
       expect.anything(),
       expect.stringContaining("within 15 minutes"),
@@ -1227,7 +1246,9 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
 
   it("sweepOverduePickups falls back to the default 10-minute timeout when no admin setting exists", async () => {
     prisma.app_settings.findFirst.mockResolvedValueOnce(null);
-    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([{ order_id: 400, rid: 3 }]);
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(11), pickup_wait_banked_seconds: 0 },
+    ]);
 
     await tripLifecycle.sweepOverduePickups();
 
@@ -1240,8 +1261,8 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
 
   it("sweepOverduePickups doesn't let one failing cancellation stop the rest", async () => {
     prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
-      { order_id: 400, rid: 3 },
-      { order_id: 401, rid: 5 },
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(11), pickup_wait_banked_seconds: 0 },
+      { order_id: 401, rid: 5, pickup_wait_start: minutesAgo(11), pickup_wait_banked_seconds: 0 },
     ]);
     prisma.pkg_order.findUnique
       .mockRejectedValueOnce(new Error("db hiccup"))
@@ -1274,9 +1295,47 @@ describe("tripLifecycle.sweepPickupRelocationCeiling", () => {
     await tripLifecycle.sweepPickupRelocationCeiling();
 
     expect(prisma.pkg_order_wait_timer.findMany).toHaveBeenCalledWith({
-      where: { first_arrival_at: { lte: expect.any(Date) } },
+      where: { first_arrival_at: { lte: expect.any(Date) }, pickup_wait_end: null },
     });
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1); // cancelOverduePickup ran
+  });
+
+  it("only scans still-unresolved rows — a row whose pickup_wait_end is already set (OTP done or already cancelled) is excluded", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([]);
+
+    await tripLifecycle.sweepPickupRelocationCeiling();
+
+    const where = prisma.pkg_order_wait_timer.findMany.mock.calls[0][0].where;
+    expect(where).toHaveProperty("pickup_wait_end", null);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("cancels a PAUSED order (large pickup move reverted it to o_status 'Processing' / order_status 1) — the guard must match that state", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 502, rid: 8, pickup_wait_start: null, pickup_wait_end: null, pickup_wait_banked_seconds: 400 },
+    ]);
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 502, uid: 11, rid: 8, delivery_type: 6, o_status: "Processing", order_status: 1,
+    });
+
+    await tripLifecycle.sweepPickupRelocationCeiling();
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, , orderIdArg] = prisma.$executeRaw.mock.calls[0];
+    const sql = strings.join("?").replace(/\s+/g, " ");
+    expect(orderIdArg).toBe(502);
+    expect(sql).toContain("o_status IN ('Pickup', 'Processing')");
+    expect(sql).toContain("order_status IN (1, 2)");
+    expect(prisma.pkg_order_wait_timer.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 502, rid: 8 },
+      data: { pickup_wait_end: expect.any(Date) },
+    });
   });
 
   it("uses the admin-configured ceiling minutes", async () => {

@@ -1165,9 +1165,16 @@ async function rateOrder(uid, orderId, riderId, star, comment) {
  * exactly) but is immediately eligible for new dispatch again, since a
  * Cancelled order doesn't count against a rider in selectEligibleDrivers.
  *
- * Guarded by a conditional UPDATE (o_status = 'Pickup' only), so a driver
+ * Guarded by a conditional UPDATE (still pre-pickup only), so a driver
  * who gets the OTP right as the sweep runs, or a customer/driver cancel
  * that lands first, can never be double-cancelled or overwritten here.
+ *
+ * The guard matches both the waiting-at-pickup state ('Pickup' / 2) AND the
+ * paused state a large pickup relocation leaves behind ('Processing' / 1,
+ * see orderPickupService.confirmPickupChange) — sweepPickupRelocationCeiling
+ * exists precisely to force-resolve orders stuck in that paused state.
+ * sweepOverduePickups' own calls are unaffected: it only ever selects rows
+ * with pickup_wait_start set, which a pause always clears.
  */
 async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP_TIMEOUT_MS / 60000) {
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
@@ -1177,7 +1184,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
     UPDATE pkg_order
     SET o_status = 'Cancelled', order_status = 4,
         cancel_reason = ${`Customer did not provide OTP within ${timeoutMinutes} minutes of driver arrival`}
-    WHERE id = ${orderId} AND o_status = 'Pickup'
+    WHERE id = ${orderId} AND o_status IN ('Pickup', 'Processing') AND order_status IN (1, 2)
   `;
   if (affected === 0) return; // already resolved another way between the sweep's read and this write
 
@@ -1272,16 +1279,29 @@ async function sweepOverduePickups() {
   // restart needed — falls back to the original hardcoded 10 minutes
   // (PICKUP_OTP_TIMEOUT_MS) if the admin hasn't set it yet.
   const timeoutMinutes = await getPickupOtpTimeoutMinutes();
-  const cutoff = new Date(Date.now() - timeoutMinutes * 60000);
-  let overdue;
+  const timeoutMs = timeoutMinutes * 60000;
+  // No SQL-level time cutoff: a row's true elapsed wait is
+  // (now - pickup_wait_start) + pickup_wait_banked_seconds (time already
+  // spent waiting at a previous pickup point before a large relocation
+  // paused the clock — see orderPickupService.confirmPickupChange), and that
+  // per-row offset can't be expressed in one Prisma filter. The candidate
+  // set (arrived, still unresolved) stays small; the exact check is below.
+  let waiting;
   try {
-    overdue = await prisma.pkg_order_wait_timer.findMany({
-      where: { pickup_wait_start: { lte: cutoff }, pickup_wait_end: null },
+    waiting = await prisma.pkg_order_wait_timer.findMany({
+      where: { pickup_wait_start: { not: null }, pickup_wait_end: null },
     });
   } catch (err) {
     logger.error("sweepOverduePickups: failed to query overdue wait timers:", err);
     return;
   }
+
+  const now = Date.now();
+  const overdue = waiting.filter((waitRow) => {
+    const elapsedMs = (now - new Date(waitRow.pickup_wait_start).getTime())
+      + (Number(waitRow.pickup_wait_banked_seconds) || 0) * 1000;
+    return elapsedMs >= timeoutMs;
+  });
 
   for (const waitRow of overdue) {
     try {
@@ -1298,10 +1318,11 @@ async function sweepOverduePickups() {
  * (pkg_order_wait_timer.first_arrival_at, set once in driverTripService and
  * never touched by any pause/relocation cycle), so however many times a
  * pickup change pauses/resumes the OTP-timeout timer, the order is
- * guaranteed to resolve once this outer ceiling passes. Queries every row
- * with a first_arrival_at old enough regardless of current pickup_wait_start
- * state (paused orders have pickup_wait_start === null and would otherwise
- * never be swept by anything).
+ * guaranteed to resolve once this outer ceiling passes. Queries every
+ * still-unresolved row (pickup_wait_end null — set on OTP completion and on
+ * cancellation alike) with a first_arrival_at old enough, regardless of
+ * current pickup_wait_start state (paused orders have pickup_wait_start ===
+ * null and would otherwise never be swept by anything).
  */
 async function sweepPickupRelocationCeiling() {
   const { ceilingMinutes } = await getPickupRelocateSettings();
@@ -1309,7 +1330,7 @@ async function sweepPickupRelocationCeiling() {
   let overdue;
   try {
     overdue = await prisma.pkg_order_wait_timer.findMany({
-      where: { first_arrival_at: { lte: cutoff } },
+      where: { first_arrival_at: { lte: cutoff }, pickup_wait_end: null },
     });
   } catch (err) {
     logger.error("sweepPickupRelocationCeiling: failed to query overdue wait timers:", err);
