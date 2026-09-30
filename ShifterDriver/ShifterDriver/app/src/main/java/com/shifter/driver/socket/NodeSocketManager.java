@@ -74,6 +74,11 @@ public class NodeSocketManager {
         void onOrderDestinationUpdated(JSONObject data);
     }
 
+    /** order:pickup_updated — customer (or the OTP-mismatch reprice) updated the pickup point on an active trip. */
+    public interface OrderPickupUpdatedListener {
+        void onOrderPickupUpdated(JSONObject data);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -84,6 +89,7 @@ public class NodeSocketManager {
     private RoleChangeListener roleChangeListener;
     private OrderCancelledListener orderCancelledListener;
     private OrderDestinationUpdatedListener orderDestinationUpdatedListener;
+    private OrderPickupUpdatedListener orderPickupUpdatedListener;
 
     private NodeSocketManager() {}
 
@@ -209,6 +215,13 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("order:pickup_updated", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderPickupUpdatedListener != null) {
+                orderPickupUpdatedListener.onOrderPickupUpdated(data);
+            }
+        }));
+
         socket.connect();
     }
 
@@ -240,6 +253,10 @@ public class NodeSocketManager {
     /** Listener for a customer updating drop destination on an active trip. */
     public void setOrderDestinationUpdatedListener(OrderDestinationUpdatedListener listener) {
         this.orderDestinationUpdatedListener = listener;
+    }
+
+    public void setOrderPickupUpdatedListener(OrderPickupUpdatedListener listener) {
+        this.orderPickupUpdatedListener = listener;
     }
 
     public void emitAccept(JSONObject data, AckListener ackListener) {

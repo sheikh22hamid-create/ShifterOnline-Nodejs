@@ -80,6 +80,7 @@ public class MyApplication extends Application {
 
         NodeSocketManager.getInstance().setOrderCancelledListener(data -> SocketOrderRouter.handleOrderCancelledByCustomer(MyApplication.this, data));
         NodeSocketManager.getInstance().setOrderDestinationUpdatedListener(data -> SocketOrderRouter.handleOrderDestinationUpdated(MyApplication.this, data));
+        NodeSocketManager.getInstance().setOrderPickupUpdatedListener(data -> SocketOrderRouter.handleOrderPickupUpdated(MyApplication.this, data));
 
         NodeSocketManager.getInstance().setNextDayAssignmentListener(data -> {
             com.shifter.driver.utility.NextDayOrderNotifier.show(this, data);

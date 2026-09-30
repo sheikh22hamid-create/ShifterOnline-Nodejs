@@ -38,6 +38,9 @@ public class SocketOrderRouter {
     /** order:destination_updated for an active order — see OrderDetailsActivity's receiver. */
     public static final String ACTION_ORDER_DESTINATION_UPDATED = "com.shifter.driver.ORDER_DESTINATION_UPDATED";
 
+    /** order:pickup_updated for an active order — see OrderDetailsActivity's receiver. */
+    public static final String ACTION_ORDER_PICKUP_UPDATED = "com.shifter.driver.ORDER_PICKUP_UPDATED";
+
     public static void handleOrderRequest(Context context, JSONObject data) {
         Map<String, String> mapped = mapOrderRequestData(data);
         String title = "New Order";
@@ -145,6 +148,31 @@ public class SocketOrderRouter {
         context.sendBroadcast(updateBroadcast);
     }
 
+    /**
+     * order:pickup_updated — the customer changed the pickup location during
+     * the OTP wait, or the trip re-priced against where the OTP was actually
+     * verified. order_status distinguishes the two branches the backend can
+     * take: 2 = small move, timer kept running; 1 = large move, timer paused
+     * until the driver reaches the new point (see OrderDetailsActivity).
+     */
+    public static void handleOrderPickupUpdated(Context context, JSONObject data) {
+        String orderId = data.optString("order_id", null);
+        if (orderId == null) return;
+
+        Log.d(TAG, "order:pickup_updated for order " + orderId);
+
+        Intent updateBroadcast = new Intent(ACTION_ORDER_PICKUP_UPDATED);
+        updateBroadcast.putExtra("order_id", orderId);
+        updateBroadcast.putExtra("plat", data.optString("plat", ""));
+        updateBroadcast.putExtra("plong", data.optString("plong", ""));
+        updateBroadcast.putExtra("paddress", data.optString("paddress", ""));
+        updateBroadcast.putExtra("distance", data.optString("distance", ""));
+        updateBroadcast.putExtra("fare", data.optString("fare", ""));
+        updateBroadcast.putExtra("fare_diff", data.optString("fare_diff", ""));
+        updateBroadcast.putExtra("order_status", data.optInt("order_status", 0));
+        updateBroadcast.setPackage(context.getPackageName());
+        context.sendBroadcast(updateBroadcast);
+    }
 
     private static Map<String, String> mapOrderRequestData(JSONObject data) {
         Map<String, String> out = new HashMap<>();
