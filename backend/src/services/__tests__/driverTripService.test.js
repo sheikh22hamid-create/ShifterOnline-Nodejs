@@ -87,6 +87,36 @@ test('OTP verified far from the confirmed pickup reprices the trip and sets the 
   expect(order.d_charge).toBe(300);
 });
 
+test('OTP-mismatch reprice preserves the accept-time radius amount baked into d_charge (not zeroed by the OTP-point distance)', async () => {
+  const pricingEngine = require('../pricingEngine');
+  // Accept-time d_charge 300 at 10km = bare zero-radius fare 250 + 50 radius.
+  Object.assign(order, { distance: 10, d_charge: 300, total_dcharge: 300, driver_earning: 300, commission: 12.5 });
+  pricingEngine.priceForPackageId.mockImplementation(async (pid, distanceKm) => (
+    distanceKm === 12.5 ? { fare: 280, driverEarning: 250, commission: 10.71 } : { fare: 250, driverEarning: 225, commission: 10 }
+  ));
+  await call('arrived');
+  await call('pickup', { otp: '1234', lat: 28.61, lng: 77.2 });
+
+  // Both reprices are zero-radius (radiusRangeKm = 1): old distance, then new.
+  expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(1, 10, 1, 0, 8);
+  expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(1, 12.5, 1, 0, 8);
+  expect(order.d_charge).toBe(330); // 280 new bare fare + 50 preserved, not just 280
+  expect(order.total_dcharge).toBe(330);
+});
+
+test('OTP-mismatch reprice keeps the order\'s own commission split (commission is a %, driver_earning is the gross fare)', async () => {
+  const pricingEngine = require('../pricingEngine');
+  Object.assign(order, { distance: 10, d_charge: 300, total_dcharge: 300, driver_earning: 300, commission: 12.5 });
+  pricingEngine.priceForPackageId.mockImplementation(async (pid, distanceKm) => (
+    distanceKm === 12.5 ? { fare: 280, driverEarning: 250, commission: 10.71 } : { fare: 250, driverEarning: 225, commission: 10 }
+  ));
+  await call('arrived');
+  await call('pickup', { otp: '1234', lat: 28.61, lng: 77.2 });
+
+  expect(order.commission).toBe(12.5); // this order's existing percentage, unchanged
+  expect(order.driver_earning).toBe(order.d_charge); // finalizeAcceptedOrder's invariant
+});
+
 test('OTP verified near the confirmed pickup does not reprice or flag', async () => {
   const pricingEngine = require('../pricingEngine');
   await call('arrived');

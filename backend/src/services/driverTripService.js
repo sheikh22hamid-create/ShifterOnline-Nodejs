@@ -3,7 +3,7 @@ const { observeArrival } = require('./tripArrivalPolicy');
 const { getAdvancePaymentTimerInfo } = require('../utils/advancePaymentTimer');
 const { getPickupOtpTimeoutMinutes } = require('../utils/pickupOtpTimeout');
 const { getPickupRelocateSettings } = require('../utils/pickupRelocateSettings');
-const { getDriverRealDistanceKm, computeRouteDistanceKm } = require('./orderRouteRepricing');
+const { computeRouteDistanceKm } = require('./orderRouteRepricing');
 const { haversineKm } = require('../utils/geoDistance');
 
 function fail(message) { const error = new Error(message); error.statusCode = 409; throw error; }
@@ -154,15 +154,32 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
           const { otpMismatchFlagM } = await getPickupRelocateSettings();
           if (mismatchDistanceM > otpMismatchFlagM) {
             const newDistanceKm = await computeRouteDistanceKm({ plat: lat, plong: lng, stops, dlat: order.dlat, dlong: order.dlong });
-            const radiusKm = await getDriverRealDistanceKm(order.rid, lat, lng);
             const packageId = Number(order.delivery_type) || 1;
-            const { fare, driverEarning, commission } = await require('./pricingEngine').priceForPackageId(
-              packageId, newDistanceKm, radiusKm, Number(order.extra_mile_charge) || 0, order.uid
-            );
+            const extraMileCharge = Number(order.extra_mile_charge) || 0;
+            const pricingEngine = require('./pricingEngine');
+            // The radius (driver-to-pickup) charge was fixed at accept time off
+            // the driver's real distance THEN. Repricing it off the driver's
+            // live position here would zero it (they're standing at the OTP
+            // point), and pkg_order.radius_charge never holds the real value
+            // (written 0 at creation, never updated). So recover it from the
+            // current d_charge: whatever sits above a zero-radius fare at the
+            // order's current distance is carried over onto the new route's
+            // zero-radius fare unchanged.
+            const zeroRadiusOld = await pricingEngine.priceForPackageId(packageId, Number(order.distance) || 0, 1, extraMileCharge, order.uid);
+            const impliedRadiusAmount = Math.max(0, (Number(order.d_charge) || 0) - zeroRadiusOld.fare);
+            const zeroRadiusNew = await pricingEngine.priceForPackageId(packageId, newDistanceKm, 1, extraMileCharge, order.uid);
+            const finalDCharge = Math.round(zeroRadiusNew.fare + impliedRadiusAmount);
+            // Same conventions as tripLifecycle.finalizeAcceptedOrder:
+            // driver_earning is the gross fare (commission is clawed back at
+            // completion) and `commission` is a PERCENTAGE. Keep this order's
+            // own existing percentage so its split is preserved as-is.
+            const existingCommissionPercent = order.commission !== null && order.commission !== undefined && Number.isFinite(Number(order.commission))
+              ? Number(order.commission)
+              : zeroRadiusNew.commission;
             Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: {
               plat: String(lat), plong: String(lng), distance: Math.round(newDistanceKm * 100) / 100,
-              d_charge: Math.round(fare), total_dcharge: Math.round(fare),
-              driver_earning: driverEarning, commission, pickup_otp_mismatch_flag: true,
+              d_charge: finalDCharge, total_dcharge: finalDCharge,
+              driver_earning: finalDCharge, commission: existingCommissionPercent, pickup_otp_mismatch_flag: true,
             } }));
           }
         }
