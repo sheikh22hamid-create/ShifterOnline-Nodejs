@@ -13,6 +13,7 @@ import {
 import { ScrollReveal } from '../ui/ScrollReveal';
 import { ServiceCard } from './ServiceCard';
 import { VehicleLineupIllustration } from '../illustrations/VehicleLineupIllustration';
+import { FleetShowcase } from './FleetShowcase';
 
 const services = [
   {
@@ -24,18 +25,18 @@ const services = [
   {
     icon: CarTaxiFront,
     title: 'Three-Wheeler Transport',
-    description: 'Affordable three-wheeler booking for mid-sized loads and local moves.',
+    description: 'Affordable three-wheeler transport for mid-sized loads and local moves.',
     accent: 'navy' as const,
   },
   {
     icon: Truck,
     title: 'Tata Ace & Mini Truck',
-    description: 'Book a Tata Ace or mini truck for larger commercial shipments.',
+    description: 'Reliable Tata Ace and mini trucks for larger commercial shipments.',
     accent: 'orange' as const,
   },
   {
     icon: TruckElectric,
-    title: 'Pickup Vehicle Booking',
+    title: 'Pickup Vehicle Transport',
     description: 'On-demand pickup vehicles for bulkier household and business loads.',
     accent: 'navy' as const,
   },
@@ -57,7 +58,7 @@ const metrics = [
   { icon: Package, value: '5+', label: 'Vehicle Types to Choose From' },
   { icon: Handshake, value: '100%', label: 'Verified Driver Partners' },
   { icon: MapPin, value: 'Pan-India', label: 'Growing Network' },
-  { icon: Headphones, value: '24/7', label: 'On-Demand Booking' },
+  { icon: Headphones, value: '24/7', label: 'On-Demand Logistics' },
 ];
 
 const industries = [
@@ -106,6 +107,11 @@ export function Services() {
             ))}
           </div>
         </div>
+
+        {/* Interactive Fleet Showcase */}
+        <ScrollReveal delay={0.08}>
+          <FleetShowcase />
+        </ScrollReveal>
 
         <ScrollReveal delay={0.1} className="mt-20 rounded-2xl border border-line bg-offwhite px-6 py-10 sm:px-10">
           <div className="grid grid-cols-2 gap-8 lg:grid-cols-4">

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Loader2, Lock, Mail, User, X } from 'lucide-react';
+import { Loader2, Lock, Mail, Phone, User, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ApiError } from '../../lib/api';
 import { Logo } from '../ui/Logo';
@@ -13,10 +13,31 @@ interface AuthModalProps {
   onSwitchMode: (mode: AuthMode) => void;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function cleanMobile(input: string) {
+  let cleaned = input.trim().replace(/[\s\-().]/g, '');
+  if (cleaned.startsWith('+91')) {
+    cleaned = cleaned.slice(3);
+  } else if (cleaned.startsWith('91') && cleaned.length === 12) {
+    cleaned = cleaned.slice(2);
+  } else if (cleaned.startsWith('0') && cleaned.length === 11) {
+    cleaned = cleaned.slice(1);
+  }
+  return cleaned;
+}
+
+function isValidMobile(mobile: string) {
+  const cleaned = cleanMobile(mobile);
+  return /^[6-9]\d{9}$/.test(cleaned);
+}
+
 export function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProps) {
   const { login, signup } = useAuth();
   const [name, setName] = useState('');
+  const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -39,16 +60,57 @@ export function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProps) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Client-side validations
+    if (mode === 'signup') {
+      if (!name.trim()) {
+        setError('Please enter your full name.');
+        return;
+      }
+      if (!mobile.trim()) {
+        setError('Mobile number is required.');
+        return;
+      }
+      if (!isValidMobile(mobile)) {
+        setError('Please enter a valid 10-digit mobile number (e.g. 9876543210).');
+        return;
+      }
+      if (email.trim() && !EMAIL_RE.test(email.trim())) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters long.');
+        return;
+      }
+    } else {
+      if (!loginIdentifier.trim()) {
+        setError('Please enter your mobile number or email address.');
+        return;
+      }
+      if (!password) {
+        setError('Please enter your password.');
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       if (mode === 'signup') {
-        await signup(name, email, password);
+        await signup({
+          name: name.trim(),
+          mobile: cleanMobile(mobile),
+          email: email.trim() ? email.trim() : undefined,
+          password,
+        });
       } else {
-        await login(email, password);
+        await login(loginIdentifier.trim(), password);
       }
       onClose();
       setName('');
+      setMobile('');
       setEmail('');
+      setLoginIdentifier('');
       setPassword('');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
@@ -90,43 +152,80 @@ export function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProps) {
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h2>
           <p className="mt-1.5 text-sm text-muted">
-            {mode === 'login' ? 'Log in to manage your shipments.' : 'Get started with Shifter Online in seconds.'}
+            {mode === 'login'
+              ? 'Log in using your Mobile Number or Email.'
+              : 'Sign up with your mobile number to get started in seconds.'}
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
-            {mode === 'signup' && (
+            {mode === 'signup' ? (
+              <>
+                {/* Full Name */}
+                <label className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 focus-within:border-royal">
+                  <User size={17} className="text-muted shrink-0" />
+                  <input
+                    required
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Full name *"
+                    className="w-full bg-transparent text-[15px] text-ink placeholder:text-muted focus:outline-none"
+                  />
+                </label>
+
+                {/* Mobile Number (REQUIRED) */}
+                <label className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 focus-within:border-royal">
+                  <Phone size={17} className="text-muted shrink-0" />
+                  <input
+                    required
+                    type="tel"
+                    value={mobile}
+                    onChange={(e) => setMobile(e.target.value)}
+                    placeholder="Mobile number (10 digits) *"
+                    maxLength={14}
+                    className="w-full bg-transparent text-[15px] text-ink placeholder:text-muted focus:outline-none"
+                  />
+                </label>
+
+                {/* Email Address (OPTIONAL) */}
+                <label className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 focus-within:border-royal">
+                  <Mail size={17} className="text-muted shrink-0" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email address (optional)"
+                    className="w-full bg-transparent text-[15px] text-ink placeholder:text-muted focus:outline-none"
+                  />
+                </label>
+              </>
+            ) : (
+              /* Dual Login Identifier (Mobile OR Email) */
               <label className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 focus-within:border-royal">
-                <User size={17} className="text-muted" />
+                <Phone size={17} className="text-muted shrink-0" />
                 <input
                   required
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Full name"
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  placeholder="Mobile number or Email *"
+                  autoComplete="username"
                   className="w-full bg-transparent text-[15px] text-ink placeholder:text-muted focus:outline-none"
                 />
               </label>
             )}
+
+            {/* Password */}
             <label className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 focus-within:border-royal">
-              <Mail size={17} className="text-muted" />
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email address"
-                className="w-full bg-transparent text-[15px] text-ink placeholder:text-muted focus:outline-none"
-              />
-            </label>
-            <label className="flex items-center gap-3 rounded-xl border border-line px-4 py-3 focus-within:border-royal">
-              <Lock size={17} className="text-muted" />
+              <Lock size={17} className="text-muted shrink-0" />
               <input
                 required
                 minLength={8}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password (min. 8 characters)"
+                placeholder="Password (min. 8 characters) *"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 className="w-full bg-transparent text-[15px] text-ink placeholder:text-muted focus:outline-none"
               />
             </label>

@@ -4,8 +4,8 @@ import { ScrollReveal } from './ui/ScrollReveal';
 const benefits = [
   {
     icon: Zap,
-    title: 'Instant Booking',
-    description: 'Book a vehicle for your goods in seconds, anytime you need it',
+    title: 'Instant App Dispatch',
+    description: 'Request a vehicle for your goods in seconds through our mobile app',
   },
   {
     icon: ShieldCheck,
@@ -20,7 +20,7 @@ const benefits = [
   {
     icon: IndianRupee,
     title: 'Transparent Pricing',
-    description: 'No hidden charges — know your fare before you book',
+    description: 'No hidden charges — transparent fare calculation on your app',
   },
 ];
 

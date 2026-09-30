@@ -72,36 +72,18 @@ async function registerDriverFromWhatsApp(phoneNumber, driverData) {
 }
 
 /**
- * Checks Driver KYC & Wallet Balance
+ * Driver Wallet & Profile Query (Redirects to Driver App)
  */
 async function checkDriverStatus(phoneNumber) {
-  try {
-    const cleanPhone = String(phoneNumber).replace(/\D/g, "");
-
-    const rider = await prisma.tbl_rider.findFirst({
-      where: { fmobile: cleanPhone },
-    });
-
-    if (!rider) {
-      return `❌ Aapka mobile number (${cleanPhone}) Shifter Online Driver network me registered nahi hai.\n\nType *Join Driver* to register today!`;
-    }
-
-    const kycStatus = rider.status === 1 ? "✅ Approved & Active" : "⏳ Pending Review";
-    const dutyStatus = rider.a_status === 1 ? "🟢 Online" : "🔴 Offline";
-    const walletBalance = rider.wallet_balance || 0;
-
-    return `🚚 *Shifter Partner Profile & Earnings*\n\n` +
-           `🆔 *Driver ID*: #${rider.id}\n` +
-           `👤 *Name*: ${rider.first_name || ""} ${rider.last_name || ""}\n` +
-           `🛵 *Vehicle*: ${rider.vehicle || "N/A"} (${rider.vehicle_no || "N/A"})\n` +
-           `📋 *KYC Approval*: ${kycStatus}\n` +
-           `⏱️ *Duty Status*: ${dutyStatus}\n` +
-           `💰 *Wallet Balance*: ₹${walletBalance}\n\n` +
-           `💡 Duty status toggle aur detailed trip history ke liye Partner App open karein!`;
-  } catch (err) {
-    logger.error("checkDriverStatus error:", err);
-    return "⚠️ Driver profile info fetch karne me error aaya.";
-  }
+  const driverAppUrl = process.env.DRIVER_APP_DOWNLOAD_URL || "https://play.google.com/store/apps/details?id=com.shifter.driver";
+  return (
+    `🚚 *Shifter Driver Partner App*\n\n` +
+    `Driver wallet balance, daily kamai, duty status aur profile details dekhne ke liye kripya official *Shifter Partner App* ka upayog karein:\n\n` +
+    `📲 *Open / Download Driver App*:\n` +
+    `👉 ${driverAppUrl}\n\n` +
+    `App me aapko real-time earnings, withdrawal aur ride history ki poori jankari milti hai!\n\n` +
+    `📞 *Driver Helpline*: 9109114515`
+  );
 }
 
 module.exports = {

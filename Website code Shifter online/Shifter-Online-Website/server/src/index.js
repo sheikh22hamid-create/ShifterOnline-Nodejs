@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { authRouter } from './routes.js';
+import { adminRouter } from './adminRoutes.js';
 import { routeRouter } from './routeCalculation.js';
 import { geocodeRouter } from './geocode.js';
 import { connectDB, disconnectDB } from './db.js';
@@ -21,26 +22,24 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 app.use('/api/auth', authRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/routes', routeRouter);
 app.use('/api/geocode', geocodeRouter);
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 async function start() {
-  try {
-    await connectDB();
-    console.log('Connected to MongoDB.');
-  } catch (err) {
-    console.error('Failed to connect to MongoDB:', err.message);
-    process.exit(1);
-  }
-
   const server = app.listen(port, () => {
-    console.log(`Shifter Online auth server listening on http://localhost:${port}`);
+    console.log(`Shifter Online server listening on http://localhost:${port}`);
+  });
+
+  // Connect to DB in background
+  connectDB().catch((err) => {
+    console.error('Initial MongoDB connection error:', err.message);
   });
 
   const shutdown = async (signal) => {
-    console.log(`\n${signal} received, shutting down...`);
+    console.log(`\n${signal} received, shutting down gracefully...`);
     server.close(async () => {
       await disconnectDB();
       process.exit(0);

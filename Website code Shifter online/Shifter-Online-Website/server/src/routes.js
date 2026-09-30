@@ -2,12 +2,20 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { User } from './models/User.js';
+import { normalizeMobile, isValidMobile, isValidEmail } from './validation.js';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const JWT_EXPIRES_IN = '7d';
 
 function toPublicUser(doc) {
-  return { id: doc._id.toString(), name: doc.name, email: doc.email };
+  return {
+    id: doc._id.toString(),
+    name: doc.name,
+    mobile: doc.mobile || '',
+    email: doc.email || '',
+    status: doc.status || 'Pending',
+    createdAt: doc.createdAt,
+    lastLoginAt: doc.lastLoginAt || null,
+  };
 }
 
 function signToken(userId) {
@@ -16,55 +24,124 @@ function signToken(userId) {
 
 export const authRouter = Router();
 
+// ==========================================
+// USER SIGNUP (Mobile required, Email optional)
+// ==========================================
 authRouter.post('/signup', async (req, res) => {
   const name = String(req.body?.name ?? '').trim();
-  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const rawMobile = String(req.body?.mobile ?? '').trim();
+  const rawEmail = String(req.body?.email ?? '').trim();
   const password = String(req.body?.password ?? '');
 
   if (!name) {
     return res.status(400).json({ message: 'Name is required.' });
   }
-  if (!EMAIL_RE.test(email)) {
-    return res.status(400).json({ message: 'Enter a valid email address.' });
+
+  if (!rawMobile) {
+    return res.status(400).json({ message: 'Mobile number is required.' });
   }
+
+  if (!isValidMobile(rawMobile)) {
+    return res.status(400).json({ message: 'Please enter a valid 10-digit mobile number (e.g. 9876543210).' });
+  }
+
+  const normalizedMobile = normalizeMobile(rawMobile);
+  let normalizedEmail = null;
+
+  if (rawEmail) {
+    if (!isValidEmail(rawEmail)) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
+    }
+    normalizedEmail = rawEmail.toLowerCase();
+  }
+
   if (password.length < 8) {
     return res.status(400).json({ message: 'Password must be at least 8 characters.' });
   }
 
   try {
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(409).json({ message: 'This email is already registered. Try logging in instead.' });
+    // Check if mobile number is already registered
+    const existingMobile = await User.findOne({ mobile: normalizedMobile });
+    if (existingMobile) {
+      return res.status(409).json({ message: 'This mobile number is already registered. Try logging in instead.' });
+    }
+
+    // Check if email is already registered (if provided)
+    if (normalizedEmail) {
+      const existingEmail = await User.findOne({ email: normalizedEmail });
+      if (existingEmail) {
+        return res.status(409).json({ message: 'This email is already registered. Try logging in instead.' });
+      }
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, passwordHash });
+    const user = await User.create({
+      name,
+      mobile: normalizedMobile,
+      ...(normalizedEmail ? { email: normalizedEmail } : {}),
+      passwordHash,
+      status: 'Pending',
+      lastLoginAt: new Date(),
+    });
+
     const token = signToken(user._id);
     return res.status(201).json({ token, user: toPublicUser(user) });
   } catch (err) {
     if (err.code === 11000) {
-      // Race: another request created the same email between our check and insert.
-      return res.status(409).json({ message: 'This email is already registered. Try logging in instead.' });
+      return res.status(409).json({ message: 'An account with this mobile number or email already exists.' });
     }
     console.error('signup error:', err);
     return res.status(500).json({ message: 'Unable to create account right now. Please try again.' });
   }
 });
 
+// ==========================================
+// USER LOGIN (Supports both Mobile and Email)
+// ==========================================
 authRouter.post('/login', async (req, res) => {
-  const email = String(req.body?.email ?? '').trim().toLowerCase();
+  const identifier = String(
+    req.body?.identifier ||
+    req.body?.emailOrMobile ||
+    req.body?.email ||
+    req.body?.mobile ||
+    ''
+  ).trim();
   const password = String(req.body?.password ?? '');
 
+  if (!identifier || !password) {
+    return res.status(400).json({ message: 'Mobile number / Email and password are required.' });
+  }
+
   try {
-    const user = await User.findOne({ email });
+    const normalizedMobile = normalizeMobile(identifier);
+    const normalizedEmail = identifier.toLowerCase();
+
+    // Query user by either mobile or email
+    const queryConditions = [];
+    if (normalizedMobile) {
+      queryConditions.push({ mobile: normalizedMobile });
+      queryConditions.push({ mobile: identifier });
+    }
+    if (identifier.includes('@') || !normalizedMobile) {
+      queryConditions.push({ email: normalizedEmail });
+    } else {
+      queryConditions.push({ email: normalizedEmail });
+    }
+
+    const user = await User.findOne({ $or: queryConditions });
+
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({ message: 'Invalid mobile number/email or password.' });
     }
 
     const matches = await bcrypt.compare(password, user.passwordHash);
     if (!matches) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({ message: 'Invalid mobile number/email or password.' });
     }
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
     const token = signToken(user._id);
     return res.status(200).json({ token, user: toPublicUser(user) });
   } catch (err) {

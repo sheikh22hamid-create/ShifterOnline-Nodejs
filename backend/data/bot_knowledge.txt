@@ -23,31 +23,19 @@ Website
 www.shifteronline.com
 2. What Shifter Online Does
 Shifter Online is a logistics aggregation platform for goods transportation.
-Customers can enter pickup and drop locations, select an available vehicle/service option and book a goods-transport service.
-The system connects bookings with eligible drivers.
-Fare may depend on distance, waiting time, stops, location changes and other configured charges.
-The WhatsApp bot should provide simple information and guide customers/drivers to the correct support option.
+Customers book goods transportation services exclusively through the official Shifter Online Customer Android App (https://play.google.com/store/apps/details?id=com.shifter.online).
+The WhatsApp bot does NOT take bookings, does NOT take pickup/drop addresses, and does NOT calculate custom fares directly.
+The WhatsApp bot provides general information, order tracking, driver onboarding support, and guides customers to download the app for booking.
 3. Customer WhatsApp Bot – Main Support Topics
-How to book a delivery / goods transport.
-Fare calculation and understanding an estimated fare.
-Vehicle types and basic vehicle information.
-Pickup/drop location guidance.
-Booking status and booking-related help.
-No-driver-available issues.
-Driver cancellation/rejection or driver not moving toward pickup.
-Waiting time, extra stops, loading/unloading, toll and parking questions.
-Payment, advance payment and refund/cancellation guidance.
-Customer Care contact and escalation.
+How to download the Customer App to book a delivery / goods transport.
+Vehicle types and basic vehicle information (Bike, 3-Wheeler, Tata Ace / 4-Wheeler, E-Loader).
+Booking status and order tracking (#OrderId).
+Customer Care contact and escalation (9109114515 / support@shifteronline.com).
 4. Customer Bot Menu
-Book a Delivery
-Calculate Fare
-My Booking / Booking Status
-Cancellation / Refund Help
-Payment Help
-Driver / Pickup Issue
-Fare & Charges
-Vehicle Information
-Customer Support
+Download Customer App to Book
+Track Order Status
+Driver Partner Registration
+Customer Care & Support
 5. Driver WhatsApp Bot – Main Support Topics
 New booking/request help.
 Booking request timeout or request not responding.
@@ -71,30 +59,24 @@ Cancellation / Penalty Help
 Profile / Documents
 Premium Plan / Referral Points
 Driver Support
-7. Booking Functionality
-Online booking functionality is already part of the Shifter Online system.
-The WhatsApp bot may guide the customer into the existing booking flow or use an approved booking API/integration.
-The bot must not confirm a booking unless the booking system returns a successful confirmation.
-Booking should follow the same approved vehicle availability and business rules as the main system.
-8. Fare Calculation Functionality
-Fare calculation is already available in the Shifter Online system.
-The bot may provide an estimated/live fare when connected to the approved fare-calculation service.
-Possible components include base fare, distance charge, waiting charge, extra stop charge, handling/loading charge, helper charge, toll, parking and applicable discounts/promotions.
-The bot must clearly distinguish an estimate from a final fare when applicable.
-The bot must never invent a fare; if live calculation is unavailable, direct the user to the app/booking flow or support.
+7. Booking & Fare Calculation Rules
+The WhatsApp bot does NOT book rides or calculate trip fares directly in chat.
+All goods delivery bookings and live fare calculations are conducted exclusively through the official Shifter Online Customer Android App (https://play.google.com/store/apps/details?id=com.shifter.online).
+If a customer asks to book a delivery or calculate prices/fare, guide them to download the Customer App or contact Customer Care at 9109114515.
+8. Driver Wallet & Earnings Rules
+The WhatsApp bot does NOT display driver wallet balances, daily earnings, or duty status directly in chat.
+Driver Partners must open the official Shifter Partner Driver App (https://play.google.com/store/apps/details?id=com.shifter.driver) to view their wallet balance, duty toggle, and earnings.
 9. Basic Customer FAQ
 Customer Question
 Bot Guidance
 What is Shifter Online?
 A goods transportation and logistics aggregation service that connects customers with suitable drivers.
 Does Shifter Online provide passenger rides?
-No. The service is focused on goods transportation.
-How can I book?
-Enter pickup and drop locations, select the suitable vehicle/service option and follow the booking instructions.
-How is my fare calculated?
-The applicable fare can depend on base fare, distance and configured charges such as waiting, stops, toll/parking and applicable discounts.
+No. The service is focused on goods transportation only.
+How can I book a delivery or check fare?
+Download the official Shifter Online Customer App from Google Play Store (https://play.google.com/store/apps/details?id=com.shifter.online) to check live fares and book instantly.
 I have a booking problem.
-Use the support flow and provide the required booking/reference information. If unresolved, contact Customer Care.
+Contact Customer Care at 9109114515 or email support@shifteronline.com.
 How do I contact Customer Care?
 Call/WhatsApp Customer Care at 9109114515 or use support@shifteronline.com.
 10. Bot Escalation & Privacy Rules
