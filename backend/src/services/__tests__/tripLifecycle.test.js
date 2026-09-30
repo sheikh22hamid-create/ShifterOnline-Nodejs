@@ -38,6 +38,11 @@ jest.mock("../pushNotifier", () => ({
   notifyCustomerOrderLive: jest.fn().mockResolvedValue({ sent: true }),
   notifyCustomerLatePickup: jest.fn().mockResolvedValue({ sent: true }),
 }));
+jest.mock("../../utils/pickupRelocateSettings", () => ({
+  getPickupRelocateSettings: jest.fn().mockResolvedValue({
+    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+  }),
+}));
 
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
@@ -46,6 +51,7 @@ const pricingEngine = require("../pricingEngine");
 const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
 const { haversineKm } = require("../../utils/geoDistance");
+const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
 
 describe("tripLifecycle.acceptOrder", () => {
   beforeEach(() => {
@@ -1155,6 +1161,33 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
 
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
     expect(pushNotifier.notifyCustomerPickupTimeoutCancel).toHaveBeenCalledWith("customer_tok", 400, 0);
+  });
+
+  it("credits the driver's wallet when a compensation amount is configured", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 15,
+    });
+
+    await tripLifecycle.cancelOverduePickup(400, 3);
+
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: { wallet_balance: { increment: 15 } },
+    });
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ user_id: 3, amount: 15, type: "credit", wallet_type: "driver", order_id: 400 }),
+    });
+  });
+
+  it("does not touch the driver's wallet when compensation is 0", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+
+    await tripLifecycle.cancelOverduePickup(400, 3);
+
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledTimes(1); // only the customer's debit
   });
 
   it("sweepOverduePickups only queries pickup_wait_start rows still unresolved (pickup_wait_end null) and cancels each", async () => {

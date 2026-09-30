@@ -13,6 +13,7 @@ const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
+const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const {
   PICKUP_OTP_TIMEOUT_MS,
   ADVANCE_PAYMENT_TIMEOUT_MS,
@@ -1195,6 +1196,26 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
         type: "debit",
         remark: `No-show penalty — OTP not provided within ${timeoutMinutes} minutes (order #${orderId})`,
         wallet_type: "user",
+        order_id: orderId,
+        created_at: istNow(),
+      },
+    });
+  }
+
+  // Driver earns nothing today when an order times out on them through no
+  // fault of their own - this fixed, admin-configured amount (default 0,
+  // i.e. unchanged behavior) removes the incentive to stall an order
+  // indefinitely rather than accept it may time out.
+  const { driverCompensation } = await getPickupRelocateSettings();
+  if (driverCompensation > 0 && riderId) {
+    await prisma.tbl_rider.update({ where: { id: riderId }, data: { wallet_balance: { increment: driverCompensation } } });
+    await prisma.tbl_wallet_history.create({
+      data: {
+        user_id: riderId,
+        amount: driverCompensation,
+        type: "credit",
+        remark: `OTP-timeout compensation — order #${orderId}`,
+        wallet_type: "driver",
         order_id: orderId,
         created_at: istNow(),
       },
