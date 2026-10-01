@@ -16,6 +16,7 @@ describe("getPickupRelocateSettings", () => {
       otpMismatchFlagM: 500,
       driverCompensation: 0,
       autoCompleteDistanceM: 150,
+      autoPauseDistanceM: 500,
     });
   });
 
@@ -26,6 +27,7 @@ describe("getPickupRelocateSettings", () => {
       { setting_key: "pickup_otp_mismatch_flag_m", setting_value: "600" },
       { setting_key: "pickup_timeout_driver_compensation", setting_value: "25" },
       { setting_key: "pickup_complete_auto_distance_m", setting_value: "120" },
+      { setting_key: "pickup_timer_auto_pause_distance_m", setting_value: "700" },
     ]);
     const settings = await getPickupRelocateSettings();
     expect(settings).toEqual({
@@ -34,6 +36,7 @@ describe("getPickupRelocateSettings", () => {
       otpMismatchFlagM: 600,
       driverCompensation: 25,
       autoCompleteDistanceM: 120,
+      autoPauseDistanceM: 700,
     });
   });
 
@@ -56,6 +59,7 @@ describe("getPickupRelocateSettings", () => {
       otpMismatchFlagM: 500,
       driverCompensation: 0,
       autoCompleteDistanceM: 150,
+      autoPauseDistanceM: 500,
     });
   });
 });
