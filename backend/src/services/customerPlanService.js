@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const { istNow } = require("../utils/istTime");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
+const { getPlanPointRules, computePlanPointUsage } = require("./referralPointRules");
 
 // Node port of the CUSTOMER_PREMIUM half of cust_api/get_premium_plans_api.php
 // and purchase_premium_plan_api.php. Those two PHP files were written
@@ -112,24 +113,23 @@ function referralBlock(plan) {
   };
 }
 
-function purchaseBlock(price, plan, referralPoints) {
-  const pointValue = Number(plan.referral_point_value) > 0 ? Number(plan.referral_point_value) : 1;
-  const pointsRequired = Math.ceil(price / pointValue);
-  const pointsUsable = Math.min(referralPoints, pointsRequired);
-  const pointsAmount = money(pointsUsable * pointValue);
-  const payable = Math.max(0, money(price - pointsAmount));
+function purchaseBlock(price, rules, referralPoints) {
+  const { pointValue, maxPercent } = rules;
+  const usage = computePlanPointUsage({ price, pointValue, maxPercent, available: referralPoints });
+  const cap = money((price * maxPercent) / 100);
   return {
     point_value: pointValue,
+    max_percent: maxPercent,
     points_available: referralPoints,
-    points_required: pointsRequired,
-    points_usable: pointsUsable,
-    points_covered_amount: pointsAmount,
-    payable_amount: payable,
-    can_buy_with_points: payable <= 0,
+    points_required: Math.ceil(cap / pointValue),
+    points_usable: usage.pointsUsable,
+    points_covered_amount: usage.pointsAmount,
+    payable_amount: usage.payable,
+    can_buy_with_points: usage.payable <= 0,
   };
 }
 
-function buildPlanPayload(plan, active, referralPoints) {
+function buildPlanPayload(plan, active, referralPoints, pointRules = null) {
   const tags = [];
   const price = Number(plan.price);
   const p = {
@@ -163,9 +163,11 @@ function buildPlanPayload(plan, active, referralPoints) {
   }
   if (plan.referral_enabled) {
     p.refer_and_earn = referralBlock(plan);
-    p.purchase_info = purchaseBlock(price, plan, referralPoints);
     tags.push(`${plan.referral_points_per_referral} points per verified referral`);
   }
+  // Points are redeemable on every plan while admin has plan-purchase points
+  // switched on (Referral settings), not only plans with refer-and-earn on.
+  if (pointRules?.enabled) p.purchase_info = purchaseBlock(price, pointRules, referralPoints);
   if (plan.no_advance_payment) { p.no_advance_payment = true; tags.push("No advance payment (pay after ride)"); }
   if (plan.guarantee_driver) { p.guarantee_driver = true; tags.push("Guaranteed driver assignment"); }
   if (plan.priority_support) { p.priority_support = true; tags.push("Priority support"); }
@@ -252,7 +254,7 @@ async function listCustomerPlans(userId, cityId) {
     ResponseCode: "200",
     Result: "true",
     ResponseMsg: "Plans fetched successfully.",
-    Plans: filtered.map((plan) => buildPlanPayload(plan, active, referralPoints)),
+    Plans: await Promise.all(filtered.map(async (plan) => buildPlanPayload(plan, active, referralPoints, await getPlanPointRules(prisma, plan)))),
     Currency: "₹",
   };
   if (referralPoints > 0 || filtered.some((p) => p.referral_enabled)) response.ReferralPoints = referralPoints;
@@ -260,7 +262,7 @@ async function listCustomerPlans(userId, cityId) {
   return response;
 }
 
-async function purchaseCustomerPlan({ userId, planId, usePoints = false, paymentTxnId = "", paymentMethod = "", razorpayOrderId = "", razorpaySignature = "" }) {
+async function purchaseCustomerPlan({ userId, planId, usePoints = false, pointsToUse = null, paymentTxnId = "", paymentMethod = "", razorpayOrderId = "", razorpaySignature = "" }) {
   const today = todayRange().start;
   return prisma.$transaction(async (tx) => {
     const [user, plan] = await Promise.all([
@@ -272,16 +274,18 @@ async function purchaseCustomerPlan({ userId, planId, usePoints = false, payment
     if (plan.expire_date && plan.expire_date < today) throw new Error("This plan has expired and is no longer available.");
 
     const price = Number(plan.price);
-    const pointValue = Number(plan.referral_point_value) > 0 ? Number(plan.referral_point_value) : 1;
-    const pointsAllowed = plan.referral_enabled;
     let pointsUsed = 0;
     let pointsAmount = 0;
     if (usePoints) {
-      if (!pointsAllowed) throw new Error("Referral points are not applicable on this plan.");
-      const available = Number(user.referral_points) || 0;
-      const required = Math.ceil(price / pointValue);
-      pointsUsed = Math.min(available, required);
-      pointsAmount = money(pointsUsed * pointValue);
+      const rules = await getPlanPointRules(tx, plan);
+      if (!rules.enabled) throw new Error("Referral points can't be used to buy plans right now.");
+      const usage = computePlanPointUsage({ price, pointValue: rules.pointValue, maxPercent: rules.maxPercent, available: Number(user.referral_points) || 0 });
+      // The app's stepper says how many points the customer chose; honour it
+      // up to what is allowed, otherwise use the maximum.
+      const requested = pointsToUse !== null && pointsToUse !== "" && Number.isFinite(Number(pointsToUse))
+        ? Math.max(0, Math.floor(Number(pointsToUse))) : usage.pointsUsable;
+      pointsUsed = Math.min(requested, usage.pointsUsable);
+      pointsAmount = money(Math.min(pointsUsed * rules.pointValue, money((price * rules.maxPercent) / 100)));
     }
     const payable = Math.max(0, money(price - pointsAmount));
 
@@ -355,6 +359,17 @@ async function purchaseCustomerPlan({ userId, planId, usePoints = false, payment
         data: { referral_points: { decrement: pointsUsed } },
       });
       if (decremented.count === 0) throw new Error("Referral points deduction failed. Insufficient points.");
+      // Points ledger row (admin Referrals > Point log) - was missing, so a
+      // customer's points history never showed what they spent on a plan.
+      const fresh = await tx.tbl_user.findFirst({ where: { id: Number(userId) }, select: { referral_points: true } });
+      await tx.tbl_referral_point_log.create({
+        data: {
+          user_id: Number(userId), user_type: "USER", points: -pointsUsed, txn_type: "debit",
+          source: "plan_purchase", ref_id: subscription.id, balance_after: Number(fresh?.referral_points) || 0,
+          note: `Used ${pointsUsed} referral points (₹${pointsAmount}) for ${plan.plan_name}`,
+          created_at: new Date(),
+        },
+      });
     }
 
     let walletCredited = 0;

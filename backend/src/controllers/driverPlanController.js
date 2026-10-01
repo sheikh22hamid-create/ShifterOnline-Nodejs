@@ -18,7 +18,7 @@ async function purchase(req, res) {
     const driverId = req.body.driver_id || req.body.rider_id;
     if (!driverId || !plan_id) return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "driver_id and plan_id are required" });
     const result = await driverPlanService.purchaseDriverPlan({
-      driverId, planId: plan_id, usePoints: Boolean(req.body.use_points), paymentTxnId: req.body.payment_txn_id,
+      driverId, planId: plan_id, usePoints: Boolean(req.body.use_points), pointsToUse: req.body.points_to_use ?? null, paymentTxnId: req.body.payment_txn_id,
       paymentMethod: req.body.payment_method, amountPaid: req.body.amount_paid,
     });
     const { subscription, plan } = result;

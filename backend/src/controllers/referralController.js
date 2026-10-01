@@ -32,6 +32,14 @@ async function updateSettings(req, res) {
     if (point_value !== undefined) data.point_value = point_value;
     if (ride_discount_percent !== undefined) data.ride_discount_percent = ride_discount_percent;
     if (referral_enabled !== undefined) data.referral_enabled = Boolean(referral_enabled);
+    if (req.body.plan_purchase_enabled !== undefined) data.plan_purchase_enabled = Boolean(req.body.plan_purchase_enabled);
+    if (req.body.plan_points_max_percent !== undefined) {
+      const percent = Number(req.body.plan_points_max_percent);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        return res.status(400).json({ success: false, message: "plan_points_max_percent must be between 0 and 100" });
+      }
+      data.plan_points_max_percent = percent;
+    }
     if (share_message !== undefined) data.share_message = share_message;
     data.updated_at = new Date();
 

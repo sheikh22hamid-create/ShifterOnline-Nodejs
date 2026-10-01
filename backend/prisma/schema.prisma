@@ -1073,6 +1073,10 @@ model tbl_referral_setting {
   share_message                 String?   @db.Text
   ride_discount_percent         Decimal   @default(0.00) @db.Decimal(5, 2)
   signup_bonus_points           Int       @default(0)
+  // Referral points redeemable on plan purchase (users + drivers): global on/off
+  // and the max share of the plan price points may cover.
+  plan_purchase_enabled         Boolean   @default(true)
+  plan_points_max_percent       Decimal   @default(100.00) @db.Decimal(5, 2)
   updated_at                    DateTime? @db.DateTime(0)
 }
 

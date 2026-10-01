@@ -26,6 +26,7 @@ async function purchase(req, res) {
       userId: uid,
       planId: plan_id,
       usePoints: Boolean(req.body.use_points),
+      pointsToUse: req.body.points_to_use ?? null,
       paymentTxnId: req.body.razorpay_payment_id || req.body.payment_txn_id,
       paymentMethod: req.body.payment_method,
       razorpayOrderId: req.body.razorpay_order_id,

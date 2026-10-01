@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { getPlanPointRules, computePlanPointUsage } = require("./referralPointRules");
 const { istNow } = require("../utils/istTime");
 
 const DRIVER_PLAN_TYPES = ["DRIVER_PREMIUM", "DRIVER_SECOND"];
@@ -131,7 +132,7 @@ async function hasPriorityPlan(driverId, client = prisma) {
   return subscriptions.some(({ tbl_premium_plan: plan }) => Boolean(plan.priority_enabled));
 }
 
-function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoints = 0) {
+function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoints = 0, pointRules = null) {
   const type = planType(plan);
   const active = activeSubscriptionsForDriver.find((sub) => sub.plan_id === plan.id);
   const tags = [
@@ -216,17 +217,22 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
     tags.push("Activity protection on eligible no-booking days");
   }
   if (plan.referral_enabled) {
-    const pointValue = Number(plan.referral_point_value) || 1;
     payload.refer_and_earn = {
       points_per_referral: plan.referral_points_per_referral,
-      point_value: pointValue,
+      point_value: Number(plan.referral_point_value) || 1,
       number_of_referrals: plan.number_of_referrals,
       auto_activate: Boolean(plan.auto_activate_on_referrals),
     };
+  }
+  // Redeemable on every plan while admin has plan-purchase points switched
+  // on (Referral settings), not only plans with refer-and-earn enabled.
+  if (pointRules?.enabled) {
+    const usage = computePlanPointUsage({ price, pointValue: pointRules.pointValue, maxPercent: pointRules.maxPercent, available: referralPoints });
     payload.purchase_info = {
       points_available: referralPoints,
-      points_usable: Math.min(referralPoints, Math.ceil(price / pointValue)),
-      point_value: pointValue,
+      points_usable: usage.pointsUsable,
+      point_value: pointRules.pointValue,
+      max_percent: pointRules.maxPercent,
       payable_amount: price,
     };
   }
@@ -274,13 +280,14 @@ async function listDriverPlans(driverId, cityId) {
     ResponseCode: "200",
     Result: "true",
     ResponseMsg: "Driver plans fetched successfully.",
-    Plans: filtered.map((plan) => buildPlanPayload(plan, subscriptions, Number(driver.referral_points) || 0)),
+    Plans: await Promise.all(filtered.map(async (plan) =>
+      buildPlanPayload(plan, subscriptions, Number(driver.referral_points) || 0, await getPlanPointRules(prisma, plan)))),
     ActivePlans: subscriptions.map((sub) => buildPlanPayload(sub.tbl_premium_plan, [sub], Number(driver.referral_points) || 0)),
     Currency: "₹",
   };
 }
 
-async function purchaseDriverPlan({ driverId, planId, usePoints = false, paymentTxnId = "", paymentMethod = "", amountPaid = 0 }) {
+async function purchaseDriverPlan({ driverId, planId, usePoints = false, pointsToUse = null, paymentTxnId = "", paymentMethod = "", amountPaid = 0 }) {
   const today = todayRange().start;
   return prisma.$transaction(async (tx) => {
     const [driver, plan] = await Promise.all([
@@ -321,10 +328,21 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
     const price = type === "DRIVER_SECOND"
       ? Number(prior ? plan.subscription_price : plan.initial_price)
       : Number(plan.price);
-    const pointValue = Number(plan.referral_point_value) || 1;
-    const pointsUsed = usePoints && plan.referral_enabled ? Math.min(Number(driver.referral_points) || 0, Math.ceil(price / pointValue)) : 0;
-    const pointsAmount = money(pointsUsed * pointValue);
-    const payable = money(Math.max(0, price - pointsAmount));
+    // Admin-controlled (Referral settings): a global switch + max share of the
+    // price points may cover. If the client says how many points it chose
+    // (stepper), honour that up to what is allowed; otherwise use the max.
+    let pointsUsed = 0;
+    let pointsAmount = 0;
+    let payable = money(price);
+    if (usePoints) {
+      const rules = await getPlanPointRules(tx, plan);
+      if (!rules.enabled) throw new Error("Referral points can't be used to buy plans right now");
+      const usage = computePlanPointUsage({ price, pointValue: rules.pointValue, maxPercent: rules.maxPercent, available: Number(driver.referral_points) || 0 });
+      const requested = Number.isFinite(Number(pointsToUse)) && pointsToUse !== null && pointsToUse !== "" ? Math.max(0, Math.floor(Number(pointsToUse))) : usage.pointsUsable;
+      pointsUsed = Math.min(requested, usage.pointsUsable);
+      pointsAmount = money(Math.min(pointsUsed * rules.pointValue, money((price * rules.maxPercent) / 100)));
+      payable = money(Math.max(0, price - pointsAmount));
+    }
     if (Number(amountPaid) > 0 && money(amountPaid) < payable) throw new Error("Paid amount is less than payable amount");
     if (payable > 0 && !paymentTxnId && !paymentMethod) throw new Error("Payment details are required");
 

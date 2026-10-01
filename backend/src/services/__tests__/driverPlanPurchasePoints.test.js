@@ -10,6 +10,7 @@ const mockTx = {
   tbl_premium_plan: { findFirst: jest.fn() },
   tbl_user_plan_subscription: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
   tbl_referral_point_log: { create: jest.fn() },
+  tbl_referral_setting: { findFirst: jest.fn() },
   tbl_wallet_history: { create: jest.fn() },
 };
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   mockTx.tbl_user_plan_subscription.create.mockResolvedValue({ id: 55 });
   mockTx.tbl_rider.updateMany.mockResolvedValue({ count: 1 });
   mockTx.tbl_rider.findFirst.mockResolvedValue({ id: 3, referral_points: 0 });
+  mockTx.tbl_referral_setting.findFirst.mockResolvedValue(null);
 });
 
 describe("purchaseDriverPlan with referral points", () => {
@@ -65,5 +67,41 @@ describe("purchaseDriverPlan with referral points", () => {
     await purchaseDriverPlan({ driverId: 3, planId: 7, usePoints: false, paymentTxnId: "pay_1" });
     expect(mockTx.tbl_rider.updateMany).not.toHaveBeenCalled();
     expect(mockTx.tbl_referral_point_log.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("purchaseDriverPlan referral point rules (admin settings)", () => {
+  it("lets points pay for a plan that has refer-and-earn switched off", async () => {
+    mockTx.tbl_premium_plan.findFirst.mockResolvedValue({ ...plan, referral_enabled: false, referral_point_value: 1 });
+    mockTx.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, plan_purchase_enabled: true, point_value: "1.00", plan_points_max_percent: "100.00" });
+    const result = await purchaseDriverPlan({ driverId: 3, planId: 7, usePoints: true, paymentTxnId: "pay_1" });
+    expect(result.pointsUsed).toBe(100);
+    expect(result.payable).toBe(400);
+  });
+
+  it("refuses when admin switched plan-purchase points off", async () => {
+    mockTx.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, plan_purchase_enabled: false });
+    await expect(purchaseDriverPlan({ driverId: 3, planId: 7, usePoints: true, paymentTxnId: "pay_1" }))
+      .rejects.toThrow(/can't be used to buy plans/i);
+    expect(mockTx.tbl_rider.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("honours the admin max percent (30% of 500 at 2/pt = 75 points)", async () => {
+    mockTx.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, plan_purchase_enabled: true, point_value: "2.00", plan_points_max_percent: "30.00" });
+    const result = await purchaseDriverPlan({ driverId: 3, planId: 7, usePoints: true, paymentTxnId: "pay_1" });
+    expect(result.pointsUsed).toBe(75);
+    expect(result.pointsAmount).toBe(150);
+    expect(result.payable).toBe(350);
+  });
+
+  it("spends only the points the driver chose on the stepper", async () => {
+    const result = await purchaseDriverPlan({ driverId: 3, planId: 7, usePoints: true, pointsToUse: 40, paymentTxnId: "pay_1" });
+    expect(result.pointsUsed).toBe(40);
+    expect(result.payable).toBe(420);
+  });
+
+  it("never spends more than allowed even if the client asks for more", async () => {
+    const result = await purchaseDriverPlan({ driverId: 3, planId: 7, usePoints: true, pointsToUse: 9999, paymentTxnId: "pay_1" });
+    expect(result.pointsUsed).toBe(100);
   });
 });

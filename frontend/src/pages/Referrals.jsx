@@ -80,6 +80,8 @@ export default function Referrals() {
         referral_enabled: editable.referral_enabled,
         share_message: editable.share_message,
         ride_discount_percent: editable.ride_discount_percent,
+        plan_purchase_enabled: editable.plan_purchase_enabled,
+        plan_points_max_percent: editable.plan_points_max_percent,
       })
       toast.success('Referral settings saved.')
       setForm(null)
@@ -252,6 +254,42 @@ export default function Referrals() {
               />
               <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
                 Max % of a ride's fare (or advance payment) customers can cover using referral points.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>
+                Points for plan purchase
+              </label>
+              <select
+                disabled={!isSuperadmin}
+                value={editable.plan_purchase_enabled === false ? '0' : '1'}
+                onChange={(e) => setForm({ ...editable, plan_purchase_enabled: e.target.value === '1' })}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                style={FIELD_STYLE}
+              >
+                <option value="1">Enabled</option>
+                <option value="0">Disabled</option>
+              </select>
+              <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                Customers and drivers can pay for premium plans with referral points.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>
+                Plan price payable with points (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                disabled={!isSuperadmin}
+                value={editable.plan_points_max_percent ?? 100}
+                onChange={(e) => setForm({ ...editable, plan_points_max_percent: Number(e.target.value) })}
+                className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                style={FIELD_STYLE}
+              />
+              <p className="mt-1 text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>
+                100 = a plan can be bought entirely with points.
               </p>
             </div>
           </div>
