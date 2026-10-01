@@ -1217,6 +1217,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
     WHERE id = ${orderId} AND o_status IN ('Pickup', 'Processing') AND order_status IN (1, 2)
   `;
   if (affected === 0) return; // already resolved another way between the sweep's read and this write
+  logger.info(`cancelOverduePickup: order #${orderId} auto-cancelled by the pickup OTP timeout (limit ${timeoutMinutes} min)`);
 
   await prisma.pkg_order_wait_timer.updateMany({
     where: { order_id: orderId, rid: riderId },

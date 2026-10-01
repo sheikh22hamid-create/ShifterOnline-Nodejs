@@ -1280,6 +1280,19 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
     );
   });
 
+  it("sweepOverduePickups does NOT cancel at 2.5 minutes when admin set 5 (reported: cancelled at 2.5 min)", async () => {
+    prisma.app_settings.findFirst.mockResolvedValueOnce({ setting_value: "5" });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(2.5), pickup_wait_banked_seconds: 0 },
+      { order_id: 401, rid: 5, pickup_wait_start: minutesAgo(5.2), pickup_wait_banked_seconds: 0 },
+    ]);
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("within 5 minutes"), 401);
+  });
+
   it("sweepOverduePickups falls back to the default 10-minute timeout when no admin setting exists", async () => {
     prisma.app_settings.findFirst.mockResolvedValueOnce(null);
     prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
