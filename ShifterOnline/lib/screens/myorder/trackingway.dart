@@ -69,6 +69,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   String uid = "0";
   String orderid = "0";
   bool isFavorite = false;
+  bool isDriverBlocked = false;
+  String _blockedCheckedFor = "";
   bool isFavoriteLoading = false;
   bool isInvoiceLoading = false;
   bool isAdvanceDialogOpened = false;
@@ -1922,7 +1924,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   Widget _buildStatusTimeline() {
     final status = (orderProduc?["Order_Status"] ?? "Processing").toString();
-    final stepIndex = _getCurrentStepIndex(status);
+    // A completed order has no "current" step left, so push the index past the
+    // last step: every circle, including Delivered, then renders green.
+    final stepIndex = status.toLowerCase().trim() == "completed" ? 5 : _getCurrentStepIndex(status);
     final isCancelled = status.toLowerCase() == "cancelled";
 
     final steps = [
@@ -3026,13 +3030,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           ),
                         ),
                       ),
-              if (hasRider)
+              if (hasRider && (() { WidgetsBinding.instance.addPostFrameCallback((_) => _loadBlockedState()); return true; })())
                 InkWell(
                   onTap: () => confirmBlockDriver(),
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
                     padding: const EdgeInsets.all(4.0),
-                    child: Icon(Icons.block_rounded, color: greaycolor, size: 20),
+                    child: Icon(Icons.block_rounded, color: isDriverBlocked ? Colors.red : greaycolor, size: 20),
                   ),
                 ),
             ],
@@ -4991,17 +4995,37 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     });
   }
 
+  // Whether this order's driver is already blocked (drives the block/unblock button).
+  Future<void> _loadBlockedState() async {
+    final riderId = "${orderProduc?["rider_id"] ?? ""}";
+    if (riderId.isEmpty || riderId == "0" || riderId == _blockedCheckedFor) return;
+    _blockedCheckedFor = riderId;
+    try {
+      final val = await ApiWrapper.dataPostNode(Config.nodeBlockedDriversList, {"user_id": uid});
+      if (val != null && val["Result"] == true && val["data"] is List) {
+        final blocked = (val["data"] as List).any((d) => "${d["id"]}" == riderId);
+        if (mounted) setState(() => isDriverBlocked = blocked);
+      }
+    } catch (e) {
+      debugPrint("_loadBlockedState error: $e");
+    }
+  }
+
   // Customers can block a limited (admin-decided) number of drivers; a
-  // blocked driver is never offered their orders again.
+  // blocked driver is never offered their orders again. Tapping the button
+  // on an already-blocked driver offers to unblock them.
   Future<void> confirmBlockDriver() async {
     if (orderProduc == null || orderProduc["rider_id"] == null) return;
+    final unblocking = isDriverBlocked;
     final ok = await Get.dialog<bool>(
       AlertDialog(
-        title: Text("Block this driver?".tr),
-        content: Text("This driver will not be offered your future orders. You can unblock them later.".tr),
+        title: Text(unblocking ? "Unblock this driver?".tr : "Block this driver?".tr),
+        content: Text(unblocking
+            ? "This driver can be offered your orders again.".tr
+            : "This driver will not be offered your future orders. You can unblock them later.".tr),
         actions: [
           TextButton(onPressed: () => Get.back(result: false), child: Text("Cancel".tr)),
-          TextButton(onPressed: () => Get.back(result: true), child: Text("Block".tr)),
+          TextButton(onPressed: () => Get.back(result: true), child: Text(unblocking ? "Unblock".tr : "Block".tr)),
         ],
       ),
     );
@@ -5012,13 +5036,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         "rider_id": "${orderProduc["rider_id"]}",
       });
       if (val != null && val.isNotEmpty) {
-        if (val["Result"] == true && val["blocked"] == false) {
-          // The driver was already blocked and has just been unblocked.
-          ApiWrapper.showToastMessage(val["msg"] ?? "");
-        } else {
-          if (val["Result"] == true) setState(() => isFavorite = false);
-          ApiWrapper.showToastMessage(val["msg"] ?? "");
+        if (val["Result"] == true) {
+          setState(() {
+            isDriverBlocked = val["blocked"] == true;
+            if (isDriverBlocked) isFavorite = false;
+          });
         }
+        ApiWrapper.showToastMessage(val["msg"] ?? "");
       }
     } catch (e) {
       debugPrint("confirmBlockDriver error: $e");

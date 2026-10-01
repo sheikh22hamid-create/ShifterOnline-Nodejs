@@ -23,6 +23,7 @@ import '../notification/notification.dart';
 import 'editprofile.dart';
 import 'AddressList.dart';
 import 'faq.dart';
+import 'blocked_drivers.dart';
 import 'favorite_drivers.dart';
 import 'premium_plans_screen.dart';
 import 'LeadReferralScreen.dart';
@@ -839,26 +840,6 @@ class _MyProfileState extends State<MyProfile> {
                       borderRadius: BorderRadius.circular(18),
                       child: Stack(
                         children: [
-                          // 3D Golden Crown Graphic accent in bottom-left
-                          Positioned(
-                            bottom: -4,
-                            left: 8,
-                            child: Opacity(
-                              opacity: 0.90,
-                              child: Image.asset(
-                                "assets/premium_crown_gold.jpg",
-                                height: 52,
-                                width: 52,
-                                fit: BoxFit.contain,
-                                errorBuilder: (c, e, s) => const Icon(
-                                  Icons.workspace_premium_rounded,
-                                  size: 42,
-                                  color: Color(0xFFF59E0B),
-                                ),
-                              ),
-                            ),
-                          ),
-
                           Padding(
                             padding: const EdgeInsets.all(13),
                             child: Column(
@@ -1031,14 +1012,6 @@ class _MyProfileState extends State<MyProfile> {
                               ),
                             ),
 
-                            const Spacer(),
-
-                            // Driver Avatar Stack
-                            Row(
-                              children: [
-                                _buildDriverAvatarStack(driverList),
-                              ],
-                            ),
                           ],
                         ),
                       ),
@@ -1048,53 +1021,82 @@ class _MyProfileState extends State<MyProfile> {
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
+          const SizedBox(height: 12),
 
-  // Overlapping 3-avatar stack for Favorite Drivers
-  Widget _buildDriverAvatarStack(List drivers) {
-    // Show real driver avatars if available, fallback to 3 avatar items
-    final int count = drivers.isNotEmpty ? drivers.length.clamp(1, 3) : 3;
-
-    return SizedBox(
-      height: 30,
-      width: 65,
-      child: Stack(
-        children: List.generate(count, (index) {
-          final String? avatarUrl = index < drivers.length
-              ? drivers[index]["avatar"]?.toString()
-              : null;
-
-          return Positioned(
-            left: index * 17.0,
-            child: Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                color: const Color(0xFFE2E8F0),
-              ),
-              child: ClipOval(
-                child: Config.isValidImageUrl(avatarUrl)
-                    ? Image.network(
-                        Config.resolveImageUrl(avatarUrl),
-                        fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) => Image.asset(
-                          "assets/signin_hero_mascot.jpg",
-                          fit: BoxFit.cover,
+          // Blocked Drivers
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.025),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => Get.to(() => const BlockedDriversScreen()),
+                borderRadius: BorderRadius.circular(18),
+                child: Padding(
+                  padding: const EdgeInsets.all(13),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      )
-                    : Image.asset(
-                        "assets/signin_hero_mascot.jpg",
-                        fit: BoxFit.cover,
+                        child: const Icon(
+                          Icons.block_rounded,
+                          color: Color(0xFF475569),
+                          size: 16,
+                        ),
                       ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Blocked Drivers".tr,
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 12.5,
+                                color: Color(0xFF0F172A),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "Drivers you blocked. Unblock them anytime".tr,
+                              style: const TextStyle(
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 10.5,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Color(0xFF94A3B8),
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          );
-        }),
+          ),
+        ],
       ),
     );
   }
