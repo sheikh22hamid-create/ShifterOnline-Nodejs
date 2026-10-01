@@ -36,6 +36,7 @@ async function snapshot(order, progress, timer, stopCount) {
     // own loading-time counter - see the 'pickup_complete' action below.
     otp_verified: !!progress?.otp_verified_at,
     pickup_load_wait_start: timer?.pickup_load_wait_start ? new Date(timer.pickup_load_wait_start).getTime() : 0,
+    pickup_load_wait_seconds: timer?.pickup_load_wait_seconds || 0,
     drop_wait_start: timer?.drop_wait_start ? new Date(timer.drop_wait_start).getTime() : 0,
     server_time: Date.now(), version: progress?.updated_at ? new Date(progress.updated_at).getTime() : 0,
   };

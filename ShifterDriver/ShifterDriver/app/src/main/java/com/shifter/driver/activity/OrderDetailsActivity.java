@@ -192,7 +192,13 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         long dropStart = data.get("drop_wait_start").getAsLong();
         if (pickupStart > 0) timer.putLong("pickup_start_" + orderItem.getId(), pickupStart + offset);
         if (dropStart > 0) timer.putLong("drop_start_" + orderItem.getId(), dropStart + offset);
-        timer.putLong("pickup_elapsed_" + orderItem.getId(), data.get("pickup_wait_seconds").getAsLong()).apply();
+        // Billable waiting starts at OTP entry: the pickup timer counts from the
+        // loading-wait start, and the elapsed value carried into the drop
+        // timer is the loading wait (not the unbilled arrival -> OTP time).
+        long loadStart = data.has("pickup_load_wait_start") ? data.get("pickup_load_wait_start").getAsLong() : 0;
+        timer.putLong("load_start_" + orderItem.getId(), loadStart > 0 ? loadStart + offset : 0);
+        long loadSeconds = data.has("pickup_load_wait_seconds") ? data.get("pickup_load_wait_seconds").getAsLong() : 0;
+        timer.putLong("pickup_elapsed_" + orderItem.getId(), loadSeconds).apply();
         if (!state.equals(renderedTripState)) {
             boolean changed = !renderedTripState.isEmpty();
             renderedTripState = state;
@@ -1431,7 +1437,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         binding.layoutWaitingTimer.setVisibility(View.VISIBLE);
 
         if (binding.txtWaitingTimerTitle != null) {
-            binding.txtWaitingTimerTitle.setText(isDropWaiting ? "Total waiting · unloading" : "Waiting at Pickup");
+            boolean otpDone = prefs.getLong("load_start_" + orderId, 0) > 0;
+            binding.txtWaitingTimerTitle.setText(isDropWaiting ? "Total waiting · unloading" : (otpDone ? "Waiting · loading" : "Waiting for OTP"));
         }
 
         if (!TextUtils.isEmpty(orderItem.getFreeWaitingTime()) && !"0".equals(orderItem.getFreeWaitingTime())) {
@@ -1440,7 +1447,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             String chargeInfo = "Free: " + orderItem.getFreeWaitingTime() + " mins";
             binding.txtWaitingTimerInfo.setText(chargeInfo);
         } else {
-            binding.txtWaitingTimerInfo.setText(isDropWaiting ? "Continuing timer for unloading" : "Timer running since arrival");
+            binding.txtWaitingTimerInfo.setText(isDropWaiting ? "Continuing timer for unloading"
+                    : (prefs.getLong("load_start_" + orderId, 0) > 0 ? "Waiting charge counts from OTP entry" : "Not charged until the OTP is entered"));
         }
 
         if (pickupWaitingTimerHandler == null) {
@@ -1458,9 +1466,17 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     long totalElapsedSeconds = 0;
 
                     if ("2".equals(currentFlow)) {
-                        long pickupStart = prefs.getLong("pickup_start_" + orderId, 0);
+                        // Before OTP: time since arrival (OTP countdown, not billed).
+                        // After OTP: billable loading wait, counted from OTP entry.
+                        long loadStart = prefs.getLong("load_start_" + orderId, 0);
+                        long pickupStart = loadStart > 0 ? loadStart : prefs.getLong("pickup_start_" + orderId, 0);
                         if (pickupStart > 0) {
                             totalElapsedSeconds = Math.max(0, (System.currentTimeMillis() - pickupStart) / 1000);
+                        }
+                        // OTP entry does not change the flow, so refresh the labels here.
+                        if (binding.txtWaitingTimerTitle != null) binding.txtWaitingTimerTitle.setText(loadStart > 0 ? "Waiting · loading" : "Waiting for OTP");
+                        if (binding.txtWaitingTimerInfo != null && TextUtils.isEmpty(orderItem.getFreeWaitingTime())) {
+                            binding.txtWaitingTimerInfo.setText(loadStart > 0 ? "Waiting charge counts from OTP entry" : "Not charged until the OTP is entered");
                         }
                     } else if ("4".equals(currentFlow)) {
                         long pausedElapsed = prefs.getLong("pickup_elapsed_" + orderId, 0);

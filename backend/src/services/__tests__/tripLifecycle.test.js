@@ -975,7 +975,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       free_waiting_time: "0",
       wating_charge: "60", // ₹60/min waiting rate
     });
-    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 60 }); // 1 min -> +60
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_load_wait_seconds: 60 }); // 1 min -> +60
 
     const result = await tripLifecycle.updateStatus(304, 1, "complete");
 
@@ -986,6 +986,20 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
       where: { id: 1 },
       data: { wallet_balance: { decrement: 16 } },
     });
+  });
+
+  it("does not bill the arrival -> OTP wait (pickup_wait_seconds); waiting starts at OTP entry", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 306, rid: 1, city_id: 1, d_charge: 100, total_dcharge: 100, commission: 10,
+      trans_id: "cash_payment", free_waiting_time: "0", wating_charge: "60",
+    });
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 600, pickup_load_wait_seconds: 0 });
+
+    const result = await tripLifecycle.updateStatus(306, 1, "complete");
+
+    expect(result.success).toBe(true);
+    // 10 min spent waiting for the OTP is free of charge -> finalTotal stays 100.
+    expect(pricingEngine.commissionAmount).toHaveBeenCalledWith(100, 10);
   });
 
   it("includes pickup_load_wait_seconds (post-OTP loading wait, before the driver tapped Pickup Complete) in the billed waiting charge", async () => {
@@ -1014,7 +1028,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     try {
       prisma.pkg_order.findUnique.mockResolvedValue({ id: 304, rid: 1, d_charge: 100, total_dcharge: 100, commission: 0,
         trans_id: 'wallet_paid', free_waiting_time: '1', wating_charge: '60' }); // free_waiting_time is in minutes
-      prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_wait_seconds: 60, drop_wait_start: new Date('2026-09-24T09:58:00Z') });
+      prisma.pkg_order_wait_timer.findUnique.mockResolvedValue({ pickup_load_wait_seconds: 60, drop_wait_start: new Date('2026-09-24T09:58:00Z') });
       const result = await tripLifecycle.updateStatus(304, 1, 'complete');
       expect(result.success).toBe(true);
       expect(prisma.pkg_order.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ total_dcharge: 220 }) })); // 180s minus 60s free = 120s chargeable.
