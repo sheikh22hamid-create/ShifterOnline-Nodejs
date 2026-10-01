@@ -158,10 +158,27 @@ async function packageListForDriver(req, res) {
       },
     });
 
-    const enabledRows = await prisma.tbl_rider_delivery_type.findMany({
-      where: { rider_id: riderId, delivery_type: { in: packages.map((p) => String(p.id)) }, status: 1 },
+    // Every model defaults to ON: a rider with no row for a package has never
+    // touched that toggle (new signups, or packages added later), so seed it
+    // as enabled here, once vehicle/category is known. Existing rows -
+    // including a driver's own explicit OFF (status 0) - are never changed.
+    // Dispatch already treats a missing row as eligible, so this just makes
+    // the app and DB agree with it.
+    const packageIdStrings = packages.map((p) => String(p.id));
+    const existingRows = await prisma.tbl_rider_delivery_type.findMany({
+      where: { rider_id: riderId, delivery_type: { in: packageIdStrings } },
     });
-    const enabledPackageIds = new Set(enabledRows.map((r) => Number(r.delivery_type)));
+    const knownTypes = new Set(existingRows.map((r) => String(r.delivery_type)));
+    const missing = packageIdStrings.filter((id) => !knownTypes.has(id));
+    if (missing.length > 0) {
+      await prisma.tbl_rider_delivery_type.createMany({
+        data: missing.map((id) => ({ rider_id: riderId, delivery_type: id, status: 1 })),
+      });
+    }
+    const enabledPackageIds = new Set([
+      ...existingRows.filter((r) => r.status === 1).map((r) => Number(r.delivery_type)),
+      ...missing.map(Number),
+    ]);
 
     const packageData = packages.map((p) => ({
       id: String(p.id),

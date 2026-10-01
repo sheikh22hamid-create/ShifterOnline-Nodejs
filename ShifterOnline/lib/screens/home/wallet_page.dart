@@ -508,6 +508,11 @@ class _WalletPageState extends State<WalletPage> {
                         "* 2.5% Payment Gateway charge will be deducted and recorded in your ledger.",
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontFamily: 'Gilroy_Regular'),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "You are still saving! Compare your total cost with other platforms.".tr,
+                        style: const TextStyle(fontSize: 11, color: Color(0xff16A34A), fontFamily: 'Gilroy_Medium'),
+                      ),
                     ],
                   ],
                 ),

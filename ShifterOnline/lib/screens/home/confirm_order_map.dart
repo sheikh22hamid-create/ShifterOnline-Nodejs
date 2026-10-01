@@ -55,6 +55,8 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   Map<PolylineId, Polyline> _polylines = {};
   bool _isLoadingMap = true;
   bool _isProcessing = false;
+  // Bottom panel collapsed = map gets (nearly) the full screen.
+  bool _panelExpanded = true;
   int _selectedPaymentMethod = 2; // 1 for Wallet, 2 for COD (Default Cash)
 
   bool _isLoadingPaymentSettings = true;
@@ -484,7 +486,9 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             ),
 
             // ── BOTTOM SECTION: PAYMENT & CONFIRMATION PANEL ────────────────
-            Container(
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+              child: Container(
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
               decoration: BoxDecoration(
                 color: notifier.getBgColor,
@@ -501,18 +505,38 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Drag Handle
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: greaycolor.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(10),
+                  // Drag handle / scroll toggle: tap or swipe to collapse the
+                  // panel (map full screen) or expand it back (map half).
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _panelExpanded = !_panelExpanded),
+                    onVerticalDragEnd: (details) {
+                      final v = details.primaryVelocity ?? 0;
+                      if (v > 150 && _panelExpanded) setState(() => _panelExpanded = false);
+                      if (v < -150 && !_panelExpanded) setState(() => _panelExpanded = true);
+                    },
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        children: [
+                          Icon(
+                            _panelExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                            color: greaycolor,
+                            size: 26,
+                          ),
+                          Container(
+                            width: 42,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: greaycolor.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
 
                   // ── FARE SUMMARY HEADER ROW ───────────────────────────────
                   Container(
@@ -579,6 +603,12 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                       ],
                     ),
                   ),
+                  if (_panelExpanded)
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                   const SizedBox(height: 16),
 
                   // ── PAYMENT METHODS SECTION ───────────────────────────────
@@ -725,6 +755,11 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (!_panelExpanded) const SizedBox(height: 10),
 
                   // ── CONFIRM & PLACE ORDER BUTTON ──────────────────────────
                   SizedBox(
@@ -778,6 +813,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                   ),
                 ],
               ),
+            ),
             ),
           ],
         ),

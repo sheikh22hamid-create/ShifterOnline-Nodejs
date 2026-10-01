@@ -5,7 +5,7 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn() },
   pkg_category: { findFirst: jest.fn() },
   tbl_package: { findMany: jest.fn() },
-  tbl_rider_delivery_type: { findMany: jest.fn() },
+  tbl_rider_delivery_type: { findMany: jest.fn(), createMany: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn() }));
 
@@ -102,5 +102,25 @@ describe("packageListForDriver tier info", () => {
     expect(select.driver_card_subtitle).toBe(true);
     expect(select.driver_info_subtitle).toBe(true);
     expect(select.driver_info_sections).toBe(true);
+  });
+
+  it("seeds missing models as ON and keeps an explicit OFF", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ vehicle: "Bike" });
+    prisma.pkg_category.findFirst.mockResolvedValue({ id: 8, cat_name: "Bike" });
+    prisma.tbl_package.findMany.mockResolvedValue([
+      { ...BASE_PKG, id: 21 }, { ...BASE_PKG, id: 22 }, { ...BASE_PKG, id: 23 },
+    ]);
+    prisma.tbl_rider_delivery_type.findMany.mockResolvedValue([
+      { rider_id: 7, delivery_type: "22", status: 0 },
+      { rider_id: 7, delivery_type: "23", status: 1 },
+    ]);
+    const res = mockRes();
+    await packageListForDriver({ body: { uid: 7 } }, res);
+    const byId = Object.fromEntries(res.json.mock.calls[0][0].PackageData.map((p) => [p.id, p.driver_active]));
+
+    expect(byId).toEqual({ 21: "1", 22: "0", 23: "1" });
+    expect(prisma.tbl_rider_delivery_type.createMany).toHaveBeenCalledWith({
+      data: [{ rider_id: 7, delivery_type: "21", status: 1 }],
+    });
   });
 });
