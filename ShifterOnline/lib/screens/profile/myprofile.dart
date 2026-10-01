@@ -21,6 +21,7 @@ import '../authscreen/signin.dart';
 import '../loream.dart';
 import '../notification/notification.dart';
 import 'editprofile.dart';
+import 'AddressList.dart';
 import 'faq.dart';
 import 'favorite_drivers.dart';
 import 'premium_plans_screen.dart';
@@ -151,14 +152,42 @@ class _MyProfileState extends State<MyProfile> {
             "Let's move a smarter, cleaner and more connected city.")
         .toString();
 
-    // Profile Completion Data
+    // Profile Completion Data - dynamically computed from real-time user profile data
+    final String email = (dynamicUser["email"] ?? "").toString().trim();
+    final bool hasName = name.isNotEmpty && name.toLowerCase() != "user";
+    final bool hasMobile = mobile.isNotEmpty;
+    final bool hasEmail = email.isNotEmpty && email.contains("@") && !email.contains("@placeholder");
+    final bool hasImage = Config.isValidImageUrl(rImg);
+    final bool hasAddress = overviewData != null && overviewData?["profile_completion"] != null
+        ? ((overviewData?["profile_completion"]?["missing_fields"] as List?)?.contains("saved_address") == false)
+        : false;
+
+    int computedPercent = 0;
+    if (hasMobile) computedPercent += 20;
+    if (hasName) computedPercent += 20;
+    if (hasEmail) computedPercent += 20;
+    if (hasImage) computedPercent += 20;
+    if (hasAddress) computedPercent += 20;
+
     final completionData = overviewData?["profile_completion"] ?? {};
-    final int completionPercent =
-        int.tryParse(completionData["percentage"]?.toString() ?? "") ?? 80;
-    final String completionTitle =
-        completionData["title"]?.toString() ?? "Complete your profile";
-    final String completionPrompt = completionData["prompt"]?.toString() ??
-        "Add your email and more details for a better experience.";
+    final int completionPercent = overviewData != null && completionData["percentage"] != null
+        ? (int.tryParse(completionData["percentage"]?.toString() ?? "") ?? computedPercent)
+        : computedPercent;
+
+    String completionTitle = "Complete your profile";
+    String completionPrompt = "Add your email and details for a better experience.";
+    if (completionPercent >= 100) {
+      completionTitle = "Profile 100% Completed! 🎉";
+      completionPrompt = "All details & addresses are verified and up to date.";
+    } else if (!hasName) {
+      completionPrompt = "Add your full name to personalize your account.";
+    } else if (!hasEmail) {
+      completionPrompt = "Add your email to receive booking receipts & trip invoices.";
+    } else if (!hasImage) {
+      completionPrompt = "Upload a profile photo to personalize your account.";
+    } else if (!hasAddress) {
+      completionPrompt = "Save your home or work address for 1-tap fast booking.";
+    }
 
     // Quick Access Data
     final quickAccess = overviewData?["quick_access"] ?? {};
@@ -396,7 +425,10 @@ class _MyProfileState extends State<MyProfile> {
                     children: [
                       // Avatar with edit pen badge
                       GestureDetector(
-                        onTap: () => Get.to(() => const EditProfile()),
+                        onTap: () async {
+                          await Get.to(() => const EditProfile());
+                          fetchProfileOverview();
+                        },
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
@@ -561,7 +593,10 @@ class _MyProfileState extends State<MyProfile> {
 
                       // "Edit Profile ->" Pill Button
                       GestureDetector(
-                        onTap: () => Get.to(() => const EditProfile()),
+                        onTap: () async {
+                          await Get.to(() => const EditProfile());
+                          fetchProfileOverview();
+                        },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                           decoration: BoxDecoration(
@@ -614,6 +649,10 @@ class _MyProfileState extends State<MyProfile> {
     required int percentage,
   }) {
     final double normalizedValue = (percentage / 100.0).clamp(0.0, 1.0);
+    final bool isComplete = percentage >= 100;
+    final Color accentColor = isComplete ? const Color(0xFF10B981) : const Color(0xFFFA4500);
+    final Color iconBgColor = isComplete ? const Color(0xFFECFDF5) : const Color(0xFFFFF1EB);
+    final IconData cardIcon = isComplete ? Icons.verified_user_rounded : Icons.person_outline_rounded;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -631,23 +670,31 @@ class _MyProfileState extends State<MyProfile> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => Get.to(() => const EditProfile()),
+          onTap: () async {
+            final missing = (overviewData?["profile_completion"]?["missing_fields"] as List?) ?? [];
+            if (missing.length == 1 && missing.contains("saved_address")) {
+              await Get.to(() => const AddressListPage());
+            } else {
+              await Get.to(() => const EditProfile());
+            }
+            fetchProfileOverview();
+          },
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.all(15),
             child: Row(
               children: [
-                // Person Outline Icon in soft rounded container
+                // Icon in soft rounded container
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF1EB),
+                    color: iconBgColor,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(
-                    Icons.person_outline_rounded,
-                    color: Color(0xFFFA4500),
+                  child: Icon(
+                    cardIcon,
+                    color: accentColor,
                     size: 24,
                   ),
                 ),
@@ -690,8 +737,8 @@ class _MyProfileState extends State<MyProfile> {
                                 value: normalizedValue,
                                 minHeight: 6,
                                 backgroundColor: const Color(0xFFE2E8F0),
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Color(0xFFFA4500),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  accentColor,
                                 ),
                               ),
                             ),
@@ -699,10 +746,10 @@ class _MyProfileState extends State<MyProfile> {
                           const SizedBox(width: 10),
                           Text(
                             "$percentage%",
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
                               fontSize: 12.5,
-                              color: Color(0xFFFA4500),
+                              color: accentColor,
                               fontWeight: FontWeight.w800,
                             ),
                           ),

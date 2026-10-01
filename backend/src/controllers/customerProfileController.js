@@ -27,12 +27,14 @@ async function updateProfile(req, res) {
     const uid = Number(req.body?.uid || 0);
     const fname = String(req.body?.fname || "").trim();
     const email = String(req.body?.email || "").trim();
-    const password = String(req.body?.password || "").trim();
-    const mobile = req.body?.mobile !== undefined ? String(req.body.mobile).trim() : "";
-    if (!uid || !fname || !email || !password) return fail(res, "Something Went Wrong!");
-
     const user = await prisma.tbl_user.findUnique({ where: { id: uid } });
     if (!user) return fail(res, "User Not Exist!!!!");
+
+    const password = (req.body?.password !== undefined && String(req.body.password).trim().length > 0)
+      ? String(req.body.password).trim()
+      : (user.password || "");
+
+    if (!uid || !fname || !email) return fail(res, "Something Went Wrong!");
 
     if (mobile) {
       const mobileTaken = await prisma.tbl_user.findFirst({
@@ -41,7 +43,8 @@ async function updateProfile(req, res) {
       if (mobileTaken) return fail(res, "This Mobile Number Already Used!!");
     }
 
-    const data = { name: fname, email, password };
+    const data = { name: fname, email };
+    if (password) data.password = password;
     if (mobile) data.mobile = Number(mobile);
 
     const updated = await prisma.tbl_user.update({ where: { id: uid }, data });
@@ -195,7 +198,7 @@ async function profileOverview(req, res) {
     if (!user) return fail(res, "User Not Exist!!!!");
 
     // 1. Dynamic profile completion calculation
-    const hasName = Boolean(user.name && user.name.trim().length > 0);
+    const hasName = Boolean(user.name && user.name.trim().length > 0 && user.name.trim().toLowerCase() !== "user");
     const hasMobile = Boolean(user.mobile);
     const hasEmail = Boolean(user.email && user.email.trim().length > 0 && !user.email.includes("@placeholder"));
     const hasImage = Boolean(user.r_img && user.r_img.trim().length > 0 && user.r_img !== "null");
@@ -209,8 +212,10 @@ async function profileOverview(req, res) {
     const completionPercent = Math.min(100, completedItems * 20);
 
     let completionPrompt = "Add your email and more details for a better experience.";
-    if (!hasEmail) {
-      completionPrompt = "Add your email and more details for a better experience.";
+    if (!hasName) {
+      completionPrompt = "Add your full name to personalize your account.";
+    } else if (!hasEmail) {
+      completionPrompt = "Add your email to receive booking receipts & trip invoices.";
     } else if (!hasImage) {
       completionPrompt = "Add your profile picture for a personalized experience.";
     } else if (!hasAddress) {
@@ -300,6 +305,7 @@ async function profileOverview(req, res) {
           prompt: completionPrompt,
           is_complete: completionPercent >= 100,
           missing_fields: [
+            !hasName ? "name" : null,
             !hasEmail ? "email" : null,
             !hasImage ? "profile_image" : null,
             !hasAddress ? "saved_address" : null,
