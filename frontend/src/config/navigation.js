@@ -105,6 +105,7 @@ export const NAV_GROUPS = [
       { to: '/cms/cancel-reasons', label: 'Cancellation Reasons', icon: Ban, roles: ALL_STAFF, built: true },
       { to: '/cms/goods-types', label: 'Goods Types', icon: PackageOpen, roles: ALL_STAFF, built: true },
       { to: '/cms/restricted-items', label: 'Restricted Items', icon: ShieldAlert, roles: ALL_STAFF, built: true },
+      { to: '/cms/booking-guidelines', label: 'Booking Guidelines', icon: ShieldAlert, roles: ALL_STAFF, built: true },
       { to: '/cms/bot-file', label: 'Bot File (AI Knowledge)', icon: Bot, roles: ['superadmin'], built: true },
       { to: '/cms/whatsapp-account', label: 'WhatsApp Account', icon: Smartphone, roles: ['superadmin'], built: true },
       { to: '/settings/dynamic-questions', label: 'Dynamic Questions', icon: ListChecks, roles: ['superadmin'], built: true },

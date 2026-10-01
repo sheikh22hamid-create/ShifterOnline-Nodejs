@@ -558,6 +558,14 @@ model tbl_user_favorite_order {
   @@index([user_id])
 }
 
+model tbl_booking_guideline {
+  id         Int      @id @default(autoincrement())
+  text       String   @db.VarChar(255)
+  status     Boolean  @default(true)
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.DateTime(0)
+}
+
 model tbl_restricted_item {
   id          Int      @id @default(autoincrement())
   name        String   @unique @db.VarChar(150)

@@ -43,6 +43,7 @@ const LegalPages = lazy(() => import('./pages/LegalPages'))
 const CancelReasons = lazy(() => import('./pages/CancelReasons'))
 const GoodsTypes = lazy(() => import('./pages/GoodsTypes'))
 const RestrictedItems = lazy(() => import('./pages/RestrictedItems'))
+const BookingGuidelines = lazy(() => import('./pages/BookingGuidelines'))
 const BotFile = lazy(() => import('./pages/BotFile'))
 const WhatsAppAccount = lazy(() => import('./pages/WhatsAppAccount'))
 const DynamicQuestions = lazy(() => import('./pages/DynamicQuestions'))
@@ -126,6 +127,7 @@ function App() {
             <Route path="/cms/cancel-reasons" element={<CancelReasons />} />
             <Route path="/cms/goods-types" element={<GoodsTypes />} />
             <Route path="/cms/restricted-items" element={<RestrictedItems />} />
+            <Route path="/cms/booking-guidelines" element={<BookingGuidelines />} />
             <Route path="/cms/bot-file" element={<Gated roles={['superadmin']}><BotFile /></Gated>} />
             <Route path="/cms/whatsapp-account" element={<Gated roles={['superadmin']}><WhatsAppAccount /></Gated>} />
             <Route path="/settings/dynamic-questions" element={<Gated roles={['superadmin']}><DynamicQuestions /></Gated>} />

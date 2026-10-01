@@ -70,6 +70,28 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     _initMap();
     _fetchPaymentStatus();
     _fetchRestrictedItems();
+    _fetchBookingGuidelines();
+  }
+
+  // Admin-managed "Important Booking Guidelines" (Booking Guidelines page).
+  // Null until loaded / if the call fails, in which case the built-in
+  // defaults below are shown so the section is never empty.
+  List<String>? _bookingGuidelines;
+
+  Future<void> _fetchBookingGuidelines() async {
+    try {
+      final response = await ApiWrapper.dataGetNode(Config.nodeBookingGuidelines);
+      if (response is Map && (response['Result'] == true || response['Result'] == 'true') && response['data'] is List) {
+        final texts = (response['data'] as List)
+            .whereType<Map>()
+            .map((e) => (e['text'] ?? '').toString().trim())
+            .where((t) => t.isNotEmpty)
+            .toList();
+        if (mounted) setState(() => _bookingGuidelines = texts);
+      }
+    } catch (_) {
+      // Keep the default guideline text.
+    }
   }
 
   // Admin-managed list of items that must not be sent (Restricted Items page).
@@ -729,10 +751,16 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        _buildGuidelineRow(Icons.no_accounts_outlined, "Fare does not include loading / unloading labour charges.".tr),
-                        const SizedBox(height: 5),
-                        _buildGuidelineRow(Icons.local_parking_outlined, "Toll, state taxes & parking charges to be borne by customer.".tr),
-                        const SizedBox(height: 5),
+                        if (_bookingGuidelines == null) ...[
+                          _buildGuidelineRow(Icons.no_accounts_outlined, "Fare does not include loading / unloading labour charges.".tr),
+                          const SizedBox(height: 5),
+                          _buildGuidelineRow(Icons.local_parking_outlined, "Toll, state taxes & parking charges to be borne by customer.".tr),
+                          const SizedBox(height: 5),
+                        ] else
+                          for (final guideline in _bookingGuidelines!) ...[
+                            _buildGuidelineRow(Icons.info_outline_rounded, guideline),
+                            const SizedBox(height: 5),
+                          ],
                         _buildGuidelineRow(
                           Icons.warning_amber_rounded,
                           _restrictedItems.isEmpty

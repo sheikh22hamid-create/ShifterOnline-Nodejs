@@ -16,6 +16,7 @@ const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
 const goodsTypeController = require("../controllers/goodsTypeController");
 const restrictedItemController = require("../controllers/restrictedItemController");
+const bookingGuidelineController = require("../controllers/bookingGuidelineController");
 const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
@@ -291,6 +292,10 @@ router.get("/restricted-items", auth, restrictedItemController.listRestrictedIte
 router.post("/restricted-items", auth, authorize("superadmin"), restrictedItemController.createRestrictedItem);
 router.put("/restricted-items/:id", auth, authorize("superadmin"), restrictedItemController.updateRestrictedItem);
 router.delete("/restricted-items/:id", auth, authorize("superadmin"), restrictedItemController.deleteRestrictedItem);
+router.get("/booking-guidelines", auth, bookingGuidelineController.listBookingGuidelines);
+router.post("/booking-guidelines", auth, authorize("superadmin"), bookingGuidelineController.createBookingGuideline);
+router.put("/booking-guidelines/:id", auth, authorize("superadmin"), bookingGuidelineController.updateBookingGuideline);
+router.delete("/booking-guidelines/:id", auth, authorize("superadmin"), bookingGuidelineController.deleteBookingGuideline);
 
 router.get("/pages", auth, cmsController.listPages);
 router.post("/pages", auth, authorize("superadmin"), cmsController.createPage);
