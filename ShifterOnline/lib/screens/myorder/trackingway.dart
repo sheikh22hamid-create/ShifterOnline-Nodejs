@@ -10,8 +10,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
-import 'package:image/image.dart' as img_lib;
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:goParcel/Api/Api_wrapper.dart';
 import 'package:goParcel/Api/AppModelApi/payment_gatwey_api_model.dart';
@@ -42,6 +40,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../home/home.dart';
+import '../../utils/vehicle_marker.dart';
 import '../home/location_search_screen.dart';
 
 class TrackingWay extends StatefulWidget {
@@ -199,29 +198,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (categoryName.isEmpty || _driverIconCategory == categoryName) return;
     _driverIconCategory = categoryName;
 
-    String imagePath = '';
-    for (final item in pickupiteam) {
-      if (item is Map && (item['cat_name']?.toString() ?? '').toLowerCase() == categoryName.toLowerCase()) {
-        imagePath = item['cat_img']?.toString() ?? '';
-        break;
-      }
-    }
-
-    BitmapDescriptor icon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet);
-    if (imagePath.isNotEmpty) {
-      try {
-        final response = await http.get(Uri.parse('${Config.imageURLPath}$imagePath')).timeout(const Duration(seconds: 8));
-        if (response.statusCode == 200) {
-          final decoded = img_lib.decodeImage(response.bodyBytes);
-          if (decoded != null) {
-            final resized = img_lib.copyResize(decoded, width: 110);
-            icon = BitmapDescriptor.fromBytes(Uint8List.fromList(img_lib.encodePng(resized)));
-          }
-        }
-      } catch (e) {
-        debugPrint('[TrackingWay] driver icon load failed: $e');
-      }
-    }
+    final icon = await loadVehicleMarker(categoryName) ??
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueViolet);
     if (!mounted) return;
     setState(() => _driverIcon = icon);
   }
