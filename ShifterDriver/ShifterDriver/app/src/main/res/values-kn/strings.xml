@@ -465,4 +465,7 @@
     <string name="open_settings_btn">ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ತೆರೆಯಿರಿ</string>
     <string name="toast_face_not_ready">ದಯವಿಟ್ಟು ಮೊದಲು ನಿಮ್ಮ ಮುಖವನ್ನು ವೃತ್ತದೊಳಗೆ ಇರಿಸಿ</string>
     <string name="toast_capture_failed">ಫೋಟೋ ತೆಗೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.</string>
+    <string name="pause_timer">ಟೈಮರ್ ನಿಲ್ಲಿಸಿ</string>
+    <string name="pause_timer_hint">ಹೊಸ ಪಿಕಪ್ ಸ್ಥಳಕ್ಕೆ ಹೋಗುತ್ತಿದ್ದೀರಾ? ಆರ್ಡರ್ ತಾನಾಗಿ ರದ್ದಾಗದಂತೆ ಟೈಮರ್ ನಿಲ್ಲಿಸಿ.</string>
+    <string name="pause_timer_done">ಟೈಮರ್ ನಿಲ್ಲಿಸಲಾಗಿದೆ. ಪಿಕಪ್ ಸ್ಥಳ ತಲುಪಿದಾಗ REACHED PICKUP ಒತ್ತಿ.</string>
 </resources>

@@ -689,4 +689,7 @@
     <string name="open_settings_btn">सेटिंग्स खोलें</string>
     <string name="toast_face_not_ready">कृपया पहले अपना चेहरा सर्कल के अंदर रखें</string>
     <string name="toast_capture_failed">फोटो नहीं ले पाए। कृपया पुनः प्रयास करें।</string>
+    <string name="pause_timer">टाइमर रोकें</string>
+    <string name="pause_timer_hint">नए पिकअप पॉइंट पर जा रहे हैं? टाइमर रोकें ताकि ऑर्डर अपने आप रद्द न हो।</string>
+    <string name="pause_timer_done">टाइमर रुक गया। पिकअप पॉइंट पर पहुँचकर REACHED PICKUP दबाएँ।</string>
 </resources>

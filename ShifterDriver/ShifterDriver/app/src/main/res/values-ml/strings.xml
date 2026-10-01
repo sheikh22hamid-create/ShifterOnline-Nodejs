@@ -465,4 +465,7 @@
     <string name="open_settings_btn">ക്രമീകരണങ്ങൾ തുറക്കുക</string>
     <string name="toast_face_not_ready">ദയവായി ആദ്യം നിങ്ങളുടെ മുഖം വൃത്തത്തിനുള്ളിൽ വയ്ക്കുക</string>
     <string name="toast_capture_failed">ഫോട്ടോ എടുക്കാൻ കഴിഞ്ഞില്ല. ദയവായി വീണ്ടും ശ്രമിക്കുക.</string>
+    <string name="pause_timer">ടൈമർ നിർത്തുക</string>
+    <string name="pause_timer_hint">പുതിയ പിക്കപ്പ് സ്ഥലത്തേക്ക് പോകുകയാണോ? ഓർഡർ സ്വയം റദ്ദാകാതിരിക്കാൻ ടൈമർ നിർത്തുക.</string>
+    <string name="pause_timer_done">ടൈമർ നിർത്തി. പിക്കപ്പ് സ്ഥലത്ത് എത്തിയാൽ REACHED PICKUP അമർത്തുക.</string>
 </resources>

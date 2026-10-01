@@ -465,4 +465,7 @@
     <string name="open_settings_btn">సెట్టింగ్‌లు తెరవండి</string>
     <string name="toast_face_not_ready">దయచేసి ముందుగా మీ ముఖాన్ని వృత్తంలో ఉంచండి</string>
     <string name="toast_capture_failed">ఫోటో తీయలేకపోయాము. దయచేసి మళ్లీ ప్రయత్నించండి.</string>
+    <string name="pause_timer">టైమర్ ఆపండి</string>
+    <string name="pause_timer_hint">కొత్త పికప్ స్థలానికి వెళ్తున్నారా? ఆర్డర్ ఆటోమేటిక్‌గా రద్దు కాకుండా టైమర్ ఆపండి.</string>
+    <string name="pause_timer_done">టైమర్ ఆగింది. పికప్ స్థలానికి చేరుకున్నాక REACHED PICKUP నొక్కండి.</string>
 </resources>

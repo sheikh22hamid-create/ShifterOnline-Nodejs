@@ -465,4 +465,7 @@
     <string name="open_settings_btn">সেটিংস খুলুন</string>
     <string name="toast_face_not_ready">অনুগ্রহ করে আগে আপনার মুখ বৃত্তের ভেতরে রাখুন</string>
     <string name="toast_capture_failed">ছবি তোলা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।</string>
+    <string name="pause_timer">টাইমার থামান</string>
+    <string name="pause_timer_hint">নতুন পিকআপ স্থানে যাচ্ছেন? টাইমার থামান যাতে অর্ডার স্বয়ংক্রিয়ভাবে বাতিল না হয়।</string>
+    <string name="pause_timer_done">টাইমার থেমেছে। পিকআপ স্থানে পৌঁছে REACHED PICKUP চাপুন।</string>
 </resources>

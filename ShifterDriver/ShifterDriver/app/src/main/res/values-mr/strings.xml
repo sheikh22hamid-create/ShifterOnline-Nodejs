@@ -465,4 +465,7 @@
     <string name="open_settings_btn">सेटिंग्ज उघडा</string>
     <string name="toast_face_not_ready">कृपया आधी तुमचा चेहरा वर्तुळात ठेवा</string>
     <string name="toast_capture_failed">फोटो काढता आला नाही. कृपया पुन्हा प्रयत्न करा.</string>
+    <string name="pause_timer">टाइमर थांबवा</string>
+    <string name="pause_timer_hint">नवीन पिकअप ठिकाणी जात आहात? टाइमर थांबवा म्हणजे ऑर्डर आपोआप रद्द होणार नाही.</string>
+    <string name="pause_timer_done">टाइमर थांबला. पिकअप ठिकाणी पोहोचल्यावर REACHED PICKUP दाबा.</string>
 </resources>

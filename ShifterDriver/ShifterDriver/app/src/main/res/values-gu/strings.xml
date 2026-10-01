@@ -465,4 +465,7 @@
     <string name="open_settings_btn">સેટિંગ્સ ખોલો</string>
     <string name="toast_face_not_ready">કૃપા કરીને પહેલાં તમારો ચહેરો વર્તુળમાં રાખો</string>
     <string name="toast_capture_failed">ફોટો લઈ શકાયો નહીં. કૃપા કરીને ફરી પ્રયત્ન કરો.</string>
+    <string name="pause_timer">ટાઇમર રોકો</string>
+    <string name="pause_timer_hint">નવા પિકઅપ સ્થળે જઈ રહ્યા છો? ટાઇમર રોકો જેથી ઓર્ડર આપોઆપ રદ ન થાય.</string>
+    <string name="pause_timer_done">ટાઇમર રોકાયો. પિકઅપ સ્થળે પહોંચીને REACHED PICKUP દબાવો.</string>
 </resources>

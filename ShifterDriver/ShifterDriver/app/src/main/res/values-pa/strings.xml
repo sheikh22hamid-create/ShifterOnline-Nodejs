@@ -465,4 +465,7 @@
     <string name="open_settings_btn">ਸੈਟਿੰਗਾਂ ਖੋਲ੍ਹੋ</string>
     <string name="toast_face_not_ready">ਕਿਰਪਾ ਕਰਕੇ ਪਹਿਲਾਂ ਆਪਣਾ ਚਿਹਰਾ ਘੇਰੇ ਦੇ ਅੰਦਰ ਰੱਖੋ</string>
     <string name="toast_capture_failed">ਫੋਟੋ ਨਹੀਂ ਖਿੱਚੀ ਜਾ ਸਕੀ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।</string>
+    <string name="pause_timer">ਟਾਈਮਰ ਰੋਕੋ</string>
+    <string name="pause_timer_hint">ਨਵੀਂ ਪਿਕਅੱਪ ਥਾਂ ਵੱਲ ਜਾ ਰਹੇ ਹੋ? ਟਾਈਮਰ ਰੋਕੋ ਤਾਂ ਜੋ ਆਰਡਰ ਆਪਣੇ-ਆਪ ਰੱਦ ਨਾ ਹੋਵੇ।</string>
+    <string name="pause_timer_done">ਟਾਈਮਰ ਰੁਕ ਗਿਆ। ਪਿਕਅੱਪ ਥਾਂ \'ਤੇ ਪਹੁੰਚ ਕੇ REACHED PICKUP ਦਬਾਓ।</string>
 </resources>

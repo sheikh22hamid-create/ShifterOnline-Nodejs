@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@drawable/rounded_corner_box">
+
+    <!-- Icon badge -->
+    <FrameLayout
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@drawable/bg_circle_blue_light"
+        android:layout_marginBottom="14dp">
+        <ImageView
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_password"
+            app:tint="#1E88E5" />
+    </FrameLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/enter_otp_label"
+        android:textColor="#0F172A"
+        android:textSize="19sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="6dp" />
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="After goods are loaded and handed over, enter the customer OTP. This starts delivery automatically."
+        android:textColor="#64748B"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:layout_marginBottom="18dp" />
+
+    <!-- 4-digit OTP boxes with auto-advance -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:orientation="horizontal"
+        android:layout_marginBottom="18dp">
+
+        <EditText
+            android:id="@+id/ed_otp_1"
+            android:layout_width="52dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_input_white"
+            android:gravity="center"
+            android:inputType="number"
+            android:maxLength="1"
+            android:textColor="#0F172A"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:cursorVisible="true"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/ed_otp_2"
+            android:layout_width="52dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_input_white"
+            android:gravity="center"
+            android:inputType="number"
+            android:maxLength="1"
+            android:textColor="#0F172A"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:cursorVisible="true"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/ed_otp_3"
+            android:layout_width="52dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_input_white"
+            android:gravity="center"
+            android:inputType="number"
+            android:maxLength="1"
+            android:textColor="#0F172A"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:cursorVisible="true"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/ed_otp_4"
+            android:layout_width="52dp"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_input_white"
+            android:gravity="center"
+            android:inputType="number"
+            android:maxLength="1"
+            android:textColor="#0F172A"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:cursorVisible="true"
+            android:importantForAutofill="no" />
+    </LinearLayout>
+
+    <!-- Live countdown, synced from the server's admin-configured pickup-OTP
+         timeout (Settings > Pickup OTP timeout) - see
+         tripLifecycle.sweepOverduePickups, which auto-cancels the trip and
+         charges the customer a cancellation fee once this reaches zero. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#FFF3E0"
+        android:padding="10dp"
+        android:layout_marginBottom="18dp">
+        <TextView
+            android:id="@+id/txt_otp_countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="10:00"
+            android:textColor="#E65100"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/otp_penalty_notice"
+            android:textColor="#E65100"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:layout_marginTop="4dp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/pause_timer_hint"
+            android:textColor="#7C2D12"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:layout_marginTop="6dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="2">
+        <TextView
+            android:id="@+id/txt_cancel_otp"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_weight="1"
+            android:text="@string/pause_timer"
+            android:gravity="center"
+            android:textColor="#9A3412"
+            android:textStyle="bold"
+            android:background="@drawable/rounded_button"
+            android:backgroundTint="#FFEDD5"
+            android:layout_marginEnd="10dp" />
+        <TextView
+            android:id="@+id/txt_submit_otp"
+            android:layout_width="0dp"
+            android:layout_height="50dp"
+            android:layout_weight="1"
+            android:text="Verify &amp; Start"
+            android:gravity="center"
+            android:textColor="@color/white"
+            android:textStyle="bold"
+            android:background="@drawable/rounded_button" />
+    </LinearLayout>
+</LinearLayout>

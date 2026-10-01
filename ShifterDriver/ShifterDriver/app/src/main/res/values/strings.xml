@@ -654,4 +654,7 @@
     <string name="open_settings_btn">Open Settings</string>
     <string name="toast_face_not_ready">Please place your face inside the circle first</string>
     <string name="toast_capture_failed">Couldn\'t take the photo. Please try again.</string>
+    <string name="pause_timer">Pause Timer</string>
+    <string name="pause_timer_hint">Going to a new pickup point? Pause the timer so the order is not auto-cancelled.</string>
+    <string name="pause_timer_done">Timer paused. Tap REACHED PICKUP when you reach the pickup point.</string>
 </resources>

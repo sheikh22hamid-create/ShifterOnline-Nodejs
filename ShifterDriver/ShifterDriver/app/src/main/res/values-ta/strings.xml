@@ -465,4 +465,7 @@
     <string name="open_settings_btn">அமைப்புகளைத் திற</string>
     <string name="toast_face_not_ready">தயவுசெய்து முதலில் உங்கள் முகத்தை வட்டத்திற்குள் வைக்கவும்</string>
     <string name="toast_capture_failed">புகைப்படம் எடுக்க முடியவில்லை. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.</string>
+    <string name="pause_timer">டைமரை நிறுத்து</string>
+    <string name="pause_timer_hint">புதிய பிக்கப் இடத்திற்குச் செல்கிறீர்களா? ஆர்டர் தானாக ரத்தாகாமல் இருக்க டைமரை நிறுத்துங்கள்.</string>
+    <string name="pause_timer_done">டைமர் நிறுத்தப்பட்டது. பிக்கப் இடத்தை அடைந்ததும் REACHED PICKUP ஐத் தட்டவும்.</string>
 </resources>

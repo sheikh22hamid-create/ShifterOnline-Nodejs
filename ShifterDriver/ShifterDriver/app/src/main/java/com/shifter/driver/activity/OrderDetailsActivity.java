@@ -224,6 +224,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             showOtpDialog();
         } else if (!"2".equals(flow)) {
             otpDialogAutoShownForPickup = false;
+            // The timer was paused (by the driver or automatically when they drove
+            // off from the pickup) - the OTP prompt no longer applies.
+            if (activeOtpDialog != null && activeOtpDialog.isShowing()) activeOtpDialog.dismiss();
         }
     }
 
@@ -1680,7 +1683,31 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
         }
         TextView submit = dialog.findViewById(R.id.txt_submit_otp);
-        dialog.findViewById(R.id.txt_cancel_otp).setOnClickListener(v -> dialog.dismiss());
+        // "Pause Timer": the driver is going to a new pickup point (customer moved
+        // the pin / asked to be picked up elsewhere), so stop the OTP auto-cancel
+        // clock. The server banks the time already waited and puts the trip back
+        // to "en route"; the driver confirms arrival at the new spot (or GPS does,
+        // if the customer moves the pickup pin). Back / outside-tap still just
+        // closes the dialog without touching the timer.
+        TextView pauseButton = dialog.findViewById(R.id.txt_cancel_otp);
+        pauseButton.setOnClickListener(v -> {
+            if (tripActionPending) return;
+            tripActionPending = true;
+            pauseButton.setEnabled(false);
+            com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "pause_pickup_timer", null, (data, error) -> {
+                tripActionPending = false;
+                if (isFinishing() || isDestroyed()) return;
+                pauseButton.setEnabled(true);
+                if (error != null) {
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                dialog.dismiss();
+                applyTripProgress();
+                updateTripControls();
+                Toast.makeText(this, R.string.pause_timer_done, Toast.LENGTH_LONG).show();
+            });
+        });
 
         // Live countdown synced from the server's admin-configured pickup-OTP
         // timeout (see driverTripService.snapshot's pickup_otp_remaining_seconds
