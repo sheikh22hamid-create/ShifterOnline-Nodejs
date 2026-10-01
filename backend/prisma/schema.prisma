@@ -350,6 +350,20 @@ model driver_trip_progress {
   updated_at         DateTime  @updatedAt @db.DateTime(3)
 }
 
+// Driver GPS trail per trip (thinned: >=10 m apart). phase 0 = heading to
+// pickup, 1 = pickup -> drop. Feeds the customer's completed-order route map.
+model driver_trip_location {
+  id          Int      @id @default(autoincrement())
+  order_id    Int
+  rider_id    Int
+  lat         Decimal  @db.Decimal(10, 7)
+  lng         Decimal  @db.Decimal(10, 7)
+  recorded_at DateTime @db.DateTime(3)
+  phase       Int      @default(0)
+
+  @@index([order_id, recorded_at])
+}
+
 model driver_trip_event {
   id          Int       @id @default(autoincrement())
   order_id    Int

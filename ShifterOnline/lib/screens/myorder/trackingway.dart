@@ -41,6 +41,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../home/home.dart';
 import '../../utils/vehicle_marker.dart';
+import 'order_route_map.dart';
 import '../home/location_search_screen.dart';
 
 class TrackingWay extends StatefulWidget {
@@ -571,6 +572,37 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     const SizedBox(width: 4),
                     Text(
                       "View Map".tr,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: "Gilroy_Bold",
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          // Finished trip: the route actually driven + total distance.
+          if ((orderProduc?["Order_Status"] ?? "").toString().toLowerCase() == "completed") ...[
+            InkWell(
+              onTap: () => Get.to(() => OrderRouteMap(orderId: orderid)),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.22),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.route_rounded, color: Colors.white, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      "View Route".tr,
                       style: const TextStyle(
                         color: Colors.white,
                         fontFamily: "Gilroy_Bold",

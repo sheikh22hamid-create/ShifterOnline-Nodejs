@@ -5,6 +5,7 @@ const { getPickupOtpTimeoutMinutes } = require('../utils/pickupOtpTimeout');
 const { getPickupRelocateSettings } = require('../utils/pickupRelocateSettings');
 const { computeRouteDistanceKm } = require('./orderRouteRepricing');
 const { haversineKm } = require('../utils/geoDistance');
+const { recordSamples } = require('./tripRouteService');
 
 function fail(message) { const error = new Error(message); error.statusCode = 409; throw error; }
 async function snapshot(order, progress, timer, stopCount) {
@@ -60,6 +61,13 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
     }
     if (progress && progress.rider_id !== riderId) fail('Trip belongs to a different driver');
     if (!progress) progress = await tx.driver_trip_progress.create({ data: { order_id: orderId, rider_id: riderId } });
+    // Keep the driven GPS trail for the customer's completed-order route map.
+    // Best effort: a trail problem must never block the trip itself.
+    try {
+      await recordSamples(tx, { orderId, riderId, orderStatus: order.order_status, samples });
+    } catch (err) {
+      require('../utils/logger').error(`progressTrip: recordSamples failed for order ${orderId}:`, err);
+    }
     if (managed) progress.automation_enabled = true;
     const blocked = getAdvancePaymentTimerInfo(order).is_advance_payment_required;
     if (blocked && action !== 'sync') fail('Wait for advance payment before starting the trip');

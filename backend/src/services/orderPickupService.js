@@ -213,6 +213,8 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
           payload: {
             order_id: numericOrderId,
             old_address: order.paddress || "",
+            old_lat: order.plat,
+            old_lng: order.plong,
             new_address: cleanAddress,
             old_fare: oldFare,
             new_fare: newFare,
@@ -227,6 +229,8 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
           payload: {
             order_id: numericOrderId,
             old_address: order.paddress || "",
+            old_lat: order.plat,
+            old_lng: order.plong,
             new_address: cleanAddress,
             old_fare: oldFare,
             new_fare: newFare,

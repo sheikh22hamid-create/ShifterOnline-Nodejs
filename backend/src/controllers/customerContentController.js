@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { formatLedgerTime } = require("../utils/istTime");
+const { buildRoute } = require("../services/tripRouteService");
 const { getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
 
 // Node port of several small read-mostly cust_api/*.php endpoints:
@@ -661,7 +662,25 @@ async function pkgHistoryCustomer(req, res) {
   }
 }
 
+// Actual driven route of one of the customer's own orders (GPS trail the
+// driver app reported during the trip) for the order-history route map.
+async function orderRoute(req, res) {
+  try {
+    const uid = Number(req.body?.uid || 0);
+    const orderId = Number(req.body?.order_id || 0);
+    if (!uid || !orderId) return res.status(200).json({ Result: false, ResponseMsg: "uid and order_id required" });
+    const owned = await prisma.pkg_order.findFirst({ where: { id: orderId, uid }, select: { id: true } });
+    if (!owned) return res.status(200).json({ Result: false, ResponseMsg: "Order not found" });
+    const route = await buildRoute(prisma, orderId);
+    return res.status(200).json({ Result: true, route });
+  } catch (err) {
+    logger.error("customerContentController.orderRoute failed:", err);
+    return res.status(200).json({ Result: false, ResponseMsg: "Internal server error" });
+  }
+}
+
 module.exports = {
+  orderRoute,
   toggleFavoriteDriver,
   listFavoriteDrivers,
   couponList,
