@@ -17,7 +17,7 @@ import '../../utils/schedule_time.dart';
 import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
-import 'CouponList.dart';
+import 'coupon_sheet.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 
@@ -1845,9 +1845,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       const SizedBox(height: 10),
       InkWell(
         onTap: () async {
-          final fare = _selectedModel == null ? 0.0 : (_modelFare(_selectedModel!) ?? 0.0);
-          final picked = await Get.to(() => CouponListPage(bill: fare.toStringAsFixed(2)));
-          if (picked is Map && mounted) setState(() => _appliedCoupon = Map<String, dynamic>.from(picked));
+          final picked = await showCouponSheet(context);
+          if (picked != null && mounted) setState(() => _appliedCoupon = picked);
         },
         borderRadius: BorderRadius.circular(12),
         child: Container(

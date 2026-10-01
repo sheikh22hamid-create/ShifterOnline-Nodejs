@@ -27,6 +27,7 @@ async function updateProfile(req, res) {
     const uid = Number(req.body?.uid || 0);
     const fname = String(req.body?.fname || "").trim();
     const email = String(req.body?.email || "").trim();
+    const mobile = req.body?.mobile !== undefined ? String(req.body.mobile).trim() : "";
     const user = await prisma.tbl_user.findUnique({ where: { id: uid } });
     if (!user) return fail(res, "User Not Exist!!!!");
 

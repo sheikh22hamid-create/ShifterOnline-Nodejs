@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { sendPushNotification } = require('../config/firebase');
+const { saveCustomerNotification } = require('./customerInbox');
 const dispatch = require('./dispatchManager');
 const logger = require('../utils/logger');
 
@@ -46,6 +47,8 @@ async function flushTripEvents() {
         } catch (error) { logger.error(`Trip live event ${event.id} failed:`, error); }
       }
       const customer = await prisma.tbl_user.findUnique({ where: { id: event.user_id }, select: { fcm_token: true } });
+      // Keep one inbox row per milestone (retries re-run this push, not the row).
+      if (!event.lease_until) void saveCustomerNotification(event.user_id, 'Delivery update', payload.message);
       const sent = await sendPushNotification(customer?.fcm_token, 'Delivery update', payload.message, {
         type: 'trip_milestone', order_id: String(event.order_id), milestone: event.milestone, event_id: String(event.id),
       });

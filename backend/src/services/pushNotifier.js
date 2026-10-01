@@ -1,7 +1,14 @@
 const { sendPushNotification } = require("../config/firebase");
+const { saveCustomerNotificationByToken } = require("./customerInbox");
 
 function stringifyPayload(payload) {
   return Object.fromEntries(Object.entries(payload).map(([k, v]) => [k, String(v ?? "")]));
+}
+
+/** Customer push that is also kept in the app's Notification screen (tbl_notification). */
+async function sendCustomerPush(fcmToken, title, body, data, channel) {
+  await saveCustomerNotificationByToken(fcmToken, title, body);
+  return channel ? sendPushNotification(fcmToken, title, body, data, channel) : sendPushNotification(fcmToken, title, body, data);
 }
 
 async function notifyDriverOrderRequest(fcmToken, payload) {
@@ -46,7 +53,7 @@ async function notifyDriverDismiss(fcmToken, orderId, reason, offer = {}) {
 }
 
 async function notifyCustomerOrderAssigned(fcmToken, data) {
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "Order Assigned!",
     `${data.rider_name || "A driver"} is on the way.`,
@@ -55,7 +62,7 @@ async function notifyCustomerOrderAssigned(fcmToken, data) {
 }
 
 async function notifyCustomerNoDriverFound(fcmToken, orderId) {
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "No drivers found",
     "No drivers found. None of the available drivers accepted your order. Please try again.",
@@ -66,7 +73,7 @@ async function notifyCustomerNoDriverFound(fcmToken, orderId) {
 /** See tripLifecycle.sweepOverduePickups — customer never handed over the OTP within 10 minutes of driver arrival. */
 async function notifyCustomerPickupTimeoutCancel(fcmToken, orderId, cancellationCharge) {
   const chargeText = cancellationCharge > 0 ? ` A cancellation charge of ₹${cancellationCharge} has been applied.` : "";
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "Trip Cancelled",
     `Your driver waited 10 minutes at pickup but didn't receive the OTP, so this trip was cancelled.${chargeText}`,
@@ -98,7 +105,7 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId, timeoutMinutes
 
 /** See tripLifecycle.sweepExpiredAdvancePayments — customer never paid the advance within 2 minutes of the driver accepting. */
 async function notifyCustomerAdvancePaymentTimeoutCancel(fcmToken, orderId) {
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "Order Cancelled",
     `Order #${orderId} cancelled: the advance payment wasn't completed within 2 minutes.`,
@@ -181,7 +188,7 @@ async function notifyDriverScheduledCancelled(fcmToken, orderId) {
 
 /** See dispatchManager's scheduled-order priority round — booking_type=2 order has moved from "scheduled" to actively searching for a driver. */
 async function notifyCustomerOrderLive(fcmToken, orderId) {
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "Finding your driver",
     `We're now finding a driver for your scheduled order #${orderId}.`,
@@ -191,7 +198,7 @@ async function notifyCustomerOrderLive(fcmToken, orderId) {
 
 /** See dispatchManager's scheduled-order priority round — a driver was assigned close enough to schedule_date_time that pickup may run a few minutes late. */
 async function notifyCustomerLatePickup(fcmToken, orderId, scheduleDateTime) {
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "Pickup may run a few minutes late",
     `Your driver for order #${orderId} was assigned close to your requested pickup time and may arrive a few minutes after it.`,
@@ -201,7 +208,7 @@ async function notifyCustomerLatePickup(fcmToken, orderId, scheduleDateTime) {
 
 /** See adminOrderController.assignNextDayBatch — admin pre-assigned a driver to this customer's next-day (booking_type=3) order the night before. */
 async function notifyCustomerNextDayAssigned(fcmToken, data) {
-  return sendPushNotification(
+  return sendCustomerPush(
     fcmToken,
     "Driver assigned for tomorrow",
     `${data.rider_name || "A driver"} has been assigned to pick you up tomorrow.`,
