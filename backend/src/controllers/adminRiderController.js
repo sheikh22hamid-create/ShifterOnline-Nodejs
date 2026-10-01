@@ -912,6 +912,11 @@ async function create(req, res) {
           status: status !== undefined ? parseInt(status, 10) : 1,
           payment_complete: isPaymentPaid ? 1 : 0,
           password: "",
+          // Required (non-null) columns - a manually onboarded driver has no
+          // photo, push token or device yet (they are filled when the driver logs in).
+          profile_picture: "",
+          fcm_token: "",
+          device_id: "",
           rdate: now,
           referral_code: refCode,
           reffer_code: refCode,
@@ -958,8 +963,10 @@ async function create(req, res) {
             a_name: account_name ? String(account_name).trim() : trimmedName,
             iban_num: account_number ? String(account_number).trim() : "",
             ifsc_code: ifsc ? String(ifsc).trim().toUpperCase() : null,
-            bank_name: bank_name ? String(bank_name).trim() : null,
+            // bank_name / vat_id are required (non-null) columns.
+            bank_name: bank_name ? String(bank_name).trim() : "",
             branch_name: branch_name ? String(branch_name).trim() : null,
+            vat_id: "",
             status: initialDocStatus,
           },
         });
