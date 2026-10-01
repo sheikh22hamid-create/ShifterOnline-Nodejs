@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { istNow } = require("../utils/istTime");
 const multer = require("multer");
 const prisma = require("../config/db");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
@@ -1734,7 +1735,7 @@ async function advancePayment(req, res) {
           razorpay_payment_id: paymentId,
           wallet_type: "user",
           order_id: orderId,
-          created_at: new Date(),
+          created_at: istNow(),
         },
       });
     } catch (e) {

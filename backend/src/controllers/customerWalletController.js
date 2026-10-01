@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
 const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount, getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
@@ -221,7 +222,7 @@ async function clearOutstandingDue(req, res) {
             payment_id: razorpayPaymentId,
             razorpay_payment_id: razorpayPaymentId,
             wallet_type: "driver",
-            created_at: new Date(),
+            created_at: istNow(),
           },
         });
         const updated = await tx.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: { increment: creditAmount } } });
@@ -291,7 +292,7 @@ async function clearDueWithPoints(req, res) {
           type: "credit",
           remark: "Outstanding Due Cleared (Referral Points)",
           wallet_type: "driver",
-          created_at: new Date(),
+          created_at: istNow(),
         },
       });
       await tx.tbl_referral_point_log.create({
@@ -392,7 +393,7 @@ async function addWallet(req, res) {
             payment_id: razorpayPaymentId,
             razorpay_payment_id: razorpayPaymentId,
             wallet_type: walletType,
-            created_at: new Date(),
+            created_at: istNow(),
           },
         });
 
@@ -405,7 +406,7 @@ async function addWallet(req, res) {
             type: "debit",
             remark: "Payment Gateway Charge (2.5%)",
             wallet_type: walletType,
-            created_at: new Date(),
+            created_at: istNow(),
           },
         });
 
@@ -679,7 +680,7 @@ async function withdrawWallet(req, res) {
       if (result.count === 0) return;
       debited = true;
       await tx.tbl_wallet_history.create({
-        data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: new Date() },
+        data: { user_id: account.id, mobile, amount, type: "debit", remark, wallet_type: walletType, created_at: istNow() },
       });
       // Re-read the balance inside the same transaction instead of trusting
       // currentBalance - amount: a successful updateMany only proves the

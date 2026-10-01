@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 const pushNotifier = require("./pushNotifier");
 const logger = require("../utils/logger");
 
@@ -78,7 +79,7 @@ async function activatePlan({ userId, planFor, planId, source }) {
           wallet_type: planFor === "DRIVER" ? "driver" : "user",
           payment_id: `plan_bonus_${subscription.id}`,
           remark: `Wallet bonus for ${plan.plan_name} (admin grant)`,
-          created_at: new Date(),
+          created_at: istNow(),
         },
       });
       await tx.tbl_user_plan_subscription.update({ where: { id: subscription.id }, data: { wallet_bonus_credited: bonus } });

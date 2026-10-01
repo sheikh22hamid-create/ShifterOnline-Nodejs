@@ -1,4 +1,5 @@
 const { Prisma } = require("@prisma/client");
+const { istNow } = require("../utils/istTime");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const dispatchManager = require("../services/dispatchManager");
@@ -354,7 +355,7 @@ async function cancel(req, res) {
             remark: `Admin-cancelled order #${id}: ${comment || "no reason given"}`,
             wallet_type: "user",
             order_id: id,
-            created_at: new Date(),
+            created_at: istNow(),
           },
         });
       }

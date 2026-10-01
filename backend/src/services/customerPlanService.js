@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 
 // Node port of the CUSTOMER_PREMIUM half of cust_api/get_premium_plans_api.php
@@ -369,7 +370,7 @@ async function purchaseCustomerPlan({ userId, planId, usePoints = false, payment
           wallet_type: "user",
           payment_id: `plan_bonus_${subscription.id}`,
           remark: `Wallet bonus for ${plan.plan_name}`,
-          created_at: new Date(),
+          created_at: istNow(),
         },
       });
     }

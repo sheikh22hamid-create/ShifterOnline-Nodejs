@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 const adminSocket = require("../sockets/adminSocket");
 const pushNotifier = require("../services/pushNotifier");
 const logger = require("../utils/logger");
@@ -107,7 +108,7 @@ async function approve(req, res) {
           type: "debit",
           remark: remarkParts.join(" — "),
           wallet_type: "driver",
-          created_at: new Date(),
+          created_at: istNow(),
         },
       }),
       prisma.tbl_rnoti.create({

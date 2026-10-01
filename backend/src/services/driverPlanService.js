@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 
 const DRIVER_PLAN_TYPES = ["DRIVER_PREMIUM", "DRIVER_SECOND"];
 
@@ -381,7 +382,7 @@ async function purchaseDriverPlan({ driverId, planId, usePoints = false, payment
     if (plan.wallet_bonus_enabled && Number(plan.wallet_bonus_amount) > 0) {
       const bonus = Number(plan.wallet_bonus_amount);
       await tx.tbl_rider.update({ where: { id: Number(driverId) }, data: { wallet_balance: { increment: bonus } } });
-      await tx.tbl_wallet_history.create({ data: { user_id: Number(driverId), amount: bonus, type: "credit", wallet_type: "driver", payment_id: `plan_bonus_${subscription.id}`, remark: `Wallet bonus for ${plan.plan_name}`, created_at: new Date() } });
+      await tx.tbl_wallet_history.create({ data: { user_id: Number(driverId), amount: bonus, type: "credit", wallet_type: "driver", payment_id: `plan_bonus_${subscription.id}`, remark: `Wallet bonus for ${plan.plan_name}`, created_at: istNow() } });
       await tx.tbl_user_plan_subscription.update({ where: { id: subscription.id }, data: { wallet_bonus_credited: bonus } });
     }
     return { subscription, plan, payable, pointsUsed, pointsAmount };
@@ -425,7 +426,7 @@ async function recordCompletedRide({ driverId, orderId, fare, baseCommissionPerc
       data: {
         user_id: Number(driverId), amount: chosen.incentive, type: "credit", wallet_type: "driver",
         payment_id: `plan_incentive_${subscription.id}_${orderId}`,
-        order_id: Number(orderId), remark: `Premium incentive from ${plan.plan_name}`, created_at: new Date(),
+        order_id: Number(orderId), remark: `Premium incentive from ${plan.plan_name}`, created_at: istNow(),
       },
     });
   }

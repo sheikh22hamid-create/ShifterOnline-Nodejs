@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 const { getRiderRatingSummary } = require("./driverFeedbackController");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
@@ -317,7 +318,7 @@ async function walletAdjust(req, res) {
           // See adminCustomerController.walletAdjust for why payment_id is
           // (re)used as the "this is a manual admin adjustment" marker.
           payment_id: `admin_adjustment_${req.user.id}`,
-          created_at: new Date(),
+          created_at: istNow(),
         },
       }),
     ]);

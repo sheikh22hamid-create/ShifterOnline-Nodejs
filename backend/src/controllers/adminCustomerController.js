@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { istNow } = require("../utils/istTime");
 const logger = require("../utils/logger");
 const walletNotifier = require("../services/walletNotifier");
 
@@ -194,7 +195,7 @@ async function walletAdjust(req, res) {
           // filter for its cross-entity audit report without a schema change -
           // payment_id is already documented as safe to reuse for tagging.
           payment_id: `admin_adjustment_${req.user.id}`,
-          created_at: new Date(),
+          created_at: istNow(),
         },
       }),
     ]);
