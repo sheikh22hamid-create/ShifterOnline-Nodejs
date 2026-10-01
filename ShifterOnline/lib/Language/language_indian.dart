@@ -2,6 +2,9 @@
 // Keys are the English UI strings used with .tr; missing keys fall back to English.
 
 const Map<String, String> _hi = {
+  "Choose from phone book": "फ़ोन बुक से चुनें",
+  "This contact has no phone number.": "इस संपर्क में फ़ोन नंबर नहीं है।",
+  "Could not open the phone book.": "फ़ोन बुक नहीं खुल सकी।",
   "Welcome": "स्वागत है",
   "Dark Mode": "डार्क मोड",
   "Please enter valid email address": "कृपया मान्य ईमेल पता दर्ज करें",
@@ -483,6 +486,9 @@ const Map<String, String> _hi = {
 };
 
 const Map<String, String> _gu = {
+  "Choose from phone book": "ફોન બુકમાંથી પસંદ કરો",
+  "This contact has no phone number.": "આ સંપર્કમાં ફોન નંબર નથી.",
+  "Could not open the phone book.": "ફોન બુક ખોલી શકાઈ નથી.",
   "Welcome": "સ્વાગત છે",
   "Dark Mode": "ડાર્ક મોડ",
   "Loction": "સ્થાન",
@@ -965,6 +971,9 @@ const Map<String, String> _gu = {
 };
 
 const Map<String, String> _mr = {
+  "Choose from phone book": "फोन बुकमधून निवडा",
+  "This contact has no phone number.": "या संपर्काकडे फोन नंबर नाही.",
+  "Could not open the phone book.": "फोन बुक उघडता आली नाही.",
   "& PLACE YOUR ORDER NOW": "& आत्ताच ऑर्डर द्या",
   "(New Partner)": "(नवीन भागीदार)",
   "Account": "खाते",
@@ -1387,6 +1396,9 @@ const Map<String, String> _mr = {
 };
 
 const Map<String, String> _bn = {
+  "Choose from phone book": "ফোন বুক থেকে বেছে নিন",
+  "This contact has no phone number.": "এই কন্টাক্টে কোনো ফোন নম্বর নেই।",
+  "Could not open the phone book.": "ফোন বুক খোলা যায়নি।",
   "& PLACE YOUR ORDER NOW": "& এখনই অর্ডার করুন",
   "(New Partner)": "(নতুন পার্টনার)",
   "Account": "অ্যাকাউন্ট",
@@ -1809,6 +1821,9 @@ const Map<String, String> _bn = {
 };
 
 const Map<String, String> _ta = {
+  "Choose from phone book": "தொலைபேசி புத்தகத்திலிருந்து தேர்ந்தெடுக்கவும்",
+  "This contact has no phone number.": "இந்தத் தொடர்பில் தொலைபேசி எண் இல்லை.",
+  "Could not open the phone book.": "தொலைபேசி புத்தகத்தைத் திறக்க முடியவில்லை.",
   "& PLACE YOUR ORDER NOW": "& இப்போதே ஆர்டர் செய்யுங்கள்",
   "(New Partner)": "(புதிய பார்ட்னர்)",
   "Account": "கணக்கு",
@@ -2231,6 +2246,9 @@ const Map<String, String> _ta = {
 };
 
 const Map<String, String> _te = {
+  "Choose from phone book": "ఫోన్ బుక్ నుండి ఎంచుకోండి",
+  "This contact has no phone number.": "ఈ కాంటాక్ట్‌లో ఫోన్ నంబర్ లేదు.",
+  "Could not open the phone book.": "ఫోన్ బుక్ తెరవలేకపోయాము.",
   "& PLACE YOUR ORDER NOW": "& ఇప్పుడే ఆర్డర్ చేయండి",
   "(New Partner)": "(కొత్త పార్ట్‌నర్)",
   "Account": "ఖాతా",
@@ -2653,6 +2671,9 @@ const Map<String, String> _te = {
 };
 
 const Map<String, String> _kn = {
+  "Choose from phone book": "ಫೋನ್ ಬುಕ್‌ನಿಂದ ಆಯ್ಕೆ ಮಾಡಿ",
+  "This contact has no phone number.": "ಈ ಸಂಪರ್ಕದಲ್ಲಿ ಫೋನ್ ಸಂಖ್ಯೆ ಇಲ್ಲ.",
+  "Could not open the phone book.": "ಫೋನ್ ಬುಕ್ ತೆರೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.",
   "& PLACE YOUR ORDER NOW": "& ಈಗಲೇ ಆರ್ಡರ್ ಮಾಡಿ",
   "(New Partner)": "(ಹೊಸ ಪಾರ್ಟ್‌ನರ್)",
   "Account": "ಖಾತೆ",
@@ -3075,6 +3096,9 @@ const Map<String, String> _kn = {
 };
 
 const Map<String, String> _ml = {
+  "Choose from phone book": "ഫോൺ ബുക്കിൽ നിന്ന് തിരഞ്ഞെടുക്കുക",
+  "This contact has no phone number.": "ഈ കോൺടാക്റ്റിൽ ഫോൺ നമ്പർ ഇല്ല.",
+  "Could not open the phone book.": "ഫോൺ ബുക്ക് തുറക്കാൻ കഴിഞ്ഞില്ല.",
   "& PLACE YOUR ORDER NOW": "& ഇപ്പോൾ തന്നെ ഓർഡർ ചെയ്യൂ",
   "(New Partner)": "(പുതിയ പാർട്ണർ)",
   "Account": "അക്കൗണ്ട്",
@@ -3497,6 +3521,9 @@ const Map<String, String> _ml = {
 };
 
 const Map<String, String> _pa = {
+  "Choose from phone book": "ਫ਼ੋਨ ਬੁੱਕ ਵਿੱਚੋਂ ਚੁਣੋ",
+  "This contact has no phone number.": "ਇਸ ਸੰਪਰਕ ਵਿੱਚ ਫ਼ੋਨ ਨੰਬਰ ਨਹੀਂ ਹੈ।",
+  "Could not open the phone book.": "ਫ਼ੋਨ ਬੁੱਕ ਖੋਲ੍ਹੀ ਨਹੀਂ ਜਾ ਸਕੀ।",
   "& PLACE YOUR ORDER NOW": "& ਹੁਣੇ ਆਰਡਰ ਕਰੋ",
   "(New Partner)": "(ਨਵਾਂ ਪਾਰਟਨਰ)",
   "Account": "ਖਾਤਾ",
