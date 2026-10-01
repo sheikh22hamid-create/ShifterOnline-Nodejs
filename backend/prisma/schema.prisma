@@ -233,6 +233,9 @@ model pkg_category {
   detail_image       String?  @db.Text
   allowed_body_types String?  @db.VarChar(255)
   driver_body_types  String?  @db.VarChar(255)
+  // Per-vehicle override of the global Settings > max_extra_stops / extra_stop_charge (NULL = use global).
+  max_extra_stops    Int?
+  extra_stop_charge  Decimal? @db.Decimal(10, 2)
 }
 
 model pkg_order {

@@ -57,7 +57,7 @@ async function priceWithStop(order, existingStops, newStop) {
   // Pickup itself hasn't moved — same real driver-to-pickup distance basis
   // destination/pickup-change use, never radius_range.
   const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
-  const stopSettings = await pricingEngine.getAddStopSettings();
+  const stopSettings = await pricingEngine.getAddStopSettings(order.category);
   const newExtraMileCharge = (Number(order.extra_mile_charge) || 0) + stopSettings.extraStopCharge;
   const packageId = Number(order.delivery_type) || 1;
 
@@ -78,7 +78,7 @@ async function previewAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
   const existingStops = await prisma.pkg_order_stops.findMany({
     where: { order_id: numericOrderId }, orderBy: { sequence: "asc" },
   });
-  const stopSettingsCheck = await pricingEngine.getAddStopSettings();
+  const stopSettingsCheck = await pricingEngine.getAddStopSettings(order.category);
   if (existingStops.length >= stopSettingsCheck.maxExtraStops) {
     throw new Error("MAX_STOPS_EXCEEDED");
   }
@@ -125,7 +125,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
     const existingStops = await tx.pkg_order_stops.findMany({
       where: { order_id: numericOrderId }, orderBy: { sequence: "asc" },
     });
-    const stopSettingsCheck = await pricingEngine.getAddStopSettings();
+    const stopSettingsCheck = await pricingEngine.getAddStopSettings(order.category);
     if (existingStops.length >= stopSettingsCheck.maxExtraStops) {
       throw new Error("MAX_STOPS_EXCEEDED");
     }

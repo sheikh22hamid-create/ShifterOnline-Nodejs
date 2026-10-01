@@ -166,7 +166,7 @@ async function createCategory(req, res) {
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
-      allowed_body_types, driver_body_types,
+      allowed_body_types, driver_body_types, max_extra_stops, extra_stop_charge,
     } = req.body;
     if (!cat_name || !cat_img) {
       return res.status(400).json({ success: false, message: "cat_name and cat_img are required" });
@@ -204,6 +204,8 @@ async function createCategory(req, res) {
         detail_image: detail_image || null,
         allowed_body_types: resolvedAllowedBodyTypes,
         driver_body_types: resolvedDriverBodyTypes,
+        max_extra_stops: (max_extra_stops === undefined || max_extra_stops === null || max_extra_stops === "") ? null : Math.max(0, parseInt(max_extra_stops, 10) || 0),
+        extra_stop_charge: (extra_stop_charge === undefined || extra_stop_charge === null || extra_stop_charge === "") ? null : Math.max(0, Number(extra_stop_charge) || 0),
       },
     });
     return res.status(201).json({ success: true, message: "Category created", data: created });
@@ -222,7 +224,7 @@ async function updateCategory(req, res) {
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, dim_length, dim_width, dim_height, dim_unit, detail_image,
-      allowed_body_types, driver_body_types,
+      allowed_body_types, driver_body_types, max_extra_stops, extra_stop_charge,
     } = req.body;
     const data = {};
     if (cat_name !== undefined) data.cat_name = cat_name;
@@ -237,6 +239,8 @@ async function updateCategory(req, res) {
     if (dim_height !== undefined) data.dim_height = (dim_height === null || dim_height === "") ? null : Number(dim_height);
     if (dim_unit !== undefined) data.dim_unit = dim_unit || null;
     if (detail_image !== undefined) data.detail_image = detail_image || null;
+    if (max_extra_stops !== undefined) data.max_extra_stops = (max_extra_stops === null || max_extra_stops === "") ? null : Math.max(0, parseInt(max_extra_stops, 10) || 0);
+    if (extra_stop_charge !== undefined) data.extra_stop_charge = (extra_stop_charge === null || extra_stop_charge === "") ? null : Math.max(0, Number(extra_stop_charge) || 0);
     if (allowed_body_types !== undefined) {
       data.allowed_body_types = Array.isArray(allowed_body_types)
         ? allowed_body_types.join(",")

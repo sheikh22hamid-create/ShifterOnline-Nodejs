@@ -511,7 +511,7 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
  */
 async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [], body_type = "any" }) {
   const routeStops = Array.isArray(stops) ? stops : [];
-  const stopSettings = await getAddStopSettings();
+  const stopSettings = await getAddStopSettings(cat_id);
   if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
   const distancePoints = [{ lat: plat, lng: plong }, ...routeStops, { lat: dlat, lng: dlong }];
   const cleanBodyType = ["open", "covered", "half"].includes(String(body_type || "").toLowerCase())
@@ -638,7 +638,7 @@ async function getPackageListForCategory({ uid, catId }) {
   const [packages, discount, stopSettings] = await Promise.all([
     getPackagesForCategory(catId),
     getActivePlanDiscount(uid),
-    getAddStopSettings(),
+    getAddStopSettings(catId),
   ]);
 
   const packageData = packages.map((pkg) => {
@@ -732,15 +732,21 @@ async function getFirstTierPricingContext(order) {
   return { pkg, discount };
 }
 
-async function getAddStopSettings() {
+/**
+ * Add-stop limit and per-stop charge. Global admin settings apply to every
+ * vehicle unless the vehicle category (pkg_category.max_extra_stops /
+ * extra_stop_charge) overrides them - pass the category id or name.
+ */
+async function getAddStopSettings(category) {
   const defaults = { maxExtraStops: 2, extraStopCharge: 0 };
+  let settings = defaults;
   try {
     const rows = await prisma.app_settings.findMany({
       where: { setting_key: { in: ["max_extra_stops", "extra_stop_charge"] } },
       select: { setting_key: true, setting_value: true },
     });
     const values = Object.fromEntries(rows.map((row) => [row.setting_key, Number(row.setting_value)]));
-    return {
+    settings = {
       maxExtraStops: Number.isFinite(values.max_extra_stops) && values.max_extra_stops >= 0
         ? Math.floor(values.max_extra_stops) : defaults.maxExtraStops,
       extraStopCharge: Number.isFinite(values.extra_stop_charge) && values.extra_stop_charge >= 0
@@ -749,6 +755,24 @@ async function getAddStopSettings() {
   } catch (err) {
     return defaults;
   }
+
+  if (category === undefined || category === null || category === "") return settings;
+  try {
+    const key = String(category).trim();
+    const where = /^\d+$/.test(key) ? { id: Number(key) } : { cat_name: key };
+    const cat = await prisma.pkg_category.findFirst({ where, select: { max_extra_stops: true, extra_stop_charge: true } });
+    if (cat) {
+      if (cat.max_extra_stops !== null && cat.max_extra_stops !== undefined && Number(cat.max_extra_stops) >= 0) {
+        settings = { ...settings, maxExtraStops: Math.floor(Number(cat.max_extra_stops)) };
+      }
+      if (cat.extra_stop_charge !== null && cat.extra_stop_charge !== undefined && Number(cat.extra_stop_charge) >= 0) {
+        settings = { ...settings, extraStopCharge: Number(cat.extra_stop_charge) };
+      }
+    }
+  } catch (err) {
+    // Category lookup failed - fall back to the global settings.
+  }
+  return settings;
 }
 
 module.exports = {

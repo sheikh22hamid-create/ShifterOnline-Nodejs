@@ -240,7 +240,7 @@ async function createOrderCore({
     return { ok: false, code: "VALIDATION", msg: "Every stop must have valid coordinates" };
   }
   const stopSettings = typeof pricingEngine.getAddStopSettings === "function"
-    ? await pricingEngine.getAddStopSettings()
+    ? await pricingEngine.getAddStopSettings(category)
     : { maxExtraStops: 2, extraStopCharge: 0 };
   if (validStops.length > stopSettings.maxExtraStops) {
     return { ok: false, code: "VALIDATION", msg: `A maximum of ${stopSettings.maxExtraStops} extra stops is allowed` };

@@ -13,7 +13,7 @@ const BODY_TYPES = [
 
 const EMPTY_FORM = {
   cat_name: '', cat_img: '', city_id: '', sort_order: '0', cat_status: 1,
-  max_load_kg: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '',
+  max_load_kg: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '', max_extra_stops: '', extra_stop_charge: '',
   allowed_body_types: 'open,half,covered',
   driver_body_types: 'open,half,covered',
 }
@@ -46,6 +46,7 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
         max_load_kg: category.max_load_kg ?? '', dim_length: category.dim_length ?? '',
         dim_width: category.dim_width ?? '', dim_height: category.dim_height ?? '',
         dim_unit: category.dim_unit || 'ft', detail_image: category.detail_image ?? '',
+        max_extra_stops: category.max_extra_stops ?? '', extra_stop_charge: category.extra_stop_charge ?? '',
         allowed_body_types: resolvedAllowed,
         driver_body_types: resolvedDriver,
       })
@@ -158,6 +159,16 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
             placeholder="e.g. 20"
           />
           <span className="text-[13px]" style={{ color: 'var(--ink-muted)' }}>kg</span>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+          Add-stop limit for this vehicle (leave blank to use the global Settings value)
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <input type="number" min="0" value={form.max_extra_stops} onChange={(e) => setForm((f) => ({ ...f, max_extra_stops: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} placeholder="Max extra stops" />
+          <input type="number" min="0" value={form.extra_stop_charge} onChange={(e) => setForm((f) => ({ ...f, extra_stop_charge: e.target.value }))} className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none" style={FIELD_STYLE} placeholder="₹ per stop" />
         </div>
       </div>
 
