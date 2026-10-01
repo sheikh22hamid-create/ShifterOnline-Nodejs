@@ -15,6 +15,7 @@ const analyticsController = require("../controllers/analyticsController");
 const fleetController = require("../controllers/fleetController");
 const cmsController = require("../controllers/cmsController");
 const goodsTypeController = require("../controllers/goodsTypeController");
+const restrictedItemController = require("../controllers/restrictedItemController");
 const questionController = require("../controllers/questionController");
 const adminTrainingController = require("../controllers/adminTrainingController");
 const adminBotFileController = require("../controllers/adminBotFileController");
@@ -286,6 +287,10 @@ router.get("/goods-types", auth, goodsTypeController.listGoodsTypes);
 router.post("/goods-types", auth, authorize("superadmin"), goodsTypeController.createGoodsType);
 router.put("/goods-types/:id", auth, authorize("superadmin"), goodsTypeController.updateGoodsType);
 router.delete("/goods-types/:id", auth, authorize("superadmin"), goodsTypeController.deleteGoodsType);
+router.get("/restricted-items", auth, restrictedItemController.listRestrictedItems);
+router.post("/restricted-items", auth, authorize("superadmin"), restrictedItemController.createRestrictedItem);
+router.put("/restricted-items/:id", auth, authorize("superadmin"), restrictedItemController.updateRestrictedItem);
+router.delete("/restricted-items/:id", auth, authorize("superadmin"), restrictedItemController.deleteRestrictedItem);
 
 router.get("/pages", auth, cmsController.listPages);
 router.post("/pages", auth, authorize("superadmin"), cmsController.createPage);

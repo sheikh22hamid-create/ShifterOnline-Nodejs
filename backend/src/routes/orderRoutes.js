@@ -49,6 +49,7 @@ router.post("/advance-payment", orderController.advancePayment);
 router.post("/advance-payment/redeem-points", orderController.redeemAdvanceWithPoints);
 router.get("/referral-discount-info", orderController.referralDiscountInfo);
 router.get("/goods-types", require("../controllers/goodsTypeController").listActiveGoodsTypes);
+router.get("/restricted-items", require("../controllers/restrictedItemController").listActiveRestrictedItems);
 
 // My-orders list (was missing entirely - see legacyOrderController.js header)
 router.post("/history", legacyOrderController.pkgHistory);

@@ -67,6 +67,26 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     super.initState();
     _initMap();
     _fetchPaymentStatus();
+    _fetchRestrictedItems();
+  }
+
+  // Admin-managed list of items that must not be sent (Restricted Items page).
+  List<String> _restrictedItems = [];
+
+  Future<void> _fetchRestrictedItems() async {
+    try {
+      final response = await ApiWrapper.dataGetNode(Config.nodeRestrictedItems);
+      if (response is Map && (response['Result'] == true || response['Result'] == 'true') && response['data'] is List) {
+        final names = (response['data'] as List)
+            .whereType<Map>()
+            .map((e) => (e['name'] ?? '').toString().trim())
+            .where((n) => n.isNotEmpty)
+            .toList();
+        if (mounted) setState(() => _restrictedItems = names);
+      }
+    } catch (_) {
+      // Keep the default guideline text.
+    }
   }
 
   Future<void> _fetchPaymentStatus() async {
@@ -683,7 +703,12 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                         const SizedBox(height: 5),
                         _buildGuidelineRow(Icons.local_parking_outlined, "Toll, state taxes & parking charges to be borne by customer.".tr),
                         const SizedBox(height: 5),
-                        _buildGuidelineRow(Icons.warning_amber_rounded, "No toxic, hazardous, illegal, or explosive items permitted.".tr),
+                        _buildGuidelineRow(
+                          Icons.warning_amber_rounded,
+                          _restrictedItems.isEmpty
+                              ? "No toxic, hazardous, illegal, or explosive items permitted.".tr
+                              : "${"Restricted items (not allowed):".tr} ${_restrictedItems.join(', ')}",
+                        ),
                       ],
                     ),
                   ),
