@@ -8,7 +8,9 @@ export function formatCurrency(value) {
 
 export function formatDateTime(value) {
   if (!value) return '—'
-  const d = new Date(value)
+  // "yyyy-MM-dd HH:mm:ss" (ledger times: zone-less IST wall clock) -> ISO-ish
+  // so Safari parses it too; stays zone-less, so it renders exactly as stored.
+  const d = new Date(typeof value === 'string' ? value.replace(/^(\d{4}-\d{2}-\d{2}) /, '$1T') : value)
   return Number.isNaN(d.getTime()) ? '—' : dateTimeFormatter.format(d)
 }
 

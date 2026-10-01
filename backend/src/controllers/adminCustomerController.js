@@ -1,5 +1,5 @@
 const prisma = require("../config/db");
-const { istNow } = require("../utils/istTime");
+const { istNow, formatLedgerTime } = require("../utils/istTime");
 const logger = require("../utils/logger");
 const walletNotifier = require("../services/walletNotifier");
 
@@ -239,7 +239,7 @@ async function walletHistory(req, res) {
           type: r.type,
           remark: r.remark,
           order_id: r.order_id,
-          created_at: r.created_at,
+          created_at: formatLedgerTime(r.created_at),
         })),
       },
     });

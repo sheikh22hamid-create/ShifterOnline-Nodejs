@@ -1,5 +1,5 @@
 const prisma = require("../config/db");
-const { istNow } = require("../utils/istTime");
+const { istNow, formatLedgerTime } = require("../utils/istTime");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
 const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount, getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
@@ -507,7 +507,7 @@ async function walletHistory(req, res) {
       ...withdrawalSummary,
       total_credit: totalCredit,
       total_debit: totalDebit,
-      data: rows,
+      data: rows.map((r) => ({ ...r, created_at: formatLedgerTime(r.created_at) })),
     });
   } catch (err) {
     logger.error("customerWalletController.walletHistory failed:", err);

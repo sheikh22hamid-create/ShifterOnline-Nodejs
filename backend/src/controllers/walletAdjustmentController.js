@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { formatLedgerTime } = require("../utils/istTime");
 const logger = require("../utils/logger");
 
 function internalError(res, err, label) {
@@ -62,7 +63,7 @@ async function list(req, res) {
         remark: r.remark,
         admin_id: Number.isFinite(adminId) ? adminId : null,
         admin_name: Number.isFinite(adminId) ? adminById[adminId] || `Admin #${adminId}` : "Unknown",
-        created_at: r.created_at,
+        created_at: formatLedgerTime(r.created_at),
       };
     });
 

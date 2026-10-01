@@ -6,4 +6,16 @@ function istNow() {
   return new Date(Date.now() + 330 * 60 * 1000);
 }
 
-module.exports = { istNow };
+// Serializes a stored ledger timestamp as a plain "yyyy-MM-dd HH:mm:ss" wall
+// clock string. The column holds IST wall-clock labelled as UTC, so a JSON
+// Date ("...Z") makes every client that converts to local time (admin panel's
+// browser) shift it by +5:30, and the driver app's yyyy-MM-dd HH:mm:ss parser
+// can't read the ISO form at all. A zone-less string renders as-is everywhere.
+function formatLedgerTime(value) {
+  if (!value) return value ?? null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+module.exports = { istNow, formatLedgerTime };
