@@ -535,6 +535,16 @@ model tbl_cancel_reason {
   updated_at DateTime?              @default(now()) @db.DateTime(0)
 }
 
+model tbl_user_blocked_driver {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  rider_id   Int
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([user_id, rider_id])
+  @@index([user_id])
+}
+
 model tbl_restricted_item {
   id          Int      @id @default(autoincrement())
   name        String   @unique @db.VarChar(150)

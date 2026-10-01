@@ -3026,6 +3026,15 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           ),
                         ),
                       ),
+              if (hasRider)
+                InkWell(
+                  onTap: () => confirmBlockDriver(),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Icon(Icons.block_rounded, color: greaycolor, size: 20),
+                  ),
+                ),
             ],
           ),
           if (hasRider && !isFinished && riderMobile.isNotEmpty) ...[
@@ -4980,6 +4989,40 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         }
       }
     });
+  }
+
+  // Customers can block a limited (admin-decided) number of drivers; a
+  // blocked driver is never offered their orders again.
+  Future<void> confirmBlockDriver() async {
+    if (orderProduc == null || orderProduc["rider_id"] == null) return;
+    final ok = await Get.dialog<bool>(
+      AlertDialog(
+        title: Text("Block this driver?".tr),
+        content: Text("This driver will not be offered your future orders. You can unblock them later.".tr),
+        actions: [
+          TextButton(onPressed: () => Get.back(result: false), child: Text("Cancel".tr)),
+          TextButton(onPressed: () => Get.back(result: true), child: Text("Block".tr)),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final val = await ApiWrapper.dataPostNode(Config.nodeBlockedDriversToggle, {
+        "user_id": uid,
+        "rider_id": "${orderProduc["rider_id"]}",
+      });
+      if (val != null && val.isNotEmpty) {
+        if (val["Result"] == true && val["blocked"] == false) {
+          // The driver was already blocked and has just been unblocked.
+          ApiWrapper.showToastMessage(val["msg"] ?? "");
+        } else {
+          if (val["Result"] == true) setState(() => isFavorite = false);
+          ApiWrapper.showToastMessage(val["msg"] ?? "");
+        }
+      }
+    } catch (e) {
+      debugPrint("confirmBlockDriver error: $e");
+    }
   }
 
   Future<void> toggleFavoriteDriver() async {

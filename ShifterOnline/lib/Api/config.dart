@@ -193,6 +193,7 @@ class Config {
   static const String nodeAddressSave = "api/users/address/save";
   static const String nodeAddressDelete = "api/users/address/delete";
   static const String nodeFavoritesToggle = "api/users/favorites/toggle";
+  static const String nodeBlockedDriversToggle = "api/users/blocked-drivers/toggle";
   static const String nodeFavoritesList = "api/users/favorites/list";
   static const String nodeCoupons = "api/users/coupons/list";
   static const String nodeCouponsCheck = "api/users/coupons/check";

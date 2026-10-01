@@ -82,6 +82,7 @@ const HANDLED_FLAG_KEYS = [
   'max_extra_stops',
   'customer_wallet_max_topup',
   'scheduled_confirm_popup_minutes',
+  'max_blocked_drivers_per_user',
   'extra_stop_charge',
 ]
 
@@ -461,6 +462,23 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Maximum negative wallet balance allowed for a driver before they are blocked from receiving new ride offers (Default: 100).
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Customer Safety">
+          <div>
+            <Label htmlFor="flag-max_blocked_drivers_per_user">Maximum drivers a customer can block</Label>
+            <Input
+              id="flag-max_blocked_drivers_per_user"
+              type="number"
+              min="0"
+              placeholder="e.g. 3"
+              value={flags.max_blocked_drivers_per_user ?? '3'}
+              onChange={(e) => setFlags((f) => ({ ...f, max_blocked_drivers_per_user: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              A blocked driver is never offered that customer's orders. Set to 0 to turn blocking off (Default: 3).
             </p>
           </div>
         </Section>

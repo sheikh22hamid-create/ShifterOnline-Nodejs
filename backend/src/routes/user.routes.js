@@ -41,6 +41,8 @@ router.post("/wallet/clear-due/points", customerWalletController.clearDueWithPoi
 
 // Favorites / coupons / notifications / static content / home
 router.post("/favorites/toggle", customerContentController.toggleFavoriteDriver);
+router.post("/blocked-drivers/toggle", require("../controllers/blockedDriverController").toggleBlockedDriver);
+router.post("/blocked-drivers/list", require("../controllers/blockedDriverController").listBlockedDrivers);
 router.post("/favorites/list", customerContentController.listFavoriteDrivers);
 router.post("/coupons/list", customerContentController.couponList);
 router.post("/coupons/check", customerContentController.checkCoupon);
