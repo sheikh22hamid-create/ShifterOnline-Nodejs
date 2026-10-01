@@ -487,6 +487,10 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                 <Field label="Nationality" value={rider.nationality || 'Indian'} />
                 <Field label="Vehicle type" value={rider.vehicle} />
                 <Field
+                  label="Customer rating"
+                  value={rider.rating?.count > 0 ? `★ ${rider.rating.average} (${rider.rating.count} ratings)` : 'No ratings yet'}
+                />
+                <Field
                   label="Body type"
                   value={
                     rider.vehicle === 'Bike' ? (

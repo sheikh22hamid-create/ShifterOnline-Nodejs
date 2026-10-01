@@ -30,6 +30,12 @@ public interface NodeService {
     @POST("api/order/trip-progress")
     Call<JsonObject> tripProgress(@Body Map<String, Object> body);
 
+    @POST("api/order/driver-feedback")
+    Call<JsonObject> driverFeedback(@Body Map<String, Object> body);
+
+    @retrofit2.http.GET("api/order/goods-types")
+    Call<JsonObject> goodsTypes();
+
     @POST("api/rider/status")
     Call<JsonObject> setStatus(@Body Map<String, Object> body);
 

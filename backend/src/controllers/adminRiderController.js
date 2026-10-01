@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const { getRiderRatingSummary } = require("./driverFeedbackController");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
@@ -140,6 +141,7 @@ async function getOne(req, res) {
       deliveryTypes,
       packages,
       monthlyContract,
+      ratingSummary,
     ] = await Promise.all([
       rider.city_id ? prisma.tbl_city.findUnique({ where: { id: rider.city_id }, select: { title: true } }) : null,
       prisma.tbl_personal_doc.findFirst({ where: { rider_id: id } }),
@@ -153,6 +155,7 @@ async function getOne(req, res) {
         ? prisma.tbl_package.findMany({ where: { cat_id: matchedCategory.id, status: 1 }, orderBy: { sort_order: "asc" } })
         : prisma.tbl_package.findMany({ where: { status: 1 }, orderBy: { sort_order: "asc" } }),
       prisma.monthly_driver_contract.findUnique({ where: { rider_id: id } }),
+      getRiderRatingSummary(id).catch(() => ({ average: null, count: 0 })),
     ]);
 
     const deliveryStatusMap = new Map(deliveryTypes.map((dt) => [String(dt.delivery_type), dt.status === 1]));
@@ -204,6 +207,7 @@ async function getOne(req, res) {
         plan_type: rider.plan_type,
         monthly_plan: rider.monthly_plan || 0,
         monthly_contract: monthlyContract,
+        rating: ratingSummary,
         rdate: rider.rdate,
         rlats: rider.rlats,
         rlongs: rider.rlongs,

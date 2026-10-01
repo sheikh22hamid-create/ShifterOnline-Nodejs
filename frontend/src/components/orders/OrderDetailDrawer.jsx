@@ -347,6 +347,28 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                       }
                     />
                     <Field label="Package Weight" value={order.package_weight ? `${order.package_weight} kg` : '—'} />
+                    {Number(order.is_rate) === 1 && (
+                      <Field
+                        label="Customer rated driver"
+                        value={`★ ${order.cust_rate}${order.cust_comment ? ` — ${order.cust_comment}` : ''}`}
+                      />
+                    )}
+                    {order.driver_feedback && (
+                      <>
+                        <Field label="Driver rated customer" value={order.driver_feedback.customer_rating ? `★ ${order.driver_feedback.customer_rating}` : '—'} />
+                        <Field label="Pickup location rating" value={order.driver_feedback.pickup_location_rating ? `★ ${order.driver_feedback.pickup_location_rating}` : '—'} />
+                        <Field label="Drop location rating" value={order.driver_feedback.drop_location_rating ? `★ ${order.driver_feedback.drop_location_rating}` : '—'} />
+                        <Field label="Route rating" value={order.driver_feedback.route_rating ? `★ ${order.driver_feedback.route_rating}` : '—'} />
+                        <Field
+                          label="No-entry zone"
+                          value={order.driver_feedback.no_entry_zone === null || order.driver_feedback.no_entry_zone === undefined ? '—' : order.driver_feedback.no_entry_zone ? 'Yes' : 'No'}
+                        />
+                        <Field
+                          label="Customer type"
+                          value={{ commercial: 'Commercial', home_shifting: 'Home shifting' }[order.driver_feedback.customer_type] || '—'}
+                        />
+                      </>
+                    )}
                     <Field
                       label="Goods Type"
                       value={

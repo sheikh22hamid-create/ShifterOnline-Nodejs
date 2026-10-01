@@ -33,6 +33,7 @@ router.post("/buy/item-list", orderController.buyOrderItemList);
 router.post("/buy/item-unavailable", orderController.markBuyOrderItemUnavailable);
 router.post("/buy/item-upload", orderController.buyOrderItemUpload);
 router.post("/rate", orderController.rateOrder);
+router.post("/driver-feedback", require("../controllers/driverFeedbackController").submitDriverFeedback);
 router.post("/next-day-eligibility", orderController.checkNextDayEligibility);
 router.post("/upload-photo", uploadController.uploadOrderPhoto);
 

@@ -2932,6 +2932,116 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         dialog.show();
     }
 
+    // Optional post-trip form: rate the customer / pickup / drop / route,
+    // flag a no-entry zone, pick the customer type and goods type. Every
+    // field is optional - "Skip" (or an empty form) simply goes home.
+    private void showDriverFeedbackDialog() {
+        if (isFinishing() || isDestroyed() || orderItem == null || riderData == null) {
+            navigateToHomeAndFinish("");
+            return;
+        }
+        final String orderId = orderItem.getId();
+        final int pad = (int) (16 * getResources().getDisplayMetrics().density);
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(pad, pad, pad, 0);
+        scroll.addView(box);
+
+        final android.widget.RatingBar[] bars = new android.widget.RatingBar[4];
+        String[] labels = {"Customer", "Pickup location", "Drop location", "Pickup - drop route"};
+        for (int i = 0; i < labels.length; i++) {
+            android.widget.TextView label = new android.widget.TextView(this);
+            label.setText(labels[i]);
+            label.setTextSize(13);
+            box.addView(label);
+            android.widget.RatingBar bar = new android.widget.RatingBar(this, null, android.R.attr.ratingBarStyleSmall);
+            bar.setNumStars(5);
+            bar.setStepSize(1f);
+            bar.setRating(0f);
+            box.addView(bar);
+            bars[i] = bar;
+        }
+
+        android.widget.CheckBox noEntry = new android.widget.CheckBox(this);
+        noEntry.setText("There was a no-entry zone on this route");
+        box.addView(noEntry);
+
+        android.widget.TextView typeLabel = new android.widget.TextView(this);
+        typeLabel.setText("Customer type");
+        typeLabel.setTextSize(13);
+        box.addView(typeLabel);
+        android.widget.Spinner typeSpinner = new android.widget.Spinner(this);
+        final String[] typeValues = {"", "commercial", "home_shifting"};
+        typeSpinner.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"Not specified", "Commercial", "Home shifting"}));
+        box.addView(typeSpinner);
+
+        android.widget.TextView goodsLabel = new android.widget.TextView(this);
+        goodsLabel.setText("Goods type");
+        goodsLabel.setTextSize(13);
+        box.addView(goodsLabel);
+        android.widget.Spinner goodsSpinner = new android.widget.Spinner(this);
+        final java.util.List<String> goodsNames = new java.util.ArrayList<>();
+        final java.util.List<Integer> goodsIds = new java.util.ArrayList<>();
+        goodsNames.add("Not specified");
+        goodsIds.add(0);
+        final android.widget.ArrayAdapter<String> goodsAdapter =
+                new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, goodsNames);
+        goodsSpinner.setAdapter(goodsAdapter);
+        box.addView(goodsSpinner);
+
+        com.shifter.driver.retrofit.NodeApiClient.getInterface().goodsTypes().enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
+            @Override
+            public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
+                try {
+                    if (!response.isSuccessful() || response.body() == null || !response.body().has("data")) return;
+                    for (com.google.gson.JsonElement el : response.body().getAsJsonArray("data")) {
+                        com.google.gson.JsonObject o = el.getAsJsonObject();
+                        goodsIds.add(o.get("id").getAsInt());
+                        goodsNames.add(o.get("name").getAsString());
+                    }
+                    goodsAdapter.notifyDataSetChanged();
+                } catch (Exception ignored) { /* the goods type stays "Not specified" */ }
+            }
+
+            @Override
+            public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) { /* optional field */ }
+        });
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Trip feedback (optional)")
+                .setView(scroll)
+                .setCancelable(false)
+                .setPositiveButton("SUBMIT", (d, w) -> {
+                    java.util.Map<String, Object> body = new java.util.HashMap<>();
+                    body.put("order_id", orderId);
+                    body.put("rider_id", riderData.getId());
+                    String[] keys = {"customer_rating", "pickup_location_rating", "drop_location_rating", "route_rating"};
+                    boolean any = false;
+                    for (int i = 0; i < keys.length; i++) {
+                        int stars = Math.round(bars[i].getRating());
+                        if (stars >= 1) { body.put(keys[i], stars); any = true; }
+                    }
+                    if (noEntry.isChecked()) { body.put("no_entry_zone", true); any = true; }
+                    int typeIndex = typeSpinner.getSelectedItemPosition();
+                    if (typeIndex > 0) { body.put("customer_type", typeValues[typeIndex]); any = true; }
+                    int goodsIndex = goodsSpinner.getSelectedItemPosition();
+                    if (goodsIndex > 0 && goodsIndex < goodsIds.size()) { body.put("goods_type_id", goodsIds.get(goodsIndex)); any = true; }
+                    if (any) {
+                        com.shifter.driver.retrofit.NodeApiClient.getInterface().driverFeedback(body)
+                                .enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
+                                    @Override public void onResponse(retrofit2.Call<com.google.gson.JsonObject> c, retrofit2.Response<com.google.gson.JsonObject> r) { }
+                                    @Override public void onFailure(retrofit2.Call<com.google.gson.JsonObject> c, Throwable t) { }
+                                });
+                    }
+                    navigateToHomeAndFinish("");
+                })
+                .setNegativeButton("SKIP", (d, w) -> navigateToHomeAndFinish(""))
+                .show();
+    }
+
     private void showCashCollectionConfirmationDialog(android.app.Dialog parentDialog, String formattedCash) {
         new android.app.AlertDialog.Builder(this)
                 .setTitle("Confirm Cash Collection")
@@ -2942,7 +3052,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     if (parentDialog != null && parentDialog.isShowing()) {
                         parentDialog.dismiss();
                     }
-                    navigateToHomeAndFinish("");
+                    showDriverFeedbackDialog();
                 })
                 .setNegativeButton("NO", (confirmDialog, which) -> {
                     confirmDialog.dismiss();
