@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
  * Server-owned saved routes; drafts never change active matching until saved.
  * Elevated with modern, polished UI/UX matching Shifter design system standards.
  */
-public class FavoriteRoutesActivity extends AppCompatActivity {
+public class FavoriteRoutesActivity extends LocaleAwareActivity {
     private static final int TEXT_DARK = Color.rgb(15, 23, 42);
     private static final int TEXT_SECONDARY = Color.rgb(71, 85, 105);
     private static final int TEXT_MUTED = Color.rgb(100, 116, 139);

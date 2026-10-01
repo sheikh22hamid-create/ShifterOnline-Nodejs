@@ -533,13 +533,10 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
 
         final String currentLanguage = lang; // ✅ final variable
 
-        int selectedIndex = currentLanguage.equals("hi") ? 1 : 0;
-
-        String[] languages = {
-                getString(R.string.english),
-                getString(R.string.hindi)
-        };
-        String[] languageCodes = {"en", "hi"};
+        // English + the major national languages, each in its own script.
+        int selectedIndex = com.shifter.driver.utility.AppLanguages.indexOf(currentLanguage);
+        String[] languages = com.shifter.driver.utility.AppLanguages.NATIVE_NAMES;
+        String[] languageCodes = com.shifter.driver.utility.AppLanguages.CODES;
 
         new AlertDialog.Builder(requireContext())
                 .setTitle(R.string.select_language)
