@@ -79,6 +79,7 @@ const HANDLED_FLAG_KEYS = [
   'pickup_otp_mismatch_flag_m',
   'pickup_timeout_driver_compensation',
   'pickup_complete_auto_distance_m',
+  'pickup_timer_auto_pause_distance_m',
   'max_extra_stops',
   'customer_wallet_max_topup',
   'scheduled_confirm_popup_minutes',
@@ -434,6 +435,20 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               If the driver verifies the OTP but never taps "Pickup Complete", leaving the pickup point by this much automatically marks the pickup complete and starts the trip.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_timer_auto_pause_distance_m">Pickup OTP timer auto-pause distance (m)</Label>
+            <Input
+              id="flag-pickup_timer_auto_pause_distance_m"
+              type="number"
+              min="1"
+              placeholder="e.g. 500"
+              value={flags.pickup_timer_auto_pause_distance_m ?? '500'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_timer_auto_pause_distance_m: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              While waiting for the pickup OTP, if the driver moves this far from the pickup point the auto-cancel timer pauses by itself (they are heading to a new pickup spot). Drivers can also pause it manually from the OTP screen.
             </p>
           </div>
           <div>

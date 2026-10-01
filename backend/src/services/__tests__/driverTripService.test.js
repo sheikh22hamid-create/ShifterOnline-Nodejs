@@ -4,7 +4,7 @@ jest.mock('../../config/db', () => ({
   pkg_order_stops: { findMany: jest.fn() },
   pkg_order_wait_timer: { findUnique: jest.fn(), upsert: jest.fn(), update: jest.fn() },
   driver_trip_progress: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
-  driver_trip_event: { upsert: jest.fn() },
+  driver_trip_event: { upsert: jest.fn(), findUnique: jest.fn(), deleteMany: jest.fn() },
 }));
 jest.mock('../tripEventNotifier', () => ({ flushTripEvents: jest.fn().mockResolvedValue() }));
 jest.mock('../pricingEngine', () => ({
@@ -16,7 +16,7 @@ jest.mock('../orderRouteRepricing', () => ({
 }));
 jest.mock('../../utils/pickupRelocateSettings', () => ({
   getPickupRelocateSettings: jest.fn().mockResolvedValue({
-    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0, autoCompleteDistanceM: 150,
+    ceilingMinutes: 35, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0, autoCompleteDistanceM: 150, autoPauseDistanceM: 500,
   }),
 }));
 jest.mock('../../utils/pickupOtpTimeout', () => ({
@@ -24,13 +24,15 @@ jest.mock('../../utils/pickupOtpTimeout', () => ({
 }));
 const db = require('../../config/db');
 const { progressTrip, snapshot } = require('../driverTripService');
-let order, progress, timer, stops;
+let order, progress, timer, stops, pauseEvent;
 const now = Date.parse('2026-09-24T10:00:00Z');
 const call = (action = 'sync', extra = {}) => progressTrip({ orderId: 7, riderId: 9, action, ...extra });
 beforeEach(() => {
   jest.clearAllMocks(); jest.spyOn(Date, 'now').mockReturnValue(now);
   order = { id: 7, uid: 8, rid: 9, order_status: 1, o_status: 'Processing', otp: 1234, plat: '28.6', plong: '77.2', dlat: '28.7', dlong: '77.3', payment_status: 1 };
-  progress = null; timer = null; stops = [];
+  progress = null; timer = null; stops = []; pauseEvent = null;
+  db.driver_trip_event.findUnique.mockImplementation(async () => pauseEvent);
+  db.driver_trip_event.upsert.mockImplementation(async ({ where, create, update }) => { if (where.order_id_milestone.milestone === 'pickup_timer_paused') pauseEvent = { payload: (update && update.payload) || create.payload }; });
   db.$transaction.mockImplementation(fn => fn(db));
   db.pkg_order.findUnique.mockImplementation(async () => ({ ...order }));
   db.pkg_order.update.mockImplementation(async ({ data }) => Object.assign(order, data));
@@ -233,4 +235,126 @@ test('staying within the pickup vicinity after verifying OTP does not auto-compl
 test('malformed observations are rejected without writing trip state', async () => {
   await expect(call('sync', { samples: [null] })).rejects.toThrow('valid location');
   expect(db.$transaction).not.toHaveBeenCalled();
+});
+
+// --- Pickup timer pause (driver-initiated) and 500 m auto-pause ---------------------------------
+const nearSamples = (lat = 28.6, lng = 77.2, count = 4) =>
+  Array.from({ length: count }, (_, i) => ({ timestamp: now - 30000 + i * 10000, lat, lng, accuracy: 10, speed: 0 }));
+
+describe('pickup OTP timer pause', () => {
+  async function arriveAndWait(seconds) {
+    await call('sync', { samples: nearSamples() });
+    expect(order.order_status).toBe(2);
+    Date.now.mockReturnValue(now + seconds * 1000);
+  }
+
+  test('driver can pause the timer while waiting for the OTP: elapsed time is banked and the trip goes back to en-route', async () => {
+    await arriveAndWait(90);
+    const snap = await call('pause_pickup_timer');
+
+    expect(snap.driver_flow_id).toBe(1);
+    expect(order.order_status).toBe(1);
+    expect(order.o_status).toBe('Processing');
+    expect(timer.pickup_wait_start).toBeNull();
+    expect(timer.pickup_wait_banked_seconds).toBe(90);
+    expect(snap.pickup_otp_remaining_seconds).toBe(0);
+    // the stale "arrived" milestone is cleared so a fresh arrival notifies the customer again
+    expect(db.driver_trip_event.deleteMany).toHaveBeenCalledWith({ where: { order_id: 7, milestone: 'arrived' } });
+    expect(db.driver_trip_event.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { order_id_milestone: { order_id: 7, milestone: 'pickup_timer_paused' } },
+    }));
+  });
+
+  test('pausing twice keeps adding to the banked time instead of resetting it', async () => {
+    await arriveAndWait(60);
+    await call('pause_pickup_timer');
+    await call('arrived'); // manual arrival at the new point resumes the clock, keeping the banked 60 s
+    expect(timer.pickup_wait_banked_seconds).toBe(60);
+    Date.now.mockReturnValue(now + 60000 + 45000);
+    await call('pause_pickup_timer');
+    expect(timer.pickup_wait_banked_seconds).toBe(60 + 45);
+  });
+
+  test('cannot pause before arrival, or after the OTP was verified', async () => {
+    await expect(call('pause_pickup_timer')).rejects.toThrow(/only be paused/i);
+    await arriveAndWait(10);
+    await call('pickup', { otp: '1234' });
+    await expect(call('pause_pickup_timer')).rejects.toThrow(/only be paused/i);
+  });
+
+  test('after a manual pause with the pickup unchanged, GPS does not instantly re-arrive at the same pin', async () => {
+    await arriveAndWait(30);
+    await call('pause_pickup_timer');
+    await call('sync', { samples: nearSamples() });
+    expect(order.order_status).toBe(1);
+    expect(timer.pickup_wait_start).toBeNull();
+  });
+
+  test('...but a changed pickup point auto-arrives again as usual and the timer resumes with the banked time', async () => {
+    await arriveAndWait(30);
+    await call('pause_pickup_timer');
+    order.plat = '28.7'; order.plong = '77.3'; // customer moved the pickup
+    Date.now.mockReturnValue(now + 90000);
+    // arrival needs >= 3 fixes over >= 25 s, all newer than the pause
+    const atNewPin = Array.from({ length: 4 }, (_, i) => ({ timestamp: now + 45000 + i * 10000, lat: 28.7, lng: 77.3, accuracy: 10, speed: 0 }));
+    await call('sync', { samples: atNewPin });
+    expect(order.order_status).toBe(2);
+    expect(timer.pickup_wait_start).toBeTruthy();
+    expect(timer.pickup_wait_banked_seconds).toBe(30);
+  });
+});
+
+describe('pickup OTP timer auto-pause when the driver leaves the pickup', () => {
+  const awaySample = (metresNorth) => ({ timestamp: now + 5000, lat: 28.6 + metresNorth / 111195, lng: 77.2, accuracy: 10, speed: 8 });
+
+  async function arrive() {
+    await call('sync', { samples: nearSamples() });
+    expect(order.order_status).toBe(2);
+    Date.now.mockReturnValue(now + 20000);
+  }
+
+  test('moving more than 500 m past the pickup pauses the timer automatically', async () => {
+    await arrive();
+    const snap = await call('sync', { samples: [awaySample(650)] });
+    expect(snap.driver_flow_id).toBe(1);
+    expect(timer.pickup_wait_start).toBeNull();
+    expect(timer.pickup_wait_banked_seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  test('moving 300 m does not pause it', async () => {
+    await arrive();
+    const snap = await call('sync', { samples: [awaySample(300)] });
+    expect(snap.driver_flow_id).toBe(2);
+    expect(timer.pickup_wait_start).toBeTruthy();
+  });
+
+  test('does nothing once the OTP is verified (the leave-pickup auto-complete handles that phase)', async () => {
+    await arrive();
+    await call('pickup', { otp: '1234' });
+    expect(order.order_status).toBe(3);
+    const snap = await call('sync', { samples: [awaySample(900)] });
+    expect(snap.driver_flow_id).toBe(3);
+  });
+
+  test('an auto-pause does not block the next auto-arrival if the driver comes back to the same pickup', async () => {
+    await arrive();
+    await call('sync', { samples: [awaySample(650)] });
+    expect(order.order_status).toBe(1);
+    Date.now.mockReturnValue(now + 640000);
+    const back = Array.from({ length: 4 }, (_, i) => ({ timestamp: now + 600000 + i * 10000, lat: 28.6, lng: 77.2, accuracy: 10, speed: 0 }));
+    await call('sync', { samples: back });
+    expect(order.order_status).toBe(2);
+  });
+});
+
+describe('arrival time vs a skewed phone clock', () => {
+  test('a phone clock minutes behind the server cannot backdate the arrival (and so shorten the OTP window)', async () => {
+    // sample timestamps from a phone running ~10 minutes slow: the server must not trust them blindly
+    const skewed = Array.from({ length: 4 }, (_, i) => ({ timestamp: now - 600000 + i * 10000, lat: 28.6, lng: 77.2, accuracy: 10, speed: 0 }));
+    await call('sync', { samples: skewed });
+    // Samples that old are ignored for arrival (older than the leg start / staleness window) or clamped to <= 60 s ago.
+    if (timer && timer.pickup_wait_start) {
+      expect(now - new Date(timer.pickup_wait_start).getTime()).toBeLessThanOrEqual(60000);
+    }
+  });
 });

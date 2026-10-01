@@ -7,6 +7,18 @@ const { computeRouteDistanceKm } = require('./orderRouteRepricing');
 const { haversineKm } = require('../utils/geoDistance');
 const { recordSamples } = require('./tripRouteService');
 
+// Arrival time comes from the phone's own clock. A phone running minutes
+// behind the server would back-date the arrival and shorten the customer's
+// OTP window (cancel fires early), so never trust a stamp older than a minute
+// or from the future - both are clamped to server time.
+const ARRIVAL_STAMP_MAX_AGE_MS = 60000;
+function clampToServerTime(timestampMs, nowMs = Date.now()) {
+  const ts = Number(timestampMs);
+  if (!Number.isFinite(ts)) return nowMs;
+  return Math.min(nowMs, Math.max(ts, nowMs - ARRIVAL_STAMP_MAX_AGE_MS));
+}
+const sameCoord = (a, b) => Number.isFinite(Number(a)) && Number.isFinite(Number(b)) && Math.abs(Number(a) - Number(b)) < 1e-6;
+
 function fail(message) { const error = new Error(message); error.statusCode = 409; throw error; }
 async function snapshot(order, progress, timer, stopCount) {
   const active = [1, 2, 3].includes(order.order_status);
@@ -111,6 +123,42 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
       progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
     }
 
+    // Pickup-timer pause: the driver is going to a different pickup point (or
+    // simply left the pin), so the auto-cancel clock must stop. Same bookkeeping
+    // as orderPickupService's relocation pause: bank the time already waited,
+    // clear the running clock, send the trip back to "en route" and drop the
+    // stale "arrived" milestone so a fresh arrival re-notifies the customer.
+    // `suppressAutoArrival`: after a MANUAL pause the driver is still standing
+    // at the old pin, so GPS must not instantly re-arrive there while the pickup
+    // is unchanged (they confirm arrival at the new spot manually, or the
+    // customer moves the pin).
+    async function pausePickupTimer(reason, at, suppressAutoArrival) {
+      if (order.order_status !== 2 || !timer?.pickup_wait_start || timer.pickup_wait_end || progress.otp_verified_at) return false;
+      const elapsedSeconds = Math.max(0, Math.floor((at - new Date(timer.pickup_wait_start)) / 1000));
+      timer = await tx.pkg_order_wait_timer.update({ where: timerKey, data: {
+        pickup_wait_start: null, pickup_wait_seconds: 0,
+        pickup_wait_banked_seconds: (Number(timer.pickup_wait_banked_seconds) || 0) + elapsedSeconds,
+        updated_at: new Date(),
+      } });
+      Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 1, o_status: 'Processing' } }));
+      await tx.driver_trip_event.deleteMany({ where: { order_id: orderId, milestone: 'arrived' } });
+      progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
+      progress.last_sample_at = at;
+      const payload = {
+        ...(await snapshot(order, progress, timer, stops.length)),
+        milestone: 'pickup_timer_paused',
+        message: 'Your driver is heading to your updated pickup location.',
+        reason, suppress_auto_arrival: Boolean(suppressAutoArrival),
+        pickup_lat: order.plat, pickup_lng: order.plong,
+      };
+      await tx.driver_trip_event.upsert({
+        where: { order_id_milestone: { order_id: orderId, milestone: 'pickup_timer_paused' } },
+        update: { payload, sent_at: null, lease_until: null },
+        create: { order_id: orderId, rider_id: riderId, user_id: order.uid, milestone: 'pickup_timer_paused', payload },
+      });
+      return true;
+    }
+
     async function completePickup(at) {
       Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 3, o_status: 'On_Route', pickup_time: at } }));
       const loadWaitSeconds = timer?.pickup_load_wait_start
@@ -124,8 +172,35 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
     }
 
     if (action === 'sync' && !blocked) {
+      // Waiting for the OTP and the driver has driven off (more than the
+      // admin distance, default 500 m, from the pickup pin): pause the
+      // auto-cancel timer for them instead of letting it run out.
+      if (order.order_status === 2 && timer?.pickup_wait_start && !timer.pickup_wait_end && !progress.otp_verified_at) {
+        const { autoPauseDistanceM } = await getPickupRelocateSettings();
+        const limitM = Number(autoPauseDistanceM) > 0 ? Number(autoPauseDistanceM) : 500;
+        const pLat = Number(order.plat), pLng = Number(order.plong);
+        const waitStartMs = new Date(timer.pickup_wait_start).getTime();
+        if ([pLat, pLng].every(Number.isFinite)) {
+          for (const sample of [...samples].sort((a, b) => Number(a.timestamp) - Number(b.timestamp))) {
+            const sLat = Number(sample.lat), sLng = Number(sample.lng);
+            if (![sLat, sLng].every(Number.isFinite) || Number(sample.timestamp) < waitStartMs) continue;
+            if (haversineKm(pLat, pLng, sLat, sLng) * 1000 > limitM) {
+              await pausePickupTimer('left_pickup', new Date(clampToServerTime(sample.timestamp)), false);
+              break;
+            }
+          }
+        }
+      }
       let target = null;
-      if (order.order_status === 1) target = { key: 'arrived', lat: order.plat, lng: order.plong };
+      if (order.order_status === 1) {
+        target = { key: 'arrived', lat: order.plat, lng: order.plong };
+        // Manual pause + pickup pin unchanged: don't auto-re-arrive at the same pin.
+        const paused = await tx.driver_trip_event.findUnique({
+          where: { order_id_milestone: { order_id: orderId, milestone: 'pickup_timer_paused' } },
+        });
+        const p = paused?.payload;
+        if (p?.suppress_auto_arrival && sameCoord(p.pickup_lat, order.plat) && sameCoord(p.pickup_lng, order.plong)) target = null;
+      }
       if (order.order_status === 3 && progress.stop_step % 2 === 0) {
         const index = progress.stop_step / 2;
         if (index < stops.length) target = { key: `arrived_stop_${index + 1}`, lat: stops[index].lat, lng: stops[index].lng };
@@ -143,7 +218,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
           Object.assign(progress, state);
           if (arrived) {
             // Use confirmation time, never the start of the proximity window.
-            await arrive(target.key, new Date(sample.timestamp));
+            await arrive(target.key, new Date(clampToServerTime(sample.timestamp)));
             break;
           }
         }
@@ -167,8 +242,14 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
           }
         }
       }
+    } else if (action === 'auto_pause_pickup_timer') {
+      // Server-initiated (sweepOverduePickups: the driver's last known position
+      // is already well past the pickup but their app hasn't synced the pause).
+      if (!(await pausePickupTimer('left_pickup', new Date(Date.now()), false))) fail('The pickup timer can only be paused while you are waiting for the OTP');
+    } else if (action === 'pause_pickup_timer') {
+      if (!(await pausePickupTimer('driver_paused', new Date(Date.now()), true))) fail('The pickup timer can only be paused while you are waiting for the OTP');
     } else if (action === 'arrived') {
-      await arrive(action, new Date()); // explicit manual fallback for weak GPS/wrong pins
+      await arrive(action, new Date(Date.now())); // explicit manual fallback for weak GPS/wrong pins
     } else if (action === 'verify_otp' || action === 'pickup' || action === 'pickup_complete') {
       const wasVerified = !!progress.otp_verified_at;
       if (otp !== undefined) {

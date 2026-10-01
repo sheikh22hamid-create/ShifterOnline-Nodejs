@@ -9,6 +9,9 @@ const DEFAULTS = {
   otpMismatchFlagM: 500,
   driverCompensation: 0,
   autoCompleteDistanceM: 150,
+  // While waiting for the pickup OTP, moving this far from the pickup pin
+  // pauses the auto-cancel timer (the driver is heading to a new pickup point).
+  autoPauseDistanceM: 500,
 };
 
 const KEYS = {
@@ -17,6 +20,7 @@ const KEYS = {
   pickup_otp_mismatch_flag_m: "otpMismatchFlagM",
   pickup_timeout_driver_compensation: "driverCompensation",
   pickup_complete_auto_distance_m: "autoCompleteDistanceM",
+  pickup_timer_auto_pause_distance_m: "autoPauseDistanceM",
 };
 
 function parsePositive(value, fallback) {

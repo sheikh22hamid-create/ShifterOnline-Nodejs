@@ -24,6 +24,7 @@ jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
+jest.mock("../driverTripService", () => ({ progressTrip: jest.fn().mockResolvedValue({}) }));
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: { waiting_charge: "2.00", free_waiting_time: 5 }, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 0 }),
   getPackageById: jest.fn(),
@@ -227,6 +228,43 @@ describe("tripLifecycle.acceptOrder", () => {
     // No known driver location -> radiusRangeKm falls back to 1 (free).
     expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 0, undefined);
     expect(result.order.advance_payment).toBe("15");
+  });
+
+  describe("wallet-paid orders never ask for a separate advance payment", () => {
+    function setup(orderExtra) {
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 297, uid: 7, distance: 15.4, extra_mile_charge: 0, plat: 22.7, plong: 75.8, ...orderExtra,
+      });
+      prisma.tbl_rider.findUnique.mockResolvedValue({
+        id: 1, first_name: "John", last_name: "Doe", fmobile: "9999999999", rlats: 22.7, rlongs: 75.8,
+      });
+      pricingEngine.priceForPackageId.mockResolvedValueOnce({
+        pkg: { cancellation_charge_customer: 15 }, fare: 50, driverEarning: 45, commission: 5, radiusCharge: 10,
+      });
+    }
+
+    it("p_method_id -2 (wallet): the fare was already debited from the wallet at booking, so no advance and payment_status = paid", async () => {
+      setup({ p_method_id: -2, trans_id: "wallet_1700000000000", payment_status: 0 });
+
+      const result = await tripLifecycle.acceptOrder(297, 1);
+
+      expect(result.order.advance_payment).toBe("0");
+      expect(result.order.payment_status).toBe(1);
+      expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), "0", 1, 297);
+    });
+
+    it("recognises a wallet order by its transaction id too", async () => {
+      setup({ p_method_id: 0, trans_id: "wallet_1700000000000", payment_status: 0 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      expect(result.order.advance_payment).toBe("0");
+    });
+
+    it("cash orders still need the advance (cancellation charge + pickup radius charge)", async () => {
+      setup({ p_method_id: 2, trans_id: "cash_1700000000000", payment_status: 0 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      expect(result.order.advance_payment).toBe("25");
+      expect(result.order.payment_status).toBe(0);
+    });
   });
 
   it("sets advance_payment = 0 when customer has an active plan with noAdvancePayment enabled", async () => {
@@ -1293,6 +1331,38 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
     expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("within 5 minutes"), 401);
   });
 
+  it("sweepOverduePickups pauses instead of cancelling when the driver's fresh GPS shows they already drove >500 m from the pickup", async () => {
+    const driverTripService = require("../driverTripService");
+    prisma.app_settings.findFirst.mockResolvedValueOnce({ setting_value: "5" });
+    getPickupRelocateSettings.mockResolvedValueOnce({ ceilingMinutes: 35, autoPauseDistanceM: 500 });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(6), pickup_wait_banked_seconds: 0 },
+    ]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 400, plat: "28.6", plong: "77.2", order_status: 2, uid: 9, rid: 3, delivery_type: 6, o_status: "Pickup" });
+    // ~1.1 km north of the pickup, reported just now
+    prisma.tbl_rider.findUnique.mockResolvedValue({ rlats: "28.61", rlongs: "77.2", rloc_updated_at: new Date(), fcm_token: "t" });
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(driverTripService.progressTrip).toHaveBeenCalledWith({ orderId: 400, riderId: 3, action: "auto_pause_pickup_timer" });
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("sweepOverduePickups still cancels when the driver is within 500 m (or their location is stale)", async () => {
+    const driverTripService = require("../driverTripService");
+    prisma.app_settings.findFirst.mockResolvedValueOnce({ setting_value: "5" });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
+      { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(6), pickup_wait_banked_seconds: 0 },
+    ]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 400, plat: "28.6", plong: "77.2", order_status: 2, uid: 9, rid: 3, delivery_type: 6, o_status: "Pickup" });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ rlats: "28.601", rlongs: "77.2", rloc_updated_at: new Date(), fcm_token: "t" });
+
+    await tripLifecycle.sweepOverduePickups();
+
+    expect(driverTripService.progressTrip).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
   it("sweepOverduePickups falls back to the default 10-minute timeout when no admin setting exists", async () => {
     prisma.app_settings.findFirst.mockResolvedValueOnce(null);
     prisma.pkg_order_wait_timer.findMany.mockResolvedValue([
@@ -1313,9 +1383,11 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
       { order_id: 400, rid: 3, pickup_wait_start: minutesAgo(11), pickup_wait_banked_seconds: 0 },
       { order_id: 401, rid: 5, pickup_wait_start: minutesAgo(11), pickup_wait_banked_seconds: 0 },
     ]);
-    prisma.pkg_order.findUnique
-      .mockRejectedValueOnce(new Error("db hiccup"))
-      .mockResolvedValueOnce({ id: 401, uid: 10, rid: 5, delivery_type: 6, o_status: "Pickup" });
+    // Keyed by order id (not call order): every order is looked up more than once.
+    prisma.pkg_order.findUnique.mockImplementation(async ({ where }) => {
+      if (where.id === 400) throw new Error("db hiccup");
+      return { id: 401, uid: 10, rid: 5, delivery_type: 6, o_status: "Pickup" };
+    });
 
     await tripLifecycle.sweepOverduePickups();
 

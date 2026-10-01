@@ -22,6 +22,7 @@ const {
   SCHEDULED_ORDER_GO_LIVE_LEAD_MS,
   SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
   SCHEDULED_ORDER_LATE_ACCEPT_BUFFER_MS,
+  RIDER_LOCATION_FRESHNESS_MS,
 } = require("../config/constants");
 
 const whatsappNotifications = require("../whatsapp/notifications");
@@ -267,7 +268,13 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   const customerPlan = await pricingEngine.getActiveCustomerPlan(order.uid);
   let advancePayment = Math.round((Number(pkg?.cancellation_charge_customer) || 0) + (Number(radiusCharge) || 0));
   let paymentStatus = order.payment_status ?? 0;
-  if (customerPlan && customerPlan.noAdvancePayment) {
+  // A wallet-paid booking debited the whole fare from the customer's wallet
+  // when it was placed (select_vehicle._submitOrder), so asking for a separate
+  // Razorpay advance on top is a double charge - and the unpaid-advance
+  // timeout then auto-cancelled these orders ~2 min after accept. Treat the
+  // advance as already covered by that prepayment.
+  const isWalletPaid = Number(order.p_method_id) === -2 || String(order.trans_id || "").toLowerCase().startsWith("wallet");
+  if ((customerPlan && customerPlan.noAdvancePayment) || isWalletPaid) {
     advancePayment = 0;
     paymentStatus = 1;
   }
@@ -1304,6 +1311,32 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
  * timestamp), so a sweep that runs late — or resumes after a restart —
  * still finds and cancels every order that's actually overdue.
  */
+// True when the driver's last known GPS fix (fresh) is farther from the pickup
+// pin than the admin "auto-pause distance" (default 500 m) - they are heading
+// to a new pickup point, so the OTP timer is paused (via driverTripService's
+// own pause path) rather than auto-cancelling the order. Best effort: any
+// problem here returns false and the normal cancel proceeds.
+async function pauseIfDriverLeftPickup(orderId, riderId) {
+  try {
+    const [order, rider] = await Promise.all([
+      prisma.pkg_order.findUnique({ where: { id: orderId }, select: { plat: true, plong: true, order_status: true } }),
+      prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { rlats: true, rlongs: true, rloc_updated_at: true } }),
+    ]);
+    if (!order || !rider || Number(order.order_status) !== 2) return false;
+    const fresh = rider.rloc_updated_at && Date.now() - new Date(rider.rloc_updated_at).getTime() <= RIDER_LOCATION_FRESHNESS_MS;
+    if (!fresh) return false;
+    const { autoPauseDistanceM } = await getPickupRelocateSettings();
+    const limitM = Number(autoPauseDistanceM) > 0 ? Number(autoPauseDistanceM) : 500;
+    const distanceM = haversineKm(Number(order.plat), Number(order.plong), Number(rider.rlats), Number(rider.rlongs)) * 1000;
+    if (!Number.isFinite(distanceM) || distanceM <= limitM) return false;
+    await require("./driverTripService").progressTrip({ orderId, riderId, action: "auto_pause_pickup_timer" });
+    logger.info(`sweepOverduePickups: order #${orderId} OTP timer auto-paused (driver ${Math.round(distanceM)} m from pickup) instead of cancelling`);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 async function sweepOverduePickups() {
   // Re-read every tick (not captured once at import time) so an admin
   // changing this in Settings takes effect on the very next sweep, no
@@ -1336,6 +1369,9 @@ async function sweepOverduePickups() {
 
   for (const waitRow of overdue) {
     try {
+      // The driver already drove off (their app just hasn't synced the pause
+      // yet): pause instead of cancelling on them.
+      if (await pauseIfDriverLeftPickup(waitRow.order_id, waitRow.rid)) continue;
       await cancelOverduePickup(waitRow.order_id, waitRow.rid, timeoutMinutes);
     } catch (err) {
       logger.error(`sweepOverduePickups: failed cancelling order ${waitRow.order_id}:`, err);
