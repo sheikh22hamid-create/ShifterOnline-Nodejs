@@ -548,6 +548,16 @@ model tbl_user_blocked_driver {
   @@index([user_id])
 }
 
+model tbl_user_favorite_order {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  order_id   Int
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([user_id, order_id])
+  @@index([user_id])
+}
+
 model tbl_restricted_item {
   id          Int      @id @default(autoincrement())
   name        String   @unique @db.VarChar(150)

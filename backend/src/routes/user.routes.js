@@ -53,6 +53,7 @@ router.post("/faqs", customerContentController.faqList);
 router.get("/payment-gateways", customerContentController.paymentGatewayList);
 router.post("/home", customerContentController.homeData);
 router.post("/orders/history", customerContentController.pkgHistoryCustomer);
+router.post("/orders/favorite/toggle", require("../controllers/favoriteOrderController").toggleFavoriteOrder);
 router.post("/cancel-reasons", customerContentController.cancelReasonList);
 router.get("/app-config", customerContentController.appConfig);
 router.get("/customer-care", customerContentController.getCustomerCare);

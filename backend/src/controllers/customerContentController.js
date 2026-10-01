@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { formatLedgerTime } = require("../utils/istTime");
 const { getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
 
 // Node port of several small read-mostly cust_api/*.php endpoints:
@@ -578,7 +579,13 @@ async function pkgHistoryCustomer(req, res) {
     if (!uid) return fail(res, "Something Went Wrong!");
 
     let rows;
-    if (type === "past") {
+    if (type === "favorite") {
+      rows = await prisma.$queryRaw`
+        SELECT o.* FROM pkg_order o
+        JOIN tbl_user_favorite_order f ON f.order_id = o.id AND f.user_id = ${uid}
+        WHERE o.uid = ${uid} ORDER BY f.id DESC
+      `;
+    } else if (type === "past") {
       rows = await prisma.$queryRaw`
         SELECT * FROM pkg_order WHERE uid = ${uid} AND (o_status = 'Completed' OR o_status = 'Cancelled') ORDER BY id DESC
       `;
@@ -588,16 +595,59 @@ async function pkgHistoryCustomer(req, res) {
       `;
     }
 
-    const orderHistory = rows.map((row) => ({
-      id: String(row.id),
-      status: row.o_status,
-      order_date: row.odate,
-      total: String(row.total_dcharge > 0 ? row.total_dcharge : row.d_charge),
-      is_rate: String(row.is_rate ?? 0),
-      pick_address: row.paddress,
-      drop_address: row.daddress,
-      flow_msg: FLOW_MESSAGES_PKG_ORDER[row.order_status] ?? "",
-    }));
+    // Detail-box extras: assigned driver, model title, extra stops (for Book
+    // Again) and whether the customer favourited the order. One batched
+    // lookup each rather than a query per row.
+    const orderIds = rows.map((r) => Number(r.id));
+    const riderIds = [...new Set(rows.map((r) => Number(r.rid)).filter((id) => id > 0))];
+    const packageIds = [...new Set(rows.map((r) => Number(r.delivery_type)).filter((id) => id > 0))];
+    const [riders, packages, stops, favorites] = orderIds.length
+      ? await Promise.all([
+          riderIds.length
+            ? prisma.tbl_rider.findMany({ where: { id: { in: riderIds } }, select: { id: true, full_name: true, first_name: true, last_name: true, vehicle_no: true } })
+            : [],
+          packageIds.length ? prisma.tbl_package.findMany({ where: { id: { in: packageIds } }, select: { id: true, title: true, user_title: true } }) : [],
+          prisma.pkg_order_stops.findMany({ where: { order_id: { in: orderIds } }, orderBy: [{ order_id: "asc" }, { sequence: "asc" }] }),
+          prisma.tbl_user_favorite_order.findMany({ where: { user_id: uid, order_id: { in: orderIds } }, select: { order_id: true } }),
+        ])
+      : [[], [], [], []];
+    const riderById = Object.fromEntries(riders.map((r) => [r.id, r]));
+    const packageById = Object.fromEntries(packages.map((p) => [p.id, p]));
+    const favoriteIds = new Set(favorites.map((f) => f.order_id));
+    const stopsByOrder = {};
+    for (const stop of stops) (stopsByOrder[stop.order_id] ||= []).push(stop);
+
+    const orderHistory = rows.map((row) => {
+      const rider = riderById[Number(row.rid)];
+      const pkg = packageById[Number(row.delivery_type)];
+      return {
+        id: String(row.id),
+        status: row.o_status,
+        order_date: row.odate,
+        total: String(row.total_dcharge > 0 ? row.total_dcharge : row.d_charge),
+        is_rate: String(row.is_rate ?? 0),
+        pick_address: row.paddress,
+        drop_address: row.daddress,
+        flow_msg: FLOW_MESSAGES_PKG_ORDER[row.order_status] ?? "",
+        vehicle_type: row.category || "",
+        model_title: pkg?.user_title || pkg?.title || "",
+        // Trip start = pickup, end = drop; same zone-less IST wall-clock
+        // strings the ledger uses (see utils/istTime.formatLedgerTime).
+        trip_start_time: formatLedgerTime(row.pickup_time || row.accept_time),
+        trip_end_time: formatLedgerTime(row.drop_time || row.ddate),
+        driver_name: rider ? rider.full_name || `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "",
+        driver_vehicle_no: rider?.vehicle_no || "",
+        is_favorite: favoriteIds.has(Number(row.id)),
+        booking_type: row.booking_type ?? 1,
+        plat: row.plat, plong: row.plong, dlat: row.dlat, dlong: row.dlong,
+        pick_name: row.pick_name, pmobile: row.pmobile, pick_type: row.pick_type,
+        drop_name: row.drop_name, dmobile: row.dmobile, drop_type: row.drop_type,
+        stops: (stopsByOrder[Number(row.id)] || []).map((stop) => ({
+          lat: stop.lat, lng: stop.lng, address: stop.address || "", hno: stop.hno || "", landmark: stop.landmark || "",
+          contact_name: stop.contact_name || "", contact_number: stop.contact_number || "",
+        })),
+      };
+    });
 
     return res.status(200).json({
       OrderHistory: orderHistory,

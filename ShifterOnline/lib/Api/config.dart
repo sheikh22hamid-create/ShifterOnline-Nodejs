@@ -234,6 +234,7 @@ class Config {
   // created through the Node order flow, so Pending/Completed/Cancelled
   // orders never showed up when the app was still calling it.
   static const String nodeOrderHistory = "api/users/orders/history";
+  static const String nodeFavoriteOrderToggle = "api/users/orders/favorite/toggle";
   // Node mirrors of the remaining live-tracking / buy-order-detail / payment
   // cust_api/*.php endpoints (orderController.js + legacyOrderController.js,
   // mounted under /api/order). Same field-for-field response shape as PHP.
