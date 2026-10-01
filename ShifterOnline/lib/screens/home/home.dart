@@ -96,7 +96,7 @@ class _HomeState extends State<Home> {
   bool _homeOrderStatusChecked = false;
   final Map<String, String?> _verifiedHomeOrderStatuses = {};
 
-  // â”€â”€ LOCATION INTENT (geo: / maps.google.com / goo.gl) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- LOCATION INTENT (geo: / maps.google.com / goo.gl) --------------------
   StreamSubscription<Uri>? _intentSubscription;
 
   @override
@@ -489,7 +489,7 @@ class _HomeState extends State<Home> {
       final phpRes = await ApiWrapper.dataPostNode(Config.nodePremiumPlans, {
         'uid': uid.toString(),
       });
-      debugPrint('Home: checkNextDayEligibility PHP response â†’ $phpRes');
+      debugPrint('Home: checkNextDayEligibility PHP response \u2192 $phpRes');
 
       if (phpRes != null && (phpRes['ResponseCode'] == '200' || phpRes['Result'] == 'true' || phpRes['Result'] == true)) {
         final activePlan = phpRes['ActivePlan'];
@@ -625,7 +625,7 @@ class _HomeState extends State<Home> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
-                  "â­ Premium Exclusive Feature",
+                  "\u{2B50} Premium Exclusive Feature",
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 12,
@@ -757,7 +757,7 @@ class _HomeState extends State<Home> {
       padding: const EdgeInsets.only(bottom: 15),
       child: Row(
         children: [
-          // â”€â”€ Next Day Delivery (Half width) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // -- Next Day Delivery (Half width) ----------------
           Expanded(
             child: InkWell(
               onTap: _handleNextDayDeliveryTap,
@@ -821,7 +821,7 @@ class _HomeState extends State<Home> {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text(
-                                  "â­ VIP",
+                                  "\u{2B50} VIP",
                                   style: TextStyle(
                                     fontFamily: 'Gilroy_Bold',
                                     fontSize: 8.5,
@@ -833,7 +833,7 @@ class _HomeState extends State<Home> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            "Tomorrow Â· Super Saver",
+                            "Tomorrow \u00B7 Super Saver",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -853,7 +853,7 @@ class _HomeState extends State<Home> {
 
           if (_scheduleBookingEnabled) const SizedBox(width: 10),
 
-          // â”€â”€ Schedule Booking (Half width) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // -- Schedule Booking (Half width) -----------------
           if (_scheduleBookingEnabled) Expanded(
             child: InkWell(
               onTap: _handleScheduleBookingTap,
@@ -1488,7 +1488,7 @@ class _HomeState extends State<Home> {
       for (var index = 0; index < _extraStops.length; index++)
         'Stop ${index + 1}',
       'Drop',
-    ].join(' â†’ ');
+    ].join(' \u2192 ');
     final pickupIsCurrent = pickupType == 'current location' ||
         pickupType == 'current' ||
         (currentLat != null &&
@@ -2102,7 +2102,7 @@ class _HomeState extends State<Home> {
     debugPrint("======= currentLat ======== $currentLat");
     debugPrint("======= currentLong ======= $currentLong");
 
-    // â”€â”€ LISTEN FOR INCOMING LOCATION INTENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // -- LISTEN FOR INCOMING LOCATION INTENTS ---------------------------------
     final appLinks = AppLinks();
     // Handle initial link (app was cold-started from a geo / maps link)
     appLinks.getInitialLink().then((uri) {
@@ -2124,7 +2124,7 @@ class _HomeState extends State<Home> {
     setState(() {});
   }
 
-  // â”€â”€ LOCATION INTENT HANDLER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- LOCATION INTENT HANDLER -----------------------------------------------
   Future<void> _handleIncomingLocationUri(Uri uri) async {
     debugPrint('[AppLinks] Received URI: $uri');
 
@@ -2464,11 +2464,11 @@ class _HomeState extends State<Home> {
     try {
       final userData = getdata.read("UserLogin");
       if (userData == null || userData is! Map || userData["name"] == null) {
-        return "${"Welcome".tr}, ðŸ‘‹";
+        return "${"Welcome".tr}, \u{1F44B}";
       }
-      return "${"Welcome".tr}, ${userData["name"].toString()} ðŸ‘‹";
+      return "${"Welcome".tr}, ${userData["name"].toString()} \u{1F44B}";
     } catch (e) {
-      return "${"Welcome".tr}, ðŸ‘‹";
+      return "${"Welcome".tr}, \u{1F44B}";
     }
   }
 
@@ -2495,7 +2495,7 @@ class _HomeState extends State<Home> {
           ),
           // Space kam karne ke liye yeh changes
           subtitle: Padding(
-            padding: EdgeInsets.zero, // â† top: 0 ki jagah zero use karo
+            padding: EdgeInsets.zero, // <- top: 0 ki jagah zero use karo
             child: Row(
               children: [
                 Image.asset(
@@ -2700,7 +2700,7 @@ class _HomeState extends State<Home> {
                                                   CircularProgressIndicator(),
                                             ),
                                             Text(
-                                              "Checking nearby vehiclesâ€¦",
+                                              "Checking nearby vehicles...",
                                               style: TextStyle(
                                                 color: greaycolor,
                                                 fontFamily: 'Gilroy_Medium',
@@ -3116,7 +3116,7 @@ class _HomeState extends State<Home> {
                                       ),
                                       SizedBox(height: 2),
                                       Text(
-                                        "Set your price Â· Drivers will bid",
+                                        "Set your price \u00B7 Drivers will bid",
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.8),
                                           fontFamily: 'Gilroy_Medium',

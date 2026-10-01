@@ -124,34 +124,42 @@ async function listFavoriteDrivers(req, res) {
 // table). New orders are written to `pkg_order` (see orderController.js),
 // so counting against buy_order would never hit `ulimit` for any order
 // placed since the migration. Counts against pkg_order instead so the
-// per-user usage limit is actually enforced going forward.
+// --- couponlist.php ---
 async function couponList(req, res) {
   try {
     const uid = Number(req.body?.uid || 0);
-    if (!uid) return fail(res, "Something Went Wrong!");
 
     const today = new Date();
-    const candidates = await prisma.tbl_coupon.findMany({ where: { status: 1, OR: [{ cusefor: 0 }, { cusefor: uid }] } });
+    const where = {
+      status: 1,
+      ...(uid > 0 ? { OR: [{ cusefor: 0 }, { cusefor: uid }] } : { cusefor: 0 }),
+    };
+    const candidates = await prisma.tbl_coupon.findMany({ where, orderBy: { id: "desc" } });
 
     const result = [];
     for (const row of candidates) {
-      const usedCount = await prisma.pkg_order.count({ where: { cou_id: row.id, uid } });
-      if (usedCount >= row.ulimit) continue;
+      if (uid > 0 && row.ulimit) {
+        const usedCount = await prisma.pkg_order.count({ where: { cou_id: row.id, uid } });
+        if (usedCount >= row.ulimit) continue;
+      }
 
-      if (new Date(row.cdate) < today) {
-        await prisma.tbl_coupon.update({ where: { id: row.id }, data: { status: 0 } });
-        continue;
+      if (row.cdate) {
+        const expiry = new Date(row.cdate);
+        expiry.setHours(23, 59, 59, 999);
+        if (expiry < today) {
+          continue;
+        }
       }
 
       result.push({
-        id: row.id,
-        c_img: row.c_img,
-        cdate: row.cdate,
-        c_desc: row.c_desc,
-        c_value: row.c_value,
-        coupon_code: row.c_title,
-        coupon_title: row.ctitle,
-        min_amt: row.min_amt,
+        id: String(row.id),
+        c_img: row.c_img || "",
+        cdate: row.cdate ? row.cdate.toISOString() : null,
+        c_desc: row.c_desc || "",
+        c_value: String(row.c_value || "0"),
+        coupon_code: row.c_title || "",
+        coupon_title: row.ctitle || row.c_title || "",
+        min_amt: String(row.min_amt || "0"),
       });
     }
 
@@ -163,27 +171,83 @@ async function couponList(req, res) {
     });
   } catch (err) {
     logger.error("customerContentController.couponList failed:", err);
-    return fail(res, "Internal server error", 500);
+    return res.status(200).json({
+      couponlist: [],
+      ResponseCode: "200",
+      Result: "false",
+      ResponseMsg: "Coupon Not Founded!",
+    });
   }
 }
 
-// --- check_coupon.php --- (same buy_order -> pkg_order adaptation as above)
+// --- check_coupon.php ---
 async function checkCoupon(req, res) {
   try {
     const uid = Number(req.body?.uid || 0);
     const cid = Number(req.body?.cid || 0);
-    if (!uid || !cid) return fail(res, "Something Went Wrong!");
+    const code = String(req.body?.coupon_code || req.body?.code || "").trim();
 
-    const coupon = await prisma.tbl_coupon.findUnique({ where: { id: cid } });
-    const usedCount = await prisma.pkg_order.count({ where: { cou_id: cid, uid } });
+    if (!cid && !code) {
+      return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Please select or enter a coupon code" });
+    }
 
-    if (coupon && usedCount >= coupon.ulimit) return fail(res, "Coupon Limit Exists!!");
-    if (!coupon) return fail(res, "Coupon Not Exist!!");
+    let coupon = null;
+    if (cid) {
+      coupon = await prisma.tbl_coupon.findUnique({ where: { id: cid } });
+    } else if (code) {
+      coupon = await prisma.tbl_coupon.findFirst({
+        where: {
+          status: 1,
+          OR: [
+            { c_title: code },
+            { ctitle: code },
+          ],
+        },
+      });
+    }
 
-    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Coupon Applied Successfully!!" });
+    if (!coupon || coupon.status === 0) {
+      return res.status(200).json({ ResponseCode: "404", Result: "false", ResponseMsg: "Coupon Not Exist or Expired!!" });
+    }
+
+    if (uid && coupon.cusefor !== 0 && coupon.cusefor !== uid) {
+      return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "This coupon is not valid for your account!" });
+    }
+
+    const today = new Date();
+    if (coupon.cdate) {
+      const expiry = new Date(coupon.cdate);
+      expiry.setHours(23, 59, 59, 999);
+      if (expiry < today) {
+        return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "This coupon has expired!" });
+      }
+    }
+
+    if (uid && coupon.ulimit) {
+      const usedCount = await prisma.pkg_order.count({ where: { cou_id: coupon.id, uid } });
+      if (usedCount >= coupon.ulimit) {
+        return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Coupon Limit Exists!!" });
+      }
+    }
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Coupon Applied Successfully!!",
+      coupon: {
+        id: String(coupon.id),
+        c_img: coupon.c_img || "",
+        cdate: coupon.cdate ? coupon.cdate.toISOString() : null,
+        c_desc: coupon.c_desc || "",
+        c_value: String(coupon.c_value || "0"),
+        coupon_code: coupon.c_title || "",
+        coupon_title: coupon.ctitle || coupon.c_title || "",
+        min_amt: String(coupon.min_amt || "0"),
+      },
+    });
   } catch (err) {
     logger.error("customerContentController.checkCoupon failed:", err);
-    return fail(res, "Internal server error", 500);
+    return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
 
