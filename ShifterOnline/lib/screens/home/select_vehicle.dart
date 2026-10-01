@@ -17,6 +17,7 @@ import '../../utils/schedule_time.dart';
 import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
+import 'CouponList.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 
@@ -87,6 +88,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   double _referralPointValue = 1;
   double _referralPointsAvailable = 0;
   bool _useReferralPoints = false;
+  Map<String, dynamic>? _appliedCoupon;
   List<Map<String, dynamic>> _goodsTypes = [];
   int? _goodsTypeId;
   bool _goodsOtherSelected = false;
@@ -807,7 +809,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'drop_name': _text(_dropData['c_name'], 'Recipient'), 'dmobile': _text(_dropData['c_number']), 'drop_type': _text(_dropData['type'], 'Other'),
       'package_weight': '0', 'package_cost': '0', 'description': 'No description provided', 'p_method_id': payValue,
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
-      'extra_mile_charge': 0, 'cou_id': 0, 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
+      'extra_mile_charge': 0, 'cou_id': _appliedCoupon == null ? 0 : (int.tryParse(_appliedCoupon!['id'].toString()) ?? 0), 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
       if (_goodsTypeId != null) 'goods_type_id': _goodsTypeId,
       if (_goodsOtherSelected && _goodsOtherController.text.trim().isNotEmpty) 'goods_type_other': _goodsOtherController.text.trim(),
@@ -1840,6 +1842,39 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           ),
         ),
       ],
+      const SizedBox(height: 10),
+      InkWell(
+        onTap: () async {
+          final fare = _selectedModel == null ? 0.0 : (_modelFare(_selectedModel!) ?? 0.0);
+          final picked = await Get.to(() => CouponListPage(bill: fare.toStringAsFixed(2)));
+          if (picked is Map && mounted) setState(() => _appliedCoupon = Map<String, dynamic>.from(picked));
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: _appliedCoupon != null ? linercolor.withOpacity(.08) : notifier.getBgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _appliedCoupon != null ? linercolor : notifier.bordecolor),
+          ),
+          child: Row(children: [
+            Icon(Icons.local_offer_outlined, color: _appliedCoupon != null ? linercolor : greaycolor, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _appliedCoupon == null
+                    ? 'Apply coupon'
+                    : 'Coupon ${_text(_appliedCoupon!['coupon_code'])} applied (${_text(_appliedCoupon!['c_value'])} off)',
+                style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13),
+              ),
+            ),
+            if (_appliedCoupon != null)
+              InkWell(onTap: () => setState(() => _appliedCoupon = null), child: Icon(Icons.close, color: greaycolor, size: 18))
+            else
+              Icon(Icons.chevron_right, color: greaycolor, size: 18),
+          ]),
+        ),
+      ),
       const SizedBox(height: 14),
       Text('Goods type (optional)', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)),
       const SizedBox(height: 8),

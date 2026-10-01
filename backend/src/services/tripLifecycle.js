@@ -522,7 +522,9 @@ async function updateStatus(orderId, riderId, status) {
     // again" amount for cash-collection and commission purposes: the
     // platform absorbs it so the driver's net payout is unaffected.
     const referralPointsAmount = Number(order.referral_points_amount) || 0;
-    const prepaidTotal = advancePaymentCollected + referralPointsAmount;
+    // Coupon discount is absorbed by the platform too (server-computed at booking).
+    const couponAmount = Number(order.cou_amt) || 0;
+    const prepaidTotal = advancePaymentCollected + referralPointsAmount + couponAmount;
 
     const rider = await prisma.tbl_rider.findUnique({
       where: { id: riderId },

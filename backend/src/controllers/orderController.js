@@ -16,6 +16,7 @@ const orderDestinationService = require("../services/orderDestinationService");
 const orderPickupService = require("../services/orderPickupService");
 const orderStopsService = require("../services/orderStopsService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
+const { resolveCoupon } = require("../services/couponService");
 
 async function customerTripProgress(order) {
   if (!order.rid) return null;
@@ -360,6 +361,11 @@ async function createOrderCore({
   // fare) - the redeemed amount is tracked separately and only reduces what
   // the CUSTOMER pays in cash, netted off at ride completion in
   // tripLifecycle.js alongside advance_payment. Platform absorbs the cost.
+  // Coupon: validated and priced server-side from the picked cou_id (the
+  // client's cou_amt is ignored). Absorbed like referral points below.
+  const coupon = await resolveCoupon({ couId, uid, fare: finalTotalCharge });
+  if (!coupon.ok) return coupon;
+
   let referralPointsUsed = 0;
   let referralPointsAmount = 0;
   if (useReferralPoints && finalTotalCharge > 0) {
@@ -370,7 +376,7 @@ async function createOrderCore({
     const percent = Number(settings?.ride_discount_percent) || 0;
     if (settings?.referral_enabled && percent > 0) {
       const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
-      const maxByPercent = Math.floor((finalTotalCharge * percent) / 100 / pointValue);
+      const maxByPercent = Math.floor((Math.max(0, finalTotalCharge - coupon.cou_amt) * percent) / 100 / pointValue);
       const available = Number(customerPoints?.referral_points) || 0;
       const pointsUsed = Math.min(available, maxByPercent);
       if (pointsUsed > 0) {
@@ -455,8 +461,8 @@ async function createOrderCore({
       time_duration: 0,
       package_weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
       package_cost: Number(packageCost) || 0,
-      cou_id: Number(couId) || 0,
-      cou_amt: Number(couAmt) || 0,
+      cou_id: coupon.cou_id,
+      cou_amt: coupon.cou_amt,
       radius_range: Math.round(resolvedRadiusKm),
       radius_charge: 0,
       booking_type: Number(bookingType) || 1,
@@ -598,6 +604,9 @@ async function createOrder(req, res) {
     });
 
     if (!result.ok && result.code === "VALIDATION") {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "INVALID_COUPON") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "INVALID_GOODS_TYPE") {

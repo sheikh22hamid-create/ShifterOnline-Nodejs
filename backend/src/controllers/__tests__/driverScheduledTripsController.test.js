@@ -28,7 +28,7 @@ describe("listScheduledTrips", () => {
   it("lists pending booking_type=2 orders in the rider's own category and city, within 7 days, marking which ones the rider is already interested in", async () => {
     prisma.tbl_rider.findUnique.mockResolvedValueOnce({ id: 7, vehicle: "Bike", city_id: 3 });
     prisma.pkg_order.findMany.mockResolvedValueOnce([
-      { id: 100, category: "Bike", city_id: 3, schedule_date_time: "2026-09-22T15:00:00.000Z", paddress: "A", daddress: "B", total_dcharge: 120 },
+      { id: 100, category: "Bike", city_id: 3, schedule_date_time: new Date(Date.now() + 2 * 3600000).toISOString(), paddress: "A", daddress: "B", total_dcharge: 120 },
     ]);
     prisma.pkg_order_interest.findMany.mockResolvedValueOnce([{ order_id: 100, rider_id: 7 }]);
 

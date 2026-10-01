@@ -16,6 +16,8 @@ jest.mock("../../config/db", () => ({
   tbl_custom_order_bid: { findFirst: jest.fn(), create: jest.fn() },
   $queryRaw: jest.fn(),
   $executeRaw: jest.fn(),
+  $transaction: jest.fn(),
+  app_settings: { findFirst: jest.fn().mockResolvedValue(null) },
 }));
 jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn() }));
 jest.mock("../../utils/advancePaymentTimer", () => ({ getAdvancePaymentTimerInfo: jest.fn().mockReturnValue({}) }));
@@ -96,6 +98,9 @@ describe("customerWalletController.addWallet", () => {
     jest.clearAllMocks();
     prisma.tbl_user.findFirst.mockResolvedValue({ id: 15, wallet: 50 });
     prisma.tbl_user.update.mockResolvedValue({ wallet: 150 });
+    // addWallet writes the credit, the 2.5% gateway-charge debit and the
+    // balance update in one transaction; run it against the same mocks.
+    prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
   });
 
   it("refuses a payment that fails Razorpay verification", async () => {
@@ -112,9 +117,14 @@ describe("customerWalletController.addWallet", () => {
     const res = mockRes();
     await addWallet({ body }, res);
     expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ razorpay_payment_id: "pay_1" }) })
+      expect.objectContaining({ data: expect.objectContaining({ razorpay_payment_id: "pay_1", type: "credit", amount: 100 }) })
     );
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 15 }, data: { wallet: { increment: 100 } } });
+    // 2.5% payment gateway charge is recorded as its own debit line ...
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "debit", amount: 2.5, remark: "Payment Gateway Charge (2.5%)" }) })
+    );
+    // ... and only the net amount reaches the wallet.
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 15 }, data: { wallet: { increment: 97.5 } } });
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: true }));
   });
 
