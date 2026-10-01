@@ -128,6 +128,38 @@ public class OrderAlertPlayer {
         }
     }
 
+    /**
+     * Plays the new-order ringtone once (order cancelled alert). Same sound as
+     * a new order, but never loops and ignores the VOICE/RINGTONE preference:
+     * a cancellation must be unmistakable. Skipped only when the ring volume
+     * is muted, like every other order alert.
+     */
+    public static synchronized void playOnce(Context context) {
+        if (context == null) return;
+        Context appContext = context.getApplicationContext();
+        try {
+            AudioManager audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null && audioManager.getStreamVolume(AudioManager.STREAM_RING) <= 0) {
+                Log.d(TAG, "STREAM_RING volume is 0 - skipping cancel alert sound");
+                return;
+            }
+            stop();
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+            activeMediaPlayer = MediaPlayer.create(appContext, R.raw.movigo_ringtone, attrs, 0);
+            if (activeMediaPlayer != null) {
+                activeMediaPlayer.setLooping(false);
+                activeMediaPlayer.setOnCompletionListener(mp -> stopRingtone());
+                activeMediaPlayer.start();
+                Log.d(TAG, "Cancel alert ringtone played once");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error playing cancel alert ringtone", e);
+        }
+    }
+
     private static synchronized void playRingtoneLoop(Context context) {
         try {
             stopRingtone();

@@ -123,6 +123,10 @@ public class SocketOrderRouter {
         cancelBroadcast.putExtra("reason", data.optString("reason", ""));
         cancelBroadcast.setPackage(context.getPackageName());
         context.sendBroadcast(cancelBroadcast);
+
+        // Popup + ringtone wherever the driver is (other apps, Maps, lock
+        // screen) - the broadcast above only reaches this app's own screens.
+        com.shifter.driver.utility.OrderCancelAlert.show(context, orderId, data.optString("reason", ""));
     }
 
     /**

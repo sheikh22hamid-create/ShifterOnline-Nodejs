@@ -73,6 +73,11 @@ public class OrderOverlayService extends Service {
             startForeground(FOREGROUND_ID, notification);
         }
 
+        if (intent != null && "cancelled".equals(intent.getStringExtra("mode"))) {
+            showCancelledOverlay(intent.getStringExtra("order_id"), intent.getStringExtra("reason"));
+            return START_NOT_STICKY;
+        }
+
         if (intent != null && intent.getBooleanExtra("dismiss", false)) {
             // The Node socket's order:dismiss arrived for the order this
             // overlay is currently showing (e.g. it timed out or someone
@@ -125,6 +130,79 @@ public class OrderOverlayService extends Service {
         }
 
         return START_NOT_STICKY;
+    }
+
+    /**
+     * "Order cancelled by the customer" popup over whatever app the driver is
+     * in (see utility/OrderCancelAlert). The ringtone is played once by the
+     * caller; this only draws the dialog and closes it on OK or after 20s.
+     */
+    private void showCancelledOverlay(String cancelledOrderId, String reason) {
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "OrderOverlayService::CancelWakeLock");
+            wakeLock.acquire(20000);
+        }
+
+        if (rootContainer != null && windowManager != null) {
+            try {
+                if (rootContainer.isAttachedToWindow()) windowManager.removeView(rootContainer);
+            } catch (Exception ignored) {}
+            rootContainer = null;
+        }
+
+        rootContainer = new FrameLayout(this);
+        rootContainer.setBackgroundColor(Color.parseColor("#99000000"));
+        android.view.ContextThemeWrapper themed = new android.view.ContextThemeWrapper(this, R.style.Theme_UserApp);
+        View view = LayoutInflater.from(themed).inflate(R.layout.dialog_order_cancelled, rootContainer, false);
+        FrameLayout.LayoutParams viewParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        viewParams.gravity = Gravity.CENTER;
+        int margin = (int) (12 * getResources().getDisplayMetrics().density);
+        viewParams.setMargins(margin, margin, margin, margin);
+        rootContainer.addView(view, viewParams);
+
+        TextView txtId = view.findViewById(R.id.txt_cancel_order_id);
+        if (txtId != null && cancelledOrderId != null) txtId.setText("#" + cancelledOrderId);
+        TextView txtReason = view.findViewById(R.id.txt_cancel_reason);
+        if (txtReason != null && reason != null && !reason.trim().isEmpty()) {
+            txtReason.setText("Reason: " + reason);
+            txtReason.setVisibility(View.VISIBLE);
+        }
+        Button ok = view.findViewById(R.id.btn_cancel_ok);
+        if (ok != null) ok.setOnClickListener(v -> removeOverlay());
+
+        int layoutType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                layoutType,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                        | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.CENTER;
+        try {
+            windowManager.addView(rootContainer, params);
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding cancel overlay to WindowManager", e);
+            stopSelf();
+            return;
+        }
+
+        if (countDownTimer != null) countDownTimer.cancel();
+        countDownTimer = new CountDownTimer(20000, 1000) {
+            @Override public void onTick(long millisUntilFinished) {}
+            @Override public void onFinish() { removeOverlay(); }
+        }.start();
     }
 
     private void showOverlayDialog(Intent intent) {
