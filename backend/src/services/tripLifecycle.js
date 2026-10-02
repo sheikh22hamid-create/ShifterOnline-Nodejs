@@ -15,6 +15,7 @@ const walletPrepayment = require("./walletPrepaymentRefund");
 const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
+const earlyDropService = require("./earlyDropService");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
@@ -392,7 +393,9 @@ async function rejectOrder(orderId, riderId, packageId = null) {
   return { success: true };
 }
 
-async function updateStatus(orderId, riderId, status) {
+// opts: { lat, lng, earlyDrop } - the driver's position at "complete" and
+// whether they confirmed an Early Drop (see services/earlyDropService).
+async function updateStatus(orderId, riderId, status, opts = {}) {
   if (['arrived', 'pickup', 'arrived_drop'].includes(status) || /^(arrived|complete)_stop_[1-9]\d*$/.test(status)) {
     try {
       const data = await require('./driverTripService').progressTrip({ orderId, riderId, action: status });
@@ -402,7 +405,7 @@ async function updateStatus(orderId, riderId, status) {
       throw error;
     }
   }
-  const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  let order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (!order) {
     return { success: false, msg: "Order not found" };
   }
@@ -446,6 +449,32 @@ async function updateStatus(orderId, riderId, status) {
       const arrival = await prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: orderId, rid: riderId } } });
       if (order.order_status !== 3 || !arrival?.drop_wait_start) return { success: false, msg: "Confirm drop arrival and handover before completing delivery" };
     }
+    // Early Drop: a driver who completes well short of the booked drop (the
+    // customer asked to be dropped earlier) ends the trip at their current
+    // GPS point, re-priced for the distance actually travelled. Only for apps
+    // that send their position (opts.lat), so older builds keep today's flow.
+    let earlyDrop = null;
+    if (opts.lat !== undefined && opts.lat !== null) {
+      const point = await earlyDropService.resolveDriverPosition(riderId, opts.lat, opts.lng);
+      const distanceM = earlyDropService.distanceToDropM(order, point);
+      if (earlyDropService.isEarlyDrop(distanceM)) {
+        if (!opts.earlyDrop) {
+          const preview = await earlyDropService.computeEarlyDropFare(order, point);
+          return {
+            success: false,
+            early_drop_required: true,
+            distance_m: Math.round(distanceM),
+            old_fare: preview.oldFare,
+            new_fare: preview.newFare,
+            new_distance: preview.newDistance,
+            msg: "You are away from the booked drop location. Confirm early drop to end the trip here.",
+          };
+        }
+        earlyDrop = await earlyDropService.applyEarlyDrop(order, riderId, point, distanceM);
+        order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+      }
+    }
+
     const now = new Date();
     const waitTimer = await prisma.pkg_order_wait_timer.findUnique({
       where: { order_id_rid: { order_id: orderId, rid: riderId } },
@@ -776,7 +805,7 @@ async function updateStatus(orderId, riderId, status) {
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
-    return { success: true, order_status: 5, o_status: "Completed" };
+    return { success: true, order_status: 5, o_status: "Completed", ...(earlyDrop ? { early_drop: earlyDrop, final_fare: finalTotal } : {}) };
   }
 
   return { success: false, msg: `Unknown status transition: ${status}` };
@@ -1418,7 +1447,12 @@ async function sweepOverduePickups() {
  * null and would otherwise never be swept by anything).
  */
 async function sweepPickupRelocationCeiling() {
-  const { ceilingMinutes } = await getPickupRelocateSettings();
+  const { ceilingMinutes: configuredCeiling } = await getPickupRelocateSettings();
+  // The ceiling is an OUTER limit measured from first arrival; it can never be
+  // shorter than the OTP timeout itself, otherwise a ceiling set too low
+  // (e.g. 2) cancels the trip long before the admin's OTP timeout (e.g. 7)
+  // and tells the driver "no OTP within 2 minutes".
+  const ceilingMinutes = Math.max(configuredCeiling, await getPickupOtpTimeoutMinutes());
   const cutoff = new Date(Date.now() - ceilingMinutes * 60000);
   let overdue;
   try {

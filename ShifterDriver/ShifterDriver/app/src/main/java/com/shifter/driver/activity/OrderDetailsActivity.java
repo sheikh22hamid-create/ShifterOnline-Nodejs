@@ -2285,6 +2285,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     // ------------------------------------------------ API
     private void orderstatus(String status, String comment) {
+        orderstatus(status, comment, false);
+    }
+
+    // earlyDrop = the driver already confirmed ending the trip short of the
+    // booked drop (see the early_drop_required branch of the ack below).
+    private void orderstatus(String status, String comment, boolean earlyDrop) {
         if (tripActionPending) return;
         tripActionPending = true;
         binding.txtConfirm.setEnabled(false);
@@ -2297,6 +2303,16 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             payload.put("order_id", orderItem.getId());
             payload.put("rider_id", riderData.getId());
             payload.put("status", status);
+            if ("complete".equals(status)) {
+                // Current GPS: if it is well short of the booked drop the
+                // server ends the trip here (Early Drop) and re-prices it.
+                android.location.Location loc = LocationUpdateService.getLocation();
+                if (loc != null && loc.getLatitude() != 0.0 && loc.getLongitude() != 0.0) {
+                    payload.put("lat", loc.getLatitude());
+                    payload.put("lng", loc.getLongitude());
+                    if (earlyDrop) payload.put("early_drop", true);
+                }
+            }
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -2304,6 +2320,26 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         com.shifter.driver.socket.NodeSocketManager.getInstance().emitStatusUpdate(payload, ackData -> {
             boolean success = ackData.optBoolean("Result", false);
             String msg = ackData.optString("msg", "");
+            if (!success && ackData.optBoolean("early_drop_required", false)) {
+                final double km = ackData.optDouble("distance_m", 0) / 1000.0;
+                final int oldFare = (int) Math.round(ackData.optDouble("old_fare", 0));
+                final int newFare = (int) Math.round(ackData.optDouble("new_fare", 0));
+                runOnUiThread(() -> {
+                    tripActionPending = false;
+                    custPrograssbar.closePrograssBar();
+                    if (isFinishing() || isDestroyed()) return;
+                    binding.txtConfirm.setEnabled(true);
+                    new android.app.AlertDialog.Builder(this)
+                            .setTitle("Early drop?")
+                            .setMessage(String.format(java.util.Locale.getDefault(),
+                                    "You are %.1f km before the booked drop location.\n\nEnd the trip here? Your current location becomes the drop point and the fare is recalculated for the distance travelled.\n\nFare: Rs. %d to Rs. %d",
+                                    km, oldFare, newFare))
+                            .setNegativeButton("Not yet", null)
+                            .setPositiveButton("End trip here", (d, w) -> orderstatus("complete", "", true))
+                            .show();
+                });
+                return;
+            }
             JsonObject fakeResult = new JsonObject();
             fakeResult.addProperty("Result", success ? "true" : "false");
             fakeResult.addProperty("ResponseMsg", msg);
@@ -2992,40 +3028,37 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         box.setPadding(pad, pad, pad, 0);
         scroll.addView(box);
 
-        final android.widget.RatingBar[] bars = new android.widget.RatingBar[4];
-        String[] labels = {"Customer", "Pickup location", "Drop location", "Pickup - drop route"};
+        // Legend so the driver knows what the star scale means.
+        android.widget.TextView legend = new android.widget.TextView(this);
+        legend.setText("Rate from 1 to 5 stars\n\u2605 1 Star = Low Rating     \u2605\u2605\u2605\u2605\u2605 5 Stars = Best Rating");
+        legend.setTextSize(12.5f);
+        legend.setTextColor(android.graphics.Color.parseColor("#92400E"));
+        android.graphics.drawable.GradientDrawable legendBg = new android.graphics.drawable.GradientDrawable();
+        legendBg.setColor(android.graphics.Color.parseColor("#FEF3C7"));
+        legendBg.setCornerRadius(10 * getResources().getDisplayMetrics().density);
+        legend.setBackground(legendBg);
+        int lp = (int) (10 * getResources().getDisplayMetrics().density);
+        legend.setPadding(lp, lp, lp, lp);
+        box.addView(legend);
+
+        final int[] ratings = new int[4];
+        String[] labels = {"Customer rating", "Pickup location", "Drop location", "Pickup - drop road"};
         for (int i = 0; i < labels.length; i++) {
-            android.widget.TextView label = new android.widget.TextView(this);
-            label.setText(labels[i]);
-            label.setTextSize(13);
-            box.addView(label);
-            android.widget.RatingBar bar = new android.widget.RatingBar(this, null, android.R.attr.ratingBarStyleSmall);
-            bar.setNumStars(5);
-            bar.setStepSize(1f);
-            bar.setRating(0f);
-            box.addView(bar);
-            bars[i] = bar;
+            box.addView(feedbackLabel(labels[i]));
+            box.addView(buildStarRow(ratings, i));
         }
 
-        android.widget.CheckBox noEntry = new android.widget.CheckBox(this);
-        noEntry.setText("There was a no-entry zone on this route");
-        box.addView(noEntry);
+        box.addView(feedbackLabel("Was there a no-entry zone on this road?"));
+        final android.widget.Spinner noEntrySpinner = feedbackSpinner(new String[]{"No", "Yes"});
+        box.addView(noEntrySpinner);
 
-        android.widget.TextView typeLabel = new android.widget.TextView(this);
-        typeLabel.setText("Customer type");
-        typeLabel.setTextSize(13);
-        box.addView(typeLabel);
-        android.widget.Spinner typeSpinner = new android.widget.Spinner(this);
+        box.addView(feedbackLabel("Customer type"));
         final String[] typeValues = {"", "commercial", "home_shifting"};
-        typeSpinner.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"Not specified", "Commercial", "Home shifting"}));
+        final android.widget.Spinner typeSpinner = feedbackSpinner(new String[]{"Not specified", "Commercial", "Home shifting"});
         box.addView(typeSpinner);
 
-        android.widget.TextView goodsLabel = new android.widget.TextView(this);
-        goodsLabel.setText("Goods type");
-        goodsLabel.setTextSize(13);
-        box.addView(goodsLabel);
-        android.widget.Spinner goodsSpinner = new android.widget.Spinner(this);
+        box.addView(feedbackLabel("Goods type"));
+        final android.widget.Spinner goodsSpinner = feedbackSpinner(new String[]{"Not specified"});
         final java.util.List<String> goodsNames = new java.util.ArrayList<>();
         final java.util.List<Integer> goodsIds = new java.util.ArrayList<>();
         goodsNames.add("Not specified");
@@ -3064,10 +3097,10 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     String[] keys = {"customer_rating", "pickup_location_rating", "drop_location_rating", "route_rating"};
                     boolean any = false;
                     for (int i = 0; i < keys.length; i++) {
-                        int stars = Math.round(bars[i].getRating());
+                        int stars = ratings[i];
                         if (stars >= 1) { body.put(keys[i], stars); any = true; }
                     }
-                    if (noEntry.isChecked()) { body.put("no_entry_zone", true); any = true; }
+                    if (noEntrySpinner.getSelectedItemPosition() == 1) { body.put("no_entry_zone", true); any = true; }
                     int typeIndex = typeSpinner.getSelectedItemPosition();
                     if (typeIndex > 0) { body.put("customer_type", typeValues[typeIndex]); any = true; }
                     int goodsIndex = goodsSpinner.getSelectedItemPosition();
@@ -3083,6 +3116,68 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 })
                 .setNegativeButton("SKIP", (d, w) -> navigateToHomeAndFinish(""))
                 .show();
+    }
+
+    private android.widget.TextView feedbackLabel(String text) {
+        android.widget.TextView label = new android.widget.TextView(this);
+        label.setText(text);
+        label.setTextSize(14);
+        label.setTypeface(null, android.graphics.Typeface.BOLD);
+        label.setTextColor(android.graphics.Color.parseColor("#1F2937"));
+        int top = (int) (14 * getResources().getDisplayMetrics().density);
+        label.setPadding(0, top, 0, (int) (6 * getResources().getDisplayMetrics().density));
+        return label;
+    }
+
+    // Rounded, outlined dropdown so the form reads as selectable fields.
+    private android.widget.Spinner feedbackSpinner(String[] options) {
+        float d = getResources().getDisplayMetrics().density;
+        android.widget.Spinner spinner = new android.widget.Spinner(this);
+        spinner.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, options));
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(android.graphics.Color.WHITE);
+        bg.setCornerRadius(10 * d);
+        bg.setStroke((int) (1 * d), android.graphics.Color.parseColor("#D1D5DB"));
+        spinner.setBackground(bg);
+        spinner.setPadding((int) (10 * d), (int) (10 * d), (int) (10 * d), (int) (10 * d));
+        return spinner;
+    }
+
+    // Five tappable stars. Tapping star N rates N; tapping the current
+    // rating again clears it (the rating stays optional).
+    private android.widget.LinearLayout buildStarRow(final int[] ratings, final int index) {
+        float d = getResources().getDisplayMetrics().density;
+        final android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        final android.widget.TextView[] stars = new android.widget.TextView[5];
+        final android.widget.TextView meaning = new android.widget.TextView(this);
+        meaning.setTextSize(12);
+        meaning.setTypeface(null, android.graphics.Typeface.BOLD);
+        meaning.setTextColor(android.graphics.Color.parseColor("#B45309"));
+        meaning.setPadding((int) (8 * d), 0, 0, 0);
+        final String[] meanings = {"", "Low", "Poor", "Average", "Good", "Best"};
+        for (int s = 0; s < 5; s++) {
+            final int value = s + 1;
+            android.widget.TextView star = new android.widget.TextView(this);
+            star.setText("★");
+            star.setTextSize(34);
+            star.setGravity(android.view.Gravity.CENTER);
+            star.setTextColor(android.graphics.Color.parseColor("#D1D5DB"));
+            star.setPadding((int) (4 * d), 0, (int) (4 * d), 0);
+            star.setClickable(true);
+            star.setOnClickListener(v -> {
+                ratings[index] = ratings[index] == value ? 0 : value;
+                for (int k = 0; k < 5; k++) {
+                    stars[k].setTextColor(android.graphics.Color.parseColor(k < ratings[index] ? "#F59E0B" : "#D1D5DB"));
+                }
+                meaning.setText(meanings[ratings[index]]);
+            });
+            stars[s] = star;
+            row.addView(star);
+        }
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.addView(meaning);
+        return row;
     }
 
     private void showCashCollectionConfirmationDialog(android.app.Dialog parentDialog, String formattedCash) {

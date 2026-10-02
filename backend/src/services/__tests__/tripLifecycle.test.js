@@ -1518,6 +1518,21 @@ describe("tripLifecycle.sweepPickupRelocationCeiling", () => {
     });
   });
 
+  it("never cancels before the OTP timeout, even if the ceiling is configured lower (ceiling 2 vs OTP timeout 7)", async () => {
+    getPickupRelocateSettings.mockResolvedValue({
+      ceilingMinutes: 2, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
+    });
+    prisma.app_settings.findFirst.mockResolvedValueOnce({ setting_value: "7" });
+    prisma.pkg_order_wait_timer.findMany.mockResolvedValue([]);
+
+    const before = Date.now();
+    await tripLifecycle.sweepPickupRelocationCeiling();
+
+    const cutoffArg = prisma.pkg_order_wait_timer.findMany.mock.calls[0][0].where.first_arrival_at.lte;
+    expect(before - cutoffArg.getTime()).toBeGreaterThan(6.9 * 60 * 1000);
+    expect(before - cutoffArg.getTime()).toBeLessThan(7.1 * 60 * 1000);
+  });
+
   it("uses the admin-configured ceiling minutes", async () => {
     getPickupRelocateSettings.mockResolvedValue({
       ceilingMinutes: 60, smallMoveThresholdM: 200, otpMismatchFlagM: 500, driverCompensation: 0,
