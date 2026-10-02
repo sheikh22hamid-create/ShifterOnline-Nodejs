@@ -14,7 +14,11 @@ import '../home/home.dart' show getdata;
 /// and say so.
 class OrderRouteMap extends StatefulWidget {
   final String orderId;
-  const OrderRouteMap({super.key, required this.orderId});
+
+  /// true = card embedded in the order details page (non-interactive preview
+  /// with a "Full screen" button); false = the full Route Map page.
+  final bool embedded;
+  const OrderRouteMap({super.key, required this.orderId, this.embedded = false});
 
   @override
   State<OrderRouteMap> createState() => _OrderRouteMapState();
@@ -78,11 +82,20 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
       var index = 0;
       void flush({bool dashed = false}) {
         if (run.length >= 2) {
+          // White casing under the coloured line makes the driven route pop.
+          lines.add(Polyline(
+            polylineId: PolylineId("casing_${index++}"),
+            points: List<LatLng>.from(run),
+            color: Colors.white,
+            width: 10,
+            zIndex: 1,
+          ));
           lines.add(Polyline(
             polylineId: PolylineId("run_${index++}"),
             points: List<LatLng>.from(run),
-            color: runPhase == 0 ? const Color(0xff2563EB) : linercolor,
-            width: 5,
+            color: runPhase == 0 ? const Color(0xff2563EB) : const Color(0xffF97316),
+            width: 6,
+            zIndex: 2,
             patterns: dashed ? _gapPattern : <PatternItem>[],
           ));
         }
@@ -204,6 +217,17 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
     );
   }
 
+  Widget _legendLine(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 18, height: 4, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 11.5, color: greaycolor, fontFamily: "Gilroy_Medium")),
+      ],
+    );
+  }
+
   Widget _summaryCard() {
     final distance = double.tryParse(_route?["distance_km"]?.toString() ?? "") ?? 0;
     return SafeArea(
@@ -213,7 +237,7 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, -3))],
+          boxShadow: widget.embedded ? null : [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, -3))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -243,6 +267,8 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
               spacing: 14,
               runSpacing: 4,
               children: [
+                if (_hasTrail) _legendLine(const Color(0xff2563EB), "Driver to Pickup".tr),
+                if (_hasTrail) _legendLine(const Color(0xffF97316), "Pickup to Drop".tr),
                 _legendDot(const Color(0xff00B0FF), "Driver start".tr),
                 _legendDot(Colors.green, "Pickup".tr),
                 if (_route?["final_pickup"] != null) _legendDot(Colors.orange, "Final pickup".tr),
@@ -256,9 +282,85 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
     );
   }
 
+  void _openFullScreen() => Get.to(() => OrderRouteMap(orderId: widget.orderId));
+
+  Widget _embeddedCard(LatLng initial) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: greaycolor.withOpacity(0.25)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
+            child: Row(
+              children: [
+                Icon(Icons.route_rounded, color: linercolor, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("Route Map".tr, style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15)),
+                ),
+                if (!_loading && _error == null)
+                  TextButton.icon(
+                    onPressed: _openFullScreen,
+                    icon: Icon(Icons.fullscreen_rounded, size: 18, color: linercolor),
+                    label: Text("Full screen".tr, style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12)),
+                  ),
+              ],
+            ),
+          ),
+          if (_loading)
+            SizedBox(height: 220, child: Center(child: CircularProgressIndicator(color: linercolor)))
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Center(
+                child: Column(
+                  children: [
+                    Text(_error!, textAlign: TextAlign.center),
+                    const SizedBox(height: 8),
+                    TextButton(onPressed: _load, child: Text("Retry".tr)),
+                  ],
+                ),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: 240,
+              width: double.infinity,
+              child: GoogleMap(
+                initialCameraPosition: CameraPosition(target: initial, zoom: 13),
+                polylines: _buildPolylines(),
+                markers: _buildMarkers(),
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                scrollGesturesEnabled: false,
+                zoomGesturesEnabled: false,
+                rotateGesturesEnabled: false,
+                tiltGesturesEnabled: false,
+                mapToolbarEnabled: false,
+                onTap: (_) => _openFullScreen(),
+                onMapCreated: (controller) {
+                  _controller = controller;
+                  Future<void>.delayed(const Duration(milliseconds: 350), _fitToRoute);
+                },
+              ),
+            ),
+            _summaryCard(),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final initial = _latLng(_route?["pickup"]) ?? _latLng(_route?["drop"]) ?? const LatLng(20.5937, 78.9629);
+    if (widget.embedded) return _embeddedCard(initial);
     return Scaffold(
       appBar: AppBar(
         title: Text("Route Map".tr),
