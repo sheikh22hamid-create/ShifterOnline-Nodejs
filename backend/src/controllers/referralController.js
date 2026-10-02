@@ -6,10 +6,29 @@ function internalError(res, err, label) {
   return res.status(500).json({ success: false, message: "Internal server error" });
 }
 
+const DEFAULT_SETTINGS = Object.freeze({
+  id: null,
+  user_points_per_referral: 100,
+  driver_points_per_referral: 100,
+  lead_referral_points: 100,
+  lead_verification_window_days: 45,
+  point_value: 1,
+  referral_enabled: true,
+  share_message: null,
+  ride_discount_percent: 0,
+  signup_bonus_points: 0,
+  plan_purchase_enabled: true,
+  plan_points_max_percent: 100,
+  updated_at: null,
+});
+
 async function getSettings(req, res) {
   try {
     const settings = await prisma.tbl_referral_setting.findFirst();
-    return res.status(200).json({ success: true, data: settings });
+    // A DB with no settings row yet used to return null, which made the admin
+    // page hide the whole "Reward settings" card (nothing to edit, nothing to
+    // save). Hand back the column defaults instead; the first save creates the row.
+    return res.status(200).json({ success: true, data: settings ?? DEFAULT_SETTINGS });
   } catch (err) {
     return internalError(res, err, "referrals.getSettings");
   }

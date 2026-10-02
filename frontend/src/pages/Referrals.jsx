@@ -40,7 +40,7 @@ export default function Referrals() {
   const canAdjust = hasRole('superadmin', 'admin')
 
   const settingsFetcher = useCallback(() => api.get('/referrals/settings').then((res) => res.data.data), [])
-  const { data: settings, refetch: refetchSettings } = useApiQuery(settingsFetcher)
+  const { data: settings, error: settingsError, refetch: refetchSettings } = useApiQuery(settingsFetcher)
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -121,6 +121,12 @@ export default function Referrals() {
           </Link>
         </div>
       </div>
+
+      {!editable && settingsError && (
+        <div className="surface-card mt-4 rounded-xl p-4 text-[13px]" style={{ color: 'var(--danger)' }}>
+          Could not load reward settings: {settingsError}
+        </div>
+      )}
 
       {editable && (
         <div className="surface-card mt-4 rounded-xl p-4">
