@@ -172,6 +172,8 @@ function formatPkgOrderForDriver(row, ctx) {
     order_user_id: row.uid,
     status: row.o_status,
     order_date: row.odate,
+    cancel_reason: row.o_status === "Cancelled" ? row.cancel_reason || "" : "",
+    cancel_charge: row.o_status === "Cancelled" ? Number(row.cancel_charge) || 0 : 0,
     // Completion columns contain IST wall-clock values; pickup_time is UTC.
     // Return an explicit offset so earnings do not move into the wrong day.
     earnings_completed_at: row.o_status === "Completed" && (row.drop_time || row.ddate)

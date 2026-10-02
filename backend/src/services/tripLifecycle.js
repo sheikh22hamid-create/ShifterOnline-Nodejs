@@ -16,6 +16,7 @@ const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const earlyDropService = require("./earlyDropService");
+const pickupEtaService = require("./pickupEtaService");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
@@ -312,8 +313,16 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
     }
   }
 
+  // Pickup ETA for the customer (Google driver -> pickup time + admin buffer)
+  // and the deadline sweepPickupEtaDeadlines enforces. Immediate bookings only:
+  // scheduled / next-day orders are accepted long before pickup is due, so a
+  // deadline measured from accept would be meaningless for them. Best-effort -
+  // a failure (or no driver GPS fix) just means no ETA, never a failed accept.
+  const etaBookingType = Number(order.booking_type);
+  const pickupEta = !etaBookingType || etaBookingType === 1 ? await pickupEtaService.computeAndStorePickupEta(orderId) : null;
+
   return {
-    order: { ...order, ...priced, advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
+    order: { ...order, ...priced, ...(pickupEta || {}), advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
     rider,
   };
 }
@@ -1044,7 +1053,7 @@ async function customerCancel(uid, orderId, comment) {
  * checking payment/refund state, so a duplicate cancel request (or two socket
  * connections) can never credit the customer's wallet twice.
  */
-async function driverCancel(orderId, riderId, reason) {
+async function driverCancel(orderId, riderId, reason, opts = {}) {
   let cancelledOrder = null;
   let refundAmount = 0;
   let refundStatus = "not_required";
@@ -1078,6 +1087,13 @@ async function driverCancel(orderId, riderId, reason) {
     }
 
     if (Number(order.rid) !== Number(riderId)) throw new Error("NOT_ASSIGNED_DRIVER");
+
+    // Automated cancels (sweepPickupEtaDeadlines) only act on the exact state
+    // they decided on - e.g. a driver who arrived between the sweep's read and
+    // this locked re-read must not be cancelled.
+    if (opts.requireOrderStatus != null && Number(order.order_status) !== Number(opts.requireOrderStatus)) {
+      throw new Error("ORDER_STATE_CHANGED");
+    }
 
     if (isCompleted) {
       throw new Error("ORDER_NOT_CANCELLABLE");
@@ -1229,6 +1245,84 @@ async function driverCancel(orderId, riderId, reason) {
   };
 }
 
+/**
+ * Auto-cancels, on the DRIVER's side, an accepted order whose driver has not
+ * reached the pickup by the ETA deadline set at accept
+ * (pickupEtaService: Google driver -> pickup time + admin buffer). Goes through
+ * driverCancel so the driver penalty (package cancellation_charge_driver),
+ * customer compensation, refunds and customer notification are exactly those
+ * of a manual driver cancel.
+ *
+ * Never cancels when: the admin switched it off; the driver already arrived
+ * (order_status 2 / a first_arrival_at on the wait timer - also covers a pickup
+ * relocation re-opening the trip); the customer's advance payment is still
+ * outstanding (the driver is blocked from starting); or the driver's fresh GPS
+ * fix is inside the geofence around the pickup (admin radius) - they are
+ * there, arrival detection is just still confirming.
+ */
+async function sweepPickupEtaDeadlines() {
+  const settings = await pickupEtaService.getPickupEtaSettings();
+  if (!settings.autoCancelEnabled) return;
+
+  let due;
+  try {
+    due = await prisma.$queryRaw`
+      SELECT o.id, o.rid, o.uid, o.plat, o.plong, o.advance_payment, o.payment_status
+      FROM pkg_order o
+      WHERE o.order_status = 1 AND o.rid > 0
+        AND o.o_status NOT IN ('Completed', 'Cancelled')
+        AND o.pickup_deadline_at IS NOT NULL AND o.pickup_deadline_at <= ${new Date()}
+        AND NOT EXISTS (SELECT 1 FROM pkg_order_wait_timer t WHERE t.order_id = o.id AND t.first_arrival_at IS NOT NULL)
+    `;
+  } catch (err) {
+    logger.error("sweepPickupEtaDeadlines: failed to query overdue orders:", err);
+    return;
+  }
+
+  for (const order of due) {
+    try {
+      const orderId = Number(order.id);
+      const riderId = Number(order.rid);
+
+      const advanceDue = Math.round(Number(order.advance_payment) || 0) > 0 && Number(order.payment_status) !== 1;
+      if (advanceDue) continue;
+
+      const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { rlats: true, rlongs: true, rloc_updated_at: true, fcm_token: true } });
+      const fresh = rider?.rloc_updated_at && Date.now() - new Date(rider.rloc_updated_at).getTime() <= RIDER_LOCATION_FRESHNESS_MS;
+      if (fresh) {
+        const distanceM = haversineKm(Number(order.plat), Number(order.plong), Number(rider.rlats), Number(rider.rlongs)) * 1000;
+        if (Number.isFinite(distanceM) && distanceM <= settings.geofenceM) continue;
+      }
+
+      const reason = "Auto-cancelled: driver did not reach the pickup location within the ETA";
+      let result;
+      try {
+        result = await driverCancel(orderId, riderId, reason, { requireOrderStatus: 1 });
+      } catch (err) {
+        if (err.message === "ORDER_STATE_CHANGED" || err.message === "ORDER_NOT_CANCELLABLE" || err.message === "NOT_ASSIGNED_DRIVER") continue;
+        throw err;
+      }
+      if (!result?.success) continue;
+
+      logger.warn(`sweepPickupEtaDeadlines: order #${orderId} auto-cancelled - driver ${riderId} missed the pickup ETA deadline`);
+      await pickupEtaService.clearPickupDeadline(orderId);
+
+      dispatchManager.emitDriverEvent(riderId, "order:customer_cancelled", {
+        order_id: String(orderId),
+        reason: "You did not reach the pickup location within the ETA, so this order was cancelled.",
+        order_status: 4,
+        o_status: "Cancelled",
+      });
+      const customer = await prisma.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { fcm_token: true } });
+      await pushNotifier.notifyCustomerDriverEtaTimeoutCancel(customer?.fcm_token, orderId).catch(() => {});
+      if (rider?.fcm_token) await pushNotifier.notifyDriverEtaTimeoutCancel(rider.fcm_token, orderId).catch(() => {});
+      notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
+    } catch (err) {
+      logger.error(`sweepPickupEtaDeadlines: failed cancelling order ${order.id}:`, err);
+    }
+  }
+}
+
 async function rateOrder(uid, orderId, riderId, star, comment) {
   const result = await prisma.pkg_order.updateMany({
     where: { id: orderId, uid, rid: riderId },
@@ -1288,19 +1382,35 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
   const walletRefund = await walletPrepayment.refundIfWalletPaid(order, { deduct: cancellationCharge, note: "OTP not provided" });
   const penaltyNettedInRefund = Boolean(walletRefund && walletRefund.paid > 0);
   await refundReferralPointsForOrder(orderId);
+  const penaltyRemark = `No-show penalty — OTP not provided within ${timeoutMinutes} minutes (order #${orderId})`;
   if (cancellationCharge > 0 && !penaltyNettedInRefund) {
     await prisma.tbl_wallet_history.create({
       data: {
         user_id: order.uid,
         amount: cancellationCharge,
         type: "debit",
-        remark: `No-show penalty — OTP not provided within ${timeoutMinutes} minutes (order #${orderId})`,
+        remark: penaltyRemark,
         wallet_type: "user",
         order_id: orderId,
         created_at: istNow(),
       },
     });
+    walletNotifier
+      .notifyCustomerWalletTransaction(order.uid, { type: "debit", amount: cancellationCharge, remark: penaltyRemark })
+      .catch((err) => logger.error(`cancelOverduePickup: wallet notify (no-show penalty) failed for user ${order.uid}:`, err));
   }
+
+  // Record the penalty on the order itself (admin order view + finance ledger
+  // read cancel_charge) and in the status timeline.
+  await prisma.pkg_order.update({ where: { id: orderId }, data: { cancel_charge: cancellationCharge } });
+  await prisma.order_status_history.create({
+    data: {
+      order_id: orderId,
+      rider_id: riderId || null,
+      status: "cancelled",
+      remark: `Auto-cancelled: customer did not provide OTP within ${timeoutMinutes} minutes of driver arrival.${cancellationCharge > 0 ? ` No-show penalty ₹${cancellationCharge} applied.` : ""}`,
+    },
+  });
 
   // Driver earns nothing today when an order times out on them through no
   // fault of their own - this fixed, admin-configured amount (default 0,
@@ -1320,6 +1430,9 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
         created_at: istNow(),
       },
     });
+    walletNotifier
+      .notifyDriverWalletTransaction(riderId, { type: "credit", amount: driverCompensation, remark: `OTP-timeout compensation — order #${orderId}` })
+      .catch((err) => logger.error(`cancelOverduePickup: wallet notify (OTP-timeout compensation) failed for rider ${riderId}:`, err));
   }
 
   dispatchManager.emitCustomerEvent(order.uid, "order:status_changed", {
@@ -1347,7 +1460,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
     prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } }),
     riderId ? prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { fcm_token: true } }) : Promise.resolve(null),
   ]);
-  await pushNotifier.notifyCustomerPickupTimeoutCancel(customer?.fcm_token, orderId, cancellationCharge);
+  await pushNotifier.notifyCustomerPickupTimeoutCancel(customer?.fcm_token, orderId, cancellationCharge, timeoutMinutes);
   if (rider) await pushNotifier.notifyDriverPickupTimeoutCancel(rider.fcm_token, orderId, timeoutMinutes);
 
   notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
@@ -1848,6 +1961,7 @@ module.exports = {
   cancelOverduePickup,
   sweepOverduePickups,
   sweepPickupRelocationCeiling,
+  sweepPickupEtaDeadlines,
   cancelExpiredAdvancePayment,
   sweepExpiredAdvancePayments,
   sendScheduledOrderReminders,

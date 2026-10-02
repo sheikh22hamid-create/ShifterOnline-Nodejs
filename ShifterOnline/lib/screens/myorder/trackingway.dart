@@ -2308,9 +2308,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                             fontSize: 11,
                                           ),
                                         ),
-                                        if (orderProduc?["distance"] != null)
+                                        if (_pickupEtaLabel().isNotEmpty)
                                           Text(
-                                            "${orderProduc["distance"]} km away",
+                                            _pickupEtaLabel(),
                                             style: TextStyle(
                                               color: Colors.white.withOpacity(0.9),
                                               fontFamily: "Gilroy_Medium",
@@ -2526,6 +2526,38 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   }
 
   // ── 5. QUICK ORDER INFO ───────────────────────────────────────────────────
+
+  /// "ETA 30 min · by 03:45 PM · 5.4 km away": the backend's pickup ETA
+  /// (Google driver -> pickup time + admin buffer). Empty when no ETA exists
+  /// (old orders, scheduled bookings, driver already at pickup).
+  String _pickupEtaLabel() {
+    final etaMinutes = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
+    if (etaMinutes <= 0) return "";
+    final parts = <String>["${"ETA".tr} $etaMinutes ${"min".tr}"];
+    final deadline = DateTime.tryParse(orderProduc?["pickup_deadline_at"]?.toString() ?? "");
+    if (deadline != null) parts.add("${"by".tr} ${DateFormat("hh:mm a").format(deadline.toLocal())}");
+    final km = double.tryParse(orderProduc?["pickup_distance_km"]?.toString() ?? "") ?? 0;
+    if (km > 0) parts.add("${km.toStringAsFixed(1)} km ${"away".tr}");
+    return parts.join(" · ");
+  }
+
+  /// Referral-points discount booked on this order.
+  double _referralDiscountAmount() =>
+      double.tryParse(orderProduc?["referral_points_amount"]?.toString() ?? "") ?? 0.0;
+
+  /// Referral-points + coupon discounts: the platform absorbs both, so they
+  /// come off what is still payable in cash (same as the backend's ride
+  /// settlement: advance + referral + coupon are all "already settled").
+  double _prepaidDiscountAmount() =>
+      _referralDiscountAmount() + (double.tryParse(orderProduc?["cou_amt"]?.toString() ?? "") ?? 0.0);
+
+  /// Admin-configured pickup OTP wait (minutes) from the order details API;
+  /// falls back to 7 if an older backend doesn't send it.
+  String _pickupOtpTimeoutLabel() {
+    final minutes = double.tryParse(orderProduc?["pickup_otp_timeout_minutes"]?.toString() ?? "");
+    if (minutes == null || minutes <= 0) return "7";
+    return minutes % 1 == 0 ? minutes.toInt().toString() : minutes.toString();
+  }
 
   Widget _buildQuickOrderInfo() {
     final distance = (orderProduc?["distance"] != null) ? "${orderProduc["distance"]} km" : "0 km";
@@ -2794,7 +2826,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                "Driver arrived. Please share OTP within 10 mins.".tr,
+                "Driver arrived. Please share OTP within @min mins.".tr.replaceAll("@min", _pickupOtpTimeoutLabel()),
                 style: TextStyle(
                   color: Colors.orange.shade900,
                   fontFamily: "Gilroy_Bold",
@@ -3404,7 +3436,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (totalDouble == 0.0 && advDouble > 0) {
       totalDouble = advDouble;
     }
-    double remainingDouble = (totalDouble - advDouble) > 0 ? (totalDouble - advDouble) : 0.0;
+    double remainingDouble = (totalDouble - advDouble - _prepaidDiscountAmount()) > 0 ? (totalDouble - advDouble - _prepaidDiscountAmount()) : 0.0;
 
     final totalStr = (totalDouble % 1 == 0) ? totalDouble.toInt().toString() : totalDouble.toStringAsFixed(2);
     final advanceStr = (advDouble % 1 == 0) ? advDouble.toInt().toString() : advDouble.toStringAsFixed(2);
@@ -3491,6 +3523,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             buildRow("Extra Mile Charge".tr, "$currency$extraMile"),
           if (discount != "0" && discount.isNotEmpty)
             buildRow("Coupon Discount".tr, "-$currency$discount", valueColor: const Color(0xFF00C853)),
+          if (_referralDiscountAmount() > 0)
+            buildRow(
+              "Referral Points Discount".tr,
+              "-$currency${_referralDiscountAmount() % 1 == 0 ? _referralDiscountAmount().toInt() : _referralDiscountAmount().toStringAsFixed(2)}",
+              valueColor: const Color(0xFF00C853),
+            ),
           const SizedBox(height: 8),
           Divider(color: Colors.grey.shade200),
           const SizedBox(height: 4),
@@ -3724,7 +3762,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (totalDouble == 0.0 && advDouble > 0) {
       totalDouble = advDouble;
     }
-    double remainingDouble = (totalDouble - advDouble) > 0 ? (totalDouble - advDouble) : 0.0;
+    double remainingDouble = (totalDouble - advDouble - _prepaidDiscountAmount()) > 0 ? (totalDouble - advDouble - _prepaidDiscountAmount()) : 0.0;
 
     final totalStr = (totalDouble % 1 == 0) ? totalDouble.toInt().toString() : totalDouble.toStringAsFixed(2);
     final advanceStr = (advDouble % 1 == 0) ? advDouble.toInt().toString() : advDouble.toStringAsFixed(2);
@@ -6367,7 +6405,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (actualDouble == 0.0 && advDouble > 0) {
       actualDouble = advDouble;
     }
-    double remainingDouble = (actualDouble - advDouble) > 0 ? (actualDouble - advDouble) : 0.0;
+    double remainingDouble = (actualDouble - advDouble - _prepaidDiscountAmount()) > 0 ? (actualDouble - advDouble - _prepaidDiscountAmount()) : 0.0;
 
     // Mutable: reduced in place when referral points partially cover the
     // advance, so the Razorpay button below always asks for what's still due.

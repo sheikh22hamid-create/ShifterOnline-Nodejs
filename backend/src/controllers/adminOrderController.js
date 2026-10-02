@@ -1,11 +1,12 @@
 const { Prisma } = require("@prisma/client");
-const { istNow } = require("../utils/istTime");
+const { istNow, formatLedgerTime } = require("../utils/istTime");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const walletPrepayment = require("../services/walletPrepaymentRefund");
 const { refundReferralPointsForOrder } = require("../services/referralPointsRefund");
 const dispatchManager = require("../services/dispatchManager");
 const pricingEngine = require("../services/pricingEngine");
+const { getPickupEtaRow, buildEtaView } = require("../services/pickupEtaService");
 const pushNotifier = require("../services/pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const { getIO } = require("../sockets/socketServer");
@@ -118,7 +119,7 @@ async function getOne(req, res) {
       return res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
     }
 
-    const [customer, rider, waitTimer, pkg, paymentMethod, stops, driverFeedback] = await Promise.all([
+    const [customer, rider, waitTimer, pkg, paymentMethod, stops, driverFeedback, statusHistory, walletEntries] = await Promise.all([
       prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { id: true, name: true, mobile: true, email: true } }),
       order.rid ? prisma.tbl_rider.findUnique({ where: { id: order.rid } }) : null,
       prisma.pkg_order_wait_timer.findFirst({ where: { order_id: id }, orderBy: { id: "desc" } }),
@@ -128,12 +129,19 @@ async function getOne(req, res) {
         ? prisma.pkg_order_stops.findMany({ where: { order_id: id }, orderBy: { sequence: "asc" } })
         : Promise.resolve([]),
       prisma.order_driver_feedback.findUnique({ where: { order_id: id } }).catch(() => null),
+      prisma.order_status_history.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }).catch(() => []),
+      order.o_status === "Cancelled"
+        ? prisma.tbl_wallet_history.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }).catch(() => [])
+        : Promise.resolve([]),
     ]);
+
+    const pickupEta = buildEtaView(order, await getPickupEtaRow(id));
 
     return res.status(200).json({
       success: true,
       data: {
         ...order,
+        ...pickupEta,
         customer,
         rider: rider
           ? {
@@ -150,6 +158,17 @@ async function getOne(req, res) {
         payment_method: paymentMethod ? paymentMethod.title : null,
         stops,
         driver_feedback: driverFeedback,
+        status_history: statusHistory,
+        // Cancelled orders: every wallet row tied to the order (customer penalty,
+        // refund, driver compensation) so admin sees exactly who was charged/paid.
+        cancellation_wallet_entries: walletEntries.map((w) => ({
+          id: w.id,
+          wallet_type: w.wallet_type,
+          type: w.type,
+          amount: Number(w.amount) || 0,
+          remark: w.remark,
+          created_at: formatLedgerTime(w.created_at),
+        })),
         // order.commission (from the ...order spread above) is a percentage,
         // not a ₹ figure — this is the actual platform cut in rupees.
         commission_amount: pricingEngine.commissionAmount(order.d_charge, order.commission),

@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const pickupEtaService = require("./pickupEtaService");
 const pricingEngine = require("./pricingEngine");
 const dispatchManager = require("./dispatchManager");
 const pushNotifier = require("./pushNotifier");
@@ -256,6 +257,9 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
   });
 
   const { updatedOrder, riderId, oldFare, newFare, fareDiff, oldDistance, newDistance } = result;
+
+  // Re-plan (or retire) the pickup ETA deadline for the new pickup point.
+  if (riderId && riderId > 0) await pickupEtaService.refreshAfterPickupChange(numericOrderId);
 
   const eventPayload = {
     order_id: String(numericOrderId),

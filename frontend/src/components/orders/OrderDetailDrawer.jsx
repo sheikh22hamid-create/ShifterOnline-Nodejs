@@ -392,6 +392,51 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                   </div>
                 </section>
 
+                {/* Cancellation Section */}
+                {order.o_status === 'Cancelled' && (
+                  <section>
+                    <h3 className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+                      <Ban size={13} /> Cancellation
+                    </h3>
+                    <div className="surface-card space-y-2.5 rounded-xl p-3.5">
+                      <Field label="Reason" value={order.cancel_reason || '—'} />
+                      <Field label="Penalty charged to customer" value={formatCurrency(Number(order.cancel_charge) || 0)} />
+                      {order.cancellation_wallet_entries?.length > 0 && (
+                        <div className="rounded-lg border border-[var(--line)] p-3">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Wallet entries</div>
+                          <div className="space-y-2">
+                            {order.cancellation_wallet_entries.map((w) => (
+                              <div key={w.id} className="flex items-start justify-between gap-3 text-sm">
+                                <div>
+                                  <span className="mr-2 text-xs font-semibold uppercase text-[var(--muted)]">{w.wallet_type === 'driver' ? 'Driver' : 'Customer'}</span>
+                                  {w.remark}
+                                </div>
+                                <div className="whitespace-nowrap font-medium">
+                                  {w.type === 'credit' ? '+' : '-'}{formatCurrency(w.amount)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {order.status_history?.length > 0 && (
+                        <div className="rounded-lg border border-[var(--line)] p-3">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Status timeline</div>
+                          <div className="space-y-2">
+                            {order.status_history.map((h) => (
+                              <div key={h.id} className="text-sm">
+                                <span className="mr-2 text-xs text-[var(--muted)]">{formatDateTime(h.created_at)}</span>
+                                <span className="font-medium capitalize">{h.status}</span>
+                                {h.remark ? ` — ${h.remark}` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
+
                 {/* Route Section */}
                 <section>
                   <h3 className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
@@ -399,6 +444,12 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                   </h3>
                   <div className="surface-card space-y-2.5 rounded-xl p-3.5">
                     <Field label="Pickup Location" value={order.paddress} />
+                    {order.pickup_eta_minutes > 0 && (
+                      <Field
+                        label="Pickup ETA (Google + buffer)"
+                        value={`${order.pickup_eta_minutes} min (Google ${order.pickup_google_eta_minutes} min${Number(order.pickup_distance_km) > 0 ? `, ${order.pickup_distance_km} km` : ''})${order.pickup_deadline_at ? ` · deadline ${formatDateTime(order.pickup_deadline_at)}` : ''}`}
+                      />
+                    )}
                     {order.wait_timer?.otp_verify_lat && order.wait_timer?.otp_verify_lng && (
                       <Field
                         label="Driver's Location at OTP Entry"

@@ -1927,6 +1927,18 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         } else { driverAccuracyCircle.setCenter(position); driverAccuracyCircle.setRadius(fix.getAccuracy()); }
     }
 
+    /** " • Reach pickup by 03:45 PM (12 min left) or the order auto-cancels" while heading to pickup; "" otherwise. */
+    private String pickupDeadlineHint() {
+        if (orderItem == null || !"1".equals(orderItem.getOrderFlowId())) return "";
+        JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
+        if (cached == null || !cached.has("pickup_deadline_ms") || cached.get("pickup_deadline_ms").isJsonNull()) return "";
+        long deadline = cached.get("pickup_deadline_ms").getAsLong();
+        if (deadline <= 0) return "";
+        long leftMin = Math.max(0, (deadline - System.currentTimeMillis() + 59999) / 60000);
+        String at = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(new java.util.Date(deadline));
+        return " • Reach pickup by " + at + " (" + leftMin + " min left) or the order auto-cancels";
+    }
+
     private void updateArrivalHint() {
         if (binding == null || orderItem == null || isWaitingForPayment) return;
         String flow = orderItem.getOrderFlowId();
@@ -1936,13 +1948,13 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             binding.txtTripLocationStatus.setText("Stop reached. Complete this stop to continue."); return;
         }
         String error = com.shifter.driver.utility.TripProgressClient.syncError(this, orderItem.getId());
-        if (!error.isEmpty()) { binding.txtTripLocationStatus.setText(error); return; }
+        if (!error.isEmpty()) { binding.txtTripLocationStatus.setText(error + pickupDeadlineHint()); return; }
         if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            binding.txtTripLocationStatus.setText("Auto-arrival needs precise location. Enable it in app permissions."); return;
+            binding.txtTripLocationStatus.setText("Auto-arrival needs precise location. Enable it in app permissions." + pickupDeadlineHint()); return;
         }
         android.location.Location fix = LocationUpdateService.getLocation();
-        if (!fix.hasAccuracy()) { binding.txtTripLocationStatus.setText("Auto-arrival: acquiring fresh GPS… Tap to retry."); return; }
+        if (!fix.hasAccuracy()) { binding.txtTripLocationStatus.setText("Auto-arrival: acquiring fresh GPS… Tap to retry." + pickupDeadlineHint()); return; }
         double lat = orderItem.getPlat(), lng = orderItem.getPlong();
         if ("3".equals(flow)) {
             List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
@@ -1958,11 +1970,11 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         String quality = "GPS ±" + (int) Math.ceil(fix.getAccuracy()) + " m";
         String destination = "3".equals(flow) ? "Next stop" : "Pickup";
         String distanceText = destination + " ~" + Math.round(distance[0]) + " m away";
-        binding.txtTripLocationStatus.setText(fix.getAccuracy() > 35
+        binding.txtTripLocationStatus.setText((fix.getAccuracy() > 35
                 ? distanceText + " • " + quality + " • Waiting for accurate GPS"
                 : distance[0] + fix.getAccuracy() <= 100
                     ? distanceText + " • " + quality + " • Hold position for auto-arrival"
-                    : distanceText + " • " + quality);
+                    : distanceText + " • " + quality) + pickupDeadlineHint());
     }
 
     @Override

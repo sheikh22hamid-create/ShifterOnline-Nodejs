@@ -19,6 +19,8 @@ const orderPickupService = require("../services/orderPickupService");
 const orderStopsService = require("../services/orderStopsService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
+const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
+const { getPickupEtaRow, buildEtaView } = require("../services/pickupEtaService");
 
 async function customerTripProgress(order) {
   if (!order.rid) return null;
@@ -748,11 +750,14 @@ async function getOrderDetails(req, res) {
       });
     }
 
+    const etaView = buildEtaView(order, await getPickupEtaRow(order.id));
+
     return res.status(200).json({
       ResponseCode: "200",
       Result: "true",
       OrderProductList: [
         {
+          ...etaView,
           order_id: order.id,
           rider_id: order.rid,
           rider_name: rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : null,
@@ -767,6 +772,8 @@ async function getOrderDetails(req, res) {
           Order_Status: orderStatus,
           Order_flow_id: order.order_status,
           trip_progress: await customerTripProgress(order),
+          // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
+          pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           otp: order.otp,
           total_Delivery_charge: String(order.total_dcharge),
           grand_total: String(order.total_dcharge),
@@ -786,6 +793,9 @@ async function getOrderDetails(req, res) {
           distance: order.distance,
           extra_mile_charge: order.extra_mile_charge,
           cou_amt: order.cou_amt,
+          // Referral-points discount booked on this order; the app nets it (with the coupon) off the remaining cash amount.
+          referral_points_used: String(order.referral_points_used || 0),
+          referral_points_amount: String(Number(order.referral_points_amount) || 0),
           package_weight: order.package_weight,
           category: order.category,
           booking_type: order.booking_type,

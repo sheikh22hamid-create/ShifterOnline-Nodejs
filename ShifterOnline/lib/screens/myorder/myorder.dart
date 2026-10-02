@@ -234,6 +234,10 @@ List<MapEntry<String, String>> _orderDetailRows(OrderHistory order) {
   if (start.isNotEmpty) rows.add(MapEntry("Trip Start", start));
   final end = time(order.tripEndTime);
   if (end.isNotEmpty) rows.add(MapEntry("Trip End", end));
+  final cancelReason = (order.cancelReason ?? "").trim();
+  if (cancelReason.isNotEmpty) rows.add(MapEntry("Cancellation Reason", cancelReason));
+  final penalty = double.tryParse(order.cancelCharge ?? "") ?? 0;
+  if (penalty > 0) rows.add(MapEntry("Cancellation Penalty", "₹${penalty.toStringAsFixed(penalty % 1 == 0 ? 0 : 2)}"));
   final driver = [order.driverName, order.driverVehicleNo].where((v) => v != null && v.trim().isNotEmpty).join(" · ");
   if (driver.isNotEmpty) rows.add(MapEntry("Driver", driver));
   return rows;

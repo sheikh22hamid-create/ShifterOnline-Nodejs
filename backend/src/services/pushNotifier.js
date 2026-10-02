@@ -70,13 +70,14 @@ async function notifyCustomerNoDriverFound(fcmToken, orderId) {
   );
 }
 
-/** See tripLifecycle.sweepOverduePickups — customer never handed over the OTP within 10 minutes of driver arrival. */
-async function notifyCustomerPickupTimeoutCancel(fcmToken, orderId, cancellationCharge) {
+/** See tripLifecycle.sweepOverduePickups — customer never handed over the OTP within the OTP timeout of driver arrival. */
+async function notifyCustomerPickupTimeoutCancel(fcmToken, orderId, cancellationCharge, timeoutMinutes) {
+  const minutesText = timeoutMinutes ? `${timeoutMinutes} minutes` : "the allowed time";
   const chargeText = cancellationCharge > 0 ? ` A cancellation charge of ₹${cancellationCharge} has been applied.` : "";
   return sendCustomerPush(
     fcmToken,
     "Trip Cancelled",
-    `Your driver waited 10 minutes at pickup but didn't receive the OTP, so this trip was cancelled.${chargeText}`,
+    `Your driver waited ${minutesText} at pickup but didn't receive the OTP, so this trip was cancelled.${chargeText}`,
     { type: "order_cancelled", order_id: String(orderId), reason: "pickup_otp_timeout" }
   );
 }
@@ -100,6 +101,25 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId, timeoutMinutes
     "Order Cancelled",
     `Customer did not provide the OTP within ${minutesText}. This trip has been cancelled and you're free for new orders.`,
     { type: "order_cancelled", order_id: String(orderId), reason: "pickup_otp_timeout" }
+  );
+}
+
+/** See tripLifecycle.sweepPickupEtaDeadlines - the driver missed the pickup ETA deadline; the order was cancelled on their side. */
+async function notifyCustomerDriverEtaTimeoutCancel(fcmToken, orderId) {
+  return sendCustomerPush(
+    fcmToken,
+    "Driver Cancelled",
+    "Your driver could not reach the pickup location in time, so this booking was cancelled. Please book again - we are sorry for the inconvenience.",
+    { type: "order_cancelled", order_id: String(orderId), reason: "driver_eta_timeout" }
+  );
+}
+
+async function notifyDriverEtaTimeoutCancel(fcmToken, orderId) {
+  return sendPushNotification(
+    fcmToken,
+    "Order Cancelled",
+    "You did not reach the pickup location within the ETA, so this order was cancelled and a cancellation penalty may apply.",
+    { type: "order_cancelled", order_id: String(orderId), reason: "driver_eta_timeout" }
   );
 }
 
@@ -334,6 +354,8 @@ module.exports = {
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,
   notifyDriverPickupTimeoutCancel,
+  notifyCustomerDriverEtaTimeoutCancel,
+  notifyDriverEtaTimeoutCancel,
   notifyCustomerAdvancePaymentTimeoutCancel,
   notifyDriverAdvancePaymentTimeoutCancel,
   notifyDriverCustomerCancelled,

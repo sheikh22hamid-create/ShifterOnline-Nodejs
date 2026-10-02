@@ -80,6 +80,9 @@ const HANDLED_FLAG_KEYS = [
   'pickup_timeout_driver_compensation',
   'pickup_complete_auto_distance_m',
   'pickup_timer_auto_pause_distance_m',
+  'pickup_eta_buffer_minutes',
+  'pickup_eta_geofence_m',
+  'pickup_eta_auto_cancel_enabled',
   'max_extra_stops',
   'customer_wallet_max_topup',
   'scheduled_confirm_popup_minutes',
@@ -360,7 +363,7 @@ function SettingsForm({ data, onSaved }) {
               type="number"
               min="1"
               placeholder="e.g. 10"
-              value={flags.pickup_otp_timeout_minutes ?? '10'}
+              value={flags.pickup_otp_timeout_minutes ?? '7'}
               onChange={(e) => setFlags((f) => ({ ...f, pickup_otp_timeout_minutes: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
@@ -449,6 +452,50 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               While waiting for the pickup OTP, if the driver moves this far from the pickup point the auto-cancel timer pauses by itself (they are heading to a new pickup spot). Drivers can also pause it manually from the OTP screen.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_eta_buffer_minutes">Pickup ETA buffer (min)</Label>
+            <Input
+              id="flag-pickup_eta_buffer_minutes"
+              type="number"
+              min="0"
+              placeholder="e.g. 10"
+              value={flags.pickup_eta_buffer_minutes ?? '10'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_buffer_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              After a driver accepts, the customer sees Google's driver-to-pickup travel time plus this buffer (Google 20 min + 10 min buffer = 30 min ETA). That moment is also the driver's deadline to reach the pickup.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_eta_geofence_m">Pickup ETA geofence radius (m)</Label>
+            <Input
+              id="flag-pickup_eta_geofence_m"
+              type="number"
+              min="1"
+              placeholder="e.g. 200"
+              value={flags.pickup_eta_geofence_m ?? '200'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_geofence_m: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              A driver who is inside this radius of the pickup when the ETA deadline passes is not auto-cancelled.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_eta_auto_cancel_enabled">Auto-cancel when driver misses the ETA</Label>
+            <select
+              id="flag-pickup_eta_auto_cancel_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--line)', color: 'var(--ink)' }}
+              value={flags.pickup_eta_auto_cancel_enabled ?? '1'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_auto_cancel_enabled: e.target.value }))}
+            >
+              <option value="1">Enabled</option>
+              <option value="0">Disabled</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              When enabled, an order whose driver has not reached the pickup by the deadline is cancelled on the driver's side and the package's driver cancellation charge is applied.
             </p>
           </div>
           <div>

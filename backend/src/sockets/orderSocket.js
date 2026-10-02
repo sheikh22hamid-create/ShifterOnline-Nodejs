@@ -84,6 +84,12 @@ function registerOrderHandlers(io, socket) {
         rider_longs: rider.rlongs ? Number(rider.rlongs) : null,
         rider_lat: rider.rlats ? Number(rider.rlats) : null,
         rider_lng: rider.rlongs ? Number(rider.rlongs) : null,
+        // Pickup ETA = Google driver->pickup time + admin buffer (see pickupEtaService).
+        pickup_distance_km: order.pickup_distance_km != null ? String(order.pickup_distance_km) : "0",
+        pickup_google_eta_minutes: order.pickup_google_eta_minutes || 0,
+        pickup_eta_minutes: order.pickup_eta_minutes || 0,
+        pickup_deadline_at: order.pickup_deadline_at ? new Date(order.pickup_deadline_at).toISOString() : null,
+        pickup_eta_remaining_seconds: order.pickup_deadline_at ? Math.max(0, Math.round((new Date(order.pickup_deadline_at).getTime() - Date.now()) / 1000)) : 0,
         otp: order.otp,
         order_status: order.order_status,
         o_status: order.o_status,

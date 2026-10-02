@@ -189,9 +189,23 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (!_referralDiscountEnabled || _referralPointValue <= 0 || _referralPointsAvailable <= 0) return 0;
     final fare = _selectedModel == null ? null : _modelFare(_selectedModel!);
     if (fare == null || fare <= 0) return 0;
-    final maxByPercent = (fare * _referralDiscountPercent / 100 / _referralPointValue).ceil();
+    // Same basis as the backend (createOrderCore): percent of the fare left after the coupon.
+    final maxByPercent = (math.max(0, fare - _couponDiscountFor(fare)) * _referralDiscountPercent / 100 / _referralPointValue).floor();
     final capped = math.min(_referralPointsAvailable.floor(), maxByPercent);
     return capped < 0 ? 0 : capped;
+  }
+
+  /// Coupon discount on [fare], computed exactly like the backend's
+  /// couponService.resolveCoupon: "50" = flat, "10%" = percent, never above the fare.
+  double _couponDiscountFor(double fare) {
+    final coupon = _appliedCoupon;
+    if (coupon == null || fare <= 0) return 0;
+    final text = _text(coupon['c_value']).trim();
+    final isPercent = text.endsWith('%');
+    final value = double.tryParse(isPercent ? text.substring(0, text.length - 1) : text);
+    if (value == null || value <= 0) return 0;
+    final raw = isPercent ? fare * value / 100 : value;
+    return (math.min(raw, fare) * 100).round() / 100;
   }
 
   double get _referralRedeemableAmount => _referralRedeemablePoints * _referralPointValue;
@@ -1816,7 +1830,19 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
       if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () => setState(() => _selectedModelIndex = index), child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
-      if (_selectedModel != null) ...[const SizedBox(height: 14), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]), Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12))))],
+      if (_selectedModel != null) ...[const SizedBox(height: 14), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
+        if ((_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) || (_useReferralPoints && _referralRedeemablePoints > 0)) ...[
+          if (_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) ...[
+            const SizedBox(height: 4),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Coupon discount', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12)), Text('-₹${_couponDiscountFor(_modelFare(_selectedModel!)!).toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF00C853), fontFamily: 'Gilroy_Bold', fontSize: 13))]),
+          ],
+          if (_useReferralPoints && _referralRedeemablePoints > 0) ...[
+            const SizedBox(height: 4),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Referral points discount (up to ${_referralDiscountPercent.toStringAsFixed(_referralDiscountPercent % 1 == 0 ? 0 : 1)}%)', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12)), Text('-₹${_referralRedeemableAmount.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF00C853), fontFamily: 'Gilroy_Bold', fontSize: 13))]),
+          ],
+          const SizedBox(height: 4),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Payable amount', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${math.max(0.0, _modelFare(_selectedModel!)! - _couponDiscountFor(_modelFare(_selectedModel!)!) - (_useReferralPoints ? _referralRedeemableAmount : 0)).toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
+        ], Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12))))],
       if (_referralDiscountEnabled && _referralPointsAvailable > 0 && _referralRedeemablePoints > 0) ...[
         const SizedBox(height: 10),
         InkWell(

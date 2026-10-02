@@ -49,6 +49,8 @@ class OrderHistory {
     String? modelTitle;
     String? tripStartTime;
     String? tripEndTime;
+    String? cancelReason;
+    String? cancelCharge;
     String? driverName;
     String? driverVehicleNo;
     bool isFavorite;
@@ -77,6 +79,8 @@ class OrderHistory {
         this.modelTitle,
         this.tripStartTime,
         this.tripEndTime,
+        this.cancelReason,
+        this.cancelCharge,
         this.driverName,
         this.driverVehicleNo,
         this.isFavorite = false,
@@ -106,6 +110,8 @@ class OrderHistory {
         modelTitle: json["model_title"]?.toString(),
         tripStartTime: json["trip_start_time"]?.toString(),
         tripEndTime: json["trip_end_time"]?.toString(),
+        cancelReason: json["cancel_reason"]?.toString(),
+        cancelCharge: json["cancel_charge"]?.toString(),
         driverName: json["driver_name"]?.toString(),
         driverVehicleNo: json["driver_vehicle_no"]?.toString(),
         isFavorite: json["is_favorite"] == true,

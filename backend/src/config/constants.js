@@ -51,7 +51,7 @@ module.exports = {
   // own pickup_wait_start, the same column the post-trip waiting-charge
   // calculation already reads, so this and that stay consistent with each
   // other about what "arrived" means.
-  PICKUP_OTP_TIMEOUT_MS: 10 * 60 * 1000,
+  PICKUP_OTP_TIMEOUT_MS: 7 * 60 * 1000,
   PICKUP_TIMEOUT_SWEEP_INTERVAL_MS: 60 * 1000,
 
   // Independent ceiling sweep (tripLifecycle.sweepPickupRelocationCeiling) -

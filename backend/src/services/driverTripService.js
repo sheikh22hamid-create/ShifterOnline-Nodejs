@@ -6,6 +6,7 @@ const { getPickupRelocateSettings } = require('../utils/pickupRelocateSettings')
 const { computeRouteDistanceKm } = require('./orderRouteRepricing');
 const { haversineKm } = require('../utils/geoDistance');
 const { recordSamples } = require('./tripRouteService');
+const { getPickupEtaRow } = require('./pickupEtaService');
 
 // Arrival time comes from the phone's own clock. A phone running minutes
 // behind the server would back-date the arrival and shorten the customer's
@@ -37,7 +38,16 @@ async function snapshot(order, progress, timer, stopCount) {
       + (Number(timer.pickup_wait_banked_seconds) || 0) * 1000;
     pickupOtpRemainingSeconds = Math.max(0, Math.round(timeoutMinutes * 60 - elapsedMs / 1000));
   }
+  // Pickup-ETA countdown (driver must reach the pickup by this deadline or the
+  // order auto-cancels with a penalty) - only while still heading to pickup.
+  let pickupDeadlineMs = 0;
+  if (order.order_status === 1) {
+    const etaRow = await getPickupEtaRow(order.id);
+    pickupDeadlineMs = etaRow?.pickup_deadline_at ? new Date(etaRow.pickup_deadline_at).getTime() : 0;
+  }
   return {
+    pickup_deadline_ms: pickupDeadlineMs,
+    pickup_eta_remaining_seconds: pickupDeadlineMs ? Math.max(0, Math.round((pickupDeadlineMs - Date.now()) / 1000)) : 0,
     order_id: order.id, order_status: order.order_status, o_status: order.o_status, city_id: order.city_id,
     active, driver_flow_id: active && timer?.drop_wait_start ? 4 : order.order_status,
     stop_step: progress?.stop_step || 0, stop_count: stopCount,
@@ -142,6 +152,8 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
       } });
       Object.assign(order, await tx.pkg_order.update({ where: { id: orderId }, data: { order_status: 1, o_status: 'Processing' } }));
       await tx.driver_trip_event.deleteMany({ where: { order_id: orderId, milestone: 'arrived' } });
+      // The driver already arrived once - the pickup-ETA deadline is spent; the OTP-wait and relocation-ceiling sweeps bound the rest.
+      try { await tx.$executeRaw`UPDATE pkg_order SET pickup_deadline_at = NULL WHERE id = ${orderId}`; } catch (_) { /* column not on this DB yet */ }
       progress.candidate_key = null; progress.candidate_since = null; progress.candidate_count = 0;
       progress.last_sample_at = at;
       const payload = {

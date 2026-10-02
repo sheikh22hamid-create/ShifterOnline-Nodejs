@@ -162,6 +162,9 @@ public class PDOrderItem implements Parcelable {
 	@SerializedName("wallet_adjustment_note")
 	private String walletAdjustmentNote;
 
+	@SerializedName("cancel_reason")
+	private String cancelReason;
+
 	@SerializedName("settlement_note")
 	private String settlementNote;
 
@@ -506,6 +509,10 @@ public class PDOrderItem implements Parcelable {
 
 	public String getWalletAdjustment() {
 		return walletAdjustment;
+	}
+
+	public String getCancelReason() {
+		return cancelReason;
 	}
 
 	public String getWalletAdjustmentNote() {

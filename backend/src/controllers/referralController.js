@@ -49,7 +49,13 @@ async function updateSettings(req, res) {
     if (req.body.lead_verification_window_days !== undefined) data.lead_verification_window_days = Number(req.body.lead_verification_window_days);
     if (req.body.signup_bonus_points !== undefined) data.signup_bonus_points = Number(req.body.signup_bonus_points);
     if (point_value !== undefined) data.point_value = point_value;
-    if (ride_discount_percent !== undefined) data.ride_discount_percent = ride_discount_percent;
+    if (ride_discount_percent !== undefined) {
+      const rideDiscount = Number(ride_discount_percent);
+      if (!Number.isFinite(rideDiscount) || rideDiscount < 0 || rideDiscount > 100) {
+        return res.status(400).json({ success: false, message: "ride_discount_percent must be between 0 and 100" });
+      }
+      data.ride_discount_percent = rideDiscount;
+    }
     if (referral_enabled !== undefined) data.referral_enabled = Boolean(referral_enabled);
     if (req.body.plan_purchase_enabled !== undefined) data.plan_purchase_enabled = Boolean(req.body.plan_purchase_enabled);
     if (req.body.plan_points_max_percent !== undefined) {

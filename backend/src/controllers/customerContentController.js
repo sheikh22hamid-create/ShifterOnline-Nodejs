@@ -630,6 +630,8 @@ async function pkgHistoryCustomer(req, res) {
         pick_address: row.paddress,
         drop_address: row.daddress,
         flow_msg: FLOW_MESSAGES_PKG_ORDER[row.order_status] ?? "",
+        cancel_reason: row.o_status === "Cancelled" ? row.cancel_reason || "" : "",
+        cancel_charge: row.o_status === "Cancelled" ? String(Number(row.cancel_charge) || 0) : "0",
         vehicle_type: row.category || "",
         model_title: pkg?.user_title || pkg?.title || "",
         // Trip start = the moment the driver started the trip (pickup_time),
