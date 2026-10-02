@@ -131,15 +131,36 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
       }
       flush();
     } else {
-      final pickup = _latLng(_route!["final_pickup"]) ?? _latLng(_route!["pickup"]);
-      final drop = _latLng(_route!["drop"]);
-      if (pickup != null && drop != null) {
+      // No usable GPS trail: draw the planned path through every known point
+      // (pickup -> final pickup -> OTP -> stops -> drop) as a solid, clearly
+      // coloured line so the route is still highlighted.
+      final path = <LatLng>[];
+      void add(dynamic where) {
+        final p = _latLng(where);
+        if (p != null) path.add(p);
+      }
+
+      add(_route!["pickup"]);
+      add(_route!["final_pickup"]);
+      add(_route!["otp_point"]);
+      for (final s in ((_route!["stops"] as List?) ?? const [])) {
+        add(s);
+      }
+      add(_route!["drop"]);
+      if (path.length >= 2) {
+        lines.add(Polyline(
+          polylineId: const PolylineId("planned_casing"),
+          points: path,
+          color: Colors.white,
+          width: 10,
+          zIndex: 1,
+        ));
         lines.add(Polyline(
           polylineId: const PolylineId("planned"),
-          points: [pickup, drop],
-          color: Colors.grey,
-          width: 4,
-          patterns: _gapPattern,
+          points: path,
+          color: const Color(0xffF97316),
+          width: 6,
+          zIndex: 2,
         ));
       }
     }

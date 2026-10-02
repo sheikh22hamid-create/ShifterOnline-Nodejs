@@ -103,6 +103,12 @@ describe("buildRoute", () => {
     expect(route.distance_km).toBe(2.4); // order.distance (planned) is the best we have
   });
 
+  it("treats a single recorded fix as no trail so the app draws the planned path", async () => {
+    const route = await buildRoute(clientWith({ rows: [row(5, 22.0, 75.0, 0)] }), 5);
+    expect(route.has_trail).toBe(false);
+    expect(route.distance_km).toBe(2.4);
+  });
+
   it("includes the OTP point only when it differs from the pickup by more than 50 m", async () => {
     const far = await buildRoute(clientWith({ rows: [], timer: { otp_verify_lat: "22.002", otp_verify_lng: "75.0" } }), 5);
     expect(far.otp_point).toEqual({ lat: 22.002, lng: 75.0 });

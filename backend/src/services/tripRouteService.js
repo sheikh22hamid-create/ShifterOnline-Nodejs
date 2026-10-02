@@ -117,7 +117,9 @@ async function buildRoute(client, orderId) {
     otpPoint = null;
   }
 
-  const hasTrail = points.length > 0;
+  // One lonely fix can't draw a line; treat it as "no trail" so the app falls
+  // back to the planned path instead of showing pins only.
+  const hasTrail = points.length >= 2;
   return {
     has_trail: hasTrail,
     points,
