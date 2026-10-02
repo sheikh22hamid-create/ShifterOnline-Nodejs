@@ -41,6 +41,7 @@ import {
   History,
   Receipt,
   Timer,
+  MessageSquareText,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -62,6 +63,7 @@ export const NAV_GROUPS = [
       { to: '/monthly-drivers', label: 'Monthly Drivers', icon: UserCheck, roles: ALL_STAFF, built: true },
       { to: '/daily-drivers', label: 'Daily Drivers', icon: Timer, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
+      { to: '/trip-feedback', label: 'Trip Feedback', icon: MessageSquareText, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },
       { to: '/driver-leads', label: 'Driver Leads Queue', icon: PhoneCall, roles: ALL_STAFF, built: true },
       { to: '/registration-leads', label: 'Incomplete Registrations', icon: UserPlus, roles: ALL_STAFF, built: true },

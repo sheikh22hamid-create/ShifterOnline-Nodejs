@@ -397,14 +397,14 @@ async function addWallet(req, res) {
           },
         });
 
-        // 2. Debit the 2.5% Payment Gateway Charge
+        // 2. Debit the 2.5% Platform convenience fees
         await tx.tbl_wallet_history.create({
           data: {
             user_id: account.id,
             mobile,
             amount: charge,
             type: "debit",
-            remark: "Payment Gateway Charge (2.5%)",
+            remark: "Platform convenience fees (2.5%)",
             wallet_type: walletType,
             created_at: istNow(),
           },
@@ -507,7 +507,12 @@ async function walletHistory(req, res) {
       ...withdrawalSummary,
       total_credit: totalCredit,
       total_debit: totalDebit,
-      data: rows.map((r) => ({ ...r, created_at: formatLedgerTime(r.created_at) })),
+      data: rows.map((r) => ({
+        ...r,
+        // rows written before the rename still carry the old remark
+        remark: r.remark === "Payment Gateway Charge (2.5%)" ? "Platform convenience fees (2.5%)" : r.remark,
+        created_at: formatLedgerTime(r.created_at),
+      })),
     });
   } catch (err) {
     logger.error("customerWalletController.walletHistory failed:", err);

@@ -121,7 +121,7 @@ describe("customerWalletController.addWallet", () => {
     );
     // 2.5% payment gateway charge is recorded as its own debit line ...
     expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ type: "debit", amount: 2.5, remark: "Payment Gateway Charge (2.5%)" }) })
+      expect.objectContaining({ data: expect.objectContaining({ type: "debit", amount: 2.5, remark: "Platform convenience fees (2.5%)" }) })
     );
     // ... and only the net amount reaches the wallet.
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 15 }, data: { wallet: { increment: 97.5 } } });

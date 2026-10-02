@@ -17,6 +17,7 @@ const NextDayOrders = lazy(() => import('./pages/NextDayOrders'))
 const Drivers = lazy(() => import('./pages/Drivers'))
 const FavoriteRoutes = lazy(() => import('./pages/FavoriteRoutes'))
 const DriverActivity = lazy(() => import('./pages/DriverActivity'))
+const TripFeedback = lazy(() => import('./pages/TripFeedback'))
 const DriverTraining = lazy(() => import('./pages/DriverTraining'))
 const CustomOrders = lazy(() => import('./pages/CustomOrders'))
 const KycApproval = lazy(() => import('./pages/KycApproval'))
@@ -93,6 +94,7 @@ function App() {
             <Route path="/monthly-drivers" element={<MonthlyDrivers />} />
             <Route path="/daily-drivers" element={<DailyDrivers />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />
+            <Route path="/trip-feedback" element={<TripFeedback />} />
             <Route path="/driver-training" element={<DriverTraining />} />
             <Route path="/kyc" element={<KycApproval />} />
             <Route path="/customers" element={<Customers />} />

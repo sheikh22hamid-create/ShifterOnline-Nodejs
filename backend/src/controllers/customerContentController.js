@@ -632,9 +632,13 @@ async function pkgHistoryCustomer(req, res) {
         flow_msg: FLOW_MESSAGES_PKG_ORDER[row.order_status] ?? "",
         vehicle_type: row.category || "",
         model_title: pkg?.user_title || pkg?.title || "",
-        // Trip start = pickup, end = drop; same zone-less IST wall-clock
-        // strings the ledger uses (see utils/istTime.formatLedgerTime).
-        trip_start_time: formatLedgerTime(row.pickup_time || row.accept_time),
+        // Trip start = the moment the driver started the trip (pickup_time),
+        // end = drop; zone-less IST wall-clock strings like the ledger (see
+        // utils/istTime.formatLedgerTime). pickup_time is stored as true UTC
+        // while drop_time / ddate are already IST-shifted, so it needs the
+        // +5:30 here or the start showed 5.5 h before the end. accept_time is
+        // deliberately not a fallback: acceptance is not the trip start.
+        trip_start_time: row.pickup_time ? formatLedgerTime(new Date(new Date(row.pickup_time).getTime() + 330 * 60 * 1000)) : null,
         trip_end_time: formatLedgerTime(row.drop_time || row.ddate),
         driver_name: rider ? rider.full_name || `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "",
         driver_vehicle_no: rider?.vehicle_no || "",

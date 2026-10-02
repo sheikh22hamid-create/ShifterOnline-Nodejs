@@ -135,13 +135,25 @@ function registerOrderHandlers(io, socket) {
     }
   });
 
-  socket.on("order:status_update", async ({ rider_id, order_id, status }) => {
+  socket.on("order:status_update", async ({ rider_id, order_id, status, lat, lng, early_drop }) => {
     try {
-      const result = await tripLifecycle.updateStatus(Number(order_id), Number(rider_id), status);
+      const result = await tripLifecycle.updateStatus(Number(order_id), Number(rider_id), status, {
+        lat,
+        lng,
+        earlyDrop: early_drop === true || early_drop === "true" || early_drop === 1,
+      });
 
       socket.emit("order:status_update:ack", {
         Result: result.success,
         msg: result.msg,
+        // Early Drop: the app asks the driver to confirm, then re-sends with
+        // early_drop=true; on success it shows the recalculated fare.
+        early_drop_required: result.early_drop_required === true,
+        distance_m: result.distance_m,
+        old_fare: result.old_fare ?? result.early_drop?.old_fare,
+        new_fare: result.new_fare ?? result.early_drop?.new_fare,
+        final_fare: result.final_fare,
+        early_drop: result.early_drop ? true : undefined,
       });
 
       if (!result.success) return;
@@ -152,6 +164,7 @@ function registerOrderHandlers(io, socket) {
           order_id: Number(order_id),
           order_status: result.order_status,
           o_status: result.o_status,
+          ...(result.early_drop ? { early_drop: true, final_fare: result.final_fare, old_fare: result.early_drop.old_fare, new_fare: result.early_drop.new_fare } : {}),
         });
       } else {
         io.to(room).emit("order:status_changed", {
