@@ -5,6 +5,7 @@ const pricingEngine = require("./pricingEngine");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const walletPrepayment = require("./walletPrepaymentRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { formatGoodsType } = require("./goodsTypeService");
 const {
@@ -399,6 +400,8 @@ async function checkCascadeTermination(orderId) {
       where: { id: orderId },
       data: { o_status: "Cancelled", cancel_reason: "No driver found", order_status: 4 },
     });
+    // The customer never got a ride: give back a wallet-prepaid fare.
+    await walletPrepayment.refundIfWalletPaid(order, { note: "no driver found" });
     requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
       order_id: String(orderId),
     });
@@ -1300,6 +1303,15 @@ async function reconcileStaleOffersOnStartup() {
     // actually died mid-flight for these, unlike instant orders. Excluding
     // them here so a restart during that legitimate wait doesn't silently
     // cancel an order no driver was ever offered yet.
+    // Same condition as the UPDATE below, read first so wallet-prepaid fares of
+    // the orders it cancels can be refunded.
+    const staleWalletOrders = await prisma.$queryRaw`
+      SELECT id, uid, p_method_id, trans_id FROM pkg_order
+      WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
+        AND booking_type NOT IN (2, 3)
+        AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
+        AND (p_method_id = -2 OR trans_id LIKE 'wallet%')
+    `;
     const staleOrders = await prisma.$executeRaw`
       UPDATE pkg_order
       SET o_status = 'Cancelled', cancel_reason = 'No driver found (recovered after restart)'
@@ -1307,6 +1319,9 @@ async function reconcileStaleOffersOnStartup() {
         AND booking_type NOT IN (2, 3)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
     `;
+    for (const stale of staleWalletOrders || []) {
+      await walletPrepayment.refundIfWalletPaid(stale, { note: "no driver found" });
+    }
     if (staleOrders > 0) {
       logger.warn(`dispatchManager: startup reconciliation cancelled ${staleOrders} orphaned Pending order(s)`);
     }

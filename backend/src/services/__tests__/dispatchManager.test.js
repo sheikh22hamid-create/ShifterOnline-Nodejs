@@ -26,6 +26,7 @@ jest.mock("../pricingEngine", () => {
 });
 
 jest.mock("../pushNotifier");
+jest.mock("../walletPrepaymentRefund");
 
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
@@ -796,6 +797,10 @@ describe("dispatchManager overlapping batch cascade", () => {
       ([args]) => args.data && args.data.o_status === "Cancelled"
     );
     expect(cancelledUpdate).toBe(true);
+    // A wallet-prepaid fare for a ride that never happened is handed back.
+    expect(require("../walletPrepaymentRefund").refundIfWalletPaid).toHaveBeenCalledWith(
+      expect.anything(), { note: "no driver found" }
+    );
     expect([1, 2, 3, 4, 5, 6, 7, 8].every((id) => !lockManager.isLocked(id))).toBe(true);
 
     expect(pushNotifier.notifyCustomerNoDriverFound).toHaveBeenCalledWith("cust-tok", order.id);

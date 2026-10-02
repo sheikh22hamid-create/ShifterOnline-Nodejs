@@ -12,6 +12,7 @@ const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 const { sendPushNotification } = require("../config/firebase");
 const logger = require("../utils/logger");
+const walletPrepayment = require("../services/walletPrepaymentRefund");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 const orderDestinationService = require("../services/orderDestinationService");
 const orderPickupService = require("../services/orderPickupService");
@@ -487,6 +488,15 @@ async function createOrderCore({
     });
   }
   order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
+
+  // Wallet-paid booking: the app already debited the fare (remark "Delivery
+  // payment", no order id) just before this call. Tie that debit to this order
+  // so a cancel / no-driver outcome can refund exactly what was paid.
+  if (walletPrepayment.isWalletPaidOrder(order)) {
+    await walletPrepayment.linkWalletPrepayment({ uid: Number(uid), orderId: order.id }).catch((err) => {
+      logger.error(`createOrderCore: could not link wallet payment to order ${order.id}:`, err);
+    });
+  }
 
   // Automatically save pickup, drop, and extra stops to customer's saved address book (tbl_address)
   await Promise.allSettled([

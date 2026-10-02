@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const { istNow } = require("../utils/istTime");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const walletPrepayment = require("../services/walletPrepaymentRefund");
 const dispatchManager = require("../services/dispatchManager");
 const pricingEngine = require("../services/pricingEngine");
 const pushNotifier = require("../services/pushNotifier");
@@ -343,10 +344,13 @@ async function cancel(req, res) {
 
     if (wasUnassigned) {
       dispatchManager.stopDispatch(id, "cancelled_by_user");
+      await walletPrepayment.refundIfWalletPaid(order, { note: "cancelled by admin" });
     } else if (apply_cancellation_fee && order.delivery_type) {
       const pkg = await pricingEngine.getPackageById(order.delivery_type);
       const fee = Number(pkg?.cancellation_charge_customer) || 0;
-      if (fee > 0) {
+      // Wallet-paid booking: refund net of the fee instead of a bare debit row.
+      const walletRefund = await walletPrepayment.refundIfWalletPaid(order, { deduct: fee, note: "cancelled by admin" });
+      if (fee > 0 && !(walletRefund && walletRefund.paid > 0)) {
         await prisma.tbl_wallet_history.create({
           data: {
             user_id: order.uid,
@@ -359,6 +363,9 @@ async function cancel(req, res) {
           },
         });
       }
+    } else {
+      // Admin cancelled without a cancellation fee: refund a wallet-paid fare in full.
+      await walletPrepayment.refundIfWalletPaid(order, { note: "cancelled by admin" });
     }
 
     await prisma.order_status_history.create({

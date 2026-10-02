@@ -11,6 +11,7 @@ const pushNotifier = require("./pushNotifier");
 const walletNotifier = require("./walletNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const walletPrepayment = require("./walletPrepaymentRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
@@ -919,18 +920,28 @@ async function customerCancel(uid, orderId, comment) {
       `;
     }
 
+    // Wallet-paid booking: the fare was already taken from the wallet at
+    // booking, so refund it net of the cancellation charge (one credit row)
+    // instead of leaving the whole fare gone. When that refund covers the
+    // charge, the separate "Cancellation charge" ledger row below is skipped
+    // so the charge isn't listed twice.
+    const walletRefund = await walletPrepayment.refundIfWalletPaid(orderBefore, { deduct: cancellationCharge });
+    const chargeNettedInRefund = Boolean(walletRefund && walletRefund.paid > 0);
+
     if (cancellationCharge > 0) {
-      await prisma.tbl_wallet_history.create({
-        data: {
-          user_id: uid,
-          amount: cancellationCharge,
-          type: "debit",
-          remark: `Cancellation charge for order #${orderId}`,
-          wallet_type: "user",
-          order_id: orderId,
-          created_at: istNow(),
-        },
-      });
+      if (!chargeNettedInRefund) {
+        await prisma.tbl_wallet_history.create({
+          data: {
+            user_id: uid,
+            amount: cancellationCharge,
+            type: "debit",
+            remark: `Cancellation charge for order #${orderId}`,
+            wallet_type: "user",
+            order_id: orderId,
+            created_at: istNow(),
+          },
+        });
+      }
 
       const driverEarning = Number(pkg?.driver_earning) || 0;
       if (driverEarning > 0) {
@@ -957,6 +968,8 @@ async function customerCancel(uid, orderId, comment) {
     }
   } else {
     dispatchManager.stopDispatch(orderId, "cancelled_by_user");
+    // Cancelled before any driver accepted: nothing to charge, refund in full.
+    await walletPrepayment.refundIfWalletPaid(orderBefore);
   }
 
   if (Number(orderBefore.booking_type) === 2) {
@@ -1013,7 +1026,8 @@ async function driverCancel(orderId, riderId, reason) {
   await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw`
       SELECT id, uid, rid, order_status, o_status, advance_payment,
-             payment_status, razorpay_payment_id, delivery_type, referral_points_used
+             payment_status, razorpay_payment_id, delivery_type, referral_points_used,
+             p_method_id, trans_id
       FROM pkg_order
       WHERE id = ${orderId}
       FOR UPDATE
@@ -1154,6 +1168,12 @@ async function driverCancel(orderId, riderId, reason) {
       .catch((err) => logger.error(`driverCancel: wallet notify failed for rider ${n.riderId}:`, err));
   }
 
+  // A driver cancelling is never the customer's fault: give back the full
+  // fare of a wallet-paid booking (idempotent, so a repeated cancel is safe).
+  if (cancelledOrder && refundStatus !== "already_cancelled") {
+    await walletPrepayment.refundIfWalletPaid(cancelledOrder, { note: "driver cancelled" });
+  }
+
   const freshOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (freshOrder && refundStatus !== "already_cancelled") {
     // Driver cancellation is terminal for this booking. Do not silently put
@@ -1233,7 +1253,11 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
 
   const pkg = await pricingEngine.getPackageById(order.delivery_type);
   const cancellationCharge = Number(pkg?.cancellation_charge_customer) || 0;
-  if (cancellationCharge > 0) {
+  // Wallet-paid booking: refund the prepaid fare net of the no-show penalty
+  // (the penalty then isn't listed as a second, separate debit).
+  const walletRefund = await walletPrepayment.refundIfWalletPaid(order, { deduct: cancellationCharge, note: "OTP not provided" });
+  const penaltyNettedInRefund = Boolean(walletRefund && walletRefund.paid > 0);
+  if (cancellationCharge > 0 && !penaltyNettedInRefund) {
     await prisma.tbl_wallet_history.create({
       data: {
         user_id: order.uid,

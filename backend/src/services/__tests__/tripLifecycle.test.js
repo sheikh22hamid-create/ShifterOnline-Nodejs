@@ -24,6 +24,11 @@ jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
+jest.mock("../walletPrepaymentRefund", () => ({
+  isWalletPaidOrder: jest.fn(() => false),
+  linkWalletPrepayment: jest.fn(),
+  refundIfWalletPaid: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("../driverTripService", () => ({ progressTrip: jest.fn().mockResolvedValue({}) }));
 jest.mock("../pricingEngine", () => ({
   priceForPackageId: jest.fn().mockResolvedValue({ pkg: { waiting_charge: "2.00", free_waiting_time: 5 }, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 0 }),
@@ -455,6 +460,46 @@ describe("tripLifecycle.customerCancel", () => {
     jest.clearAllMocks();
   });
 
+  describe("wallet-prepaid bookings get their money back", () => {
+    const { refundIfWalletPaid } = require("../walletPrepaymentRefund");
+
+    it("cancelled before any driver accepted: full refund, nothing charged", async () => {
+      const order = { id: 297, uid: 7, rid: 0, p_method_id: -2, trans_id: "wallet_1" };
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+      expect(refundIfWalletPaid).toHaveBeenCalledWith(order);
+    });
+
+    it("cancelled after a driver accepted: refund net of the cancellation charge, with no separate charge row", async () => {
+      const order = { id: 297, uid: 7, rid: 1, delivery_type: 6, p_method_id: -2, trans_id: "wallet_1" };
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 15 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+      refundIfWalletPaid.mockResolvedValueOnce({ refunded: 71, paid: 86 });
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(refundIfWalletPaid).toHaveBeenCalledWith(order, { deduct: 15 });
+      expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled(); // the 15 is netted inside the refund credit
+    });
+
+    it("a free-cancellation perk means the whole prepaid fare comes back", async () => {
+      const order = { id: 297, uid: 7, rid: 1, delivery_type: 6, p_method_id: -2 };
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 25 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({ subscriptionId: 44, cancellationEnabled: true, freeCancellations: 5, cancellationsUsed: 1 });
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(refundIfWalletPaid).toHaveBeenCalledWith(order, { deduct: 0 });
+    });
+  });
+
   it("stops dispatch when cancelling an unassigned order", async () => {
     prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0 });
     prisma.$executeRaw.mockResolvedValueOnce(1);
@@ -607,6 +652,20 @@ describe("tripLifecycle.customerCancel", () => {
 });
 
 describe("tripLifecycle.driverCancel", () => {
+  it("refunds a wallet-prepaid fare in full when the driver cancels", async () => {
+    const { refundIfWalletPaid } = require("../walletPrepaymentRefund");
+    prisma.$queryRaw.mockResolvedValue([{
+      id: 297, uid: 7, rid: 11, order_status: 1, o_status: "Processing", advance_payment: "0",
+      payment_status: 1, p_method_id: -2, trans_id: "wallet_1",
+    }]);
+    prisma.$executeRaw.mockResolvedValue(1);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" });
+
+    await tripLifecycle.driverCancel(297, 11, "vehicle breakdown");
+
+    expect(refundIfWalletPaid).toHaveBeenCalledWith(expect.objectContaining({ id: 297, p_method_id: -2 }), { note: "driver cancelled" });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((cb) => cb(prisma));
