@@ -2,7 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { sendWhatsAppNotification } = require("../whatsapp/notifications");
 
-const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY || "8b7c5cf8-49dd-11f1-9800-0200cd936042";
+const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY;
 const TWOFACTOR_BASE = "https://2factor.in/API/V1";
 const CUSTOMER_APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.shifter.online";
 const DRIVER_APP_DOWNLOAD_URL = "https://play.google.com/store/apps/details?id=com.shifter.driver";
@@ -116,7 +116,9 @@ async function sendLeadInvite(leadId) {
   }
 
   // 2. Send SMS via 2Factor Gateway
-  try {
+  if (!TWOFACTOR_API_KEY) {
+    logger.warn("leadInviteNotifier: TWOFACTOR_API_KEY not configured, skipping SMS.");
+  } else try {
     const encodedMsg = encodeURIComponent(smsMsg);
     // 2factor promotional / transactional message API
     const smsUrl = `${TWOFACTOR_BASE}/${TWOFACTOR_API_KEY}/ADDON_SERVICES/SEND/TSMS`;

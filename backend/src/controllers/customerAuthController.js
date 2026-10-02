@@ -166,6 +166,7 @@ async function loginByOtp(req, res) {
       where: { mobile: Number(mobile), status: 1 },
     });
     if (!user) return fail(res, "No account found. Please create an account first!");
+    if (!(await otpService.hasRecentVerifiedOtp(mobile))) return fail(res, OTP_NOT_VERIFIED_MSG);
 
     const data = {};
     if (fcmToken) data.fcm_token = fcmToken;
@@ -219,8 +220,9 @@ async function register(req, res) {
     // Validate email format only when provided
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res, "Please enter a valid email address!");
     if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
+    if (!(await otpService.hasRecentVerifiedOtp(mobile))) return fail(res, OTP_NOT_VERIFIED_MSG);
 
-    const mobileTaken = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
+    const mobileTaken =await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
     if (mobileTaken) {
       // Idempotency: If this exact user was registered within the last 2 minutes from the same device,
       // treat it as an idempotent retry/duplicate submission instead of an error!
@@ -361,9 +363,13 @@ async function register(req, res) {
     // same immediate favorite-driver add the manual-code path does above
     // (dispatchManager's existing is_favorite boost handles the rest).
     const normalizedPhone = normalizeToLast10Digits(mobile);
-    const matchedLead = await prisma.tbl_driver_lead.findFirst({
-      where: { phone: normalizedPhone, lead_type: "customer", status: "verified", expires_at: { gte: now } },
-    });
+    // Skipped when a referral code was already applied above: otherwise the
+    // same signup would get a second referral row and a second sign-up bonus.
+    const matchedLead = referrerId > 0
+      ? null
+      : await prisma.tbl_driver_lead.findFirst({
+          where: { phone: normalizedPhone, lead_type: "customer", status: "verified", expires_at: { gte: now } },
+        });
     if (matchedLead) {
       const isUserReferrer = matchedLead.referrer_type === "user" || (matchedLead.user_id && matchedLead.user_id > 0);
       const referrerId = isUserReferrer ? matchedLead.user_id : matchedLead.driver_id;
@@ -416,7 +422,7 @@ async function register(req, res) {
 // most recent otpService.verifyOtp() call for that mobile to have actually
 // succeeded (tbl_otp.status=1) within the last 10 minutes, mirroring the
 // verify-otp -> forgot-password step order the app's UI already uses.
-const OTP_VERIFIED_WINDOW_MS = 10 * 60 * 1000;
+const OTP_NOT_VERIFIED_MSG = "Please verify OTP for this mobile number first.";
 
 async function forgotPassword(req, res) {
   try {
@@ -424,10 +430,7 @@ async function forgotPassword(req, res) {
     const password = String(req.body?.password || "").trim();
     if (!mobile || !password) return fail(res, "Something Went wrong  try again !");
 
-    const otpRow = await prisma.tbl_otp.findFirst({ where: { mobile }, orderBy: { id: "desc" } });
-    const verifiedRecently =
-      otpRow && otpRow.status === 1 && Date.now() - new Date(otpRow.created_at).getTime() <= OTP_VERIFIED_WINDOW_MS;
-    if (!verifiedRecently) {
+    if (!(await otpService.hasRecentVerifiedOtp(mobile))) {
       return fail(res, "Please verify OTP for this mobile number before resetting the password.");
     }
 

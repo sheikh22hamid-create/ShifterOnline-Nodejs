@@ -6,6 +6,7 @@ jest.mock("../../config/db", () => ({
   tbl_driver_lead: { findFirst: jest.fn(), update: jest.fn() },
 }));
 jest.mock("../../services/deviceSessionService", () => ({ registerDevice: jest.fn() }));
+jest.mock("../../services/otpService", () => ({ hasRecentVerifiedOtp: jest.fn().mockResolvedValue(true) }));
 
 const prisma = require("../../config/db");
 const { register } = require("../customerAuthController");

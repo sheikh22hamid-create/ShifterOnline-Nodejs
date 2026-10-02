@@ -6,6 +6,7 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const walletPrepayment = require("./walletPrepaymentRefund");
+const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { formatGoodsType } = require("./goodsTypeService");
 const {
@@ -402,6 +403,7 @@ async function checkCascadeTermination(orderId) {
     });
     // The customer never got a ride: give back a wallet-prepaid fare.
     await walletPrepayment.refundIfWalletPaid(order, { note: "no driver found" });
+    await refundReferralPointsForOrder(orderId);
     requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
       order_id: String(orderId),
     });
@@ -1310,7 +1312,7 @@ async function reconcileStaleOffersOnStartup() {
       WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
         AND booking_type NOT IN (2, 3)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
-        AND (p_method_id = -2 OR trans_id LIKE 'wallet%')
+        AND (p_method_id = -2 OR trans_id LIKE 'wallet%' OR referral_points_used > 0)
     `;
     const staleOrders = await prisma.$executeRaw`
       UPDATE pkg_order
@@ -1321,6 +1323,7 @@ async function reconcileStaleOffersOnStartup() {
     `;
     for (const stale of staleWalletOrders || []) {
       await walletPrepayment.refundIfWalletPaid(stale, { note: "no driver found" });
+      await refundReferralPointsForOrder(stale.id);
     }
     if (staleOrders > 0) {
       logger.warn(`dispatchManager: startup reconciliation cancelled ${staleOrders} orphaned Pending order(s)`);

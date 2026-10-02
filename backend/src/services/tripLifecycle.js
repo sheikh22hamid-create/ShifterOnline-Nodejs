@@ -12,6 +12,7 @@ const walletNotifier = require("./walletNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const walletPrepayment = require("./walletPrepaymentRefund");
+const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
@@ -1257,6 +1258,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
   // (the penalty then isn't listed as a second, separate debit).
   const walletRefund = await walletPrepayment.refundIfWalletPaid(order, { deduct: cancellationCharge, note: "OTP not provided" });
   const penaltyNettedInRefund = Boolean(walletRefund && walletRefund.paid > 0);
+  await refundReferralPointsForOrder(orderId);
   if (cancellationCharge > 0 && !penaltyNettedInRefund) {
     await prisma.tbl_wallet_history.create({
       data: {
@@ -1485,6 +1487,8 @@ async function cancelExpiredAdvancePayment(orderId) {
   if (affected === 0) return; // already paid, already cancelled another way, or not yet expired
 
   const riderId = Number(order.rid) || null;
+
+  await refundReferralPointsForOrder(orderId);
 
   await prisma.order_status_history.create({
     data: {

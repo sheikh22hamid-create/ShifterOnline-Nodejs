@@ -3,6 +3,7 @@ const { istNow } = require("../utils/istTime");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const walletPrepayment = require("../services/walletPrepaymentRefund");
+const { refundReferralPointsForOrder } = require("../services/referralPointsRefund");
 const dispatchManager = require("../services/dispatchManager");
 const pricingEngine = require("../services/pricingEngine");
 const pushNotifier = require("../services/pushNotifier");
@@ -367,6 +368,8 @@ async function cancel(req, res) {
       // Admin cancelled without a cancellation fee: refund a wallet-paid fare in full.
       await walletPrepayment.refundIfWalletPaid(order, { note: "cancelled by admin" });
     }
+
+    await refundReferralPointsForOrder(id);
 
     await prisma.order_status_history.create({
       data: { order_id: id, rider_id: order.rid || null, status: "Cancelled", remark: `Cancelled by admin #${req.user.id}: ${comment || ""}` },

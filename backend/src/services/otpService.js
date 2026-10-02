@@ -6,7 +6,9 @@ const logger = require("../utils/logger");
 // account and the same tbl_otp session table, just duplicated the cURL calls
 // four times across two folders. Consolidated here as the single Node
 // equivalent so both customerAuthController and riderAuthController share it.
-const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY || "8b7c5cf8-49dd-11f1-9800-0200cd936042";
+// Env only - the key must never live in source control. Without it OTPs cannot
+// be sent or verified (see the guards in sendOtp / verifyOtp).
+const TWOFACTOR_API_KEY = process.env.TWOFACTOR_API_KEY;
 const TWOFACTOR_TEMPLATE = "ShifterOnlineNEWOTP";
 const TWOFACTOR_BASE = "https://2factor.in/API/V1";
 
@@ -73,6 +75,10 @@ async function sendOtp(mobile, { allowTestBypass = false } = {}) {
     };
   }
 
+  if (!TWOFACTOR_API_KEY) {
+    logger.error("otpService.sendOtp: TWOFACTOR_API_KEY is not configured");
+    return { ok: false, message: "OTP service is not available right now. Please try again later." };
+  }
   const url = `${TWOFACTOR_BASE}/${TWOFACTOR_API_KEY}/SMS/${mobile}/AUTOGEN/${TWOFACTOR_TEMPLATE}`;
   let result;
   try {
@@ -117,6 +123,10 @@ async function verifyOtp(mobile, otp, { allowTestBypass = false } = {}) {
     return { ok: false, message: "OTP Session Not Found." };
   }
 
+  if (!TWOFACTOR_API_KEY) {
+    logger.error("otpService.verifyOtp: TWOFACTOR_API_KEY is not configured");
+    return { ok: false, message: "OTP service is not available right now. Please try again later." };
+  }
   const url = `${TWOFACTOR_BASE}/${TWOFACTOR_API_KEY}/SMS/VERIFY/${otpRow.session_id}/${otp}`;
   let verify;
   try {
@@ -135,7 +145,19 @@ async function verifyOtp(mobile, otp, { allowTestBypass = false } = {}) {
   return { ok: true, message: "OTP Verified Successfully!!" };
 }
 
+// The apps verify the OTP in one call (/verify-otp) and then log in / register
+// / reset the password in a separate one, so those later calls must prove the
+// mobile's latest OTP session really was verified - otherwise anyone who knows
+// a number could skip the OTP step by calling them directly.
+const OTP_VERIFIED_WINDOW_MS = 10 * 60 * 1000;
+
+async function hasRecentVerifiedOtp(mobile) {
+  const otpRow = await prisma.tbl_otp.findFirst({ where: { mobile }, orderBy: { id: "desc" } });
+  return Boolean(otpRow && otpRow.status === 1 && Date.now() - new Date(otpRow.created_at).getTime() <= OTP_VERIFIED_WINDOW_MS);
+}
+
 module.exports = {
+  hasRecentVerifiedOtp,
   normalizeMobile,
   isValidIndianMobile,
   isTestDriverMobile,
