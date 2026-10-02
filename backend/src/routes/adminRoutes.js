@@ -34,6 +34,7 @@ const uploadController = require("../controllers/uploadController");
 const adminNotificationController = require("../controllers/adminNotificationController");
 const rewardPlanController = require("../controllers/rewardPlanController");
 const walletAdjustmentController = require("../controllers/walletAdjustmentController");
+const adminTripFeedbackController = require("../controllers/adminTripFeedbackController");
 const financeLedgerController = require("../controllers/financeLedgerController");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
@@ -277,6 +278,9 @@ router.get("/finance/ledger/export", auth, authorize("superadmin", "admin"), sco
 router.get("/fleet/live-tracking", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.liveTracking);
 router.get("/fleet/driver-activity", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.driverActivity);
 router.get("/fleet/active-trips", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.activeTrips);
+
+// --- Driver post-trip feedback -----------------------------------------------
+router.get("/trip-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.list);
 
 // --- CMS: Cancellation Reasons, Legal Pages, FAQs ----------------------------
 router.get("/cancel-reasons", auth, cmsController.listCancelReasons);
