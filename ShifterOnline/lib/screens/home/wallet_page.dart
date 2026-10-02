@@ -488,7 +488,7 @@ class _WalletPageState extends State<WalletPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text("PG Charge (2.5%):".tr, style: const TextStyle(fontSize: 12.5, fontFamily: 'Gilroy_Medium', color: Color(0xffDC2626))),
+                                Text("Platform convenience fees (2.5%):".tr, style: const TextStyle(fontSize: 12.5, fontFamily: 'Gilroy_Medium', color: Color(0xffDC2626))),
                                 Text("-₹${pgCharge.toStringAsFixed(2)}", style: const TextStyle(fontSize: 13, fontFamily: 'Gilroy_Bold', color: Color(0xffDC2626))),
                               ],
                             ),
@@ -505,7 +505,7 @@ class _WalletPageState extends State<WalletPage> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        "* 2.5% Payment Gateway charge will be deducted and recorded in your ledger.",
+                        "* 2.5% Platform convenience fees will be deducted and recorded in your ledger.",
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontFamily: 'Gilroy_Regular'),
                       ),
                       const SizedBox(height: 4),
