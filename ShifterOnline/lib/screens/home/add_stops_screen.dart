@@ -21,6 +21,9 @@ class AddStopsScreen extends StatefulWidget {
   final Map<String, dynamic> drop;
   final List<Map<String, dynamic>> stops;
   final int bookingType;
+  // Per-vehicle cap (the selected vehicle's max_extra_stops from fare-estimate);
+  // null = fall back to the global admin setting.
+  final int? maxExtraStops;
   final Function(Map<String, dynamic> pickup, Map<String, dynamic> drop, List<Map<String, dynamic>> stops)? onConfirm;
 
   const AddStopsScreen({
@@ -29,6 +32,7 @@ class AddStopsScreen extends StatefulWidget {
     required this.drop,
     this.stops = const [],
     this.bookingType = 1,
+    this.maxExtraStops,
     this.onConfirm,
   });
 
@@ -47,7 +51,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
   // Admin-configured cap (Settings > max_extra_stops), same cached value
   // home.dart's own add-stop flow already enforces - this screen is a
   // separate map-based stop picker that was missing the same guard.
-  late final int _maxExtraStops = int.tryParse(_storage.read("max_extra_stops")?.toString() ?? "2") ?? 2;
+  late final int _maxExtraStops = widget.maxExtraStops ?? (int.tryParse(_storage.read("max_extra_stops")?.toString() ?? "2") ?? 2);
 
   List<LatLng> _roadRoute = [];
   bool _loadingRoute = true;
@@ -381,6 +385,20 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     }
   }
 
+  // Drag-and-drop reorder of the intermediate stops (pickup and drop stay put).
+  // The route polyline / markers are rebuilt for the new sequence here; the
+  // distance and fare are re-priced from the new order when the booking screen
+  // reloads its fare estimate after this screen returns.
+  void _reorderStops(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    if (newIndex == oldIndex) return;
+    setState(() {
+      final moved = _stops.removeAt(oldIndex);
+      _stops.insert(newIndex, moved);
+    });
+    _loadRoadRoute();
+  }
+
   // Remove stop
   void _removeStop(int index) {
     setState(() {
@@ -461,23 +479,33 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                     subtitle: _addressLine(_pickupData),
                     onTap: _editPickup,
                     onDelete: null,
-                    canDrag: true,
                   ),
 
-                  // 2. Intermediate Dynamic Stops (Reorderable)
-                  ...List.generate(_stops.length, (index) {
-                    final stop = _stops[index];
-                    return _buildStopRow(
-                      indexBadge: "${index + 1}",
-                      isPickup: false,
-                      isDrop: false,
-                      title: _contactLine(stop, "Stop ${index + 1} Contact"),
-                      subtitle: _addressLine(stop),
-                      onTap: () => _editStop(index),
-                      onDelete: () => _removeStop(index),
-                      canDrag: true,
-                    );
-                  }),
+                  // 2. Intermediate Dynamic Stops (drag the handle to reorder)
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: _stops.length,
+                    onReorder: _reorderStops,
+                    itemBuilder: (context, index) {
+                      final stop = _stops[index];
+                      return Material(
+                        key: ObjectKey(stop),
+                        color: Colors.transparent,
+                        child: _buildStopRow(
+                          indexBadge: "${index + 1}",
+                          isPickup: false,
+                          isDrop: false,
+                          title: _contactLine(stop, "Stop ${index + 1} Contact"),
+                          subtitle: _addressLine(stop),
+                          onTap: () => _editStop(index),
+                          onDelete: () => _removeStop(index),
+                          dragIndex: index,
+                        ),
+                      );
+                    },
+                  ),
 
                   // 3. Drop Item
                   _buildStopRow(
@@ -488,7 +516,6 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                     subtitle: _addressLine(_dropData),
                     onTap: _editDrop,
                     onDelete: null,
-                    canDrag: true,
                   ),
 
                   const Divider(height: 1, thickness: 0.8),
@@ -625,7 +652,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     required String subtitle,
     required VoidCallback onTap,
     VoidCallback? onDelete,
-    bool canDrag = false,
+    int? dragIndex, // set for reorderable stop rows; pickup/drop have no handle
   }) {
     final notifier = Provider.of<ColorNotifier>(context, listen: false);
 
@@ -712,8 +739,14 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
             const SizedBox(width: 8),
 
             // Right side: Drag handle and Delete button
-            if (canDrag)
-              Icon(Icons.drag_handle_rounded, color: notifier.text.withOpacity(0.5), size: 20),
+            if (dragIndex != null)
+              ReorderableDragStartListener(
+                index: dragIndex,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.drag_handle_rounded, color: notifier.text.withOpacity(0.5), size: 22),
+                ),
+              ),
 
             if (onDelete != null) ...[
               const SizedBox(width: 8),

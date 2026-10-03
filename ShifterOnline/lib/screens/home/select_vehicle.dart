@@ -82,6 +82,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _nextDayEligible = false;
 
   String _selectedBodyType = 'any';
+  // Selected vehicle's add-stop cap from fare-estimate (category override, else
+  // the global admin setting); null until the first estimate loads.
+  int? _vehicleMaxExtraStops;
 
   bool _referralDiscountEnabled = false;
   double _referralDiscountPercent = 0;
@@ -648,6 +651,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _hasPlanDiscount = response['has_plan_discount'] == true;
         _planDiscountPercent = _number(response['plan_discount_percent']);
         _planDiscountMaxCap = _number(response['plan_discount_max_cap']);
+        _vehicleMaxExtraStops = int.tryParse((response['max_extra_stops'] ?? '').toString());
       });
     } else {
       setState(() { _loadingModels = false; _modelsError = _text(response is Map ? response['ResponseMsg'] : null, 'Could not load delivery options.'); });
@@ -744,6 +748,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         drop: _dropData,
         stops: _stopsData,
         bookingType: _currentBookingType,
+        maxExtraStops: _vehicleMaxExtraStops,
       ),
     );
 
@@ -764,6 +769,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   Future<void> _bookSelected() async {
     final selected = _selected; final model = _selectedModel; final fee = model == null ? null : _modelFare(model);
     if (selected == null || model == null || fee == null || _booking) return;
+    final maxStops = _vehicleMaxExtraStops;
+    if (maxStops != null && _stopsData.length > maxStops) {
+      ApiWrapper.showToastMessage('This vehicle allows only $maxStops extra ${maxStops == 1 ? 'stop' : 'stops'}. Please remove ${_stopsData.length - maxStops} to continue.');
+      return;
+    }
     final walletBalance = await _fetchWalletBalance();
     if (!mounted) return;
     final category = _categoryOf(selected);

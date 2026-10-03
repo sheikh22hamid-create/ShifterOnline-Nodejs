@@ -1,6 +1,8 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   tbl_package: { findMany: jest.fn() },
+  app_settings: { findMany: jest.fn().mockResolvedValue([]) },
+  pkg_category: { findFirst: jest.fn().mockResolvedValue(null) },
 }));
 jest.mock("../../utils/geoDistance", () => ({
   getRoadDistanceKm: jest.fn(),
@@ -383,5 +385,21 @@ describe("getFareEstimate", () => {
 
     // dCharge = 20 + 5*10 + (10-1)*4 = 106; total = 106 + 5 extra-mile = 111
     expect(result.packages[0].estimated_fare).toBe(111);
+  });
+
+  it("returns this vehicle's add-stop limit and per-stop charge so the app can enforce them before booking", async () => {
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 10, durationMin: 20 });
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.app_settings.findMany.mockResolvedValue([
+      { setting_key: "max_extra_stops", setting_value: "2" },
+      { setting_key: "extra_stop_charge", setting_value: "10" },
+    ]);
+    prisma.pkg_category.findFirst.mockResolvedValue({ max_extra_stops: 1, extra_stop_charge: 25 });
+
+    const result = await getFareEstimate({ cat_id: 1, plat: 1, plong: 1, dlat: 2, dlong: 2, uid: 1 });
+
+    expect(result.max_extra_stops).toBe(1);
+    expect(result.extra_stop_charge).toBe(25);
   });
 });

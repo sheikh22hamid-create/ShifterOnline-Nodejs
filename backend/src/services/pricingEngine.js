@@ -547,6 +547,10 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     body_type: cleanBodyType,
     covered_body_charge: extraBodyCharge,
     body_type_charge: extraBodyCharge,
+    // This vehicle's add-stop limit / per-stop charge (category override, else
+    // the global admin setting) so the app enforces the right cap up front.
+    max_extra_stops: stopSettings.maxExtraStops,
+    extra_stop_charge: stopSettings.extraStopCharge,
     packages: packages.map((pkg) => {
       const discountedPkg = applyPlanDiscount(pkg, discount);
       const isNight = isNightNow(discountedPkg);
