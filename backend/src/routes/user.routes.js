@@ -33,6 +33,7 @@ router.post("/address/delete", customerProfileController.deleteAddress);
 // Wallet
 router.post("/wallet/add", customerWalletController.addWallet);
 router.post("/wallet/history", customerWalletController.walletHistory);
+router.post("/wallet/points-history", customerWalletController.pointsHistory);
 router.post("/wallet/withdraw", customerWalletController.withdrawWallet);
 router.post("/wallet/create-order", customerWalletController.createRazorpayOrder);
 router.post("/wallet/clear-due/create-order", customerWalletController.createClearDueOrder);

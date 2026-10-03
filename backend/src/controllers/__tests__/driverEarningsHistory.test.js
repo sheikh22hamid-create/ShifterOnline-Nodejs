@@ -11,6 +11,31 @@ describe("driver earnings timestamps", () => {
     expect(trip.trip_duration_minutes).toBe(69);
     expect(trip.vehicle_category).toBe("3 Wheeler");
   });
+  describe("cash the driver collects nets off referral-points and coupon discounts", () => {
+    const base = { id: 3, o_status: "Processing", payment_status: 1, total_dcharge: 200, advance_payment: "15", category: "Bike" };
+
+    it("subtracts the referral-points discount (platform absorbs it) from cash_to_collect", () => {
+      const trip = formatPkgOrderForDriver({ ...base, referral_points_amount: "30" }, context);
+      expect(trip.cash_to_collect).toBe(155); // 200 - 15 advance - 30 points
+      expect(trip.cash_collected_from_user).toBe(155);
+      expect(trip.trip_payment_summary.payment_by_user.cash_to_collect).toBe(155);
+    });
+
+    it("subtracts the coupon discount as well, matching tripLifecycle's prepaidTotal", () => {
+      const trip = formatPkgOrderForDriver({ ...base, referral_points_amount: "30", cou_amt: "20" }, context);
+      expect(trip.cash_to_collect).toBe(135);
+    });
+
+    it("never goes below zero when discounts cover the whole fare", () => {
+      const trip = formatPkgOrderForDriver({ ...base, total_dcharge: 40, referral_points_amount: "30" }, context);
+      expect(trip.cash_to_collect).toBe(0);
+    });
+
+    it("is unchanged for an order with no discounts", () => {
+      expect(formatPkgOrderForDriver(base, context).cash_to_collect).toBe(185);
+    });
+  });
+
   it("does not turn missing or inconsistent old timings into fake zero-hour trips", () => {
     expect(formatPkgOrderForDriver({ id: 2, o_status: "Completed", payment_status: 1 }, context).trip_duration_minutes).toBeNull();
     expect(formatPkgOrderForDriver({ id: 2, o_status: "Cancelled", payment_status: 1 }, context).earnings_completed_at).toBeNull();

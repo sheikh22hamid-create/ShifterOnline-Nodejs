@@ -200,6 +200,10 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name="com.shifter.driver.activity.PointsHistoryActivity"
+            android:exported="false" />
+
+        <activity
             android:name="com.shifter.driver.activity.ClearDueSuccessActivity"
             android:exported="false" />
 

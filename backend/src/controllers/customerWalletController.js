@@ -707,4 +707,80 @@ async function withdrawWallet(req, res) {
   }
 }
 
-module.exports = { addWallet, walletHistory, withdrawWallet, createRazorpayOrder, createClearDueOrder, clearOutstandingDue, clearDueWithPoints };
+// Customer-facing wording for tbl_referral_point_log.source (the admin panel
+// shows the raw slugs; the apps want something a person can read).
+const POINT_SOURCE_LABELS = {
+  signup_bonus: "Signup bonus",
+  referral_reward: "Referral reward",
+  lead: "Referral lead reward",
+  ride_milestone: "Ride milestone reward",
+  ride_discount: "Used on a ride",
+  ride_discount_refund: "Refunded (ride cancelled)",
+  plan_purchase: "Used for a plan",
+  due_clearance: "Used to clear dues",
+  admin_adjustment: "Added by Shifter",
+  admin_grant_now: "Added by Shifter",
+  admin_grant_ride_complete: "Reward from Shifter",
+};
+
+function pointSourceLabel(source) {
+  const key = String(source || "");
+  if (POINT_SOURCE_LABELS[key]) return POINT_SOURCE_LABELS[key];
+  const words = key.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Points";
+}
+
+// Referral-points statement for the customer / driver apps: current balance,
+// lifetime earned / used, and the paged log (newest first). Same account
+// lookup as walletHistory (mobile + wallet_type), since both apps already
+// call these wallet endpoints that way.
+async function pointsHistory(req, res) {
+  try {
+    const b = req.body || {};
+    const mobile = String(b.mobile || "");
+    const walletType = b.wallet_type;
+    if (!mobile || (walletType !== "user" && walletType !== "driver")) return fail(res, "Missing Parameters");
+
+    const account =
+      walletType === "user"
+        ? await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } })
+        : await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
+    if (!account) return fail(res, "User Not Found");
+
+    const page = Math.max(parseInt(b.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(b.limit, 10) || 50, 1), 100);
+    // user_type matters: customer and driver ids overlap, and one mobile can be both.
+    const where = { user_id: account.id, user_type: walletType === "user" ? "USER" : "DRIVER" };
+
+    const [rows, earned, used] = await Promise.all([
+      prisma.tbl_referral_point_log.findMany({ where, orderBy: { id: "desc" }, skip: (page - 1) * limit, take: limit }),
+      prisma.tbl_referral_point_log.aggregate({ where: { ...where, points: { gt: 0 } }, _sum: { points: true } }),
+      prisma.tbl_referral_point_log.aggregate({ where: { ...where, points: { lt: 0 } }, _sum: { points: true } }),
+    ]);
+
+    return res.status(200).json({
+      Result: true,
+      msg: "Points History",
+      points_balance: Number(account.referral_points) || 0,
+      total_earned: Number(earned._sum.points) || 0,
+      total_used: Math.abs(Number(used._sum.points) || 0),
+      page,
+      limit,
+      data: rows.map((r) => ({
+        id: r.id,
+        points: r.points,
+        txn_type: r.txn_type,
+        source: r.source,
+        source_label: pointSourceLabel(r.source),
+        balance_after: r.balance_after,
+        note: r.note || "",
+        created_at: formatLedgerTime(r.created_at),
+      })),
+    });
+  } catch (err) {
+    logger.error("customerWalletController.pointsHistory failed:", err);
+    return fail(res, "Internal server error");
+  }
+}
+
+module.exports = { addWallet, walletHistory, pointsHistory, withdrawWallet, createRazorpayOrder, createClearDueOrder, clearOutstandingDue, clearDueWithPoints };

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:goParcel/Api/AppModelApi/payment_gatwey_api_model.dart';
 import 'package:goParcel/Payment/razor_pay.dart';
 import 'package:goParcel/screens/home/home.dart';
+import 'package:goParcel/screens/home/referral_points_screen.dart';
 import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -806,27 +807,32 @@ class _WalletPageState extends State<WalletPage> {
                     ),
                   ),
                   SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.stars_rounded, color: Colors.amber, size: 18),
-                        const SizedBox(width: 6),
-                        Text(
-                          "Points: $walletPoints".tr,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontFamily: 'Gilroy_Bold',
+                  GestureDetector(
+                    onTap: () => Get.to(() => const ReferralPointsScreen()),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.stars_rounded, color: Colors.amber, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Points: $walletPoints".tr,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontFamily: 'Gilroy_Bold',
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 18),
+                        ],
+                      ),
                     ),
                   ),
                   SizedBox(height: 20),

@@ -210,6 +210,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   double get _referralRedeemableAmount => _referralRedeemablePoints * _referralPointValue;
 
+  /// What the customer actually pays for [fare]: the coupon and (when the
+  /// "Use referral points" box is ticked) the referral-points discount come
+  /// off. Single source for the "Payable amount" row, the Confirm Booking
+  /// screen and the wallet debit so they can't drift apart.
+  double _payableAmount(double fare) =>
+      math.max(0.0, fare - _couponDiscountFor(fare) - (_useReferralPoints ? _referralRedeemableAmount : 0));
+
   Future<void> _fetchReferralDiscountInfo() async {
     final uid = _storage.read('Uid');
     if (uid == null) return;
@@ -763,7 +770,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     await Get.to(() => ConfirmOrderMap(
       startLat: _pickup.latitude, startLng: _pickup.longitude, endLat: _drop.latitude, endLng: _drop.longitude,
       stops: _stopsData,
-      deliveryFees: fee, walletBalance: walletBalance, currency: _text(model['currency'], '₹'),
+      deliveryFees: _payableAmount(fee), walletBalance: walletBalance, currency: _text(model['currency'], '₹'),
       deliveryType: _text(model['package_id'] ?? model['id']),
       onConfirmPayment: (payValue, _) => _submitOrder(payValue, category, model, fee),
       onViewBreakup: () => _showFareBreakdown(model, fee),
@@ -798,8 +805,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final login = _storage.read('UserLogin');
     if (payValue == -2 && login is Map) {
       final balance = await _fetchWalletBalance();
-      if (balance < fee) { setState(() => _booking = false); ApiWrapper.showToastMessage('Insufficient wallet balance.'); return; }
-      final deducted = await ApiWrapper.dataPostNode(Config.nodeWalletWithdraw, {'mobile': login['mobile'], 'wallet_type': 'user', 'amount': fee.toStringAsFixed(2), 'remark': 'Delivery payment'});
+      // Only what's left after the coupon / referral-points discount is taken from the wallet.
+      final payable = _payableAmount(fee);
+      if (balance < payable) { setState(() => _booking = false); ApiWrapper.showToastMessage('Insufficient wallet balance.'); return; }
+      final deducted = await ApiWrapper.dataPostNode(Config.nodeWalletWithdraw, {'mobile': login['mobile'], 'wallet_type': 'user', 'amount': payable.toStringAsFixed(2), 'remark': 'Delivery payment'});
       if (deducted is! Map || !(deducted['Result'] == true || deducted['Result'] == 'true')) { setState(() => _booking = false); ApiWrapper.showToastMessage('Wallet payment failed.'); return; }
     }
     final uid = _storage.read('Uid');
@@ -1841,7 +1850,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Referral points discount (up to ${_referralDiscountPercent.toStringAsFixed(_referralDiscountPercent % 1 == 0 ? 0 : 1)}%)', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12)), Text('-₹${_referralRedeemableAmount.toStringAsFixed(0)}', style: const TextStyle(color: Color(0xFF00C853), fontFamily: 'Gilroy_Bold', fontSize: 13))]),
           ],
           const SizedBox(height: 4),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Payable amount', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${math.max(0.0, _modelFare(_selectedModel!)! - _couponDiscountFor(_modelFare(_selectedModel!)!) - (_useReferralPoints ? _referralRedeemableAmount : 0)).toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Payable amount', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_payableAmount(_modelFare(_selectedModel!)!).toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
         ], Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12))))],
       if (_referralDiscountEnabled && _referralPointsAvailable > 0 && _referralRedeemablePoints > 0) ...[
         const SizedBox(height: 10),

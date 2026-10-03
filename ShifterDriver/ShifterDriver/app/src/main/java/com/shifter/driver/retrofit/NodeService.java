@@ -170,6 +170,11 @@ public interface NodeService {
     @POST("api/users/wallet/history")
     Call<JsonObject> getWalletHistory(@Body RequestBody body);
 
+    // Referral-points statement (balance, earned/used, paged log) - same
+    // wallet_type switch as getWalletHistory above.
+    @POST("api/users/wallet/points-history")
+    Call<JsonObject> getPointsHistory(@Body RequestBody body);
+
     @POST("api/users/wallet/add")
     Call<JsonObject> addWallet(@Body RequestBody body);
 

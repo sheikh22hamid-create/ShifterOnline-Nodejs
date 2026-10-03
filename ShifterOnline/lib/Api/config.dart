@@ -179,6 +179,7 @@ class Config {
   // field, so existing parsing code needed no changes beyond the URL.
   static const String nodeWalletAdd = "api/users/wallet/add";
   static const String nodeWalletHistory = "api/users/wallet/history";
+  static const String nodeWalletPointsHistory = "api/users/wallet/points-history";
   static const String nodeWalletWithdraw = "api/users/wallet/withdraw";
   static const String nodePremiumPlans = "api/users/premium-plans";
   static const String nodePremiumPlansPurchase = "api/users/premium-plans/purchase";

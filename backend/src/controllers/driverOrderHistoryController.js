@@ -144,7 +144,11 @@ function formatPkgOrderForDriver(row, ctx) {
 
   const advPay = Number(row.advance_payment || 0);
   const driverEarning = Math.max(0, Number((fare - adminAmount).toFixed(2)));
-  const cashCollect = Math.max(0, Number((fare - advPay).toFixed(2)));
+  // Referral-points and coupon discounts are absorbed by the platform (see
+  // tripLifecycle's prepaidTotal), so they come off the cash the driver
+  // collects just like the advance does.
+  const discountAbsorbed = Number(row.referral_points_amount || 0) + Number(row.cou_amt || 0);
+  const cashCollect = Math.max(0, Number((fare - advPay - discountAbsorbed).toFixed(2)));
 
   const walletDiff = Number((driverEarning - cashCollect).toFixed(2));
   let walletAction = "none";
