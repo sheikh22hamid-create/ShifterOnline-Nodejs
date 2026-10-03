@@ -926,7 +926,7 @@ async function customerCancel(uid, orderId, comment) {
 
   const affectedRows = await prisma.$executeRaw`
     UPDATE pkg_order
-    SET o_status = 'Cancelled', cancel_reason = ${comment || null}
+    SET o_status = 'Cancelled', order_status = 4, cancel_reason = ${comment || null}
     WHERE id = ${orderId} AND uid = ${uid} AND o_status NOT IN ('Completed', 'Cancelled')
   `;
 
@@ -969,18 +969,26 @@ async function customerCancel(uid, orderId, comment) {
 
     if (cancellationCharge > 0) {
       if (!chargeNettedInRefund) {
-        await prisma.tbl_wallet_history.create({
-          data: {
-            user_id: uid,
-            amount: cancellationCharge,
-            type: "debit",
-            remark: `Cancellation charge for order #${orderId}`,
-            wallet_type: "user",
-            order_id: orderId,
-            created_at: istNow(),
-          },
-        });
+        // The ledger row alone never moved tbl_user.wallet, so the history
+        // showed a debit while the balance stayed put - take both together.
+        await prisma.$transaction([
+          prisma.tbl_user.update({ where: { id: uid }, data: { wallet: { decrement: cancellationCharge } } }),
+          prisma.tbl_wallet_history.create({
+            data: {
+              user_id: uid,
+              amount: cancellationCharge,
+              type: "debit",
+              remark: `Cancellation charge for order #${orderId}`,
+              wallet_type: "user",
+              order_id: orderId,
+              created_at: istNow(),
+            },
+          }),
+        ]);
       }
+
+      // Admin order view + finance ledger read cancel_charge from the order.
+      await prisma.pkg_order.update({ where: { id: orderId }, data: { cancel_charge: cancellationCharge } });
 
       const driverEarning = Number(pkg?.driver_earning) || 0;
       if (driverEarning > 0) {
@@ -1384,17 +1392,20 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
   await refundReferralPointsForOrder(orderId);
   const penaltyRemark = `No-show penalty — OTP not provided within ${timeoutMinutes} minutes (order #${orderId})`;
   if (cancellationCharge > 0 && !penaltyNettedInRefund) {
-    await prisma.tbl_wallet_history.create({
-      data: {
-        user_id: order.uid,
-        amount: cancellationCharge,
-        type: "debit",
-        remark: penaltyRemark,
-        wallet_type: "user",
-        order_id: orderId,
-        created_at: istNow(),
-      },
-    });
+    await prisma.$transaction([
+      prisma.tbl_user.update({ where: { id: order.uid }, data: { wallet: { decrement: cancellationCharge } } }),
+      prisma.tbl_wallet_history.create({
+        data: {
+          user_id: order.uid,
+          amount: cancellationCharge,
+          type: "debit",
+          remark: penaltyRemark,
+          wallet_type: "user",
+          order_id: orderId,
+          created_at: istNow(),
+        },
+      }),
+    ]);
     walletNotifier
       .notifyCustomerWalletTransaction(order.uid, { type: "debit", amount: cancellationCharge, remark: penaltyRemark })
       .catch((err) => logger.error(`cancelOverduePickup: wallet notify (no-show penalty) failed for user ${order.uid}:`, err));

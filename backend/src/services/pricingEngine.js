@@ -76,7 +76,7 @@ function calculateRadiusCharge(pkg, radiusRangeKm) {
                                 rawPickup !== undefined &&
                                 rawPickup !== "" &&
                                 !isNaN(Number(rawPickup)) &&
-                                Number(rawPickup) > 0;
+                                Number(rawPickup) >= 0;
   const pickupPerKm = hasExplicitPickupRate ? Number(rawPickup) : (perKmCharge > 0 ? perKmCharge : 4);
   const chargeableRadius = Math.max(0, (Number(radiusRangeKm) || 0) - 1);
   return chargeableRadius * pickupPerKm;

@@ -82,6 +82,14 @@ describe("calculateFare", () => {
     expect(calculateFare(pkgWithPickupRate, 10, false, 3)).toBe(86); // chargeable 2km * 8 = 16 -> 70+16
   });
 
+  it("respects pickup_per_km_charge of 0 as free pickup distance instead of falling back to per_km_charge", () => {
+    const pkgWithZeroPickup = { ...pkg, pickup_per_km_charge: 0 };
+    expect(calculateFare(pkgWithZeroPickup, 10, false, 3)).toBe(70); // chargeable 2km * 0 = 0 -> 70+0 = 70
+
+    const pkgWithStringZeroPickup = { ...pkg, pickup_per_km_charge: "0" };
+    expect(calculateFare(pkgWithStringZeroPickup, 10, false, 3)).toBe(70);
+  });
+
   it("adds extraMileCharge flat on top of everything", () => {
     expect(calculateFare(pkg, 10, false, 1, 15)).toBe(85); // 70 + 15
   });

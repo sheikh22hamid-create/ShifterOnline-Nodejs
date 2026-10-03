@@ -398,7 +398,12 @@ export default function RateCards() {
                       {/* Pickup & Cancellation Charges Column */}
                       <td className="font-mono-data whitespace-nowrap px-4 py-3 text-[12px]">
                         <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          Pickup: {formatCurrency(rc.pickup_per_km_charge || 0)}/km
+                          Pickup:{' '}
+                          {rc.pickup_per_km_charge != null && rc.pickup_per_km_charge !== ''
+                            ? Number(rc.pickup_per_km_charge) === 0
+                              ? '₹0/km (Free)'
+                              : `${formatCurrency(rc.pickup_per_km_charge)}/km`
+                            : `${formatCurrency(rc.per_km_charge || 0)}/km (Trip rate)`}
                         </div>
                         <div className="text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
                           User Cancel: {formatCurrency(rc.cancellation_charge_customer || 0)}

@@ -208,7 +208,10 @@ async function create(req, res) {
         unloading_charge: b.unloading_charge ?? null,
         service_charge: b.service_charge ?? null,
         pickup_charge: b.pickup_charge ?? null,
-        pickup_per_km_charge: b.pickup_per_km_charge ?? null,
+        pickup_per_km_charge:
+          b.pickup_per_km_charge !== undefined && b.pickup_per_km_charge !== null && b.pickup_per_km_charge !== ""
+            ? b.pickup_per_km_charge
+            : null,
         premium_plan_id: b.premium_plan_id ? parseInt(b.premium_plan_id, 10) : null,
         sort_order: b.sort_order !== undefined ? parseInt(b.sort_order, 10) : 0,
         cancellation_charge_customer: b.cancellation_charge_customer ?? 0,
@@ -285,6 +288,8 @@ async function update(req, res) {
       if (b[field] !== undefined) {
         if (field === "user_title" || field === "driver_title") {
           data[field] = b[field] ? String(b[field]).trim() : null;
+        } else if (field === "pickup_per_km_charge") {
+          data[field] = b[field] !== null && b[field] !== undefined && b[field] !== "" ? b[field] : null;
         } else {
           data[field] = b[field];
         }
@@ -598,7 +603,7 @@ async function syncModelsFromSlabs(req, res) {
             data: {
               min_charge: String(calculatedMin),
               per_km_charge: String(calculatedPerKm),
-              pickup_per_km_charge: pkgMatch.pickup_per_km_charge ? String(calculatedPickupPerKm) : null,
+              pickup_per_km_charge: pkgMatch.pickup_per_km_charge != null ? String(calculatedPickupPerKm) : null,
               user_title: m.user_title ? String(m.user_title).trim() : pkgMatch.user_title,
               driver_title: m.driver_title ? String(m.driver_title).trim() : pkgMatch.driver_title,
             },

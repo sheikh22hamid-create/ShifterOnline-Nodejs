@@ -460,6 +460,9 @@ describe("tripLifecycle.rejectOrder", () => {
 describe("tripLifecycle.customerCancel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // The charge debit uses the array form, prisma.$transaction([write, write]);
+    // earlier suites leave a callback-style implementation behind.
+    prisma.$transaction.mockImplementation((ops) => Promise.all(ops));
   });
 
   describe("wallet-prepaid bookings get their money back", () => {
@@ -621,6 +624,84 @@ describe("tripLifecycle.customerCancel", () => {
         wallet_type: "driver",
       }),
     });
+  });
+
+  describe("cancellation charge actually reduces the customer's wallet balance", () => {
+    const { refundIfWalletPaid } = require("../walletPrepaymentRefund");
+
+    it("decrements tbl_user.wallet by the charge alongside the ledger debit row", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 40 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+        where: { id: 7 },
+        data: { wallet: { decrement: 40 } },
+      });
+      expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ user_id: 7, amount: 40, type: "debit", wallet_type: "user", order_id: 297 }),
+      });
+    });
+
+    it("writes the debit row and the balance decrement in one transaction", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 40 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(2);
+    });
+
+    it("records the charge on the order so the admin view and finance ledger show it", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 40 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(prisma.pkg_order.update).toHaveBeenCalledWith({ where: { id: 297 }, data: { cancel_charge: 40 } });
+    });
+
+    it("does not decrement again when the charge was already netted into a wallet-paid refund", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6, p_method_id: -2 });
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 15 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+      refundIfWalletPaid.mockResolvedValueOnce({ refunded: 70, paid: 85 });
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    });
+
+    it("leaves the balance alone when a free-cancellation perk waives the charge", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 1, delivery_type: 6 });
+      prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 25 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce({ subscriptionId: 44, cancellationEnabled: true, freeCancellations: 5, cancellationsUsed: 1 });
+
+      await tripLifecycle.customerCancel(7, 297, "driver too far");
+
+      expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  it("marks the order order_status=4 on cancel so a late driver 'arrived' can't revive it (and re-charge a second cancel)", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+
+    await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+    const sql = prisma.$executeRaw.mock.calls[0][0].join("?");
+    expect(sql).toMatch(/o_status\s*=\s*'Cancelled'/);
+    expect(sql).toMatch(/order_status\s*=\s*4/);
   });
 
   it("refunds any referral points redeemed on this order once it's cancelled", async () => {
@@ -1242,6 +1323,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
 describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer no-show", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((ops) => Promise.all(ops));
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 400,
       uid: 9,
@@ -1282,6 +1364,17 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
     expect(prisma.order_status_history.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ order_id: 400, rider_id: 3, status: "cancelled", remark: expect.stringContaining("₹30") }),
     });
+  });
+
+  it("also decrements the customer's wallet balance by the no-show penalty, atomically with the ledger row", async () => {
+    await tripLifecycle.cancelOverduePickup(400, 3);
+
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 9 },
+      data: { wallet: { decrement: 30 } },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(2);
   });
 
   it("does nothing when the order already moved past Pickup (OTP verified or cancelled first — race with the sweep)", async () => {
