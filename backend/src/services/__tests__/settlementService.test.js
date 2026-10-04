@@ -336,7 +336,7 @@ describe("settlementService.raiseDispute", () => {
   });
 
   it("customer can dispute a driver-confirmed payment inside the window and keeps the applied wallet effect until admin decides", async () => {
-    setup(row({ status: "cash_received", wallet_effect: "cash", effect_seq: 1, confirmed_at: new Date(Date.now() - 60 * 60 * 1000) }));
+    setup(row({ status: "cash_received", wallet_effect: "cash", effect_seq: 1, confirmed_by: "driver", confirmed_at: new Date(Date.now() - 60 * 60 * 1000) }));
     settings(48);
     const { settlement } = await svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "I never gave cash" });
     expect(settlement).toMatchObject({ status: "disputed", wallet_effect: "cash" });
@@ -344,9 +344,25 @@ describe("settlementService.raiseDispute", () => {
   });
 
   it("rejects a customer dispute after the window closed", async () => {
-    setup(row({ status: "cash_received", wallet_effect: "cash", confirmed_at: new Date(Date.now() - 49 * 60 * 60 * 1000) }));
+    setup(row({ status: "cash_received", wallet_effect: "cash", confirmed_by: "driver", confirmed_at: new Date(Date.now() - 49 * 60 * 60 * 1000) }));
     settings(48);
     await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "late complaint" })).rejects.toMatchObject({ code: "WINDOW_CLOSED" });
+  });
+
+  it("customer cannot dispute a cash payment an admin already resolved", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", confirmed_by: "admin", confirmed_at: new Date() }));
+    settings();
+    await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "I disagree" })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a driver-confirmed cash row has no confirmed_at", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", confirmed_by: "driver", confirmed_at: null }));
+    settings();
+    await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "no timestamp" })).rejects.toMatchObject({ code: "WINDOW_CLOSED" });
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
   });
 
   it("driver cannot dispute after confirming cash; nobody can dispute an online payment", async () => {

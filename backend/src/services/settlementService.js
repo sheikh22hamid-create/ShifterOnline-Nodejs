@@ -305,8 +305,11 @@ async function raiseDispute({ orderId, actor, actorId, reason }) {
       throw new SettlementError("INVALID_STATE", stateMessage(s.status));
     }
     if (customerOnConfirmedCash) {
-      const ageMs = Date.now() - new Date(s.confirmed_at).getTime();
-      if (ageMs > disputeWindowHours * 60 * 60 * 1000) {
+      if (s.confirmed_by !== "driver") {
+        throw new SettlementError("INVALID_STATE", "An admin has already reviewed this payment.");
+      }
+      const ageMs = s.confirmed_at ? Date.now() - new Date(s.confirmed_at).getTime() : NaN;
+      if (!Number.isFinite(ageMs) || ageMs > disputeWindowHours * 60 * 60 * 1000) {
         throw new SettlementError("WINDOW_CLOSED", "The window to report a problem with this payment has closed.");
       }
     }
