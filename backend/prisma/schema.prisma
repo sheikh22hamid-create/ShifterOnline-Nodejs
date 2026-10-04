@@ -1473,6 +1473,24 @@ model order_driver_feedback {
   @@index([rider_id])
 }
 
+/// Optional post-trip feedback form the CUSTOMER fills about the driver / delivery / vehicle.
+model order_customer_feedback {
+  id              Int      @id @default(autoincrement())
+  order_id        Int      @unique
+  rider_id        Int
+  uid             Int
+  driver_rating   Int?
+  delivery_rating Int?
+  vehicle_rating  Int?
+  feedback_tags   String?  @db.VarChar(255)
+  comment         String?  @db.Text
+  created_at      DateTime @default(now()) @db.DateTime(0)
+  updated_at      DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([uid])
+  @@index([rider_id])
+}
+
 model driver_duty_log {
   id                      Int       @id @default(autoincrement())
   rider_id                Int

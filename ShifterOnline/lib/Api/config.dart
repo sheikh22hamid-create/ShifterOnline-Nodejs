@@ -156,6 +156,7 @@ class Config {
   static const String nodePickupPreview = "api/order/pickup-change/preview";
   static const String nodePickupConfirm = "api/order/pickup-change/confirm";
   static const String nodeOrderRate = "api/order/rate";
+  static const String nodeCustomerFeedback = "api/order/customer-feedback";
   static const String nodeOrderUploadPhoto = "api/order/upload-photo";
   static const String nodeFareEstimate = "api/order/fare-estimate";
   static const String nodeCategories = "api/order/categories";

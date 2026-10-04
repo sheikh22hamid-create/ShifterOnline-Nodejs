@@ -119,7 +119,7 @@ async function getOne(req, res) {
       return res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
     }
 
-    const [customer, rider, waitTimer, pkg, paymentMethod, stops, driverFeedback, statusHistory, walletEntries] = await Promise.all([
+    const [customer, rider, waitTimer, pkg, paymentMethod, stops, driverFeedback, customerFeedback, statusHistory, walletEntries] = await Promise.all([
       prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { id: true, name: true, mobile: true, email: true } }),
       order.rid ? prisma.tbl_rider.findUnique({ where: { id: order.rid } }) : null,
       prisma.pkg_order_wait_timer.findFirst({ where: { order_id: id }, orderBy: { id: "desc" } }),
@@ -129,6 +129,7 @@ async function getOne(req, res) {
         ? prisma.pkg_order_stops.findMany({ where: { order_id: id }, orderBy: { sequence: "asc" } })
         : Promise.resolve([]),
       prisma.order_driver_feedback.findUnique({ where: { order_id: id } }).catch(() => null),
+      prisma.order_customer_feedback.findUnique({ where: { order_id: id } }).catch(() => null),
       prisma.order_status_history.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }).catch(() => []),
       order.o_status === "Cancelled"
         ? prisma.tbl_wallet_history.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }).catch(() => [])
@@ -158,6 +159,7 @@ async function getOne(req, res) {
         payment_method: paymentMethod ? paymentMethod.title : null,
         stops,
         driver_feedback: driverFeedback,
+        customer_feedback: customerFeedback,
         status_history: statusHistory,
         // Cancelled orders: every wallet row tied to the order (customer penalty,
         // refund, driver compensation) so admin sees exactly who was charged/paid.

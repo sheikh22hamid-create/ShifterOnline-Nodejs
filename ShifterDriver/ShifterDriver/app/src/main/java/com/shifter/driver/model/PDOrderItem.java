@@ -276,6 +276,34 @@ public class PDOrderItem implements Parcelable {
 		radiusCharge = in.readString();
 		paymentStatus = in.readString();
 		goodsType = in.readString();
+		advancePaymentMsg = in.readString();
+		advancePaymentTimer = in.readString();
+		advancePayment = in.readString();
+		minimumCharge = in.readString();
+		actualPickupCharge = in.readString();
+		pickupCharge = in.readString();
+		pickupToDropCharge = in.readString();
+		addStopCharge = in.readString();
+		extraWaitingTimeCharge = in.readString();
+		nightCharge = in.readString();
+		finalFareAmount = in.readString();
+		commission = in.readString();
+		perTripCharge = in.readString();
+		totalDeductions = in.readString();
+		driverTotalEarning = in.readString();
+		totalAmountByUser = in.readString();
+		cashToCollect = in.readString();
+		cashCollectedFromUser = in.readString();
+		walletAdjustment = in.readString();
+		walletAdjustmentNote = in.readString();
+		cancelReason = in.readString();
+		settlementNote = in.readString();
+		planBenefitApplied = in.readByte() != 0;
+		planName = in.readString();
+		planDiscountApplied = in.readString();
+		planIncentiveEarned = in.readString();
+		bookingType = in.readString();
+		pMethodId = in.readString();
 	}
 
 	public static final Creator<PDOrderItem> CREATOR = new Creator<PDOrderItem>() {
@@ -577,6 +605,34 @@ public class PDOrderItem implements Parcelable {
 		parcel.writeString(radiusCharge);
 		parcel.writeString(paymentStatus);
 		parcel.writeString(goodsType);
+		parcel.writeString(advancePaymentMsg);
+		parcel.writeString(advancePaymentTimer);
+		parcel.writeString(advancePayment);
+		parcel.writeString(minimumCharge);
+		parcel.writeString(actualPickupCharge);
+		parcel.writeString(pickupCharge);
+		parcel.writeString(pickupToDropCharge);
+		parcel.writeString(addStopCharge);
+		parcel.writeString(extraWaitingTimeCharge);
+		parcel.writeString(nightCharge);
+		parcel.writeString(finalFareAmount);
+		parcel.writeString(commission);
+		parcel.writeString(perTripCharge);
+		parcel.writeString(totalDeductions);
+		parcel.writeString(driverTotalEarning);
+		parcel.writeString(totalAmountByUser);
+		parcel.writeString(cashToCollect);
+		parcel.writeString(cashCollectedFromUser);
+		parcel.writeString(walletAdjustment);
+		parcel.writeString(walletAdjustmentNote);
+		parcel.writeString(cancelReason);
+		parcel.writeString(settlementNote);
+		parcel.writeByte((byte) (planBenefitApplied ? 1 : 0));
+		parcel.writeString(planName);
+		parcel.writeString(planDiscountApplied);
+		parcel.writeString(planIncentiveEarned);
+		parcel.writeString(bookingType);
+		parcel.writeString(pMethodId);
 	}
 
 	public void setDlat(double dlat) {

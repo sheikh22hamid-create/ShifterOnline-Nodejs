@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Search, Star, MessageSquareText, OctagonAlert } from 'lucide-react'
+import { Search, Star, MessageSquareText, OctagonAlert, UserCheck, Truck, Quote } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
 import useRealtimeSync from '../hooks/useRealtimeSync'
@@ -9,7 +9,9 @@ import { formatDateTime, truncate } from '../utils/format'
 
 const LIMIT = 25
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
-const HEADERS = ['Order', 'Driver', 'Customer', 'Customer Rating', 'Pickup Location', 'Drop Location', 'Pickup-to-Drop Road', 'No Entry Zone', 'Submitted']
+
+const DRIVER_HEADERS = ['Order', 'Driver', 'Customer', 'Customer Rating', 'Pickup Location', 'Drop Location', 'Pickup-to-Drop Road', 'No Entry Zone', 'Submitted']
+const CUSTOMER_HEADERS = ['Order', 'Customer', 'Driver', 'Driver Rating', 'Delivery Speed', 'Vehicle Condition', 'Feedback Tags', 'Customer Comment', 'Submitted']
 
 const CUSTOMER_TYPES = { commercial: 'Commercial', home_shifting: 'Home shifting' }
 
@@ -28,6 +30,7 @@ function Stars({ value }) {
 }
 
 export default function TripFeedback() {
+  const [tab, setTab] = useState('driver') // 'driver' | 'customer'
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [noEntry, setNoEntry] = useState('')
@@ -35,31 +38,43 @@ export default function TripFeedback() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
+  const endpoint = tab === 'customer' ? '/customer-feedback' : '/trip-feedback'
+
   const fetcher = useCallback(
     () =>
       api
-        .get('/trip-feedback', {
+        .get(endpoint, {
           params: {
             page,
             limit: LIMIT,
             search: search.trim() || undefined,
-            no_entry: noEntry || undefined,
+            no_entry: tab === 'driver' ? (noEntry || undefined) : undefined,
             rating: rating || undefined,
             from: from || undefined,
             to: to || undefined,
           },
         })
         .then((res) => res.data),
-    [page, search, noEntry, rating, from, to]
+    [endpoint, tab, page, search, noEntry, rating, from, to]
   )
   const { data, loading, error, refetch } = useApiQuery(fetcher)
   useRealtimeSync(['admin:order_status_update'], refetch)
 
   const rows = data?.data || []
   const total = data?.total || 0
-  const hasFilter = Boolean(search || noEntry || rating || from || to)
+  const hasFilter = Boolean(search || (tab === 'driver' && noEntry) || rating || from || to)
 
-  // Any filter change goes back to the first page.
+  const switchTab = (newTab) => {
+    if (tab === newTab) return
+    setTab(newTab)
+    setPage(1)
+    setSearch('')
+    setNoEntry('')
+    setRating('')
+    setFrom('')
+    setTo('')
+  }
+
   const onFilter = (setter) => (e) => {
     setter(e.target.value)
     setPage(1)
@@ -72,10 +87,43 @@ export default function TripFeedback() {
           Trip Feedback
         </h1>
         <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-          What drivers reported after each completed trip: customer, pickup, drop and road ratings, plus any no-entry zone.
+          {tab === 'driver'
+            ? 'What drivers reported after each completed trip: customer, pickup, drop and road ratings, plus any no-entry zone.'
+            : 'What customers reported after trip completion & payment: driver rating, delivery speed, vehicle condition, tags and comments.'}
         </p>
       </div>
 
+      {/* Segmented Tab Switcher */}
+      <div className="inline-flex rounded-xl p-1 shadow-sm border" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted, rgba(0,0,0,0.03))' }}>
+        <button
+          type="button"
+          onClick={() => switchTab('driver')}
+          className="flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-all"
+          style={{
+            background: tab === 'driver' ? 'var(--surface, #ffffff)' : 'transparent',
+            color: tab === 'driver' ? 'var(--brand, #16A34A)' : 'var(--ink-muted)',
+            boxShadow: tab === 'driver' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}
+        >
+          <Truck size={15} />
+          <span>Driver Feedback</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => switchTab('customer')}
+          className="flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-all"
+          style={{
+            background: tab === 'customer' ? 'var(--surface, #ffffff)' : 'transparent',
+            color: tab === 'customer' ? 'var(--brand, #16A34A)' : 'var(--ink-muted)',
+            boxShadow: tab === 'customer' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}
+        >
+          <UserCheck size={15} />
+          <span>Customer Feedback</span>
+        </button>
+      </div>
+
+      {/* Filter Row */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-faint)' }} />
@@ -88,11 +136,15 @@ export default function TripFeedback() {
             style={FIELD_STYLE}
           />
         </div>
-        <select value={noEntry} onChange={onFilter(setNoEntry)} className="rounded-lg border px-2.5 py-1.5 text-[12.5px] outline-none" style={FIELD_STYLE}>
-          <option value="">No Entry Zone: All</option>
-          <option value="yes">No Entry Zone: Yes</option>
-          <option value="no">No Entry Zone: No</option>
-        </select>
+
+        {tab === 'driver' && (
+          <select value={noEntry} onChange={onFilter(setNoEntry)} className="rounded-lg border px-2.5 py-1.5 text-[12.5px] outline-none" style={FIELD_STYLE}>
+            <option value="">No Entry Zone: All</option>
+            <option value="yes">No Entry Zone: Yes</option>
+            <option value="no">No Entry Zone: No</option>
+          </select>
+        )}
+
         <select value={rating} onChange={onFilter(setRating)} className="rounded-lg border px-2.5 py-1.5 text-[12.5px] outline-none" style={FIELD_STYLE}>
           <option value="">Any rating</option>
           {[1, 2, 3, 4, 5].map((n) => (
@@ -127,7 +179,7 @@ export default function TripFeedback() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {HEADERS.map((h) => (
+                {(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -138,23 +190,23 @@ export default function TripFeedback() {
               {loading &&
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={HEADERS.length} className="px-4 py-3">
+                    <td colSpan={(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).length} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={HEADERS.length} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).length} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
               )}
               {!loading && !error && rows.length === 0 && (
                 <tr>
-                  <td colSpan={HEADERS.length} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+                  <td colSpan={(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).length} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                     <MessageSquareText size={22} className="mx-auto mb-2" />
-                    No trip feedback found.
+                    No {tab === 'driver' ? 'driver' : 'customer'} feedback found.
                   </td>
                 </tr>
               )}
@@ -162,42 +214,92 @@ export default function TripFeedback() {
                 !error &&
                 rows.map((r) => (
                   <tr key={r.id} className="transition-colors hover:bg-black/[0.02]" style={{ borderTop: '1px solid var(--border)' }}>
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      <div className="font-mono-data font-medium" style={{ color: 'var(--ink)' }}>#{r.order_id}</div>
-                      {r.customer_type && (
-                        <div className="mt-0.5">
-                          <Badge tone="info">{CUSTOMER_TYPES[r.customer_type] || r.customer_type}</Badge>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.driver_name}</div>
-                      <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.driver_mobile || `#${r.driver_id}`}</div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.customer_name}</div>
-                      <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.customer_mobile || `#${r.customer_id}`}</div>
-                    </td>
-                    <td className="px-4 py-2.5"><Stars value={r.customer_rating} /></td>
-                    <td className="px-4 py-2.5">
-                      <Stars value={r.pickup_location_rating} />
-                      {r.pickup && <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-faint)' }} title={r.pickup}>{truncate(r.pickup, 34)}</div>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Stars value={r.drop_location_rating} />
-                      {r.drop && <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-faint)' }} title={r.drop}>{truncate(r.drop, 34)}</div>}
-                    </td>
-                    <td className="px-4 py-2.5"><Stars value={r.route_rating} /></td>
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      {r.no_entry_zone === null || r.no_entry_zone === undefined ? (
-                        <span style={{ color: 'var(--ink-faint)' }}>—</span>
-                      ) : r.no_entry_zone ? (
-                        <Badge tone="danger"><OctagonAlert size={11} /> Yes</Badge>
-                      ) : (
-                        <Badge tone="success">No</Badge>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{formatDateTime(r.created_at)}</td>
+                    {tab === 'driver' ? (
+                      /* Driver Feedback Row */
+                      <>
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <div className="font-mono-data font-medium" style={{ color: 'var(--ink)' }}>#{r.order_id}</div>
+                          {r.customer_type && (
+                            <div className="mt-0.5">
+                              <Badge tone="info">{CUSTOMER_TYPES[r.customer_type] || r.customer_type}</Badge>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.driver_name}</div>
+                          <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.driver_mobile || `#${r.driver_id}`}</div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.customer_name}</div>
+                          <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.customer_mobile || `#${r.customer_id}`}</div>
+                        </td>
+                        <td className="px-4 py-2.5"><Stars value={r.customer_rating} /></td>
+                        <td className="px-4 py-2.5">
+                          <Stars value={r.pickup_location_rating} />
+                          {r.pickup && <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-faint)' }} title={r.pickup}>{truncate(r.pickup, 34)}</div>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <Stars value={r.drop_location_rating} />
+                          {r.drop && <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-faint)' }} title={r.drop}>{truncate(r.drop, 34)}</div>}
+                        </td>
+                        <td className="px-4 py-2.5"><Stars value={r.route_rating} /></td>
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          {r.no_entry_zone === null || r.no_entry_zone === undefined ? (
+                            <span style={{ color: 'var(--ink-faint)' }}>—</span>
+                          ) : r.no_entry_zone ? (
+                            <Badge tone="danger"><OctagonAlert size={11} /> Yes</Badge>
+                          ) : (
+                            <Badge tone="success">No</Badge>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{formatDateTime(r.created_at)}</td>
+                      </>
+                    ) : (
+                      /* Customer Feedback Row */
+                      <>
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <div className="font-mono-data font-medium" style={{ color: 'var(--ink)' }}>#{r.order_id}</div>
+                          {r.goods_type && (
+                            <div className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>{r.goods_type}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.customer_name}</div>
+                          <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.customer_mobile || `#${r.customer_id}`}</div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.driver_name}</div>
+                          <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.driver_mobile || `#${r.driver_id}`}</div>
+                        </td>
+                        <td className="px-4 py-2.5"><Stars value={r.driver_rating} /></td>
+                        <td className="px-4 py-2.5"><Stars value={r.delivery_rating} /></td>
+                        <td className="px-4 py-2.5"><Stars value={r.vehicle_rating} /></td>
+                        <td className="px-4 py-2.5">
+                          {r.feedback_tags ? (
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {r.feedback_tags.split(',').map((tag, idx) => (
+                                <Badge key={idx} tone="neutral" className="text-[10.5px]">
+                                  {tag.trim()}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ink-faint)' }}>—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 max-w-[220px]">
+                          {r.comment ? (
+                            <div className="flex items-start gap-1 text-[12px] italic" style={{ color: 'var(--ink-muted)' }}>
+                              <Quote size={11} className="shrink-0 mt-0.5" style={{ color: 'var(--brand)' }} />
+                              <span title={r.comment}>{truncate(r.comment, 55)}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ink-faint)' }}>—</span>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{formatDateTime(r.created_at)}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
             </tbody>

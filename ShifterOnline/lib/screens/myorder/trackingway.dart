@@ -44,6 +44,7 @@ import 'order_route_map.dart';
 import '../home/location_search_screen.dart';
 import '../../services/settlement_api_service.dart';
 import 'customer_settlement_sheet.dart';
+import 'customer_feedback_sheet.dart';
 
 class TrackingWay extends StatefulWidget {
   final String? type;
@@ -134,7 +135,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   }
 
   void _listenForLiveUpdates() {
-    NodeSocketManager.instance.joinOrder(orderid);
+    final uidInt = int.tryParse(uid) ?? 0;
+    if (uidInt > 0) {
+      NodeSocketManager.instance.connectCustomer(uidInt, orderId: orderid);
+    } else {
+      NodeSocketManager.instance.joinOrder(orderid);
+    }
 
     _socketSubscription = NodeSocketManager.instance.addListeners(onOrderAssigned: (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
@@ -173,6 +179,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     }, onSettlementUpdated: (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint("🔔 settlement:updated: $data");
+      final status = data['status']?.toString();
+      final amt = data['amount_due']?.toString() ?? '';
+      if (status == 'cash_received') {
+        ApiWrapper.showToastMessage("Driver confirmed ₹$amt cash payment received!".tr);
+      } else if (status == 'paid_online') {
+        ApiWrapper.showToastMessage("Online payment confirmed!".tr);
+      }
       if (orderProduc is Map) {
         setState(() {
           orderProduc["settlement"] = data;
@@ -3886,8 +3899,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               buttonbgColor: linercolor,
               bordecolor: linercolor,
               onTap: () {
-                commit.clear();
-                reviewRider();
+                _openCustomerFeedbackSheet();
               },
             ),
             const SizedBox(height: 12),
@@ -5091,8 +5103,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         buttonbgColor: linercolor,
         bordecolor: linercolor,
         onTap: () {
-          commit.clear();
-          reviewRider();
+          _openCustomerFeedbackSheet();
         },
       );
     }
@@ -7722,7 +7733,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final status = settlement['status']?.toString();
     if (status == 'pending' || status == 'customer_owes') {
       if (_settlementPollTimer == null || !_settlementPollTimer!.isActive) {
-        _settlementPollTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+        _settlementPollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
           final uidInt = int.tryParse(uid) ?? 0;
           final orderIdInt = int.tryParse(orderid) ?? 0;
           if (uidInt <= 0 || orderIdInt <= 0 || !mounted) return;
@@ -7744,6 +7755,33 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       _settlementPollTimer?.cancel();
       _settlementPollTimer = null;
     }
+  }
+
+  bool _feedbackSheetShown = false;
+
+  void _openCustomerFeedbackSheet() {
+    if (_feedbackSheetShown || !mounted) return;
+    final uidInt = int.tryParse(uid.toString()) ?? 0;
+    final orderIdInt = int.tryParse(orderid.toString()) ?? 0;
+    final riderIdInt = int.tryParse((orderProduc?["rider_id"] ?? "0").toString()) ?? 0;
+    final driverName = (orderProduc?["rider_title"] ?? orderProduc?["rider_name"] ?? "").toString();
+
+    if (uidInt <= 0 || orderIdInt <= 0) return;
+    _feedbackSheetShown = true;
+
+    CustomerFeedbackSheet.show(
+      context,
+      orderId: orderIdInt,
+      uid: uidInt,
+      riderId: riderIdInt,
+      driverName: driverName,
+      onSubmitted: () {
+        if (orderProduc is Map) {
+          orderProduc["is_rate"] = "1";
+        }
+        pageRefresh();
+      },
+    );
   }
 
   void _openSettlementSheet() {
@@ -7774,6 +7812,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       ),
     ).whenComplete(() {
       _isSettlementSheetOpen = false;
+      pageRefresh();
+      final latestSettlement = _getSettlementData();
+      final sStatus = latestSettlement?['status']?.toString();
+      if ((sStatus == 'cash_received' || sStatus == 'paid_online' || sStatus == 'waived') &&
+          orderProduc?['is_rate'] == "0") {
+        Future.delayed(const Duration(milliseconds: 600), _openCustomerFeedbackSheet);
+      }
     });
   }
 
@@ -7843,6 +7888,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         orderProduc['settlement'] = res['settlement'];
       }
       pageRefresh();
+      Future.delayed(const Duration(milliseconds: 600), _openCustomerFeedbackSheet);
     } else {
       final code = res['code']?.toString();
       if (code == 'PAID_BUT_STATE_CHANGED') {

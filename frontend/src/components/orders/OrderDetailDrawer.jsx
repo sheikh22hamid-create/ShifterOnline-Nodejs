@@ -347,11 +347,24 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                       }
                     />
                     <Field label="Package Weight" value={order.package_weight ? `${order.package_weight} kg` : '—'} />
-                    {Number(order.is_rate) === 1 && (
+                    {Number(order.is_rate) === 1 && !order.customer_feedback && (
                       <Field
                         label="Customer rated driver"
                         value={`★ ${order.cust_rate}${order.cust_comment ? ` — ${order.cust_comment}` : ''}`}
                       />
+                    )}
+                    {order.customer_feedback && (
+                      <>
+                        <Field label="Customer rated driver" value={order.customer_feedback.driver_rating ? `★ ${order.customer_feedback.driver_rating}` : '—'} />
+                        <Field label="Delivery speed rating" value={order.customer_feedback.delivery_rating ? `★ ${order.customer_feedback.delivery_rating}` : '—'} />
+                        <Field label="Vehicle rating" value={order.customer_feedback.vehicle_rating ? `★ ${order.customer_feedback.vehicle_rating}` : '—'} />
+                        {order.customer_feedback.feedback_tags && (
+                          <Field label="Customer tags" value={order.customer_feedback.feedback_tags} />
+                        )}
+                        {order.customer_feedback.comment && (
+                          <Field label="Customer comment" value={order.customer_feedback.comment} />
+                        )}
+                      </>
                     )}
                     {order.driver_feedback && (
                       <>

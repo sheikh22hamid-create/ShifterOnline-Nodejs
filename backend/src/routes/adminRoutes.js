@@ -283,8 +283,9 @@ router.get("/fleet/live-tracking", auth, authorize(...RIDER_ROLES), scopeFilter,
 router.get("/fleet/driver-activity", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.driverActivity);
 router.get("/fleet/active-trips", auth, authorize(...RIDER_ROLES), scopeFilter, fleetController.activeTrips);
 
-// --- Driver post-trip feedback -----------------------------------------------
+// --- Driver & Customer post-trip feedback ------------------------------------
 router.get("/trip-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.list);
+router.get("/customer-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.listCustomerFeedback);
 
 // --- CMS: Cancellation Reasons, Legal Pages, FAQs ----------------------------
 router.get("/cancel-reasons", auth, cmsController.listCancelReasons);
