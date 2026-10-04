@@ -17,6 +17,8 @@ const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const earlyDropService = require("./earlyDropService");
 const pickupEtaService = require("./pickupEtaService");
+const settlementSettings = require("./settlementSettings");
+const settlementService = require("./settlementService");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
@@ -590,6 +592,32 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
 
     const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
     const cashCollected = isCashOrder ? Math.max(0, finalTotal - prepaidTotal) : 0;
+    // Deferred payment settlement (spec 2026-10-04): for a regular driver's
+    // cash order, don't claw back commission now - the driver hasn't been
+    // confirmed to hold the cash yet. settlementService applies the wallet
+    // effect when the driver taps "Received" / the customer pays online / an
+    // admin resolves. Monthly and Daily drivers keep their own ledgers. If
+    // creating the settlement fails we FALL BACK to the legacy debit below
+    // (never a completed ride with no money flow).
+    let settlementCreated = false;
+    if (!isMonthlyDriver && !isDailyDriverExempt && isCashOrder && cashCollected > 0
+        && (await settlementSettings.isSettlementEnabled())) {
+      try {
+        await settlementService.createForCompletedOrder({
+          orderId,
+          uid: order.uid,
+          riderId,
+          amountDue: cashCollected,
+          fare: finalTotal,
+          commissionAmount: pricingEngine.commissionAmount(finalTotal, effectiveCommissionPercent),
+          perTripCharge: driverBenefit?.benefit > 0 ? Number(driverBenefit.perTripCharge) || 0 : 0,
+          prepaidAmount: prepaidTotal,
+        });
+        settlementCreated = true;
+      } catch (err) {
+        logger.error(`updateStatus: settlement creation failed for order ${orderId}, using legacy commission flow:`, err);
+      }
+    }
 
     if (isMonthlyDriver) {
       if (cashCollected > 0) {
@@ -633,7 +661,7 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       // here - dailyDriverSettlementService.settleEnrollment sums
       // pkg_order.driver_earning directly for the whole duty window instead
       // of accumulating per-ride ledger rows.
-    } else if (isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || prepaidTotal > 0)) {
+    } else if (!settlementCreated && isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || prepaidTotal > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
       // touching real money. Computed off finalTotal (includes waiting
@@ -814,7 +842,11 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
-    return { success: true, order_status: 5, o_status: "Completed", ...(earlyDrop ? { early_drop: earlyDrop, final_fare: finalTotal } : {}) };
+    return {
+      success: true, order_status: 5, o_status: "Completed",
+      ...(settlementCreated ? { settlement_pending: true } : {}),
+      ...(earlyDrop ? { early_drop: earlyDrop, final_fare: finalTotal } : {}),
+    };
   }
 
   return { success: false, msg: `Unknown status transition: ${status}` };

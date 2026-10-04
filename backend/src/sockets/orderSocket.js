@@ -170,6 +170,7 @@ function registerOrderHandlers(io, socket) {
           order_id: Number(order_id),
           order_status: result.order_status,
           o_status: result.o_status,
+          settlement_pending: result.settlement_pending === true,
           ...(result.early_drop ? { early_drop: true, final_fare: result.final_fare, old_fare: result.early_drop.old_fare, new_fare: result.early_drop.new_fare } : {}),
         });
       } else {
