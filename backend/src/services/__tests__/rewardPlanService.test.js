@@ -1,16 +1,16 @@
 jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
   tbl_premium_plan: { findFirst: jest.fn(), findMany: jest.fn() },
-  tbl_user: { findUnique: jest.fn(), update: jest.fn() },
+  tbl_user: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   tbl_user_plan_subscription: { updateMany: jest.fn(), create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
   tbl_wallet_history: { create: jest.fn() },
   tbl_pending_reward_plan: { findFirst: jest.fn(), updateMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   tbl_ride_milestone_reward: { findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), findUnique: jest.fn() },
-  tbl_ride_milestone_applied: { create: jest.fn(), updateMany: jest.fn() },
+  tbl_ride_milestone_applied: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
   tbl_ride_amount_reward: { findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), findUnique: jest.fn() },
   tbl_ride_amount_reward_applied: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
-  pkg_order: { count: jest.fn() },
+  pkg_order: { count: jest.fn(), findMany: jest.fn() },
 }));
 
 jest.mock("../pushNotifier", () => ({
@@ -397,3 +397,29 @@ describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
     expect(res.is_claimed).toBe(false);
   });
 });
+
+describe("rewardPlanService.listAmountRewardClaims", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("returns claims with user details and triggering order", async () => {
+    prisma.tbl_ride_amount_reward_applied.findMany.mockResolvedValue([
+      { id: 1, user_id: 10, reward_id: 2, status: "applied", order_id: 99, applied_at: new Date("2026-10-04T12:00:00Z") },
+    ]);
+    prisma.tbl_user.findMany.mockResolvedValue([
+      { id: 10, name: "Rahul Sharma", mobile: 9876543210, email: "rahul@example.com", r_img: null },
+    ]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 99, total_dcharge: 250, grand_total: 250, o_status: "Completed", odate: new Date("2026-10-04T11:55:00Z") },
+    ]);
+
+    const claims = await rewardPlanService.listAmountRewardClaims({ rewardId: 2 });
+
+    expect(claims).toHaveLength(1);
+    expect(claims[0].user.name).toBe("Rahul Sharma");
+    expect(claims[0].order.order_total).toBe(250);
+    expect(claims[0].status).toBe("applied");
+  });
+});
+

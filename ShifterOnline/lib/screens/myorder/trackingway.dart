@@ -519,6 +519,21 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     return "Rider is picking up your order".tr;
   }
 
+  void _handleBackNavigation() {
+    if (orderProduc != null &&
+        (orderProduc["payment_status"] ?? "").toString() != "1" &&
+        _isAdvancePaymentRequiredForOrder) {
+      ApiWrapper.showToastMessage("Please pay advance or cancel order to continue".tr);
+      return;
+    }
+
+    if (widget.isback == true && Navigator.canPop(context)) {
+      Get.back();
+    } else {
+      Get.offAll(() => const Bottombar(tabIndex: 0));
+    }
+  }
+
   // ── 1. TOP HEADER ─────────────────────────────────────────────────────────
 
   Widget _buildModernHeader() {
@@ -541,20 +556,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         children: [
           InkWell(
             onTap: () {
-              if (orderProduc != null &&
-                  (orderProduc["payment_status"] ?? "").toString() != "1" &&
-                  _isAdvancePaymentRequiredForOrder) {
-                return;
-              }
-              if (orderProduc != null && orderProduc["Order_Status"] == "Completed") {
-                if (widget.isback == true) {
-                  Get.back();
-                } else {
-                  Get.offAll(() => Bottombar());
-                }
-              } else {
-                Get.back();
-              }
+              _handleBackNavigation();
             },
             borderRadius: BorderRadius.circular(20),
             child: Container(
@@ -5275,21 +5277,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
     return WillPopScope(
       onWillPop: () async {
-        if (orderProduc != null &&
-            (orderProduc["payment_status"] ?? "").toString() != "1" &&
-            _isAdvancePaymentRequiredForOrder) {
-          return false;
-        }
-        if (orderProduc != null && orderProduc["Order_Status"] == "Completed") {
-          if (widget.isback == true) {
-            Get.back();
-          } else {
-            Get.offAll(() => Bottombar());
-          }
-        } else {
-          Get.back();
-        }
-        return true;
+        _handleBackNavigation();
+        return false;
       },
       child: Scaffold(
         backgroundColor: linercolor,

@@ -999,7 +999,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }) {
     Get.dialog(
       WillPopScope(
-        onWillPop: () async => false,
+        onWillPop: () async {
+          Get.offAll(() => const Bottombar(tabIndex: 0));
+          return false;
+        },
         child: Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           elevation: 0,

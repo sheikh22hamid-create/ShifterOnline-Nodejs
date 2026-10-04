@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, Milestone, IndianRupee, Gift, Users, Sparkles } from 'lucide-react'
+import { Plus, Pencil, Trash2, Milestone, IndianRupee, Gift, Users, Sparkles, Eye, Search, Phone } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -332,6 +332,188 @@ function AmountRewardFormModal({ open, reward, onClose, onSaved }) {
   )
 }
 
+function ClaimedUsersModal({ open, target, type = 'amount', onClose }) {
+  const [claims, setClaims] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (!open || !target) return
+    setLoading(true)
+    setError('')
+    setSearch('')
+    const url = type === 'amount'
+      ? `/ride-amount-rewards/${target.id}/claims`
+      : `/ride-milestones/${target.id}/claims`
+
+    api
+      .get(url)
+      .then((res) => setClaims(res.data?.data || []))
+      .catch((err) => setError(err.response?.data?.message || 'Could not load claimed customers.'))
+      .finally(() => setLoading(false))
+  }, [open, target, type])
+
+  const filtered = claims.filter((c) => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    const name = c.user?.name?.toLowerCase() || ''
+    const phone = String(c.user?.mobile || '')
+    const orderId = String(c.order_id || '')
+    return name.includes(q) || phone.includes(q) || orderId.includes(q)
+  })
+
+  const title = target
+    ? type === 'amount'
+      ? `Claimed Customers (₹${Number(target.min_amount).toLocaleString('en-IN')}+ Ride Offer)`
+      : `Claimed Customers (${target.rides_required} Rides Milestone)`
+    : 'Claimed Customers'
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      width={720}
+      footer={
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border px-4 py-1.5 text-[13px] font-semibold"
+          style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+        >
+          Close
+        </button>
+      }
+    >
+      {/* Subheader info banner */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3" style={{ background: 'var(--bg-subtle, var(--bg))', borderColor: 'var(--border)' }}>
+        <div>
+          <span className="text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>Reward Plan: </span>
+          <span className="font-semibold text-[13px]" style={{ color: 'var(--brand)' }}>{target?.plan?.plan_name || `Plan #${target?.plan_id}`}</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+          <Users size={14} />
+          <span>Total Claims: <strong>{claims.length}</strong> {target?.max_customers ? `/ ${target.max_customers} quota` : ''}</span>
+        </div>
+      </div>
+
+      {/* Search Input */}
+      {claims.length > 0 && (
+        <div className="relative mb-3">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by customer name, phone, or order ID..."
+            className="w-full rounded-lg border py-2 pl-9 pr-3 text-[13px] outline-none"
+            style={FIELD_STYLE}
+          />
+        </div>
+      )}
+
+      {loading && (
+        <div className="space-y-2 py-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-12 animate-pulse rounded-lg" style={{ background: 'var(--border)' }} />
+          ))}
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="rounded-lg border p-4 text-center text-[13px]" style={{ background: 'var(--danger-soft)', color: 'var(--danger)', borderColor: 'var(--danger-soft-border)' }}>
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && claims.length === 0 && (
+        <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
+          <Gift size={28} className="mx-auto mb-2 text-gray-400" />
+          <div className="text-[14px] font-semibold text-gray-700">No Customers Claimed Yet</div>
+          <div className="mt-1 text-[12px] text-gray-500">
+            When a customer completes a ride qualifying for this offer, their details will appear here automatically.
+          </div>
+        </div>
+      )}
+
+      {!loading && !error && claims.length > 0 && filtered.length === 0 && (
+        <div className="py-6 text-center text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+          No claimed customers matching "{search}".
+        </div>
+      )}
+
+      {!loading && !error && filtered.length > 0 && (
+        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--border)' }}>
+          <table className="w-full text-left text-[12.5px]">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle, var(--bg))' }}>
+                <th className="px-3 py-2.5 font-semibold" style={{ color: 'var(--ink-faint)' }}>Customer</th>
+                <th className="px-3 py-2.5 font-semibold" style={{ color: 'var(--ink-faint)' }}>Triggering Ride</th>
+                <th className="px-3 py-2.5 font-semibold" style={{ color: 'var(--ink-faint)' }}>Status</th>
+                <th className="px-3 py-2.5 font-semibold" style={{ color: 'var(--ink-faint)' }}>Claimed At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => {
+                const dateStr = c.applied_at
+                  ? new Date(c.applied_at).toLocaleString('en-IN', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                    })
+                  : '—'
+                return (
+                  <tr key={c.id} className="border-b last:border-b-0 hover:bg-gray-50/50" style={{ borderColor: 'var(--border)' }}>
+                    <td className="px-3 py-2.5">
+                      <div className="font-semibold" style={{ color: 'var(--ink)' }}>
+                        {c.user?.name || `Customer #${c.user_id}`}
+                      </div>
+                      <div className="flex items-center gap-1 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                        <Phone size={11} />
+                        <span>{c.user?.mobile || 'No phone'}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {c.order_id ? (
+                        <div>
+                          <span className="font-mono-data font-semibold text-[12px]" style={{ color: 'var(--brand)' }}>
+                            #{c.order_id}
+                          </span>
+                          {c.order?.order_total != null && (
+                            <span className="ml-1.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                              (Fare: ₹{c.order.order_total})
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--ink-faint)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {c.status === 'applied' ? (
+                        <Badge tone="success">Plan Activated 🎉</Badge>
+                      ) : (
+                        <Badge tone="neutral">Skipped (Active Plan)</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                      {dateStr}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 export default function RideMilestones() {
   const { hasRole } = useAuth()
   const toast = useToast()
@@ -356,6 +538,9 @@ export default function RideMilestones() {
   const [formTargetAmount, setFormTargetAmount] = useState(undefined)
   const [deleteTargetAmount, setDeleteTargetAmount] = useState(null)
   const [deletingAmount, setDeletingAmount] = useState(false)
+
+  const [viewClaimedTarget, setViewClaimedTarget] = useState(null)
+  const [viewClaimedType, setViewClaimedType] = useState('amount')
 
   async function handleDeleteCount() {
     setDeletingCount(true)
@@ -537,12 +722,21 @@ export default function RideMilestones() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Users size={14} style={{ color: 'var(--ink-muted)' }} />
-                            <span className="text-[12.5px] font-medium" style={{ color: 'var(--ink)' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setViewClaimedTarget(r)
+                              setViewClaimedType('amount')
+                            }}
+                            className="group flex items-center gap-2 rounded-lg py-0.5 text-left transition-colors hover:opacity-80"
+                            title="Click to view claimed customers"
+                          >
+                            <Users size={14} style={{ color: 'var(--brand)' }} />
+                            <span className="text-[12.5px] font-semibold underline decoration-dashed underline-offset-4" style={{ color: 'var(--ink)' }}>
                               {r.claimed_count} {r.max_customers ? `/ ${r.max_customers} claimed` : 'claimed (Unlimited)'}
                             </span>
-                          </div>
+                            <Eye size={13} className="opacity-60 transition-opacity group-hover:opacity-100" style={{ color: 'var(--brand)' }} />
+                          </button>
                           {r.max_customers && (
                             <div className="mt-1 w-32">
                               <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
@@ -570,6 +764,19 @@ export default function RideMilestones() {
                         {canManage && (
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setViewClaimedTarget(r)
+                                  setViewClaimedType('amount')
+                                }}
+                                className="rounded p-1 transition-colors hover:bg-gray-100"
+                                style={{ color: 'var(--brand)' }}
+                                aria-label="View claimed customers"
+                                title="View customers who received this reward"
+                              >
+                                <Eye size={14} />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => setFormTargetAmount(r)}
@@ -662,6 +869,18 @@ export default function RideMilestones() {
                       {canManage && (
                         <td className="px-4 py-2.5">
                           <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewClaimedTarget(m)
+                                setViewClaimedType('count')
+                              }}
+                              style={{ color: 'var(--brand)' }}
+                              aria-label="View claimed customers"
+                              title="View customers who reached this milestone"
+                            >
+                              <Eye size={14} />
+                            </button>
                             <button type="button" onClick={() => setFormTargetCount(m)} style={{ color: 'var(--ink-faint)' }} aria-label="Edit">
                               <Pencil size={14} />
                             </button>
@@ -723,6 +942,13 @@ export default function RideMilestones() {
               refetchAmount()
             }}
           />
+          <ClaimedUsersModal
+            open={Boolean(viewClaimedTarget)}
+            target={viewClaimedTarget}
+            type={viewClaimedType}
+            onClose={() => setViewClaimedTarget(null)}
+          />
+
           <Modal
             open={Boolean(deleteTargetAmount)}
             onClose={() => setDeleteTargetAmount(null)}

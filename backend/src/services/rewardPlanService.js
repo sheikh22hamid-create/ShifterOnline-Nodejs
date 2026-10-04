@@ -592,6 +592,126 @@ async function getActiveAmountRewardForCustomer({ uid }) {
   }
 }
 
+/**
+ * Returns list of customer claims for a specific ride-amount reward rule.
+ */
+async function listAmountRewardClaims({ rewardId }) {
+  const claims = await prisma.tbl_ride_amount_reward_applied.findMany({
+    where: { reward_id: Number(rewardId) },
+    orderBy: { applied_at: "desc" },
+  });
+
+  if (claims.length === 0) return [];
+
+  const userIds = [...new Set(claims.map((c) => c.user_id))];
+  const orderIds = [...new Set(claims.map((c) => c.order_id).filter(Boolean))];
+
+  const [users, orders] = await Promise.all([
+    prisma.tbl_user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, mobile: true, email: true, r_img: true },
+    }),
+    orderIds.length > 0
+      ? prisma.pkg_order.findMany({
+          where: { id: { in: orderIds } },
+          select: { id: true, total_dcharge: true, grand_total: true, o_status: true, odate: true },
+        })
+      : [],
+  ]);
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const orderMap = new Map(orders.map((o) => [o.id, o]));
+
+  return claims.map((c) => {
+    const user = userMap.get(c.user_id);
+    const order = c.order_id ? orderMap.get(c.order_id) : null;
+    return {
+      id: c.id,
+      user_id: c.user_id,
+      reward_id: c.reward_id,
+      status: c.status,
+      applied_at: c.applied_at,
+      user: user
+        ? {
+            id: user.id,
+            name: user.name,
+            mobile: user.mobile,
+            email: user.email,
+            r_img: user.r_img,
+          }
+        : null,
+      order: order
+        ? {
+            id: order.id,
+            order_total: Number(order.grand_total || order.total_dcharge || 0),
+            status: order.o_status,
+            date: order.odate,
+          }
+        : null,
+    };
+  });
+}
+
+/**
+ * Returns list of customer claims for a specific ride-count milestone tier.
+ */
+async function listMilestoneClaims({ milestoneId }) {
+  const claims = await prisma.tbl_ride_milestone_applied.findMany({
+    where: { milestone_id: Number(milestoneId) },
+    orderBy: { applied_at: "desc" },
+  });
+
+  if (claims.length === 0) return [];
+
+  const userIds = [...new Set(claims.map((c) => c.user_id))];
+  const orderIds = [...new Set(claims.map((c) => c.order_id).filter(Boolean))];
+
+  const [users, orders] = await Promise.all([
+    prisma.tbl_user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, mobile: true, email: true, r_img: true },
+    }),
+    orderIds.length > 0
+      ? prisma.pkg_order.findMany({
+          where: { id: { in: orderIds } },
+          select: { id: true, total_dcharge: true, grand_total: true, o_status: true, odate: true },
+        })
+      : [],
+  ]);
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const orderMap = new Map(orders.map((o) => [o.id, o]));
+
+  return claims.map((c) => {
+    const user = userMap.get(c.user_id);
+    const order = c.order_id ? orderMap.get(c.order_id) : null;
+    return {
+      id: c.id,
+      user_id: c.user_id,
+      milestone_id: c.milestone_id,
+      status: c.status,
+      applied_at: c.applied_at,
+      user: user
+        ? {
+            id: user.id,
+            name: user.name,
+            mobile: user.mobile,
+            email: user.email,
+            r_img: user.r_img,
+          }
+        : null,
+      order: order
+        ? {
+            id: order.id,
+            order_total: Number(order.grand_total || order.total_dcharge || 0),
+            status: order.o_status,
+            date: order.odate,
+          }
+        : null,
+    };
+  });
+}
+
 module.exports = {
   assignPlanNow,
   setPendingRewardPlan,
@@ -603,10 +723,13 @@ module.exports = {
   updateMilestoneReward,
   deleteMilestoneReward,
   applyRideMilestoneRewardsIfAny,
+  listMilestoneClaims,
   listAmountRewards,
   createAmountReward,
   updateAmountReward,
   deleteAmountReward,
   applyRideAmountRewardsIfAny,
   getActiveAmountRewardForCustomer,
+  listAmountRewardClaims,
 };
+

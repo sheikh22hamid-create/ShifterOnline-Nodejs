@@ -152,6 +152,24 @@ async function deleteAmountReward(req, res) {
   }
 }
 
+async function listAmountRewardClaims(req, res) {
+  try {
+    const claims = await rewardPlanService.listAmountRewardClaims({ rewardId: req.params.id });
+    return res.status(200).json({ success: true, data: claims });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.listAmountRewardClaims");
+  }
+}
+
+async function listMilestoneClaims(req, res) {
+  try {
+    const claims = await rewardPlanService.listMilestoneClaims({ milestoneId: req.params.id });
+    return res.status(200).json({ success: true, data: claims });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.listMilestoneClaims");
+  }
+}
+
 module.exports = {
   assignNow,
   setPending,
@@ -161,8 +179,11 @@ module.exports = {
   createMilestone,
   updateMilestone,
   deleteMilestone,
+  listMilestoneClaims,
   listAmountRewards,
   createAmountReward,
   updateAmountReward,
   deleteAmountReward,
+  listAmountRewardClaims,
 };
+
