@@ -109,7 +109,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   const settlementBlock = settlement.enabled
     ? Prisma.sql`AND r.id NOT IN (
         SELECT rid FROM order_settlement
-        WHERE status = 'pending'
+        WHERE status = 'pending' AND rid IS NOT NULL
           AND pending_since <= ${new Date(Date.now() - settlement.driverBlockGraceMinutes * 60 * 1000)}
       )`
     : Prisma.empty;

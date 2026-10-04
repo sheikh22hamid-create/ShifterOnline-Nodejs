@@ -1744,14 +1744,24 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
     expect(sql).toContain("wallet_balance >=");
   });
 
+  afterEach(() => {
+    require("../settlementSettings").getSettlementSettings.mockResolvedValue({ enabled: false, reminderMinutes: [], escalateAfterMinutes: 60, driverBlockGraceMinutes: 10, disputeWindowHours: 48 });
+  });
+
   it("skips drivers with a stale pending payment settlement only when the feature is on", async () => {
     const settlementSettings = require("../settlementSettings");
     const order = { id: 901, uid: 7, plat: "28.7", plong: "77.1", category: "Bike" };
 
-    jest.spyOn(settlementSettings, "getSettlementSettings").mockResolvedValue({ enabled: true, driverBlockGraceMinutes: 10 });
+    settlementSettings.getSettlementSettings.mockResolvedValue({ enabled: true, driverBlockGraceMinutes: 10 });
     await selectEligibleDrivers(order, 6, []);
     let [, ...values] = prisma.$queryRaw.mock.calls[0];
     expect(JSON.stringify(values)).toContain("order_settlement");
+    const fragment = values.find((v) => v && Array.isArray(v.strings) && v.strings.join(" ").includes("order_settlement"));
+    expect(fragment).toBeDefined();
+    expect(fragment.strings.join(" ")).toContain("status = 'pending'");
+    expect(fragment.strings.join(" ")).toContain("rid IS NOT NULL");
+    const cutoff = fragment.values.find((v) => v instanceof Date);
+    expect(Math.abs(cutoff.getTime() - (Date.now() - 10 * 60 * 1000))).toBeLessThan(60 * 1000);
 
     prisma.$queryRaw.mockClear();
     settlementSettings.getSettlementSettings.mockResolvedValue({ enabled: false, driverBlockGraceMinutes: 10 });
@@ -1759,7 +1769,6 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
     [, ...values] = prisma.$queryRaw.mock.calls[0];
     expect(JSON.stringify(values)).not.toContain("order_settlement");
 
-    settlementSettings.getSettlementSettings.mockRestore();
   });
 
 });
