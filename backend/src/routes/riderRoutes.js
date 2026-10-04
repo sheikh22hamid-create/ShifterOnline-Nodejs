@@ -15,6 +15,7 @@ const driverGovVerificationController = require("../controllers/driverGovVerific
 const driverVerificationPaymentController = require("../controllers/driverVerificationPaymentController");
 const driverLeadController = require("../controllers/driverLeadController");
 const driverScheduledTripsController = require("../controllers/driverScheduledTripsController");
+const settlementController = require("../controllers/settlementController");
 const appKeyAuth = require("../middleware/appKeyAuth");
 
 const router = express.Router();
@@ -60,6 +61,11 @@ router.get("/leads", driverLeadController.listMyLeads);
 router.post("/training/status", trainingController.getStatus);
 router.post("/training/progress", trainingController.saveProgress);
 router.post("/training/complete", trainingController.complete);
+
+// Payment settlement
+router.post("/settlement/state", settlementController.driverState);
+router.post("/settlement/received", settlementController.driverReceived);
+router.post("/settlement/dispute", settlementController.driverDispute);
 
 // Monthly Driver Duty & Queue endpoints
 const monthlyDriverController = require("../controllers/monthlyDriverController");

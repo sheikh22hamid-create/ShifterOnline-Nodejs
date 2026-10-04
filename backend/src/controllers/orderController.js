@@ -17,6 +17,7 @@ const { SEARCH_RADIUS_KM } = require("../config/constants");
 const orderDestinationService = require("../services/orderDestinationService");
 const orderPickupService = require("../services/orderPickupService");
 const orderStopsService = require("../services/orderStopsService");
+const settlementService = require("../services/settlementService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -636,6 +637,9 @@ async function createOrder(req, res) {
     if (!result.ok && result.code === "PREMIUM_PLAN_REQUIRED") {
       return res.status(403).json({ ResponseCode: "403", Result: "false", ResponseMsg: result.msg });
     }
+    if (!result.ok && result.code === "SETTLEMENT_PENDING") {
+      return res.status(403).json({ ResponseCode: "403", Result: "false", code: "SETTLEMENT_PENDING", ResponseMsg: result.msg });
+    }
     if (!result.ok && result.code === "INVALID_PACKAGES") {
       return res.status(400).json({
         ResponseCode: "400",
@@ -782,6 +786,8 @@ async function getOrderDetails(req, res) {
           trip_progress: await customerTripProgress(order),
           // Free minutes, per-minute rate and the billable-wait clock, so the app can show the waiting timer / charge.
           waiting: await customerWaitingFor(order),
+          // Payment settlement state (null when the order has none / feature off).
+          settlement: await settlementService.getPublicViewForOrder(order.id),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           otp: order.otp,

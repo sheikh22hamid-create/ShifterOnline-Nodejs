@@ -1,6 +1,7 @@
 jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { findUnique: jest.fn().mockResolvedValue(null) },
   driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
+  order_settlement: { findUnique: jest.fn().mockResolvedValue(null) },
   tbl_package: { findMany: jest.fn() },
   tbl_goods_type: { findFirst: jest.fn() },
   tbl_user: { findUnique: jest.fn(), updateMany: jest.fn() },
@@ -396,6 +397,16 @@ describe("orderController.createOrder (HTTP handler) — photos pass-through", (
 });
 
 describe("orderController.getOrderDetails", () => {
+  it("includes the settlement view (null when the order has none)", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue(baseOrder);
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.tbl_rider.findUnique.mockResolvedValue(baseRider);
+    prisma.pkg_order.aggregate.mockResolvedValue({ _avg: { cust_rate: null } });
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    await getOrderDetails({ body: { uid: 1, order_id: 501 } }, res);
+    expect(res.json.mock.calls[0][0].OrderProductList[0].settlement).toBeNull();
+  });
+
   beforeEach(() => jest.clearAllMocks());
 
   const baseOrder = {
