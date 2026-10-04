@@ -594,3 +594,25 @@ describe("settlementService.settleOnline", () => {
     expect(prisma.order_settlement.update).not.toHaveBeenCalled();
   });
 });
+
+describe("settlementService.findBlockingSettlement", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("returns null without querying when the feature is off", async () => {
+    jest.clearAllMocks();
+    jest.spyOn(svc.settlementSettings, "isSettlementEnabled").mockResolvedValue(false);
+    expect(await svc.findBlockingSettlement(7)).toBeNull();
+    expect(prisma.order_settlement.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("blocks on a pending or customer_owes settlement for this customer only", async () => {
+    jest.clearAllMocks();
+    jest.spyOn(svc.settlementSettings, "isSettlementEnabled").mockResolvedValue(true);
+    prisma.order_settlement.findFirst.mockResolvedValue({ order_id: 50, amount_due: 85, status: "pending" });
+    expect(await svc.findBlockingSettlement(7)).toEqual({ order_id: 50, amount_due: 85, status: "pending" });
+    expect(prisma.order_settlement.findFirst).toHaveBeenCalledWith({
+      where: { uid: 7, status: { in: ["pending", "customer_owes"] } },
+      select: { order_id: true, amount_due: true, status: true },
+    });
+  });
+});

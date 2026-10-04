@@ -428,12 +428,22 @@ async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signatur
   });
 }
 
+// A customer with an unpaid settlement (pending, or marked owed by an admin)
+// cannot book again. Disputed settlements deliberately do NOT block.
+async function findBlockingSettlement(uid) {
+  if (!(await settlementSettings.isSettlementEnabled())) return null;
+  return prisma.order_settlement.findFirst({
+    where: { uid: Number(uid), status: { in: [STATUS.PENDING, STATUS.CUSTOMER_OWES] } },
+    select: { order_id: true, amount_due: true, status: true },
+  });
+}
+
 module.exports = {
   STATUS, EFFECT, OUTCOME_EFFECT, ADMIN_OUTCOMES, SettlementError,
   round2, stateMessage, publicView, emitSettlementUpdated, assertParty,
   effectOps, changeWalletEffect, lockByOrderId, lockById, logEvent, runTransition,
   createForCompletedOrder, getViewForParty, getPublicViewForOrder,
   markCashReceived, chooseDriverPayment, raiseDispute, adminResolve,
-  createOnlineOrder, settleOnline,
+  createOnlineOrder, settleOnline, findBlockingSettlement,
   settlementSettings,
 };

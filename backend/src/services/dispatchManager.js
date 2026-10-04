@@ -5,6 +5,7 @@ const pricingEngine = require("./pricingEngine");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
+const settlementSettings = require("./settlementSettings");
 const walletPrepayment = require("./walletPrepaymentRefund");
 const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
@@ -101,6 +102,18 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   const radiusKm = Number(order.radius_range) || SEARCH_RADIUS_KM;
   const freshSince = new Date(Date.now() - RIDER_LOCATION_FRESHNESS_MS);
 
+  // A driver whose last ride's payment has been pending past the admin grace
+  // window gets no new offers (spec 2026-10-04). Only built when the feature
+  // is on, so a DB without the order_settlement table is never queried.
+  const settlement = await settlementSettings.getSettlementSettings();
+  const settlementBlock = settlement.enabled
+    ? Prisma.sql`AND r.id NOT IN (
+        SELECT rid FROM order_settlement
+        WHERE status = 'pending'
+          AND pending_since <= ${new Date(Date.now() - settlement.driverBlockGraceMinutes * 60 * 1000)}
+      )`
+    : Prisma.empty;
+
   const rows = await prisma.$queryRaw`
     SELECT
       r.id AS rider_id,
@@ -158,6 +171,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
         WHERE rid > 0
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
+      ${settlementBlock}
       AND (
         r.wallet_balance IS NULL
         OR r.wallet_balance >= -COALESCE(

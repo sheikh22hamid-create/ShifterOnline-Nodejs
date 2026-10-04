@@ -362,6 +362,19 @@ describe("orderController.createOrderCore", () => {
       expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
     });
   });
+
+  describe("pending payment settlement block", () => {
+    it("refuses a new booking while an earlier ride's payment is unsettled", async () => {
+      const settlementService = require("../../services/settlementService");
+      jest.spyOn(settlementService, "findBlockingSettlement").mockResolvedValue({ order_id: 50, amount_due: 85, status: "pending" });
+      const result = await createOrderCore({ ...baseInput });
+      expect(result).toMatchObject({ ok: false, code: "SETTLEMENT_PENDING" });
+      expect(result.msg).toContain("₹85");
+      expect(result.msg).toContain("#50");
+      expect(prisma.pkg_order.create).not.toHaveBeenCalled();
+      settlementService.findBlockingSettlement.mockRestore();
+    });
+  });
 });
 describe("orderController.createOrder (HTTP handler) — photos pass-through", () => {
   beforeEach(() => {
@@ -393,6 +406,29 @@ describe("orderController.createOrder (HTTP handler) — photos pass-through", (
       expect.objectContaining({ data: expect.objectContaining({ photos: "images/order_photos/abc123.jpg" }) })
     );
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("responds 403 with code SETTLEMENT_PENDING when the customer has an unsettled payment", async () => {
+    const settlementService = require("../../services/settlementService");
+    jest.spyOn(settlementService, "findBlockingSettlement").mockResolvedValue({ order_id: 50, amount_due: 85, status: "pending" });
+    const req = {
+      body: {
+        uid: 1, category: "Bike", delivery_type: [6], booking_type: 1,
+        plat: 28.7, plong: 77.1, paddress: "A", pick_name: "P", pmobile: "999", pick_type: "",
+        dlat: 28.8, dlong: 77.2, daddress: "B", drop_name: "D", dmobile: "888", drop_type: "",
+        package_weight: "2 Kg", package_cost: 100, description: "",
+        p_method_id: 1, transaction_id: "", extra_mile_charge: 0, cou_id: 0, cou_amt: 0,
+        radius_km: 10, city_id: 2,
+      },
+    };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await createOrder(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "SETTLEMENT_PENDING" }));
+    expect(prisma.pkg_order.create).not.toHaveBeenCalled();
+    settlementService.findBlockingSettlement.mockRestore();
   });
 });
 

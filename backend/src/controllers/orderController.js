@@ -238,6 +238,15 @@ async function createOrderCore({
     return { ok: false, code: "VALIDATION", msg: "uid, category, a non-empty delivery_type array, and valid coordinates are required" };
   }
 
+  const blockingSettlement = await settlementService.findBlockingSettlement(uid);
+  if (blockingSettlement) {
+    return {
+      ok: false,
+      code: "SETTLEMENT_PENDING",
+      msg: `Please settle the pending payment of ₹${Number(blockingSettlement.amount_due)} for order #${blockingSettlement.order_id} before booking a new ride.`,
+    };
+  }
+
   const goods = await resolveGoodsType({ goodsTypeId, goodsTypeOther });
   if (!goods.ok) return goods;
 

@@ -25,6 +25,10 @@ jest.mock("../pricingEngine", () => {
   };
 });
 
+// Settlement feature is off by default here; the stale-settlement test overrides it.
+jest.mock("../settlementSettings", () => ({
+  getSettlementSettings: jest.fn().mockResolvedValue({ enabled: false, driverBlockGraceMinutes: 10 }),
+}));
 jest.mock("../pushNotifier");
 jest.mock("../walletPrepaymentRefund");
 
@@ -1190,7 +1194,7 @@ describe("dispatchManager overlapping batch cascade", () => {
       prisma.pkg_order.findUnique.mockResolvedValue({ ...orderC });
 
       await dispatchManager.startDispatch(orderC);
-      await flush();
+      await flush(40); // selectEligibleDrivers now awaits the settlement settings read first
 
       const requests = emitted.filter((e) => e.event === "order:request");
       expect(requests).toHaveLength(4); // topped up to the full batch size despite losing 2 of round 1
@@ -1738,6 +1742,24 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
     const [strings] = prisma.$queryRaw.mock.calls[0];
     const sql = strings.join(" ");
     expect(sql).toContain("wallet_balance >=");
+  });
+
+  it("skips drivers with a stale pending payment settlement only when the feature is on", async () => {
+    const settlementSettings = require("../settlementSettings");
+    const order = { id: 901, uid: 7, plat: "28.7", plong: "77.1", category: "Bike" };
+
+    jest.spyOn(settlementSettings, "getSettlementSettings").mockResolvedValue({ enabled: true, driverBlockGraceMinutes: 10 });
+    await selectEligibleDrivers(order, 6, []);
+    let [, ...values] = prisma.$queryRaw.mock.calls[0];
+    expect(JSON.stringify(values)).toContain("order_settlement");
+
+    prisma.$queryRaw.mockClear();
+    settlementSettings.getSettlementSettings.mockResolvedValue({ enabled: false, driverBlockGraceMinutes: 10 });
+    await selectEligibleDrivers(order, 6, []);
+    [, ...values] = prisma.$queryRaw.mock.calls[0];
+    expect(JSON.stringify(values)).not.toContain("order_settlement");
+
+    settlementSettings.getSettlementSettings.mockRestore();
   });
 
 });
