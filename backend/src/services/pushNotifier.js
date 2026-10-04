@@ -266,6 +266,16 @@ async function notifyRewardPlanAssigned(fcmToken, planName) {
   );
 }
 
+/** Fired when customer completes a ride exceeding the admin-configured ride amount reward threshold */
+async function notifyAmountRewardPlanAssigned(fcmToken, planName, minAmount) {
+  return sendPushNotification(
+    fcmToken,
+    "🎉 Milestone Reward Unlocked!",
+    `Congratulations! Your ride of ₹${minAmount}+ unlocked the ${planName} plan for free!`,
+    { type: "reward_plan_assigned" }
+  );
+}
+
 /** Any driver-wallet ledger change (commission debit, cancellation compensation, payout approval, ...) - see services/walletNotifier.js. */
 async function notifyDriverWalletTransaction(fcmToken, type, amountText, remark) {
   const isCredit = type === "credit";
@@ -389,6 +399,7 @@ module.exports = {
   notifyCustomerLatePickup,
   notifyCustomerNextDayAssigned,
   notifyRewardPlanAssigned,
+  notifyAmountRewardPlanAssigned,
   notifyDriverModel1Suspended,
   notifyDriverWalletTransaction,
   notifyCustomerWalletTransaction,

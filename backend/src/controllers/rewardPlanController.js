@@ -99,6 +99,59 @@ async function deleteMilestone(req, res) {
   }
 }
 
+/** List all ride-amount rewards (admin-configured, applies to every customer). */
+async function listAmountRewards(req, res) {
+  try {
+    const rows = await rewardPlanService.listAmountRewards();
+    return res.status(200).json({ success: true, data: rows });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.listAmountRewards");
+  }
+}
+
+async function createAmountReward(req, res) {
+  try {
+    const { min_amount, plan_id, max_customers } = req.body;
+    if (!min_amount || !plan_id) {
+      return res.status(400).json({ success: false, message: "min_amount and plan_id are required" });
+    }
+    const reward = await rewardPlanService.createAmountReward({
+      minAmount: min_amount,
+      planId: plan_id,
+      maxCustomers: max_customers,
+      adminId: req.user?.id,
+    });
+    return res.status(201).json({ success: true, message: "Ride amount reward rule created.", data: reward });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.createAmountReward");
+  }
+}
+
+async function updateAmountReward(req, res) {
+  try {
+    const { min_amount, plan_id, max_customers, status } = req.body;
+    const reward = await rewardPlanService.updateAmountReward({
+      id: req.params.id,
+      minAmount: min_amount,
+      planId: plan_id,
+      maxCustomers: max_customers,
+      status,
+    });
+    return res.status(200).json({ success: true, message: "Ride amount reward rule updated.", data: reward });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.updateAmountReward");
+  }
+}
+
+async function deleteAmountReward(req, res) {
+  try {
+    await rewardPlanService.deleteAmountReward({ id: req.params.id });
+    return res.status(200).json({ success: true, message: "Ride amount reward rule deleted." });
+  } catch (err) {
+    return internalError(res, err, "rewardPlan.deleteAmountReward");
+  }
+}
+
 module.exports = {
   assignNow,
   setPending,
@@ -108,4 +161,8 @@ module.exports = {
   createMilestone,
   updateMilestone,
   deleteMilestone,
+  listAmountRewards,
+  createAmountReward,
+  updateAmountReward,
+  deleteAmountReward,
 };

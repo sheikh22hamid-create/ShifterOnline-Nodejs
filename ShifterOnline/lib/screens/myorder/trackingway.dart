@@ -3591,8 +3591,67 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final advanceStr = (advDouble % 1 == 0) ? advDouble.toInt().toString() : advDouble.toStringAsFixed(2);
     final remainingStr = (remainingDouble % 1 == 0) ? remainingDouble.toInt().toString() : remainingDouble.toStringAsFixed(2);
 
+    final settlement = _getSettlementData();
+    final settleStatus = settlement?['status']?.toString().toLowerCase().trim();
+    final bool isSettled;
+    if (settlement != null) {
+      isSettled = settleStatus == 'cash_received' ||
+                  settleStatus == 'paid_online' ||
+                  settleStatus == 'waived';
+    } else {
+      isSettled = isPaymentPaid || remainingDouble <= 0;
+    }
+
     // 1. Completed state
     if (isCompleted) {
+      if (!isSettled) {
+        if (settleStatus == 'disputed') {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFEEEE),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFFCDD2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.report_problem_rounded, color: Color(0xFFFF5252), size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Payment Under Review".tr,
+                        style: const TextStyle(
+                          color: Color(0xFFFF5252),
+                          fontFamily: "Gilroy_Bold",
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "A problem was reported with this payment. Support team is reviewing it.".tr,
+                        style: TextStyle(
+                          color: Colors.red.shade800,
+                          fontFamily: "Gilroy_Medium",
+                          fontSize: 12,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        // If settlement is pending or customer owes, the Payment Summary card above already displays the pending amount and "Settle Payment Now" button.
+        return const SizedBox.shrink();
+      }
+
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -5157,8 +5216,19 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           _buildPaymentSummaryCard(),
           const SizedBox(height: 14),
           if (status == "completed") ...[
-            _buildCodInstructionCard(),
-            const SizedBox(height: 14),
+            Builder(
+              builder: (context) {
+                final card = _buildCodInstructionCard();
+                if (card is SizedBox) return const SizedBox.shrink();
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    card,
+                    const SizedBox(height: 14),
+                  ],
+                );
+              },
+            ),
           ],
           _buildCollapsibleTile(
             keyName: "order",

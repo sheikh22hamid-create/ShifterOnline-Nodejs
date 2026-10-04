@@ -752,6 +752,297 @@ class _HomeState extends State<Home> {
     );
   }
 
+    Widget _buildRewardMilestoneCard() {
+    if (resultData == null) return const SizedBox.shrink();
+    final rewardRaw = resultData["ride_amount_reward"];
+    if (rewardRaw == null || rewardRaw is! Map || rewardRaw["enabled"] != true) {
+      return const SizedBox.shrink();
+    }
+    final reward = Map<String, dynamic>.from(rewardRaw);
+
+    final bool isClaimed = reward["is_claimed"] == true;
+    final String planName = reward["plan_name"]?.toString() ?? "Reward Plan";
+    final String minAmount = reward["min_amount"]?.toString() ?? "0";
+    final String urgency = reward["urgency_tag"]?.toString() ?? "";
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _showRewardMilestoneDetails(reward),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isClaimed
+                  ? [const Color(0xFF065F46), const Color(0xFF059669)]
+                  : [const Color(0xFF1E1B4B), const Color(0xFF4338CA)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: (isClaimed ? const Color(0xFF059669) : const Color(0xFF4338CA)).withOpacity(0.35),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isClaimed
+                        ? [const Color(0xFF10B981), const Color(0xFF34D399)]
+                        : [const Color(0xFFFFB800), const Color(0xFFFF8C00)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  isClaimed ? Icons.verified_rounded : Icons.card_giftcard_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            isClaimed ? "Milestone Unlocked! 🎉" : "Ride Milestone Offer",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (urgency.isNotEmpty && !isClaimed) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFB800),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              urgency,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      isClaimed
+                          ? "You unlocked $planName on your ride!"
+                          : "Book ride of ₹$minAmount+ and get $planName FREE",
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontFamily: 'Gilroy_Medium',
+                        fontSize: 12,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  size: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showRewardMilestoneDetails(Map<String, dynamic> reward) {
+    final bool isClaimed = reward["is_claimed"] == true;
+    final String planName = reward["plan_name"]?.toString() ?? "Reward Plan";
+    final String minAmount = reward["min_amount"]?.toString() ?? "0";
+    final String validity = reward["validity_days"]?.toString() ?? "30 days";
+    final String desc = reward["banner_desc"]?.toString() ?? "";
+    final String urgency = reward["urgency_tag"]?.toString() ?? "";
+
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+        decoration: BoxDecoration(
+          color: notifier.getBgColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: greaycolor.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                height: 64,
+                width: 64,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isClaimed
+                        ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                        : [const Color(0xFF4338CA), const Color(0xFF6366F1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: (isClaimed ? const Color(0xFF059669) : const Color(0xFF4338CA)).withOpacity(0.35),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  isClaimed ? Icons.verified_rounded : Icons.card_giftcard_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone Offer",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 19,
+                  color: notifier.text,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isClaimed ? const Color(0xFFECFDF5) : const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isClaimed ? "✅ Plan Active on Your Account" : (urgency.isNotEmpty ? "⚡ $urgency" : "🎁 Limited Time Offer"),
+                  style: TextStyle(
+                    fontFamily: 'Gilroy_Bold',
+                    fontSize: 12,
+                    color: isClaimed ? const Color(0xFF059669) : const Color(0xFF4338CA),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                desc.isNotEmpty ? desc : "Book a ride of ₹$minAmount or more to unlock $planName completely FREE!",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 13.5,
+                  color: greaycolor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: notifier.lightBgColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: notifier.bordecolor),
+                ),
+                child: Column(
+                  children: [
+                    _buildBenefitRow(Icons.local_shipping_rounded, "Book Any Ride Worth ₹$minAmount+", "Fare amount must be at least ₹" + minAmount + " on completion"),
+                    Divider(height: 16, color: notifier.bordecolor),
+                    _buildBenefitRow(Icons.verified_user_rounded, "$planName Reward", "Validity: $validity" + " with all premium privileges included"),
+                    Divider(height: 16, color: notifier.bordecolor),
+                    _buildBenefitRow(Icons.bolt_rounded, "Instant Automatic Activation", "Plan activates instantly upon trip completion at ₹0 cost"),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () => Get.back(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: notifier.darklinercolor,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    isClaimed ? "Got It" : "Book Ride Now",
+                    style: const TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 15,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   Widget _buildDeliveryOptionsRow() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
@@ -2618,6 +2909,7 @@ class _HomeState extends State<Home> {
 
                       const SizedBox(height: 4),
                       _buildActiveOrderCard(),
+                      _buildRewardMilestoneCard(),
                       _buildDeliveryOptionsRow(),
                       _buildRouteSelectionCard(),
                       _buildQuickLocations(),

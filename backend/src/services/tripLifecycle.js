@@ -857,6 +857,17 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       logger.error(`applyRideMilestoneRewardsIfAny error for order ${orderId}:`, err);
     });
 
+    // Fire-and-forget - checks the completed order's amount against
+    // admin-configured ride-amount reward rules (e.g. ride >= ₹500 unlocks plan)
+    // and activates the plan if user qualifies and quota is available.
+    rewardPlanService.applyRideAmountRewardsIfAny({
+      uid: order.uid,
+      orderId,
+      orderTotal: finalTotal || Number(order.o_total || 0),
+    }).catch((err) => {
+      logger.error(`applyRideAmountRewardsIfAny error for order ${orderId}:`, err);
+    });
+
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
     if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
     return {

@@ -244,6 +244,11 @@ router.post("/ride-milestones", auth, authorize("superadmin", "admin"), rewardPl
 router.put("/ride-milestones/:id", auth, authorize("superadmin", "admin"), rewardPlanController.updateMilestone);
 router.delete("/ride-milestones/:id", auth, authorize("superadmin", "admin"), rewardPlanController.deleteMilestone);
 
+router.get("/ride-amount-rewards", auth, authorize("superadmin", "admin"), rewardPlanController.listAmountRewards);
+router.post("/ride-amount-rewards", auth, authorize("superadmin", "admin"), rewardPlanController.createAmountReward);
+router.put("/ride-amount-rewards/:id", auth, authorize("superadmin", "admin"), rewardPlanController.updateAmountReward);
+router.delete("/ride-amount-rewards/:id", auth, authorize("superadmin", "admin"), rewardPlanController.deleteAmountReward);
+
 // --- Driver Lead Verification Queue ------------------------------------------
 router.get("/driver-leads", auth, authorize(...RIDER_ROLES), adminDriverLeadController.listLeads);
 router.post("/driver-leads/:id/verify", auth, authorize(...RIDER_ROLES), adminDriverLeadController.verifyLead);

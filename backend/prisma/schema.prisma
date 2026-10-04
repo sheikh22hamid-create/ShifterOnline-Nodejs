@@ -1345,6 +1345,39 @@ enum tbl_ride_milestone_applied_status {
   skipped_active_plan
 }
 
+/// Admin-configured ride amount rewards: "book/complete a ride of at least ₹X,
+/// get this plan as a reward". Admin can cap max_customers and adjust amount/quota.
+model tbl_ride_amount_reward {
+  id               Int      @id @default(autoincrement())
+  min_amount       Decimal  @db.Decimal(10, 2)
+  plan_id          Int
+  max_customers    Int?     // null or 0 = unlimited customers
+  claimed_count    Int      @default(0)
+  status           Boolean  @default(true)
+  created_by_admin Int
+  created_at       DateTime @default(now()) @db.Timestamp(0)
+  updated_at       DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([status, min_amount], map: "idx_amount_reward_status_min_amount")
+}
+
+/// Evaluation and double-claim prevention for ride amount rewards
+model tbl_ride_amount_reward_applied {
+  id         Int                                    @id @default(autoincrement())
+  user_id    Int
+  reward_id  Int
+  status     tbl_ride_amount_reward_applied_status  @default(applied)
+  order_id   Int?
+  applied_at DateTime                               @default(now()) @db.Timestamp(0)
+
+  @@unique([user_id, reward_id], map: "uniq_amount_reward_applied_user_reward")
+}
+
+enum tbl_ride_amount_reward_applied_status {
+  applied
+  skipped_active_plan
+}
+
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model tbl_user_referrals {
   id               Int       @id @default(autoincrement())

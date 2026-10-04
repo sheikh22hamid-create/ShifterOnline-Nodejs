@@ -8,11 +8,14 @@ jest.mock("../../config/db", () => ({
   tbl_pending_reward_plan: { findFirst: jest.fn(), updateMany: jest.fn(), create: jest.fn(), update: jest.fn() },
   tbl_ride_milestone_reward: { findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), findUnique: jest.fn() },
   tbl_ride_milestone_applied: { create: jest.fn(), updateMany: jest.fn() },
+  tbl_ride_amount_reward: { findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn(), findUnique: jest.fn() },
+  tbl_ride_amount_reward_applied: { create: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
   pkg_order: { count: jest.fn() },
 }));
 
 jest.mock("../pushNotifier", () => ({
   notifyRewardPlanAssigned: jest.fn().mockResolvedValue({ sent: true }),
+  notifyAmountRewardPlanAssigned: jest.fn().mockResolvedValue({ sent: true }),
 }));
 
 const prisma = require("../../config/db");
@@ -255,5 +258,137 @@ describe("rewardPlanService milestone CRUD", () => {
   it("deleteMilestoneReward rejects when the milestone doesn't exist", async () => {
     prisma.tbl_ride_milestone_reward.findUnique.mockResolvedValue(null);
     await expect(rewardPlanService.deleteMilestoneReward({ id: 99 })).rejects.toThrow("Milestone not found.");
+  });
+});
+
+describe("rewardPlanService amount rewards CRUD", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("createAmountReward rejects non-positive min_amount", async () => {
+    await expect(
+      rewardPlanService.createAmountReward({ minAmount: 0, planId: 3, adminId: 1 })
+    ).rejects.toThrow("min_amount must be a positive number.");
+  });
+
+  it("createAmountReward rejects invalid plan", async () => {
+    prisma.tbl_premium_plan.findFirst.mockResolvedValue(null);
+    await expect(
+      rewardPlanService.createAmountReward({ minAmount: 500, planId: 99, adminId: 1 })
+    ).rejects.toThrow("Plan not found or inactive.");
+  });
+
+  it("createAmountReward successfully creates a rule with max_customers", async () => {
+    prisma.tbl_premium_plan.findFirst.mockResolvedValue({ id: 3, plan_for: "USER", status: true });
+    prisma.tbl_ride_amount_reward.create.mockResolvedValue({ id: 1, min_amount: 500, plan_id: 3, max_customers: 50 });
+
+    const result = await rewardPlanService.createAmountReward({ minAmount: 500, planId: 3, maxCustomers: 50, adminId: 1 });
+
+    expect(prisma.tbl_ride_amount_reward.create).toHaveBeenCalledWith({
+      data: { min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 0, created_by_admin: 1 },
+    });
+    expect(result.id).toBe(1);
+  });
+
+  it("updateAmountReward updates min_amount and max_customers quota", async () => {
+    prisma.tbl_ride_amount_reward.findUnique.mockResolvedValue({ id: 1, min_amount: 500, max_customers: 50 });
+    prisma.tbl_ride_amount_reward.update.mockResolvedValue({ id: 1, min_amount: 600, max_customers: 100 });
+
+    const result = await rewardPlanService.updateAmountReward({ id: 1, minAmount: 600, maxCustomers: 100 });
+
+    expect(prisma.tbl_ride_amount_reward.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { min_amount: 600, max_customers: 100 },
+    });
+    expect(result.min_amount).toBe(600);
+  });
+});
+
+describe("rewardPlanService.applyRideAmountRewardsIfAny", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+  });
+
+  it("does nothing when order total is 0 or less", async () => {
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 0 });
+    expect(results).toEqual([]);
+    expect(prisma.tbl_ride_amount_reward.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when order total does not meet threshold", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 0, status: true },
+    ]);
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 450 });
+    expect(results).toEqual([]);
+    expect(prisma.tbl_ride_amount_reward_applied.create).not.toHaveBeenCalled();
+  });
+
+  it("skips reward tier if max_customers quota is already exhausted", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 10, claimed_count: 10, status: true },
+    ]);
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 600 });
+    expect(results).toEqual([]);
+    expect(prisma.tbl_ride_amount_reward_applied.create).not.toHaveBeenCalled();
+  });
+
+  it("activates the plan and notifies customer when qualifying ride completes", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 5, status: true },
+    ]);
+    prisma.tbl_ride_amount_reward_applied.create.mockResolvedValue({ id: 99 });
+    prisma.tbl_ride_amount_reward.update.mockResolvedValue({});
+    prisma.tbl_user_plan_subscription.findFirst.mockResolvedValue(null);
+    prisma.tbl_premium_plan.findFirst.mockResolvedValue({
+      id: 3, plan_name: "Premium Silver", plan_for: "USER", status: true, validity_days: 30,
+      lifetime_enabled: false, min_ride_guarantee_enabled: false, wallet_bonus_enabled: false,
+    });
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 9, fcm_token: "token-user-9" });
+    prisma.tbl_user_plan_subscription.updateMany.mockResolvedValue({ count: 0 });
+    prisma.tbl_user_plan_subscription.create.mockResolvedValue({ id: 88 });
+
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 750 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].skipped).toBe(false);
+    expect(prisma.tbl_ride_amount_reward.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { claimed_count: { increment: 1 } },
+    });
+    expect(pushNotifier.notifyAmountRewardPlanAssigned).toHaveBeenCalledWith("token-user-9", "Premium Silver", 500);
+  });
+});
+
+describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("returns enabled: false when no active amount reward rules exist", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([]);
+    const res = await rewardPlanService.getActiveAmountRewardForCustomer({ uid: 9 });
+    expect(res.enabled).toBe(false);
+  });
+
+  it("returns formatted offer with urgency and remaining spots", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 10, status: true },
+    ]);
+    prisma.tbl_premium_plan.findMany.mockResolvedValue([
+      { id: 3, plan_name: "Gold Plan", description: "All benefits free", status: true, validity_days: 30, lifetime_enabled: false },
+    ]);
+    prisma.tbl_ride_amount_reward_applied.findMany.mockResolvedValue([]);
+
+    const res = await rewardPlanService.getActiveAmountRewardForCustomer({ uid: 9 });
+
+    expect(res.enabled).toBe(true);
+    expect(res.min_amount).toBe(500);
+    expect(res.plan_name).toBe("Gold Plan");
+    expect(res.max_customers).toBe(50);
+    expect(res.remaining_spots).toBe(40);
+    expect(res.is_claimed).toBe(false);
   });
 });

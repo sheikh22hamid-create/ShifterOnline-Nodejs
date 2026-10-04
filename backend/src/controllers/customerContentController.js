@@ -3,6 +3,7 @@ const logger = require("../utils/logger");
 const { formatLedgerTime } = require("../utils/istTime");
 const { buildRoute } = require("../services/tripRouteService");
 const { getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
+const rewardPlanService = require("../services/rewardPlanService");
 
 // Node port of several small read-mostly cust_api/*.php endpoints:
 // add_favorite_driver.php, get_favorite_drivers.php, couponlist.php,
@@ -530,6 +531,8 @@ async function homeData(req, res) {
       isHowUseEnabled = false;
     }
 
+    const rideAmountReward = await rewardPlanService.getActiveAmountRewardForCustomer({ uid: user?.id || uid });
+
     const resultData = {
       PriceData: mainData,
       Package_Category: categories,
@@ -554,6 +557,7 @@ async function homeData(req, res) {
       customer_care_number: howToUseMap.customer_care_number || "+91 9109114515",
       customer_care_email: howToUseMap.customer_care_email || "support@shifteronline.com",
       customer_care_hours: howToUseMap.customer_care_hours || "24/7 Helpline",
+      ride_amount_reward: rideAmountReward,
     };
 
     return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: "Home Data Get Successfully!", ResultData: resultData });

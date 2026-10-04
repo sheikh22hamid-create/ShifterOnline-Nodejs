@@ -290,6 +290,232 @@ async function applyRideMilestoneRewardsIfAny({ uid, orderId }) {
   return results;
 }
 
+// --- Ride-Amount Rewards -----------------------------------------------------
+// Admin-configured reward rules: "when a customer books/completes a ride of
+// at least ₹X, give them this plan". Admin can set/adjust min_amount and
+// max_customers quota (and increase or reduce them at any time).
+
+async function listAmountRewards() {
+  const rows = await prisma.tbl_ride_amount_reward.findMany({ orderBy: { min_amount: "asc" } });
+  if (rows.length === 0) return rows;
+  const plans = await prisma.tbl_premium_plan.findMany({ where: { id: { in: rows.map((r) => r.plan_id) } } });
+  const plansById = new Map(plans.map((p) => [p.id, p]));
+  return rows.map((r) => ({
+    ...r,
+    min_amount: Number(r.min_amount),
+    plan: plansById.get(r.plan_id) || null,
+  }));
+}
+
+async function createAmountReward({ minAmount, planId, maxCustomers, adminId }) {
+  const amount = Number(minAmount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("min_amount must be a positive number.");
+  const plan = await prisma.tbl_premium_plan.findFirst({ where: { id: Number(planId), plan_for: "USER", status: true } });
+  if (!plan) throw new Error("Plan not found or inactive.");
+
+  let maxCust = null;
+  if (maxCustomers !== undefined && maxCustomers !== null && maxCustomers !== "") {
+    const parsed = Number(maxCustomers);
+    if (!Number.isInteger(parsed) || parsed < 0) throw new Error("max_customers must be an integer >= 0 (0 for unlimited).");
+    maxCust = parsed > 0 ? parsed : null;
+  }
+
+  return prisma.tbl_ride_amount_reward.create({
+    data: {
+      min_amount: amount,
+      plan_id: plan.id,
+      max_customers: maxCust,
+      claimed_count: 0,
+      created_by_admin: Number(adminId || 0),
+    },
+  });
+}
+
+async function updateAmountReward({ id, minAmount, planId, maxCustomers, status }) {
+  const existing = await prisma.tbl_ride_amount_reward.findUnique({ where: { id: Number(id) } });
+  if (!existing) throw new Error("Ride amount reward rule not found.");
+
+  const data = {};
+  if (minAmount !== undefined) {
+    const amount = Number(minAmount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("min_amount must be a positive number.");
+    data.min_amount = amount;
+  }
+  if (planId !== undefined) {
+    const plan = await prisma.tbl_premium_plan.findFirst({ where: { id: Number(planId), plan_for: "USER", status: true } });
+    if (!plan) throw new Error("Plan not found or inactive.");
+    data.plan_id = plan.id;
+  }
+  if (maxCustomers !== undefined) {
+    if (maxCustomers === null || maxCustomers === "" || Number(maxCustomers) === 0) {
+      data.max_customers = null;
+    } else {
+      const parsed = Number(maxCustomers);
+      if (!Number.isInteger(parsed) || parsed < 0) throw new Error("max_customers must be an integer >= 0.");
+      data.max_customers = parsed;
+    }
+  }
+  if (status !== undefined) data.status = Boolean(status);
+
+  return prisma.tbl_ride_amount_reward.update({ where: { id: Number(id) }, data });
+}
+
+async function deleteAmountReward({ id }) {
+  const existing = await prisma.tbl_ride_amount_reward.findUnique({ where: { id: Number(id) } });
+  if (!existing) throw new Error("Ride amount reward rule not found.");
+  await prisma.tbl_ride_amount_reward.delete({ where: { id: Number(id) } });
+  return { success: true };
+}
+
+/**
+ * Called fire-and-forget from tripLifecycle on every completed customer order.
+ * Evaluates active amount-based reward rules against the completed order total.
+ * If user qualifies and tier quota is available, awards the plan and sends notification.
+ */
+async function applyRideAmountRewardsIfAny({ uid, orderId, orderTotal }) {
+  if (!uid) return [];
+  const total = Number(orderTotal || 0);
+  if (total <= 0) return [];
+
+  const tiers = await prisma.tbl_ride_amount_reward.findMany({
+    where: { status: true },
+    orderBy: { min_amount: "asc" },
+  });
+
+  const qualifiedTiers = tiers.filter((t) => {
+    const minAmt = Number(t.min_amount);
+    const quotaAvailable = t.max_customers === null || t.max_customers === 0 || t.claimed_count < t.max_customers;
+    return total >= minAmt && quotaAvailable;
+  });
+
+  if (qualifiedTiers.length === 0) return [];
+
+  const results = [];
+  for (const tier of qualifiedTiers) {
+    try {
+      await prisma.tbl_ride_amount_reward_applied.create({
+        data: { user_id: Number(uid), reward_id: tier.id, status: "applied", order_id: Number(orderId) || null },
+      });
+    } catch (err) {
+      // Unique constraint hit -> already applied or skipped for this user+tier
+      continue;
+    }
+
+    // Increment claimed count for this tier
+    await prisma.tbl_ride_amount_reward.update({
+      where: { id: tier.id },
+      data: { claimed_count: { increment: 1 } },
+    }).catch(() => {});
+
+    const activeSubscription = await prisma.tbl_user_plan_subscription.findFirst({
+      where: { user_id: Number(uid), plan_for: "USER", plan_type: "CUSTOMER_PREMIUM", status: "active" },
+    });
+
+    if (activeSubscription) {
+      await prisma.tbl_ride_amount_reward_applied.updateMany({
+        where: { user_id: Number(uid), reward_id: tier.id },
+        data: { status: "skipped_active_plan" },
+      });
+      results.push({ tier, skipped: true });
+      continue;
+    }
+
+    try {
+      const result = await activatePlan({ userId: uid, planFor: "USER", planId: tier.plan_id, source: "ride_amount_reward" });
+      try {
+        await pushNotifier.notifyAmountRewardPlanAssigned(result.entity?.fcm_token, result.plan.plan_name, Number(tier.min_amount));
+      } catch (notifyErr) {
+        logger.error(`pushNotifier.notifyAmountRewardPlanAssigned error:`, notifyErr);
+      }
+      results.push({ tier, skipped: false, ...result });
+    } catch (err) {
+      logger.error(`rewardPlanService.applyRideAmountRewardsIfAny: activation failed for user ${uid}, tier ${tier.id}:`, err);
+    }
+  }
+  return results;
+}
+
+/**
+ * Returns active amount reward offer for displaying in the Customer App home screen.
+ */
+async function getActiveAmountRewardForCustomer({ uid }) {
+  try {
+    const activeRules = await prisma.tbl_ride_amount_reward.findMany({
+      where: { status: true },
+      orderBy: { min_amount: "asc" },
+    });
+
+    if (activeRules.length === 0) return { enabled: false };
+
+    const plans = await prisma.tbl_premium_plan.findMany({
+      where: { id: { in: activeRules.map((r) => r.plan_id) }, status: true },
+    });
+    const plansById = new Map(plans.map((p) => [p.id, p]));
+
+    // Check user claimed history if uid is provided
+    let claimedRewardIds = new Set();
+    if (uid) {
+      const claimedRows = await prisma.tbl_ride_amount_reward_applied.findMany({
+        where: { user_id: Number(uid), status: "applied" },
+        select: { reward_id: true },
+      });
+      claimedRewardIds = new Set(claimedRows.map((r) => r.reward_id));
+    }
+
+    // Find the first rule that has quota remaining and not yet claimed by this user
+    let chosenRule = null;
+    let isClaimed = false;
+
+    for (const rule of activeRules) {
+      const plan = plansById.get(rule.plan_id);
+      if (!plan) continue;
+
+      const hasQuota = rule.max_customers === null || rule.max_customers === 0 || rule.claimed_count < rule.max_customers;
+      const alreadyClaimed = claimedRewardIds.has(rule.id);
+
+      if (hasQuota && !alreadyClaimed) {
+        chosenRule = { rule, plan };
+        isClaimed = false;
+        break;
+      } else if (alreadyClaimed && !chosenRule) {
+        // Fallback to show user their unlocked milestone
+        chosenRule = { rule, plan };
+        isClaimed = true;
+      }
+    }
+
+    if (!chosenRule) return { enabled: false };
+
+    const { rule, plan } = chosenRule;
+    const minAmt = Number(rule.min_amount);
+    const maxCust = rule.max_customers ? Number(rule.max_customers) : null;
+    const claimed = Number(rule.claimed_count || 0);
+    const remainingSpots = maxCust ? Math.max(0, maxCust - claimed) : null;
+
+    return {
+      enabled: true,
+      id: rule.id,
+      min_amount: minAmt,
+      plan_id: rule.plan_id,
+      plan_name: plan.plan_name,
+      plan_description: plan.description || "",
+      validity_days: plan.lifetime_enabled ? "Lifetime" : (plan.validity_days || 30),
+      max_customers: maxCust,
+      claimed_count: claimed,
+      remaining_spots: remainingSpots,
+      is_claimed: isClaimed,
+      banner_title: isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone 🎁",
+      banner_desc: isClaimed
+        ? `You unlocked the ${plan.plan_name} on your ₹${minAmt}+ ride!`
+        : `Book a ride of ₹${minAmt} or more & get ${plan.plan_name} completely FREE!`,
+      urgency_tag: maxCust ? (remainingSpots > 0 ? `Only ${remainingSpots} spots left!` : "Offer limit reached") : null,
+    };
+  } catch (err) {
+    logger.error("rewardPlanService.getActiveAmountRewardForCustomer error:", err);
+    return { enabled: false };
+  }
+}
+
 module.exports = {
   assignPlanNow,
   setPendingRewardPlan,
@@ -301,4 +527,10 @@ module.exports = {
   updateMilestoneReward,
   deleteMilestoneReward,
   applyRideMilestoneRewardsIfAny,
+  listAmountRewards,
+  createAmountReward,
+  updateAmountReward,
+  deleteAmountReward,
+  applyRideAmountRewardsIfAny,
+  getActiveAmountRewardForCustomer,
 };
