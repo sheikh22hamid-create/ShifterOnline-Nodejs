@@ -88,6 +88,13 @@ setInterval(() => {
   );
 }, ADVANCE_PAYMENT_SWEEP_INTERVAL_MS);
 
+// Payment-settlement reminders + "Unsettled" flagging — see settlementSweep.
+setInterval(() => {
+  require("./services/settlementSweep").sweepSettlements().catch((err) =>
+    logger.error("sweepSettlements interval failed:", err)
+  );
+}, 60 * 1000);
+
 // Scheduled ("later today", booking_type=2) orders — customer reminder +
 // due-time driver dispatch. Node port of cron_schedule_order_notify.php;
 // see tripLifecycle.sendScheduledOrderReminders/dispatchDueScheduledOrders

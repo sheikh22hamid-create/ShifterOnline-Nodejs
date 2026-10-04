@@ -144,6 +144,26 @@ async function notifyDriverAdvancePaymentTimeoutCancel(fcmToken, orderId) {
   );
 }
 
+/** See settlementSweep — the customer still owes the payment for a completed ride. */
+async function notifyCustomerSettlementReminder(fcmToken, orderId, amount) {
+  return sendCustomerPush(
+    fcmToken,
+    "Payment pending",
+    `Please pay ₹${amount} for order #${orderId}. Pay your driver directly or pay online in the app.`,
+    { type: "settlement_pending", order_id: String(orderId), amount: String(amount) }
+  );
+}
+
+/** Driver-side counterpart: the customer's payment for a completed ride is still unconfirmed. */
+async function notifyDriverSettlementReminder(fcmToken, orderId, amount) {
+  return sendPushNotification(
+    fcmToken,
+    "Collect payment",
+    `Order #${orderId}: ₹${amount} is still pending. Tap "Received" once the customer has paid.`,
+    { type: "settlement_pending", order_id: String(orderId), amount: String(amount) }
+  );
+}
+
 /**
  * See tripLifecycle.customerCancel — the customer cancelled an order this
  * driver already accepted, tapping Cancel themselves (not a timeout). The
@@ -344,6 +364,8 @@ async function notifyDriverAccountStatus(fcmToken, isBlocked, reason) {
 }
 
 module.exports = {
+  notifyCustomerSettlementReminder,
+  notifyDriverSettlementReminder,
   notifyDriverOrderRequest,
   notifyDriverDismiss,
   notifyDriverForceAssigned,
