@@ -21,6 +21,7 @@ const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeServ
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getPickupEtaRow, buildEtaView } = require("../services/pickupEtaService");
+const { buildCustomerWaitingView } = require("../services/customerWaitingView");
 
 async function customerTripProgress(order) {
   if (!order.rid) return null;
@@ -29,6 +30,13 @@ async function customerTripProgress(order) {
     prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: order.id, rid: order.rid } } }),
   ]);
   return { stop_step: progress?.stop_step || 0, arrived_drop: order.order_status === 3 && !!timer?.drop_wait_start };
+}
+
+async function customerWaitingFor(order) {
+  const timer = order.rid
+    ? await prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: order.id, rid: order.rid } } })
+    : null;
+  return buildCustomerWaitingView(order, timer);
 }
 
 function isFiniteNumber(value) {
@@ -772,6 +780,8 @@ async function getOrderDetails(req, res) {
           Order_Status: orderStatus,
           Order_flow_id: order.order_status,
           trip_progress: await customerTripProgress(order),
+          // Free minutes, per-minute rate and the billable-wait clock, so the app can show the waiting timer / charge.
+          waiting: await customerWaitingFor(order),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           otp: order.otp,
@@ -1813,7 +1823,7 @@ async function redeemAdvanceWithPoints(req, res) {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw`SELECT id, uid, advance_payment, payment_status, o_status, order_status FROM pkg_order WHERE id = ${orderId} FOR UPDATE`;
+      const rows = await tx.$queryRaw`SELECT id, uid, advance_payment, payment_status, o_status, order_status, total_dcharge, cou_amt, referral_points_used FROM pkg_order WHERE id = ${orderId} FOR UPDATE`;
       const order = rows[0];
       if (!order) return { code: "401", msg: "Order Not Found" };
       if (order.o_status === "Cancelled" || Number(order.order_status) === 4) {
@@ -1833,11 +1843,20 @@ async function redeemAdvanceWithPoints(req, res) {
         return { code: "401", msg: "Paying with referral points is not available right now." };
       }
       const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
-      const maxByPercent = Math.floor((advanceDue * percent) / 100 / pointValue);
+      // The admin's ride_discount_percent limits referral points over the WHOLE
+      // ride, not per redemption: points already redeemed at booking (select
+      // vehicle screen) count against the same cap, otherwise a customer could
+      // use the max at booking and then redeem again here.
+      const fareCap = Math.floor((Math.max(0, Number(order.total_dcharge) - (Number(order.cou_amt) || 0)) * percent) / 100 / pointValue);
+      const orderHeadroom = Math.max(0, fareCap - (Number(order.referral_points_used) || 0));
+      const maxByPercent = Math.min(Math.floor((advanceDue * percent) / 100 / pointValue), orderHeadroom);
 
       const user = await tx.tbl_user.findUnique({ where: { id: Number(order.uid) } });
       if (!user) return { code: "401", msg: "User Not Found" };
       const available = Number(user.referral_points) || 0;
+      if (orderHeadroom <= 0) {
+        return { code: "401", msg: "Maximum referral points limit for this ride is already used." };
+      }
       const pointsUsed = Math.min(available, maxByPercent);
       if (pointsUsed <= 0) {
         return { code: "401", msg: "Not enough referral points available." };

@@ -107,10 +107,13 @@ async function renderInvoice(req, res) {
       .map((p) => p[0].toUpperCase())
       .join("") || "?";
 
+    // row.wating_charge is the per-minute RATE; what was actually billed for
+    // waiting is the amount "complete" added on top of d_charge in total_dcharge.
+    const waitingBilled = Math.max(0, Math.round((Number(row.total_dcharge || 0) - Number(row.d_charge || 0)) * 100) / 100);
     const charges = [
       ["Delivery charge", row.d_charge],
       ["Service charge", row.service_charge],
-      ["Waiting charge", row.wating_charge],
+      ["Waiting charge", waitingBilled],
       ["Extra mile charge", row.extra_mile_charge],
       ["Coupon discount", row.cou_amt ? -Number(row.cou_amt) : 0],
       [`Coins redeemed (${Number(row.referral_points_used) || 0} points)`, Number(row.referral_points_amount) ? -Number(row.referral_points_amount) : 0],

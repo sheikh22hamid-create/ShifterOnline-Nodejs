@@ -22,7 +22,6 @@ import 'package:goParcel/Payment/razor_pay.dart';
 import 'package:goParcel/Payment/web_view.dart';
 import 'package:goParcel/bottombar.dart';
 import 'package:goParcel/screens/home/chatscreen.dart';
-import 'package:goParcel/screens/home/trackingpoliyline.dart';
 import 'package:goParcel/screens/home/trackingview.dart';
 import 'package:goParcel/screens/myorder/live_driver_tracking.dart';
 import 'package:goParcel/screens/profile/faq.dart';
@@ -82,6 +81,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   int _remainingSeconds = 0;
   bool _redeemingReferralPoints = false;
 
+  // Waiting time / charge card (customer side). The billable-wait clock starts
+  // when the driver enters the pickup OTP, which sends the customer no socket
+  // event, so while a trip is at pickup / on the way we re-fetch order details
+  // every _waitingRefreshEvery ticks and tick the displayed clock each second.
+  static const int _waitingRefreshEvery = 20;
+  Timer? _waitingTicker;
+  int _waitingTick = 0;
+  int _waitingSkewMs = 0;
+  int _waitingServerTimeSeen = 0;
+
   // Latest driver position from the Node socket.
   double? liveDriverLat;
   double? liveDriverLng;
@@ -102,6 +111,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   @override
   void dispose() {
     _advanceTimer?.cancel();
+    _waitingTicker?.cancel();
     _driverAnimController?.dispose();
     _driverMapPositionNotifier.dispose();
     commit.dispose();
@@ -371,6 +381,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       });
     }
     _listenForLiveUpdates();
+    _startWaitingTicker();
     paymenrgatway();
     razorPayClass.initiateRazorPay(
       handlePaymentSuccess: handlePaymentSuccess,
@@ -521,16 +532,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "Order Details".tr,
+                  "Order #${orderProduc?["order_id"] ?? getdata.read("OrderID") ?? "0"}",
                   style: const TextStyle(
                     color: Colors.white,
                     fontFamily: "Gilroy_Bold",
-                    fontSize: 19,
+                    fontSize: 22,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  "Track and manage your order".tr,
+                  orderProduc == null ? "Track and manage your order".tr : _heroState().headerSub,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.85),
                     fontFamily: "Gilroy_Medium",
@@ -540,81 +551,6 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               ],
             ),
           ),
-          // Actions
-          // [ 🗺 View Map ] - Only visible for active in-progress orders
-          if (!((orderProduc?["Order_Status"] ?? "").toString().toLowerCase() == "completed" ||
-              (orderProduc?["Order_Status"] ?? "").toString().toLowerCase() == "cancelled" ||
-              (orderProduc?["Order_Status"] ?? "").toString().toLowerCase() == "cancel")) ...[
-            InkWell(
-              onTap: () {
-                if (orderProduc != null && orderProduc["rider_id"] != null) {
-                  Get.to(() => LiveDriverTracking(
-                        orderId: orderid,
-                        type: widget.type,
-                        initialOrderData: Map<String, dynamic>.from(orderProduc),
-                      ));
-                } else {
-                  Get.to(() => Tracklast(type: "OrderDone"));
-                }
-              },
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.22),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.4)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.map_rounded, color: Colors.white, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      "View Map".tr,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: "Gilroy_Bold",
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          // Finished trip: the route actually driven + total distance.
-          if ((orderProduc?["Order_Status"] ?? "").toString().toLowerCase() == "completed") ...[
-            InkWell(
-              onTap: () => Get.to(() => OrderRouteMap(orderId: orderid)),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.22),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.4)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.route_rounded, color: Colors.white, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      "View Route".tr,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: "Gilroy_Bold",
-                        fontSize: 11.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
           // [ ↻ Refresh ]
           InkWell(
             onTap: isLoading ? null : () => pageRefresh(),
@@ -2140,406 +2076,170 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (category.isNotEmpty && _driverIconCategory != category) _loadDriverIcon(category);
 
     final status = (orderProduc?['Order_Status'] ?? '').toString();
-    final pAddress = (orderProduc?['customer_paddress'] ?? orderProduc?['store_paddress'] ?? '').toString();
-    final dAddress = (orderProduc?['customer_daddress'] ?? '').toString();
+
+    // "Driver is 3 min away" / "0.4 km • ETA 3 min" chip over the map.
+    final eta = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
+    final km = double.tryParse(orderProduc?["pickup_distance_km"]?.toString() ?? "") ?? 0;
+    final chipTitle = eta > 0 ? "${"Driver is".tr} $eta ${"min away".tr}" : "Rider is on the way".tr;
+    final chipSub = [
+      if (km > 0) "${km.toStringAsFixed(1)} km",
+      if (eta > 0) "ETA $eta ${"min".tr}",
+    ].join(" • ");
+
+    void openLive() => Get.to(() => LiveDriverTracking(
+          orderId: orderid,
+          type: widget.type,
+          initialOrderData: Map<String, dynamic>.from(orderProduc ?? {}),
+        ));
 
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: notifier.getBgColor,
+      decoration: _cardDecoration(),
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
+        child: hasCoords
+            ? SizedBox(
+                height: 220,
+                width: double.infinity,
+                child: Stack(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: linercolor.withOpacity(0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.sensors_rounded, color: linercolor, size: 18),
+                    ValueListenableBuilder<LatLng?>(
+                      valueListenable: _driverMapPositionNotifier,
+                      builder: (context, driverPos, _) {
+                        return GoogleMap(
+                          initialCameraPosition: CameraPosition(
+                            target: driverPos ?? LatLng(pLat, pLng),
+                            zoom: 13,
+                          ),
+                          markers: _buildMapMarkers(),
+                          myLocationButtonEnabled: false,
+                          zoomControlsEnabled: false,
+                          scrollGesturesEnabled: false,
+                          zoomGesturesEnabled: false,
+                          rotateGesturesEnabled: false,
+                          tiltGesturesEnabled: false,
+                          mapToolbarEnabled: false,
+                          onMapCreated: (controller) {
+                            _liveMapController = controller;
+                            _fitMapToMarkers();
+                          },
+                        );
+                      },
                     ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Live Track Driver".tr,
-                          style: TextStyle(
-                            color: notifier.text,
-                            fontFamily: "Gilroy_Bold",
-                            fontSize: 15,
+                    // Floating ETA / status chip
+                    ValueListenableBuilder<LatLng?>(
+                      valueListenable: _driverMapPositionNotifier,
+                      builder: (context, driverPos, _) {
+                        if (driverPos == null || status == "Completed" || status == "Cancelled") {
+                          return const SizedBox();
+                        }
+                        return Positioned(
+                          top: 12,
+                          left: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: notifier.getBgColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.two_wheeler_rounded, color: linercolor, size: 22),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      chipTitle,
+                                      style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 13),
+                                    ),
+                                    if (chipSub.isNotEmpty)
+                                      Text(
+                                        chipSub,
+                                        style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 11),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    Positioned(
+                      right: 12,
+                      bottom: 12,
+                      child: InkWell(
+                        onTap: openLive,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: notifier.getBgColor,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.map_outlined, size: 16, color: linercolor),
+                              const SizedBox(width: 5),
+                              Text(
+                                "Open in Maps".tr,
+                                style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12.5),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.open_in_new_rounded, size: 13, color: linercolor),
+                            ],
                           ),
                         ),
-                        Text(
-                          "See real-time location".tr,
-                          style: TextStyle(
-                            color: greaycolor,
-                            fontFamily: "Gilroy_Medium",
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
-                InkWell(
-                  onTap: () {
-                    Get.to(() => LiveDriverTracking(
-                          orderId: orderid,
-                          type: widget.type,
-                          initialOrderData: Map<String, dynamic>.from(orderProduc ?? {}),
-                        ));
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: linercolor.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: linercolor.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.open_in_new_rounded, size: 13, color: linercolor),
-                        const SizedBox(width: 4),
-                        Text(
-                          "Open in Maps".tr,
-                          style: TextStyle(
-                            color: linercolor,
-                            fontFamily: "Gilroy_Bold",
-                            fontSize: 11.5,
-                          ),
+              )
+            : Container(
+                height: 140,
+                width: double.infinity,
+                color: Colors.grey.shade100,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.location_searching_rounded, size: 30, color: Colors.grey.shade400),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Driver location will be visible once assigned".tr,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontFamily: "Gilroy_Medium",
+                          fontSize: 12,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-
-          // Map Area with Overlays (smooth preview, non-blocking gestures)
-          hasCoords
-              ? ClipRRect(
-                  child: SizedBox(
-                    height: 200,
-                    width: double.infinity,
-                    child: Stack(
-                      children: [
-                        ValueListenableBuilder<LatLng?>(
-                          valueListenable: _driverMapPositionNotifier,
-                          builder: (context, driverPos, _) {
-                            return GoogleMap(
-                              initialCameraPosition: CameraPosition(
-                                target: driverPos ?? LatLng(pLat, pLng),
-                                zoom: 13,
-                              ),
-                              markers: _buildMapMarkers(),
-                              myLocationButtonEnabled: false,
-                              zoomControlsEnabled: false,
-                              scrollGesturesEnabled: false,
-                              zoomGesturesEnabled: false,
-                              rotateGesturesEnabled: false,
-                              tiltGesturesEnabled: false,
-                              mapToolbarEnabled: false,
-                              onMapCreated: (controller) {
-                                _liveMapController = controller;
-                                _fitMapToMarkers();
-                              },
-                            );
-                          },
-                        ),
-                        // Floating ETA / Status Badge
-                        ValueListenableBuilder<LatLng?>(
-                          valueListenable: _driverMapPositionNotifier,
-                          builder: (context, driverPos, _) {
-                            if (driverPos == null || status == "Completed" || status == "Cancelled") {
-                              return const SizedBox();
-                            }
-                            return Positioned(
-                              top: 10,
-                              left: 14,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: linercolor,
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.18),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 16),
-                                    const SizedBox(width: 6),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          "Rider is on the way".tr,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontFamily: "Gilroy_Bold",
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                        if (_pickupEtaLabel().isNotEmpty)
-                                          Text(
-                                            _pickupEtaLabel(),
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(0.9),
-                                              fontFamily: "Gilroy_Medium",
-                                              fontSize: 9.5,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Container(
-                  height: 140,
-                  width: double.infinity,
-                  color: Colors.grey.shade100,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.location_searching_rounded, size: 30, color: Colors.grey.shade400),
-                        const SizedBox(height: 6),
-                        Text(
-                          "Driver location will be visible once assigned".tr,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontFamily: "Gilroy_Medium",
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-          // Route Addresses
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                // Pickup
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: notifier.lightBgColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.only(top: 4, right: 8),
-                          decoration: const BoxDecoration(
-                            color: Colors.orange,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    "Pickup Location".tr,
-                                    style: TextStyle(
-                                      color: greaycolor,
-                                      fontFamily: "Gilroy_Medium",
-                                      fontSize: 10.5,
-                                    ),
-                                  ),
-                                  if (_canChangePickup)
-                                    InkWell(
-                                      onTap: _handleChangePickupLocation,
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                        decoration: BoxDecoration(
-                                          color: linercolor.withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.edit_location_alt_rounded, size: 10, color: linercolor),
-                                            const SizedBox(width: 2),
-                                            Text(
-                                              "Change".tr,
-                                              style: TextStyle(
-                                                color: linercolor,
-                                                fontFamily: "Gilroy_Bold",
-                                                fontSize: 9.5,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                pAddress.isNotEmpty ? pAddress : "Current Location".tr,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: "Gilroy_Bold",
-                                  fontSize: 11.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Drop
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: notifier.lightBgColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: notifier.bordecolor.withOpacity(0.5)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on_rounded, size: 14, color: Colors.red),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    "Drop Location".tr,
-                                    style: TextStyle(
-                                      color: greaycolor,
-                                      fontFamily: "Gilroy_Medium",
-                                      fontSize: 10.5,
-                                    ),
-                                  ),
-                                  if (_canChangeDestination)
-                                    InkWell(
-                                      onTap: _handleChangeDropLocation,
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                        decoration: BoxDecoration(
-                                          color: linercolor.withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.edit_location_alt_rounded, size: 10, color: linercolor),
-                                            const SizedBox(width: 2),
-                                            Text(
-                                              "Change".tr,
-                                              style: TextStyle(
-                                                color: linercolor,
-                                                fontFamily: "Gilroy_Bold",
-                                                fontSize: 9.5,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                dAddress.isNotEmpty ? dAddress : "Destination".tr,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: "Gilroy_Bold",
-                                  fontSize: 11.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
       ),
     );
   }
 
   // ── 5. QUICK ORDER INFO ───────────────────────────────────────────────────
-
-  /// "ETA 30 min · by 03:45 PM · 5.4 km away": the backend's pickup ETA
-  /// (Google driver -> pickup time + admin buffer). Empty when no ETA exists
-  /// (old orders, scheduled bookings, driver already at pickup).
-  String _pickupEtaLabel() {
-    final etaMinutes = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
-    if (etaMinutes <= 0) return "";
-    final parts = <String>["${"ETA".tr} $etaMinutes ${"min".tr}"];
-    final deadline = DateTime.tryParse(orderProduc?["pickup_deadline_at"]?.toString() ?? "");
-    if (deadline != null) parts.add("${"by".tr} ${DateFormat("hh:mm a").format(deadline.toLocal())}");
-    final km = double.tryParse(orderProduc?["pickup_distance_km"]?.toString() ?? "") ?? 0;
-    if (km > 0) parts.add("${km.toStringAsFixed(1)} km ${"away".tr}");
-    return parts.join(" · ");
-  }
 
   /// Referral-points discount booked on this order.
   double _referralDiscountAmount() =>
@@ -2557,6 +2257,157 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final minutes = double.tryParse(orderProduc?["pickup_otp_timeout_minutes"]?.toString() ?? "");
     if (minutes == null || minutes <= 0) return "7";
     return minutes % 1 == 0 ? minutes.toInt().toString() : minutes.toString();
+  }
+
+  // ── Waiting time / free time / charge (from order details `waiting`) ──────
+
+  Map<String, dynamic>? _waitingInfo() {
+    final w = orderProduc?["waiting"];
+    return w is Map ? Map<String, dynamic>.from(w) : null;
+  }
+
+  num _waitingNum(Map<String, dynamic> w, String key) =>
+      num.tryParse(w[key]?.toString() ?? "") ?? 0;
+
+  /// Only while the trip is at pickup (2) or on the way / at drop (3), and
+  /// only if the rate card actually has free time or a waiting rate.
+  bool _waitingCardActive() {
+    final w = _waitingInfo();
+    if (w == null || w["enabled"] != true) return false;
+    final flow = orderProduc?["Order_flow_id"]?.toString();
+    return flow == "2" || flow == "3";
+  }
+
+  void _startWaitingTicker() {
+    _waitingTicker?.cancel();
+    _waitingTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || !_waitingCardActive()) {
+        _waitingTick = 0;
+        return;
+      }
+      _waitingTick++;
+      if (_waitingTick % _waitingRefreshEvery == 0) {
+        pageRefresh();
+        return;
+      }
+      final w = _waitingInfo();
+      if (w != null && _waitingNum(w, "running_since") > 0) setState(() {});
+    });
+  }
+
+  /// Billable seconds so far: banked (loading) time + the running clock,
+  /// measured against server time so a wrong phone clock can't skew it.
+  int _waitingTotalSeconds(Map<String, dynamic> w) {
+    final serverTime = _waitingNum(w, "server_time").toInt();
+    if (serverTime != _waitingServerTimeSeen) {
+      _waitingServerTimeSeen = serverTime;
+      _waitingSkewMs = serverTime - DateTime.now().millisecondsSinceEpoch;
+    }
+    final banked = _waitingNum(w, "billable_seconds_banked").toInt();
+    final since = _waitingNum(w, "running_since").toInt();
+    var running = 0;
+    if (since > 0) {
+      final nowMs = DateTime.now().millisecondsSinceEpoch + _waitingSkewMs;
+      running = ((nowMs - since) / 1000).floor();
+      if (running < 0) running = 0;
+    }
+    return banked + running;
+  }
+
+  String _waitingMoney(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
+
+  /// Waiting charge actually billed on a completed trip.
+  double _waitingBilledAmount() {
+    final w = _waitingInfo();
+    return w == null ? 0.0 : _waitingNum(w, "waiting_charge_billed").toDouble();
+  }
+
+  Widget _buildWaitingCard() {
+    if (!_waitingCardActive()) return const SizedBox.shrink();
+    final w = _waitingInfo()!;
+    final freeMin = _waitingNum(w, "free_waiting_time_minutes").toDouble();
+    final rate = _waitingNum(w, "waiting_charge_per_minute").toDouble();
+    final phase = w["phase"]?.toString();
+    final flow = orderProduc?["Order_flow_id"]?.toString();
+    final running = phase != null;
+    final total = _waitingTotalSeconds(w);
+    final freeSec = (freeMin * 60).round();
+    final chargeableSec = total > freeSec ? total - freeSec : 0;
+    final chargeSoFar = (chargeableSec / 60 * rate * 100).round() / 100;
+
+    final rateLine = [
+      freeMin > 0 ? "${"Free".tr}: ${_waitingMoney(freeMin)} ${"mins".tr}" : "No free waiting time".tr,
+      if (rate > 0) "$currency${_waitingMoney(rate)}/${"min".tr} ${"after that".tr}",
+    ].join(" · ");
+
+    String? hint;
+    if (running) {
+      hint = phase == "unloading"
+          ? "Unloading wait at drop location".tr
+          : "Loading wait - counting since pickup OTP".tr;
+    } else if (flow == "2") {
+      hint = "Waiting charge starts once the pickup OTP is entered".tr;
+    } else if (total > 0) {
+      hint = "Timer paused - resumes when driver reaches the drop".tr;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: notifier.getBgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: linercolor.withOpacity(0.1), shape: BoxShape.circle),
+                child: Icon(Icons.timer_outlined, color: linercolor, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "Waiting Time".tr,
+                  style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 15),
+                ),
+              ),
+              if (running || total > 0)
+                Text(
+                  _formatTimerText(total),
+                  style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 20),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(rateLine, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12)),
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(hint, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12)),
+          ],
+          if (running || total > 0) ...[
+            const SizedBox(height: 8),
+            if (total < freeSec)
+              Text(
+                "${"Free time left".tr}: ${_formatTimerText(freeSec - total)}",
+                style: const TextStyle(color: Color(0xFF00C853), fontFamily: "Gilroy_Bold", fontSize: 13),
+              )
+            else if (rate > 0)
+              Text(
+                "${"Waiting charge so far".tr}: $currency${_waitingMoney(chargeSoFar)}",
+                style: const TextStyle(color: Color(0xFFFF9100), fontFamily: "Gilroy_Bold", fontSize: 13),
+              ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildQuickOrderInfo() {
@@ -2709,34 +2560,15 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final otp = (orderProduc?["otp"] ?? "").toString();
     final hasOtp = !isFinished && otp.isNotEmpty;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final stackVertically = constraints.maxWidth < 360;
-
-        Widget otpCard = hasOtp ? _buildOtpCard(otp) : const SizedBox();
-        Widget riderCard = _buildRiderDetailsCard();
-
-        if (!hasOtp) return riderCard;
-
-        if (stackVertically) {
-          return Column(
-            children: [
-              otpCard,
-              const SizedBox(height: 12),
-              riderCard,
-            ],
-          );
-        }
-
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(flex: 4, child: otpCard),
-            const SizedBox(width: 12),
-            Expanded(flex: 5, child: riderCard),
-          ],
-        );
-      },
+    // OTP first and full width: it is the one thing the customer must act on at pickup.
+    return Column(
+      children: [
+        if (hasOtp) ...[
+          _buildOtpCard(otp),
+          const SizedBox(height: 14),
+        ],
+        _buildRiderDetailsCard(),
+      ],
     );
   }
 
@@ -2852,6 +2684,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final rawRiderImg = (orderProduc?["rider_img"] ?? buyMapinfo?["rider_img"] ?? "").toString().trim();
     final riderImg = (rawRiderImg.isNotEmpty && rawRiderImg != "null") ? rawRiderImg : "";
     final vehicleNo = (orderProduc?["vehicle_no"] ?? buyMapinfo?["vehicle_no"] ?? "").toString().trim();
+    final hasVehicleNo = vehicleNo.isNotEmpty &&
+        vehicleNo.toLowerCase() != "not available" &&
+        vehicleNo.toLowerCase() != "null";
+    final category = (orderProduc?["category"] ?? "").toString().trim();
 
     // Real dynamic driver rating
     final rawRiderStar = (orderProduc?["rider_star"] ?? buyMapinfo?["rider_star"] ?? "").toString().trim();
@@ -2872,92 +2708,45 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
     final riderStatus = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     final isFinished = riderStatus == "completed" || riderStatus == "cancelled" || riderStatus == "cancel";
+    final canContact = hasRider && !isFinished && riderMobile.isNotEmpty;
 
     final hasValidPhoto = Config.isValidImageUrl(riderImg);
 
+    Widget contactButton(IconData icon, String label, VoidCallback onTap) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 62,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: linercolor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: linercolor, size: 22),
+              const SizedBox(height: 3),
+              Text(label, style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: notifier.getBgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Rider Details".tr,
-                style: TextStyle(
-                  color: notifier.text,
-                  fontFamily: "Gilroy_Bold",
-                  fontSize: 14,
-                ),
-              ),
-              if (hasRider)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F8EE),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 12),
-                      SizedBox(width: 3),
-                      Text(
-                        "Verified",
-                        style: TextStyle(
-                          color: Color(0xFF00C853),
-                          fontFamily: "Gilroy_Bold",
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.schedule_rounded, color: Colors.orange.shade800, size: 12),
-                      const SizedBox(width: 3),
-                      Text(
-                        "Assigning".tr,
-                        style: TextStyle(
-                          color: Colors.orange.shade800,
-                          fontFamily: "Gilroy_Bold",
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              // Driver Photo (if available) or clean styled avatar
+              // Driver photo (if available) or a clean styled avatar
               Container(
-                width: 46,
-                height: 46,
+                width: 58,
+                height: 58,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: hasValidPhoto ? Colors.transparent : linercolor.withOpacity(0.1),
@@ -2971,185 +2760,176 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       ? Image.network(
                           Config.resolveImageUrl(riderImg),
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.person_rounded,
-                            color: linercolor,
-                            size: 26,
-                          ),
+                          errorBuilder: (context, error, stackTrace) =>
+                              Icon(Icons.person_rounded, color: linercolor, size: 30),
                         )
-                      : Icon(
-                          Icons.person_rounded,
-                          color: linercolor,
-                          size: 26,
-                        ),
+                      : Icon(Icons.person_rounded, color: linercolor, size: 30),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      riderName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: notifier.text,
-                        fontFamily: "Gilroy_Bold",
-                        fontSize: 13.5,
-                      ),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 2,
+                      children: [
+                        Text(
+                          riderName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 16),
+                        ),
+                        if (hasRider)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F8EE),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 12),
+                                const SizedBox(width: 3),
+                                Text(
+                                  "Verified".tr,
+                                  style: const TextStyle(
+                                    color: Color(0xFF00C853),
+                                    fontFamily: "Gilroy_Bold",
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              "Assigning".tr,
+                              style: TextStyle(
+                                color: Colors.orange.shade800,
+                                fontFamily: "Gilroy_Bold",
+                                fontSize: 10.5,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     if (hasRider) ...[
                       Row(
                         children: [
-                          const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 15),
+                          const Icon(Icons.star_rounded, color: Color(0xFFFFC107), size: 16),
                           const SizedBox(width: 3),
-                          Text(
-                            ratingDisplay,
-                            style: TextStyle(
-                              color: notifier.text,
-                              fontFamily: "Gilroy_Bold",
-                              fontSize: 11.5,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            hasTrips ? "($tripsCount orders)" : "(New Partner)".tr,
-                            style: TextStyle(
-                              color: greaycolor,
-                              fontFamily: "Gilroy_Medium",
-                              fontSize: 11,
+                          Flexible(
+                            child: Text(
+                              hasTrips ? "$ratingDisplay • $tripsCount ${"orders".tr}" : "$ratingDisplay • ${"New Partner".tr}",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
                             ),
                           ),
                         ],
                       ),
-                      if (vehicleNo.isNotEmpty &&
-                          vehicleNo.toLowerCase() != "not available" &&
-                          vehicleNo.toLowerCase() != "null") ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          "Vehicle: $vehicleNo",
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: greaycolor.withOpacity(0.85),
-                            fontFamily: "Gilroy_Medium",
-                            fontSize: 10.5,
-                          ),
+                      if (hasVehicleNo || category.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Icon(Icons.two_wheeler_rounded, size: 16, color: greaycolor),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                hasVehicleNo ? vehicleNo : category,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    ] else ...[
+                    ] else
                       Text(
                         "Driver details will appear once assigned".tr,
-                        style: TextStyle(
-                          color: greaycolor,
-                          fontFamily: "Gilroy_Medium",
-                          fontSize: 11,
-                        ),
+                        style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12),
                       ),
-                    ],
                   ],
                 ),
               ),
-              // Favorite driver toggle button
-              if (hasRider)
-                isFavoriteLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : InkWell(
-                        onTap: () => toggleFavoriteDriver(),
-                        borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Icon(
-                            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                            color: isFavorite ? Colors.red : greaycolor,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-              if (hasRider && (() { WidgetsBinding.instance.addPostFrameCallback((_) => _loadBlockedState()); return true; })())
-                InkWell(
-                  onTap: () => confirmBlockDriver(),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Icon(Icons.block_rounded, color: isDriverBlocked ? Colors.red : greaycolor, size: 20),
-                  ),
-                ),
+              if (canContact) ...[
+                const SizedBox(width: 8),
+                contactButton(Icons.call_rounded, "Call".tr, () async {
+                  await FlutterPhoneDirectCaller.callNumber(riderMobile);
+                }),
+                const SizedBox(width: 8),
+                contactButton(Icons.chat_bubble_rounded, "Chat".tr, () {
+                  Get.to(() => Chat(
+                        receiverId: riderId,
+                        receiverMobile: riderMobile,
+                        receiverName: riderName,
+                        receiverImage: riderImg,
+                      ));
+                }),
+              ],
             ],
           ),
-          if (hasRider && !isFinished && riderMobile.isNotEmpty) ...[
+          if (hasRider && (() { WidgetsBinding.instance.addPostFrameCallback((_) => _loadBlockedState()); return true; })()) ...[
             const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      await FlutterPhoneDirectCaller.callNumber(riderMobile);
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 7),
-                      decoration: BoxDecoration(
-                        color: linercolor.withOpacity(0.1),
+                // Favorite driver toggle
+                isFavoriteLoading
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : InkWell(
+                        onTap: () => toggleFavoriteDriver(),
                         borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.call_rounded, color: linercolor, size: 15),
-                          const SizedBox(width: 5),
-                          Text(
-                            "Call".tr,
-                            style: TextStyle(
-                              color: linercolor,
-                              fontFamily: "Gilroy_Bold",
-                              fontSize: 12,
-                            ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                color: isFavorite ? Colors.red : greaycolor,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                "Favourite".tr,
+                                style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkWell(
-                    onTap: () {
-                      Get.to(() => Chat(
-                            receiverId: riderId,
-                            receiverMobile: riderMobile,
-                            receiverName: riderName,
-                            receiverImage: riderImg,
-                          ));
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 7),
-                      decoration: BoxDecoration(
-                        color: linercolor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.chat_bubble_rounded, color: linercolor, size: 15),
-                          const SizedBox(width: 5),
-                          Text(
-                            "Chat".tr,
-                            style: TextStyle(
-                              color: linercolor,
-                              fontFamily: "Gilroy_Bold",
-                              fontSize: 12,
-                            ),
+                const SizedBox(width: 10),
+                InkWell(
+                  onTap: () => confirmBlockDriver(),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.block_rounded, color: isDriverBlocked ? Colors.red : greaycolor, size: 18),
+                        const SizedBox(width: 5),
+                        Text(
+                          isDriverBlocked ? "Blocked".tr : "Block".tr,
+                          style: TextStyle(
+                            color: isDriverBlocked ? Colors.red : greaycolor,
+                            fontFamily: "Gilroy_Medium",
+                            fontSize: 12,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -3521,6 +3301,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           buildRow("Delivery Fees".tr, "$currency$deliveryCharge"),
           if (extraMile != "0" && extraMile.isNotEmpty)
             buildRow("Extra Mile Charge".tr, "$currency$extraMile"),
+          if (isCompleted && _waitingBilledAmount() > 0)
+            buildRow("Waiting Charge".tr, "$currency${_waitingMoney(_waitingBilledAmount())}"),
           if (discount != "0" && discount.isNotEmpty)
             buildRow("Coupon Discount".tr, "-$currency$discount", valueColor: const Color(0xFF00C853)),
           if (_referralDiscountAmount() > 0)
@@ -4395,6 +4177,735 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // ── MAIN CONTENT (OPTIMIZED SCROLLING & ZERO JANK) ───────────────────────
 
+  // ── REDESIGNED ORDER SCREEN: hero, route, payment summary, tiles, actions ──
+
+  /// Open/closed state of the expandable rows ("payment", "order", "package").
+  final Set<String> _openTiles = <String>{};
+
+  void _toggleTile(String key) {
+    setState(() {
+      if (!_openTiles.remove(key)) _openTiles.add(key);
+    });
+  }
+
+  BoxDecoration _cardDecoration() => BoxDecoration(
+        color: notifier.getBgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      );
+
+  /// What the hero card (and the header subtitle) say for the trip's current stage.
+  _HeroState _heroState() {
+    final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
+    final riderId = (orderProduc?["rider_id"] ?? "").toString().trim();
+    final hasRider = riderId.isNotEmpty && riderId != "0" && riderId != "null";
+    final eta = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
+    final km = double.tryParse(orderProduc?["pickup_distance_km"]?.toString() ?? "") ?? 0;
+
+    if (s == "completed") {
+      final date = _formatOrderDate(orderProduc?["order_deliver_date"]?.toString());
+      return _HeroState(
+        lead: "Order is ".tr,
+        accent: "delivered".tr,
+        sub: date.isNotEmpty ? date : "Package delivered successfully".tr,
+        color: const Color(0xFF00C853),
+        headerSub: "Package delivered successfully".tr,
+      );
+    }
+    if (s == "cancelled" || s == "cancel") {
+      return _HeroState(
+        lead: "Order is ".tr,
+        accent: "cancelled".tr,
+        sub: "This order has been cancelled.".tr,
+        color: const Color(0xFFFF5252),
+        headerSub: "Order has been cancelled".tr,
+      );
+    }
+    if (orderProduc?["trip_progress"]?["arrived_drop"] == true) {
+      return _HeroState(
+        lead: "Driver reached ".tr,
+        accent: "drop location".tr,
+        sub: "Please receive your goods".tr,
+        color: const Color(0xFFFF9100),
+        headerSub: "Driver reached the drop location".tr,
+      );
+    }
+    if (s == "on route" || s == "on_route" || s == "intransit") {
+      return _HeroState(
+        lead: "Order is ".tr,
+        accent: "in transit".tr,
+        sub: "On the way to drop location".tr,
+        color: const Color(0xFF2979FF),
+        headerSub: "Driver is on the way to drop".tr,
+      );
+    }
+    if (s == "pickup") {
+      return _HeroState(
+        lead: "Driver has ".tr,
+        accent: "arrived".tr,
+        sub: "Share the OTP once your goods are loaded".tr,
+        color: const Color(0xFFFF9100),
+        headerSub: "Driver has arrived at pickup".tr,
+      );
+    }
+    if (hasRider) {
+      return _HeroState(
+        lead: "Driver is ".tr,
+        accent: "on the way".tr,
+        sub: "Heading to your pickup location".tr,
+        color: linercolor,
+        headerSub: "Driver is on the way to pickup".tr,
+        etaCaption: eta > 0 ? "Arriving at pickup in".tr : "",
+        etaValue: eta > 0 ? "$eta ${"min".tr}" : "",
+        etaFoot: km > 0 ? "${km.toStringAsFixed(1)} km ${"away".tr}" : "",
+      );
+    }
+    return _HeroState(
+      lead: "Finding your ".tr,
+      accent: "driver".tr,
+      sub: "Please wait while we assign a driver".tr,
+      color: linercolor,
+      headerSub: "Finding a driver for your order".tr,
+    );
+  }
+
+  Widget _buildHeroCard() {
+    final h = _heroState();
+    final status = (orderProduc?["Order_Status"] ?? "Processing").toString();
+    final statusColor = _getStatusColor(status);
+    final stepIndex = status.toLowerCase().trim() == "completed" ? 5 : _getCurrentStepIndex(status);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [linercolor.withOpacity(0.12), linercolor.withOpacity(0.03)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: linercolor.withOpacity(0.18)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: notifier.getBgColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: linercolor.withOpacity(0.2)),
+                ),
+                child: Icon(Icons.two_wheeler_rounded, color: linercolor, size: 32),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: h.lead, style: TextStyle(color: notifier.text)),
+                        TextSpan(text: h.accent, style: TextStyle(color: h.color)),
+                      ]),
+                      style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 18),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      h.etaCaption.isNotEmpty ? h.etaCaption : h.sub,
+                      style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
+                    ),
+                    if (h.etaValue.isNotEmpty)
+                      Text(
+                        h.etaValue,
+                        style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 28, height: 1.15),
+                      ),
+                    if (h.etaFoot.isNotEmpty)
+                      Text(
+                        h.etaFoot,
+                        style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      status.tr,
+                      style: TextStyle(color: statusColor, fontFamily: "Gilroy_Bold", fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildHeroStepper(stepIndex),
+        ],
+      ),
+    );
+  }
+
+  /// 4 steps with the connecting line running through each node's half-cell,
+  /// so the labels sit exactly under their circles.
+  Widget _buildHeroStepper(int stepIndex) {
+    final labels = ["Assigned".tr, "Picked Up".tr, "In Transit".tr, "Delivered".tr];
+    const green = Color(0xFF00C853);
+    return Row(
+      children: List.generate(4, (i) {
+        final step = i + 1;
+        final done = stepIndex > step;
+        final active = stepIndex == step;
+
+        Widget half(bool show, bool lit) => Expanded(
+              child: Container(
+                height: 3,
+                color: show ? (lit ? linercolor : Colors.grey.shade300) : Colors.transparent,
+              ),
+            );
+
+        final node = Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: done ? green : (active ? linercolor : Colors.grey.shade300),
+            shape: BoxShape.circle,
+            border: active ? Border.all(color: linercolor.withOpacity(0.3), width: 4) : null,
+          ),
+          child: done
+              ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
+              : (active
+                  ? const Center(child: Icon(Icons.circle, color: Colors.white, size: 7))
+                  : null),
+        );
+
+        return Expanded(
+          child: Column(
+            children: [
+              Row(children: [half(i > 0, stepIndex >= step), node, half(i < 3, stepIndex > step)]),
+              const SizedBox(height: 6),
+              Text(
+                labels[i],
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: active ? linercolor : (done ? green : greaycolor),
+                  fontFamily: active ? "Gilroy_Bold" : "Gilroy_Medium",
+                  fontSize: 11.5,
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Pickup -> drop in one card, always visible; "Change" only while allowed.
+  Widget _buildRouteCard() {
+    final pAddress = (orderProduc?['customer_paddress'] ?? orderProduc?['store_paddress'] ?? '').toString();
+    final dAddress = (orderProduc?['customer_daddress'] ?? '').toString();
+
+    Widget place(IconData icon, Color color, String label, String address, bool canChange, VoidCallback onChange) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12)),
+                const SizedBox(height: 2),
+                Text(
+                  address,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 13.5, height: 1.25),
+                ),
+              ],
+            ),
+          ),
+          if (canChange)
+            InkWell(
+              onTap: onChange,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.edit_location_alt_rounded, size: 16, color: color),
+                    const SizedBox(width: 4),
+                    Text("Change".tr, style: TextStyle(color: color, fontFamily: "Gilroy_Bold", fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(),
+      child: Column(
+        children: [
+          place(
+            Icons.location_on_rounded,
+            linercolor,
+            "Pickup Location".tr,
+            pAddress.isNotEmpty ? pAddress : "Current Location".tr,
+            _canChangePickup,
+            _handleChangePickupLocation,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 42, top: 10, bottom: 10),
+            child: Divider(height: 1, color: notifier.bordecolor.withOpacity(0.6)),
+          ),
+          place(
+            Icons.location_on_rounded,
+            const Color(0xFF2979FF),
+            "Drop Location".tr,
+            dAddress.isNotEmpty ? dAddress : "Destination".tr,
+            _canChangeDestination,
+            _handleChangeDropLocation,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Compact money summary: Total Fare | Paid Online | Pay to Driver. The
+  /// full line-by-line breakdown (_buildPaymentDetailsCard) opens beneath it.
+  Widget _buildPaymentSummaryCard() {
+    final status = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
+    final isCompleted = status == "completed";
+    final isCancelled = status == "cancelled" || status == "cancel";
+    final method = (orderProduc?["p_method_name"] ?? orderProduc?["pay_method"] ?? "Cash on Delivery").toString();
+
+    final rawTotal = (orderProduc?["grand_total"] ??
+            orderProduc?["total_Delivery_charge"] ??
+            buyMapinfo?["grand_total"] ??
+            buyMapinfo?["total_Delivery_charge"] ??
+            grandTotal ??
+            "0")
+        .toString();
+    final rawAdvance = (orderProduc?["advance_payment "] ??
+            orderProduc?["advance_payment"] ??
+            buyMapinfo?["advance_payment "] ??
+            buyMapinfo?["advance_payment"] ??
+            "0")
+        .toString();
+    double total = double.tryParse(rawTotal) ?? 0.0;
+    final advance = double.tryParse(rawAdvance) ?? 0.0;
+    if (total == 0.0 && advance > 0) total = advance;
+    final discount = _prepaidDiscountAmount();
+    final remaining = (total - advance - discount) > 0 ? (total - advance - discount) : 0.0;
+    final waitingBilled = isCompleted ? _waitingBilledAmount() : 0.0;
+
+    const green = Color(0xFF00C853);
+    final dueColor = isCompleted
+        ? green
+        : isCancelled
+            ? Colors.grey.shade600
+            : const Color(0xFFE65100);
+    final dueBg = isCompleted
+        ? const Color(0xFFE8F8EE)
+        : isCancelled
+            ? Colors.grey.shade100
+            : const Color(0xFFFFF3E0);
+    final open = _openTiles.contains("payment");
+
+    Widget stat(String label, String value, {Color? color, String? foot}) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5)),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(color: color ?? notifier.text, fontFamily: "Gilroy_Bold", fontSize: 21),
+            ),
+            if (foot != null)
+              Text(foot, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 10.5)),
+          ],
+        );
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [const Color(0xFFFFB74D).withOpacity(0.16), const Color(0xFFFFB74D).withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFFFB74D).withOpacity(0.35)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: linercolor.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                    child: Icon(Icons.account_balance_wallet_outlined, color: linercolor, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Text("Payment".tr, style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 17)),
+                  const Spacer(),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: linercolor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        method,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: linercolor, fontFamily: "Gilroy_Medium", fontSize: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: stat(
+                      "Total Fare".tr,
+                      "$currency${_waitingMoney(total)}",
+                      foot: waitingBilled > 0
+                          ? "${"incl.".tr} $currency${_waitingMoney(waitingBilled)} ${"waiting".tr}"
+                          : null,
+                    ),
+                  ),
+                  Container(width: 1, height: 44, color: notifier.bordecolor.withOpacity(0.6)),
+                  Expanded(
+                    child: stat(
+                      "Paid Online".tr,
+                      advance > 0 ? "-$currency${_waitingMoney(advance)}" : "$currency${_waitingMoney(0)}",
+                      color: advance > 0 ? green : null,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 1,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: dueBg,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isCompleted
+                                ? "Paid to Driver".tr
+                                : isCancelled
+                                    ? "No Due".tr
+                                    : "Pay to Driver".tr,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: dueColor, fontFamily: "Gilroy_Bold", fontSize: 12.5),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            "$currency${_waitingMoney(isCancelled ? 0 : remaining)}",
+                            style: TextStyle(color: dueColor, fontFamily: "Gilroy_Bold", fontSize: 21),
+                          ),
+                          Text(
+                            isCompleted
+                                ? "Cash settled".tr
+                                : isCancelled
+                                    ? "Order cancelled".tr
+                                    : "Cash at delivery".tr,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: dueColor, fontFamily: "Gilroy_Medium", fontSize: 10.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (discount > 0) ...[
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Coupon / referral discount".tr,
+                      style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12),
+                    ),
+                    Text(
+                      "-$currency${_waitingMoney(discount)}",
+                      style: const TextStyle(color: green, fontFamily: "Gilroy_Bold", fontSize: 13),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () => _toggleTile("payment"),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            open ? "Hide breakdown".tr : "View full breakdown".tr,
+                            style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12.5),
+                          ),
+                          Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: linercolor, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (isCompleted) _buildCompactInvoiceButton(),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (open) ...[
+          const SizedBox(height: 10),
+          _buildPaymentDetailsCard(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCollapsibleTile({
+    required String keyName,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
+    final open = _openTiles.contains(keyName);
+    return Container(
+      width: double.infinity,
+      decoration: _cardDecoration(),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => _toggleTile(keyName),
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: notifier.lightBgColor, shape: BoxShape.circle),
+                    child: Icon(icon, color: notifier.text, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 16)),
+                        const SizedBox(height: 1),
+                        Text(subtitle, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                  Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: notifier.text),
+                ],
+              ),
+            ),
+          ),
+          if (open) Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 12), child: child),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoreOptionsRow() {
+    const red = Color(0xFFFF5252);
+    return InkWell(
+      onTap: _showMoreOptionsSheet,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: red.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: red.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: red.withOpacity(0.12), shape: BoxShape.circle),
+              child: const Icon(Icons.more_vert_rounded, color: red, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("More Options".tr, style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 16)),
+                  Text(
+                    "Change location or cancel order".tr,
+                    style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: notifier.text),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMoreOptionsSheet() {
+    final cancelOrderId = buyMapinfo?["order_id"] ?? orderid;
+
+    Widget option(IconData icon, Color color, String title, String subtitle, VoidCallback onTap) {
+      return InkWell(
+        onTap: () {
+          Navigator.of(context).pop();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 15)),
+                    Text(subtitle, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: greaycolor),
+            ],
+          ),
+        ),
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: notifier.lightBgColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text("More Options".tr, style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 18)),
+              const SizedBox(height: 6),
+              if (_canChangePickup)
+                option(Icons.edit_location_alt_rounded, linercolor, "Change Pickup Location".tr,
+                    "Move the pickup point".tr, _handleChangePickupLocation),
+              if (_canChangeDestination)
+                option(Icons.edit_location_alt_rounded, const Color(0xFF2979FF), "Change Drop Location".tr,
+                    "Change where we deliver".tr, _handleChangeDropLocation),
+              option(Icons.cancel_outlined, const Color(0xFFFF5252), "Cancel Order".tr,
+                  "Cancel this booking".tr, () => dialogShow(cancelOrderId)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bottom of the screen: review after delivery, the pay button for Buy
+  /// Anything step 6, otherwise the "More Options" row for active orders.
+  Widget _buildActionsArea() {
+    final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
+    if (s == "completed") {
+      if (orderProduc?["is_rate"] != "0") return const SizedBox.shrink();
+      return appButton1(
+        tital: "Order Review".tr,
+        buttonbgColor: linercolor,
+        bordecolor: linercolor,
+        onTap: () {
+          commit.clear();
+          reviewRider();
+        },
+      );
+    }
+    if (s == "cancelled" || s == "cancel") return const SizedBox.shrink();
+    if (widget.type != "Pickup" && buyMapinfo != null && buyMapinfo["order_step"] == 6) {
+      return _buildBottomActionButtons();
+    }
+    return _buildMoreOptionsRow();
+  }
+
   Widget _buildMainContent(BuildContext context) {
     final status = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     final isFinished = status == "completed" || status == "cancelled" || status == "cancel";
@@ -4405,9 +4916,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildOrderSummaryCard(),
-          const SizedBox(height: 14),
-          _buildStatusTimeline(),
+          if (status == "cancelled" || status == "cancel") ...[
+            _buildOrderSummaryCard(),
+            const SizedBox(height: 14),
+            _buildStatusTimeline(),
+          ] else
+            _buildHeroCard(),
           const SizedBox(height: 14),
           if (!isFinished) ...[
             RepaintBoundary(child: _buildLiveTrackingCard()),
@@ -4418,21 +4932,46 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             OrderRouteMap(key: ValueKey("route_$orderid"), orderId: orderid, embedded: true),
             const SizedBox(height: 14),
           ],
-          _buildQuickOrderInfo(),
+          _buildRouteCard(),
           const SizedBox(height: 14),
           _buildOtpAndRiderSection(),
           const SizedBox(height: 14),
-          if (_hasPackageInfo()) ...[
-            _buildPackageInfoCard(),
+          // The hero card already says where the trip is; keep the extra
+          // guidance card only for the two stages that need an instruction.
+          if (status == "pickup" || orderProduc?["trip_progress"]?["arrived_drop"] == true) ...[
+            _buildContextualStatusCard(),
             const SizedBox(height: 14),
           ],
-          _buildContextualStatusCard(),
+          if (_waitingCardActive()) ...[
+            _buildWaitingCard(),
+            const SizedBox(height: 14),
+          ],
+          _buildPaymentSummaryCard(),
           const SizedBox(height: 14),
-          _buildPaymentDetailsCard(),
-          const SizedBox(height: 14),
-          _buildCodInstructionCard(),
-          const SizedBox(height: 20),
-          _buildBottomActionButtons(),
+          if (status == "completed") ...[
+            _buildCodInstructionCard(),
+            const SizedBox(height: 14),
+          ],
+          _buildCollapsibleTile(
+            keyName: "order",
+            icon: Icons.info_outline_rounded,
+            title: "Order Details".tr,
+            subtitle: "Distance, Weight, Category, etc.".tr,
+            child: _buildQuickOrderInfo(),
+          ),
+          const SizedBox(height: 12),
+          if (_hasPackageInfo()) ...[
+            _buildCollapsibleTile(
+              keyName: "package",
+              icon: Icons.inventory_2_outlined,
+              title: "Package Details".tr,
+              subtitle: "View item information".tr,
+              child: _buildPackageInfoCard(),
+            ),
+            const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 8),
+          _buildActionsArea(),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
         ],
       ),
@@ -6410,7 +6949,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     // Mutable: reduced in place when referral points partially cover the
     // advance, so the Razorpay button below always asks for what's still due.
     double dueAdvanceAmount = advDouble;
-    bool referralPointsRedeemed = false;
+    // Points already redeemed at booking (select vehicle) use up the admin's
+    // per-ride limit, so don't offer the button again - the server enforces it too.
+    bool referralPointsRedeemed = _referralDiscountAmount() > 0;
 
     String actualAmountStr = (actualDouble % 1 == 0)
         ? actualDouble.toInt().toString()
@@ -6965,4 +7506,27 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     });
   }
 
+}
+
+/// Copy for the redesigned hero card / header subtitle at the trip's current stage.
+class _HeroState {
+  final String lead;
+  final String accent;
+  final String sub;
+  final Color color;
+  final String headerSub;
+  final String etaCaption;
+  final String etaValue;
+  final String etaFoot;
+
+  const _HeroState({
+    required this.lead,
+    required this.accent,
+    required this.sub,
+    required this.color,
+    required this.headerSub,
+    this.etaCaption = "",
+    this.etaValue = "",
+    this.etaFoot = "",
+  });
 }

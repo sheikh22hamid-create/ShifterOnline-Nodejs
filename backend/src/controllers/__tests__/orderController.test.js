@@ -7,9 +7,10 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn() },
   tbl_referral_setting: { findFirst: jest.fn() },
   tbl_referral_point_log: { create: jest.fn() },
-  pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn() },
+  pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn(), update: jest.fn() },
   $queryRaw: jest.fn(),
   $executeRaw: jest.fn(),
+  $transaction: jest.fn(),
 }));
 jest.mock("../../services/pricingEngine", () => ({
   priceForPackage: jest.fn(),
@@ -48,7 +49,42 @@ const {
   checkNextDayEligibility,
   previewDestinationChange,
   confirmDestinationChange,
+  redeemAdvanceWithPoints,
 } = require("../orderController");
+
+describe("orderController.redeemAdvanceWithPoints — per-ride referral cap", () => {
+  const res = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() });
+  const run = async (orderRow) => {
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.$queryRaw.mockResolvedValue([{ id: 9, uid: 1, advance_payment: "50", payment_status: 0, o_status: "Pending", order_status: 0, cou_amt: 0, ...orderRow }]);
+    prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, ride_discount_percent: 10, point_value: 1 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 500 });
+    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+    const r = res();
+    await redeemAdvanceWithPoints({ body: { order_id: 9 } }, r);
+    return r.json.mock.calls[0][0];
+  };
+  beforeEach(() => jest.clearAllMocks());
+
+  it("refuses when booking already used the full % cap for the ride", async () => {
+    // fare 200, 10% -> 20 points max per ride; 20 already used at booking.
+    const body = await run({ total_dcharge: 200, referral_points_used: 20 });
+    expect(body.Result).toBe(false);
+    expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("only allows the remaining headroom under the per-ride cap", async () => {
+    // cap 20, 15 already used -> only 5 more allowed.
+    const body = await run({ total_dcharge: 200, referral_points_used: 15 });
+    expect(body.Result).toBe(true);
+    expect(body.points_used).toBe(5);
+  });
+
+  it("still redeems normally when nothing was used at booking", async () => {
+    const body = await run({ total_dcharge: 200, referral_points_used: 0 });
+    expect(body.points_used).toBe(5); // also bounded by 10% of the 50 advance
+  });
+});
 
 describe("orderController.createOrderCore", () => {
   beforeEach(() => {
@@ -409,6 +445,20 @@ describe("orderController.getOrderDetails", () => {
       customer_pmobile: "9990001111",
       customer_dmobile: "9990002222",
       advance_payment: "20",
+    });
+  });
+
+  it("includes the waiting block (free minutes, rate, clock) for the customer app", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue({ ...baseOrder, free_waiting_time: "5", wating_charge: "10" });
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.tbl_rider.findUnique.mockResolvedValue(baseRider);
+    prisma.pkg_order.aggregate.mockResolvedValue({ _avg: { cust_rate: null } });
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    await getOrderDetails({ body: { uid: 1, order_id: 501 } }, res);
+
+    expect(res.json.mock.calls[0][0].OrderProductList[0].waiting).toMatchObject({
+      enabled: true, free_waiting_time_minutes: 5, waiting_charge_per_minute: 10,
     });
   });
 
