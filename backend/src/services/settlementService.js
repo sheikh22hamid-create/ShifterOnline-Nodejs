@@ -254,10 +254,106 @@ async function getPublicViewForOrder(orderId) {
   }
 }
 
+async function markCashReceived({ orderId, riderId }) {
+  return runTransition(async (tx, notifications) => {
+    const s = await lockByOrderId(tx, orderId);
+    assertParty(s, "driver", riderId);
+    if (s.status === STATUS.CASH_RECEIVED) return { settlement: s, alreadyDone: true };
+    if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+    const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.CASH);
+    notifications.push(...n);
+    const now = new Date();
+    const updated = await tx.order_settlement.update({
+      where: { id: s.id },
+      data: {
+        status: STATUS.CASH_RECEIVED, method: "cash", wallet_effect: EFFECT.CASH, effect_seq: effectSeq,
+        confirmed_by: "driver", confirmed_at: now, updated_at: now,
+      },
+    });
+    await logEvent(tx, s, { actor: "driver", actorId: riderId, from: s.status, to: STATUS.CASH_RECEIVED });
+    return { settlement: updated };
+  });
+}
+
+// Informational: tells the driver screen the customer will pay in person.
+// Does not change status or move money.
+async function chooseDriverPayment({ orderId, uid }) {
+  return runTransition(async (tx) => {
+    const s = await lockByOrderId(tx, orderId);
+    assertParty(s, "customer", uid);
+    if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+    if (s.customer_choice === "driver") return { settlement: s, alreadyDone: true };
+    const updated = await tx.order_settlement.update({
+      where: { id: s.id },
+      data: { customer_choice: "driver", updated_at: new Date() },
+    });
+    await logEvent(tx, s, { actor: "customer", actorId: uid, from: s.status, to: s.status, note: "Chose to pay the driver directly" });
+    return { settlement: updated };
+  });
+}
+
+async function raiseDispute({ orderId, actor, actorId, reason }) {
+  const text = String(reason || "").trim();
+  if (text.length < 3) throw new SettlementError("REASON_REQUIRED", "Please describe the problem.");
+  const { disputeWindowHours } = await settlementSettings.getSettlementSettings();
+  return runTransition(async (tx) => {
+    const s = await lockByOrderId(tx, orderId);
+    assertParty(s, actor, actorId);
+    if (s.status === STATUS.DISPUTED) return { settlement: s, alreadyDone: true };
+    const customerOnConfirmedCash = actor === "customer" && s.status === STATUS.CASH_RECEIVED;
+    if (s.status !== STATUS.PENDING && !customerOnConfirmedCash) {
+      throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+    }
+    if (customerOnConfirmedCash) {
+      const ageMs = Date.now() - new Date(s.confirmed_at).getTime();
+      if (ageMs > disputeWindowHours * 60 * 60 * 1000) {
+        throw new SettlementError("WINDOW_CLOSED", "The window to report a problem with this payment has closed.");
+      }
+    }
+    const now = new Date();
+    const updated = await tx.order_settlement.update({
+      where: { id: s.id },
+      data: {
+        status: STATUS.DISPUTED, dispute_reason: text, dispute_raised_by: actor, dispute_raised_at: now, updated_at: now,
+      },
+    });
+    await logEvent(tx, s, { actor, actorId, from: s.status, to: STATUS.DISPUTED, note: text });
+    return { settlement: updated };
+  });
+}
+
+async function adminResolve({ settlementId, adminId, outcome, note }) {
+  if (!ADMIN_OUTCOMES.includes(outcome)) throw new SettlementError("INVALID_OUTCOME", "Unknown outcome.");
+  const text = String(note || "").trim();
+  if (!text) throw new SettlementError("NOTE_REQUIRED", "A note is required to resolve a payment.");
+  return runTransition(async (tx, notifications) => {
+    const s = await lockById(tx, settlementId);
+    if (!s) throw new SettlementError("NOT_FOUND", "No payment record found.");
+    if (s.status === outcome) return { settlement: s, alreadyDone: true };
+    const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, OUTCOME_EFFECT[outcome]);
+    notifications.push(...n);
+    const now = new Date();
+    const updated = await tx.order_settlement.update({
+      where: { id: s.id },
+      data: {
+        status: outcome,
+        method: outcome === STATUS.CASH_RECEIVED ? "cash" : outcome === STATUS.PAID_ONLINE ? "online" : null,
+        wallet_effect: OUTCOME_EFFECT[outcome],
+        effect_seq: effectSeq,
+        confirmed_by: "admin", confirmed_at: now,
+        resolved_by: adminId, resolved_at: now, resolve_note: text, updated_at: now,
+      },
+    });
+    await logEvent(tx, s, { actor: "admin", actorId: adminId, from: s.status, to: outcome, note: text });
+    return { settlement: updated };
+  });
+}
+
 module.exports = {
   STATUS, EFFECT, OUTCOME_EFFECT, ADMIN_OUTCOMES, SettlementError,
   round2, stateMessage, publicView, emitSettlementUpdated, assertParty,
   effectOps, changeWalletEffect, lockByOrderId, lockById, logEvent, runTransition,
   createForCompletedOrder, getViewForParty, getPublicViewForOrder,
+  markCashReceived, chooseDriverPayment, raiseDispute, adminResolve,
   settlementSettings,
 };

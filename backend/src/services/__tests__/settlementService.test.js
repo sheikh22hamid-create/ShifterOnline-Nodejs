@@ -247,3 +247,192 @@ describe("settlementService.runTransition", () => {
     expect(mockEmit).not.toHaveBeenCalled();
   });
 });
+
+describe("settlementService.markCashReceived", () => {
+  it("pending -> cash_received: debits commission once, records who/when, notifies the driver", async () => {
+    const current = row();
+    setup(current);
+    const { settlement } = await svc.markCashReceived({ orderId: 50, riderId: 9 });
+    expect(settlement).toMatchObject({ status: "cash_received", method: "cash", wallet_effect: "cash", confirmed_by: "driver", effect_seq: 1 });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { decrement: 10 } } });
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actor: "driver", actor_id: 9, from_status: "pending", to_status: "cash_received" }),
+    });
+    expect(walletNotifier.notifyDriverWalletTransaction).toHaveBeenCalledWith(9, { type: "debit", amount: 10, remark: "Admin deduction for order #50" });
+    expect(mockEmit).toHaveBeenCalledWith("settlement:updated", expect.objectContaining({ status: "cash_received" }));
+  });
+
+  it("double tap / retry: a second call is a successful no-op and moves no money", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", effect_seq: 1 }));
+    const result = await svc.markCashReceived({ orderId: 50, riderId: 9 });
+    expect(result.alreadyDone).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a different driver", async () => {
+    setup(row({ rid: 9 }));
+    await expect(svc.markCashReceived({ orderId: 50, riderId: 11 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects while disputed and after an online payment", async () => {
+    setup(row({ status: "disputed" }));
+    await expect(svc.markCashReceived({ orderId: 50, riderId: 9 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    setup(row({ status: "paid_online", wallet_effect: "online" }));
+    await expect(svc.markCashReceived({ orderId: 50, riderId: 9 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the order has no settlement", async () => {
+    setup(row());
+    prisma.$queryRaw.mockResolvedValue([]);
+    await expect(svc.markCashReceived({ orderId: 50, riderId: 9 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("settlementService.chooseDriverPayment", () => {
+  it("records the customer's choice without touching status or money", async () => {
+    setup(row());
+    const { settlement } = await svc.chooseDriverPayment({ orderId: 50, uid: 7 });
+    expect(settlement).toMatchObject({ status: "pending", customer_choice: "driver" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("is refused once the payment is no longer pending", async () => {
+    setup(row({ status: "cash_received" }));
+    await expect(svc.chooseDriverPayment({ orderId: 50, uid: 7 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+  });
+});
+
+describe("settlementService.raiseDispute", () => {
+  const settings = (disputeWindowHours = 48) =>
+    jest.spyOn(svc.settlementSettings, "getSettlementSettings").mockResolvedValue({ enabled: true, disputeWindowHours });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it("customer disputes a pending payment; wallet untouched", async () => {
+    setup(row());
+    settings();
+    const { settlement } = await svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "Driver says I did not pay" });
+    expect(settlement).toMatchObject({ status: "disputed", dispute_raised_by: "customer", dispute_reason: "Driver says I did not pay" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("driver may dispute a pending payment", async () => {
+    setup(row());
+    settings();
+    const { settlement } = await svc.raiseDispute({ orderId: 50, actor: "driver", actorId: 9, reason: "Customer refused to pay" });
+    expect(settlement.status).toBe("disputed");
+  });
+
+  it("requires a real reason", async () => {
+    setup(row());
+    settings();
+    await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "  " })).rejects.toMatchObject({ code: "REASON_REQUIRED" });
+  });
+
+  it("customer can dispute a driver-confirmed payment inside the window and keeps the applied wallet effect until admin decides", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", effect_seq: 1, confirmed_at: new Date(Date.now() - 60 * 60 * 1000) }));
+    settings(48);
+    const { settlement } = await svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "I never gave cash" });
+    expect(settlement).toMatchObject({ status: "disputed", wallet_effect: "cash" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a customer dispute after the window closed", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", confirmed_at: new Date(Date.now() - 49 * 60 * 60 * 1000) }));
+    settings(48);
+    await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "late complaint" })).rejects.toMatchObject({ code: "WINDOW_CLOSED" });
+  });
+
+  it("driver cannot dispute after confirming cash; nobody can dispute an online payment", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", confirmed_at: new Date() }));
+    settings();
+    await expect(svc.raiseDispute({ orderId: 50, actor: "driver", actorId: 9, reason: "changed my mind" })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    setup(row({ status: "paid_online", wallet_effect: "online" }));
+    await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "double charged" })).rejects.toMatchObject({ code: "INVALID_STATE" });
+  });
+
+  it("is idempotent when already disputed", async () => {
+    setup(row({ status: "disputed" }));
+    settings();
+    const result = await svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 7, reason: "again" });
+    expect(result.alreadyDone).toBe(true);
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects the wrong party", async () => {
+    setup(row());
+    settings();
+    await expect(svc.raiseDispute({ orderId: 50, actor: "customer", actorId: 99, reason: "not mine" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("settlementService.adminResolve", () => {
+  const resolve = (outcome, note = "Checked with both parties") => svc.adminResolve({ settlementId: 1, adminId: 3, outcome, note });
+
+  it("requires a note and a valid outcome", async () => {
+    setup(row({ status: "disputed" }));
+    await expect(resolve("cash_received", "  ")).rejects.toMatchObject({ code: "NOTE_REQUIRED" });
+    await expect(resolve("bogus")).rejects.toMatchObject({ code: "INVALID_OUTCOME" });
+  });
+
+  it("disputed (no effect yet) -> cash_received applies the cash effect and records the admin", async () => {
+    setup(row({ status: "disputed" }));
+    const { settlement } = await resolve("cash_received");
+    expect(settlement).toMatchObject({ status: "cash_received", method: "cash", wallet_effect: "cash", confirmed_by: "admin", resolved_by: 3, resolve_note: "Checked with both parties" });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { decrement: 10 } } });
+  });
+
+  it("waived credits the driver (company absorbs) with no customer method", async () => {
+    setup(row({ status: "disputed" }));
+    const { settlement } = await resolve("waived");
+    expect(settlement).toMatchObject({ status: "waived", wallet_effect: "online", method: null });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { increment: 90 } } });
+  });
+
+  it("customer_owes also credits the driver", async () => {
+    setup(row({ status: "disputed" }));
+    const { settlement } = await resolve("customer_owes");
+    expect(settlement).toMatchObject({ status: "customer_owes", wallet_effect: "online" });
+  });
+
+  it("changing outcome reverses exactly the previous effect (cash -> paid_online)", async () => {
+    setup(row({ status: "cash_received", wallet_effect: "cash", effect_seq: 1 }));
+    const { settlement } = await resolve("paid_online");
+    expect(settlement).toMatchObject({ status: "paid_online", wallet_effect: "online", effect_seq: 3 });
+    expect(prisma.tbl_rider.update.mock.calls.map(([a]) => a.data.wallet_balance)).toEqual([{ increment: 10 }, { increment: 90 }]);
+  });
+
+  it("changing back (online -> cash) reverses the credit and re-applies the debit, each with fresh keys", async () => {
+    setup(row({ status: "paid_online", wallet_effect: "online", effect_seq: 3 }));
+    await resolve("cash_received");
+    expect(prisma.tbl_rider.update.mock.calls.map(([a]) => a.data.wallet_balance)).toEqual([{ decrement: 90 }, { decrement: 10 }]);
+    expect(prisma.tbl_wallet_history.create.mock.calls.map(([a]) => a.data.payment_id)).toEqual(["settle:1:4:rev:0", "settle:1:5:apply:0"]);
+  });
+
+  it("repeating the same resolve moves no money", async () => {
+    setup(row({ status: "waived", wallet_effect: "online", effect_seq: 1 }));
+    const result = await resolve("waived");
+    expect(result.alreadyDone).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("can resolve an escalated pending settlement", async () => {
+    setup(row({ status: "pending", escalated_at: new Date() }));
+    const { settlement } = await resolve("paid_online");
+    expect(settlement.status).toBe("paid_online");
+  });
+
+  it("writes an audit event with the admin note", async () => {
+    setup(row({ status: "disputed" }));
+    await resolve("cash_received", "Driver showed receipt");
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actor: "admin", actor_id: 3, from_status: "disputed", to_status: "cash_received", note: "Driver showed receipt" }),
+    });
+  });
+});
