@@ -36,6 +36,22 @@ describe("driver earnings timestamps", () => {
     });
   });
 
+  describe("top-level extra_waiting_time_charge (completed-ride popup)", () => {
+    it("is the billed amount (total_dcharge - d_charge), not the per-minute rate", () => {
+      const trip = formatPkgOrderForDriver({ id: 4, o_status: "Completed", payment_status: 1,
+        d_charge: 200, total_dcharge: 245, wating_charge: "10", free_waiting_time: "5" }, context);
+      expect(trip.extra_waiting_time_charge).toBe(45);
+      expect(trip.wating_charge).toBe("10");
+      expect(trip.trip_payment_summary.fare_breakdown.extra_waiting_time_charge).toBe(45);
+    });
+
+    it("is 0 (not null) when no waiting charge was billed", () => {
+      const trip = formatPkgOrderForDriver({ id: 5, o_status: "Completed", payment_status: 1,
+        d_charge: 200, total_dcharge: 200, wating_charge: "10" }, context);
+      expect(trip.extra_waiting_time_charge).toBe(0);
+    });
+  });
+
   it("does not turn missing or inconsistent old timings into fake zero-hour trips", () => {
     expect(formatPkgOrderForDriver({ id: 2, o_status: "Completed", payment_status: 1 }, context).trip_duration_minutes).toBeNull();
     expect(formatPkgOrderForDriver({ id: 2, o_status: "Cancelled", payment_status: 1 }, context).earnings_completed_at).toBeNull();

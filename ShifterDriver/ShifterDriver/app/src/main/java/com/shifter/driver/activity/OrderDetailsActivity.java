@@ -2908,8 +2908,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_pickup_to_drop_charge), dialog.findViewById(R.id.txt_pickup_to_drop_charge), currency, orderItem.getPickupToDropCharge());
         setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_add_stop_charge), dialog.findViewById(R.id.txt_add_stop_charge), currency, orderItem.getAddStopCharge());
         
-        String waitingChg = orderItem.getExtraWaitingTimeCharge() != null ? orderItem.getExtraWaitingTimeCharge() : orderItem.getWatingCharge();
-        setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_waiting_charge), dialog.findViewById(R.id.txt_waiting_charge), currency, waitingChg);
+        // getWatingCharge() is the per-minute RATE, not the billed amount - never use it as a fallback.
+        setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_waiting_charge), dialog.findViewById(R.id.txt_waiting_charge), currency, orderItem.getExtraWaitingTimeCharge());
         
         setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_night_charge), dialog.findViewById(R.id.txt_night_charge), currency, orderItem.getNightCharge());
         setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_loading_charge), dialog.findViewById(R.id.txt_loading_charge), currency, orderItem.getLoadingCharge());

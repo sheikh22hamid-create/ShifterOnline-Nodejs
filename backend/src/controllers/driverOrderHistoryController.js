@@ -225,6 +225,11 @@ function formatPkgOrderForDriver(row, ctx) {
     unloading_charge: row.unloading_charge,
     service_charge: row.service_charge,
     wating_charge: row.wating_charge,
+    // Top-level copy of the billed waiting AMOUNT (₹, not the per-minute rate
+    // above) - the driver app's completed-ride popup reads this key off the
+    // order item; it used to exist only inside trip_payment_summary, so the
+    // app saw null and fell back to showing the rate (₹10) as the charge.
+    extra_waiting_time_charge: waitingChargeBilled,
     free_waiting_time: row.free_waiting_time,
     radius_range: row.radius_range,
     radius_charge: row.radius_charge,
