@@ -98,7 +98,19 @@ const driverDispute = driverAction("settlement driverDispute", async ({ req, res
   return ok(res, { settlement: settlementService.publicView(settlement) }, "Problem reported. Admin will review it.");
 });
 
+// Lets a driver discover which settlements are blocking them; needs only rider_id.
+const driverPending = async (req, res) => {
+  try {
+    const riderId = toId((req.body || {}).rider_id);
+    if (!riderId) return fail(res, "VALIDATION", "rider_id is required");
+    const settlements = await settlementService.listPendingForDriver(riderId);
+    return ok(res, { settlements });
+  } catch (err) {
+    return handleError(res, err, "settlement driverPending");
+  }
+};
+
 module.exports = {
   customerState, customerChooseDriver, customerPayOnlineCreate, customerPayOnlineVerify, customerDispute,
-  driverState, driverReceived, driverDispute,
+  driverState, driverReceived, driverDispute, driverPending,
 };

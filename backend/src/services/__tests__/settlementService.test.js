@@ -1,7 +1,7 @@
 jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
   $queryRaw: jest.fn(),
-  order_settlement: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+  order_settlement: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   order_settlement_event: { create: jest.fn() },
   tbl_wallet_history: { findFirst: jest.fn(), create: jest.fn() },
   tbl_rider: { update: jest.fn() },
@@ -12,7 +12,10 @@ jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn(
 jest.mock("../../utils/razorpayOrders", () => ({ createRazorpayOrder: jest.fn() }));
 jest.mock("../walletNotifier", () => ({ notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined) }));
 const mockEmit = jest.fn();
-jest.mock("../../sockets/socketServer", () => ({ getIO: () => ({ to: () => ({ emit: mockEmit }) }) }));
+const mockTo = jest.fn();
+jest.mock("../../sockets/socketServer", () => ({
+  getIO: () => ({ to: (room) => { mockTo(room); return { emit: (...a) => mockEmit(...a) }; } }),
+}));
 
 const prisma = require("../../config/db");
 const walletNotifier = require("../walletNotifier");
@@ -138,6 +141,28 @@ describe("settlementService views", () => {
   });
 });
 
+describe("settlementService.emitSettlementUpdated", () => {
+  beforeEach(() => { jest.clearAllMocks(); mockEmit.mockReset(); mockTo.mockReset(); });
+
+  it("emits the same payload to the order, customer and driver rooms", () => {
+    svc.emitSettlementUpdated(row());
+    expect(mockTo.mock.calls.map(([r]) => r)).toEqual(["order_50", "customer_7", "driver_9"]);
+    expect(mockEmit).toHaveBeenCalledTimes(3);
+    const calls = mockEmit.mock.calls;
+    expect(calls.every(([ev]) => ev === "settlement:updated")).toBe(true);
+    expect(calls[1][1]).toEqual(calls[0][1]);
+    expect(calls[2][1]).toEqual(calls[0][1]);
+    expect(calls[0][1]).toMatchObject({ order_id: 50, status: "pending" });
+  });
+
+  it("a failing emit never throws", () => {
+    mockEmit.mockImplementation(() => { throw new Error("socket down"); });
+    expect(() => svc.emitSettlementUpdated(row())).not.toThrow();
+    expect(logger.warn).toHaveBeenCalled();
+    mockEmit.mockReset();
+  });
+});
+
 describe("settlementService.changeWalletEffect", () => {
   it("none -> cash applies the commission debit with a unique key and bumps effect_seq", async () => {
     const current = row({ wallet_effect: "none", effect_seq: 0 });
@@ -226,7 +251,7 @@ describe("settlementService.runTransition", () => {
     walletNotifier.notifyDriverWalletTransaction.mockImplementation(() => { order.push("notify"); return Promise.resolve(); });
     mockEmit.mockImplementation(() => order.push("emit"));
     await svc.runTransition(async (tx, notifications) => { order.push("work"); notifications.push(notif); return { settlement }; });
-    expect(order).toEqual(["work", "committed", "notify", "emit"]);
+    expect(order).toEqual(["work", "committed", "notify", "emit", "emit", "emit"]); // order, customer and driver rooms
     expect(walletNotifier.notifyDriverWalletTransaction).toHaveBeenCalledWith(9, { type: "debit", amount: 10, remark: "r" });
   });
 
@@ -483,7 +508,7 @@ describe("settlementService.createOnlineOrder", () => {
     expect(createRazorpayOrder).toHaveBeenCalledWith({ amountRupees: 85, receipt: "settle_50" });
     expect(out).toEqual({ razorpay_order_id: "order_A", amount_paise: 8500, currency: "INR", key_id: "rzp_key" });
     expect(prisma.order_settlement.updateMany).toHaveBeenCalledWith({
-      where: { id: 1, status: "pending", razorpay_order_id: null },
+      where: { id: 1, status: { in: ["pending", "customer_owes"] }, razorpay_order_id: null },
       data: expect.objectContaining({ razorpay_order_id: "order_A", customer_choice: "online" }),
     });
     expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
@@ -587,7 +612,7 @@ describe("settlementService.settleOnline", () => {
     prisma.order_settlement.findUnique
       .mockResolvedValueOnce(pending) // pre-check read
       .mockResolvedValueOnce({ ...pending, status: "cash_received", wallet_effect: "cash" }); // locked read
-    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAID_BUT_STATE_CHANGED" });
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.order_settlement.update).not.toHaveBeenCalled();
   });
@@ -599,9 +624,116 @@ describe("settlementService.settleOnline", () => {
     prisma.order_settlement.findUnique
       .mockResolvedValueOnce(pending)
       .mockResolvedValueOnce({ ...pending, razorpay_order_id: "order_B" });
-    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAYMENT_MISMATCH" });
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAID_BUT_STATE_CHANGED" });
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("settlementService.settleOnline verified-payment safety (PAID_BUT_STATE_CHANGED)", () => {
+  const pay = { orderId: 50, uid: 7, paymentId: "pay_1", razorpayOrderId: "order_A", signature: "sig" };
+
+  it("verified payment but the locked state is cash_received: records an event, no wallet movement, PAID_BUT_STATE_CHANGED", async () => {
+    const pending = row({ razorpay_order_id: "order_A" });
+    setup(pending);
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...pending, status: "cash_received", wallet_effect: "cash" });
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({
+      code: "PAID_BUT_STATE_CHANGED",
+      message: "Your payment was received but this order was already settled. Support will reconcile it.",
+    });
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledTimes(1);
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        settlement_id: 1, actor: "customer", actor_id: 7, from_status: "cash_received", to_status: "cash_received",
+        note: expect.stringContaining("pay_1"),
+      }),
+    });
+    expect(logger.error).toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("verified payment but the Razorpay order changed under the lock also records the payment", async () => {
+    const pending = row({ razorpay_order_id: "order_A" });
+    setup(pending);
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...pending, razorpay_order_id: "order_B" });
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAID_BUT_STATE_CHANGED" });
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ note: expect.stringContaining("pay_1") }),
+    });
+  });
+
+  it("still throws PAID_BUT_STATE_CHANGED when writing the trace event itself fails", async () => {
+    const pending = row({ razorpay_order_id: "order_A" });
+    setup(pending);
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...pending, status: "disputed" });
+    prisma.order_settlement_event.create.mockRejectedValue(new Error("db down"));
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAID_BUT_STATE_CHANGED" });
+  });
+
+  it("pre-verification INVALID_STATE / PAYMENT_MISMATCH keep their codes and write no event", async () => {
+    setup(row({ status: "disputed", razorpay_order_id: "order_A" }));
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    setup(row({ razorpay_order_id: "order_A" }));
+    await expect(svc.settleOnline({ ...pay, razorpayOrderId: "order_X" })).rejects.toMatchObject({ code: "PAYMENT_MISMATCH" });
+    expect(prisma.order_settlement_event.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("settlementService customer_owes online payment", () => {
+  const pay = { orderId: 50, uid: 7, paymentId: "pay_1", razorpayOrderId: "order_A", signature: "sig" };
+
+  it("createOnlineOrder works for customer_owes", async () => {
+    setup(row({ status: "customer_owes", wallet_effect: "online", amount_due: 85 }));
+    createRazorpayOrder.mockResolvedValue({ ok: true, id: "order_A", amountPaise: 8500, currency: "INR" });
+    const out = await svc.createOnlineOrder({ orderId: 50, uid: 7 });
+    expect(out).toMatchObject({ razorpay_order_id: "order_A", amount_paise: 8500 });
+    expect(prisma.order_settlement.updateMany).toHaveBeenCalledWith({
+      where: { id: 1, status: { in: ["pending", "customer_owes"] }, razorpay_order_id: null },
+      data: expect.objectContaining({ razorpay_order_id: "order_A" }),
+    });
+  });
+
+  it("settleOnline from customer_owes -> paid_online with no wallet movement", async () => {
+    setup(row({ status: "customer_owes", wallet_effect: "online", effect_seq: 2, razorpay_order_id: "order_A" }));
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    const { settlement } = await svc.settleOnline(pay);
+    expect(settlement).toMatchObject({ status: "paid_online", method: "online", confirmed_by: "customer_online", razorpay_payment_id: "pay_1", effect_seq: 2 });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ from_status: "customer_owes", to_status: "paid_online", note: "Razorpay payment pay_1" }),
+    });
+  });
+
+  it("markCashReceived on customer_owes is still INVALID_STATE", async () => {
+    setup(row({ status: "customer_owes", wallet_effect: "online" }));
+    await expect(svc.markCashReceived({ orderId: 50, riderId: 9 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+  });
+});
+
+describe("settlementService.listPendingForDriver", () => {
+  it("returns public views of the driver's pending/disputed settlements, newest first, max 20", async () => {
+    jest.clearAllMocks();
+    prisma.order_settlement.findMany.mockResolvedValue([row({ id: 2, order_id: 51 }), row({ id: 1, status: "disputed" })]);
+    const out = await svc.listPendingForDriver(9);
+    expect(prisma.order_settlement.findMany).toHaveBeenCalledWith({
+      where: { rid: 9, status: { in: ["pending", "disputed"] } },
+      orderBy: { id: "desc" },
+      take: 20,
+    });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ settlement_id: 2, order_id: 51, status: "pending", amount_due: 100 });
+    expect(out[1]).toMatchObject({ settlement_id: 1, status: "disputed" });
   });
 });
 

@@ -4,7 +4,7 @@ jest.mock("../../services/settlementService", () => {
   return {
     SettlementError,
     getViewForParty: jest.fn(), chooseDriverPayment: jest.fn(), createOnlineOrder: jest.fn(),
-    settleOnline: jest.fn(), raiseDispute: jest.fn(), markCashReceived: jest.fn(),
+    settleOnline: jest.fn(), raiseDispute: jest.fn(), markCashReceived: jest.fn(), listPendingForDriver: jest.fn(),
     publicView: jest.fn((s) => ({ order_id: s.order_id, status: s.status })),
   };
 });
@@ -163,5 +163,37 @@ describe("settlementController (driver)", () => {
     const r = res();
     await c.driverState({ body: { order_id: 5 } }, r);
     expect(body(r)).toMatchObject({ ResponseCode: "401", code: "VALIDATION" });
+  });
+});
+
+describe("settlementController driverPending", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("requires a valid rider_id (order_id is not needed)", async () => {
+    for (const bad of [undefined, "", 0, -1, 2.5, "abc", {}]) {
+      const r = res();
+      await c.driverPending({ body: { rider_id: bad } }, r);
+      expect(body(r)).toMatchObject({ ResponseCode: "401", Result: "false", code: "VALIDATION" });
+    }
+    const r = res();
+    await c.driverPending({}, r);
+    expect(body(r)).toMatchObject({ code: "VALIDATION" });
+    expect(svc.listPendingForDriver).not.toHaveBeenCalled();
+  });
+
+  it("returns the driver's pending settlements in the success envelope", async () => {
+    svc.listPendingForDriver.mockResolvedValue([{ order_id: 5, status: "pending" }]);
+    const r = res();
+    await c.driverPending({ body: { rider_id: "9" } }, r);
+    expect(svc.listPendingForDriver).toHaveBeenCalledWith(9);
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(body(r)).toMatchObject({ ResponseCode: "200", Result: "true", settlements: [{ order_id: 5, status: "pending" }] });
+  });
+
+  it("unexpected errors become ResponseCode 500", async () => {
+    svc.listPendingForDriver.mockRejectedValue(new Error("boom"));
+    const r = res();
+    await c.driverPending({ body: { rider_id: 9 } }, r);
+    expect(body(r)).toMatchObject({ ResponseCode: "500", Result: "false" });
   });
 });

@@ -25,6 +25,9 @@ const OUTCOME_EFFECT = Object.freeze({
   customer_owes: EFFECT.ONLINE,
 });
 const ADMIN_OUTCOMES = Object.freeze(Object.keys(OUTCOME_EFFECT));
+// Statuses in which the customer can still pay online. customer_owes already has the online wallet
+// effect applied, so paying moves it to paid_online without any wallet movement.
+const ONLINE_PAYABLE = Object.freeze([STATUS.PENDING, STATUS.CUSTOMER_OWES]);
 
 class SettlementError extends Error {
   constructor(code, message) {
@@ -64,7 +67,13 @@ function emitSettlementUpdated(s) {
   try {
     // Lazy require: socketServer pulls in dispatchManager, which would create an import cycle at load time.
     const { getIO } = require("../sockets/socketServer");
-    getIO().to(`order_${s.order_id}`).emit("settlement:updated", publicView(s));
+    const io = getIO();
+    const payload = publicView(s);
+    // Sockets only rejoin order_<id> rooms for statuses 0-3, so completed-order updates must also
+    // reach the per-user rooms. A socket in several of these rooms receives duplicates; clients
+    // key on settlement_id / order_id so that is harmless.
+    const rooms = [`order_${s.order_id}`, `customer_${s.uid}`, `driver_${s.rid}`];
+    for (const room of rooms) io.to(room).emit("settlement:updated", payload);
   } catch (err) {
     // Sockets not initialised (tests, scripts) or a transient emit error must never fail a money transition.
     logger.warn(`emitSettlementUpdated skipped for order ${s?.order_id}: ${err.message}`);
@@ -358,7 +367,7 @@ async function adminResolve({ settlementId, adminId, outcome, note }) {
 async function createOnlineOrder({ orderId, uid }) {
   const s = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
   assertParty(s, "customer", uid);
-  if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+  if (!ONLINE_PAYABLE.includes(s.status)) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
   const amountDue = Number(s.amount_due);
   let razorpayOrderId = s.razorpay_order_id;
   let amountPaise = Math.round(amountDue * 100);
@@ -369,7 +378,7 @@ async function createOnlineOrder({ orderId, uid }) {
     if (!created.ok) throw new SettlementError("GATEWAY_ERROR", created.reason);
     // Conditional write: a concurrent first call (or a state change) must not be overwritten.
     const won = await prisma.order_settlement.updateMany({
-      where: { id: s.id, status: STATUS.PENDING, razorpay_order_id: null },
+      where: { id: s.id, status: { in: ONLINE_PAYABLE }, razorpay_order_id: null },
       data: { razorpay_order_id: created.id, customer_choice: "online", updated_at: new Date() },
     });
     if (won.count === 1) {
@@ -380,7 +389,7 @@ async function createOnlineOrder({ orderId, uid }) {
       });
     } else {
       const current = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
-      if (!current || current.status !== STATUS.PENDING) {
+      if (!current || !ONLINE_PAYABLE.includes(current.status)) {
         throw new SettlementError("INVALID_STATE", stateMessage(current?.status));
       }
       razorpayOrderId = current.razorpay_order_id;
@@ -396,7 +405,7 @@ async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signatur
   if (pre.status === STATUS.PAID_ONLINE && pre.razorpay_payment_id === paymentId) {
     return { settlement: pre, alreadyDone: true };
   }
-  if (pre.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(pre.status));
+  if (!ONLINE_PAYABLE.includes(pre.status)) throw new SettlementError("INVALID_STATE", stateMessage(pre.status));
   // The payment must belong to the Razorpay order we created for THIS settlement.
   if (!pre.razorpay_order_id || pre.razorpay_order_id !== razorpayOrderId) {
     throw new SettlementError("PAYMENT_MISMATCH", "This payment does not belong to this order.");
@@ -406,13 +415,16 @@ async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signatur
   });
   if (!verification.ok) throw new SettlementError("PAYMENT_VERIFICATION_FAILED", verification.reason);
 
-  return runTransition(async (tx, notifications) => {
+  try {
+    return await runTransition(async (tx, notifications) => {
     const s = await lockByOrderId(tx, orderId);
     if (s.status === STATUS.PAID_ONLINE && s.razorpay_payment_id === paymentId) return { settlement: s, alreadyDone: true };
     // Re-checked under the lock: the driver may have confirmed cash while the customer was paying.
-    if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+    if (!ONLINE_PAYABLE.includes(s.status)) {
+      throw Object.assign(new SettlementError("INVALID_STATE", stateMessage(s.status)), { currentStatus: s.status, lockedReason: "state" });
+    }
     if (s.razorpay_order_id !== razorpayOrderId) {
-      throw new SettlementError("PAYMENT_MISMATCH", "This payment does not belong to this order.");
+      throw Object.assign(new SettlementError("PAYMENT_MISMATCH", "This payment does not belong to this order."), { currentStatus: s.status, lockedReason: "mismatch" });
     }
     const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.ONLINE);
     notifications.push(...n);
@@ -427,10 +439,38 @@ async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signatur
     await logEvent(tx, s, { actor: "customer", actorId: uid, from: s.status, to: STATUS.PAID_ONLINE, note: `Razorpay payment ${paymentId}` });
     return { settlement: updated };
   });
+  } catch (err) {
+    // The payment was verified, so a rejection here means money was captured but not recorded.
+    if (err instanceof SettlementError && err.lockedReason) {
+      const status = err.currentStatus;
+      const note = err.lockedReason === "state"
+        ? `Razorpay payment ${paymentId} was captured and verified but the settlement was already ${status}; needs manual reconciliation`
+        : `Razorpay payment ${paymentId} was captured and verified but belongs to a different Razorpay order than the one stored; needs manual reconciliation`;
+      logger.error(`settleOnline: verified payment ${paymentId} for order ${orderId} could not be applied (${err.lockedReason}, status ${status}); needs manual reconciliation`);
+      try {
+        await prisma.order_settlement_event.create({
+          data: { settlement_id: pre.id, actor: "customer", actor_id: uid, from_status: status, to_status: status, note, created_at: new Date() },
+        });
+      } catch (evErr) {
+        logger.error(`settleOnline: failed to record reconciliation event for payment ${paymentId}:`, evErr);
+      }
+      throw new SettlementError("PAID_BUT_STATE_CHANGED", "Your payment was received but this order was already settled. Support will reconcile it.");
+    }
+    throw err;
+  }
 }
 
 // A customer with an unpaid settlement (pending, or marked owed by an admin)
 // cannot book again. Disputed settlements deliberately do NOT block.
+async function listPendingForDriver(riderId) {
+  const rows = await prisma.order_settlement.findMany({
+    where: { rid: Number(riderId), status: { in: [STATUS.PENDING, STATUS.DISPUTED] } },
+    orderBy: { id: "desc" },
+    take: 20,
+  });
+  return rows.map(publicView);
+}
+
 async function findBlockingSettlement(uid) {
   if (!(await settlementSettings.isSettlementEnabled())) return null;
   return prisma.order_settlement.findFirst({
@@ -445,6 +485,6 @@ module.exports = {
   effectOps, changeWalletEffect, lockByOrderId, lockById, logEvent, runTransition,
   createForCompletedOrder, getViewForParty, getPublicViewForOrder,
   markCashReceived, chooseDriverPayment, raiseDispute, adminResolve,
-  createOnlineOrder, settleOnline, findBlockingSettlement,
+  createOnlineOrder, settleOnline, findBlockingSettlement, listPendingForDriver,
   settlementSettings,
 };

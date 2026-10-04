@@ -599,8 +599,11 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // admin resolves. Monthly and Daily drivers keep their own ledgers. If
     // creating the settlement fails we FALL BACK to the legacy debit below
     // (never a completed ride with no money flow).
+    // Rounded separately from cashCollected (which feeds the Monthly ledger and
+    // must stay as-is): float residue like 1.8e-15 must not create a Rs 0 settlement.
+    const settlementAmountDue = isCashOrder ? round2(finalTotal - prepaidTotal) : 0;
     let settlementCreated = false;
-    if (!isMonthlyDriver && !isDailyDriverExempt && isCashOrder && cashCollected > 0
+    if (!isMonthlyDriver && !isDailyDriverExempt && isCashOrder && settlementAmountDue > 0
         && (await settlementSettings.isSettlementEnabled())) {
       try {
         await settlementService.createForCompletedOrder({
@@ -608,7 +611,7 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
           uid: order.uid,
           riderId,
           cityId: order.city_id,
-          amountDue: cashCollected,
+          amountDue: settlementAmountDue,
           fare: finalTotal,
           commissionAmount: pricingEngine.commissionAmount(finalTotal, effectiveCommissionPercent),
           perTripCharge: driverBenefit?.benefit > 0 ? Number(driverBenefit.perTripCharge) || 0 : 0,
@@ -616,7 +619,20 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
         });
         settlementCreated = true;
       } catch (err) {
-        logger.error(`updateStatus: settlement creation failed for order ${orderId}, using legacy commission flow:`, err);
+        // The transaction may have committed even though the client saw an error; falling back
+        // to the legacy debit then would let a later "Received" debit commission a second time.
+        let committed = null;
+        try {
+          committed = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+        } catch (checkErr) {
+          logger.error(`updateStatus: settlement existence re-check failed for order ${orderId}:`, checkErr);
+        }
+        if (committed) {
+          settlementCreated = true;
+          logger.warn(`updateStatus: settlement creation reported an error for order ${orderId} but the row exists; skipping legacy commission flow:`, err);
+        } else {
+          logger.error(`updateStatus: settlement creation failed for order ${orderId}, using legacy commission flow:`, err);
+        }
       }
     }
 

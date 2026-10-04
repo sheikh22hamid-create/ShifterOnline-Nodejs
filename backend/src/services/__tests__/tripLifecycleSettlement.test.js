@@ -14,6 +14,8 @@ jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
   app_settings: { findFirst: jest.fn().mockResolvedValue(null) },
   driver_duty_log: { updateMany: jest.fn() },
+  daily_driver_enrollment: { findFirst: jest.fn() },
+  order_settlement: { findUnique: jest.fn() },
   monthly_driver_ledger: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
 }));
 jest.mock("../dispatchManager", () => ({
@@ -53,6 +55,8 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     prisma.pkg_order.update.mockResolvedValue({});
     prisma.$queryRaw.mockResolvedValue([{ advance_payment: 0 }]);
     prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, monthly_plan: 0 });
+    prisma.daily_driver_enrollment.findFirst.mockResolvedValue(null);
+    prisma.order_settlement.findUnique.mockResolvedValue(null);
     settlementSettings.isSettlementEnabled.mockResolvedValue(true);
     settlementService.createForCompletedOrder.mockResolvedValue({ id: 1 });
   });
@@ -85,6 +89,26 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_balance: { decrement: 5 } } });
   });
 
+  it("does not double-debit when creation threw but the settlement row actually committed", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    settlementService.createForCompletedOrder.mockRejectedValue(new Error("connection lost after commit"));
+    prisma.order_settlement.findUnique.mockResolvedValue({ id: 9, order_id: 297 });
+    const result = await tripLifecycle.updateStatus(297, 1, "complete");
+    expect(prisma.order_settlement.findUnique).toHaveBeenCalledWith({ where: { order_id: 297 } });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed", settlement_pending: true });
+  });
+
+  it("still falls back to the legacy debit when the existence re-check itself fails", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    settlementService.createForCompletedOrder.mockRejectedValue(new Error("db down"));
+    prisma.order_settlement.findUnique.mockRejectedValue(new Error("db still down"));
+    const result = await tripLifecycle.updateStatus(297, 1, "complete");
+    expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_balance: { decrement: 5 } } });
+  });
+
   it("does nothing new when the feature is off", async () => {
     settlementSettings.isSettlementEnabled.mockResolvedValue(false);
     prisma.pkg_order.findUnique.mockResolvedValue(order());
@@ -111,5 +135,45 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     prisma.pkg_order.findUnique.mockResolvedValue(order());
     await tripLifecycle.updateStatus(297, 1, "complete");
     expect(settlementService.createForCompletedOrder).not.toHaveBeenCalled();
+  });
+
+  it("float residue: fare 11.13 fully covered by advance 10 + referral 1.13 creates NO settlement", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ d_charge: 11.13, total_dcharge: 11.13, referral_points_amount: 1.13 }));
+    prisma.$queryRaw.mockResolvedValue([{ advance_payment: 10 }]);
+    await tripLifecycle.updateStatus(297, 1, "complete");
+    expect(settlementService.createForCompletedOrder).not.toHaveBeenCalled();
+  });
+
+  it("passes amountDue rounded to 2 decimals (no float residue)", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ d_charge: 33.33, total_dcharge: 33.33, referral_points_amount: 10.1 }));
+    await tripLifecycle.updateStatus(297, 1, "complete");
+    expect(settlementService.createForCompletedOrder).toHaveBeenCalledTimes(1);
+    expect(settlementService.createForCompletedOrder.mock.calls[0][0].amountDue).toBe(23.23);
+  });
+
+  it("creates no settlement for a Daily Driver exempt rider", async () => {
+    prisma.daily_driver_enrollment.findFirst.mockResolvedValue({ id: 4 });
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    await tripLifecycle.updateStatus(297, 1, "complete");
+    expect(settlementService.createForCompletedOrder).not.toHaveBeenCalled();
+  });
+
+  it("never reads the feature flag for non-cash, monthly, daily or zero-due orders", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ trans_id: "pay_abc123", p_method_id: 5 }));
+    await tripLifecycle.updateStatus(297, 1, "complete");
+
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, monthly_plan: 1 });
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    await tripLifecycle.updateStatus(297, 1, "complete");
+
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, monthly_plan: 0 });
+    prisma.daily_driver_enrollment.findFirst.mockResolvedValue({ id: 4 });
+    await tripLifecycle.updateStatus(297, 1, "complete");
+
+    prisma.daily_driver_enrollment.findFirst.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ referral_points_amount: 100 }));
+    await tripLifecycle.updateStatus(297, 1, "complete");
+
+    expect(settlementSettings.isSettlementEnabled).not.toHaveBeenCalled();
   });
 });

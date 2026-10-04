@@ -66,6 +66,7 @@ router.post("/training/complete", trainingController.complete);
 router.post("/settlement/state", settlementController.driverState);
 router.post("/settlement/received", settlementController.driverReceived);
 router.post("/settlement/dispute", settlementController.driverDispute);
+router.post("/settlement/pending", settlementController.driverPending);
 
 // Monthly Driver Duty & Queue endpoints
 const monthlyDriverController = require("../controllers/monthlyDriverController");
