@@ -12,9 +12,13 @@ async function sendReminders(s) {
     prisma.tbl_rider.findUnique({ where: { id: s.rid }, select: { fcm_token: true } }),
   ]);
   const sends = [];
-  if (customer?.fcm_token) sends.push(pushNotifier.notifyCustomerSettlementReminder(customer.fcm_token, s.order_id, amount));
-  if (rider?.fcm_token) sends.push(pushNotifier.notifyDriverSettlementReminder(rider.fcm_token, s.order_id, amount));
-  await Promise.allSettled(sends);
+  // async wrappers so a synchronous throw from a notifier is also captured.
+  if (customer?.fcm_token) sends.push((async () => pushNotifier.notifyCustomerSettlementReminder(customer.fcm_token, s.order_id, amount))());
+  if (rider?.fcm_token) sends.push((async () => pushNotifier.notifyDriverSettlementReminder(rider.fcm_token, s.order_id, amount))());
+  const results = await Promise.allSettled(sends);
+  for (const r of results) {
+    if (r.status === "rejected") logger.error(`sweepSettlements: reminder push failed for settlement ${s.id}:`, r.reason);
+  }
 }
 
 /**
@@ -30,7 +34,12 @@ async function sweepSettlements(now = new Date()) {
   if (!settings.enabled) return { reminded: 0, escalated: 0 };
 
   const rows = await prisma.order_settlement.findMany({
-    where: { status: "pending" },
+    // Only rows with sweep work left: a fully processed row (escalated and all
+    // reminders sent) is never fetched again, so it cannot crowd out newer rows.
+    where: {
+      status: "pending",
+      OR: [{ escalated_at: null }, { reminders_sent: { lt: settings.reminderMinutes.length } }],
+    },
     orderBy: { pending_since: "asc" },
     take: BATCH,
   });
@@ -48,8 +57,12 @@ async function sweepSettlements(now = new Date()) {
           data: { reminders_sent: due, last_reminder_at: now, updated_at: now },
         });
         if (claim.count === 1) {
-          await sendReminders(s);
           reminded++;
+          try {
+            await sendReminders(s);
+          } catch (err) {
+            logger.error(`sweepSettlements: sending reminders failed for settlement ${s.id}:`, err);
+          }
         }
       }
 

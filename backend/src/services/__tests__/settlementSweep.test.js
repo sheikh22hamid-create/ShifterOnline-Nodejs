@@ -4,6 +4,7 @@ jest.mock("../../config/db", () => ({
   tbl_user: { findUnique: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
 }));
+jest.mock("../../utils/logger", () => ({ error: jest.fn(), info: jest.fn(), warn: jest.fn() }));
 jest.mock("../settlementSettings", () => ({ getSettlementSettings: jest.fn() }));
 jest.mock("../pushNotifier", () => ({
   notifyCustomerSettlementReminder: jest.fn().mockResolvedValue({ sent: true }),
@@ -11,6 +12,7 @@ jest.mock("../pushNotifier", () => ({
 }));
 
 const prisma = require("../../config/db");
+const logger = require("../../utils/logger");
 const { getSettlementSettings } = require("../settlementSettings");
 const pushNotifier = require("../pushNotifier");
 const { sweepSettlements } = require("../settlementSweep");
@@ -103,5 +105,41 @@ describe("sweepSettlements", () => {
     expect(await sweepSettlements(NOW)).toEqual({ reminded: 1, escalated: 0 });
     expect(pushNotifier.notifyCustomerSettlementReminder).not.toHaveBeenCalled();
     expect(pushNotifier.notifyDriverSettlementReminder).not.toHaveBeenCalled();
+  });
+  it("only fetches rows that still have sweep work to do", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([]);
+    await sweepSettlements(NOW);
+    expect(prisma.order_settlement.findMany).toHaveBeenCalledWith({
+      where: { status: "pending", OR: [{ escalated_at: null }, { reminders_sent: { lt: 2 } }] },
+      orderBy: { pending_since: "asc" },
+      take: 200,
+    });
+    getSettlementSettings.mockResolvedValue({ enabled: true, reminderMinutes: [], escalateAfterMinutes: 60 });
+    await sweepSettlements(NOW);
+    expect(prisma.order_settlement.findMany.mock.calls[1][0].where.OR[1]).toEqual({ reminders_sent: { lt: 0 } });
+  });
+
+  it("isolates a failing row: the next row is still processed and the error is logged", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([
+      pending({ id: 1, pending_since: minsAgo(11) }),
+      pending({ id: 2, pending_since: minsAgo(11) }),
+    ]);
+    prisma.order_settlement.updateMany.mockRejectedValueOnce(new Error("db down"));
+    expect(await sweepSettlements(NOW)).toEqual({ reminded: 1, escalated: 0 });
+    expect(logger.error).toHaveBeenCalled();
+    expect(prisma.order_settlement.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("a push rejection or sync throw does not break the sweep; escalation still runs", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([pending({ pending_since: minsAgo(61) })]);
+    pushNotifier.notifyCustomerSettlementReminder.mockRejectedValueOnce(new Error("fcm down"));
+    pushNotifier.notifyDriverSettlementReminder.mockImplementationOnce(() => { throw new Error("sync boom"); });
+    expect(await sweepSettlements(NOW)).toEqual({ reminded: 1, escalated: 1 });
+    expect(logger.error).toHaveBeenCalledTimes(2);
+  });
+
+  it("does both the reminder and the escalation for one row in the same pass", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([pending({ pending_since: minsAgo(61) })]);
+    expect(await sweepSettlements(NOW)).toEqual({ reminded: 1, escalated: 1 });
   });
 });
