@@ -3,6 +3,8 @@ const logger = require("../utils/logger");
 const { istNow } = require("../utils/istTime");
 const walletNotifier = require("./walletNotifier");
 const settlementSettings = require("./settlementSettings");
+const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
+const { createRazorpayOrder } = require("../utils/razorpayOrders");
 
 const STATUS = Object.freeze({
   PENDING: "pending",
@@ -352,11 +354,71 @@ async function adminResolve({ settlementId, adminId, outcome, note }) {
   });
 }
 
+async function createOnlineOrder({ orderId, uid }) {
+  const s = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+  assertParty(s, "customer", uid);
+  if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+  const amountDue = Number(s.amount_due);
+  let razorpayOrderId = s.razorpay_order_id;
+  let amountPaise = Math.round(amountDue * 100);
+  if (!razorpayOrderId) {
+    const created = await createRazorpayOrder({ amountRupees: amountDue, receipt: `settle_${orderId}` });
+    if (!created.ok) throw new SettlementError("GATEWAY_ERROR", created.reason);
+    razorpayOrderId = created.id;
+    amountPaise = created.amountPaise;
+    await prisma.order_settlement.update({
+      where: { id: s.id },
+      data: { razorpay_order_id: razorpayOrderId, customer_choice: "online", updated_at: new Date() },
+    });
+    await prisma.order_settlement_event.create({
+      data: { settlement_id: s.id, actor: "customer", actor_id: uid, from_status: s.status, to_status: s.status, note: "Chose to pay online", created_at: new Date() },
+    });
+  }
+  return { razorpay_order_id: razorpayOrderId, amount_paise: amountPaise, currency: "INR", key_id: process.env.RAZORPAY_KEY_ID };
+}
+
+async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signature }) {
+  const pre = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+  assertParty(pre, "customer", uid);
+  if (pre.status === STATUS.PAID_ONLINE && pre.razorpay_payment_id === paymentId) {
+    return { settlement: pre, alreadyDone: true };
+  }
+  if (pre.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(pre.status));
+  // The payment must belong to the Razorpay order we created for THIS settlement.
+  if (!pre.razorpay_order_id || pre.razorpay_order_id !== razorpayOrderId) {
+    throw new SettlementError("PAYMENT_MISMATCH", "This payment does not belong to this order.");
+  }
+  const verification = await verifyRazorpayPayment({
+    paymentId, orderId: razorpayOrderId, signature, expectedAmountRupees: Number(pre.amount_due),
+  });
+  if (!verification.ok) throw new SettlementError("PAYMENT_VERIFICATION_FAILED", verification.reason);
+
+  return runTransition(async (tx, notifications) => {
+    const s = await lockByOrderId(tx, orderId);
+    if (s.status === STATUS.PAID_ONLINE && s.razorpay_payment_id === paymentId) return { settlement: s, alreadyDone: true };
+    // Re-checked under the lock: the driver may have confirmed cash while the customer was paying.
+    if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+    const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.ONLINE);
+    notifications.push(...n);
+    const now = new Date();
+    const updated = await tx.order_settlement.update({
+      where: { id: s.id },
+      data: {
+        status: STATUS.PAID_ONLINE, method: "online", wallet_effect: EFFECT.ONLINE, effect_seq: effectSeq,
+        razorpay_payment_id: paymentId, confirmed_by: "customer_online", confirmed_at: now, updated_at: now,
+      },
+    });
+    await logEvent(tx, s, { actor: "customer", actorId: uid, from: s.status, to: STATUS.PAID_ONLINE, note: `Razorpay payment ${paymentId}` });
+    return { settlement: updated };
+  });
+}
+
 module.exports = {
   STATUS, EFFECT, OUTCOME_EFFECT, ADMIN_OUTCOMES, SettlementError,
   round2, stateMessage, publicView, emitSettlementUpdated, assertParty,
   effectOps, changeWalletEffect, lockByOrderId, lockById, logEvent, runTransition,
   createForCompletedOrder, getViewForParty, getPublicViewForOrder,
   markCashReceived, chooseDriverPayment, raiseDispute, adminResolve,
+  createOnlineOrder, settleOnline,
   settlementSettings,
 };

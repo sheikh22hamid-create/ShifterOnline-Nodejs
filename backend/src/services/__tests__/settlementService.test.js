@@ -8,6 +8,8 @@ jest.mock("../../config/db", () => ({
   app_settings: { findMany: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
+jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn() }));
+jest.mock("../../utils/razorpayOrders", () => ({ createRazorpayOrder: jest.fn() }));
 jest.mock("../walletNotifier", () => ({ notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined) }));
 const mockEmit = jest.fn();
 jest.mock("../../sockets/socketServer", () => ({ getIO: () => ({ to: () => ({ emit: mockEmit }) }) }));
@@ -15,6 +17,8 @@ jest.mock("../../sockets/socketServer", () => ({ getIO: () => ({ to: () => ({ em
 const prisma = require("../../config/db");
 const walletNotifier = require("../walletNotifier");
 const logger = require("../../utils/logger");
+const { verifyRazorpayPayment } = require("../../utils/razorpayVerify");
+const { createRazorpayOrder } = require("../../utils/razorpayOrders");
 const svc = require("../settlementService");
 
 const row = (o = {}) => ({
@@ -450,5 +454,94 @@ describe("settlementService.adminResolve", () => {
     expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ actor: "admin", actor_id: 3, from_status: "disputed", to_status: "cash_received", note: "Driver showed receipt" }),
     });
+  });
+});
+
+describe("settlementService.createOnlineOrder", () => {
+  it("creates a Razorpay order for the amount due and remembers it", async () => {
+    setup(row({ amount_due: 85 }));
+    createRazorpayOrder.mockResolvedValue({ ok: true, id: "order_A", amountPaise: 8500, currency: "INR" });
+    process.env.RAZORPAY_KEY_ID = "rzp_key";
+    const out = await svc.createOnlineOrder({ orderId: 50, uid: 7 });
+    expect(createRazorpayOrder).toHaveBeenCalledWith({ amountRupees: 85, receipt: "settle_50" });
+    expect(out).toEqual({ razorpay_order_id: "order_A", amount_paise: 8500, currency: "INR", key_id: "rzp_key" });
+    expect(prisma.order_settlement.update).toHaveBeenCalledWith({
+      where: { id: 1 }, data: expect.objectContaining({ razorpay_order_id: "order_A", customer_choice: "online" }),
+    });
+  });
+
+  it("reuses the existing Razorpay order instead of creating an orphan", async () => {
+    setup(row({ amount_due: 85, razorpay_order_id: "order_A" }));
+    process.env.RAZORPAY_KEY_ID = "rzp_key";
+    const out = await svc.createOnlineOrder({ orderId: 50, uid: 7 });
+    expect(createRazorpayOrder).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ razorpay_order_id: "order_A", amount_paise: 8500 });
+  });
+
+  it("refuses when not pending or for another customer; reports gateway failure", async () => {
+    setup(row({ status: "disputed" }));
+    await expect(svc.createOnlineOrder({ orderId: 50, uid: 7 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    setup(row());
+    await expect(svc.createOnlineOrder({ orderId: 50, uid: 99 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    setup(row());
+    createRazorpayOrder.mockResolvedValue({ ok: false, reason: "Gateway down" });
+    await expect(svc.createOnlineOrder({ orderId: 50, uid: 7 })).rejects.toMatchObject({ code: "GATEWAY_ERROR", message: "Gateway down" });
+  });
+});
+
+describe("settlementService.settleOnline", () => {
+  const pay = { orderId: 50, uid: 7, paymentId: "pay_1", razorpayOrderId: "order_A", signature: "sig" };
+
+  it("verifies against the amount due, then settles and credits the driver", async () => {
+    setup(row({ amount_due: 85, razorpay_order_id: "order_A" }));
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    const { settlement } = await svc.settleOnline(pay);
+    expect(verifyRazorpayPayment).toHaveBeenCalledWith({ paymentId: "pay_1", orderId: "order_A", signature: "sig", expectedAmountRupees: 85 });
+    expect(settlement).toMatchObject({ status: "paid_online", method: "online", wallet_effect: "online", confirmed_by: "customer_online", razorpay_payment_id: "pay_1" });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { increment: 90 } } });
+  });
+
+  it("rejects a payment made against a different Razorpay order (replay on another settlement)", async () => {
+    setup(row({ razorpay_order_id: "order_A" }));
+    await expect(svc.settleOnline({ ...pay, razorpayOrderId: "order_OTHER" })).rejects.toMatchObject({ code: "PAYMENT_MISMATCH" });
+    expect(verifyRazorpayPayment).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects when Razorpay verification fails (bad signature or wrong amount) and stays pending", async () => {
+    setup(row({ razorpay_order_id: "order_A" }));
+    verifyRazorpayPayment.mockResolvedValue({ ok: false, reason: "Payment amount does not match" });
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAYMENT_VERIFICATION_FAILED", message: "Payment amount does not match" });
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects when no Razorpay order was created for this settlement", async () => {
+    setup(row({ razorpay_order_id: null }));
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAYMENT_MISMATCH" });
+  });
+
+  it("is a no-op for the same payment id after it already settled", async () => {
+    setup(row({ status: "paid_online", wallet_effect: "online", effect_seq: 1, razorpay_order_id: "order_A", razorpay_payment_id: "pay_1" }));
+    const result = await svc.settleOnline(pay);
+    expect(result.alreadyDone).toBe(true);
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(verifyRazorpayPayment).not.toHaveBeenCalled();
+  });
+
+  it("refuses to settle a disputed payment online", async () => {
+    setup(row({ status: "disputed", razorpay_order_id: "order_A" }));
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
+  });
+
+  it("rechecks state inside the transaction (payment verified, but driver confirmed cash meanwhile)", async () => {
+    const pending = row({ razorpay_order_id: "order_A" });
+    setup(pending);
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending) // pre-check read
+      .mockResolvedValueOnce({ ...pending, status: "cash_received", wallet_effect: "cash" }); // locked read
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
   });
 });
