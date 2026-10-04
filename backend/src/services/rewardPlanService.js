@@ -492,14 +492,45 @@ async function getActiveAmountRewardForCustomer({ uid }) {
     const claimed = Number(rule.claimed_count || 0);
     const remainingSpots = maxCust ? Math.max(0, maxCust - claimed) : null;
 
+    const benefits = [];
+    if (plan.discount_enabled && Number(plan.discount_percent) > 0) {
+      benefits.push(`${Number(plan.discount_percent)}% discount on every ride`);
+    }
+    if (plan.no_advance_payment) {
+      benefits.push("Zero advance payment required");
+    }
+    if (plan.priority_support) {
+      benefits.push("VIP priority customer support");
+    }
+    if (plan.wallet_bonus_enabled && Number(plan.wallet_bonus_amount) > 0) {
+      benefits.push(`₹${Number(plan.wallet_bonus_amount)} instant wallet bonus`);
+    }
+    if (plan.cancellation_enabled && Number(plan.free_cancellations) > 0) {
+      benefits.push(`${Number(plan.free_cancellations)} free order cancellations`);
+    }
+    if (plan.special_offers) {
+      benefits.push("Exclusive member discounts & priority driver dispatch");
+    }
+    if (plan.description && plan.description.trim().length > 0) {
+      const customLines = plan.description.split(/[\r\n]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+      for (const line of customLines) {
+        if (!benefits.includes(line)) benefits.push(line);
+      }
+    }
+    if (benefits.length === 0) {
+      benefits.push("All premium privileges and perks included");
+    }
+
     return {
       enabled: true,
       id: rule.id,
       min_amount: minAmt,
       plan_id: rule.plan_id,
       plan_name: plan.plan_name,
+      plan_price: Number(plan.price || 0),
       plan_description: plan.description || "",
-      validity_days: plan.lifetime_enabled ? "Lifetime" : (plan.validity_days || 30),
+      plan_benefits: benefits,
+      validity_days: plan.lifetime_enabled ? "Lifetime" : `${plan.validity_days || 30} Days`,
       max_customers: maxCust,
       claimed_count: claimed,
       remaining_spots: remainingSpots,

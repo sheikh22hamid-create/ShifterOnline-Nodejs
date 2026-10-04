@@ -775,15 +775,15 @@ class _HomeState extends State<Home> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: isClaimed
-                  ? [const Color(0xFF065F46), const Color(0xFF059669)]
-                  : [const Color(0xFF1E1B4B), const Color(0xFF4338CA)],
+                  ? [const Color(0xFF16A34A), const Color(0xFF22C55E)]
+                  : [linercolor, const Color(0xFFFF8C38)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: (isClaimed ? const Color(0xFF059669) : const Color(0xFF4338CA)).withOpacity(0.35),
+                color: (isClaimed ? const Color(0xFF16A34A) : linercolor).withOpacity(0.28),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -843,7 +843,7 @@ class _HomeState extends State<Home> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFB800),
+                              color: Colors.white,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -899,13 +899,33 @@ class _HomeState extends State<Home> {
     final bool isClaimed = reward["is_claimed"] == true;
     final String planName = reward["plan_name"]?.toString() ?? "Reward Plan";
     final String minAmount = reward["min_amount"]?.toString() ?? "0";
-    final String validity = reward["validity_days"]?.toString() ?? "30 days";
-    final String desc = reward["banner_desc"]?.toString() ?? "";
+    final String validity = reward["validity_days"]?.toString() ?? "30 Days";
     final String urgency = reward["urgency_tag"]?.toString() ?? "";
+    final dynamic rawPrice = reward["plan_price"];
+    final String planPrice = (rawPrice != null && rawPrice.toString() != "0") ? rawPrice.toString() : "";
+
+    List<String> benefits = [];
+    if (reward["plan_benefits"] is List) {
+      benefits = (reward["plan_benefits"] as List)
+          .map((e) => e?.toString() ?? "")
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+    }
+    if (benefits.isEmpty) {
+      benefits = [
+        "Exclusive member discounts on every ride",
+        "Zero advance payment required",
+        "VIP priority support & quick driver assignment",
+        "Free cancellation protection on rides",
+      ];
+    }
 
     Get.bottomSheet(
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
           color: notifier.getBgColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -920,8 +940,8 @@ class _HomeState extends State<Home> {
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Pull handle
               Container(
                 width: 44,
                 height: 5,
@@ -930,89 +950,318 @@ class _HomeState extends State<Home> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              const SizedBox(height: 18),
-              Container(
-                height: 64,
-                width: 64,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isClaimed
-                        ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                        : [const Color(0xFF4338CA), const Color(0xFF6366F1)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: (isClaimed ? const Color(0xFF059669) : const Color(0xFF4338CA)).withOpacity(0.35),
-                      blurRadius: 14,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  isClaimed ? Icons.verified_rounded : Icons.card_giftcard_rounded,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
               const SizedBox(height: 14),
-              Text(
-                isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone Offer",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Gilroy_Bold',
-                  fontSize: 19,
-                  color: notifier.text,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isClaimed ? const Color(0xFFECFDF5) : const Color(0xFFEEF2FF),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  isClaimed ? "✅ Plan Active on Your Account" : (urgency.isNotEmpty ? "⚡ $urgency" : "🎁 Limited Time Offer"),
-                  style: TextStyle(
-                    fontFamily: 'Gilroy_Bold',
-                    fontSize: 12,
-                    color: isClaimed ? const Color(0xFF059669) : const Color(0xFF4338CA),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Badge Icon
+                      Container(
+                        height: 60,
+                        width: 60,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isClaimed
+                                ? [const Color(0xFF16A34A), const Color(0xFF22C55E)]
+                                : [linercolor, const Color(0xFFFF8C38)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isClaimed ? const Color(0xFF16A34A) : linercolor).withOpacity(0.28),
+                              blurRadius: 14,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          isClaimed ? Icons.verified_rounded : Icons.workspace_premium_rounded,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Title
+                      Text(
+                        isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone Offer",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Gilroy_Bold',
+                          fontSize: 18.5,
+                          color: notifier.text,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Status or Urgency Tag
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isClaimed ? const Color(0xFFECFDF5) : const Color(0xFFFFF4EE),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isClaimed ? "✅ Plan Active on Your Account" : (urgency.isNotEmpty ? "⚡ $urgency" : "🎁 Limited Time Reward"),
+                          style: TextStyle(
+                            fontFamily: 'Gilroy_Bold',
+                            fontSize: 12,
+                            color: isClaimed ? const Color(0xFF16A34A) : linercolor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Highlighted Plan Banner
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              linercolor.withOpacity(0.08),
+                              linercolor.withOpacity(0.02),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: linercolor.withOpacity(0.28), width: 1.2),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: linercolor.withOpacity(0.14),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.workspace_premium_rounded, color: linercolor, size: 22),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "REWARD PLAN YOU WILL RECEIVE",
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Bold',
+                                          fontSize: 10.5,
+                                          letterSpacing: 0.6,
+                                          color: linercolor,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        planName,
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Bold',
+                                          fontSize: 17,
+                                          color: notifier.text,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (planPrice.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: linercolor,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      "₹$planPrice FREE",
+                                      style: const TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 11,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: notifier.getBgColor,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: notifier.bordecolor),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.timer_outlined, size: 13, color: greaycolor),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        "Validity: $validity",
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Medium',
+                                          fontSize: 11.5,
+                                          color: notifier.text,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: notifier.getBgColor,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: notifier.bordecolor),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.monetization_on_outlined, size: 13, color: Color(0xFF16A34A)),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        "100% Free on ₹$minAmount+ Ride",
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Medium',
+                                          fontSize: 11.5,
+                                          color: notifier.text,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Plan Benefits List Section
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          children: [
+                            Icon(Icons.stars_rounded, color: linercolor, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Plan Benefits & Privileges",
+                              style: TextStyle(
+                                fontFamily: 'Gilroy_Bold',
+                                fontSize: 14.5,
+                                color: notifier.text,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: notifier.lightBgColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: notifier.bordecolor),
+                        ),
+                        child: Column(
+                          children: benefits.asMap().entries.map((entry) {
+                            final idx = entry.key;
+                            final benefit = entry.value;
+                            return Padding(
+                              padding: EdgeInsets.only(
+                                top: idx == 0 ? 4 : 8,
+                                bottom: idx == benefits.length - 1 ? 4 : 8,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 2),
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFECFDF5),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Color(0xFF16A34A),
+                                      size: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      benefit,
+                                      style: TextStyle(
+                                        fontFamily: 'Gilroy_Medium',
+                                        fontSize: 13,
+                                        color: notifier.text,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // How to Unlock (Only if not claimed)
+                      if (!isClaimed) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            "How it works",
+                            style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 13.5,
+                              color: greaycolor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: notifier.lightBgColor.withOpacity(0.6),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+                          ),
+                          child: Column(
+                            children: [
+                              _buildStepRow("1", "Book any ride of ₹$minAmount or more"),
+                              Divider(height: 14, color: notifier.bordecolor.withOpacity(0.5)),
+                              _buildStepRow("2", "Complete the trip smoothly"),
+                              Divider(height: 14, color: notifier.bordecolor.withOpacity(0.5)),
+                              _buildStepRow("3", "$planName activates instantly at ₹0!"),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-              Text(
-                desc.isNotEmpty ? desc : "Book a ride of ₹$minAmount or more to unlock $planName completely FREE!",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Gilroy_Medium',
-                  fontSize: 13.5,
-                  color: greaycolor,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: notifier.lightBgColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: notifier.bordecolor),
-                ),
-                child: Column(
-                  children: [
-                    _buildBenefitRow(Icons.local_shipping_rounded, "Book Any Ride Worth ₹$minAmount+", "Fare amount must be at least ₹" + minAmount + " on completion"),
-                    Divider(height: 16, color: notifier.bordecolor),
-                    _buildBenefitRow(Icons.verified_user_rounded, "$planName Reward", "Validity: $validity" + " with all premium privileges included"),
-                    Divider(height: 16, color: notifier.bordecolor),
-                    _buildBenefitRow(Icons.bolt_rounded, "Instant Automatic Activation", "Plan activates instantly upon trip completion at ₹0 cost"),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
+
+              const SizedBox(height: 12),
+              // Bottom Action Button
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -1026,7 +1275,7 @@ class _HomeState extends State<Home> {
                     ),
                   ),
                   child: Text(
-                    isClaimed ? "Got It" : "Book Ride Now",
+                    isClaimed ? "Great, Got It" : "Book ₹$minAmount+ Ride Now",
                     style: const TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 15,
@@ -1040,6 +1289,41 @@ class _HomeState extends State<Home> {
         ),
       ),
       isScrollControlled: true,
+    );
+  }
+
+  Widget _buildStepRow(String stepNumber, String title) {
+    return Row(
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: linercolor.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            stepNumber,
+            style: TextStyle(
+              fontFamily: 'Gilroy_Bold',
+              fontSize: 11,
+              color: linercolor,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontFamily: 'Gilroy_Medium',
+              fontSize: 12.5,
+              color: notifier.text,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
