@@ -2885,6 +2885,56 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             return;
         }
 
+        if (riderData != null && orderItem.getId() != null) {
+            int oId = 0;
+            try {
+                oId = Integer.parseInt(orderItem.getId());
+            } catch (Exception ignored) {}
+
+            if (oId > 0) {
+                final int finalOId = oId;
+                final PDOrderItem finalOrderItem = orderItem;
+                custPrograssbar.prograssCreate(this);
+                com.shifter.driver.utility.SettlementDriverClient.fetchState(this, riderData.getId(), finalOId, new com.shifter.driver.utility.SettlementDriverClient.SettlementCallback() {
+                    @Override
+                    public void onSuccess(com.shifter.driver.model.SettlementView settlement) {
+                        custPrograssbar.closePrograssBar();
+                        if (isFinishing() || isDestroyed()) return;
+                        if (settlement != null) {
+                            // Trip Payment Settlement enabled & active -> open dedicated TripPaymentActivity
+                            Intent intent = new Intent(OrderDetailsActivity.this, com.shifter.driver.activity.TripPaymentActivity.class);
+                            intent.putExtra(com.shifter.driver.activity.TripPaymentActivity.EXTRA_ORDER_ID, String.valueOf(finalOId));
+                            intent.putExtra(com.shifter.driver.activity.TripPaymentActivity.EXTRA_ORDER_ITEM, finalOrderItem);
+                            intent.putExtra(com.shifter.driver.activity.TripPaymentActivity.EXTRA_SETTLEMENT, settlement);
+                            startActivity(intent);
+                            finish();
+                        } else {
+                            // settlement_enabled master switch is OFF -> legacy behavior 100% byte-for-byte
+                            renderLegacyCompletedOrderDialog(finalOrderItem);
+                        }
+                    }
+
+                    @Override
+                    public void onError(String code, String message) {
+                        custPrograssbar.closePrograssBar();
+                        if (isFinishing() || isDestroyed()) return;
+                        // On network or API error, fallback to legacy dialog so driver is never blocked
+                        renderLegacyCompletedOrderDialog(finalOrderItem);
+                    }
+                });
+                return;
+            }
+        }
+
+        renderLegacyCompletedOrderDialog(orderItem);
+    }
+
+    private void renderLegacyCompletedOrderDialog(PDOrderItem orderItem) {
+        if (isFinishing() || isDestroyed() || orderItem == null) {
+            navigateToHomeAndFinish("");
+            return;
+        }
+
         final android.app.Dialog dialog = new android.app.Dialog(this);
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.dialog_completed_order_details);

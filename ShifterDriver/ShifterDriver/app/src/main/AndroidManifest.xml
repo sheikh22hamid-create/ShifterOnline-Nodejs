@@ -223,6 +223,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name="com.shifter.driver.activity.TripPaymentActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name="com.shifter.driver.activity.OrderAnyDetailsActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

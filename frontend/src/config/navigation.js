@@ -89,6 +89,7 @@ export const NAV_GROUPS = [
       { to: '/profit-revenue', label: 'Profit & Revenue (Ledger)', icon: Receipt, roles: MANAGERS, built: true },
       { to: '/monthly-attendance', label: 'Monthly Duty & Salary', icon: CalendarCheck, roles: MANAGERS, built: true },
       { to: '/payouts', label: 'Withdrawal Requests', icon: Wallet, roles: MANAGERS, built: true },
+      { to: '/settlements', label: 'Trip Settlements', icon: Receipt, roles: MANAGERS, built: true },
       { to: '/wallet-adjustments', label: 'Wallet Adjustments', icon: History, roles: SUPERADMIN_ONLY, built: true },
       { to: '/marketing/premium-plans', label: 'Premium Plans', icon: Crown, roles: ALL_STAFF, built: true },
       { to: '/marketing/coupons', label: 'Promo Coupons', icon: Ticket, roles: ALL_STAFF, built: true },

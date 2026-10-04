@@ -20,6 +20,7 @@ import 'confirm_order_map.dart';
 import 'coupon_sheet.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
+import '../myorder/trackingway.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
   final Map<String, dynamic> pickup;
@@ -897,8 +898,97 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         Get.offAll(() => WaitingScreen(orderId: orderId));
       }
     } else {
-      ApiWrapper.showToastMessage(_text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.'));
+      final msg = _text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.');
+      final isSettlementBlock = response is Map &&
+          (response['ResponseCode']?.toString() == '403' ||
+              response['code']?.toString() == 'SETTLEMENT_PENDING' ||
+              msg.contains('settle the pending payment'));
+
+      if (isSettlementBlock) {
+        final match = RegExp(r'order #(\d+)').firstMatch(msg);
+        final pendingOrderId = match != null ? match.group(1) : response['order_id']?.toString();
+        _showPendingSettlementDialog(msg, pendingOrderId);
+      } else {
+        ApiWrapper.showToastMessage(msg);
+      }
     }
+  }
+
+  void _showPendingSettlementDialog(String message, String? pendingOrderId) {
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800, size: 36),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Pending Settlement Required".tr,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: "Gilroy_Bold",
+                  fontSize: 17,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: "Gilroy_Medium",
+                  fontSize: 13,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Get.back(),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text("Later".tr, style: TextStyle(color: Colors.grey.shade700, fontFamily: "Gilroy_Bold")),
+                    ),
+                  ),
+                  if (pendingOrderId != null && pendingOrderId.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Get.back();
+                          _storage.write('OrderID', pendingOrderId);
+                          Get.to(() => TrackingWay(type: "Pickup", isback: true, initialOrderData: {'order_id': pendingOrderId}));
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: linercolor,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text("Settle Now".tr, style: const TextStyle(color: Colors.white, fontFamily: "Gilroy_Bold")),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showScheduledOrderConfirmedDialog(

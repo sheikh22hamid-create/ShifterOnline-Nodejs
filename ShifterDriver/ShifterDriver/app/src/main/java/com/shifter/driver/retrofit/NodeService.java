@@ -360,4 +360,17 @@ public interface NodeService {
 
     @POST("api/rider/scheduled-trips/interest/remove")
     Call<JsonObject> removeScheduledTripInterest(@Body RequestBody body);
+
+    // Trip Payment Settlement (backend/src/routes/riderRoutes.js)
+    @POST("api/rider/settlement/state")
+    Call<com.shifter.driver.model.SettlementResponse> getSettlementState(@Body Map<String, Object> body);
+
+    @POST("api/rider/settlement/received")
+    Call<com.shifter.driver.model.SettlementResponse> markSettlementReceived(@Body Map<String, Object> body);
+
+    @POST("api/rider/settlement/dispute")
+    Call<com.shifter.driver.model.SettlementResponse> disputeSettlement(@Body Map<String, Object> body);
+
+    @POST("api/rider/settlement/pending")
+    Call<com.shifter.driver.model.SettlementResponse> getPendingSettlements(@Body Map<String, Object> body);
 }

@@ -79,6 +79,11 @@ public class NodeSocketManager {
         void onOrderPickupUpdated(JSONObject data);
     }
 
+    /** settlement:updated — settlement view payload updated for an order. */
+    public interface SettlementUpdatedListener {
+        void onSettlementUpdated(JSONObject data);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -90,6 +95,15 @@ public class NodeSocketManager {
     private OrderCancelledListener orderCancelledListener;
     private OrderDestinationUpdatedListener orderDestinationUpdatedListener;
     private OrderPickupUpdatedListener orderPickupUpdatedListener;
+    private final java.util.Set<SettlementUpdatedListener> settlementUpdatedListeners = new java.util.concurrent.CopyOnWriteArraySet<>();
+
+    public void addSettlementUpdatedListener(SettlementUpdatedListener listener) {
+        if (listener != null) settlementUpdatedListeners.add(listener);
+    }
+
+    public void removeSettlementUpdatedListener(SettlementUpdatedListener listener) {
+        if (listener != null) settlementUpdatedListeners.remove(listener);
+    }
 
     private NodeSocketManager() {}
 
@@ -219,6 +233,19 @@ public class NodeSocketManager {
             JSONObject data = firstArgAsJson(args);
             if (data != null && orderPickupUpdatedListener != null) {
                 orderPickupUpdatedListener.onOrderPickupUpdated(data);
+            }
+        }));
+
+        socket.on("settlement:updated", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null) {
+                for (SettlementUpdatedListener listener : settlementUpdatedListeners) {
+                    try {
+                        listener.onSettlementUpdated(data);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error delivering settlement:updated", e);
+                    }
+                }
             }
         }));
 

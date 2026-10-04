@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Save, ExternalLink, PlayCircle, Plus, Trash2 } from 'lucide-react'
+import { Save, ExternalLink, PlayCircle, Plus, Trash2, AlertTriangle } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
@@ -88,6 +88,11 @@ const HANDLED_FLAG_KEYS = [
   'scheduled_confirm_popup_minutes',
   'max_blocked_drivers_per_user',
   'extra_stop_charge',
+  'settlement_enabled',
+  'settlement_reminder_minutes',
+  'settlement_escalate_after_minutes',
+  'settlement_driver_block_grace_minutes',
+  'settlement_dispute_window_hours',
 ]
 
 function PaymentGateways() {
@@ -575,6 +580,91 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Highest amount a customer can add to their ledger in a single transaction (Default: 50000).
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Trip Payment Settlement">
+          <div className="col-span-2 sm:col-span-3">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-[12px] text-amber-700 dark:text-amber-300">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <AlertTriangle size={15} />
+                <span>SECURITY GATE WARNING</span>
+              </div>
+              <p className="mt-1">
+                Customer and driver settlement endpoints currently trust posted uid/rider_id. Real driver/customer authentication on <code>/api/rider/settlement/*</code> and <code>/api/order/settlement/*</code> <strong>MUST</strong> ship before enabling this switch in production.
+              </p>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="flag-settlement_enabled">Master Switch (settlement_enabled)</Label>
+            <select
+              id="flag-settlement_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.settlement_enabled ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, settlement_enabled: e.target.value }))}
+            >
+              <option value="0">Disabled (0 - Legacy flow: completion assumes cash settled)</option>
+              <option value="1">Enabled (1 - Active settlement flow with confirmation)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              When OFF, no settlements are created and completed rides behave byte-for-byte as before.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-settlement_reminder_minutes">Reminder Intervals (minutes)</Label>
+            <Input
+              id="flag-settlement_reminder_minutes"
+              type="text"
+              placeholder="10,30"
+              value={flags.settlement_reminder_minutes ?? '10,30'}
+              onChange={(e) => setFlags((f) => ({ ...f, settlement_reminder_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Comma-separated list of minutes after ride completion when push reminders are sent to customer and driver (Default: 10,30).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-settlement_escalate_after_minutes">Escalate After (minutes)</Label>
+            <Input
+              id="flag-settlement_escalate_after_minutes"
+              type="number"
+              min="1"
+              placeholder="60"
+              value={flags.settlement_escalate_after_minutes ?? '60'}
+              onChange={(e) => setFlags((f) => ({ ...f, settlement_escalate_after_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Pending settlements older than this threshold are flagged into the admin &quot;Unsettled&quot; queue (Default: 60).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-settlement_driver_block_grace_minutes">Driver Block Grace (minutes)</Label>
+            <Input
+              id="flag-settlement_driver_block_grace_minutes"
+              type="number"
+              min="1"
+              placeholder="10"
+              value={flags.settlement_driver_block_grace_minutes ?? '10'}
+              onChange={(e) => setFlags((f) => ({ ...f, settlement_driver_block_grace_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              A driver with a pending settlement older than this grace period stops receiving new order offers (Default: 10).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-settlement_dispute_window_hours">Customer Dispute Window (hours)</Label>
+            <Input
+              id="flag-settlement_dispute_window_hours"
+              type="number"
+              min="1"
+              placeholder="48"
+              value={flags.settlement_dispute_window_hours ?? '48'}
+              onChange={(e) => setFlags((f) => ({ ...f, settlement_dispute_window_hours: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Number of hours after driver confirmation during which the customer can report a problem / dispute (Default: 48).
             </p>
           </div>
         </Section>

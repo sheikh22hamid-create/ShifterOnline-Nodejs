@@ -42,6 +42,8 @@ import '../home/home.dart';
 import '../../utils/vehicle_marker.dart';
 import 'order_route_map.dart';
 import '../home/location_search_screen.dart';
+import '../../services/settlement_api_service.dart';
+import 'customer_settlement_sheet.dart';
 
 class TrackingWay extends StatefulWidget {
   final String? type;
@@ -80,6 +82,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   Timer? _advanceTimer;
   int _remainingSeconds = 0;
   bool _redeemingReferralPoints = false;
+  bool isSettlementPaymentFlow = false;
+  String? _settlementRazorpayOrderId;
+  Timer? _settlementPollTimer;
+  bool _isSettlementSheetOpen = false;
 
   // Waiting time / charge card (customer side). The billable-wait clock starts
   // when the driver enters the pickup OTP, which sends the customer no socket
@@ -111,6 +117,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   @override
   void dispose() {
     _advanceTimer?.cancel();
+    _settlementPollTimer?.cancel();
     _waitingTicker?.cancel();
     _driverAnimController?.dispose();
     _driverMapPositionNotifier.dispose();
@@ -157,6 +164,20 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint("🔔 order:completed: $data");
+      pageRefresh();
+      if (data['settlement_pending'] == true) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openSettlementSheet();
+        });
+      }
+    }, onSettlementUpdated: (data) {
+      if (!mounted || data['order_id']?.toString() != orderid) return;
+      debugPrint("🔔 settlement:updated: $data");
+      if (orderProduc is Map) {
+        setState(() {
+          orderProduc["settlement"] = data;
+        });
+      }
       pageRefresh();
     }, onDriverCancelled: (data) {
 
@@ -393,7 +414,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   void handlePaymentSuccess(PaymentSuccessResponse response) {
     debugPrint("++++++++++++++++++++++++ Payment success : ${response.paymentId}");
-    if (isAdvancePaymentFlow) {
+    if (isSettlementPaymentFlow) {
+      isSettlementPaymentFlow = false;
+      _verifySettlementPayment(
+        paymentId: response.paymentId ?? "",
+        razorpayOrderId: response.orderId ?? _settlementRazorpayOrderId ?? "",
+        signature: response.signature ?? "",
+      );
+    } else if (isAdvancePaymentFlow) {
       callAdvancePaymentApi(
         paymentId: response.paymentId ?? "",
         signature: response.signature ?? "",
@@ -4211,6 +4239,60 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
     if (s == "completed") {
       final date = _formatOrderDate(orderProduc?["order_deliver_date"]?.toString());
+      final settlement = _getSettlementData();
+      if (settlement != null) {
+        final settleStatus = settlement["status"]?.toString() ?? "";
+        final due = settlement["amount_due"]?.toString() ?? "";
+        if (settleStatus == "pending") {
+          return _HeroState(
+            lead: "Payment is ".tr,
+            accent: "pending".tr,
+            sub: "Please settle ₹$due with your driver or online".tr,
+            color: const Color(0xFFFF9100),
+            headerSub: "Payment pending for completed ride".tr,
+          );
+        } else if (settleStatus == "customer_owes") {
+          return _HeroState(
+            lead: "Payment is ".tr,
+            accent: "due".tr,
+            sub: "Please settle ₹$due online to book future rides".tr,
+            color: const Color(0xFFFF9100),
+            headerSub: "Payment due".tr,
+          );
+        } else if (settleStatus == "disputed") {
+          return _HeroState(
+            lead: "Payment is ".tr,
+            accent: "under review".tr,
+            sub: "Support is reviewing the reported issue".tr,
+            color: const Color(0xFFFF5252),
+            headerSub: "Payment under review".tr,
+          );
+        } else if (settleStatus == "cash_received") {
+          return _HeroState(
+            lead: "Driver confirmed ".tr,
+            accent: "₹$due".tr,
+            sub: date.isNotEmpty ? date : "Cash collected by driver".tr,
+            color: const Color(0xFF00C853),
+            headerSub: "Cash payment confirmed".tr,
+          );
+        } else if (settleStatus == "paid_online") {
+          return _HeroState(
+            lead: "Paid online ".tr,
+            accent: "₹$due".tr,
+            sub: date.isNotEmpty ? date : "Payment settled online".tr,
+            color: const Color(0xFF00C853),
+            headerSub: "Payment settled online".tr,
+          );
+        } else if (settleStatus == "waived") {
+          return _HeroState(
+            lead: "Payment was ".tr,
+            accent: "waived".tr,
+            sub: date.isNotEmpty ? date : "No payment due for this ride".tr,
+            color: Colors.grey.shade600,
+            headerSub: "Payment waived".tr,
+          );
+        }
+      }
       return _HeroState(
         lead: "Order is ".tr,
         accent: "delivered".tr,
@@ -4538,16 +4620,38 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final waitingBilled = isCompleted ? _waitingBilledAmount() : 0.0;
 
     const green = Color(0xFF00C853);
-    final dueColor = isCompleted
-        ? green
-        : isCancelled
-            ? Colors.grey.shade600
-            : const Color(0xFFE65100);
-    final dueBg = isCompleted
-        ? const Color(0xFFE8F8EE)
-        : isCancelled
-            ? Colors.grey.shade100
-            : const Color(0xFFFFF3E0);
+    final settlement = _getSettlementData();
+    final settleStatus = settlement?['status']?.toString();
+    final settleAmount = double.tryParse(settlement?['amount_due']?.toString() ?? '') ?? remaining;
+
+    Color dueColor;
+    Color dueBg;
+    if (settlement != null && isCompleted) {
+      if (settleStatus == 'cash_received' || settleStatus == 'paid_online') {
+        dueColor = green;
+        dueBg = const Color(0xFFE8F8EE);
+      } else if (settleStatus == 'disputed') {
+        dueColor = const Color(0xFFFF5252);
+        dueBg = const Color(0xFFFFEEEE);
+      } else if (settleStatus == 'waived') {
+        dueColor = Colors.grey.shade600;
+        dueBg = Colors.grey.shade100;
+      } else {
+        dueColor = const Color(0xFFE65100);
+        dueBg = const Color(0xFFFFF3E0);
+      }
+    } else {
+      dueColor = isCompleted
+          ? green
+          : isCancelled
+              ? Colors.grey.shade600
+              : const Color(0xFFE65100);
+      dueBg = isCompleted
+          ? const Color(0xFFE8F8EE)
+          : isCancelled
+              ? Colors.grey.shade100
+              : const Color(0xFFFFF3E0);
+    }
     final open = _openTiles.contains("payment");
 
     Widget stat(String label, String value, {Color? color, String? foot}) => Column(
@@ -4640,25 +4744,53 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            isCompleted
-                                ? "Paid to Driver".tr
-                                : isCancelled
-                                    ? "No Due".tr
-                                    : "Pay to Driver".tr,
+                            settlement != null && isCompleted
+                                ? (settleStatus == 'pending'
+                                    ? "Payment pending".tr
+                                    : settleStatus == 'cash_received'
+                                        ? "Driver confirmed".tr
+                                        : settleStatus == 'paid_online'
+                                            ? "Paid Online".tr
+                                            : settleStatus == 'disputed'
+                                                ? "Under review".tr
+                                                : settleStatus == 'waived'
+                                                    ? "Waived".tr
+                                                    : settleStatus == 'customer_owes'
+                                                        ? "Payment due".tr
+                                                        : "Paid to Driver".tr)
+                                : isCompleted
+                                    ? "Paid to Driver".tr
+                                    : isCancelled
+                                        ? "No Due".tr
+                                        : "Pay to Driver".tr,
                             textAlign: TextAlign.center,
                             style: TextStyle(color: dueColor, fontFamily: "Gilroy_Bold", fontSize: 12.5),
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            "$currency${_waitingMoney(isCancelled ? 0 : remaining)}",
+                            "$currency${_waitingMoney(settlement != null && isCompleted ? (settleStatus == 'waived' ? 0 : settleAmount) : (isCancelled ? 0 : remaining))}",
                             style: TextStyle(color: dueColor, fontFamily: "Gilroy_Bold", fontSize: 21),
                           ),
                           Text(
-                            isCompleted
-                                ? "Cash settled".tr
-                                : isCancelled
-                                    ? "Order cancelled".tr
-                                    : "Cash at delivery".tr,
+                            settlement != null && isCompleted
+                                ? (settleStatus == 'pending'
+                                    ? (settlement['customer_choice'] == 'driver' ? "Paying driver".tr : "Tap to pay".tr)
+                                    : settleStatus == 'cash_received'
+                                        ? "Cash settled".tr
+                                        : settleStatus == 'paid_online'
+                                            ? "Payment complete".tr
+                                            : settleStatus == 'disputed'
+                                                ? "Support reviewing".tr
+                                                : settleStatus == 'waived'
+                                                    ? "Nothing due".tr
+                                                    : settleStatus == 'customer_owes'
+                                                        ? "Online pay required".tr
+                                                        : "Cash settled".tr)
+                                : isCompleted
+                                    ? "Cash settled".tr
+                                    : isCancelled
+                                        ? "Order cancelled".tr
+                                        : "Cash at delivery".tr,
                             textAlign: TextAlign.center,
                             style: TextStyle(color: dueColor, fontFamily: "Gilroy_Medium", fontSize: 10.5),
                           ),
@@ -4668,6 +4800,71 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   ),
                 ],
               ),
+              if (settlement != null && isCompleted) ...[
+                const SizedBox(height: 12),
+                if (settleStatus == 'pending' || settleStatus == 'customer_owes')
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _openSettlementSheet,
+                      icon: const Icon(Icons.payment_rounded, size: 18, color: Colors.white),
+                      label: Text(
+                        settleStatus == 'customer_owes' ? "Pay Due Amount Online".tr : "Settle Payment Now".tr,
+                        style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 13.5, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: linercolor,
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                if (settleStatus == 'cash_received')
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          "${"Driver confirmed ₹".tr}${settleAmount.toStringAsFixed(0)}",
+                          style: const TextStyle(color: Color(0xFF00C853), fontFamily: "Gilroy_Bold", fontSize: 12.5),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _showReportProblemDialog,
+                        icon: const Icon(Icons.report_problem_outlined, size: 15, color: Colors.redAccent),
+                        label: Text("Report a problem".tr, style: const TextStyle(color: Colors.redAccent, fontFamily: "Gilroy_Bold", fontSize: 12)),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
+                  ),
+                if (settleStatus == 'disputed')
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded, color: Colors.red.shade700, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Under review by support. Reason: ".tr + (settlement['dispute_reason']?.toString() ?? 'Reported problem'.tr),
+                            style: TextStyle(color: Colors.red.shade900, fontFamily: "Gilroy_Medium", fontSize: 11.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
               if (discount > 0) ...[
                 const SizedBox(height: 10),
                 Row(
@@ -5518,6 +5715,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           isLoading = false;
           setState(() {});
           checkAdvancePaymentStatus();
+          _checkSettlementStatusAndPoll();
         }
       }
     });
@@ -7504,6 +7702,315 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       debugPrint("======== Advance Payment API Error ======== $error");
       ApiWrapper.showToastMessage("Error: $error");
     });
+  }
+
+
+  Map<String, dynamic>? _getSettlementData() {
+    if (orderProduc is Map && orderProduc["settlement"] is Map) {
+      return Map<String, dynamic>.from(orderProduc["settlement"]);
+    }
+    return null;
+  }
+
+  void _checkSettlementStatusAndPoll() {
+    final settlement = _getSettlementData();
+    if (settlement == null) {
+      _settlementPollTimer?.cancel();
+      _settlementPollTimer = null;
+      return;
+    }
+    final status = settlement['status']?.toString();
+    if (status == 'pending' || status == 'customer_owes') {
+      if (_settlementPollTimer == null || !_settlementPollTimer!.isActive) {
+        _settlementPollTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+          final uidInt = int.tryParse(uid) ?? 0;
+          final orderIdInt = int.tryParse(orderid) ?? 0;
+          if (uidInt <= 0 || orderIdInt <= 0 || !mounted) return;
+          final res = await SettlementApiService.getState(uid: uidInt, orderId: orderIdInt);
+          if (res['Result'] == 'true' || res['Result'] == true) {
+            final latest = res['settlement'];
+            if (latest is Map && mounted && orderProduc is Map) {
+              if (orderProduc['settlement']?['status'] != latest['status']) {
+                setState(() {
+                  orderProduc['settlement'] = latest;
+                });
+                pageRefresh();
+              }
+            }
+          }
+        });
+      }
+    } else {
+      _settlementPollTimer?.cancel();
+      _settlementPollTimer = null;
+    }
+  }
+
+  void _openSettlementSheet() {
+    final settlement = _getSettlementData();
+    if (settlement == null || _isSettlementSheetOpen) return;
+
+    final uidInt = int.tryParse(uid) ?? 0;
+    final orderIdInt = int.tryParse(orderid) ?? 0;
+    if (uidInt <= 0 || orderIdInt <= 0) return;
+
+    _isSettlementSheetOpen = true;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => CustomerSettlementSheet(
+        orderId: orderIdInt,
+        uid: uidInt,
+        initialSettlement: settlement,
+        onPayOnlinePressed: () {
+          Get.back();
+          _startSettlementOnlinePayment();
+        },
+        onSettled: () {
+          pageRefresh();
+        },
+      ),
+    ).whenComplete(() {
+      _isSettlementSheetOpen = false;
+    });
+  }
+
+  Future<void> _startSettlementOnlinePayment() async {
+    final uidInt = int.tryParse(uid) ?? 0;
+    final orderIdInt = int.tryParse(orderid) ?? 0;
+    if (uidInt <= 0 || orderIdInt <= 0) return;
+
+    final res = await SettlementApiService.createPayOnline(
+      uid: uidInt,
+      orderId: orderIdInt,
+    );
+
+    if (res['Result'] == 'true' || res['Result'] == true) {
+      final keyId = res['key_id']?.toString() ?? '';
+      final razorpayOrderId = res['razorpay_order_id']?.toString() ?? '';
+      final amountPaise = res['amount_paise']?.toString() ?? '0';
+      final currency = res['currency']?.toString() ?? 'INR';
+
+      final userLogin = getdata.read("UserLogin") ?? {};
+      final mobile = userLogin["mobile"]?.toString() ?? '';
+      final name = userLogin["name"]?.toString() ?? 'Customer';
+
+      isSettlementPaymentFlow = true;
+      _settlementRazorpayOrderId = razorpayOrderId;
+
+      try {
+        razorPayClass.openCheckout(
+          key: keyId,
+          amount: amountPaise,
+          number: mobile,
+          name: name,
+          orderId: razorpayOrderId,
+          currency: currency,
+          description: "Trip Settlement for Order #$orderid",
+        );
+      } catch (e) {
+        isSettlementPaymentFlow = false;
+        ApiWrapper.showToastMessage("Could not open payment checkout: $e");
+      }
+    } else {
+      final code = res['code']?.toString();
+      final msg = SettlementApiService.friendlyErrorMessage(code, res['ResponseMsg']?.toString());
+      ApiWrapper.showToastMessage(msg);
+    }
+  }
+
+  Future<void> _verifySettlementPayment({
+    required String paymentId,
+    required String razorpayOrderId,
+    required String signature,
+  }) async {
+    final uidInt = int.tryParse(uid) ?? 0;
+    final orderIdInt = int.tryParse(orderid) ?? 0;
+
+    final res = await SettlementApiService.verifyPayOnline(
+      uid: uidInt,
+      orderId: orderIdInt,
+      paymentId: paymentId,
+      razorpayOrderId: razorpayOrderId,
+      signature: signature,
+    );
+
+    if (res['Result'] == 'true' || res['Result'] == true) {
+      ApiWrapper.showToastMessage("Payment received and settled successfully.".tr);
+      if (res['settlement'] is Map && orderProduc is Map) {
+        orderProduc['settlement'] = res['settlement'];
+      }
+      pageRefresh();
+    } else {
+      final code = res['code']?.toString();
+      if (code == 'PAID_BUT_STATE_CHANGED') {
+        Get.dialog(
+          Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Colors.amber, size: 40),
+                  const SizedBox(height: 14),
+                  Text(
+                    "Payment Recorded".tr,
+                    style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 17),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Payment was received, but the trip state was updated meanwhile. Support will reconcile your payment. Please do NOT retry payment.".tr,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 13, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 18),
+                  ElevatedButton(
+                    onPressed: () {
+                      Get.back();
+                      pageRefresh();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: linercolor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text("OK".tr, style: const TextStyle(color: Colors.white, fontFamily: "Gilroy_Bold")),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      } else {
+        final msg = SettlementApiService.friendlyErrorMessage(code, res['ResponseMsg']?.toString());
+        ApiWrapper.showToastMessage(msg);
+      }
+    }
+  }
+
+  void _showReportProblemDialog() {
+    final reasonController = TextEditingController();
+    bool submitting = false;
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.report_problem_rounded, color: Colors.red, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "Report a Problem".tr,
+                          style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 16.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Explain what happened with this trip's payment. An admin will review it.".tr,
+                    style: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 12.5, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: reasonController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: "Enter details (min 3 characters)...".tr,
+                      hintStyle: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 12.5, color: Colors.grey.shade400),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: submitting ? null : () => Get.back(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: Text("Cancel".tr, style: const TextStyle(fontFamily: "Gilroy_Bold")),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: submitting
+                              ? null
+                              : () async {
+                                  final reason = reasonController.text.trim();
+                                  if (reason.length < 3) {
+                                    ApiWrapper.showToastMessage("Please enter at least 3 characters.".tr);
+                                    return;
+                                  }
+
+                                  setDialogState(() => submitting = true);
+                                  final uidInt = int.tryParse(uid) ?? 0;
+                                  final orderIdInt = int.tryParse(orderid) ?? 0;
+
+                                  final res = await SettlementApiService.dispute(
+                                    uid: uidInt,
+                                    orderId: orderIdInt,
+                                    reason: reason,
+                                  );
+
+                                  if (res['Result'] == 'true' || res['Result'] == true) {
+                                    Get.back();
+                                    ApiWrapper.showToastMessage(
+                                      res['ResponseMsg']?.toString() ?? "Problem reported. Admin will review it.".tr,
+                                    );
+                                    if (res['settlement'] is Map && orderProduc is Map) {
+                                      orderProduc['settlement'] = res['settlement'];
+                                    }
+                                    pageRefresh();
+                                  } else {
+                                    setDialogState(() => submitting = false);
+                                    final code = res['code']?.toString();
+                                    final msg = SettlementApiService.friendlyErrorMessage(code, res['ResponseMsg']?.toString());
+                                    ApiWrapper.showToastMessage(msg);
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: submitting
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Text("Submit Report".tr, style: const TextStyle(color: Colors.white, fontFamily: "Gilroy_Bold")),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
 }

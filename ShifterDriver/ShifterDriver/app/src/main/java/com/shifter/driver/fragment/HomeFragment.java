@@ -267,6 +267,14 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         // Initialize Vehicle Body Type selector on Home Screen
         setupHomeBodyTypeUI();
 
+        homeSettlementListener = data -> {
+            if (isAdded() && getActivity() != null) {
+                getActivity().runOnUiThread(this::checkPendingSettlements);
+            }
+        };
+        NodeSocketManager.getInstance().addSettlementUpdatedListener(homeSettlementListener);
+        checkPendingSettlements();
+
         return binding.getRoot();
     }
 
@@ -1103,6 +1111,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         setupMonthlyDriverUI();
         setupDailyDriverUI();
         setupHomeBodyTypeUI();
+        checkPendingSettlements();
     }
 
     /**
@@ -1511,7 +1520,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             updateVolumeButtonIcon();
         }
 
-
+        checkPendingSettlements();
     }
 
     @Override
@@ -1530,6 +1539,10 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         if (mandatoryBodyTypeDialog != null && mandatoryBodyTypeDialog.isShowing()) {
             mandatoryBodyTypeDialog.dismiss();
             mandatoryBodyTypeDialog = null;
+        }
+        if (homeSettlementListener != null) {
+            NodeSocketManager.getInstance().removeSettlementUpdatedListener(homeSettlementListener);
+            homeSettlementListener = null;
         }
         binding = null;
     }
@@ -2200,6 +2213,58 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             @Override
             public void onError(String message) {
                 Log.e("HomeFragment", "Failed to fetch driver queue: " + message);
+            }
+        });
+    }
+
+    private NodeSocketManager.SettlementUpdatedListener homeSettlementListener;
+
+    private void checkPendingSettlements() {
+        if (!isAdded() || getActivity() == null || binding == null || riderData == null) return;
+
+        com.shifter.driver.utility.SettlementDriverClient.fetchPending(requireContext(), riderData.getId(), new com.shifter.driver.utility.SettlementDriverClient.PendingSettlementsCallback() {
+            @Override
+            public void onSuccess(java.util.List<com.shifter.driver.model.SettlementView> settlements) {
+                if (!isAdded() || getActivity() == null || binding == null) return;
+                com.shifter.driver.model.SettlementView activePending = null;
+                if (settlements != null) {
+                    for (com.shifter.driver.model.SettlementView s : settlements) {
+                        if (s.isPending() || s.isDisputed()) {
+                            activePending = s;
+                            break;
+                        }
+                    }
+                }
+
+                if (activePending != null) {
+                    final com.shifter.driver.model.SettlementView finalSettlement = activePending;
+                    String curr = sessionManager.getStringData(com.shifter.driver.utility.SessionManager.currency);
+                    if (curr == null || curr.trim().isEmpty()) curr = "₹";
+                    double amount = 0.0;
+                    try {
+                        amount = Double.parseDouble(finalSettlement.getAmountDue());
+                    } catch (Exception ignored) {}
+                    String formattedAmount = curr + String.format(java.util.Locale.getDefault(), "%.2f", amount);
+
+                    binding.cardPendingSettlement.setVisibility(View.VISIBLE);
+                    binding.txtPendingSettlementTitle.setText("Payment Pending for Order #" + finalSettlement.getOrderId());
+                    binding.txtPendingSettlementDesc.setText("Tap to collect " + formattedAmount + ". New orders are paused after the grace period while a payment is pending.");
+
+                    binding.cardPendingSettlement.setOnClickListener(v -> {
+                        Intent intent = new Intent(getActivity(), com.shifter.driver.activity.TripPaymentActivity.class);
+                        intent.putExtra(com.shifter.driver.activity.TripPaymentActivity.EXTRA_ORDER_ID, String.valueOf(finalSettlement.getOrderId()));
+                        intent.putExtra(com.shifter.driver.activity.TripPaymentActivity.EXTRA_SETTLEMENT, finalSettlement);
+                        startActivity(intent);
+                    });
+                } else {
+                    binding.cardPendingSettlement.setVisibility(View.GONE);
+                }
+            }
+
+            @Override
+            public void onError(String code, String message) {
+                if (!isAdded() || getActivity() == null || binding == null) return;
+                binding.cardPendingSettlement.setVisibility(View.GONE);
             }
         });
     }
