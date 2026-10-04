@@ -16,14 +16,22 @@ function handleError(res, err, label) {
   return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
 }
 
-const num = (v) => Number(v);
+// Strict positive-integer id: a number or numeric string; anything else is null.
+const toId = (v) => {
+  if (typeof v !== "number" && typeof v !== "string") return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
 
 function customerAction(label, run) {
   return async (req, res) => {
     try {
       const { uid, order_id } = req.body || {};
-      if (!uid || !order_id) return fail(res, "VALIDATION", "uid and order_id are required");
-      return await run({ req, res, uid: num(uid), orderId: num(order_id) });
+      const uidN = toId(uid);
+      const orderId = toId(order_id);
+      if (!uidN || !orderId) return fail(res, "VALIDATION", "uid and order_id are required");
+      return await run({ req, res, uid: uidN, orderId });
     } catch (err) {
       return handleError(res, err, label);
     }
@@ -34,8 +42,10 @@ function driverAction(label, run) {
   return async (req, res) => {
     try {
       const { rider_id, order_id } = req.body || {};
-      if (!rider_id || !order_id) return fail(res, "VALIDATION", "rider_id and order_id are required");
-      return await run({ req, res, riderId: num(rider_id), orderId: num(order_id) });
+      const riderId = toId(rider_id);
+      const orderId = toId(order_id);
+      if (!riderId || !orderId) return fail(res, "VALIDATION", "rider_id and order_id are required");
+      return await run({ req, res, riderId, orderId });
     } catch (err) {
       return handleError(res, err, label);
     }

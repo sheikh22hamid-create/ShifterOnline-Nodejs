@@ -75,6 +75,65 @@ describe("settlementController (customer)", () => {
   });
 });
 
+describe("settlementController (id validation and remaining paths)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it.each([
+    [{ uid: "abc", order_id: 5 }],
+    [{ uid: 7, order_id: "x" }],
+    [{ uid: -1, order_id: 5 }],
+    [{ uid: 7, order_id: 1.5 }],
+    [{ uid: {}, order_id: 5 }],
+  ])("customer state rejects garbage ids %j without calling the service", async (b) => {
+    const r = res();
+    await c.customerState({ body: b }, r);
+    expect(body(r)).toMatchObject({ ResponseCode: "401", Result: "false", code: "VALIDATION" });
+    expect(svc.getViewForParty).not.toHaveBeenCalled();
+  });
+
+  it("numeric strings still work and reach the service as numbers", async () => {
+    svc.getViewForParty.mockResolvedValue(null);
+    const r = res();
+    await c.customerState({ body: { uid: "7", order_id: "5" } }, r);
+    expect(body(r)).toMatchObject({ ResponseCode: "200" });
+    expect(svc.getViewForParty).toHaveBeenCalledWith({ orderId: 5, party: "customer", partyId: 7 });
+  });
+
+  it("driver handlers reject garbage ids without calling the service", async () => {
+    const r = res();
+    await c.driverReceived({ body: { rider_id: "abc", order_id: 5 } }, r);
+    expect(body(r)).toMatchObject({ ResponseCode: "401", code: "VALIDATION" });
+    const r2 = res();
+    await c.driverState({ body: { rider_id: 9, order_id: 2.5 } }, r2);
+    expect(body(r2)).toMatchObject({ ResponseCode: "401", code: "VALIDATION" });
+    expect(svc.markCashReceived).not.toHaveBeenCalled();
+    expect(svc.getViewForParty).not.toHaveBeenCalled();
+  });
+
+  it("customer choose-driver success returns the public view", async () => {
+    svc.chooseDriverPayment.mockResolvedValue({ settlement: { order_id: 5, status: "awaiting_driver" } });
+    const r = res();
+    await c.customerChooseDriver({ body: { uid: 7, order_id: 5 } }, r);
+    expect(svc.chooseDriverPayment).toHaveBeenCalledWith({ orderId: 5, uid: 7 });
+    expect(body(r)).toMatchObject({ ResponseCode: "200", settlement: { status: "awaiting_driver" } });
+  });
+
+  it("customer dispute uses actor customer with the posted uid", async () => {
+    svc.raiseDispute.mockResolvedValue({ settlement: { order_id: 5, status: "disputed" } });
+    const r = res();
+    await c.customerDispute({ body: { uid: 7, order_id: 5, reason: "paid" } }, r);
+    expect(svc.raiseDispute).toHaveBeenCalledWith({ orderId: 5, actor: "customer", actorId: 7, reason: "paid" });
+  });
+
+  it("driver state success", async () => {
+    svc.getViewForParty.mockResolvedValue({ order_id: 5, status: "pending" });
+    const r = res();
+    await c.driverState({ body: { rider_id: 9, order_id: 5 } }, r);
+    expect(svc.getViewForParty).toHaveBeenCalledWith({ orderId: 5, party: "driver", partyId: 9 });
+    expect(body(r)).toMatchObject({ ResponseCode: "200", settlement: { status: "pending" } });
+  });
+});
+
 describe("settlementController (driver)", () => {
   beforeEach(() => jest.clearAllMocks());
 
