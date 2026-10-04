@@ -1,7 +1,7 @@
 jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
   $queryRaw: jest.fn(),
-  order_settlement: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+  order_settlement: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   order_settlement_event: { create: jest.fn() },
   tbl_wallet_history: { findFirst: jest.fn(), create: jest.fn() },
   tbl_rider: { update: jest.fn() },
@@ -34,6 +34,7 @@ function setup(current) {
   prisma.$queryRaw.mockResolvedValue([{ id: current.id }]);
   prisma.order_settlement.findUnique.mockResolvedValue(current);
   prisma.order_settlement.update.mockImplementation(({ data }) => Promise.resolve({ ...current, ...data }));
+  prisma.order_settlement.updateMany.mockResolvedValue({ count: 1 });
   prisma.order_settlement_event.create.mockResolvedValue({});
   prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
   prisma.tbl_wallet_history.create.mockResolvedValue({});
@@ -458,6 +459,12 @@ describe("settlementService.adminResolve", () => {
 });
 
 describe("settlementService.createOnlineOrder", () => {
+  const ORIGINAL_KEY_ID = process.env.RAZORPAY_KEY_ID;
+  afterEach(() => {
+    if (ORIGINAL_KEY_ID === undefined) delete process.env.RAZORPAY_KEY_ID;
+    else process.env.RAZORPAY_KEY_ID = ORIGINAL_KEY_ID;
+  });
+
   it("creates a Razorpay order for the amount due and remembers it", async () => {
     setup(row({ amount_due: 85 }));
     createRazorpayOrder.mockResolvedValue({ ok: true, id: "order_A", amountPaise: 8500, currency: "INR" });
@@ -465,9 +472,38 @@ describe("settlementService.createOnlineOrder", () => {
     const out = await svc.createOnlineOrder({ orderId: 50, uid: 7 });
     expect(createRazorpayOrder).toHaveBeenCalledWith({ amountRupees: 85, receipt: "settle_50" });
     expect(out).toEqual({ razorpay_order_id: "order_A", amount_paise: 8500, currency: "INR", key_id: "rzp_key" });
-    expect(prisma.order_settlement.update).toHaveBeenCalledWith({
-      where: { id: 1 }, data: expect.objectContaining({ razorpay_order_id: "order_A", customer_choice: "online" }),
+    expect(prisma.order_settlement.updateMany).toHaveBeenCalledWith({
+      where: { id: 1, status: "pending", razorpay_order_id: null },
+      data: expect.objectContaining({ razorpay_order_id: "order_A", customer_choice: "online" }),
     });
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ settlement_id: 1, actor: "customer", note: "Chose to pay online" }),
+    });
+  });
+
+  it("loses the race to a concurrent call: returns the winner order, writes no audit event", async () => {
+    const pending = row({ amount_due: 85 });
+    setup(pending);
+    createRazorpayOrder.mockResolvedValue({ ok: true, id: "order_L", amountPaise: 8500, currency: "INR" });
+    prisma.order_settlement.updateMany.mockResolvedValue({ count: 0 });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...pending, razorpay_order_id: "order_W" });
+    const out = await svc.createOnlineOrder({ orderId: 50, uid: 7 });
+    expect(out).toMatchObject({ razorpay_order_id: "order_W", amount_paise: 8500 });
+    expect(prisma.order_settlement_event.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the settlement left pending while the order was being created", async () => {
+    const pending = row({ amount_due: 85 });
+    setup(pending);
+    createRazorpayOrder.mockResolvedValue({ ok: true, id: "order_L", amountPaise: 8500, currency: "INR" });
+    prisma.order_settlement.updateMany.mockResolvedValue({ count: 0 });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...pending, status: "cash_received" });
+    await expect(svc.createOnlineOrder({ orderId: 50, uid: 7 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(prisma.order_settlement_event.create).not.toHaveBeenCalled();
   });
 
   it("reuses the existing Razorpay order instead of creating an orphan", async () => {
@@ -543,5 +579,18 @@ describe("settlementService.settleOnline", () => {
       .mockResolvedValueOnce({ ...pending, status: "cash_received", wallet_effect: "cash" }); // locked read
     await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the stored Razorpay order changed between the pre-check and the lock", async () => {
+    const pending = row({ razorpay_order_id: "order_A" });
+    setup(pending);
+    verifyRazorpayPayment.mockResolvedValue({ ok: true, payment: {} });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...pending, razorpay_order_id: "order_B" });
+    await expect(svc.settleOnline(pay)).rejects.toMatchObject({ code: "PAYMENT_MISMATCH" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
   });
 });

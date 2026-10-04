@@ -361,18 +361,30 @@ async function createOnlineOrder({ orderId, uid }) {
   const amountDue = Number(s.amount_due);
   let razorpayOrderId = s.razorpay_order_id;
   let amountPaise = Math.round(amountDue * 100);
+  // amount_due is immutable after createForCompletedOrder, so a stored razorpay_order_id always
+  // matches it and can be reused. If that ever changes, the Razorpay order must be recreated.
   if (!razorpayOrderId) {
     const created = await createRazorpayOrder({ amountRupees: amountDue, receipt: `settle_${orderId}` });
     if (!created.ok) throw new SettlementError("GATEWAY_ERROR", created.reason);
-    razorpayOrderId = created.id;
-    amountPaise = created.amountPaise;
-    await prisma.order_settlement.update({
-      where: { id: s.id },
-      data: { razorpay_order_id: razorpayOrderId, customer_choice: "online", updated_at: new Date() },
+    // Conditional write: a concurrent first call (or a state change) must not be overwritten.
+    const won = await prisma.order_settlement.updateMany({
+      where: { id: s.id, status: STATUS.PENDING, razorpay_order_id: null },
+      data: { razorpay_order_id: created.id, customer_choice: "online", updated_at: new Date() },
     });
-    await prisma.order_settlement_event.create({
-      data: { settlement_id: s.id, actor: "customer", actor_id: uid, from_status: s.status, to_status: s.status, note: "Chose to pay online", created_at: new Date() },
-    });
+    if (won.count === 1) {
+      razorpayOrderId = created.id;
+      amountPaise = created.amountPaise;
+      await prisma.order_settlement_event.create({
+        data: { settlement_id: s.id, actor: "customer", actor_id: uid, from_status: s.status, to_status: s.status, note: "Chose to pay online", created_at: new Date() },
+      });
+    } else {
+      const current = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+      if (!current || current.status !== STATUS.PENDING) {
+        throw new SettlementError("INVALID_STATE", stateMessage(current?.status));
+      }
+      razorpayOrderId = current.razorpay_order_id;
+      amountPaise = Math.round(Number(current.amount_due) * 100);
+    }
   }
   return { razorpay_order_id: razorpayOrderId, amount_paise: amountPaise, currency: "INR", key_id: process.env.RAZORPAY_KEY_ID };
 }
@@ -398,6 +410,9 @@ async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signatur
     if (s.status === STATUS.PAID_ONLINE && s.razorpay_payment_id === paymentId) return { settlement: s, alreadyDone: true };
     // Re-checked under the lock: the driver may have confirmed cash while the customer was paying.
     if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
+    if (s.razorpay_order_id !== razorpayOrderId) {
+      throw new SettlementError("PAYMENT_MISMATCH", "This payment does not belong to this order.");
+    }
     const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.ONLINE);
     notifications.push(...n);
     const now = new Date();
