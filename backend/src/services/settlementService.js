@@ -107,6 +107,9 @@ function effectOps(effect, s) {
   return [];
 }
 
+// PRECONDITION: `s` must be the settlement row read after taking the FOR UPDATE
+// lock (lockByOrderId/lockById) in the same transaction. The idempotency check
+// below is find-then-create and is only safe under that lock.
 async function moveWallet(tx, s, ops, tag, notifications) {
   let i = 0;
   for (const op of ops) {
@@ -133,6 +136,9 @@ async function moveWallet(tx, s, ops, tag, notifications) {
   }
 }
 
+// PRECONDITION: `s` must be the settlement row read after taking the FOR UPDATE
+// lock (lockByOrderId/lockById) inside the same transaction as `tx`; otherwise
+// the find-then-create idempotency in moveWallet can double-apply.
 // Moves the driver wallet from the effect currently applied to the target one
 // by reversing the old effect, then applying the new. Returns the new
 // effect_seq the caller must persist together with wallet_effect.
@@ -180,8 +186,12 @@ async function runTransition(work) {
   const notifications = [];
   const result = await prisma.$transaction((tx) => work(tx, notifications));
   for (const n of notifications) {
-    Promise.resolve(walletNotifier.notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark }))
-      .catch((err) => logger.error(`settlement wallet notify failed for rider ${n.riderId}:`, err));
+    try {
+      Promise.resolve(walletNotifier.notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark }))
+        .catch((err) => logger.error(`settlement wallet notify failed for rider ${n.riderId}:`, err));
+    } catch (err) {
+      logger.error(`settlement wallet notify failed for rider ${n.riderId}:`, err);
+    }
   }
   if (!result.alreadyDone) emitSettlementUpdated(result.settlement);
   return result;
@@ -193,30 +203,34 @@ async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare,
   const now = new Date();
   let created;
   try {
-    created = await prisma.order_settlement.create({
-      data: {
-        order_id: orderId,
-        uid,
-        rid: riderId,
-        amount_due: round2(amountDue),
-        fare: round2(fare),
-        commission_amount: round2(commissionAmount),
-        per_trip_charge: round2(perTripCharge),
-        prepaid_amount: round2(prepaidAmount),
-        status: STATUS.PENDING,
-        wallet_effect: EFFECT.NONE,
-        pending_since: now,
-        created_at: now,
-        updated_at: now,
-      },
+    // Create + audit event commit together so a retry can never leave a settlement without its event.
+    created = await prisma.$transaction(async (tx) => {
+      const row = await tx.order_settlement.create({
+        data: {
+          order_id: orderId,
+          uid,
+          rid: riderId,
+          amount_due: round2(amountDue),
+          fare: round2(fare),
+          commission_amount: round2(commissionAmount),
+          per_trip_charge: round2(perTripCharge),
+          prepaid_amount: round2(prepaidAmount),
+          status: STATUS.PENDING,
+          wallet_effect: EFFECT.NONE,
+          pending_since: now,
+          created_at: now,
+          updated_at: now,
+        },
+      });
+      await tx.order_settlement_event.create({
+        data: { settlement_id: row.id, actor: "system", from_status: null, to_status: STATUS.PENDING, note: "Ride completed; awaiting payment", created_at: now },
+      });
+      return row;
     });
   } catch (err) {
     if (err?.code === "P2002") return prisma.order_settlement.findUnique({ where: { order_id: orderId } });
     throw err;
   }
-  await prisma.order_settlement_event.create({
-    data: { settlement_id: created.id, actor: "system", from_status: null, to_status: STATUS.PENDING, note: "Ride completed; awaiting payment", created_at: now },
-  });
   emitSettlementUpdated(created);
   return created;
 }

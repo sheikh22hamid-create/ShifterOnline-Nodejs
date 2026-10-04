@@ -14,6 +14,7 @@ jest.mock("../../sockets/socketServer", () => ({ getIO: () => ({ to: () => ({ em
 
 const prisma = require("../../config/db");
 const walletNotifier = require("../walletNotifier");
+const logger = require("../../utils/logger");
 const svc = require("../settlementService");
 
 const row = (o = {}) => ({
@@ -60,6 +61,7 @@ describe("settlementService.createForCompletedOrder", () => {
 
   it("creates a pending settlement with an audit event and notifies the order room", async () => {
     jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
     prisma.order_settlement.findUnique.mockResolvedValue(null);
     prisma.order_settlement.create.mockImplementation(({ data }) => Promise.resolve({ id: 3, ...data }));
     prisma.order_settlement_event.create.mockResolvedValue({});
@@ -77,6 +79,7 @@ describe("settlementService.createForCompletedOrder", () => {
     });
     expect(mockEmit).toHaveBeenCalledWith("settlement:updated", expect.objectContaining({ order_id: 50, status: "pending", amount_due: 85 }));
     expect(created.id).toBe(3);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("is idempotent: an existing settlement is returned untouched", async () => {
@@ -91,8 +94,11 @@ describe("settlementService.createForCompletedOrder", () => {
     jest.clearAllMocks();
     prisma.order_settlement.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(row({ id: 8 }));
     prisma.order_settlement.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
     const result = await svc.createForCompletedOrder(payload);
     expect(result.id).toBe(8);
+    expect(prisma.order_settlement_event.create).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
   });
 });
 
@@ -156,5 +162,88 @@ describe("settlementService.changeWalletEffect", () => {
     await svc.changeWalletEffect(prisma, current, "cash");
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("settlementService.changeWalletEffect advance credit", () => {
+  it("reverses a cash CREDIT as a debit, then applies the online credit", async () => {
+    const current = row({ wallet_effect: "cash", effect_seq: 1, commission_amount: 10, prepaid_amount: 15 });
+    setup(current);
+    await svc.changeWalletEffect(prisma, current, "online");
+    const types = prisma.tbl_wallet_history.create.mock.calls.map(([a]) => [a.data.type, a.data.amount]);
+    expect(types).toEqual([["debit", 5], ["credit", 90]]);
+    expect(prisma.tbl_rider.update.mock.calls.map(([a]) => a.data.wallet_balance)).toEqual([{ decrement: 5 }, { increment: 90 }]);
+  });
+});
+
+describe("settlementService locks", () => {
+  it("lockByOrderId / lockById return null when no row is locked", async () => {
+    jest.clearAllMocks();
+    prisma.$queryRaw.mockResolvedValue([]);
+    expect(await svc.lockByOrderId(prisma, 50)).toBeNull();
+    expect(await svc.lockById(prisma, 1)).toBeNull();
+    expect(prisma.order_settlement.findUnique).not.toHaveBeenCalled();
+  });
+  it("lockByOrderId / lockById return the findUnique row otherwise", async () => {
+    jest.clearAllMocks();
+    prisma.$queryRaw.mockResolvedValue([{ id: 1 }]);
+    prisma.order_settlement.findUnique.mockResolvedValue(row());
+    expect((await svc.lockByOrderId(prisma, 50)).id).toBe(1);
+    expect((await svc.lockById(prisma, 1)).id).toBe(1);
+    expect(prisma.order_settlement.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+  });
+});
+
+describe("settlementService.runTransition", () => {
+  const notif = { riderId: 9, type: "debit", amount: 10, remark: "r" };
+  const settlement = row();
+  const flush = () => new Promise((r) => setImmediate(r));
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEmit.mockReset();
+    walletNotifier.notifyDriverWalletTransaction.mockReset().mockResolvedValue(undefined);
+    prisma.$transaction.mockReset();
+  });
+
+  it("notifies and emits only after the transaction callback resolved", async () => {
+    const order = [];
+    prisma.$transaction.mockImplementation(async (cb) => { const r = await cb(prisma); order.push("committed"); return r; });
+    walletNotifier.notifyDriverWalletTransaction.mockImplementation(() => { order.push("notify"); return Promise.resolve(); });
+    mockEmit.mockImplementation(() => order.push("emit"));
+    await svc.runTransition(async (tx, notifications) => { order.push("work"); notifications.push(notif); return { settlement }; });
+    expect(order).toEqual(["work", "committed", "notify", "emit"]);
+    expect(walletNotifier.notifyDriverWalletTransaction).toHaveBeenCalledWith(9, { type: "debit", amount: 10, remark: "r" });
+  });
+
+  it("never notifies or emits when the transaction rejects", async () => {
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    await expect(svc.runTransition(async (tx, notifications) => { notifications.push(notif); throw new Error("boom"); })).rejects.toThrow("boom");
+    expect(walletNotifier.notifyDriverWalletTransaction).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
+  });
+
+  it("a throwing socket emit does not fail the transition", async () => {
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    mockEmit.mockImplementationOnce(() => { throw new Error("socket down"); });
+    const result = await svc.runTransition(async () => ({ settlement }));
+    expect(result.settlement).toBe(settlement);
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("a synchronously throwing or rejecting notifier does not fail the transition", async () => {
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    walletNotifier.notifyDriverWalletTransaction
+      .mockImplementationOnce(() => { throw new Error("sync"); })
+      .mockImplementationOnce(() => Promise.reject(new Error("async")));
+    const result = await svc.runTransition(async (tx, notifications) => { notifications.push(notif, notif); return { settlement }; });
+    await flush();
+    expect(result.settlement).toBe(settlement);
+    expect(logger.error).toHaveBeenCalledTimes(2);
+  });
+
+  it("alreadyDone does not emit", async () => {
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    await svc.runTransition(async () => ({ settlement, alreadyDone: true }));
+    expect(mockEmit).not.toHaveBeenCalled();
   });
 });
