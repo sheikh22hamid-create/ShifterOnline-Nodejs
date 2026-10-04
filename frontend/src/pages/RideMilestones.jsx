@@ -244,7 +244,7 @@ function AmountRewardFormModal({ open, reward, onClose, onSaved }) {
 
       <div className="mb-3">
         <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="reward-min-amount">
-          Minimum Ride Amount (₹)
+          Total Ride Spend Required (₹)
         </label>
         <div className="relative">
           <span className="absolute left-3 top-2.5 text-[13px] font-medium text-gray-400">₹</span>
@@ -261,7 +261,7 @@ function AmountRewardFormModal({ open, reward, onClose, onSaved }) {
           />
         </div>
         <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-          Customer will automatically get the reward plan when their ride fare equals or exceeds this amount.
+          Customer will get the reward plan once their total completed ride spend reaches this amount (single ride of ₹{minAmount || '500'} or multiple smaller rides combined).
         </p>
       </div>
 
@@ -651,7 +651,7 @@ export default function RideMilestones() {
             <div className="flex items-center gap-2.5 text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
               <Sparkles size={16} className="text-amber-500" />
               <span>
-                Customers who complete a ride of at least the threshold amount will instantly receive the chosen plan for free. You can adjust the threshold and max customer limit anytime.
+                Customers whose total completed ride spending reaches the threshold amount (single ride or multiple smaller rides combined) will instantly receive the chosen plan for free. You can adjust the amount threshold and max customer limit anytime.
               </span>
             </div>
           </div>
@@ -682,7 +682,7 @@ export default function RideMilestones() {
                 <thead>
                   <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
                     <th className="px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
-                      Min Ride Amount
+                      Total Spend Required
                     </th>
                     <th className="px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                       Reward Plan

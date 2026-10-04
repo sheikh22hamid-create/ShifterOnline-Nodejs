@@ -443,7 +443,7 @@ async function notifyAmountRewardWhatsApp({ phone, customerName, planName, minAm
   const msg =
     `Badhai ho! 🎉 *Milestone Reward Unlocked*\n\n` +
     `Namaste ${customerName || "Customer"}, 👋\n\n` +
-    `Aapne *₹${minAmount}* ya usse adhik ki ride safaltapoorvak poori ki hai! Shifter Online ki taraf se aapko reward ke roop me mila hai:\n\n` +
+    `Aapne safaltapoorvak total *₹${minAmount}* ki rides poori ki hai! Shifter Online ki taraf se aapko reward ke roop me mila hai:\n\n` +
     `👑 *Plan*: ${planName}\n` +
     `⏱️ *Validity*: ${validityDays || "1 Mahina (30 Din)"}\n` +
     `💰 *Price*: ₹0 (Bilkul FREE)\n` +

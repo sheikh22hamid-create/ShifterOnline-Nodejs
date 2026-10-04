@@ -367,25 +367,43 @@ async function deleteAmountReward({ id }) {
   return { success: true };
 }
 
-/**
- * Called fire-and-forget from tripLifecycle on every completed customer order.
- * Evaluates active amount-based reward rules against the completed order total.
- * If user qualifies and tier quota is available, awards the plan and sends notification.
- */
 async function applyRideAmountRewardsIfAny({ uid, orderId, orderTotal }) {
   if (!uid) return [];
-  const total = Number(orderTotal || 0);
-  if (total <= 0) return [];
 
-  const tiers = await prisma.tbl_ride_amount_reward.findMany({
+  const tiers = (await prisma.tbl_ride_amount_reward.findMany({
     where: { status: true },
     orderBy: { min_amount: "asc" },
+  })) || [];
+  if (!Array.isArray(tiers) || tiers.length === 0) return [];
+
+  // Fetch all completed orders for this customer to calculate cumulative spend
+  const completedOrders = await prisma.pkg_order.findMany({
+    where: { uid: Number(uid), o_status: "Completed" },
+    select: { id: true, grand_total: true, total_dcharge: true },
   });
+
+  const currentTotal = Number(orderTotal || 0);
+  let cumulativeSpent = 0;
+  let currentOrderIncluded = false;
+
+  for (const o of completedOrders) {
+    if (orderId && o.id === Number(orderId)) {
+      currentOrderIncluded = true;
+      cumulativeSpent += Number(currentTotal || o.grand_total || o.total_dcharge || 0);
+    } else {
+      cumulativeSpent += Number(o.grand_total || o.total_dcharge || 0);
+    }
+  }
+  if (!currentOrderIncluded && currentTotal > 0) {
+    cumulativeSpent += currentTotal;
+  }
+
+  if (cumulativeSpent <= 0) return [];
 
   const qualifiedTiers = tiers.filter((t) => {
     const minAmt = Number(t.min_amount);
     const quotaAvailable = t.max_customers === null || t.max_customers === 0 || t.claimed_count < t.max_customers;
-    return total >= minAmt && quotaAvailable;
+    return cumulativeSpent >= minAmt && quotaAvailable;
   });
 
   if (qualifiedTiers.length === 0) return [];
@@ -497,14 +515,25 @@ async function getActiveAmountRewardForCustomer({ uid }) {
     });
     const plansById = new Map(plans.map((p) => [p.id, p]));
 
-    // Check user claimed history if uid is provided
+    // Check user claimed history and cumulative spend if uid is provided
     let claimedRewardIds = new Set();
+    let currentSpend = 0;
     if (uid) {
-      const claimedRows = await prisma.tbl_ride_amount_reward_applied.findMany({
-        where: { user_id: Number(uid), status: "applied" },
-        select: { reward_id: true },
-      });
+      const [claimedRows, completedOrders] = await Promise.all([
+        prisma.tbl_ride_amount_reward_applied.findMany({
+          where: { user_id: Number(uid), status: "applied" },
+          select: { reward_id: true },
+        }),
+        prisma.pkg_order.findMany({
+          where: { uid: Number(uid), o_status: "Completed" },
+          select: { grand_total: true, total_dcharge: true },
+        }),
+      ]);
       claimedRewardIds = new Set(claimedRows.map((r) => r.reward_id));
+      currentSpend = completedOrders.reduce(
+        (sum, o) => sum + Number(o.grand_total || o.total_dcharge || 0),
+        0
+      );
     }
 
     // Find the first rule that has quota remaining and not yet claimed by this user
@@ -536,6 +565,9 @@ async function getActiveAmountRewardForCustomer({ uid }) {
     const maxCust = rule.max_customers ? Number(rule.max_customers) : null;
     const claimed = Number(rule.claimed_count || 0);
     const remainingSpots = maxCust ? Math.max(0, maxCust - claimed) : null;
+    const roundedSpend = Math.round(currentSpend);
+    const remainingSpend = Math.max(0, minAmt - roundedSpend);
+    const progressPercent = Math.min(100, Math.round((currentSpend / (minAmt || 1)) * 100));
 
     const benefits = [];
     if (plan.discount_enabled && Number(plan.discount_percent) > 0) {
@@ -579,11 +611,16 @@ async function getActiveAmountRewardForCustomer({ uid }) {
       max_customers: maxCust,
       claimed_count: claimed,
       remaining_spots: remainingSpots,
+      current_spend: roundedSpend,
+      remaining_spend: remainingSpend,
+      progress_percent: progressPercent,
       is_claimed: isClaimed,
       banner_title: isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone 🎁",
       banner_desc: isClaimed
-        ? `You unlocked the ${plan.plan_name} on your ₹${minAmt}+ ride!`
-        : `Book a ride of ₹${minAmt} or more & get ${plan.plan_name} completely FREE!`,
+        ? `You unlocked ${plan.plan_name} with your completed rides!`
+        : (roundedSpend > 0
+            ? `₹${roundedSpend} / ₹${minAmt} completed — Only ₹${remainingSpend} more to get ${plan.plan_name} FREE!`
+            : `Complete ₹${minAmt} total in rides (single or multiple) & get ${plan.plan_name} completely FREE!`),
       urgency_tag: maxCust ? (remainingSpots > 0 ? `Only ${remainingSpots} spots left!` : "Offer limit reached") : null,
     };
   } catch (err) {

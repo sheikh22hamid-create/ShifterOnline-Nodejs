@@ -311,15 +311,22 @@ describe("rewardPlanService.applyRideAmountRewardsIfAny", () => {
     prisma.$transaction.mockImplementation((cb) => cb(prisma));
   });
 
-  it("does nothing when order total is 0 or less", async () => {
-    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 0 });
-    expect(results).toEqual([]);
-    expect(prisma.tbl_ride_amount_reward.findMany).not.toHaveBeenCalled();
-  });
-
-  it("does nothing when order total does not meet threshold", async () => {
+  it("does nothing when cumulative spent is 0 or less", async () => {
     prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
       { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 0, status: true },
+    ]);
+    prisma.pkg_order.findMany.mockResolvedValue([]);
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 0 });
+    expect(results).toEqual([]);
+    expect(prisma.tbl_ride_amount_reward_applied.create).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when cumulative total does not meet threshold", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 0, status: true },
+    ]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 101, grand_total: 450, total_dcharge: 450 },
     ]);
     const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 450 });
     expect(results).toEqual([]);
@@ -330,14 +337,20 @@ describe("rewardPlanService.applyRideAmountRewardsIfAny", () => {
     prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
       { id: 1, min_amount: 500, plan_id: 3, max_customers: 10, claimed_count: 10, status: true },
     ]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 101, grand_total: 600, total_dcharge: 600 },
+    ]);
     const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 101, orderTotal: 600 });
     expect(results).toEqual([]);
     expect(prisma.tbl_ride_amount_reward_applied.create).not.toHaveBeenCalled();
   });
 
-  it("activates the plan and notifies customer when qualifying ride completes", async () => {
+  it("activates the plan and notifies customer when single qualifying ride completes", async () => {
     prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
       { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 5, status: true },
+    ]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 101, grand_total: 750, total_dcharge: 750 },
     ]);
     prisma.tbl_ride_amount_reward_applied.create.mockResolvedValue({ id: 99 });
     prisma.tbl_ride_amount_reward.update.mockResolvedValue({});
@@ -365,6 +378,37 @@ describe("rewardPlanService.applyRideAmountRewardsIfAny", () => {
       expect.stringContaining("30 din")
     );
   });
+
+  it("activates the plan when multiple smaller rides cumulatively reach the threshold", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 0, status: true },
+    ]);
+    // Customer has 2 previous completed rides (150 + 200 = 350) and current ride is 150 -> Total = 500
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 91, grand_total: 150, total_dcharge: 150 },
+      { id: 92, grand_total: 200, total_dcharge: 200 },
+      { id: 93, grand_total: 150, total_dcharge: 150 },
+    ]);
+    prisma.tbl_ride_amount_reward_applied.create.mockResolvedValue({ id: 100 });
+    prisma.tbl_ride_amount_reward.update.mockResolvedValue({});
+    prisma.tbl_user_plan_subscription.findFirst.mockResolvedValue(null);
+    prisma.tbl_premium_plan.findFirst.mockResolvedValue({
+      id: 3, plan_name: "Premium Silver", plan_for: "USER", status: true, validity_days: 30,
+      lifetime_enabled: false, min_ride_guarantee_enabled: false, wallet_bonus_enabled: false,
+    });
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 9, fcm_token: "token-user-9" });
+    prisma.tbl_user_plan_subscription.updateMany.mockResolvedValue({ count: 0 });
+    prisma.tbl_user_plan_subscription.create.mockResolvedValue({ id: 89 });
+
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 93, orderTotal: 150 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].skipped).toBe(false);
+    expect(prisma.tbl_ride_amount_reward.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { claimed_count: { increment: 1 } },
+    });
+  });
 });
 
 describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
@@ -378,7 +422,7 @@ describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
     expect(res.enabled).toBe(false);
   });
 
-  it("returns formatted offer with urgency and remaining spots", async () => {
+  it("returns formatted offer with cumulative spend progress and remaining spots", async () => {
     prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
       { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 10, status: true },
     ]);
@@ -386,6 +430,9 @@ describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
       { id: 3, plan_name: "Gold Plan", description: "All benefits free", status: true, validity_days: 30, lifetime_enabled: false },
     ]);
     prisma.tbl_ride_amount_reward_applied.findMany.mockResolvedValue([]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { grand_total: 200, total_dcharge: 200 },
+    ]);
 
     const res = await rewardPlanService.getActiveAmountRewardForCustomer({ uid: 9 });
 
@@ -394,6 +441,9 @@ describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
     expect(res.plan_name).toBe("Gold Plan");
     expect(res.max_customers).toBe(50);
     expect(res.remaining_spots).toBe(40);
+    expect(res.current_spend).toBe(200);
+    expect(res.remaining_spend).toBe(300);
+    expect(res.progress_percent).toBe(40);
     expect(res.is_claimed).toBe(false);
   });
 });

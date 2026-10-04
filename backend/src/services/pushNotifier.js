@@ -266,12 +266,12 @@ async function notifyRewardPlanAssigned(fcmToken, planName) {
   );
 }
 
-/** Fired when customer completes a ride exceeding the admin-configured ride amount reward threshold */
+/** Fired when customer reaches the admin-configured cumulative ride amount reward threshold */
 async function notifyAmountRewardPlanAssigned(fcmToken, planName, minAmount, validityText = "1 mahine (30 din)") {
   return sendCustomerPush(
     fcmToken,
     "🎉 Milestone Reward Unlocked!",
-    `Badhai ho! ₹${minAmount}+ ki ride complete karne par aapko ${validityText} ke liye ${planName} plan bilkul FREE mila hai!`,
+    `Badhai ho! Total ₹${minAmount} ki rides complete karne par aapko ${validityText} ke liye ${planName} plan bilkul FREE mila hai!`,
     stringifyPayload({
       type: "reward_plan_assigned",
       plan_name: String(planName),

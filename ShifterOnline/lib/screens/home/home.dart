@@ -764,6 +764,18 @@ class _HomeState extends State<Home> {
     final String planName = reward["plan_name"]?.toString() ?? "Reward Plan";
     final String minAmount = reward["min_amount"]?.toString() ?? "0";
     final String urgency = reward["urgency_tag"]?.toString() ?? "";
+    final int currentSpend = (reward["current_spend"] is num) ? (reward["current_spend"] as num).toInt() : 0;
+    final int remainingSpend = (reward["remaining_spend"] is num) ? (reward["remaining_spend"] as num).toInt() : 0;
+    final int progressPercent = (reward["progress_percent"] is num) ? (reward["progress_percent"] as num).toInt() : 0;
+
+    String subtitleText;
+    if (isClaimed) {
+      subtitleText = "You unlocked $planName on your rides!";
+    } else if (currentSpend > 0) {
+      subtitleText = "₹$currentSpend / ₹$minAmount completed • ₹$remainingSpend more to get $planName FREE";
+    } else {
+      subtitleText = "Complete ₹$minAmount in rides (single or multiple) & get $planName FREE";
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -861,17 +873,27 @@ class _HomeState extends State<Home> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      isClaimed
-                          ? "You unlocked $planName on your ride!"
-                          : "Book ride of ₹$minAmount+ and get $planName FREE",
+                      subtitleText,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withOpacity(0.92),
                         fontFamily: 'Gilroy_Medium',
                         fontSize: 12,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (!isClaimed && currentSpend > 0) ...[
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (progressPercent / 100.0).clamp(0.0, 1.0),
+                          backgroundColor: Colors.white.withOpacity(0.28),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                          minHeight: 4,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -903,6 +925,9 @@ class _HomeState extends State<Home> {
     final String urgency = reward["urgency_tag"]?.toString() ?? "";
     final dynamic rawPrice = reward["plan_price"];
     final String planPrice = (rawPrice != null && rawPrice.toString() != "0") ? rawPrice.toString() : "";
+    final int currentSpend = (reward["current_spend"] is num) ? (reward["current_spend"] as num).toInt() : 0;
+    final int remainingSpend = (reward["remaining_spend"] is num) ? (reward["remaining_spend"] as num).toInt() : 0;
+    final int progressPercent = (reward["progress_percent"] is num) ? (reward["progress_percent"] as num).toInt() : 0;
 
     List<String> benefits = [];
     if (reward["plan_benefits"] is List) {
@@ -1016,6 +1041,67 @@ class _HomeState extends State<Home> {
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // Cumulative Ride Spend Progress Card (If not claimed)
+                      if (!isClaimed) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: notifier.lightBgColor,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: linercolor.withOpacity(0.25)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Your Ride Spend Progress",
+                                    style: TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 13,
+                                      color: notifier.text,
+                                    ),
+                                  ),
+                                  Text(
+                                    "₹$currentSpend / ₹$minAmount ($progressPercent%)",
+                                    style: TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 13,
+                                      color: linercolor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: LinearProgressIndicator(
+                                  value: (progressPercent / 100.0).clamp(0.0, 1.0),
+                                  backgroundColor: greaycolor.withOpacity(0.18),
+                                  valueColor: AlwaysStoppedAnimation<Color>(linercolor),
+                                  minHeight: 7,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                currentSpend >= (int.tryParse(minAmount) ?? 0) && currentSpend > 0
+                                    ? "Target reached! Your reward plan activates on completion."
+                                    : "Only ₹$remainingSpend more in single or multiple rides to unlock!",
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Medium',
+                                  fontSize: 11.5,
+                                  color: greaycolor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
                       // Highlighted Plan Banner
                       Container(
@@ -1132,7 +1218,7 @@ class _HomeState extends State<Home> {
                                       const Icon(Icons.monetization_on_outlined, size: 13, color: Color(0xFF16A34A)),
                                       const SizedBox(width: 5),
                                       Text(
-                                        "100% Free on ₹$minAmount+ Ride",
+                                        "100% Free on ₹$minAmount Total Rides",
                                         style: TextStyle(
                                           fontFamily: 'Gilroy_Medium',
                                           fontSize: 11.5,
@@ -1245,11 +1331,11 @@ class _HomeState extends State<Home> {
                           ),
                           child: Column(
                             children: [
-                              _buildStepRow("1", "Book any ride of ₹$minAmount or more"),
+                              _buildStepRow("1", "Book rides of any amount (single ride or multiple small rides)"),
                               Divider(height: 14, color: notifier.bordecolor.withOpacity(0.5)),
-                              _buildStepRow("2", "Complete the trip smoothly"),
+                              _buildStepRow("2", "Every completed ride spend gets automatically added up"),
                               Divider(height: 14, color: notifier.bordecolor.withOpacity(0.5)),
-                              _buildStepRow("3", "$planName activates instantly at ₹0!"),
+                              _buildStepRow("3", "Once total reaches ₹$minAmount, $planName activates instantly at ₹0!"),
                             ],
                           ),
                         ),
@@ -1275,7 +1361,7 @@ class _HomeState extends State<Home> {
                     ),
                   ),
                   child: Text(
-                    isClaimed ? "Great, Got It" : "Book ₹$minAmount+ Ride Now",
+                    isClaimed ? "Great, Got It" : "Book Rides to Reach ₹$minAmount",
                     style: const TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 15,
