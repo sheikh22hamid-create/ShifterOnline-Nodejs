@@ -1,0 +1,53 @@
+-- Trip payment settlement (spec 2026-10-04). Apply on prod BEFORE deploying the backend.
+CREATE TABLE `order_settlement` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `order_id` INT NOT NULL,
+  `uid` INT NOT NULL,
+  `rid` INT NOT NULL,
+  `amount_due` DECIMAL(10, 2) NOT NULL,
+  `fare` DECIMAL(10, 2) NOT NULL,
+  `commission_amount` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `per_trip_charge` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `prepaid_amount` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+  `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+  `method` VARCHAR(10) NULL,
+  `wallet_effect` VARCHAR(10) NOT NULL DEFAULT 'none',
+  `effect_seq` INT NOT NULL DEFAULT 0,
+  `customer_choice` VARCHAR(10) NULL,
+  `razorpay_order_id` VARCHAR(64) NULL,
+  `razorpay_payment_id` VARCHAR(64) NULL,
+  `pending_since` DATETIME(0) NOT NULL,
+  `confirmed_at` DATETIME(0) NULL,
+  `confirmed_by` VARCHAR(20) NULL,
+  `last_reminder_at` DATETIME(0) NULL,
+  `reminders_sent` INT NOT NULL DEFAULT 0,
+  `escalated_at` DATETIME(0) NULL,
+  `dispute_reason` TEXT NULL,
+  `dispute_raised_by` VARCHAR(10) NULL,
+  `dispute_raised_at` DATETIME(0) NULL,
+  `resolved_by` INT NULL,
+  `resolved_at` DATETIME(0) NULL,
+  `resolve_note` TEXT NULL,
+  `created_at` DATETIME(0) NOT NULL,
+  `updated_at` DATETIME(0) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uq_order_settlement_order` (`order_id`),
+  INDEX `idx_order_settlement_status` (`status`, `pending_since`),
+  INDEX `idx_order_settlement_uid` (`uid`, `status`),
+  INDEX `idx_order_settlement_rid` (`rid`, `status`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE `order_settlement_event` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `settlement_id` INT NOT NULL,
+  `actor` VARCHAR(10) NOT NULL,
+  `actor_id` INT NULL,
+  `from_status` VARCHAR(20) NULL,
+  `to_status` VARCHAR(20) NULL,
+  `note` TEXT NULL,
+  `created_at` DATETIME(0) NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_order_settlement_event_settlement` (`settlement_id`),
+  CONSTRAINT `fk_order_settlement_event_settlement` FOREIGN KEY (`settlement_id`)
+    REFERENCES `order_settlement` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

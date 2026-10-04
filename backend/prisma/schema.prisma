@@ -1824,3 +1824,55 @@ enum pkg_order_o_status {
   Pickup
   Arrived_Drop @map("Arrived Drop")
 }
+
+model order_settlement {
+  id                  Int       @id @default(autoincrement())
+  order_id            Int       @unique(map: "uq_order_settlement_order")
+  uid                 Int
+  rid                 Int
+  amount_due          Decimal   @db.Decimal(10, 2)
+  fare                Decimal   @db.Decimal(10, 2)
+  commission_amount   Decimal   @default(0.00) @db.Decimal(10, 2)
+  per_trip_charge     Decimal   @default(0.00) @db.Decimal(10, 2)
+  prepaid_amount      Decimal   @default(0.00) @db.Decimal(10, 2)
+  status              String    @default("pending") @db.VarChar(20)
+  method              String?   @db.VarChar(10)
+  wallet_effect       String    @default("none") @db.VarChar(10)
+  effect_seq          Int       @default(0)
+  customer_choice     String?   @db.VarChar(10)
+  razorpay_order_id   String?   @db.VarChar(64)
+  razorpay_payment_id String?   @db.VarChar(64)
+  pending_since       DateTime  @db.DateTime(0)
+  confirmed_at        DateTime? @db.DateTime(0)
+  confirmed_by        String?   @db.VarChar(20)
+  last_reminder_at    DateTime? @db.DateTime(0)
+  reminders_sent      Int       @default(0)
+  escalated_at        DateTime? @db.DateTime(0)
+  dispute_reason      String?   @db.Text
+  dispute_raised_by   String?   @db.VarChar(10)
+  dispute_raised_at   DateTime? @db.DateTime(0)
+  resolved_by         Int?
+  resolved_at         DateTime? @db.DateTime(0)
+  resolve_note        String?   @db.Text
+  created_at          DateTime  @db.DateTime(0)
+  updated_at          DateTime  @db.DateTime(0)
+  events              order_settlement_event[]
+
+  @@index([status, pending_since], map: "idx_order_settlement_status")
+  @@index([uid, status], map: "idx_order_settlement_uid")
+  @@index([rid, status], map: "idx_order_settlement_rid")
+}
+
+model order_settlement_event {
+  id            Int              @id @default(autoincrement())
+  settlement_id Int
+  actor         String           @db.VarChar(10)
+  actor_id      Int?
+  from_status   String?          @db.VarChar(20)
+  to_status     String?          @db.VarChar(20)
+  note          String?          @db.Text
+  created_at    DateTime         @db.DateTime(0)
+  settlement    order_settlement @relation(fields: [settlement_id], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "fk_order_settlement_event_settlement")
+
+  @@index([settlement_id], map: "idx_order_settlement_event_settlement")
+}
