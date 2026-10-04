@@ -428,6 +428,32 @@ async function notifyOrderCancelled(orderId, reason = "") {
   return true;
 }
 
+/**
+ * Milestone Ride Amount Reward WhatsApp Notification
+ * Informs customer on WhatsApp about their rewarded plan, validity, and perks.
+ */
+async function notifyAmountRewardWhatsApp({ phone, customerName, planName, minAmount, validityDays, benefits = [] }) {
+  if (!phone) return false;
+
+  let perksText = "";
+  if (Array.isArray(benefits) && benefits.length > 0) {
+    perksText = "\n*Aapke Plan Ke Mukhya Fayde:*\n" + benefits.slice(0, 4).map((b) => `• ${b}`).join("\n") + "\n";
+  }
+
+  const msg =
+    `Badhai ho! 🎉 *Milestone Reward Unlocked*\n\n` +
+    `Namaste ${customerName || "Customer"}, 👋\n\n` +
+    `Aapne *₹${minAmount}* ya usse adhik ki ride safaltapoorvak poori ki hai! Shifter Online ki taraf se aapko reward ke roop me mila hai:\n\n` +
+    `👑 *Plan*: ${planName}\n` +
+    `⏱️ *Validity*: ${validityDays || "1 Mahina (30 Din)"}\n` +
+    `💰 *Price*: ₹0 (Bilkul FREE)\n` +
+    perksText +
+    `\nAapka reward plan activate ho chuka hai aur har nayi booking par saare fayde milenge! 🚚✨\n\n` +
+    `— *Team Shifter Online*`;
+
+  return sendWhatsAppNotification(phone, msg);
+}
+
 module.exports = {
   setWhatsAppClient,
   sendWhatsAppNotification,
@@ -438,5 +464,7 @@ module.exports = {
   notifyDriverArrivedDrop,
   notifyTripCompleted,
   notifyOrderCancelled,
+  notifyAmountRewardWhatsApp,
   getOrderDetailsWithParticipants,
 };
+

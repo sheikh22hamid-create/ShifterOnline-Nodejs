@@ -422,11 +422,56 @@ async function applyRideAmountRewardsIfAny({ uid, orderId, orderTotal }) {
 
     try {
       const result = await activatePlan({ userId: uid, planFor: "USER", planId: tier.plan_id, source: "ride_amount_reward" });
+      const plan = result.plan;
+      const validityText = plan.lifetime_enabled
+        ? "Lifetime"
+        : `${plan.validity_days || 30} din (${Math.max(1, Math.round((plan.validity_days || 30) / 30))} mahina)`;
+
+      // Extract benefits for notification & WhatsApp
+      const benefits = [];
+      if (plan.discount_enabled && Number(plan.discount_percent) > 0) {
+        benefits.push(`${Number(plan.discount_percent)}% discount on every ride`);
+      }
+      if (plan.no_advance_payment) {
+        benefits.push("Zero advance payment required");
+      }
+      if (plan.priority_support) {
+        benefits.push("VIP priority customer support");
+      }
+      if (plan.wallet_bonus_enabled && Number(plan.wallet_bonus_amount) > 0) {
+        benefits.push(`₹${Number(plan.wallet_bonus_amount)} instant wallet bonus`);
+      }
+      if (plan.cancellation_enabled && Number(plan.free_cancellations) > 0) {
+        benefits.push(`${Number(plan.free_cancellations)} free order cancellations`);
+      }
+
+      // 1. App Push + In-App Inbox Notification
       try {
-        await pushNotifier.notifyAmountRewardPlanAssigned(result.entity?.fcm_token, result.plan.plan_name, Number(tier.min_amount));
+        await pushNotifier.notifyAmountRewardPlanAssigned(
+          result.entity?.fcm_token,
+          plan.plan_name,
+          Number(tier.min_amount),
+          validityText
+        );
       } catch (notifyErr) {
         logger.error(`pushNotifier.notifyAmountRewardPlanAssigned error:`, notifyErr);
       }
+
+      // 2. WhatsApp Notification
+      try {
+        const whatsapp = require("../whatsapp/notifications");
+        await whatsapp.notifyAmountRewardWhatsApp({
+          phone: result.entity?.mobile,
+          customerName: result.entity?.name,
+          planName: plan.plan_name,
+          minAmount: Number(tier.min_amount),
+          validityDays: validityText,
+          benefits,
+        });
+      } catch (waErr) {
+        logger.error(`whatsapp.notifyAmountRewardWhatsApp error:`, waErr);
+      }
+
       results.push({ tier, skipped: false, ...result });
     } catch (err) {
       logger.error(`rewardPlanService.applyRideAmountRewardsIfAny: activation failed for user ${uid}, tier ${tier.id}:`, err);

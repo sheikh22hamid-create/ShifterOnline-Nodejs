@@ -358,7 +358,12 @@ describe("rewardPlanService.applyRideAmountRewardsIfAny", () => {
       where: { id: 1 },
       data: { claimed_count: { increment: 1 } },
     });
-    expect(pushNotifier.notifyAmountRewardPlanAssigned).toHaveBeenCalledWith("token-user-9", "Premium Silver", 500);
+    expect(pushNotifier.notifyAmountRewardPlanAssigned).toHaveBeenCalledWith(
+      "token-user-9",
+      "Premium Silver",
+      500,
+      expect.stringContaining("30 din")
+    );
   });
 });
 
