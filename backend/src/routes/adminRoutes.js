@@ -7,6 +7,7 @@ const adminRiderController = require("../controllers/adminRiderController");
 const adminOrderController = require("../controllers/adminOrderController");
 const adminCustomerController = require("../controllers/adminCustomerController");
 const payoutController = require("../controllers/payoutController");
+const adminSettlementController = require("../controllers/adminSettlementController");
 const customOrderController = require("../controllers/customOrderController");
 const marketingController = require("../controllers/marketingController");
 const referralController = require("../controllers/referralController");
@@ -195,6 +196,9 @@ router.delete("/customers/:id", auth, authorize("superadmin"), adminCustomerCont
 router.get("/payouts", auth, authorize("superadmin", "admin"), scopeFilter, payoutController.list);
 router.post("/payouts/:id/approve", auth, authorize("superadmin", "admin"), payoutController.approve);
 router.post("/payouts/:id/reject", auth, authorize("superadmin", "admin"), payoutController.reject);
+router.get("/settlements", auth, authorize("superadmin", "admin"), adminSettlementController.list);
+router.get("/settlements/:id", auth, authorize("superadmin", "admin"), adminSettlementController.detail);
+router.post("/settlements/:id/resolve", auth, authorize("superadmin", "admin"), adminSettlementController.resolve);
 
 // --- Custom Orders & Bidding Engine ------------------------------------------
 router.get("/custom-orders", auth, authorize(...RIDER_ROLES), scopeFilter, customOrderController.list);
