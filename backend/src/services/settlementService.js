@@ -199,7 +199,7 @@ async function runTransition(work) {
   return result;
 }
 
-async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare, commissionAmount, perTripCharge, prepaidAmount }) {
+async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare, commissionAmount, perTripCharge, prepaidAmount, cityId }) {
   const existing = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
   if (existing) return existing;
   const now = new Date();
@@ -212,6 +212,7 @@ async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare,
           order_id: orderId,
           uid,
           rid: riderId,
+          city_id: cityId == null ? null : Number(cityId),
           amount_due: round2(amountDue),
           fare: round2(fare),
           commission_amount: round2(commissionAmount),

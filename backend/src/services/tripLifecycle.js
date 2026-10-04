@@ -607,6 +607,7 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
           orderId,
           uid: order.uid,
           riderId,
+          cityId: order.city_id,
           amountDue: cashCollected,
           fare: finalTotal,
           commissionAmount: pricingEngine.commissionAmount(finalTotal, effectiveCommissionPercent),

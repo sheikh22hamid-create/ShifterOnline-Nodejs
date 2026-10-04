@@ -4,6 +4,7 @@ CREATE TABLE `order_settlement` (
   `order_id` INT NOT NULL,
   `uid` INT NOT NULL,
   `rid` INT NOT NULL,
+  `city_id` INT NULL,
   `amount_due` DECIMAL(10, 2) NOT NULL,
   `fare` DECIMAL(10, 2) NOT NULL,
   `commission_amount` DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
@@ -34,7 +35,8 @@ CREATE TABLE `order_settlement` (
   UNIQUE INDEX `uq_order_settlement_order` (`order_id`),
   INDEX `idx_order_settlement_status` (`status`, `pending_since`),
   INDEX `idx_order_settlement_uid` (`uid`, `status`),
-  INDEX `idx_order_settlement_rid` (`rid`, `status`)
+  INDEX `idx_order_settlement_rid` (`rid`, `status`),
+  INDEX `idx_order_settlement_city` (`city_id`, `status`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE `order_settlement_event` (

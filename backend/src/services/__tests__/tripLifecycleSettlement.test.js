@@ -61,7 +61,7 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     prisma.pkg_order.findUnique.mockResolvedValue(order());
     const result = await tripLifecycle.updateStatus(297, 1, "complete");
     expect(settlementService.createForCompletedOrder).toHaveBeenCalledWith({
-      orderId: 297, uid: 5, riderId: 1, amountDue: 100, fare: 100, commissionAmount: 5, perTripCharge: 0, prepaidAmount: 0,
+      orderId: 297, uid: 5, riderId: 1, cityId: 1, amountDue: 100, fare: 100, commissionAmount: 5, perTripCharge: 0, prepaidAmount: 0,
     });
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();

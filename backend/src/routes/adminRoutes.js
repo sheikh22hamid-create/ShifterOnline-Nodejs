@@ -196,9 +196,9 @@ router.delete("/customers/:id", auth, authorize("superadmin"), adminCustomerCont
 router.get("/payouts", auth, authorize("superadmin", "admin"), scopeFilter, payoutController.list);
 router.post("/payouts/:id/approve", auth, authorize("superadmin", "admin"), payoutController.approve);
 router.post("/payouts/:id/reject", auth, authorize("superadmin", "admin"), payoutController.reject);
-router.get("/settlements", auth, authorize("superadmin", "admin"), adminSettlementController.list);
-router.get("/settlements/:id", auth, authorize("superadmin", "admin"), adminSettlementController.detail);
-router.post("/settlements/:id/resolve", auth, authorize("superadmin", "admin"), adminSettlementController.resolve);
+router.get("/settlements", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.list);
+router.get("/settlements/:id", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.detail);
+router.post("/settlements/:id/resolve", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.resolve);
 
 // --- Custom Orders & Bidding Engine ------------------------------------------
 router.get("/custom-orders", auth, authorize(...RIDER_ROLES), scopeFilter, customOrderController.list);

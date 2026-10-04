@@ -1830,6 +1830,7 @@ model order_settlement {
   order_id            Int       @unique(map: "uq_order_settlement_order")
   uid                 Int
   rid                 Int
+  city_id             Int?
   amount_due          Decimal   @db.Decimal(10, 2)
   fare                Decimal   @db.Decimal(10, 2)
   commission_amount   Decimal   @default(0.00) @db.Decimal(10, 2)
@@ -1861,6 +1862,7 @@ model order_settlement {
   @@index([status, pending_since], map: "idx_order_settlement_status")
   @@index([uid, status], map: "idx_order_settlement_uid")
   @@index([rid, status], map: "idx_order_settlement_rid")
+  @@index([city_id, status], map: "idx_order_settlement_city")
 }
 
 model order_settlement_event {

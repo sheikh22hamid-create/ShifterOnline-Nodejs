@@ -13,6 +13,7 @@ jest.mock("../../services/settlementService", () => {
 
 const prisma = require("../../config/db");
 const svc = require("../../services/settlementService");
+const logger = require("../../utils/logger");
 const c = require("../adminSettlementController");
 
 const res = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() });
@@ -53,6 +54,60 @@ describe("adminSettlementController.list", () => {
     expect(args.take).toBe(10);
   });
 
+  it("city-bound admin: adds city_id and merges with other filters; superadmin is unscoped", async () => {
+    await c.list({ query: { status: "pending", rider_id: "9" }, scopedCityId: 3 }, res());
+    expect(prisma.order_settlement.findMany.mock.calls[0][0].where).toEqual({ status: "pending", rid: 9, city_id: 3 });
+    prisma.order_settlement.findMany.mockClear();
+    await c.list({ query: { status: "pending" }, scopedCityId: null }, res());
+    expect(prisma.order_settlement.findMany.mock.calls[0][0].where).toEqual({ status: "pending" });
+  });
+
+  it("rejects bad rider_id / user_id filters with 400 INVALID_ID", async () => {
+    for (const q of [{ rider_id: "abc" }, { user_id: "0" }, { rider_id: "1.5" }, { user_id: "-2" }]) {
+      const r = res();
+      await c.list({ query: q }, r);
+      expect(r.status).toHaveBeenCalledWith(400);
+      expect(json(r)).toMatchObject({ code: "INVALID_ID" });
+    }
+    expect(prisma.order_settlement.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown / prototype status values with 400; missing status means all", async () => {
+    for (const status of ["toString", "__proto__", "bogus"]) {
+      const r = res();
+      await c.list({ query: { status } }, r);
+      expect(r.status).toHaveBeenCalledWith(400);
+      expect(json(r)).toMatchObject({ success: false, code: "INVALID_STATUS" });
+    }
+    expect(prisma.order_settlement.findMany).not.toHaveBeenCalled();
+    await c.list({ query: {} }, res());
+    expect(prisma.order_settlement.findMany.mock.calls[0][0].where).toEqual({});
+  });
+
+  it("caps the page number", async () => {
+    await c.list({ query: { page: "99999999999", limit: "10" } }, res());
+    expect(prisma.order_settlement.findMany.mock.calls[0][0].skip).toBe(99999 * 10);
+  });
+
+  it("skips name lookups when there are no rows", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([]);
+    prisma.order_settlement.count.mockResolvedValue(0);
+    const r = res();
+    await c.list({ query: {} }, r);
+    expect(prisma.tbl_user.findMany).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.findMany).not.toHaveBeenCalled();
+    expect(json(r).data).toEqual([]);
+  });
+
+  it("unexpected errors are 500 and logged", async () => {
+    prisma.order_settlement.findMany.mockRejectedValue(new Error("db"));
+    const r = res();
+    await c.list({ query: {} }, r);
+    expect(r.status).toHaveBeenCalledWith(500);
+    expect(json(r)).toEqual({ success: false, message: "Internal server error" });
+    expect(logger.error).toHaveBeenCalled();
+  });
+
   it("returns names, minutes pending and the escalated flag", async () => {
     const r = res();
     await c.list({ query: { status: "pending" } }, r);
@@ -78,6 +133,31 @@ describe("adminSettlementController.detail", () => {
     expect(json(r).data).toMatchObject({ settlement: { id: 1 }, events: [{ id: 1 }, { id: 2 }], order: { id: 50 } });
   });
 
+  it("rejects invalid ids with 400 INVALID_ID and makes no DB call", async () => {
+    for (const id of ["abc", "0", "-1", "1.5"]) {
+      const r = res();
+      await c.detail({ params: { id } }, r);
+      expect(r.status).toHaveBeenCalledWith(400);
+      expect(json(r)).toMatchObject({ success: false, code: "INVALID_ID" });
+    }
+    expect(prisma.order_settlement.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("city-bound admin: 404 for another city's settlement, 200 for own; superadmin sees all", async () => {
+    prisma.order_settlement.findUnique.mockResolvedValue({ id: 1, order_id: 50, city_id: 3 });
+    prisma.order_settlement_event.findMany.mockResolvedValue([]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 50 });
+    const other = res();
+    await c.detail({ params: { id: "1" }, scopedCityId: 5 }, other);
+    expect(other.status).toHaveBeenCalledWith(404);
+    const own = res();
+    await c.detail({ params: { id: "1" }, scopedCityId: 3 }, own);
+    expect(own.status).toHaveBeenCalledWith(200);
+    const sup = res();
+    await c.detail({ params: { id: "1" }, scopedCityId: null }, sup);
+    expect(sup.status).toHaveBeenCalledWith(200);
+  });
+
   it("404s an unknown settlement", async () => {
     prisma.order_settlement.findUnique.mockResolvedValue(null);
     const r = res();
@@ -87,7 +167,10 @@ describe("adminSettlementController.detail", () => {
 });
 
 describe("adminSettlementController.resolve", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.order_settlement.findUnique.mockResolvedValue({ id: 1, city_id: 3 });
+  });
 
   it("resolves with the logged-in admin's id", async () => {
     svc.adminResolve.mockResolvedValue({ settlement: { id: 1, status: "waived" } });
@@ -115,5 +198,51 @@ describe("adminSettlementController.resolve", () => {
     const r = res();
     await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" }, user: { id: 3 } }, r);
     expect(r.status).toHaveBeenCalledWith(500);
+    expect(json(r)).toEqual({ success: false, message: "Internal server error" });
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("401s when there is no logged-in user and does not call the service", async () => {
+    const r = res();
+    await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" } }, r);
+    expect(r.status).toHaveBeenCalledWith(401);
+    expect(json(r)).toEqual({ success: false, message: "Unauthorized" });
+    expect(svc.adminResolve).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid ids with 400 INVALID_ID before any DB or service call", async () => {
+    for (const id of ["abc", "0", "-1", "1.5"]) {
+      const r = res();
+      await c.resolve({ params: { id }, body: { outcome: "waived", note: "x" }, user: { id: 3 } }, r);
+      expect(r.status).toHaveBeenCalledWith(400);
+      expect(json(r)).toMatchObject({ success: false, code: "INVALID_ID" });
+    }
+    expect(prisma.order_settlement.findUnique).not.toHaveBeenCalled();
+    expect(svc.adminResolve).not.toHaveBeenCalled();
+  });
+
+  it("city-bound admin: 404 for another city's settlement without calling adminResolve", async () => {
+    const r = res();
+    await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" }, user: { id: 3 }, scopedCityId: 5 }, r);
+    expect(r.status).toHaveBeenCalledWith(404);
+    expect(svc.adminResolve).not.toHaveBeenCalled();
+  });
+
+  it("city-bound admin: 404 for a missing settlement", async () => {
+    prisma.order_settlement.findUnique.mockResolvedValue(null);
+    const r = res();
+    await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" }, user: { id: 3 }, scopedCityId: 3 }, r);
+    expect(r.status).toHaveBeenCalledWith(404);
+    expect(svc.adminResolve).not.toHaveBeenCalled();
+  });
+
+  it("city-bound admin resolves own city's settlement; superadmin resolves any", async () => {
+    svc.adminResolve.mockResolvedValue({ settlement: { id: 1, status: "waived" } });
+    const r = res();
+    await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" }, user: { id: 3 }, scopedCityId: 3 }, r);
+    expect(svc.adminResolve).toHaveBeenCalledTimes(1);
+    const r2 = res();
+    await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" }, user: { id: 3 }, scopedCityId: null }, r2);
+    expect(svc.adminResolve).toHaveBeenCalledTimes(2);
   });
 });

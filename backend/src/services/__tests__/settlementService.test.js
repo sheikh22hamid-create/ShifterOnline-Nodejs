@@ -76,7 +76,7 @@ describe("settlementService.createForCompletedOrder", () => {
     expect(prisma.order_settlement.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         order_id: 50, uid: 7, rid: 9, amount_due: 85, fare: 100, commission_amount: 10,
-        per_trip_charge: 0, prepaid_amount: 15, status: "pending", wallet_effect: "none",
+        per_trip_charge: 0, prepaid_amount: 15, status: "pending", wallet_effect: "none", city_id: null,
       }),
     });
     expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
@@ -85,6 +85,16 @@ describe("settlementService.createForCompletedOrder", () => {
     expect(mockEmit).toHaveBeenCalledWith("settlement:updated", expect.objectContaining({ order_id: 50, status: "pending", amount_due: 85 }));
     expect(created.id).toBe(3);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores the city id (coerced to a number) when provided", async () => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.order_settlement.findUnique.mockResolvedValue(null);
+    prisma.order_settlement.create.mockImplementation(({ data }) => Promise.resolve({ id: 3, ...data }));
+    prisma.order_settlement_event.create.mockResolvedValue({});
+    await svc.createForCompletedOrder({ ...payload, cityId: "4" });
+    expect(prisma.order_settlement.create.mock.calls[0][0].data.city_id).toBe(4);
   });
 
   it("is idempotent: an existing settlement is returned untouched", async () => {
