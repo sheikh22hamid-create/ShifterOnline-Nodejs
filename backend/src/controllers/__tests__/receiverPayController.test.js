@@ -81,3 +81,12 @@ describe("receiverPayController", () => {
     expect(bad.status).toHaveBeenCalledWith(404);
   });
 });
+
+describe("receiverPayPage", () => {
+  const { PAGE_HTML } = require("../receiverPayPage");
+  it("handles verify failures safely and never uses innerHTML", () => {
+    expect(PAGE_HTML).toContain("We could not confirm your payment");
+    expect(PAGE_HTML).toContain(".catch(verifyFailed)");
+    expect(PAGE_HTML).not.toContain("innerHTML");
+  });
+});

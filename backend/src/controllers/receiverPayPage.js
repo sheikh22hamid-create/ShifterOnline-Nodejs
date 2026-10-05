@@ -38,6 +38,8 @@ const PAGE_HTML = `<!doctype html>
   var api = "/api/pay/" + encodeURIComponent(token);
   var $ = function (id) { return document.getElementById(id); };
   var money = function (n) { return "\\u20B9" + Number(n).toFixed(2); };
+  var locked = false;
+  var UNCONFIRMED = "We could not confirm your payment. Do not pay again - refresh this page to check the status.";
   function say(t) { $("msg").textContent = t || ""; }
   function row(label, value, cls) {
     var d = document.createElement("div"); if (cls) d.className = cls;
@@ -57,13 +59,27 @@ const PAGE_HTML = `<!doctype html>
       if (s.markup > 0) b.appendChild(row("Service fee", money(s.markup)));
       b.appendChild(row("Total", money(s.total), "total"));
       b.hidden = false; $("pay").hidden = false; $("decline").hidden = false;
-      $("pay").disabled = $("decline").disabled = false; say("");
+      $("pay").disabled = $("decline").disabled = locked;
+      say(locked ? UNCONFIRMED : "");
     } else if (s.state === "paid") { $("sub").textContent = "Payment received. Thank you!"; say("");
     } else if (s.state === "expired") { $("sub").textContent = "This payment link has expired."; say("Please ask the sender or driver to resend it.");
     } else { $("sub").textContent = "No payment is needed for this order."; say(""); }
   }
   function post(path) { return fetch(api + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(function (r) { return r.json(); }); }
-  function load() { return fetch(api).then(function (r) { return r.json(); }).then(function (s) { if (!s.success) { $("sub").textContent = "This payment link is not valid."; return; } show(s); }).catch(function () { say("Could not load. Check your connection."); }); }
+  function load() {
+    return fetch(api).then(function (r) { return r.json(); }).then(function (s) {
+      if (!s.success) {
+        if (s.code === "INVALID_LINK") { $("sub").textContent = "This payment link is not valid."; } else { say("Could not load. Please refresh."); }
+        return;
+      }
+      show(s);
+    }).catch(function () { say("Could not load. Check your connection."); });
+  }
+  function recheck(n) {
+    if (n <= 0) return;
+    setTimeout(function () { load().then(function () { if (locked) recheck(n - 1); }); }, 4000);
+  }
+  function verifyFailed() { locked = true; $("pay").disabled = $("decline").disabled = true; say(UNCONFIRMED); recheck(3); }
 
   $("pay").addEventListener("click", function () {
     $("pay").disabled = $("decline").disabled = true; say("Starting payment...");
@@ -76,7 +92,14 @@ const PAGE_HTML = `<!doctype html>
           fetch(api + "/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
             razorpay_payment_id: resp.razorpay_payment_id, razorpay_order_id: resp.razorpay_order_id, razorpay_signature: resp.razorpay_signature }) })
             .then(function (r) { return r.json(); })
-            .then(function (v) { if (v.success) { show({ state: "paid" }); } else { say(v.message || "Could not confirm payment. If money was deducted it will be reconciled."); } });
+            .then(function (v) {
+              if (v && v.success) { locked = false; show({ state: "paid" }); return; }
+              var keep = v && (v.code === "PAID_BUT_STATE_CHANGED" || v.code === "PAYMENT_VERIFICATION_FAILED");
+              say((v && v.message) || UNCONFIRMED);
+              if (keep) { locked = true; $("pay").disabled = $("decline").disabled = true; }
+              else { $("pay").disabled = $("decline").disabled = false; }
+            })
+            .catch(verifyFailed);
         },
         modal: { ondismiss: function () { $("pay").disabled = $("decline").disabled = false; say(""); } }
       });
@@ -86,7 +109,7 @@ const PAGE_HTML = `<!doctype html>
   $("decline").addEventListener("click", function () {
     if (!confirm("Decline paying for this order? The sender will be asked to pay instead.")) return;
     $("pay").disabled = $("decline").disabled = true;
-    post("/decline").then(function (d) { if (d.success) { show({ state: "closed" }); say("You declined. The sender will be notified."); } else { say(d.message || "Could not decline."); $("pay").disabled = $("decline").disabled = false; } });
+    post("/decline").then(function (d) { if (d.success) { show({ state: "closed" }); say("You declined. The sender will be notified."); } else { say(d.message || "Could not decline."); $("pay").disabled = $("decline").disabled = false; } }).catch(function () { say("Could not decline. Please try again."); $("pay").disabled = $("decline").disabled = false; });
   });
   load();
 })();
