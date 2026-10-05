@@ -1,4 +1,10 @@
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() }));
+jest.mock("../../config/db", () => ({ order_settlement: { findUnique: jest.fn() } }));
+jest.mock("../../services/receiverSettlementService", () => ({ declineReceiverPay: jest.fn() }));
+jest.mock("../../services/receiverPayService", () => {
+  class ReceiverPayError extends Error { constructor(code, message) { super(message); this.code = code; } }
+  return { ReceiverPayError, issueLink: jest.fn(), getConfig: jest.fn() };
+});
 jest.mock("../../services/settlementService", () => {
   class SettlementError extends Error { constructor(code, message) { super(message); this.code = code; } }
   return {
@@ -6,6 +12,11 @@ jest.mock("../../services/settlementService", () => {
     getViewForParty: jest.fn(), chooseDriverPayment: jest.fn(), createOnlineOrder: jest.fn(),
     settleOnline: jest.fn(), raiseDispute: jest.fn(), markCashReceived: jest.fn(), listPendingForDriver: jest.fn(),
     publicView: jest.fn((s) => ({ order_id: s.order_id, status: s.status })),
+    assertParty: jest.fn((s, party, id) => {
+      if (!s) throw new SettlementError("NOT_FOUND", "No payment record for this order.");
+      const owner = party === "customer" ? s.uid : s.rid;
+      if (Number(owner) !== Number(id)) throw new SettlementError("FORBIDDEN", "This order belongs to another " + party + ".");
+    }),
   };
 });
 const svc = require("../../services/settlementService");
@@ -195,5 +206,55 @@ describe("settlementController driverPending", () => {
     const r = res();
     await c.driverPending({ body: { rider_id: 9 } }, r);
     expect(body(r)).toMatchObject({ ResponseCode: "500", Result: "false" });
+  });
+});
+
+describe("receiver-pay endpoints", () => {
+  const receiverSettlementService = require("../../services/receiverSettlementService");
+  const receiverPayService = require("../../services/receiverPayService");
+  const resp = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() });
+  beforeEach(() => jest.clearAllMocks());
+
+  it("customerTakeOver declines as the booker", async () => {
+    receiverSettlementService.declineReceiverPay.mockResolvedValue({ phase: "converted", settlement: { id: 1, order_id: 50, status: "pending", amount_due: 70 } });
+    const r = resp();
+    await c.customerTakeOver({ body: { uid: 7, order_id: 50 } }, r);
+    expect(receiverSettlementService.declineReceiverPay).toHaveBeenCalledWith({ orderId: 50, actor: "booker", actorId: 7 });
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", phase: "converted" }));
+  });
+  it("driverReceiverRefused declines as the driver", async () => {
+    receiverSettlementService.declineReceiverPay.mockResolvedValue({ phase: "converted", settlement: { id: 1, order_id: 50, status: "pending", amount_due: 70 } });
+    const r = resp();
+    await c.driverReceiverRefused({ body: { rider_id: 9, order_id: 50 } }, r);
+    expect(receiverSettlementService.declineReceiverPay).toHaveBeenCalledWith({ orderId: 50, actor: "driver", actorId: 9 });
+  });
+  it("a forbidden party gets a failure envelope, not a 500", async () => {
+    const { SettlementError } = require("../../services/settlementService");
+    receiverSettlementService.declineReceiverPay.mockRejectedValue(new SettlementError("FORBIDDEN", "This order belongs to another driver."));
+    const r = resp();
+    await c.driverReceiverRefused({ body: { rider_id: 1, order_id: 50 } }, r);
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", code: "FORBIDDEN" }));
+  });
+  it("resend link (booker) returns sent + link and maps ReceiverPayError codes", async () => {
+    const prisma = require("../../config/db");
+    prisma.order_settlement.findUnique.mockResolvedValue({ order_id: 50, uid: 7, rid: 9 });
+    receiverPayService.issueLink.mockResolvedValue({ sent: true, link: "https://x/pay/t" });
+    const r = resp();
+    await c.customerResendLink({ body: { uid: 7, order_id: 50 } }, r);
+    expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 50, resend: true });
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", sent: true, link: "https://x/pay/t" }));
+
+    receiverPayService.issueLink.mockRejectedValue(new receiverPayService.ReceiverPayError("TOO_SOON", "Please wait a minute before sending the link again."));
+    const r2 = resp();
+    await c.customerResendLink({ body: { uid: 7, order_id: 50 } }, r2);
+    expect(r2.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", code: "TOO_SOON" }));
+  });
+  it("resend link is refused for someone else's order", async () => {
+    const prisma = require("../../config/db");
+    prisma.order_settlement.findUnique.mockResolvedValue({ order_id: 50, uid: 7, rid: 9 });
+    const r = resp();
+    await c.driverResendLink({ body: { rider_id: 999, order_id: 50 } }, r);
+    expect(receiverPayService.issueLink).not.toHaveBeenCalled();
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", code: "FORBIDDEN" }));
   });
 });

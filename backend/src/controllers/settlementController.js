@@ -1,8 +1,11 @@
 const settlementService = require("../services/settlementService");
 const logger = require("../utils/logger");
 const receiverPayService = require("../services/receiverPayService");
+const prisma = require("../config/db");
+const receiverSettlementService = require("../services/receiverSettlementService");
 
 const { SettlementError } = settlementService;
+const { ReceiverPayError } = receiverPayService;
 
 // Same convention as every other cust_api/rider_api port: always HTTP 200, the
 // logical outcome lives in the body (ApiWrapper ignores non-200 bodies).
@@ -13,6 +16,7 @@ const fail = (res, code, msg) =>
 
 function handleError(res, err, label) {
   if (err instanceof SettlementError) return fail(res, err.code, err.message);
+  if (err instanceof ReceiverPayError) return fail(res, err.code, err.message);
   logger.error(`${label} failed:`, err);
   return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
 }
@@ -119,7 +123,35 @@ const receiverPayConfig = async (req, res) => {
   }
 };
 
+const declineResult = (res, result) =>
+  ok(res, { phase: result.phase, settlement: result.settlement ? settlementService.publicView(result.settlement) : null }, "Receiver payment cancelled");
+
+const customerTakeOver = customerAction("settlement customerTakeOver", async ({ res, uid, orderId }) =>
+  declineResult(res, await receiverSettlementService.declineReceiverPay({ orderId, actor: "booker", actorId: uid })));
+
+const driverReceiverRefused = driverAction("settlement driverReceiverRefused", async ({ res, riderId, orderId }) =>
+  declineResult(res, await receiverSettlementService.declineReceiverPay({ orderId, actor: "driver", actorId: riderId })));
+
+// Ownership is checked against the settlement row before a (fresh) pay token is minted.
+async function assertOrderParty(orderId, party, id) {
+  const s = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+  settlementService.assertParty(s, party, id);
+}
+
+const customerResendLink = customerAction("settlement customerResendLink", async ({ res, uid, orderId }) => {
+  await assertOrderParty(orderId, "customer", uid);
+  const { sent, link } = await receiverPayService.issueLink({ orderId, resend: true });
+  return ok(res, { sent, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
+});
+
+const driverResendLink = driverAction("settlement driverResendLink", async ({ res, riderId, orderId }) => {
+  await assertOrderParty(orderId, "driver", riderId);
+  const { sent, link } = await receiverPayService.issueLink({ orderId, resend: true });
+  return ok(res, { sent, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
+});
+
 module.exports = {
+  customerTakeOver, customerResendLink, driverReceiverRefused, driverResendLink,
   receiverPayConfig,
   customerState, customerChooseDriver, customerPayOnlineCreate, customerPayOnlineVerify, customerDispute,
   driverState, driverReceived, driverDispute, driverPending,

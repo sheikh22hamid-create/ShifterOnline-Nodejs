@@ -67,6 +67,8 @@ router.post("/settlement/state", settlementController.driverState);
 router.post("/settlement/received", settlementController.driverReceived);
 router.post("/settlement/dispute", settlementController.driverDispute);
 router.post("/settlement/pending", settlementController.driverPending);
+router.post("/settlement/receiver-refused", settlementController.driverReceiverRefused);
+router.post("/settlement/resend-link", settlementController.driverResendLink);
 
 // Monthly Driver Duty & Queue endpoints
 const monthlyDriverController = require("../controllers/monthlyDriverController");

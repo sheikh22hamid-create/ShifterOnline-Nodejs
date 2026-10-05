@@ -55,6 +55,8 @@ router.post("/settlement/choose-driver", settlementController.customerChooseDriv
 router.post("/settlement/pay-online/create", settlementController.customerPayOnlineCreate);
 router.post("/settlement/pay-online/verify", settlementController.customerPayOnlineVerify);
 router.post("/settlement/dispute", settlementController.customerDispute);
+router.post("/settlement/take-over", settlementController.customerTakeOver);
+router.post("/settlement/resend-link", settlementController.customerResendLink);
 router.get("/receiver-pay/config", settlementController.receiverPayConfig);
 router.get("/goods-types", require("../controllers/goodsTypeController").listActiveGoodsTypes);
 router.get("/restricted-items", require("../controllers/restrictedItemController").listActiveRestrictedItems);
