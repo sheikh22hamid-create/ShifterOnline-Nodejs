@@ -748,6 +748,20 @@ async function createOrder(req, res) {
   }
 }
 
+// Receiver-pay summary for the booker's order screen. Never exposes the token, phone or gateway ids;
+// a missing table/model must not break order details.
+async function getReceiverPaySummary(orderId) {
+  try {
+    const row = await prisma.order_receiver_pay.findUnique({
+      where: { order_id: orderId },
+      select: { status: true, commission_percent: true, receiver_name: true },
+    });
+    return row ? { status: row.status, commission_percent: Number(row.commission_percent), receiver_name: row.receiver_name || null } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function getOrderDetails(req, res) {
   try {
     const { uid, order_id } = req.body;
@@ -871,6 +885,7 @@ async function getOrderDetails(req, res) {
           waiting: await customerWaitingFor(order),
           // Payment settlement state (null when the order has none / feature off).
           settlement: await settlementService.getPublicViewForOrder(order.id),
+          receiver_pay: await getReceiverPaySummary(order.id),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           otp: order.otp,

@@ -2,6 +2,7 @@ jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { findUnique: jest.fn().mockResolvedValue(null) },
   driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
   order_settlement: { findUnique: jest.fn().mockResolvedValue(null) },
+  order_receiver_pay: { findUnique: jest.fn() },
   tbl_package: { findMany: jest.fn() },
   tbl_goods_type: { findFirst: jest.fn() },
   tbl_user: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
@@ -501,6 +502,45 @@ describe("orderController.getOrderDetails", () => {
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     await getOrderDetails({ body: { uid: 1, order_id: 501 } }, res);
     expect(res.json.mock.calls[0][0].OrderProductList[0].settlement).toBeNull();
+  });
+
+  describe("receiver_pay summary", () => {
+    const run = async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue(baseOrder);
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.tbl_rider.findUnique.mockResolvedValue(baseRider);
+      prisma.pkg_order.aggregate.mockResolvedValue({ _avg: { cust_rate: null } });
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      await getOrderDetails({ body: { uid: 1, order_id: 501 } }, res);
+      return res;
+    };
+
+    it("returns a safe summary without token or phone", async () => {
+      prisma.order_receiver_pay.findUnique.mockResolvedValue({
+        status: "active", commission_percent: "3.00", receiver_name: "Ramesh",
+        token_hash: "x".repeat(64), receiver_phone: "9876543210",
+      });
+      const res = await run();
+      expect(res.json.mock.calls[0][0].OrderProductList[0].receiver_pay).toEqual({
+        status: "active", commission_percent: 3, receiver_name: "Ramesh",
+      });
+      const s = JSON.stringify(res.json.mock.calls[0][0]);
+      expect(s).not.toContain("token_hash");
+      expect(s).not.toContain("9876543210");
+    });
+
+    it("is null when the order has no receiver-pay row", async () => {
+      prisma.order_receiver_pay.findUnique.mockResolvedValue(null);
+      const res = await run();
+      expect(res.json.mock.calls[0][0].OrderProductList[0].receiver_pay).toBeNull();
+    });
+
+    it("is null and still succeeds when the lookup fails", async () => {
+      prisma.order_receiver_pay.findUnique.mockRejectedValue(new Error("no table"));
+      const res = await run();
+      expect(res.status).not.toHaveBeenCalledWith(500);
+      expect(res.json.mock.calls[0][0].OrderProductList[0].receiver_pay).toBeNull();
+    });
   });
 
   beforeEach(() => jest.clearAllMocks());
