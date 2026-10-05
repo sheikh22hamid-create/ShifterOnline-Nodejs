@@ -93,6 +93,10 @@ const HANDLED_FLAG_KEYS = [
   'settlement_escalate_after_minutes',
   'settlement_driver_block_grace_minutes',
   'settlement_dispute_window_hours',
+  'receiver_pay_enabled',
+  'receiver_commission_max_percent',
+  'receiver_commission_max_amount',
+  'receiver_pay_link_ttl_hours',
 ]
 
 function PaymentGateways() {
@@ -665,6 +669,80 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Number of hours after driver confirmation during which the customer can report a problem / dispute (Default: 48).
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Receiver Pays">
+          <div className="col-span-2 sm:col-span-3">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-[12px] text-amber-700 dark:text-amber-300">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <AlertTriangle size={15} />
+                <span>BEFORE ENABLING</span>
+              </div>
+              <p className="mt-1">
+                Receiver Pays only works while <code>settlement_enabled</code> is ON, the server has <code>PUBLIC_BASE_URL</code> set (used to build the receiver&apos;s WhatsApp pay link), and the
+                migration <code>20261005010000_add_receiver_pay</code> is applied. The commission&apos;s GST treatment must be confirmed by your CA before this goes live.
+              </p>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="flag-receiver_pay_enabled">Master Switch (receiver_pay_enabled)</Label>
+            <select
+              id="flag-receiver_pay_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.receiver_pay_enabled ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, receiver_pay_enabled: e.target.value }))}
+            >
+              <option value="0">Disabled (0 - customers cannot choose &quot;Receiver pays&quot;)</option>
+              <option value="1">Enabled (1 - customers can let the receiver pay)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              When OFF, every booking and ride behaves exactly as before.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-receiver_commission_max_percent">Max Commission (%)</Label>
+            <Input
+              id="flag-receiver_commission_max_percent"
+              type="number"
+              min="0"
+              step="0.5"
+              placeholder="5"
+              value={flags.receiver_commission_max_percent ?? '5'}
+              onChange={(e) => setFlags((f) => ({ ...f, receiver_commission_max_percent: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Highest commission the booking customer may add on top of the receiver&apos;s amount (Default: 5).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-receiver_commission_max_amount">Max Commission per Order (₹)</Label>
+            <Input
+              id="flag-receiver_commission_max_amount"
+              type="number"
+              min="0"
+              placeholder="0"
+              value={flags.receiver_commission_max_amount ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, receiver_commission_max_amount: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Rupee cap on the commission of a single order. 0 means no cap (Default: 0).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-receiver_pay_link_ttl_hours">Pay Link Validity (hours)</Label>
+            <Input
+              id="flag-receiver_pay_link_ttl_hours"
+              type="number"
+              min="1"
+              placeholder="24"
+              value={flags.receiver_pay_link_ttl_hours ?? '24'}
+              onChange={(e) => setFlags((f) => ({ ...f, receiver_pay_link_ttl_hours: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              How long the WhatsApp payment link stays valid after it is sent (Default: 24).
             </p>
           </div>
         </Section>
