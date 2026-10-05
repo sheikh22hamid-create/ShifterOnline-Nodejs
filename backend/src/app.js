@@ -53,11 +53,14 @@ app.get("/health", (req, res) => {
 const locationRoutes = require("./routes/locationRoutes");
 
 const whatsappRoutes = require("./routes/whatsappRoutes");
+const { pageRouter: receiverPayPage, apiRouter: receiverPayApi } = require("./routes/receiverPayRoutes");
 
 app.use("/api/users", userRoutes);
 app.use("/api/user", userRoutes);
 app.use("/user", userRoutes);
 app.use("/api/order", orderRoutes);
+app.use("/pay", receiverPayPage);
+app.use("/api/pay", receiverPayApi);
 app.use("/api/rider", riderRoutes);
 app.use("/rider", riderRoutes);
 app.use("/api/location", locationRoutes);
