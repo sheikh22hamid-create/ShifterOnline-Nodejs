@@ -121,6 +121,35 @@ describe("adminResolve - receiver mode", () => {
   });
 });
 
+describe("adminResolve - receiver mode driver wallet and reversals", () => {
+  it("reverses a prior CASH effect using the original prepaid, not the advance-netted one", async () => {
+    setup(row({ wallet_effect: "cash", status: "disputed", effect_seq: 1 }));
+    await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "waived", note: "goodwill" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { decrement: 20 } } });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { increment: 90 } } });
+  });
+  it("waived after a credited online payment debits the booker and clears the credit flag", async () => {
+    setup(row({ status: "paid_online", wallet_effect: "online", effect_seq: 1, receiver_credited: true }));
+    await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "waived", note: "refund" });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 20 } } });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 2.7 } } });
+    expect(walletNotifier.notifyCustomerWalletTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ type: "debit" }));
+    expect(prisma.order_settlement.update).toHaveBeenCalledWith({
+      where: { id: 4 }, data: expect.objectContaining({ payer: "customer", receiver_credited: false, reversal_shortfall: 0, status: "waived" }),
+    });
+  });
+  it("records the uncollected part as reversal_shortfall when the booker wallet is short", async () => {
+    setup(row({ status: "paid_online", wallet_effect: "online", effect_seq: 1, receiver_credited: true, receiver_markup: 0 }));
+    prisma.tbl_user.findUnique.mockResolvedValue({ wallet: 5 });
+    await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "waived", note: "refund" });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 5 } } });
+    expect(prisma.order_settlement.update).toHaveBeenCalledWith({
+      where: { id: 4 }, data: expect.objectContaining({ receiver_credited: false, reversal_shortfall: 15 }),
+    });
+  });
+});
+
 describe("booker cannot pay itself while the receiver is the payer", () => {
   it("chooseDriverPayment is refused with RECEIVER_MODE", async () => {
     setup(row());

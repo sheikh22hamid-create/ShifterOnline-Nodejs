@@ -370,8 +370,9 @@ async function adminResolve({ settlementId, adminId, outcome, note }) {
     if (!s) throw new SettlementError("NOT_FOUND", "No payment record found.");
     if (s.status === outcome) return { settlement: s, alreadyDone: true };
     const receiverPatch = await receiverWalletCredits.adminOutcomePatch(tx, s, outcome, { notifications });
-    const effectRow = { ...s, ...receiverPatch };
-    const { effectSeq, notifications: n } = await changeWalletEffect(tx, effectRow, OUTCOME_EFFECT[outcome]);
+    // Pass the ORIGINAL locked row: reversing a prior driver effect must recompute it from the values
+    // it was applied with. receiverPatch (e.g. advance-netted prepaid_amount) only goes into the UPDATE.
+    const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, OUTCOME_EFFECT[outcome]);
     notifications.push(...n);
     const now = new Date();
     const updated = await tx.order_settlement.update({
@@ -399,8 +400,9 @@ async function createOnlineOrder({ orderId, uid }) {
   const amountDue = Number(s.amount_due);
   let razorpayOrderId = s.razorpay_order_id;
   let amountPaise = Math.round(amountDue * 100);
-  // amount_due is immutable after createForCompletedOrder, so a stored razorpay_order_id always
-  // matches it and can be reused. If that ever changes, the Razorpay order must be recreated.
+  // A stored razorpay_order_id is reused as-is. amount_due is fixed at creation, except when an admin
+  // converts a receiver settlement to customer mode (which rewrites it); receiver mode never stores a
+  // settlement razorpay_order_id, so a stored id always matches the current amount_due.
   if (!razorpayOrderId) {
     const created = await createRazorpayOrder({ amountRupees: amountDue, receipt: `settle_${orderId}` });
     if (!created.ok) throw new SettlementError("GATEWAY_ERROR", created.reason);
