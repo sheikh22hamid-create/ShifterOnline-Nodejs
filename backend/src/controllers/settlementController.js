@@ -1,5 +1,6 @@
 const settlementService = require("../services/settlementService");
 const logger = require("../utils/logger");
+const receiverPayService = require("../services/receiverPayService");
 
 const { SettlementError } = settlementService;
 
@@ -110,7 +111,16 @@ const driverPending = async (req, res) => {
   }
 };
 
+const receiverPayConfig = async (req, res) => {
+  try {
+    return ok(res, { config: await receiverPayService.getConfig() });
+  } catch (err) {
+    return handleError(res, err, "receiverPayConfig");
+  }
+};
+
 module.exports = {
+  receiverPayConfig,
   customerState, customerChooseDriver, customerPayOnlineCreate, customerPayOnlineVerify, customerDispute,
   driverState, driverReceived, driverDispute, driverPending,
 };

@@ -18,6 +18,7 @@ const orderDestinationService = require("../services/orderDestinationService");
 const orderPickupService = require("../services/orderPickupService");
 const orderStopsService = require("../services/orderStopsService");
 const settlementService = require("../services/settlementService");
+const receiverPayService = require("../services/receiverPayService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -248,6 +249,7 @@ async function createOrderCore({
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
   stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
+  receiverPays = false, receiverCommissionPercent,
 }) {
   if (
     !uid ||
@@ -267,6 +269,11 @@ async function createOrderCore({
       msg: `Please settle the pending payment of ₹${Number(blockingSettlement.amount_due)} for order #${blockingSettlement.order_id} before booking a new ride.`,
     };
   }
+
+  const receiverPayCheck = await receiverPayService.validateBooking({
+    receiverPays, commissionPercent: receiverCommissionPercent, dmobile, pMethodId, transactionId,
+  });
+  if (!receiverPayCheck.ok) return receiverPayCheck;
 
   const goods = await resolveGoodsType({ goodsTypeId, goodsTypeOther });
   if (!goods.ok) return goods;
@@ -555,6 +562,20 @@ async function createOrderCore({
   }
   order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
 
+  // Receiver-pay intent row. Never allowed to fail an already-created booking: without it the
+  // ride simply runs as a normal customer-paid order and the app is told via receiver_pay=false.
+  order.receiver_pay = false;
+  if (receiverPayCheck.value) {
+    try {
+      await receiverPayService.createForOrder({
+        orderId: order.id, uid: Number(uid), phone: receiverPayCheck.value.phone, name: dropName, percent: receiverPayCheck.value.percent,
+      });
+      order.receiver_pay = true;
+    } catch (err) {
+      logger.error(`createOrderCore: receiver-pay row failed for order ${order.id}:`, err);
+    }
+  }
+
   // Wallet-paid booking: the app already debited the fare (remark "Delivery
   // payment", no order id) just before this call. Tie that debit to this order
   // so a cancel / no-driver outcome can refund exactly what was paid.
@@ -666,6 +687,7 @@ async function createOrder(req, res) {
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
+      receiver_pays, receiver_commission_percent,
     } = req.body;
 
     const result = await createOrderCore({
@@ -678,6 +700,7 @@ async function createOrder(req, res) {
       stops, useReferralPoints: Boolean(use_referral_points),
       body_type: body_type || bodyType,
       goodsTypeId: goods_type_id, goodsTypeOther: goods_type_other,
+      receiverPays: Boolean(receiver_pays), receiverCommissionPercent: receiver_commission_percent,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
@@ -691,6 +714,9 @@ async function createOrder(req, res) {
     }
     if (!result.ok && result.code === "PREMIUM_PLAN_REQUIRED") {
       return res.status(403).json({ ResponseCode: "403", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "RECEIVER_PAY_UNAVAILABLE") {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", code: "RECEIVER_PAY_UNAVAILABLE", ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "SETTLEMENT_PENDING") {
       return res.status(403).json({ ResponseCode: "403", Result: "false", code: "SETTLEMENT_PENDING", ResponseMsg: result.msg });
@@ -713,6 +739,7 @@ async function createOrder(req, res) {
       referral_points_amount: Number(order.referral_points_amount) || 0,
       body_type: order.body_type || "any",
       covered_charge: Number(order.covered_charge) || 0,
+      receiver_pay: Boolean(order.receiver_pay),
       ResponseMsg: "Package Order Placed Successfully!!!",
     });
   } catch (err) {

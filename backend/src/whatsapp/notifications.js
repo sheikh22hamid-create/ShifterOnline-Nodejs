@@ -165,6 +165,19 @@ async function notifyOrderBooked(orderId) {
 
   const { order, categoryTitle, senderPhone, receiverPhone, senderName, receiverName } = data;
 
+  let receiverPayLine = "";
+  try {
+    const rp = await prisma.order_receiver_pay.findFirst({ where: { order_id: order.id, status: "active" } });
+    if (rp) {
+      receiverPayLine =
+        `💳 *${senderName}* ne aapko payment karne wala (payer) chuna hai. ` +
+        `Delivery ke baad aapko ek secure payment link bheja jayega, usme app ki zaroorat nahi hai. ` +
+        `Agar aap pay nahi karna chahte, to link me *Decline* dabayein.\n\n`;
+    }
+  } catch (err) {
+    logger.warn(`notifyOrderBooked: receiver-pay lookup failed for order ${order.id}: ${err.message}`);
+  }
+
   const senderMsg =
     `Hello! 👋\n` +
     `*Your booking has been confirmed.* 🚚\n\n` +
@@ -188,6 +201,7 @@ async function notifyOrderBooked(orderId) {
     `🚗 *Vehicle*: ${categoryTitle}\n\n` +
     `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
     `🎯 *Drop*: ${order.daddress || "N/A"}\n\n` +
+    receiverPayLine +
     `Parcel live status check karne ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Customer Care: 9109114515`;
