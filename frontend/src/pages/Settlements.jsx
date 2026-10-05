@@ -239,6 +239,19 @@ export default function Settlements() {
                       {/* Amount Due */}
                       <td className="font-mono-data whitespace-nowrap px-4 py-2.5 font-bold" style={{ color: 'var(--brand)' }}>
                         {formatCurrency(s.amount_due)}
+                        {s.payer === 'receiver' && (
+                          <div className="mt-0.5 flex flex-col items-start gap-0.5 font-sans text-[11px] font-medium">
+                            <Badge tone="brand">Receiver pays</Badge>
+                            <span style={{ color: 'var(--ink-faint)' }}>
+                              + {formatCurrency(Number(s.receiver_markup) || 0)} fee · advance held {formatCurrency(Number(s.advance_held) || 0)}
+                            </span>
+                          </div>
+                        )}
+                        {Number(s.reversal_shortfall) > 0 && (
+                          <div className="mt-0.5 font-sans">
+                            <Badge tone="danger">Shortfall {formatCurrency(Number(s.reversal_shortfall))}</Badge>
+                          </div>
+                        )}
                       </td>
 
                       {/* Total Fare */}

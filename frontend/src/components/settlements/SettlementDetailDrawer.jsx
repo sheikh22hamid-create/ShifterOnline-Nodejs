@@ -4,6 +4,7 @@ import api from '../../services/api'
 import { useToast } from '../../context/ToastContext'
 import Drawer from '../common/Drawer'
 import Badge from '../common/Badge'
+import ReceiverPayPanel from './ReceiverPayPanel'
 import { formatCurrency, formatDateTime } from '../../utils/format'
 
 const OUTCOME_DESCRIPTIONS = {
@@ -52,6 +53,7 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [converting, setConverting] = useState(false)
 
   useEffect(() => {
     if (!open || !settlementId) {
@@ -111,9 +113,26 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
     }
   }
 
+  async function handleConvert() {
+    setConverting(true)
+    try {
+      const res = await api.post(`/settlements/${settlementId}/convert-to-customer`)
+      const phase = res.data?.data?.phase
+      toast.success(phase === 'already_normal' ? 'Already a normal customer payment.' : 'Converted to customer payment.')
+      if (onResolved) onResolved()
+      const fresh = await api.get(`/settlements/${settlementId}`)
+      setData(fresh.data.data)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to convert settlement.')
+    } finally {
+      setConverting(false)
+    }
+  }
+
   const settlement = data?.settlement
   const events = data?.events ?? []
   const order = data?.order
+  const receiverPay = data?.receiver_pay ?? null
 
   const isAlreadyResolved = settlement && ['cash_received', 'paid_online', 'waived', 'customer_owes'].includes(settlement.status)
 
@@ -182,7 +201,7 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
                 <div className="font-mono-data font-medium">{formatCurrency(settlement.per_trip_charge ?? 0)}</div>
               </div>
               <div>
-                <span style={{ color: 'var(--ink-faint)' }}>Prepaid / Advance:</span>
+                <span style={{ color: 'var(--ink-faint)' }}>{settlement.payer === 'receiver' ? 'Prepaid (coupon / points):' : 'Prepaid / Advance:'}</span>
                 <div className="font-mono-data font-medium">{formatCurrency(settlement.prepaid_amount ?? 0)}</div>
               </div>
             </div>
@@ -195,6 +214,8 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
               </span>
             </div>
           </div>
+
+          <ReceiverPayPanel settlement={settlement} receiverPay={receiverPay} onConvert={handleConvert} converting={converting} />
 
           {/* Dispute Notice if Raised */}
           {settlement.status === 'disputed' && (
@@ -261,6 +282,14 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
             <p className="mt-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
               Select an outcome and enter a mandatory explanation.
             </p>
+
+            {settlement.payer === 'receiver' && !isAlreadyResolved && (
+              <div className="mt-3 rounded-lg border p-3 text-[12px]" style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }}>
+                <strong style={{ color: 'var(--ink)' }}>Receiver-paid order:</strong> <em>Cash Received</em> and <em>Paid Online</em> refund the booker&apos;s advance
+                (Paid Online also credits the booker&apos;s commission). <em>Waive</em> and <em>Customer Owes</em> convert the order to normal customer payment and the
+                advance is consumed against the fare, never refunded.
+              </div>
+            )}
 
             {isAlreadyResolved && (
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-700 dark:text-amber-300">
