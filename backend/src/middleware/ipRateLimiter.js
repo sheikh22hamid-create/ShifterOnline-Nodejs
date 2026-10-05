@@ -1,5 +1,5 @@
 // Per-instance, proxy-aware fixed-window limiter for public (no-login) endpoints.
-// Keys on the first x-forwarded-for hop (Render sits behind a proxy), falling back to req.ip.
+// Keys on the rightmost x-forwarded-for hop (Render sits behind a proxy), falling back to req.ip.
 const PRUNE_THRESHOLD = 1000;
 
 function createIpRateLimiter({ name, windowMs, max }) {
@@ -10,9 +10,13 @@ function createIpRateLimiter({ name, windowMs, max }) {
     if (hits.size > PRUNE_THRESHOLD) {
       for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
     }
-    const xff = req.headers && req.headers["x-forwarded-for"];
-    const first = typeof xff === "string" ? xff.split(",")[0].trim() : "";
-    const key = `${name}:${first || req.ip || "unknown"}`;
+    // Assumes exactly one trusted proxy hop (Render edge), which appends the real client IP as the
+    // RIGHTMOST x-forwarded-for entry. Earlier entries are client-supplied and spoofable, so ignore them.
+    let xff = req.headers && req.headers["x-forwarded-for"];
+    if (Array.isArray(xff)) xff = xff.join(",");
+    const hops = typeof xff === "string" ? xff.split(",").map((h) => h.trim()).filter(Boolean) : [];
+    const client = hops.length ? hops[hops.length - 1] : "";
+    const key = `${name}:${client || req.ip || "unknown"}`;
 
     let entry = hits.get(key);
     if (!entry || entry.resetAt <= now) {

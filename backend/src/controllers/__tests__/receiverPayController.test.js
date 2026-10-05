@@ -89,4 +89,18 @@ describe("receiverPayPage", () => {
     expect(PAGE_HTML).toContain(".catch(verifyFailed)");
     expect(PAGE_HTML).not.toContain("innerHTML");
   });
+  it("locks Pay and Decline after any failed verify outcome", () => {
+    const start = PAGE_HTML.indexOf("/verify");
+    const end = PAGE_HTML.indexOf("modal:", start);
+    const verifyBlock = PAGE_HTML.slice(start, end);
+    expect(verifyBlock).toContain(".catch(verifyFailed)");
+    expect(verifyBlock).toContain("verifyFailed()");
+    expect(verifyBlock).not.toContain("PAYMENT_VERIFICATION_FAILED");
+    expect(verifyBlock).not.toMatch(/disabled = false/);
+    expect(PAGE_HTML).toContain("var locked = false");
+    expect(PAGE_HTML).toContain("disabled = locked");
+  });
+  it("only re-enables buttons for an /order failure", () => {
+    expect(PAGE_HTML).toContain("if (!o.success) {");
+  });
 });

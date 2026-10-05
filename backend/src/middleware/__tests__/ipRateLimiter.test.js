@@ -25,11 +25,16 @@ describe("ipRateLimiter", () => {
     expect(hit(a, mkReq("1.1.1.1")).next).not.toHaveBeenCalled();
     expect(hit(b, mkReq("1.1.1.1")).next).toHaveBeenCalled();
   });
-  it("uses the first x-forwarded-for hop, not the proxy ip", () => {
+  it("keys on the rightmost x-forwarded-for hop; a spoofed leftmost value does not change the key", () => {
     const mw = createIpRateLimiter({ name: "a", windowMs: 60000, max: 1 });
-    expect(hit(mw, mkReq("10.0.0.1", " 9.9.9.9 , 10.0.0.1")).next).toHaveBeenCalled();
-    expect(hit(mw, mkReq("10.0.0.1", "8.8.8.8, 10.0.0.1")).next).toHaveBeenCalled();
-    expect(hit(mw, mkReq("10.0.0.1", "9.9.9.9")).next).not.toHaveBeenCalled();
+    expect(hit(mw, mkReq("10.0.0.1", "6.6.6.6, 9.9.9.9")).next).toHaveBeenCalled();
+    expect(hit(mw, mkReq("10.0.0.1", "7.7.7.7, 9.9.9.9 ")).next).not.toHaveBeenCalled();
+    expect(hit(mw, mkReq("10.0.0.1", "6.6.6.6, 8.8.8.8")).next).toHaveBeenCalled();
+  });
+  it("handles array-valued x-forwarded-for headers", () => {
+    const mw = createIpRateLimiter({ name: "a", windowMs: 60000, max: 1 });
+    hit(mw, { ip: "x", headers: { "x-forwarded-for": ["1.1.1.1", "5.5.5.5"] } });
+    expect(hit(mw, mkReq("x", "2.2.2.2, 5.5.5.5")).next).not.toHaveBeenCalled();
   });
   it("falls back to req.ip then 'unknown'", () => {
     const mw = createIpRateLimiter({ name: "a", windowMs: 60000, max: 1 });

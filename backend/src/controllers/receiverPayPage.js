@@ -94,10 +94,7 @@ const PAGE_HTML = `<!doctype html>
             .then(function (r) { return r.json(); })
             .then(function (v) {
               if (v && v.success) { locked = false; show({ state: "paid" }); return; }
-              var keep = v && (v.code === "PAID_BUT_STATE_CHANGED" || v.code === "PAYMENT_VERIFICATION_FAILED");
-              say((v && v.message) || UNCONFIRMED);
-              if (keep) { locked = true; $("pay").disabled = $("decline").disabled = true; }
-              else { $("pay").disabled = $("decline").disabled = false; }
+              verifyFailed();
             })
             .catch(verifyFailed);
         },
