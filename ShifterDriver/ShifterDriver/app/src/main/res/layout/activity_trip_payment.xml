@@ -1,0 +1,1035 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_trip_payment"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F8FAFC"
+    android:orientation="vertical">
+
+    <!-- Top App Bar -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="?attr/actionBarSize"
+        android:background="#0F172A"
+        app:titleTextColor="@color/white"
+        app:navigationIcon="@drawable/ic_arrow_back"
+        app:title="Trip Payment Settlement" />
+
+    <!-- Scrollable Content -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Live Status Alert Card -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_status_alert"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="#FEF3C7">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="14dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:id="@+id/img_status_icon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:layout_marginEnd="12dp"
+                        android:src="@drawable/ic_info"
+                        app:tint="#D97706" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/txt_status_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Payment Pending"
+                            android:textColor="#92400E"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/txt_status_desc"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Collect cash or UPI directly from customer and tap Received."
+                            android:textColor="#B45309"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/txt_receiver_online_hint"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:textColor="#64748B"
+                            android:textSize="12sp"
+                            android:visibility="gone" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Prominent Collect Amount Card -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:id="@+id/txt_order_header"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ORDER #--"
+                        android:textColor="#64748B"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.05" />
+
+                    <TextView
+                        android:id="@+id/txt_amount_due_label"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Collect from Customer"
+                        android:textColor="#334155"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_amount_due_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="₹0.00"
+                        android:textColor="#0F172A"
+                        android:textSize="36sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_amount_subtext"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Cash or direct UPI to your personal QR"
+                        android:textColor="#64748B"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Full Fare & Settlement Breakdown Card (Matches Legacy Completed Order Dialog) -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="3dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="14dp"
+                    android:paddingVertical="14dp">
+
+                    <!-- ================= 1. FARE BREAKDOWN ================= -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <TextView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:background="@drawable/bg_badge_green_square"
+                            android:gravity="center"
+                            android:text="₹"
+                            android:textColor="@color/white"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/fare_breakdown_caps"
+                            android:textColor="#15803D"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Fare Items Container -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical">
+
+                        <!-- Minimum charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_minimum_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="₹"
+                                android:textColor="@color/home_secondary"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_minimum_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_minimum_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Actual pickup charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_actual_pickup_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="📍"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_actual_pickup_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_actual_pickup_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Pick up to drop charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_pickup_to_drop_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="🛣️"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_pickup_to_drop_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_pickup_to_drop_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Add stop charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_add_stop_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="ℹ️"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_add_stop_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_add_stop_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Extra waiting time charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_waiting_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="⏱️"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_extra_waiting_time_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_waiting_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Night charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_night_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="🌙"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_night_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_night_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Loading charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_loading_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="⬆️"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_loading_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_loading_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Unloading charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_unloading_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="16dp"
+                                android:layout_height="wrap_content"
+                                android:text="⬇️"
+                                android:textSize="12sp" />
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:layout_weight="1"
+                                android:text="@string/fare_unloading_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_unloading_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Final fare amount Strip -->
+                    <LinearLayout
+                        android:id="@+id/layout_final_fare"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_strip_green"
+                        android:gravity="center_vertical"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="8dp">
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/fare_final_amount"
+                            android:textColor="#15803D"
+                            android:textSize="12.5sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/txt_final_fare_amount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="₹0.00"
+                            android:textColor="#15803D"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Premium Plan Benefit Strip -->
+                    <LinearLayout
+                        android:id="@+id/layout_plan_benefit_strip"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_note_green"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="8dp"
+                        android:visibility="gone">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="⭐"
+                            android:textSize="13sp" />
+                        <TextView
+                            android:id="@+id/txt_plan_benefit"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:lineSpacingExtra="2dp"
+                            android:text="@string/premium_plan_benefit_applied"
+                            android:textColor="#166534"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Divider -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="10dp"
+                        android:background="#E2E8F0" />
+
+                    <!-- ================= 2. DEDUCTIONS ================= -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <TextView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:background="@drawable/bg_badge_red_square"
+                            android:gravity="center"
+                            android:text="%"
+                            android:textColor="@color/white"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/deductions_caps"
+                            android:textColor="#DC2626"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <!-- Deductions items -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical">
+
+                        <!-- Commission -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_commission"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_commission"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_commission"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#DC2626"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Per trip charge -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_per_trip_charge"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_per_trip_charge"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_per_trip_charge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#DC2626"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Total Deductions Row -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_total_deductions"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_total_deductions"
+                                android:textColor="#DC2626"
+                                android:textSize="12.5sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/txt_total_deductions"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#DC2626"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- Driver Total Earning Strip -->
+                        <LinearLayout
+                            android:id="@+id/layout_driver_earning_strip"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:background="@drawable/bg_strip_blue"
+                            android:gravity="center_vertical"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="8dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_eq_driver_total_earning"
+                                android:textColor="#1D4ED8"
+                                android:textSize="12.5sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/txt_driver_total_earning"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1D4ED8"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Divider -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="10dp"
+                        android:background="#E2E8F0" />
+
+                    <!-- ================= 3. PAYMENT BY USER ================= -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <TextView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:background="@drawable/bg_badge_blue_square"
+                            android:gravity="center"
+                            android:text="💳"
+                            android:textSize="12sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/payment_by_user_caps"
+                            android:textColor="#2563EB"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical">
+
+                        <!-- Total amount to be paid by user -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_total_amount_by_user"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/total_amount_paid_by_user"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_total_amount_by_user"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Advance payment -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_advance_payment"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_advance_payment"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_advance_payment"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#2563EB"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Cash to Collect Strip -->
+                        <LinearLayout
+                            android:id="@+id/layout_cash_to_collect_strip"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:background="@drawable/bg_strip_blue"
+                            android:gravity="center_vertical"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="8dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_cash_to_collect"
+                                android:textColor="#1E40AF"
+                                android:textSize="12.5sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/txt_cash_to_collect"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E40AF"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Divider -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="10dp"
+                        android:background="#E2E8F0" />
+
+                    <!-- ================= 4. FINAL SETTLEMENT ================= -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+                        <TextView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:background="@drawable/bg_badge_green_square"
+                            android:gravity="center"
+                            android:text="💼"
+                            android:textSize="12sp" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:text="@string/final_settlement_caps"
+                            android:textColor="#15803D"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:orientation="vertical">
+
+                        <!-- Settlement Earning -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_settlement_earning"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/driver_total_earning_label"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_settlement_earning"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Settlement Cash collected -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_settlement_cash"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_cash_collected_from_user"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_settlement_cash"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#1E293B"
+                                android:textSize="13sp" />
+                        </LinearLayout>
+
+                        <!-- Wallet Adjustment Strip -->
+                        <LinearLayout
+                            android:id="@+id/layout_wallet_adjustment_strip"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:background="@drawable/bg_strip_green"
+                            android:gravity="center_vertical"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="8dp">
+                            <TextView
+                                android:id="@+id/txt_wallet_adjustment_label"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_ledger_adjustment"
+                                android:textColor="#15803D"
+                                android:textSize="12.5sp"
+                                android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/txt_wallet_adjustment"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#15803D"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <!-- Settlement Note Card -->
+                        <LinearLayout
+                            android:id="@+id/layout_settlement_note_box"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:background="@drawable/bg_note_green"
+                            android:gravity="center_vertical"
+                            android:padding="8dp">
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="✅"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_settlement_note"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:lineSpacingExtra="2dp"
+                                android:text="@string/driver_settlement_note"
+                                android:textColor="#166534"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Dispute info box (shown when disputed) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_dispute_info"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="#FEF2F2">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:id="@+id/txt_dispute_raised_by"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Dispute Raised by Customer"
+                        android:textColor="#DC2626"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/txt_dispute_reason"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Reason: Customer reported an issue."
+                        android:textColor="#7F1D1D"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Support team will investigate and settle the wallet balance."
+                        android:textColor="#991B1B"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Payment collection notice -->
+            <TextView
+                android:id="@+id/txt_grace_warning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="16dp"
+                android:text="Payment must be collected directly from the customer.&#10;If the customer is facing any issue paying, you can report it to Admin.&#10;Admin will track the customer's record. Payment must be collected by you."
+                android:textColor="#64748B"
+                android:textSize="12sp"
+                android:lineSpacingExtra="3.5dp"
+                android:gravity="center" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Bottom Action Bar -->
+    <LinearLayout
+        android:id="@+id/layout_bottom_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/white"
+        android:elevation="8dp"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Primary Confirm Received Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_received"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:text="Received ₹0.00"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            app:cornerRadius="12dp"
+            app:backgroundTint="#15803D" />
+
+        <!-- Receiver-pays actions (visible only in receiver mode + pending) -->
+        <LinearLayout
+            android:id="@+id/layout_receiver_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_receiver_refused"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="Receiver refused"
+                android:textColor="#DC2626"
+                app:strokeColor="#FCA5A5"
+                app:cornerRadius="10dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_resend_link"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="Resend link"
+                android:textColor="#334155"
+                app:strokeColor="#CBD5E1"
+                app:cornerRadius="10dp" />
+        </LinearLayout>
+
+        <!-- Secondary Actions (Dispute & Home) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_report_problem"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="Report Problem"
+                android:textColor="#DC2626"
+                app:strokeColor="#FCA5A5"
+                app:cornerRadius="10dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_done"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="Go to Home"
+                android:textColor="#334155"
+                app:strokeColor="#CBD5E1"
+                app:cornerRadius="10dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
