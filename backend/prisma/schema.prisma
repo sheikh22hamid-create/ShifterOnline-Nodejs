@@ -1908,6 +1908,11 @@ model order_settlement {
   resolve_note        String?   @db.Text
   created_at          DateTime  @db.DateTime(0)
   updated_at          DateTime  @db.DateTime(0)
+  payer               String    @default("customer") @db.VarChar(10)
+  receiver_markup     Decimal   @default(0.00) @db.Decimal(10, 2)
+  advance_held        Decimal   @default(0.00) @db.Decimal(10, 2)
+  reversal_shortfall  Decimal   @default(0.00) @db.Decimal(10, 2)
+  receiver_credited   Boolean   @default(false)
   events              order_settlement_event[]
 
   @@index([status, pending_since], map: "idx_order_settlement_status")
@@ -1928,4 +1933,25 @@ model order_settlement_event {
   settlement    order_settlement @relation(fields: [settlement_id], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "fk_order_settlement_event_settlement")
 
   @@index([settlement_id], map: "idx_order_settlement_event_settlement")
+}
+
+model order_receiver_pay {
+  id                 Int       @id @default(autoincrement())
+  order_id           Int       @unique(map: "uq_order_receiver_pay_order")
+  uid                Int
+  receiver_phone     String    @db.VarChar(15)
+  receiver_name      String?   @db.VarChar(100)
+  commission_percent Decimal   @default(0.00) @db.Decimal(5, 2)
+  status             String    @default("active") @db.VarChar(10)
+  token_hash         String?   @unique(map: "uq_order_receiver_pay_token") @db.Char(64)
+  token_expires_at   DateTime? @db.DateTime(0)
+  razorpay_order_id  String?   @db.VarChar(64)
+  declined_by        String?   @db.VarChar(10)
+  declined_at        DateTime? @db.DateTime(0)
+  link_sent_at       DateTime? @db.DateTime(0)
+  link_send_count    Int       @default(0)
+  created_at         DateTime  @db.DateTime(0)
+  updated_at         DateTime  @db.DateTime(0)
+
+  @@index([uid], map: "idx_order_receiver_pay_uid")
 }
