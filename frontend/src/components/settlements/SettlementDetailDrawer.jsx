@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Clock, User, ShieldAlert, CheckCircle2, RefreshCw, FileText, ArrowRight } from 'lucide-react'
 import api from '../../services/api'
 import { useToast } from '../../context/ToastContext'
@@ -54,8 +54,13 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [converting, setConverting] = useState(false)
+  // Which settlement the drawer currently shows; a slow request for another one must not overwrite it.
+  const activeIdRef = useRef(null)
 
   useEffect(() => {
+    activeIdRef.current = open && settlementId ? settlementId : null
+    setConverting(false)
+    setSubmitting(false)
     if (!open || !settlementId) {
       setData(null)
       setError(null)
@@ -105,7 +110,7 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
       if (onResolved) onResolved()
       // Refresh current drawer data
       const res = await api.get(`/settlements/${settlementId}`)
-      setData(res.data.data)
+      if (activeIdRef.current === settlementId) setData(res.data.data)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to resolve settlement.')
     } finally {
@@ -129,11 +134,11 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
     // stale, and a refetch problem after a successful convert must not be reported as a failed convert.
     try {
       const fresh = await api.get(`/settlements/${settlementId}`)
-      setData(fresh.data.data)
+      if (activeIdRef.current === settlementId) setData(fresh.data.data)
     } catch {
       if (converted) toast.error('Converted, but the details could not be refreshed. Close and reopen this drawer.')
     }
-    setConverting(false)
+    if (activeIdRef.current === settlementId) setConverting(false)
   }
 
   const settlement = data?.settlement

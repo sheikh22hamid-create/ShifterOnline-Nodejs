@@ -28,7 +28,8 @@ async function getReceiverPaySettings() {
     const byKey = new Map(rows.map((r) => [r.setting_key, r.setting_value]));
     return {
       enabled: toBool(byKey.get(KEYS.enabled)),
-      maxPercent: toNonNegative(byKey.get(KEYS.maxPercent), DEFAULTS.maxPercent),
+      // A commission above 100% of the fare is never meaningful; clamp an admin typo.
+      maxPercent: Math.min(toNonNegative(byKey.get(KEYS.maxPercent), DEFAULTS.maxPercent), 100),
       maxAmount: toNonNegative(byKey.get(KEYS.maxAmount), DEFAULTS.maxAmount),
       linkTtlHours: toPositive(byKey.get(KEYS.linkTtlHours), DEFAULTS.linkTtlHours),
     };

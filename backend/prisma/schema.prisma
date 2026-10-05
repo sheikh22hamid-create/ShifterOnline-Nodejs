@@ -1954,4 +1954,5 @@ model order_receiver_pay {
   updated_at         DateTime  @db.DateTime(0)
 
   @@index([uid], map: "idx_order_receiver_pay_uid")
+  @@index([razorpay_order_id], map: "idx_order_receiver_pay_rzp_order")
 }

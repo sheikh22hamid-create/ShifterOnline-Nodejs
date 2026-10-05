@@ -28,6 +28,10 @@ describe("receiverPaySettings", () => {
     }));
     expect(await getReceiverPaySettings()).toEqual({ enabled: true, maxPercent: 5, maxAmount: 0, linkTtlHours: 24 });
   });
+  it("caps the max commission percent at 100 even if an admin types more", async () => {
+    prisma.app_settings.findMany.mockResolvedValue(rows({ receiver_commission_max_percent: "150" }));
+    expect((await getReceiverPaySettings()).maxPercent).toBe(100);
+  });
   it("fails closed when the DB read throws", async () => {
     prisma.app_settings.findMany.mockRejectedValue(new Error("db down"));
     expect((await getReceiverPaySettings()).enabled).toBe(false);

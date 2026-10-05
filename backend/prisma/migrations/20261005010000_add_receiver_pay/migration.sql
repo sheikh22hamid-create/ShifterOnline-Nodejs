@@ -26,5 +26,6 @@ CREATE TABLE `order_receiver_pay` (
   PRIMARY KEY (`id`),
   UNIQUE INDEX `uq_order_receiver_pay_order` (`order_id`),
   UNIQUE INDEX `uq_order_receiver_pay_token` (`token_hash`),
-  INDEX `idx_order_receiver_pay_uid` (`uid`)
+  INDEX `idx_order_receiver_pay_uid` (`uid`),
+  INDEX `idx_order_receiver_pay_rzp_order` (`razorpay_order_id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

@@ -708,13 +708,14 @@ function SettingsForm({ data, onSaved }) {
               id="flag-receiver_commission_max_percent"
               type="number"
               min="0"
-              step="0.5"
+              max="100"
+              step="any"
               placeholder="5"
               value={flags.receiver_commission_max_percent ?? '5'}
               onChange={(e) => setFlags((f) => ({ ...f, receiver_commission_max_percent: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              Highest commission the booking customer may add on top of the receiver&apos;s amount (Default: 5).
+              Highest commission the booking customer may add on top of the receiver&apos;s amount, 0 to 100 (Default: 5).
             </p>
           </div>
           <div>

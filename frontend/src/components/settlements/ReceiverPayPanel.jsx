@@ -9,7 +9,7 @@ function Row({ label, children }) {
   return (
     <div className="flex items-start justify-between gap-3 py-1 text-[12.5px]">
       <span style={{ color: 'var(--ink-faint)' }}>{label}</span>
-      <span className="text-right font-medium" style={{ color: 'var(--ink)' }}>{children}</span>
+      <div className="text-right font-medium" style={{ color: 'var(--ink)' }}>{children}</div>
     </div>
   )
 }
@@ -43,11 +43,12 @@ export default function ReceiverPayPanel({ settlement, receiverPay, onConvert, c
         <Badge tone={isReceiver ? 'brand' : 'neutral'}>{isReceiver ? 'Receiver is payer' : 'Converted to customer'}</Badge>
       </div>
 
-      <div className="mt-3 divide-y" style={{ borderColor: 'var(--border)' }}>
+      <div className="mt-3 divide-y divide-[color:var(--border)]">
         {receiverPay && (
           <>
             <Row label="Receiver">
-              {receiverPay.receiver_name || '—'} <span className="font-mono-data">({receiverPay.receiver_phone})</span>
+              {receiverPay.receiver_name || '—'}
+              {receiverPay.receiver_phone ? <span className="font-mono-data"> ({receiverPay.receiver_phone})</span> : null}
             </Row>
             <Row label="Pay link">
               <span className="inline-flex items-center gap-1">
@@ -106,7 +107,7 @@ export default function ReceiverPayPanel({ settlement, receiverPay, onConvert, c
                   type="button"
                   disabled={converting}
                   onClick={handleConvert}
-                  className="flex-1 rounded-lg py-1.5 text-[12px] font-semibold"
+                  className="flex-1 rounded-lg py-1.5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
                 >
                   {converting ? 'Converting...' : 'Yes, convert'}
@@ -115,7 +116,7 @@ export default function ReceiverPayPanel({ settlement, receiverPay, onConvert, c
                   type="button"
                   disabled={converting}
                   onClick={() => setConfirming(false)}
-                  className="rounded-lg border px-3 py-1.5 text-[12px] font-medium"
+                  className="rounded-lg border px-3 py-1.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
                 >
                   Cancel
