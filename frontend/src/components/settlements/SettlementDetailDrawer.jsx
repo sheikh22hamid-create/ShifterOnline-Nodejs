@@ -115,18 +115,25 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
 
   async function handleConvert() {
     setConverting(true)
+    let converted = false
     try {
       const res = await api.post(`/settlements/${settlementId}/convert-to-customer`)
+      converted = true
       const phase = res.data?.data?.phase
       toast.success(phase === 'already_normal' ? 'Already a normal customer payment.' : 'Converted to customer payment.')
       if (onResolved) onResolved()
-      const fresh = await api.get(`/settlements/${settlementId}`)
-      setData(fresh.data.data)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to convert settlement.')
-    } finally {
-      setConverting(false)
     }
+    // Always refresh the drawer: after a failure (e.g. the driver confirmed cash meanwhile) it may be
+    // stale, and a refetch problem after a successful convert must not be reported as a failed convert.
+    try {
+      const fresh = await api.get(`/settlements/${settlementId}`)
+      setData(fresh.data.data)
+    } catch {
+      if (converted) toast.error('Converted, but the details could not be refreshed. Close and reopen this drawer.')
+    }
+    setConverting(false)
   }
 
   const settlement = data?.settlement
