@@ -1,0 +1,87 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:goParcel/utils/receiver_pay_options.dart';
+
+void main() {
+  group('normalizeIndianMobile', () {
+    test('strips formatting and prefixes', () {
+      expect(normalizeIndianMobile('+91 98765 43210'), '9876543210');
+      expect(normalizeIndianMobile('09876543210'), '9876543210');
+      expect(normalizeIndianMobile('98765-43210'), '9876543210');
+    });
+    test('too short or empty gives empty', () {
+      expect(normalizeIndianMobile(''), '');
+      expect(normalizeIndianMobile(null), '');
+      expect(normalizeIndianMobile('12345'), '');
+    });
+  });
+
+  group('percentChoices', () {
+    test('standard', () {
+      expect(percentChoices(5), [0, 1, 2, 3, 5]);
+      expect(percentChoices(10), [0, 1, 2, 3, 5, 10]);
+      expect(percentChoices(2.5), [0, 1, 2, 2.5]);
+      expect(percentChoices(3), [0, 1, 2, 3]);
+    });
+    test('zero or negative', () {
+      expect(percentChoices(0), [0]);
+      expect(percentChoices(-1), [0]);
+    });
+  });
+
+  group('ReceiverPayConfig.fromResponse', () {
+    test('normal map', () {
+      final c = ReceiverPayConfig.fromResponse({
+        'config': {'enabled': true, 'max_percent': 5, 'max_amount': '500.5'}
+      });
+      expect(c.enabled, true);
+      expect(c.maxPercent, 5);
+      expect(c.maxAmount, 500.5);
+    });
+    test('null and empty are disabled', () {
+      expect(ReceiverPayConfig.fromResponse(null).enabled, false);
+      expect(ReceiverPayConfig.fromResponse({}).enabled, false);
+      expect(ReceiverPayConfig.fromResponse({'config': 'junk'}).enabled, false);
+    });
+    test('enabled truthiness', () {
+      bool e(dynamic v) =>
+          ReceiverPayConfig.fromResponse({'config': {'enabled': v}}).enabled;
+      expect(e(true), true);
+      expect(e('true'), true);
+      expect(e(1), true);
+      expect(e('1'), true);
+      expect(e(false), false);
+      expect(e('yes'), false);
+      expect(e(2), false);
+    });
+  });
+
+  group('receiverPayUnavailableReason', () {
+    const on = ReceiverPayConfig(enabled: true, maxPercent: 5, maxAmount: 500);
+    test('disabled config', () {
+      expect(
+          receiverPayUnavailableReason(
+              config: ReceiverPayConfig.disabled,
+              payValue: 1,
+              dropMobile: '9876543210'),
+          isNotNull);
+    });
+    test('wallet', () {
+      expect(
+          receiverPayUnavailableReason(
+              config: on, payValue: -2, dropMobile: '9876543210'),
+          isNotNull);
+    });
+    test('bad number', () {
+      expect(
+          receiverPayUnavailableReason(
+              config: on, payValue: 1, dropMobile: '123'),
+          isNotNull);
+    });
+    test('available', () {
+      expect(
+          receiverPayUnavailableReason(
+              config: on, payValue: 1, dropMobile: '+91 98765 43210'),
+          isNull);
+    });
+  });
+}
