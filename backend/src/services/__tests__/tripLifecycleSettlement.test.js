@@ -261,6 +261,17 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
       expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 297 });
     });
 
+    it("a rejecting receiver-pay lookup is logged and the ride completes as a normal ride", async () => {
+      const logger = require("../../utils/logger");
+      receiverPayService.getActiveForOrder.mockRejectedValueOnce(new Error("db blip"));
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      const result = await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(result).toMatchObject({ success: true });
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("297"), expect.anything());
+      expect(settlementService.createForCompletedOrder.mock.calls[0][0].receiver).toBeUndefined();
+      expect(receiverPayService.issueLink).not.toHaveBeenCalled();
+    });
+
     it("system decline rejecting never fails the ride", async () => {
       const rss = require("../receiverSettlementService");
       receiverPayService.getActiveForOrder.mockResolvedValueOnce(rpRow).mockResolvedValue(null);

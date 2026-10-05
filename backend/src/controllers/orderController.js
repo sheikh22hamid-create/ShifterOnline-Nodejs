@@ -700,7 +700,7 @@ async function createOrder(req, res) {
       stops, useReferralPoints: Boolean(use_referral_points),
       body_type: body_type || bodyType,
       goodsTypeId: goods_type_id, goodsTypeOther: goods_type_other,
-      receiverPays: Boolean(receiver_pays), receiverCommissionPercent: receiver_commission_percent,
+      receiverPays: receiver_pays === true || receiver_pays === "true" || receiver_pays === 1 || receiver_pays === "1", receiverCommissionPercent: receiver_commission_percent,
     });
 
     if (!result.ok && result.code === "VALIDATION") {

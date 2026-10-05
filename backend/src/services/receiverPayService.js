@@ -132,10 +132,16 @@ async function issueLink({ orderId, resend = false }) {
   const total = receiverPayable(settlement.amount_due, settlement.receiver_markup);
   // Lazy require: whatsapp/notifications pulls in the WhatsApp client; keep it out of module load.
   const { sendWhatsAppNotification } = require("../whatsapp/notifications");
-  const sent = await sendWhatsAppNotification(
-    row.receiver_phone,
-    buildLinkMessage({ orderId, amountDue: Number(settlement.amount_due), markup: Number(settlement.receiver_markup), total, link })
-  );
+  // The token was already rotated above, so a send failure must still hand the new link back.
+  let sent = false;
+  try {
+    sent = await sendWhatsAppNotification(
+      row.receiver_phone,
+      buildLinkMessage({ orderId, amountDue: Number(settlement.amount_due), markup: Number(settlement.receiver_markup), total, link })
+    );
+  } catch (err) {
+    logger.warn(`receiverPay.issueLink: WhatsApp send threw for order ${orderId}: ${err && err.message}`);
+  }
   if (!sent) logger.warn(`receiverPay.issueLink: WhatsApp not delivered for order ${orderId}; link must be resent or shared.`);
   return { sent: Boolean(sent), link };
 }

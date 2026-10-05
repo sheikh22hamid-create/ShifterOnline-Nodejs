@@ -639,7 +639,10 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // a held deposit (still debited from the booker wallet below via advance_apply), so the amount
     // due is NOT netted by it. A missing/failed lookup just means a normal ride.
     const receiverPayRow = isCashOrder
-      ? await receiverPayService.getActiveForOrder(orderId).catch(() => null)
+      ? await receiverPayService.getActiveForOrder(orderId).catch((err) => {
+          logger.warn(`updateStatus: receiver pay lookup failed for order ${orderId}, treating as a normal ride:`, err);
+          return null;
+        })
       : null;
     const receiverAmountDue = receiverPayRow ? round2(finalTotal - nonAdvancePrepaid) : 0;
     const useReceiverMode = Boolean(receiverPayRow) && receiverAmountDue > 0;

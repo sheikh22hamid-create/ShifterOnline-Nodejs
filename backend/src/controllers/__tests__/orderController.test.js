@@ -449,6 +449,25 @@ describe("orderController.createOrder (HTTP handler) — photos pass-through", (
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it("parses receiver_pays strictly: the string \"false\" is not true", async () => {
+    const receiverPayService = require("../../services/receiverPayService");
+    const spy = jest.spyOn(receiverPayService, "validateBooking").mockResolvedValue({ ok: true });
+    const base = {
+      uid: 1, category: "Bike", delivery_type: [6], booking_type: 1, plat: 28.7, plong: 77.1, paddress: "A", pick_name: "P", pmobile: "999",
+      pick_type: "", dlat: 28.8, dlong: 77.2, daddress: "B", drop_name: "D", dmobile: "888", drop_type: "", package_weight: "2 Kg",
+      package_cost: 100, description: "", p_method_id: 1, transaction_id: "", extra_mile_charge: 0, cou_id: 0, cou_amt: 0, radius_km: 10, city_id: 2,
+    };
+    const seen = {};
+    for (const v of ["false", false, undefined, 0, "0", "true", true, 1, "1"]) {
+      spy.mockClear();
+      await createOrder({ body: { ...base, receiver_pays: v } }, { status: jest.fn().mockReturnThis(), json: jest.fn() });
+      seen[String(v)] = spy.mock.calls[0][0].receiverPays;
+    }
+    spy.mockRestore();
+    expect(seen).toEqual({ false: false, undefined: false, 0: false, 1: true, true: true });
+    expect(seen["0"]).toBe(false);
+  });
+
   it("responds 403 with code SETTLEMENT_PENDING when the customer has an unsettled payment", async () => {
     const settlementService = require("../../services/settlementService");
     jest.spyOn(settlementService, "findBlockingSettlement").mockResolvedValue({ order_id: 50, amount_due: 85, status: "pending" });

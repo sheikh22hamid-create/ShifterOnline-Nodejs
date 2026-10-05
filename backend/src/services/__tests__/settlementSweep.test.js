@@ -54,6 +54,12 @@ describe("sweepSettlements", () => {
     expect(pushNotifier.notifyDriverSettlementReminder).toHaveBeenCalledWith("drv-token", 50, 85);
   });
 
+  it("does not push the booker a pay reminder for a receiver-mode settlement (driver still reminded)", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([pending({ pending_since: minsAgo(11), payer: "receiver" })]);
+    await sweepSettlements(NOW);
+    expect(pushNotifier.notifyCustomerSettlementReminder).not.toHaveBeenCalled();
+    expect(pushNotifier.notifyDriverSettlementReminder).toHaveBeenCalledWith("drv-token", 50, 85);
+  });
   it("does not resend a threshold that was already sent (restart / overlapping run)", async () => {
     prisma.order_settlement.findMany.mockResolvedValue([pending({ pending_since: minsAgo(11), reminders_sent: 1 })]);
     expect(await sweepSettlements(NOW)).toEqual({ reminded: 0, escalated: 0 });

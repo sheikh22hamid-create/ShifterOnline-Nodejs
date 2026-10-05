@@ -141,13 +141,13 @@ async function assertOrderParty(orderId, party, id) {
 const customerResendLink = customerAction("settlement customerResendLink", async ({ res, uid, orderId }) => {
   await assertOrderParty(orderId, "customer", uid);
   const { sent, link } = await receiverPayService.issueLink({ orderId, resend: true });
-  return ok(res, { sent, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
+  return ok(res, sent ? { sent: true } : { sent: false, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
 });
 
 const driverResendLink = driverAction("settlement driverResendLink", async ({ res, riderId, orderId }) => {
   await assertOrderParty(orderId, "driver", riderId);
   const { sent, link } = await receiverPayService.issueLink({ orderId, resend: true });
-  return ok(res, { sent, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
+  return ok(res, sent ? { sent: true } : { sent: false, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
 });
 
 module.exports = {

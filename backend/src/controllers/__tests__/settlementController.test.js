@@ -242,12 +242,31 @@ describe("receiver-pay endpoints", () => {
     const r = resp();
     await c.customerResendLink({ body: { uid: 7, order_id: 50 } }, r);
     expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 50, resend: true });
-    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", sent: true, link: "https://x/pay/t" }));
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", sent: true }));
+    expect(r.json.mock.calls[0][0]).not.toHaveProperty("link");
+
+    receiverPayService.issueLink.mockResolvedValue({ sent: false, link: "https://x/pay/t2" });
+    const rf = resp();
+    await c.customerResendLink({ body: { uid: 7, order_id: 50 } }, rf);
+    expect(rf.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", sent: false, link: "https://x/pay/t2" }));
 
     receiverPayService.issueLink.mockRejectedValue(new receiverPayService.ReceiverPayError("TOO_SOON", "Please wait a minute before sending the link again."));
     const r2 = resp();
     await c.customerResendLink({ body: { uid: 7, order_id: 50 } }, r2);
     expect(r2.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", code: "TOO_SOON" }));
+  });
+  it("resend link (driver) returns the link only when WhatsApp did not deliver", async () => {
+    const prisma = require("../../config/db");
+    prisma.order_settlement.findUnique.mockResolvedValue({ order_id: 50, uid: 7, rid: 9 });
+    receiverPayService.issueLink.mockResolvedValue({ sent: true, link: "https://x/pay/t" });
+    const r = resp();
+    await c.driverResendLink({ body: { rider_id: 9, order_id: 50 } }, r);
+    expect(r.json.mock.calls[0][0]).toMatchObject({ Result: "true", sent: true });
+    expect(r.json.mock.calls[0][0]).not.toHaveProperty("link");
+    receiverPayService.issueLink.mockResolvedValue({ sent: false, link: "https://x/pay/t3" });
+    const r2 = resp();
+    await c.driverResendLink({ body: { rider_id: 9, order_id: 50 } }, r2);
+    expect(r2.json).toHaveBeenCalledWith(expect.objectContaining({ sent: false, link: "https://x/pay/t3" }));
   });
   it("resend link is refused for someone else's order", async () => {
     const prisma = require("../../config/db");

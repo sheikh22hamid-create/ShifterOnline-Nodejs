@@ -115,6 +115,13 @@ describe("receiverPayService.issueLink", () => {
     expect(out.sent).toBe(false);
     expect(out.link).toContain("/pay/");
   });
+  it("a WhatsApp rejection yields sent=false with the link instead of throwing", async () => {
+    notifications.sendWhatsAppNotification.mockRejectedValue(new Error("wa down"));
+    const out = await svc.issueLink({ orderId: 77 });
+    expect(out.sent).toBe(false);
+    expect(out.link).toContain("/pay/");
+    expect(require("../../utils/logger").warn).toHaveBeenCalled();
+  });
   it("refuses when the receiver row is not active", async () => {
     prisma.order_receiver_pay.findUnique.mockResolvedValue(rpRow({ status: "declined" }));
     await expect(svc.issueLink({ orderId: 77 })).rejects.toMatchObject({ code: "NOT_ACTIVE" });

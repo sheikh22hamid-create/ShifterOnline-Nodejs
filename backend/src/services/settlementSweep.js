@@ -13,7 +13,8 @@ async function sendReminders(s) {
   ]);
   const sends = [];
   // async wrappers so a synchronous throw from a notifier is also captured.
-  if (customer?.fcm_token) sends.push((async () => pushNotifier.notifyCustomerSettlementReminder(customer.fcm_token, s.order_id, amount))());
+  // A receiver-mode settlement is the receiver's to pay; the booker's pay would be refused (RECEIVER_MODE).
+  if (customer?.fcm_token && s.payer !== "receiver") sends.push((async () => pushNotifier.notifyCustomerSettlementReminder(customer.fcm_token, s.order_id, amount))());
   if (rider?.fcm_token) sends.push((async () => pushNotifier.notifyDriverSettlementReminder(rider.fcm_token, s.order_id, amount))());
   const results = await Promise.allSettled(sends);
   for (const r of results) {
