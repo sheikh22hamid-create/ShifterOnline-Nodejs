@@ -13,7 +13,7 @@
 ## Backend contract this app uses (already deployed on main)
 
 - `GET api/order/receiver-pay/config` -> `{ ..., config: { enabled: bool, max_percent: number, max_amount: number } }`
-- `POST api/order/create` accepts `receiver_pays` (bool) and `receiver_commission_percent` (number); the 200 response has `receiver_pay` (bool); HTTP 400 with `code: "RECEIVER_PAY_UNAVAILABLE"` when not allowed (feature off, non-cash, bad phone, percent above max).
+- `POST api/order/create` accepts `receiver_pays` (bool) and `receiver_commission_percent` (number); the 200 response has `receiver_pay` (bool); HTTP 400 with `code: "RECEIVER_PAY_UNAVAILABLE"` when not allowed (feature off, non-cash, wallet-paid); a bad drop phone or a percent above max returns HTTP 400 with `code: "VALIDATION"` and a message instead.
 - `POST api/order/settlement/take-over` `{uid, order_id}` -> `{phase, settlement}`; `POST api/order/settlement/resend-link` `{uid, order_id}` -> `{sent, link}` (`link` present only when `sent == false`). Errors use the existing envelope: HTTP 200, `Result: "false"`, `code`, `ResponseMsg`.
 - Settlement view (`orderProduc["settlement"]` and the `settlement:updated` socket payload) gains `payer` (`'customer'|'receiver'`), `receiver_markup`, `advance_held`, `receiver_pay_total`.
 - Error codes to map to friendly text: `RECEIVER_MODE`, `RECEIVER_PAY_UNAVAILABLE`, `NOT_ACTIVE`, `NOT_PAYABLE`, `NOT_CONFIGURED`, `TOO_SOON`, `LINK_LIMIT`, `FORBIDDEN`, `INVALID_STATE`, `NOT_FOUND`.
