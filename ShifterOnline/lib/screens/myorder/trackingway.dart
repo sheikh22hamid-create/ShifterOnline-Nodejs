@@ -3955,7 +3955,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (orderProduc?["is_rate"] == "0") ...[
+          if (_isUnrated()) ...[
             appButton1(
               tital: "Order Review".tr,
               buttonbgColor: linercolor,
@@ -5159,7 +5159,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   Widget _buildActionsArea() {
     final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     if (s == "completed") {
-      if (orderProduc?["is_rate"] != "0") return const SizedBox.shrink();
+      if (!_isUnrated()) return const SizedBox.shrink();
       return appButton1(
         tital: "Order Review".tr,
         buttonbgColor: linercolor,
@@ -5787,6 +5787,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           setState(() {});
           checkAdvancePaymentStatus();
           _checkSettlementStatusAndPoll();
+          _maybeAutoOpenFeedback();
         }
       }
     });
@@ -7977,6 +7978,25 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   bool _feedbackSheetShown = false;
 
+  // The order-details API sends is_rate as a JSON int (0/1), not the string
+  // "0", so comparing against "0" directly never matched and the feedback
+  // sheet/button never showed.
+  bool _isUnrated() => (orderProduc?["is_rate"]?.toString() ?? "0") == "0";
+
+  /// Opens the feedback sheet by itself once the trip is completed, payment
+  /// is settled (or settlement is off) and the customer hasn't rated yet.
+  /// Covers the case where the driver confirms cash while the customer's
+  /// settlement sheet is closed, which no sheet callback would catch.
+  void _maybeAutoOpenFeedback() {
+    if (_feedbackSheetShown || _isSettlementSheetOpen || !mounted || orderProduc == null) return;
+    final done = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase() == "completed";
+    if (!done || !_isUnrated()) return;
+    final sStatus = _getSettlementData()?['status']?.toString();
+    final settled = sStatus == null || sStatus == 'cash_received' || sStatus == 'paid_online' || sStatus == 'waived';
+    if (!settled) return;
+    Future.delayed(const Duration(milliseconds: 600), _openCustomerFeedbackSheet);
+  }
+
   void _openCustomerFeedbackSheet() {
     if (_feedbackSheetShown || !mounted) return;
     final uidInt = int.tryParse(uid.toString()) ?? 0;
@@ -8034,7 +8054,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       final latestSettlement = _getSettlementData();
       final sStatus = latestSettlement?['status']?.toString();
       if ((sStatus == 'cash_received' || sStatus == 'paid_online' || sStatus == 'waived') &&
-          orderProduc?['is_rate'] == "0") {
+          _isUnrated()) {
         Future.delayed(const Duration(milliseconds: 600), _openCustomerFeedbackSheet);
       }
     });

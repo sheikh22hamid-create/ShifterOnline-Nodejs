@@ -5,6 +5,7 @@ const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRouteRepricing");
 const logger = require("../utils/logger");
+const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 
 // Same window as pickup-change: a stop can be added any time before the
 // goods are actually picked up, never once the trip is on-route (the
@@ -165,6 +166,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
         extra_mile_charge: newExtraMileCharge,
       },
     });
+    await reconcileRideDiscountToFare(numericOrderId, newFare, tx);
 
     if (order.rid && order.rid > 0) {
       // Each stop gets its own milestone name (stop_added_<sequence>), not a

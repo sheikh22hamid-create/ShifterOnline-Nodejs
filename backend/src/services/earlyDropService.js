@@ -5,6 +5,7 @@ const { haversineKm } = require("../utils/geoDistance");
 const { istNow } = require("../utils/istTime");
 const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 const logger = require("../utils/logger");
+const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 
 // Early Drop: the customer asks to be dropped before the booked destination.
 // When the driver taps Complete while still this far from the booked drop, the
@@ -157,6 +158,10 @@ async function applyEarlyDrop(order, riderId, point, distanceM) {
         commission: fare.commission,
       },
     });
+    // Order #468: 326 points were redeemed at the Rs652 booking fare (50% cap);
+    // the fare fell to Rs170 but every point stayed spent. Hand back what the
+    // new fare's cap no longer allows.
+    await reconcileRideDiscountToFare(order.id, fare.newFare, tx);
     const payload = {
       original_drop: { lat: Number(order.dlat), lng: Number(order.dlong), address: order.daddress || "" },
       actual_drop: { lat: point.lat, lng: point.lng, address },

@@ -7,6 +7,7 @@ const { computeRouteDistanceKm } = require('./orderRouteRepricing');
 const { haversineKm } = require('../utils/geoDistance');
 const { recordSamples } = require('./tripRouteService');
 const { getPickupEtaRow } = require('./pickupEtaService');
+const { reconcileRideDiscountToFare } = require('./referralPointsRefund');
 
 // Arrival time comes from the phone's own clock. A phone running minutes
 // behind the server would back-date the arrival and shorten the customer's
@@ -325,6 +326,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
               d_charge: finalDCharge, total_dcharge: finalDCharge,
               driver_earning: finalDCharge, commission: existingCommissionPercent, pickup_otp_mismatch_flag: true,
             } }));
+            await reconcileRideDiscountToFare(orderId, finalDCharge, tx);
           }
         }
       }

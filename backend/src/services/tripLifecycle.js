@@ -12,7 +12,7 @@ const walletNotifier = require("./walletNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const walletPrepayment = require("./walletPrepaymentRefund");
-const { refundReferralPointsForOrder } = require("./referralPointsRefund");
+const { refundReferralPointsForOrder, reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const earlyDropService = require("./earlyDropService");
@@ -574,10 +574,19 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // below, but it's the same kind of "already settled, don't collect
     // again" amount for cash-collection and commission purposes: the
     // platform absorbs it so the driver's net payout is unaffected.
-    const referralPointsAmount = Number(order.referral_points_amount) || 0;
+    // Safety net behind the per-path reconcile calls (early drop, drop/pickup
+    // change, stops): whatever fare the ride ends on, points above the admin's
+    // % cap are handed back instead of being absorbed.
+    const reconciledPoints = await reconcileRideDiscountToFare(orderId, finalTotal);
+    const referralPointsAmount = reconciledPoints.pointsUsed > 0
+      ? reconciledPoints.pointsAmount
+      : Number(order.referral_points_amount) || 0;
     // Coupon discount is absorbed by the platform too (server-computed at booking).
     const couponAmount = Number(order.cou_amt) || 0;
-    const prepaidTotal = advancePaymentCollected + referralPointsAmount + couponAmount;
+    // Prepaid money can never exceed the fare itself: the excess was being
+    // treated as owed to the driver (order #468: Rs326 of points on a Rs170 fare
+    // credited Rs312 to the driver's wallet).
+    const prepaidTotal = Math.min(advancePaymentCollected + referralPointsAmount + couponAmount, finalTotal);
 
     const rider = await prisma.tbl_rider.findUnique({
       where: { id: riderId },
