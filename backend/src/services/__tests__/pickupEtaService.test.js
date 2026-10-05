@@ -141,3 +141,15 @@ describe("isPickupEtaExpired", () => {
     expect(await svc.isPickupEtaExpired({ ...order, order_status: 2 }, past, rider(22.1), now)).toBe(false);
   });
 });
+
+describe("buildEtaView ETA fallback", () => {
+  it("uses Google minutes + default buffer when the raw ETA column is unavailable", () => {
+    const view = svc.buildEtaView({ order_status: 1, pickup_duration_min: 20 }, null);
+    expect(view.pickup_eta_minutes).toBe(30);
+  });
+
+  it("prefers the stored customer ETA", () => {
+    const view = svc.buildEtaView({ order_status: 1, pickup_duration_min: 20 }, { pickup_eta_minutes: 35 });
+    expect(view.pickup_eta_minutes).toBe(35);
+  });
+});

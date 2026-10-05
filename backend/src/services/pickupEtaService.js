@@ -215,7 +215,8 @@ function buildEtaView(order, etaRow, now = Date.now(), etaExpired = false) {
   return {
     pickup_distance_km: order?.pickup_distance_km != null ? String(Number(order.pickup_distance_km) || 0) : "0",
     pickup_google_eta_minutes: Number(order?.pickup_duration_min) || 0,
-    pickup_eta_minutes: Number(etaRow?.pickup_eta_minutes) || 0,
+    // Raw column missing/unread (hand-applied DBs lag): fall back to Google minutes + default buffer.
+    pickup_eta_minutes: Number(etaRow?.pickup_eta_minutes) || (Number(order?.pickup_duration_min) > 0 && Number(order?.order_status) === 1 ? Number(order.pickup_duration_min) + DEFAULT_BUFFER_MIN : 0),
     pickup_deadline_at: deadlineMs ? new Date(deadlineMs).toISOString() : null,
     pickup_eta_remaining_seconds: active ? Math.max(0, Math.round((deadlineMs - now) / 1000)) : 0,
     pickup_eta_expired: Boolean(etaExpired),
