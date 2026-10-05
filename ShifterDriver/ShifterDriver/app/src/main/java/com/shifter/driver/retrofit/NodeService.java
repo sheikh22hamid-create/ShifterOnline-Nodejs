@@ -373,4 +373,10 @@ public interface NodeService {
 
     @POST("api/rider/settlement/pending")
     Call<com.shifter.driver.model.SettlementResponse> getPendingSettlements(@Body Map<String, Object> body);
+
+    @POST("api/rider/settlement/receiver-refused")
+    Call<com.shifter.driver.model.SettlementResponse> receiverRefused(@Body Map<String, Object> body);
+
+    @POST("api/rider/settlement/resend-link")
+    Call<com.shifter.driver.model.SettlementResponse> resendReceiverLink(@Body Map<String, Object> body);
 }
