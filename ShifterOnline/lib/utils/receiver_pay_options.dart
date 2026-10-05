@@ -75,3 +75,20 @@ String? receiverPayUnavailableReason({
   }
   return null;
 }
+
+/// True only while the receiver is the payer and the settlement is pending.
+/// A null/legacy map (no `payer` key) is a normal customer settlement.
+bool isReceiverPaying(Map? settlement) {
+  if (settlement == null) return false;
+  return settlement['payer']?.toString() == 'receiver' &&
+      settlement['status']?.toString() == 'pending';
+}
+
+/// receiver_pay_total, falling back to amount_due when absent or zero.
+double receiverPayTotal(Map settlement) {
+  final total = _num(settlement['receiver_pay_total']);
+  return total > 0 ? total : _num(settlement['amount_due']);
+}
+
+/// The booker's own service fee included in the receiver total (0 when absent).
+double receiverMarkup(Map settlement) => _num(settlement['receiver_markup']);

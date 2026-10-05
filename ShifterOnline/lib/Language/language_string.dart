@@ -18,6 +18,8 @@ class LocalString extends Translations {
           "service fee": "service fee",
           "I'll pay myself": "I'll pay myself",
           "Resend payment link": "Resend payment link",
+          "Copy link": "Copy link",
+          "Link copied": "Link copied",
           "Payment link sent to the receiver": "Payment link sent to the receiver",
           "Share this link with the receiver": "Share this link with the receiver",
           "You are now paying for this order": "You are now paying for this order",

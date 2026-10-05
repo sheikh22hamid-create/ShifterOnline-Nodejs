@@ -84,4 +84,30 @@ void main() {
           isNull);
     });
   });
+
+  group('settlement receiver helpers', () {
+    test('isReceiverPaying only for receiver + pending', () {
+      expect(isReceiverPaying({'payer': 'receiver', 'status': 'pending'}), true);
+      expect(isReceiverPaying({'payer': 'receiver', 'status': 'cash_received'}), false);
+      expect(isReceiverPaying({'payer': 'receiver', 'status': 'disputed'}), false);
+      expect(isReceiverPaying({'payer': 'customer', 'status': 'pending'}), false);
+    });
+    test('legacy / null maps are normal customer settlements', () {
+      expect(isReceiverPaying({'status': 'pending'}), false);
+      expect(isReceiverPaying({'payer': null, 'status': 'pending'}), false);
+      expect(isReceiverPaying(null), false);
+      expect(isReceiverPaying({}), false);
+    });
+    test('receiverPayTotal falls back to amount_due', () {
+      expect(receiverPayTotal({'receiver_pay_total': 120.5, 'amount_due': 100}), 120.5);
+      expect(receiverPayTotal({'receiver_pay_total': '0', 'amount_due': '100'}), 100);
+      expect(receiverPayTotal({'amount_due': 80}), 80);
+      expect(receiverPayTotal({}), 0);
+      expect(receiverPayTotal({'receiver_pay_total': null, 'amount_due': null}), 0);
+    });
+    test('receiverMarkup reads safely', () {
+      expect(receiverMarkup({'receiver_markup': '12'}), 12);
+      expect(receiverMarkup({}), 0);
+    });
+  });
 }

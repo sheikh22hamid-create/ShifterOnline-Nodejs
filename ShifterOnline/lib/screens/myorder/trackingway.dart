@@ -45,6 +45,7 @@ import 'order_route_map.dart';
 import '../home/location_search_screen.dart';
 import '../../services/settlement_api_service.dart';
 import 'customer_settlement_sheet.dart';
+import '../../utils/receiver_pay_options.dart';
 import 'customer_feedback_sheet.dart';
 
 class TrackingWay extends StatefulWidget {
@@ -4708,7 +4709,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     const green = Color(0xFF00C853);
     final settlement = _getSettlementData();
     final settleStatus = settlement?['status']?.toString();
-    final settleAmount = double.tryParse(settlement?['amount_due']?.toString() ?? '') ?? remaining;
+    // Receiver is the payer (pending): show the receiver total; legacy maps without `payer` stay normal.
+    final receiverPaying = settlement != null && isCompleted && isReceiverPaying(settlement);
+    final settleAmount = receiverPaying
+        ? receiverPayTotal(settlement)
+        : (double.tryParse(settlement?['amount_due']?.toString() ?? '') ?? remaining);
+    final receiverPayInfo = (orderProduc is Map && orderProduc['receiver_pay'] is Map)
+        ? Map<String, dynamic>.from(orderProduc['receiver_pay'] as Map)
+        : null;
 
     Color dueColor;
     Color dueBg;
@@ -4832,7 +4840,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           Text(
                             settlement != null && isCompleted
                                 ? (settleStatus == 'pending'
-                                    ? "Payment pending".tr
+                                    ? (receiverPaying ? "Receiver pays".tr : "Payment pending".tr)
                                     : settleStatus == 'cash_received'
                                         ? "Driver confirmed".tr
                                         : settleStatus == 'paid_online'
@@ -4886,6 +4894,25 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   ),
                 ],
               ),
+              if (!(settlement != null && isCompleted) && receiverPayInfo != null &&
+                  (receiverPayInfo['status']?.toString() == 'active' ||
+                      receiverPayInfo['status']?.toString() == 'declined')) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: linercolor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    receiverPayInfo['status']?.toString() == 'active'
+                        ? "${"Receiver pays".tr}${(receiverPayInfo['receiver_name'] ?? '').toString().trim().isEmpty ? '' : ' ${receiverPayInfo['receiver_name']}'} - ${"Receiver's commission".tr}: ${receiverPayInfo['commission_percent'] ?? 0}%"
+                        : "Receiver declined - you will pay normally.".tr,
+                    style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Medium", fontSize: 12),
+                  ),
+                ),
+              ],
               if (settlement != null && isCompleted) ...[
                 const SizedBox(height: 12),
                 if (settleStatus == 'pending' || settleStatus == 'customer_owes')
@@ -4895,7 +4922,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       onPressed: _openSettlementSheet,
                       icon: const Icon(Icons.payment_rounded, size: 18, color: Colors.white),
                       label: Text(
-                        settleStatus == 'customer_owes' ? "Pay Due Amount Online".tr : "Settle Payment Now".tr,
+                        settleStatus == 'customer_owes'
+                            ? "Pay Due Amount Online".tr
+                            : receiverPaying ? "Receiver is paying".tr : "Settle Payment Now".tr,
                         style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 13.5, color: Colors.white),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -7974,7 +8003,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           if (res['Result'] == 'true' || res['Result'] == true) {
             final latest = res['settlement'];
             if (latest is Map && mounted && orderProduc is Map) {
-              if (orderProduc['settlement']?['status'] != latest['status']) {
+              final cur = orderProduc['settlement'];
+              if (cur?['status'] != latest['status'] ||
+                  (cur?['payer'] ?? 'customer').toString() != (latest['payer'] ?? 'customer').toString()) {
                 setState(() {
                   orderProduc['settlement'] = latest;
                 });
