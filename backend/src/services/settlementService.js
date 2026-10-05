@@ -5,6 +5,7 @@ const walletNotifier = require("./walletNotifier");
 const settlementSettings = require("./settlementSettings");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 const { createRazorpayOrder } = require("../utils/razorpayOrders");
+const receiverWalletCredits = require("./receiverWalletCredits");
 
 const STATUS = Object.freeze({
   PENDING: "pending",
@@ -46,6 +47,12 @@ function stateMessage(status) {
   return `Payment is ${status}.`;
 }
 
+function assertCustomerPaysItself(s) {
+  if (s.payer === "receiver") {
+    throw new SettlementError("RECEIVER_MODE", "The receiver is paying for this order. Take over the payment first.");
+  }
+}
+
 function publicView(s) {
   return {
     settlement_id: s.id,
@@ -60,6 +67,10 @@ function publicView(s) {
     pending_since: s.pending_since,
     dispute_reason: s.dispute_reason || null,
     dispute_raised_by: s.dispute_raised_by || null,
+    payer: s.payer || "customer",
+    receiver_markup: Number(s.receiver_markup || 0),
+    advance_held: Number(s.advance_held || 0),
+    receiver_pay_total: round2(Number(s.amount_due) + (s.payer === "receiver" ? Number(s.receiver_markup || 0) : 0)),
   };
 }
 
@@ -198,8 +209,10 @@ async function runTransition(work) {
   const result = await prisma.$transaction((tx) => work(tx, notifications));
   for (const n of notifications) {
     try {
-      Promise.resolve(walletNotifier.notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark }))
-        .catch((err) => logger.error(`settlement wallet notify failed for rider ${n.riderId}:`, err));
+      const send = n.userId
+        ? walletNotifier.notifyCustomerWalletTransaction(n.userId, { type: n.type, amount: n.amount, remark: n.remark })
+        : walletNotifier.notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark });
+      Promise.resolve(send).catch((err) => logger.error(`settlement wallet notify failed for ${n.userId ? `user ${n.userId}` : `rider ${n.riderId}`}:`, err));
     } catch (err) {
       logger.error(`settlement wallet notify failed for rider ${n.riderId}:`, err);
     }
@@ -208,7 +221,7 @@ async function runTransition(work) {
   return result;
 }
 
-async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare, commissionAmount, perTripCharge, prepaidAmount, cityId }) {
+async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare, commissionAmount, perTripCharge, prepaidAmount, cityId, receiver = null }) {
   const existing = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
   if (existing) return existing;
   const now = new Date();
@@ -227,6 +240,9 @@ async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare,
           commission_amount: round2(commissionAmount),
           per_trip_charge: round2(perTripCharge),
           prepaid_amount: round2(prepaidAmount),
+          payer: receiver ? "receiver" : "customer",
+          receiver_markup: receiver ? round2(receiver.markup) : 0,
+          advance_held: receiver ? round2(receiver.advanceHeld) : 0,
           status: STATUS.PENDING,
           wallet_effect: EFFECT.NONE,
           pending_since: now,
@@ -235,7 +251,7 @@ async function createForCompletedOrder({ orderId, uid, riderId, amountDue, fare,
         },
       });
       await tx.order_settlement_event.create({
-        data: { settlement_id: row.id, actor: "system", from_status: null, to_status: STATUS.PENDING, note: "Ride completed; awaiting payment", created_at: now },
+        data: { settlement_id: row.id, actor: "system", from_status: null, to_status: STATUS.PENDING, note: receiver ? "Ride completed; awaiting receiver payment" : "Ride completed; awaiting payment", created_at: now },
       });
       return row;
     });
@@ -274,12 +290,19 @@ async function markCashReceived({ orderId, riderId }) {
     if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
     const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.CASH);
     notifications.push(...n);
+    const receiverPatch = {};
+    if (s.payer === "receiver") {
+      await receiverWalletCredits.applyReceiverCredits(tx, s, { includeMarkup: false, notifications });
+      await receiverWalletCredits.markReceiverRow(tx, s.order_id, "paid");
+      Object.assign(receiverPatch, { receiver_credited: true, receiver_markup: 0 });
+    }
     const now = new Date();
     const updated = await tx.order_settlement.update({
       where: { id: s.id },
       data: {
         status: STATUS.CASH_RECEIVED, method: "cash", wallet_effect: EFFECT.CASH, effect_seq: effectSeq,
         confirmed_by: "driver", confirmed_at: now, updated_at: now,
+        ...receiverPatch,
       },
     });
     await logEvent(tx, s, { actor: "driver", actorId: riderId, from: s.status, to: STATUS.CASH_RECEIVED });
@@ -293,6 +316,7 @@ async function chooseDriverPayment({ orderId, uid }) {
   return runTransition(async (tx) => {
     const s = await lockByOrderId(tx, orderId);
     assertParty(s, "customer", uid);
+    assertCustomerPaysItself(s);
     if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
     if (s.customer_choice === "driver") return { settlement: s, alreadyDone: true };
     const updated = await tx.order_settlement.update({
@@ -345,7 +369,9 @@ async function adminResolve({ settlementId, adminId, outcome, note }) {
     const s = await lockById(tx, settlementId);
     if (!s) throw new SettlementError("NOT_FOUND", "No payment record found.");
     if (s.status === outcome) return { settlement: s, alreadyDone: true };
-    const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, OUTCOME_EFFECT[outcome]);
+    const receiverPatch = await receiverWalletCredits.adminOutcomePatch(tx, s, outcome, { notifications });
+    const effectRow = { ...s, ...receiverPatch };
+    const { effectSeq, notifications: n } = await changeWalletEffect(tx, effectRow, OUTCOME_EFFECT[outcome]);
     notifications.push(...n);
     const now = new Date();
     const updated = await tx.order_settlement.update({
@@ -357,6 +383,7 @@ async function adminResolve({ settlementId, adminId, outcome, note }) {
         effect_seq: effectSeq,
         confirmed_by: "admin", confirmed_at: now,
         resolved_by: adminId, resolved_at: now, resolve_note: text, updated_at: now,
+        ...receiverPatch,
       },
     });
     await logEvent(tx, s, { actor: "admin", actorId: adminId, from: s.status, to: outcome, note: text });
@@ -367,6 +394,7 @@ async function adminResolve({ settlementId, adminId, outcome, note }) {
 async function createOnlineOrder({ orderId, uid }) {
   const s = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
   assertParty(s, "customer", uid);
+  assertCustomerPaysItself(s);
   if (!ONLINE_PAYABLE.includes(s.status)) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
   const amountDue = Number(s.amount_due);
   let razorpayOrderId = s.razorpay_order_id;
@@ -402,6 +430,7 @@ async function createOnlineOrder({ orderId, uid }) {
 async function settleOnline({ orderId, uid, paymentId, razorpayOrderId, signature }) {
   const pre = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
   assertParty(pre, "customer", uid);
+  assertCustomerPaysItself(pre);
   if (pre.status === STATUS.PAID_ONLINE && pre.razorpay_payment_id === paymentId) {
     return { settlement: pre, alreadyDone: true };
   }
