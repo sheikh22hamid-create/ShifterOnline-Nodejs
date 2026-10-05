@@ -25,6 +25,7 @@ import 'package:goParcel/screens/home/chatscreen.dart';
 import 'package:goParcel/screens/home/trackingview.dart';
 import 'package:goParcel/screens/myorder/live_driver_tracking.dart';
 import 'package:goParcel/screens/profile/faq.dart';
+import 'package:goParcel/screens/profile/premium_plans_screen.dart';
 import 'package:goParcel/utils/colors.dart';
 import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
@@ -3179,7 +3180,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       accent = const Color(0xFF2979FF);
     } else if (s == "pickup") {
       title = "Rider Arrived at Pickup".tr;
-      message = "Share the pickup OTP only after your goods are loaded and handed over. Verifying it starts delivery.".tr;
+      message = "Share the pickup OTP after rider has arrived.".tr;
       icon = Icons.inventory_2_outlined;
       accent = const Color(0xFFFF9100);
     }
@@ -7220,6 +7221,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     // Points already redeemed at booking (select vehicle) use up the admin's
     // per-ride limit, so don't offer the button again - the server enforces it too.
     bool referralPointsRedeemed = _referralDiscountAmount() > 0;
+    bool whyAdvanceOpen = false;
 
     String actualAmountStr = (actualDouble % 1 == 0)
         ? actualDouble.toInt().toString()
@@ -7229,7 +7231,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         ? remainingDouble.toInt().toString()
         : remainingDouble.toStringAsFixed(2);
 
-    String advanceMsg = (orderProduc?["advance_payment_msg"] ?? buyMapinfo?["advance_payment_msg"] ?? "Please complete the advance payment to confirm your order. Kindly note that if the payment is not completed within 2 minutes, your order will be automatically cancelled.").toString();
+    String advanceMsg = (orderProduc?["advance_payment_msg"] ?? buyMapinfo?["advance_payment_msg"] ?? "").toString();
 
     String rawTimerStr = (orderProduc?["advance_payment_timer"] ?? buyMapinfo?["advance_payment_timer"] ?? "").toString().trim();
     int timerSeconds = int.tryParse(rawTimerStr) ?? 0;
@@ -7280,208 +7282,343 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 // Strictly prevent back button from closing dialog
                 return false;
               },
-              child: AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
+              child: Dialog.fullscreen(
                 backgroundColor: notifier.getBgColor,
-                title: Column(
-                  children: [
-                    Icon(Icons.payment, size: 45, color: linercolor),
-                    SizedBox(height: 10),
-                    Text(
-                      "Advance Payment Required".tr,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: notifier.text,
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 18,
-                      ),
-                    ),
-                  ],
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      "Advance payment is required to proceed with this order. Please complete the advance payment.".tr,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: greaycolor,
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 14,
-                      ),
-                    ),
+                child: Scaffold(
+                  backgroundColor: notifier.getBgColor,
+                  body: SafeArea(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                            child: Column(
+                              children: [
+                                // Header
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: linercolor.withOpacity(0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.account_balance_wallet_rounded, color: linercolor, size: 26),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  "Confirm Your Booking".tr,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 18),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "${"Pay".tr} $paymentCurrency${(dueAdvanceAmount % 1 == 0) ? dueAdvanceAmount.toInt().toString() : dueAdvanceAmount.toStringAsFixed(2)} ${"now and pay the remaining".tr} $paymentCurrency$remainingAmountStr ${"after your delivery.".tr}",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 13, height: 1.35),
+                                ),
+                                const SizedBox(height: 16),
 
-                    // Highlighted advance_payment_msg banner
-                    if (advanceMsg.isNotEmpty) ...[
-                      SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Color(0xFFFFF3CD),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Color(0xFFFFEEBA), width: 1.5),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.info_outline, color: Color(0xFF856404), size: 22),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                advanceMsg,
-                                style: TextStyle(
-                                  color: Color(0xFF856404),
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-
-                    SizedBox(height: 15),
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: linercolor.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: linercolor.withOpacity(0.25)),
-                      ),
-                      child: Column(
-                        children: [
-                          // 1. Advance Amount
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                referralPointsRedeemed ? "Advance Due".tr : "Advance Amount".tr,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 15,
-                                ),
-                              ),
-                              Text(
-                                "$paymentCurrency${(dueAdvanceAmount % 1 == 0) ? dueAdvanceAmount.toInt().toString() : dueAdvanceAmount.toStringAsFixed(2)}",
-                                style: TextStyle(
-                                  color: linercolor,
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Divider(color: greaycolor.withOpacity(0.2), height: 1),
-                          const SizedBox(height: 10),
-
-                          // 2. Actual Amount
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                "Actual Amount".tr,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Medium',
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Text(
-                                "$paymentCurrency$actualAmountStr",
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Divider(color: greaycolor.withOpacity(0.2), height: 1),
-                          const SizedBox(height: 10),
-
-                          // 3. Remaining Amount (Remaining Amount after advance payment)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      "Remaining Amount".tr,
-                                      style: TextStyle(
-                                        color: notifier.text,
-                                        fontFamily: 'Gilroy_Medium',
-                                        fontSize: 14,
+                                // Total fare
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: linercolor.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: linercolor.withOpacity(0.2)),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        "Total Fare (Estimated)".tr,
+                                        style: TextStyle(
+                                            color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 13),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      "Remaining Amount after advance payment".tr,
-                                      style: TextStyle(
-                                        color: greaycolor.withOpacity(0.85),
-                                        fontFamily: 'Gilroy_Medium',
-                                        fontSize: 11,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        "$paymentCurrency$actualAmountStr",
+                                        style: TextStyle(
+                                            color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 28),
                                       ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Payment breakdown
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: greaycolor.withOpacity(0.25)),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 34,
+                                            height: 34,
+                                            decoration: BoxDecoration(
+                                                color: linercolor.withOpacity(0.12), shape: BoxShape.circle),
+                                            child: Icon(Icons.credit_card_rounded, color: linercolor, size: 18),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                    referralPointsRedeemed
+                                                        ? "Advance Due".tr
+                                                        : "Pay Now (Advance)".tr,
+                                                    style: TextStyle(
+                                                        color: notifier.text,
+                                                        fontFamily: 'Gilroy_Bold',
+                                                        fontSize: 14)),
+                                                Text("Confirm your booking".tr,
+                                                    style: TextStyle(
+                                                        color: greaycolor,
+                                                        fontFamily: 'Gilroy_Medium',
+                                                        fontSize: 11.5)),
+                                              ],
+                                            ),
+                                          ),
+                                          Text(
+                                            "$paymentCurrency${(dueAdvanceAmount % 1 == 0) ? dueAdvanceAmount.toInt().toString() : dueAdvanceAmount.toStringAsFixed(2)}",
+                                            style: TextStyle(
+                                                color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 17),
+                                          ),
+                                        ],
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 10),
+                                        child: Divider(color: greaycolor.withOpacity(0.25), height: 1),
+                                      ),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 34,
+                                            height: 34,
+                                            decoration: BoxDecoration(
+                                                color: const Color(0xFF4C8DFF).withOpacity(0.12),
+                                                shape: BoxShape.circle),
+                                            child: const Icon(Icons.local_shipping_rounded,
+                                                color: Color(0xFF4C8DFF), size: 18),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text("Pay After Delivery".tr,
+                                                    style: TextStyle(
+                                                        color: notifier.text,
+                                                        fontFamily: 'Gilroy_Bold',
+                                                        fontSize: 14)),
+                                                Text("Pay to driver after service is completed".tr,
+                                                    style: TextStyle(
+                                                        color: greaycolor,
+                                                        fontFamily: 'Gilroy_Medium',
+                                                        fontSize: 11.5)),
+                                              ],
+                                            ),
+                                          ),
+                                          Text("$paymentCurrency$remainingAmountStr",
+                                              style: TextStyle(
+                                                  color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 17)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Reassurance
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1FA85A).withOpacity(0.10),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF1FA85A), size: 20),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          "$paymentCurrency${(dueAdvanceAmount % 1 == 0) ? dueAdvanceAmount.toInt().toString() : dueAdvanceAmount.toStringAsFixed(2)} ${"is already included in the total fare. You will not be charged this amount again.".tr}",
+                                          style: const TextStyle(
+                                              color: Color(0xFF1B7F47),
+                                              fontFamily: 'Gilroy_Medium',
+                                              fontSize: 12.5,
+                                              height: 1.3),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Why is an advance required (expandable)
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () => setDialogState(() => whyAdvanceOpen = !whyAdvanceOpen),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: greaycolor.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                  ],
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.info_outline_rounded, color: greaycolor, size: 18),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text("Why is an advance required?".tr,
+                                                  style: TextStyle(
+                                                      color: notifier.text,
+                                                      fontFamily: 'Gilroy_Bold',
+                                                      fontSize: 13.5)),
+                                            ),
+                                            Icon(
+                                                whyAdvanceOpen
+                                                    ? Icons.keyboard_arrow_up_rounded
+                                                    : Icons.keyboard_arrow_down_rounded,
+                                                color: greaycolor,
+                                                size: 20),
+                                          ],
+                                        ),
+                                        if (whyAdvanceOpen) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            "A small advance helps us confirm genuine bookings and assign a nearby driver to your order.".tr,
+                                            style: TextStyle(
+                                                color: greaycolor,
+                                                fontFamily: 'Gilroy_Medium',
+                                                fontSize: 12,
+                                                height: 1.35),
+                                          ),
+                                          if (advanceMsg.isNotEmpty) ...[
+                                            const SizedBox(height: 6),
+                                            Text(advanceMsg,
+                                                style: TextStyle(
+                                                    color: greaycolor,
+                                                    fontFamily: 'Gilroy_Medium',
+                                                    fontSize: 12)),
+                                          ],
+                                        ],
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "$paymentCurrency$remainingAmountStr",
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 15,
+                                const SizedBox(height: 12),
+
+                                // Premium plan nudge
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () {
+                                    // Pushed on top of this page so the booking timer keeps running.
+                                    Navigator.of(dialogContext).push(
+                                      MaterialPageRoute(builder: (_) => const PremiumPlansScreen()),
+                                    );
+                                  },
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFC857).withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFFFC857).withOpacity(0.35)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.workspace_premium_rounded,
+                                            color: Color(0xFFE08A00), size: 22),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text("Want to avoid advance payments?".tr,
+                                                  style: TextStyle(
+                                                      color: notifier.text,
+                                                      fontFamily: 'Gilroy_Bold',
+                                                      fontSize: 13)),
+                                              Text(
+                                                "Premium plan members are not charged any advance. Pay only after the ride.".tr,
+                                                style: TextStyle(
+                                                    color: greaycolor,
+                                                    fontFamily: 'Gilroy_Medium',
+                                                    fontSize: 11.5,
+                                                    height: 1.3),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text("View Plans".tr,
+                                            style: TextStyle(
+                                                color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 12.5)),
+                                        Icon(Icons.chevron_right_rounded, color: linercolor, size: 18),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Pinned actions
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                          decoration: BoxDecoration(
+                            color: notifier.getBgColor,
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, -2)),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-
-                    // Countdown Timer Display
-                    if (_remainingSeconds > 0) ...[
-                      SizedBox(height: 12),
-                      Container(
-                        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.red.withOpacity(0.4)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.timer_outlined, color: Colors.red, size: 20),
-                            SizedBox(width: 6),
-                            Text(
-                              "${"Time Remaining:".tr} ${_formatTimerText(_remainingSeconds)}",
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                actionsPadding: EdgeInsets.only(left: 15, right: 15, bottom: 15),
-                actions: [
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Countdown
+                              if (_remainingSeconds > 0) ...[
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.schedule_rounded, color: linercolor, size: 16),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text.rich(
+                                          TextSpan(
+                                            style: TextStyle(
+                                                color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12.5),
+                                            children: [
+                                              TextSpan(text: "${"Complete payment within".tr} "),
+                                              TextSpan(
+                                                text: _formatTimerText(_remainingSeconds),
+                                                style: TextStyle(
+                                                    color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 14),
+                                              ),
+                                              TextSpan(text: " ${"to keep this booking.".tr}"),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                   if (referralEnabled && referralPointsAvailable > 0 && !referralPointsRedeemed && dueAdvanceAmount > 0) ...[
                     SizedBox(
                       width: double.infinity,
@@ -7577,42 +7714,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       ),
                     ),
                   ],
-                  Row(
-                    children: [
-                      Expanded(
+
+                      // Primary action
+                      SizedBox(
+                        width: double.infinity,
                         child: InkWell(
-                          onTap: () {
-                            _advanceTimer?.cancel();
-                            _advanceTimer = null;
-                            isAdvanceDialogOpened = false;
-                            Navigator.of(context, rootNavigator: true).pop();
-                            String itemIDToCancel = buyMapinfo?["order_id"]?.toString() ??
-                                orderProduc?["order_id"]?.toString() ??
-                                orderid;
-                            dialogShow(itemIDToCancel);
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            decoration: BoxDecoration(
-                              color: Color(0xffFF5656),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Center(
-                              child: Text(
-                                "Order Cancel".tr,
-                                style: TextStyle(
-                                  color: whitecolor,
-                                  fontFamily: "Gilroy_Bold",
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
                           onTap: () {
                             final payableAmount = (dueAdvanceAmount % 1 == 0)
                                 ? dueAdvanceAmount.toInt().toString()
@@ -7627,19 +7734,67 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                             _payAdvanceWithRazorpay(payableAmount);
                           },
                           child: Container(
-                            padding: EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
                             decoration: BoxDecoration(
                               color: linercolor,
+                              borderRadius: BorderRadius.circular(12),
+),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    "${"Pay".tr} $paymentCurrency${(dueAdvanceAmount % 1 == 0) ? dueAdvanceAmount.toInt().toString() : dueAdvanceAmount.toStringAsFixed(2)} & ${"Confirm Booking".tr}",
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: whitecolor, fontFamily: 'Gilroy_Bold', fontSize: 15),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(Icons.arrow_forward_rounded, color: whitecolor, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.lock_rounded, size: 13, color: greaycolor),
+                          const SizedBox(width: 4),
+                          Text(
+                            "100% secure payment via Razorpay".tr,
+                            style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11.5),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Secondary action
+                      SizedBox(
+                        width: double.infinity,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            _advanceTimer?.cancel();
+                            _advanceTimer = null;
+                            isAdvanceDialogOpened = false;
+                            Navigator.of(context, rootNavigator: true).pop();
+                            String itemIDToCancel = buyMapinfo?["order_id"]?.toString() ??
+                                orderProduc?["order_id"]?.toString() ??
+                                orderid;
+                            dialogShow(itemIDToCancel);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: greaycolor.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Center(
                               child: Text(
-                                "Continue".tr,
-                                style: TextStyle(
-                                  color: whitecolor,
-                                  fontFamily: "Gilroy_Bold",
-                                  fontSize: 15,
-                                ),
+                                "Cancel Booking".tr,
+                                style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14),
                               ),
                             ),
                           ),
@@ -7647,7 +7802,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       ),
                     ],
                   ),
-                ],
+                ),
+                    ],
+                  ),
+                ),
+              ),
               ),
             );
           },

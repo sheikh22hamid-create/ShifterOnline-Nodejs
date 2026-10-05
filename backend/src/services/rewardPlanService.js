@@ -5,6 +5,21 @@ const logger = require("../utils/logger");
 
 const DRIVER_PLAN_TYPES = ["DRIVER_PREMIUM", "DRIVER_SECOND"];
 
+/**
+ * Fare of a completed order for ride-amount rewards. pkg_order.grand_total is
+ * never written by Node (it stays at its Decimal(0.00) default; only the API
+ * response mirrors total_dcharge into it), and a Prisma Decimal object is
+ * truthy even at 0 - so `grand_total || total_dcharge` always picked 0 and
+ * spend progress was stuck at 0%. total_dcharge holds the real final fare;
+ * grand_total is only used when it carries a positive value (legacy rows).
+ */
+function orderAmount(o) {
+  const grand = Number(o?.grand_total);
+  if (Number.isFinite(grand) && grand > 0) return grand;
+  const fare = Number(o?.total_dcharge);
+  return Number.isFinite(fare) && fare > 0 ? fare : 0;
+}
+
 function todayRange(now = new Date()) {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const end = new Date(start);
@@ -389,9 +404,9 @@ async function applyRideAmountRewardsIfAny({ uid, orderId, orderTotal }) {
   for (const o of completedOrders) {
     if (orderId && o.id === Number(orderId)) {
       currentOrderIncluded = true;
-      cumulativeSpent += Number(currentTotal || o.grand_total || o.total_dcharge || 0);
+      cumulativeSpent += currentTotal || orderAmount(o);
     } else {
-      cumulativeSpent += Number(o.grand_total || o.total_dcharge || 0);
+      cumulativeSpent += orderAmount(o);
     }
   }
   if (!currentOrderIncluded && currentTotal > 0) {
@@ -531,7 +546,7 @@ async function getActiveAmountRewardForCustomer({ uid }) {
       ]);
       claimedRewardIds = new Set(claimedRows.map((r) => r.reward_id));
       currentSpend = completedOrders.reduce(
-        (sum, o) => sum + Number(o.grand_total || o.total_dcharge || 0),
+        (sum, o) => sum + orderAmount(o),
         0
       );
     }
@@ -680,7 +695,7 @@ async function listAmountRewardClaims({ rewardId }) {
       order: order
         ? {
             id: order.id,
-            order_total: Number(order.grand_total || order.total_dcharge || 0),
+            order_total: orderAmount(order),
             status: order.o_status,
             date: order.odate,
           }
@@ -740,7 +755,7 @@ async function listMilestoneClaims({ milestoneId }) {
       order: order
         ? {
             id: order.id,
-            order_total: Number(order.grand_total || order.total_dcharge || 0),
+            order_total: orderAmount(order),
             status: order.o_status,
             date: order.odate,
           }

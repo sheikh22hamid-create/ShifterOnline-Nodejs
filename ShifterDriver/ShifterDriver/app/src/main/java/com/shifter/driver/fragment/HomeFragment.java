@@ -440,11 +440,27 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             }
         });
 
-        // Delivery Preferences Triggers: opens bottom sheet immediately
+        // Delivery Preferences Header: Default closed; Toggles expand/collapse on tap
         if (binding.btnDeliveryPreferencesHeader != null) {
             binding.btnDeliveryPreferencesHeader.setOnClickListener(v -> {
                 v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-                openDeliveryPreferencesSheet();
+                if (binding.deliveryTypesContainer != null) {
+                    boolean isCurrentlyOpen = binding.deliveryTypesContainer.getVisibility() == View.VISIBLE;
+                    if (isCurrentlyOpen) {
+                        binding.deliveryTypesContainer.setVisibility(View.GONE);
+                        if (binding.imgDeliveryPreferencesChevron != null) {
+                            binding.imgDeliveryPreferencesChevron.animate().rotation(0f).setDuration(200).start();
+                        }
+                    } else {
+                        if (packageDataList == null || packageDataList.isEmpty()) {
+                            getPackageList();
+                        }
+                        binding.deliveryTypesContainer.setVisibility(View.VISIBLE);
+                        if (binding.imgDeliveryPreferencesChevron != null) {
+                            binding.imgDeliveryPreferencesChevron.animate().rotation(90f).setDuration(200).start();
+                        }
+                    }
+                }
             });
         }
         if (binding.btnLearnMoreTypes != null) {
@@ -1235,7 +1251,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
      * Sets up and synchronizes the Vehicle Body Type selector directly on the Home Screen.
      */
     private void setupHomeBodyTypeUI() {
-        if (binding == null || binding.cardHomeBodyType == null || binding.rgHomeBodyType == null) {
+        if (binding == null || binding.cardHomeBodyType == null || binding.txtHomeSelectedBodyType == null) {
             return;
         }
 
@@ -1280,74 +1296,28 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
         binding.cardHomeBodyType.setVisibility(View.VISIBLE);
 
-        if (binding.rbHomeBodyOpen != null) binding.rbHomeBodyOpen.setVisibility(allowOpen ? View.VISIBLE : View.GONE);
-        if (binding.rbHomeBodyHalf != null) binding.rbHomeBodyHalf.setVisibility(allowHalf ? View.VISIBLE : View.GONE);
-        if (binding.rbHomeBodyCovered != null) binding.rbHomeBodyCovered.setVisibility(allowCovered ? View.VISIBLE : View.GONE);
-        if (binding.rbHomeBodyBoth != null) binding.rbHomeBodyBoth.setVisibility(View.GONE); // Removed All/Both
-
         String currentBody = riderData.getBodyType();
         if (currentBody == null || "both".equalsIgnoreCase(currentBody) || "all".equalsIgnoreCase(currentBody)) {
             currentBody = null;
         }
 
-        binding.rgHomeBodyType.setOnCheckedChangeListener(null);
-
-        if ("open".equalsIgnoreCase(currentBody) && allowOpen) {
-            binding.rbHomeBodyOpen.setChecked(true);
-        } else if ("half".equalsIgnoreCase(currentBody) && allowHalf) {
-            binding.rbHomeBodyHalf.setChecked(true);
-        } else if ("covered".equalsIgnoreCase(currentBody) && allowCovered) {
-            binding.rbHomeBodyCovered.setChecked(true);
-        } else {
-            binding.rgHomeBodyType.clearCheck();
+        String displayName = "Click Edit to Choose (बॉडी प्रकार चुनें)";
+        if ("open".equalsIgnoreCase(currentBody)) {
+            displayName = "Open Body Only (Khuli Dala)";
+        } else if ("half".equalsIgnoreCase(currentBody)) {
+            displayName = "Half Body Only (Half Dala)";
+        } else if ("covered".equalsIgnoreCase(currentBody)) {
+            displayName = "Covered Body Only (Band Container / Fixed Cover)";
         }
+        binding.txtHomeSelectedBodyType.setText(displayName);
 
-        binding.rgHomeBodyType.setOnCheckedChangeListener((group, checkedId) -> {
-            String newBodyType = null;
-            String toastName = "";
-            if (checkedId == R.id.rb_home_body_open) {
-                newBodyType = "open";
-                toastName = "Open Body Only";
-            } else if (checkedId == R.id.rb_home_body_half) {
-                newBodyType = "half";
-                toastName = "Half Body Only";
-            } else if (checkedId == R.id.rb_home_body_covered) {
-                newBodyType = "covered";
-                toastName = "Covered Body Only";
-            }
-
-            if (newBodyType == null) return;
-
-            riderData.setBodyType(newBodyType);
-            if (sessionManager != null) {
-                sessionManager.setUserDetails(riderData);
-            }
-
-            if (getActivity() != null) {
-                Toast.makeText(getActivity(), "Vehicle Body: " + toastName, Toast.LENGTH_SHORT).show();
-            }
-
-            if (riderData.getId() > 0) {
-                final String finalBodyType = newBodyType;
-                Map<String, Object> body = new HashMap<>();
-                body.put("rider_id", riderData.getId());
-                body.put("body_type", finalBodyType);
-
-                NodeApiClient.getInterface().setBodyType(body).enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
-                    @Override
-                    public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
-                        if (response.isSuccessful()) {
-                            android.util.Log.d("HomeFragment", "Vehicle body type updated to: " + finalBodyType);
-                        }
-                    }
-
-                    @Override
-                    public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
-                        android.util.Log.e("HomeFragment", "Failed to update vehicle body type", t);
-                    }
-                });
-            }
-        });
+        View.OnClickListener editClickListener = v -> {
+            showBodyTypeDialog(allowOpen, allowHalf, allowCovered, false);
+        };
+        if (binding.btnHomeEditBodyType != null) {
+            binding.btnHomeEditBodyType.setOnClickListener(editClickListener);
+        }
+        binding.cardHomeBodyType.setOnClickListener(editClickListener);
 
         checkAndPromptMandatoryBodyType(allowed);
     }
@@ -1397,17 +1367,28 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             return;
         }
 
-        showMandatoryBodyTypeDialog(allowOpen, allowHalf, allowCovered);
+        showBodyTypeDialog(allowOpen, allowHalf, allowCovered, true);
     }
 
-    private void showMandatoryBodyTypeDialog(boolean allowOpen, boolean allowHalf, boolean allowCovered) {
+    private void showBodyTypeDialog(boolean allowOpen, boolean allowHalf, boolean allowCovered, boolean isMandatory) {
         if (getActivity() == null || getActivity().isFinishing()) return;
+
+        if (mandatoryBodyTypeDialog != null && mandatoryBodyTypeDialog.isShowing()) {
+            mandatoryBodyTypeDialog.dismiss();
+            mandatoryBodyTypeDialog = null;
+        }
 
         final Dialog dialog = new Dialog(getActivity());
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.dialog_select_body_type);
-        dialog.setCancelable(false);
-        dialog.setCanceledOnTouchOutside(false);
+        dialog.setCancelable(!isMandatory);
+        dialog.setCanceledOnTouchOutside(!isMandatory);
+
+        View btnClose = dialog.findViewById(R.id.btn_dialog_close);
+        if (btnClose != null) {
+            btnClose.setVisibility(isMandatory ? View.GONE : View.VISIBLE);
+            btnClose.setOnClickListener(v -> dialog.dismiss());
+        }
 
         RadioButton rbOpen = dialog.findViewById(R.id.rb_dialog_body_open);
         RadioButton rbHalf = dialog.findViewById(R.id.rb_dialog_body_half);
@@ -1419,23 +1400,32 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         if (rbHalf != null) rbHalf.setVisibility(allowHalf ? View.VISIBLE : View.GONE);
         if (rbCovered != null) rbCovered.setVisibility(allowCovered ? View.VISIBLE : View.GONE);
 
-        if (allowOpen && rbOpen != null) {
+        String currentBody = riderData != null ? riderData.getBodyType() : null;
+        if ("open".equalsIgnoreCase(currentBody) && allowOpen && rbOpen != null) {
             rbOpen.setChecked(true);
-        } else if (allowHalf && rbHalf != null) {
+        } else if ("half".equalsIgnoreCase(currentBody) && allowHalf && rbHalf != null) {
             rbHalf.setChecked(true);
-        } else if (allowCovered && rbCovered != null) {
+        } else if ("covered".equalsIgnoreCase(currentBody) && allowCovered && rbCovered != null) {
             rbCovered.setChecked(true);
+        } else {
+            if (allowOpen && rbOpen != null) rbOpen.setChecked(true);
+            else if (allowHalf && rbHalf != null) rbHalf.setChecked(true);
+            else if (allowCovered && rbCovered != null) rbCovered.setChecked(true);
         }
 
         btnConfirm.setOnClickListener(v -> {
             String selected = null;
+            String toastName = "";
             int checkedId = rgGroup.getCheckedRadioButtonId();
             if (checkedId == R.id.rb_dialog_body_open) {
                 selected = "open";
+                toastName = "Open Body Only";
             } else if (checkedId == R.id.rb_dialog_body_half) {
                 selected = "half";
+                toastName = "Half Body Only";
             } else if (checkedId == R.id.rb_dialog_body_covered) {
                 selected = "covered";
+                toastName = "Covered Body Only";
             }
 
             if (selected == null) {
@@ -1444,13 +1434,16 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             }
 
             final String finalSelected = selected;
-            riderData.setBodyType(finalSelected);
+            final String finalToastName = toastName;
+            if (riderData != null) {
+                riderData.setBodyType(finalSelected);
+            }
             if (sessionManager != null) {
                 sessionManager.setUserDetails(riderData);
             }
             setupHomeBodyTypeUI();
 
-            if (riderData.getId() > 0) {
+            if (riderData != null && riderData.getId() > 0) {
                 Map<String, Object> body = new HashMap<>();
                 body.put("rider_id", riderData.getId());
                 body.put("body_type", finalSelected);
@@ -1458,19 +1451,21 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 NodeApiClient.getInterface().setBodyType(body).enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
                     @Override
                     public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
-                        Log.d("HomeFragment", "Mandatory body type updated on server: " + finalSelected);
+                        Log.d("HomeFragment", "Vehicle body type updated on server: " + finalSelected);
                     }
 
                     @Override
                     public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
-                        Log.e("HomeFragment", "Failed to update mandatory body type", t);
+                        Log.e("HomeFragment", "Failed to update vehicle body type", t);
                     }
                 });
             }
 
             dialog.dismiss();
             mandatoryBodyTypeDialog = null;
-            Toast.makeText(getActivity(), "Vehicle Body Type Saved!", Toast.LENGTH_SHORT).show();
+            if (getActivity() != null) {
+                Toast.makeText(getActivity(), "Vehicle Body: " + finalToastName + " Saved!", Toast.LENGTH_SHORT).show();
+            }
         });
 
         if (dialog.getWindow() != null) {

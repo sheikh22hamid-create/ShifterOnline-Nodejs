@@ -411,6 +411,61 @@ describe("rewardPlanService.applyRideAmountRewardsIfAny", () => {
   });
 });
 
+// Prisma returns Decimal columns as objects (truthy even at 0), unlike the plain
+// numbers mocked above. Node never writes pkg_order.grand_total, so real rows
+// carry grand_total = Decimal(0.00) and the real fare only in total_dcharge.
+const decimal = (n) => ({ valueOf: () => n, toString: () => String(n) });
+
+describe("rewardPlanService ride-amount progress with real Decimal rows (grand_total never written)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+  });
+
+  it("getActiveAmountRewardForCustomer counts total_dcharge when grand_total is Decimal(0)", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 10, status: true },
+    ]);
+    prisma.tbl_premium_plan.findMany.mockResolvedValue([
+      { id: 3, plan_name: "Gold Plan", description: "", status: true, validity_days: 30, lifetime_enabled: false },
+    ]);
+    prisma.tbl_ride_amount_reward_applied.findMany.mockResolvedValue([]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { grand_total: decimal(0), total_dcharge: 200 },
+    ]);
+
+    const res = await rewardPlanService.getActiveAmountRewardForCustomer({ uid: 9 });
+
+    expect(res.current_spend).toBe(200);
+    expect(res.progress_percent).toBe(40);
+  });
+
+  it("applyRideAmountRewardsIfAny unlocks the plan when grand_total is Decimal(0) but total_dcharge crosses the threshold", async () => {
+    prisma.tbl_ride_amount_reward.findMany.mockResolvedValue([
+      { id: 1, min_amount: 500, plan_id: 3, max_customers: 50, claimed_count: 0, status: true },
+    ]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 91, grand_total: decimal(0), total_dcharge: 300 },
+      { id: 92, grand_total: decimal(0), total_dcharge: 300 },
+    ]);
+    prisma.tbl_ride_amount_reward_applied.create.mockResolvedValue({ id: 100 });
+    prisma.tbl_ride_amount_reward.update.mockResolvedValue({});
+    prisma.tbl_user_plan_subscription.findFirst.mockResolvedValue(null);
+    prisma.tbl_premium_plan.findFirst.mockResolvedValue({
+      id: 3, plan_name: "Premium Silver", plan_for: "USER", status: true, validity_days: 30,
+      lifetime_enabled: false, min_ride_guarantee_enabled: false, wallet_bonus_enabled: false,
+    });
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 9, fcm_token: "token-user-9" });
+    prisma.tbl_user_plan_subscription.updateMany.mockResolvedValue({ count: 0 });
+    prisma.tbl_user_plan_subscription.create.mockResolvedValue({ id: 90 });
+
+    const results = await rewardPlanService.applyRideAmountRewardsIfAny({ uid: 9, orderId: 92, orderTotal: 300 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].skipped).toBe(false);
+  });
+});
+
 describe("rewardPlanService.getActiveAmountRewardForCustomer", () => {
   beforeEach(() => {
     jest.clearAllMocks();

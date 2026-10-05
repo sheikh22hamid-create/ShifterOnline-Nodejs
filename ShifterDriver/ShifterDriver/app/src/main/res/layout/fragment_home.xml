@@ -1065,6 +1065,111 @@
                     android:layout_height="0dp"
                     android:visibility="gone" />
             </LinearLayout>
+            <!-- ================= VEHICLE BODY TYPE SECTION (Directly below Today's Earnings) ================= -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_home_body_type"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="14dp"
+                android:layout_marginEnd="14dp"
+                android:layout_marginBottom="10dp"
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?android:attr/selectableItemBackground"
+                app:cardCornerRadius="14dp"
+                app:cardElevation="2dp"
+                app:cardBackgroundColor="@color/driver_card_bg">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="14dp"
+                    android:paddingTop="12dp"
+                    android:paddingEnd="14dp"
+                    android:paddingBottom="12dp">
+
+                    <LinearLayout
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="@drawable/bg_circle_orange_light"
+                        android:gravity="center">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:src="@drawable/ic_delivery_truck_hero" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Vehicle Body Type (बॉडी प्रकार)"
+                            android:textColor="@color/driver_text_primary"
+                            android:textSize="14.5sp"
+                            android:textStyle="bold" />
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="5dp"
+                            android:background="@drawable/bg_selected_body_type_badge"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingStart="8dp"
+                            android:paddingTop="3dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="3dp">
+
+                            <View
+                                android:layout_width="6dp"
+                                android:layout_height="6dp"
+                                android:layout_marginEnd="5dp"
+                                android:background="@drawable/dot_orange" />
+
+                            <TextView
+                                android:id="@+id/txt_home_selected_body_type"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Open Body Only (Khuli Dala)"
+                                android:textColor="#E65100"
+                                android:textSize="12.5sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- Small Edit Button -->
+                    <LinearLayout
+                        android:id="@+id/btn_home_edit_body_type"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_btn_edit_outline"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Edit"
+                            android:textColor="#FF5E1E"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -1439,111 +1544,7 @@
                     android:textSize="15sp"
                     android:textStyle="bold" />
             </LinearLayout>
-            <!-- ================= VEHICLE BODY TYPE SECTION ================= -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_home_body_type"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_marginEnd="16dp"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone"
-                app:cardCornerRadius="14dp"
-                app:cardElevation="2dp"
-                app:cardBackgroundColor="@color/driver_card_bg">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:layout_width="26dp"
-                            android:layout_height="26dp"
-                            android:src="@drawable/ic_delivery_truck_hero" />
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="10dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="Vehicle Body Type (बॉडी प्रकार)"
-                                android:textColor="@color/driver_text_primary"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/txt_home_body_type_desc"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="Select vehicle configuration to receive matching orders"
-                                android:textColor="@color/home_secondary"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-                    </LinearLayout>
-
-                    <RadioGroup
-                        android:id="@+id/rg_home_body_type"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp">
-
-                        <RadioButton
-                            android:id="@+id/rb_home_body_both"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:visibility="gone"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp"
-                            android:text="All (Open, Half &amp; Covered Available)"
-                            android:textColor="@color/driver_text_primary"
-                            android:textSize="13.5sp" />
-
-                        <RadioButton
-                            android:id="@+id/rb_home_body_open"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp"
-                            android:text="Open Body Only (Khuli Dala)"
-                            android:textColor="@color/driver_text_primary"
-                            android:textSize="13.5sp" />
-
-                        <RadioButton
-                            android:id="@+id/rb_home_body_half"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp"
-                            android:text="Half Body Only (Half Dala)"
-                            android:textColor="@color/driver_text_primary"
-                            android:textSize="13.5sp" />
-
-                        <RadioButton
-                            android:id="@+id/rb_home_body_covered"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:paddingTop="3dp"
-                            android:paddingBottom="3dp"
-                            android:text="Covered Body Only (Band Container / Fixed Cover)"
-                            android:textColor="@color/driver_text_primary"
-                            android:textSize="13.5sp" />
-                    </RadioGroup>
-                </LinearLayout>
-            </androidx.cardview.widget.CardView>
             <!-- ================= DELIVERY TYPES SECTION ================= -->
             <LinearLayout
                 android:id="@+id/card_delivery_types_section"
@@ -1621,12 +1622,13 @@
                         android:layout_height="0dp"
                         android:visibility="gone" />
                 </RelativeLayout>
-                <!-- Dynamic Container for Delivery Tier Cards -->
+                <!-- Dynamic Container for Delivery Tier Cards (Default Closed) -->
                 <LinearLayout
                     android:id="@+id/delivery_types_container"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical">
+                    android:orientation="vertical"
+                    android:visibility="gone">
                     <!-- Populated dynamically via item_delivery_type_card.xml -->
                 </LinearLayout>
             </LinearLayout>
