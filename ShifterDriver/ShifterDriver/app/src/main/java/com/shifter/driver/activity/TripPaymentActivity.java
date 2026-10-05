@@ -70,6 +70,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
     private NodeSocketManager.SettlementUpdatedListener socketListener;
     private boolean isFetchingOrderDetails = false;
     private boolean receiverBusy = false;
+    private String originalGraceWarning;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -265,6 +266,8 @@ public class TripPaymentActivity extends LocaleAwareActivity {
         receiverBusy = busy;
         binding.btnReceiverRefused.setEnabled(!busy);
         binding.btnResendLink.setEnabled(!busy);
+        binding.btnReceiverRefused.setAlpha(busy ? 0.5f : 1f);
+        binding.btnResendLink.setAlpha(busy ? 0.5f : 1f);
     }
 
     private void showReceiverError(String title, String message) {
@@ -311,6 +314,9 @@ public class TripPaymentActivity extends LocaleAwareActivity {
                 setReceiverBusy(false);
                 if (sent) {
                     Toast.makeText(TripPaymentActivity.this, "Payment link sent to the receiver", Toast.LENGTH_SHORT).show();
+                } else if (link == null || link.trim().isEmpty()) {
+                    showReceiverError("Could Not Send Link",
+                            SettlementDriverClient.getFriendlyErrorMessage("NOT_CONFIGURED", null));
                 } else {
                     showShareLinkDialog(link);
                 }
@@ -546,6 +552,10 @@ public class TripPaymentActivity extends LocaleAwareActivity {
             binding.txtGraceWarning.setVisibility(View.VISIBLE);
 
             boolean receiverMode = ReceiverPayText.isReceiverMode(settlement);
+            if (originalGraceWarning == null) {
+                originalGraceWarning = binding.txtGraceWarning.getText().toString();
+            }
+            binding.txtGraceWarning.setText(ReceiverPayText.graceWarning(receiverMode, originalGraceWarning));
             binding.layoutReceiverActions.setVisibility(receiverMode ? View.VISIBLE : View.GONE);
             if (receiverMode) {
                 binding.btnReceiverRefused.setEnabled(!receiverBusy);
@@ -690,7 +700,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
 
         new AlertDialog.Builder(this)
                 .setTitle("Confirm Payment Received")
-                .setMessage("Did you collect " + formatted + " from the customer in cash or direct UPI?")
+                .setMessage(ReceiverPayText.receivedConfirmMessage(ReceiverPayText.isReceiverMode(settlement), formatted))
                 .setNegativeButton("No, Not Yet", null)
                 .setPositiveButton("Yes, Received " + formatted, (dialog, which) -> {
                     submitMarkReceived();

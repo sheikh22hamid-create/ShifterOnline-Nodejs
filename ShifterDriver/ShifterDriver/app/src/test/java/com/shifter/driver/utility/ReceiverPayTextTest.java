@@ -81,6 +81,26 @@ public class ReceiverPayTextTest {
     }
 
     @Test
+    public void graceWarning_receiverModeSaysReceiver() {
+        assertEquals(ReceiverPayText.RECEIVER_GRACE_WARNING, ReceiverPayText.graceWarning(true, "orig"));
+        assertTrue(ReceiverPayText.graceWarning(true, "orig").contains("receiver"));
+        assertFalse(ReceiverPayText.graceWarning(true, "orig").contains("from the customer"));
+    }
+
+    @Test
+    public void graceWarning_normalReturnsOriginalUnchanged() {
+        assertEquals("orig", ReceiverPayText.graceWarning(false, "orig"));
+    }
+
+    @Test
+    public void receivedConfirmMessage_receiverAndNormal() {
+        assertEquals("Did you collect ₹90.00 from the receiver in cash or direct UPI?",
+                ReceiverPayText.receivedConfirmMessage(true, "₹90.00"));
+        assertEquals("Did you collect ₹90.00 from the customer in cash or direct UPI?",
+                ReceiverPayText.receivedConfirmMessage(false, "₹90.00"));
+    }
+
+    @Test
     public void onlineHint_zeroTotalFallsBack() {
         assertEquals("Receiver's online total: \u20B990.00", ReceiverPayText.onlineHint("\u20B9", "0", "90"));
     }

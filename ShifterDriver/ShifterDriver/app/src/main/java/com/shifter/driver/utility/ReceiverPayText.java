@@ -30,6 +30,19 @@ public final class ReceiverPayText {
         return "Receiver's online total: " + money(currency, t > 0 ? t : parse(amountDue));
     }
 
+    public static final String RECEIVER_GRACE_WARNING =
+            "Payment must be collected directly from the receiver.\nIf the receiver is facing any issue paying, you can report it to Admin.\nAdmin will track the record. Payment must be collected by you.";
+
+    /** Receiver-mode grace warning; otherwise the original text untouched. */
+    public static String graceWarning(boolean receiverMode, String original) {
+        return receiverMode ? RECEIVER_GRACE_WARNING : original;
+    }
+
+    public static String receivedConfirmMessage(boolean receiverMode, String formattedAmount) {
+        return "Did you collect " + formattedAmount + " from the "
+                + (receiverMode ? "receiver" : "customer") + " in cash or direct UPI?";
+    }
+
     private static String money(String currency, double v) {
         return (currency == null ? "" : currency) + String.format(Locale.getDefault(), "%.2f", v);
     }
