@@ -4858,7 +4858,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                     ? "Paid to Driver".tr
                                     : isCancelled
                                         ? "No Due".tr
-                                        : "Pay to Driver".tr,
+                                        : receiverPayInfo?['status']?.toString() == 'active'
+                                            ? "Receiver pays".tr
+                                            : "Pay to Driver".tr,
                             textAlign: TextAlign.center,
                             style: TextStyle(color: dueColor, fontFamily: "Gilroy_Bold", fontSize: 12.5),
                           ),
@@ -4886,7 +4888,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                     ? "Cash settled".tr
                                     : isCancelled
                                         ? "Order cancelled".tr
-                                        : "Cash at delivery".tr,
+                                        : receiverPayInfo?['status']?.toString() == 'active'
+                                            ? "At drop".tr
+                                            : "Cash at delivery".tr,
                             textAlign: TextAlign.center,
                             style: TextStyle(color: dueColor, fontFamily: "Gilroy_Medium", fontSize: 10.5),
                           ),
@@ -4909,7 +4913,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   ),
                   child: Text(
                     receiverPayInfo['status']?.toString() == 'active'
-                        ? "${"Receiver pays".tr}${(receiverPayInfo['receiver_name'] ?? '').toString().trim().isEmpty ? '' : ' ${receiverPayInfo['receiver_name']}'} - ${"Receiver's commission".tr}: ${receiverPayInfo['commission_percent'] ?? 0}%"
+                        ? "${"Receiver pays".tr}${(receiverPayInfo['receiver_name'] ?? '').toString().trim().isEmpty ? '' : ' ${receiverPayInfo['receiver_name']}'} - ${"Your commission (added to the receiver's total)".tr}: ${receiverPayInfo['commission_percent'] ?? 0}%"
                         : "Receiver declined - you will pay normally.".tr,
                     style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Medium", fontSize: 12),
                   ),

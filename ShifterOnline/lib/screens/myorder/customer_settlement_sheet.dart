@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import '../../Api/Api_wrapper.dart';
 import '../../services/settlement_api_service.dart';
 import '../../utils/Colors.dart';
 import '../../utils/node_socket_manager.dart';
@@ -179,9 +180,53 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
       }
     });
     if (ok) {
+      final mergedStatus = _settlement['status']?.toString() ?? 'pending';
+      if (mergedStatus != 'pending') {
+        // The advance covered the whole amount: the backend settled the order
+        // during the take-over, so run the normal settled handling
+        // (onSettled + auto-close) instead of waiting on the poll timer.
+        updateSettlement(_settlement);
+        ApiWrapper.showToastMessage("Payment complete".tr);
+        return;
+      }
       _startPollTimerIfNeeded();
-      Get.snackbar("", "You are now paying for this order".tr,
-          snackPosition: SnackPosition.TOP, duration: const Duration(seconds: 2));
+      ApiWrapper.showToastMessage("You are now paying for this order".tr);
+    }
+  }
+
+  bool _confirmingTakeOver = false;
+
+  Future<void> _confirmTakeOver() async {
+    if (_takingOver || _resending || _confirmingTakeOver) return;
+    _confirmingTakeOver = true;
+    bool? confirmed;
+    try {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text("I'll pay myself".tr,
+              style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15)),
+          content: Text(
+              "You will pay for this order instead of the receiver. The receiver's link will stop working and you will lose the service fee."
+                  .tr,
+              style: const TextStyle(fontFamily: "Gilroy_Medium", fontSize: 13)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text("Cancel".tr),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text("I'll pay myself".tr),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _confirmingTakeOver = false;
+    }
+    if (confirmed == true && mounted) {
+      await _handleTakeOver();
     }
   }
 
@@ -208,17 +253,12 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
     final sent = res['sent'] == true || res['sent'] == 'true';
     final link = res['link']?.toString() ?? '';
     if (sent) {
-      Get.snackbar("", "Payment link sent to the receiver".tr,
-          snackPosition: SnackPosition.TOP, duration: const Duration(seconds: 2));
+      ApiWrapper.showToastMessage("Payment link sent to the receiver".tr);
       return;
     }
     if (link.isEmpty) {
-      Get.snackbar(
-          "",
-          SettlementApiService.friendlyErrorMessage(
-              'NOT_CONFIGURED', res['ResponseMsg']?.toString()),
-          snackPosition: SnackPosition.TOP,
-          duration: const Duration(seconds: 3));
+      ApiWrapper.showToastMessage(SettlementApiService.friendlyErrorMessage(
+          'NOT_CONFIGURED', res['ResponseMsg']?.toString()));
       return;
     }
     await showDialog<void>(
@@ -237,8 +277,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: link));
               if (ctx.mounted) Navigator.of(ctx).pop();
-              Get.snackbar("", "Link copied".tr,
-                  snackPosition: SnackPosition.TOP, duration: const Duration(seconds: 2));
+              ApiWrapper.showToastMessage("Link copied".tr);
             },
             child: Text("Copy link".tr),
           ),
@@ -366,7 +405,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                     ),
                     if (isReceiverMode && markup > 0)
                       Text(
-                        "${"Includes your".tr} ₹${markup.toStringAsFixed(2)} ${"service fee".tr}",
+                        "${"Includes your".tr} ₹${markup.toStringAsFixed(2)} ${"service fee".tr} ${"(if paid online)".tr}",
                         style: TextStyle(
                           fontFamily: "Gilroy_Medium",
                           fontSize: 12,
@@ -427,7 +466,9 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                           children: [
                             Text(
                               status == 'cash_received'
-                                  ? "Driver confirmed ₹${amountDue.toStringAsFixed(0)} cash receipt!".tr
+                                  ? (_settlement['confirmed_by']?.toString() == 'system'
+                                      ? "Payment complete".tr
+                                      : "Driver confirmed ₹${amountDue.toStringAsFixed(0)} cash receipt!".tr)
                                   : "Online payment confirmed!".tr,
                               style: const TextStyle(
                                 fontFamily: "Gilroy_Bold",
@@ -525,7 +566,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                 ),
                 const SizedBox(height: 14),
                 ElevatedButton(
-                  onPressed: (_takingOver || _resending) ? null : _handleTakeOver,
+                  onPressed: (_takingOver || _resending) ? null : _confirmTakeOver,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: linercolor,
                     padding: const EdgeInsets.symmetric(vertical: 14),

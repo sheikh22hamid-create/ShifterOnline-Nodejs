@@ -921,7 +921,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         final pendingOrderId = match != null ? match.group(1) : response['order_id']?.toString();
         _showPendingSettlementDialog(msg, pendingOrderId);
       } else if (response is Map && response['code']?.toString() == 'RECEIVER_PAY_UNAVAILABLE') {
-        ApiWrapper.showToastMessage(SettlementApiService.friendlyErrorMessage('RECEIVER_PAY_UNAVAILABLE', msg));
+        ApiWrapper.showToastMessage(
+            "${SettlementApiService.friendlyErrorMessage('RECEIVER_PAY_UNAVAILABLE', msg).tr} ${"Turn off Receiver pays and try again.".tr}");
       } else {
         ApiWrapper.showToastMessage(msg);
       }

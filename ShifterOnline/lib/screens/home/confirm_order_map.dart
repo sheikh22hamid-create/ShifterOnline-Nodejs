@@ -975,7 +975,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             ),
             const SizedBox(height: 10),
             Text(
-              "Receiver's commission".tr,
+              "Your commission (added to the receiver's total)".tr,
               style: TextStyle(
                 fontFamily: 'Gilroy_Bold',
                 fontSize: 12.5,
@@ -999,6 +999,15 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
               }).toList(),
             ),
             const SizedBox(height: 6),
+            Text(
+              "Commission applies only if the receiver pays online.".tr,
+              style: TextStyle(
+                fontFamily: 'Gilroy_Medium',
+                fontSize: 11.5,
+                color: greaycolor,
+              ),
+            ),
+            const SizedBox(height: 4),
             Text(
               "Receiver gets a WhatsApp link to pay (no app needed).".tr,
               style: TextStyle(
