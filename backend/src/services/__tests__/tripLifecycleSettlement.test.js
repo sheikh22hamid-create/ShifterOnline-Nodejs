@@ -251,6 +251,26 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
       expect(receiverPayService.issueLink).not.toHaveBeenCalled();
     });
 
+    it("re-read throws (transient DB error): treated as still active, no decline, link issued", async () => {
+      const rss = require("../receiverSettlementService");
+      receiverPayService.getActiveForOrder.mockResolvedValueOnce(rpRow).mockRejectedValueOnce(new Error("db blip"));
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      const result = await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(result).toMatchObject({ success: true });
+      expect(rss.declineReceiverPay).not.toHaveBeenCalled();
+      expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 297 });
+    });
+
+    it("system decline rejecting never fails the ride", async () => {
+      const rss = require("../receiverSettlementService");
+      receiverPayService.getActiveForOrder.mockResolvedValueOnce(rpRow).mockResolvedValue(null);
+      rss.declineReceiverPay.mockRejectedValueOnce(new Error("convert failed"));
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      const result = await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(result).toMatchObject({ success: true });
+      expect(rss.declineReceiverPay).toHaveBeenCalledWith({ orderId: 297, actor: "system" });
+    });
+
     it("row still active after create: no decline, link issued", async () => {
       const rss = require("../receiverSettlementService");
       receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);

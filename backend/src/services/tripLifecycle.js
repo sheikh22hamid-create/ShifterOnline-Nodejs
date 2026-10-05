@@ -692,8 +692,15 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       // settlement to convert; re-read and convert the freshly created receiver-mode settlement.
       let stillActive = true;
       if (useReceiverMode && settlementCreated) {
-        const reread = await receiverPayService.getActiveForOrder(orderId).catch(() => null);
-        if (!reread) {
+        // A failed read is NOT evidence the row was declined: only a successful read that finds
+        // no active row triggers the conversion.
+        let rereadOk = true;
+        const reread = await receiverPayService.getActiveForOrder(orderId).catch((err) => {
+          rereadOk = false;
+          logger.warn(`updateStatus: receiver pay re-read failed for order ${orderId}, treating as still active:`, err);
+          return null;
+        });
+        if (rereadOk && !reread) {
           stillActive = false;
           try {
             const receiverSettlementService = require("./receiverSettlementService");
