@@ -102,7 +102,7 @@ CHAR(64) NULL, `token_expires_at`, `razorpay_order_id`, `declined_by`
 `order_settlement` gains: `payer` VARCHAR(10) default `'customer'`
 (`customer | receiver`), `receiver_markup` DECIMAL(10,2) default 0,
 `advance_held` DECIMAL(10,2) default 0, `reversal_shortfall` DECIMAL(10,2)
-default 0. `confirmed_by` also accepts
+default 0, `receiver_credited` TINYINT(1) default 0. `confirmed_by` also accepts
 `receiver_online`. Existing rows and normal mode are untouched.
 
 ## Lifecycle
@@ -148,10 +148,10 @@ New public routes mounted in `app.js` (token is the only auth; no login):
 
 Security: token compared by hash, expiry enforced, per-IP + per-token rate
 limits, link dead once the settlement is no longer `pending` or the order is
-cancelled (page shows a neutral "no payment needed" state). The receiver can
-reply **PAY** to the WhatsApp bot to be sent the link again (matched by
-`dmobile` in `customerHandler`, max once per minute, `link_send_count` capped),
-and **NO** to decline. The driver app also has "Resend link".
+cancelled (page shows a neutral "no payment needed" state). The receiver
+declines on the pay page, the driver with *Receiver refused*, or the booker with
+*I'll pay myself*; the link is resent by the driver or the booker (no WhatsApp
+keyword, no admin resend).
 
 ## Fallback and edge cases
 
@@ -203,8 +203,9 @@ Settings (existing Settings page flags, `app_settings` keys, read like
 
 Customer app reads limits from `GET /api/order/receiver-pay/config`. The
 Settlements admin page shows payer, receiver phone, markup and advance held for
-receiver-mode rows and can resend the link or convert to customer mode (each
-writes an `order_settlement_event`).
+receiver-mode rows and can convert to customer mode (writes an
+`order_settlement_event`). The public base URL for pay links comes from env
+`PUBLIC_BASE_URL`.
 
 ## Apps
 
@@ -259,3 +260,15 @@ writes an `order_settlement_event`).
 3. New customer/driver endpoints follow the existing convention of trusting the
    supplied `uid`/`rider_id` (the known, deliberately deferred auth gap); the
    public pay routes are token-authenticated and are not affected by it.
+
+## Implementation notes
+
+Details decided during the build:
+
+- The receiver pay page uses a namespaced per-route rate limiter keyed on the
+  rightmost `x-forwarded-for` hop (`middleware/ipRateLimiter.js`).
+- A decline racing completion converges via a post-create re-check (actor
+  `system`).
+- Admin reversal of a receiver settlement uses the ORIGINAL row for the driver
+  wallet reversal.
+- `/verify` failures lock the page's Pay button for the session.
