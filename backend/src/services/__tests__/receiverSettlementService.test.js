@@ -3,7 +3,7 @@ jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   order_settlement: { findUnique: jest.fn(), update: jest.fn() },
   order_settlement_event: { create: jest.fn() },
-  order_receiver_pay: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+  order_receiver_pay: { findUnique: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
   pkg_order: { findUnique: jest.fn() },
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   tbl_user: { findUnique: jest.fn(), update: jest.fn() },
@@ -124,6 +124,24 @@ describe("settleByReceiver", () => {
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 2.7 } } });
     expect(prisma.order_receiver_pay.updateMany).toHaveBeenCalledWith({ where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "paid" }) });
+  });
+  it("a stale/rotated token with a matching razorpay_order_id still applies the payment once", async () => {
+    setup({ r: rp({ razorpay_order_id: "order_R1" }) });
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(null);
+    prisma.order_receiver_pay.findFirst.mockResolvedValue(rp({ razorpay_order_id: "order_R1" }));
+    const { settlement: out } = await svc.settleByReceiver(pay);
+    expect(prisma.order_receiver_pay.findFirst).toHaveBeenCalledWith({ where: { razorpay_order_id: "order_R1" } });
+    expect(out).toMatchObject({ status: "paid_online", receiver_credited: true });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+  });
+  it("a stale token and a non-matching order id is INVALID_LINK with no wallet writes", async () => {
+    setup({ r: rp({ razorpay_order_id: "order_R1" }) });
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(null);
+    prisma.order_receiver_pay.findFirst.mockResolvedValue(null);
+    await expect(svc.settleByReceiver(pay)).rejects.toMatchObject({ code: "INVALID_LINK" });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
   });
   it("a repeat of the same payment id is a no-op (no second credit)", async () => {
     setup({ s: settlement({ status: "paid_online", razorpay_payment_id: "pay_1" }), r: rp({ status: "paid", razorpay_order_id: "order_R1" }) });

@@ -90,8 +90,8 @@ describe("receiverPayPage", () => {
     expect(PAGE_HTML).not.toContain("innerHTML");
   });
   it("locks Pay and Decline after any failed verify outcome", () => {
-    const start = PAGE_HTML.indexOf("/verify");
-    const end = PAGE_HTML.indexOf("modal:", start);
+    const start = PAGE_HTML.indexOf("function submitVerify");
+    const end = PAGE_HTML.indexOf('$("pay").addEventListener', start);
     const verifyBlock = PAGE_HTML.slice(start, end);
     expect(verifyBlock).toContain(".catch(verifyFailed)");
     expect(verifyBlock).toContain("verifyFailed()");
@@ -99,6 +99,16 @@ describe("receiverPayPage", () => {
     expect(verifyBlock).not.toMatch(/disabled = false/);
     expect(PAGE_HTML).toContain("var locked = false");
     expect(PAGE_HTML).toContain("disabled = locked");
+  });
+  it("persists the Razorpay response and retries verify on reload; never re-enables when locked", () => {
+    expect(PAGE_HTML).toContain("sessionStorage.setItem(skey, val)");
+    expect(PAGE_HTML).toContain("sessionStorage.getItem(skey)");
+    expect(PAGE_HTML).toContain("sessionStorage.removeItem(skey)");
+    expect(PAGE_HTML).toContain('var skey = "rcvpay:" + token');
+    expect(PAGE_HTML).toContain("Confirming your payment...");
+    expect(PAGE_HTML).toContain("submitVerify(resp)");
+    expect(PAGE_HTML).toContain("ondismiss: function () { if (locked) return;");
+    expect(PAGE_HTML).not.toContain("innerHTML");
   });
   it("only re-enables buttons for an /order failure", () => {
     expect(PAGE_HTML).toContain("if (!o.success) {");

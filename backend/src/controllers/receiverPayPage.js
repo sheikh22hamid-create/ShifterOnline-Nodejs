@@ -70,9 +70,10 @@ const PAGE_HTML = `<!doctype html>
     return fetch(api).then(function (r) { return r.json(); }).then(function (s) {
       if (!s.success) {
         if (s.code === "INVALID_LINK") { $("sub").textContent = "This payment link is not valid."; } else { say("Could not load. Please refresh."); }
-        return;
+        return null;
       }
       show(s);
+      return s.state;
     }).catch(function () { say("Could not load. Check your connection."); });
   }
   function recheck(n) {
@@ -80,6 +81,28 @@ const PAGE_HTML = `<!doctype html>
     setTimeout(function () { load().then(function () { if (locked) recheck(n - 1); }); }, 4000);
   }
   function verifyFailed() { locked = true; $("pay").disabled = $("decline").disabled = true; say(UNCONFIRMED); recheck(3); }
+  // The Razorpay response is kept in sessionStorage until the server confirms it, so a reload retries
+  // the (idempotent) verify instead of stranding a captured payment. Storage may be unavailable.
+  var skey = "rcvpay:" + token;
+  function saved(op, val) {
+    try {
+      if (op === "set") sessionStorage.setItem(skey, val);
+      else if (op === "clear") sessionStorage.removeItem(skey);
+      else return sessionStorage.getItem(skey);
+    } catch (e) { /* storage unavailable: page still works */ }
+    return null;
+  }
+  function submitVerify(resp) {
+    locked = true; $("pay").disabled = $("decline").disabled = true; say("Confirming your payment...");
+    return fetch(api + "/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      razorpay_payment_id: resp.razorpay_payment_id, razorpay_order_id: resp.razorpay_order_id, razorpay_signature: resp.razorpay_signature }) })
+      .then(function (r) { return r.json(); })
+      .then(function (v) {
+        if (v && v.success) { saved("clear"); locked = false; show({ state: "paid" }); return; }
+        verifyFailed();
+      })
+      .catch(verifyFailed);
+  }
 
   $("pay").addEventListener("click", function () {
     $("pay").disabled = $("decline").disabled = true; say("Starting payment...");
@@ -88,17 +111,11 @@ const PAGE_HTML = `<!doctype html>
       var rz = new Razorpay({
         key: o.key_id, order_id: o.razorpay_order_id, amount: o.amount_paise, currency: o.currency, name: "Shifter Online",
         handler: function (resp) {
-          say("Confirming payment...");
-          fetch(api + "/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-            razorpay_payment_id: resp.razorpay_payment_id, razorpay_order_id: resp.razorpay_order_id, razorpay_signature: resp.razorpay_signature }) })
-            .then(function (r) { return r.json(); })
-            .then(function (v) {
-              if (v && v.success) { locked = false; show({ state: "paid" }); return; }
-              verifyFailed();
-            })
-            .catch(verifyFailed);
+          var r = { razorpay_payment_id: resp.razorpay_payment_id, razorpay_order_id: resp.razorpay_order_id, razorpay_signature: resp.razorpay_signature };
+          saved("set", JSON.stringify(r));
+          submitVerify(r);
         },
-        modal: { ondismiss: function () { $("pay").disabled = $("decline").disabled = false; say(""); } }
+        modal: { ondismiss: function () { if (locked) return; $("pay").disabled = $("decline").disabled = false; say(""); } }
       });
       rz.open();
     }).catch(function () { say("Could not start payment."); $("pay").disabled = $("decline").disabled = false; });
@@ -108,7 +125,14 @@ const PAGE_HTML = `<!doctype html>
     $("pay").disabled = $("decline").disabled = true;
     post("/decline").then(function (d) { if (d.success) { show({ state: "closed" }); say("You declined. The sender will be notified."); } else { say(d.message || "Could not decline."); $("pay").disabled = $("decline").disabled = false; } }).catch(function () { say("Could not decline. Please try again."); $("pay").disabled = $("decline").disabled = false; });
   });
-  load();
+  load().then(function (state) {
+    var raw = saved("get");
+    if (!raw) return;
+    if (state === "paid") { saved("clear"); return; }
+    var resp = null;
+    try { resp = JSON.parse(raw); } catch (e) { saved("clear"); return; }
+    if (resp && resp.razorpay_payment_id && resp.razorpay_order_id && resp.razorpay_signature) submitVerify(resp);
+  });
 })();
 </script>
 </body>

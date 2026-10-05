@@ -97,7 +97,12 @@ async function recordReconciliation(orderId, settlementId, paymentId, status, pa
 }
 
 async function settleByReceiver({ token, paymentId, razorpayOrderId, signature }) {
-  const row = await findRowByToken(token);
+  // A resent link rotates the token, so a receiver who already opened checkout on the old link
+  // would otherwise be turned away with a captured payment. The HMAC signature and the amount
+  // check against Razorpay's own record bind the payment to its order, so fall back to that order.
+  let row = await prisma.order_receiver_pay.findUnique({ where: { token_hash: hashToken(token) } });
+  if (!row && razorpayOrderId) row = await prisma.order_receiver_pay.findFirst({ where: { razorpay_order_id: razorpayOrderId } });
+  if (!row) throw new SettlementError("INVALID_LINK", "This payment link is not valid.");
   const pre = await prisma.order_settlement.findUnique({ where: { order_id: row.order_id } });
   if (!pre) throw new SettlementError("INVALID_STATE", "This payment link is no longer active.");
   if (pre.status === STATUS.PAID_ONLINE && pre.razorpay_payment_id === paymentId) return { settlement: pre, alreadyDone: true };
