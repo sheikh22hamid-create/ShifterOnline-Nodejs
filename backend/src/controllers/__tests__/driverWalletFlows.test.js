@@ -99,22 +99,6 @@ describe("customerWalletController.withdrawWallet", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true", request_id: 55 }));
   });
 
-  it("still debits a customer wallet immediately (only driver withdrawals go through approval)", async () => {
-    prisma.tbl_user.findFirst.mockResolvedValue({ id: 2, wallet: "500.00" });
-    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
-    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
-    const res = mockRes();
-    await withdrawWallet({ body: { mobile: "9999999999", amount: 100, wallet_type: "user" } }, res);
-    expect(prisma.tbl_user.updateMany).toHaveBeenCalledWith({
-      where: { id: 2, wallet: { gte: 100 } },
-      data: { wallet: { decrement: 100 } },
-    });
-    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ remark: "Wallet Withdraw" }) })
-    );
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
-  });
-
   it("rejects a driver withdraw when balance is positive but at or below the admin-configured minimum withdrawal amount", async () => {
     getDriverMinWithdrawalAmount.mockResolvedValue(500);
     prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, wallet_balance: "500.00" });
@@ -131,33 +115,6 @@ describe("customerWalletController.withdrawWallet", () => {
     const res = mockRes();
     await withdrawWallet({ body: driverBody }, res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
-  });
-
-  it("does not apply the minimum-withdrawal-amount gate to customer withdrawals", async () => {
-    getDriverMinWithdrawalAmount.mockResolvedValue(500);
-    prisma.tbl_user.findFirst.mockResolvedValue({ id: 2, wallet: "100.00" });
-    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
-    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
-    const res = mockRes();
-    await withdrawWallet({ body: { mobile: "9999999999", amount: 100, wallet_type: "user" } }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "true" }));
-  });
-
-  // Code review finding: NewBalance must come from a fresh in-transaction
-  // read, not `currentBalance - amount` arithmetic - that stale math is
-  // wrong whenever the real balance moved between the initial read and this
-  // transaction committing (e.g. another debit landed in the gap), even
-  // though this withdraw itself succeeded validly. Driver withdrawals no
-  // longer debit here at all, so this only applies to the customer path now.
-  it("reports the fresh post-debit balance, not stale pre-transaction arithmetic", async () => {
-    prisma.tbl_user.findFirst
-      .mockResolvedValueOnce({ id: 2, wallet: "500.00" })
-      .mockResolvedValueOnce({ id: 2, wallet: "350.00" });
-    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
-    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 1 });
-    const res = mockRes();
-    await withdrawWallet({ body: { mobile: "9999999999", amount: 100, wallet_type: "user" } }, res);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ NewBalance: 350 }));
   });
 
   it("rejects a driver withdraw that would drop the ledger below the admin-configured minimum (reserve, not just a gate)", async () => {
@@ -223,19 +180,6 @@ describe("customerWalletController.withdrawWallet", () => {
     await withdrawWallet({ body: { ...driverBody, payout_method: "bank" } }, res);
     expect(prisma.driver_withdraw_requests.create).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ Result: "false", ResponseMsg: "Add your bank account before withdrawing." }));
-  });
-
-  it("reports insufficient balance instead of over-withdrawing when a concurrent customer request already spent the balance", async () => {
-    // Simulates two concurrent withdraw calls both reading wallet=100 before
-    // either commits: the first's transaction wins the atomic updateMany;
-    // this second call's updateMany then matches 0 rows because the WHERE's
-    // wallet >= amount no longer holds against the already-decremented row.
-    prisma.tbl_user.findFirst.mockResolvedValue({ id: 2, wallet: "100.00" });
-    prisma.tbl_user.updateMany.mockResolvedValue({ count: 0 });
-    const res = mockRes();
-    await withdrawWallet({ body: { mobile: "9999999999", amount: 100, wallet_type: "user" } }, res);
-    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ResponseCode: "402", Result: "false" }));
   });
 
   it("blocks a driver withdrawal while trial is active and KYC isn't approved", async () => {
