@@ -530,6 +530,16 @@ async function withdrawWallet(req, res) {
     const remark = b.remark || (walletType === "driver" ? "Ledger Withdraw" : "Wallet Withdraw");
     if (!mobile || !amount || !walletType) return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Missing Data" });
 
+    // Customer wallets are spend-only (rides and wallet-paid bookings). The customer
+    // app has no withdraw option; this stops the raw endpoint from being used as one.
+    if (walletType !== "driver") {
+      return res.status(200).json({
+        ResponseCode: "403",
+        Result: "false",
+        ResponseMsg: "Wallet balance can only be used for rides and cannot be withdrawn.",
+      });
+    }
+
     const account =
       walletType === "user"
         ? await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } })
