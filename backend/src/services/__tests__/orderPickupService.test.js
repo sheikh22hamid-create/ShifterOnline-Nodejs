@@ -1,3 +1,4 @@
+jest.mock("../referralPointsRefund", () => ({ reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../config/db", () => {
   const mockPrisma = {
     pkg_order: {
@@ -55,6 +56,7 @@ jest.mock("../../utils/pickupRelocateSettings", () => ({
 }));
 
 const prisma = require("../../config/db");
+const { reconcileRideDiscountToFare } = require("../referralPointsRefund");
 const pricingEngine = require("../pricingEngine");
 const dispatchManager = require("../dispatchManager");
 const pushNotifier = require("../pushNotifier");
@@ -166,6 +168,15 @@ describe("orderPickupService", () => {
       );
       // Driver is still en route (order_status stayed 1) - no wait-timer touch needed.
       expect(prisma.pkg_order_wait_timer.update).not.toHaveBeenCalled();
+    });
+
+    it("re-applies the ride-discount cap to the new fare after a pickup change", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(baseOrder);
+      prisma.pkg_order.update.mockResolvedValue({ ...baseOrder, total_dcharge: 180 });
+      await orderPickupService.confirmPickupChange({
+        uid: 55, orderId: 101, newPlat: 28.6, newPlong: 77.45, newPaddress: "New Pickup Address",
+      });
+      expect(reconcileRideDiscountToFare).toHaveBeenCalledWith(101, expect.any(Number), prisma);
     });
 
     it("banks accrued wait time and reverts to en-route when the driver had already arrived (order_status 2)", async () => {

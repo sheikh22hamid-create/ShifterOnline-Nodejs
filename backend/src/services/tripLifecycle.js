@@ -246,6 +246,10 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
     wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
   };
   await prisma.pkg_order.update({ where: { id: orderId }, data: priced });
+  // The booking-time fare (and so the points cap) came from the client's own
+  // total_dcharge; the fare is now re-priced server-side off the real driver
+  // distance. If it came out lower, hand back points above the cap for it.
+  await reconcileRideDiscountToFare(orderId, fare);
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
   // still holding a popup for this order and cancel remaining timers.
@@ -582,11 +586,29 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       ? reconciledPoints.pointsAmount
       : Number(order.referral_points_amount) || 0;
     // Coupon discount is absorbed by the platform too (server-computed at booking).
-    const couponAmount = Number(order.cou_amt) || 0;
+    const couponAmount = Number.isFinite(reconciledPoints.couponAmount) && reconciledPoints.couponAmount < (Number(order.cou_amt) || 0)
+      ? reconciledPoints.couponAmount
+      : Number(order.cou_amt) || 0;
     // Prepaid money can never exceed the fare itself: the excess was being
     // treated as owed to the driver (order #468: Rs326 of points on a Rs170 fare
     // credited Rs312 to the driver's wallet).
-    const prepaidTotal = Math.min(advancePaymentCollected + referralPointsAmount + couponAmount, finalTotal);
+    // The advance is the customer's own money (already credited to their
+    // wallet when paid), unlike points / coupon which the platform absorbs, so
+    // it is the part trimmed when prepaid would exceed the fare: only what the
+    // ride still needs after points + coupon is applied, and the surplus stays
+    // in the customer's wallet instead of being taken back with the rest
+    // (e.g. a Rs60 advance on a Rs40 ride, or an early drop to a tiny fare).
+    // Only an advance that was actually captured counts: advance_payment is just
+    // the amount ASKED for at accept. A ride that reaches 'complete' without it
+    // (legacy drivers skip progressTrip's advance gate) must not be settled as
+    // if it were collected - the driver would then be credited that amount from
+    // the platform's pocket. Same "captured" test driverCancel uses: the flag,
+    // or a stored gateway id (legacy paths persisted the id before the flag).
+    const advanceCaptured = Number(order.payment_status) === 1 || Boolean(order.razorpay_payment_id);
+    const advancePaid = advanceCaptured ? advancePaymentCollected : 0;
+    const nonAdvancePrepaid = Math.min(referralPointsAmount + couponAmount, finalTotal);
+    const advanceApplied = round2(Math.min(advancePaid, Math.max(0, finalTotal - nonAdvancePrepaid)));
+    const prepaidTotal = round2(advanceApplied + nonAdvancePrepaid);
 
     const rider = await prisma.tbl_rider.findUnique({
       where: { id: riderId },
@@ -687,6 +709,73 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       // here - dailyDriverSettlementService.settleEnrollment sums
       // pkg_order.driver_earning directly for the whole duty window instead
       // of accumulating per-ride ledger rows.
+    } else if (walletPrepayment.isWalletPaidOrder(order)) {
+      // Wallet-paid ride: the customer's wallet was debited the whole fare at
+      // booking, so the platform already holds the money and the driver
+      // collected no cash. Nothing credited the driver for it (orders #424,
+      // #392, #391 ... all completed with zero driver wallet credit), so the
+      // driver is paid here: fare minus commission / per-trip charge, once.
+      // Early-drop and cancel refunds already return the customer's difference.
+      // Fare went UP after booking (drop change, extra stop) or waiting charge
+      // accrued: the wallet debit only covered the booking fare, so the
+      // difference is taken from the customer's wallet now - otherwise the
+      // driver is paid the full new fare while the platform collected less.
+      // Skipped when the booking debit was never linked to the order (can't
+      // tell what was paid). Idempotent per order.
+      const walletPaidIn = await walletPrepayment.sumWalletPrepayment(orderId);
+      const walletShortfall = round2(finalTotal - walletPaidIn - advancePaymentCollected - referralPointsAmount - couponAmount);
+      if (walletPaidIn > 0 && walletShortfall > 0) {
+        const topupKey = `wallet_order_topup:${orderId}`;
+        const alreadyToppedUp = await prisma.tbl_wallet_history.findFirst({
+          where: { payment_id: topupKey, type: "debit", wallet_type: "user" },
+        });
+        if (!alreadyToppedUp) {
+          await prisma.tbl_user.update({ where: { id: order.uid }, data: { wallet: { decrement: walletShortfall } } });
+          await prisma.tbl_wallet_history.create({
+            data: {
+              user_id: order.uid,
+              amount: walletShortfall,
+              type: "debit",
+              remark: `Extra fare for order #${orderId} (fare increased / waiting charge)`,
+              wallet_type: "user",
+              order_id: orderId,
+              payment_id: topupKey,
+              created_at: istNow(),
+            },
+          });
+        }
+      }
+      const walletPaidCommission = pricingEngine.commissionAmount(finalTotal, effectiveCommissionPercent);
+      const walletPaidPerTrip = driverBenefit?.benefit > 0 ? Number(driverBenefit.perTripCharge) || 0 : 0;
+      const walletPaidCredit = round2(Math.max(0, finalTotal - walletPaidCommission - walletPaidPerTrip));
+      const walletCreditKey = `wallet_order_credit:${orderId}`;
+      if (walletPaidCredit > 0) {
+        const alreadyCredited = await prisma.tbl_wallet_history.findFirst({
+          where: { payment_id: walletCreditKey, type: "credit", wallet_type: "driver" },
+        });
+        if (!alreadyCredited) {
+          await prisma.tbl_rider.update({
+            where: { id: riderId },
+            data: { wallet_balance: { increment: walletPaidCredit } },
+          });
+          const walletCreditRemark = `Earning for wallet-paid order #${orderId}`;
+          await prisma.tbl_wallet_history.create({
+            data: {
+              user_id: riderId,
+              amount: walletPaidCredit,
+              type: "credit",
+              remark: walletCreditRemark,
+              wallet_type: "driver",
+              order_id: orderId,
+              payment_id: walletCreditKey,
+              created_at: istNow(),
+            },
+          });
+          walletNotifier
+            .notifyDriverWalletTransaction(riderId, { type: "credit", amount: walletPaidCredit, remark: walletCreditRemark })
+            .catch((err) => logger.error(`updateStatus: wallet notify (wallet-paid earning) failed for rider ${riderId}:`, err));
+        }
+      }
     } else if (!settlementCreated && isCashOrder && (effectiveCommissionPercent > 0 || driverBenefit?.perTripCharge > 0 || prepaidTotal > 0)) {
       // order.commission is a percentage (matches the legacy PHP DB
       // convention — see pricingEngine.js), not a ₹ amount — convert before
@@ -796,7 +885,7 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // accept time regardless of the final settlement method. Guarded by a
     // unique payment_id key (same idempotency pattern as driverCancel's
     // refund) so a retried 'complete' call can never double-debit.
-    if (advancePaymentCollected > 0 && Number(order.payment_status) === 1) {
+    if (advanceApplied > 0) {
       const applyKey = `advance_apply:${orderId}`;
       const alreadyApplied = await prisma.tbl_wallet_history.findFirst({
         where: { payment_id: applyKey, type: "debit", wallet_type: "user" },
@@ -804,14 +893,14 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       if (!alreadyApplied) {
         await prisma.tbl_user.update({
           where: { id: order.uid },
-          data: { wallet: { decrement: advancePaymentCollected } },
+          data: { wallet: { decrement: advanceApplied } },
         });
         await prisma.tbl_wallet_history.create({
           data: {
             user_id: order.uid,
-            amount: advancePaymentCollected,
+            amount: advanceApplied,
             type: "debit",
-            remark: `Advance payment applied to completed order #${orderId}`,
+            remark: `Advance payment applied to completed order #${orderId}${advanceApplied < advancePaid ? ` (₹${round2(advancePaid - advanceApplied)} surplus advance kept in wallet)` : ""}`,
             wallet_type: "user",
             order_id: orderId,
             payment_id: applyKey,

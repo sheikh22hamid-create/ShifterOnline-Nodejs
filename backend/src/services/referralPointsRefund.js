@@ -67,26 +67,37 @@ async function refundReferralPointsForOrder(orderId, client = prisma) {
  * Skipped when the program is off or at 0% so an admin settings change alone
  * can never strip redemptions that were valid at booking. Never throws.
  *
- * Returns { refundedPoints, pointsUsed, pointsAmount } - the order's redeemed
- * points/rupees AFTER reconciliation.
+ * A coupon is a fixed rupee amount, so a fare that falls BELOW it would leave the
+ * coupon worth more than the ride: it is clamped to the new fare first (and the
+ * points cap is then worked out on what is left to pay).
+ *
+ * Returns { refundedPoints, pointsUsed, pointsAmount, couponAmount } - the
+ * order's redeemed points / rupees and coupon AFTER reconciliation.
  */
 async function reconcileRideDiscountToFare(orderId, newFare, client = prisma) {
-  const none = { refundedPoints: 0, pointsUsed: 0, pointsAmount: 0 };
+  const none = { refundedPoints: 0, pointsUsed: 0, pointsAmount: 0, couponAmount: null };
   try {
     const order = await client.pkg_order.findUnique({
       where: { id: Number(orderId) },
       select: { uid: true, referral_points_used: true, referral_points_amount: true, cou_amt: true },
     });
-    const used = Number(order?.referral_points_used) || 0;
-    if (!order || used <= 0) return none;
-    const current = { refundedPoints: 0, pointsUsed: used, pointsAmount: Number(order.referral_points_amount) || 0 };
+    if (!order) return none;
+    let coupon = Number(order.cou_amt) || 0;
+    const fareNow = Number(newFare);
+    if (Number.isFinite(fareNow) && fareNow >= 0 && coupon > fareNow) {
+      coupon = fareNow;
+      await client.pkg_order.update({ where: { id: Number(orderId) }, data: { cou_amt: coupon } });
+    }
+    const used = Number(order.referral_points_used) || 0;
+    if (used <= 0) return { ...none, couponAmount: coupon };
+    const current = { refundedPoints: 0, pointsUsed: used, pointsAmount: Number(order.referral_points_amount) || 0, couponAmount: coupon };
 
     const settings = await client.tbl_referral_setting.findFirst();
     const percent = Number(settings?.ride_discount_percent) || 0;
     if (!settings?.referral_enabled || percent <= 0) return current;
 
     const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
-    const payable = Math.max(0, Number(newFare) - (Number(order.cou_amt) || 0));
+    const payable = Math.max(0, Number(newFare) - coupon);
     const cap = Math.floor((payable * percent) / 100 / pointValue);
     const excess = used - cap;
     if (excess <= 0) return current;
@@ -114,7 +125,7 @@ async function reconcileRideDiscountToFare(orderId, newFare, client = prisma) {
         created_at: new Date(),
       },
     });
-    return { refundedPoints: excess, pointsUsed: cap, pointsAmount: newAmount };
+    return { refundedPoints: excess, pointsUsed: cap, pointsAmount: newAmount, couponAmount: coupon };
   } catch (err) {
     logger.error(`reconcileRideDiscountToFare: failed for order ${orderId}:`, err);
     return none;

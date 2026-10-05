@@ -1,3 +1,4 @@
+jest.mock("../referralPointsRefund", () => ({ reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../config/db", () => {
   const mockPrisma = {
     pkg_order: {
@@ -44,6 +45,7 @@ jest.mock("../../utils/geoDistance", () => ({
 }));
 
 const prisma = require("../../config/db");
+const { reconcileRideDiscountToFare } = require("../referralPointsRefund");
 const pricingEngine = require("../pricingEngine");
 const dispatchManager = require("../dispatchManager");
 const pushNotifier = require("../pushNotifier");
@@ -241,6 +243,15 @@ describe("orderDestinationService", () => {
         "New Drop Address, Sector 62",
         195
       );
+    });
+
+    it("re-applies the ride-discount cap to the new fare so points are not kept against a cheaper route (order #468 class)", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(mockActiveOrder);
+      prisma.pkg_order.update.mockResolvedValue({ ...mockActiveOrder, total_dcharge: 195 });
+      await orderDestinationService.confirmDestinationChange({
+        uid: 55, orderId: 101, newDlat: 28.65, newDlong: 77.45, newDaddress: "New Drop Address, Sector 62",
+      });
+      expect(reconcileRideDiscountToFare).toHaveBeenCalledWith(101, 195, prisma);
     });
 
     it("records the destination_updated milestone as an upsert so a second destination change on the same order doesn't collide with driver_trip_event's (order_id, milestone) unique constraint", async () => {

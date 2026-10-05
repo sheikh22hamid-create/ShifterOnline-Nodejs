@@ -46,7 +46,7 @@ describe("reconcileRideDiscountToFare", () => {
   // order #468: booked at Rs652 (50% cap = 326 points), early-dropped to Rs170.
   function rc({ order = { uid: 31, referral_points_used: 326, referral_points_amount: 326, cou_amt: 0 }, setting = { referral_enabled: true, ride_discount_percent: 50, point_value: 1 }, claimed = 1 } = {}) {
     return {
-      pkg_order: { findUnique: jest.fn().mockResolvedValue(order), updateMany: jest.fn().mockResolvedValue({ count: claimed }) },
+      pkg_order: { findUnique: jest.fn().mockResolvedValue(order), updateMany: jest.fn().mockResolvedValue({ count: claimed }), update: jest.fn().mockResolvedValue({}) },
       tbl_referral_setting: { findFirst: jest.fn().mockResolvedValue(setting) },
       tbl_user: { update: jest.fn().mockResolvedValue({ referral_points: 241 }) },
       tbl_referral_point_log: { create: jest.fn().mockResolvedValue({}) },
@@ -56,7 +56,7 @@ describe("reconcileRideDiscountToFare", () => {
   it("refunds points above the admin % cap when the fare drops (order #468: 326 -> 85)", async () => {
     const c = rc();
     const r = await reconcileRideDiscountToFare(468, 170, c);
-    expect(r).toEqual({ refundedPoints: 241, pointsUsed: 85, pointsAmount: 85 });
+    expect(r).toEqual({ refundedPoints: 241, pointsUsed: 85, pointsAmount: 85, couponAmount: 0 });
     expect(c.pkg_order.updateMany).toHaveBeenCalledWith({
       where: { id: 468, referral_points_used: 326 },
       data: { referral_points_used: 85, referral_points_amount: 85 },
@@ -76,7 +76,7 @@ describe("reconcileRideDiscountToFare", () => {
 
   it("does nothing when the points still fit under the cap", async () => {
     const c = rc({ order: { uid: 31, referral_points_used: 80, referral_points_amount: 80, cou_amt: 0 } });
-    expect(await reconcileRideDiscountToFare(468, 170, c)).toEqual({ refundedPoints: 0, pointsUsed: 80, pointsAmount: 80 });
+    expect(await reconcileRideDiscountToFare(468, 170, c)).toEqual({ refundedPoints: 0, pointsUsed: 80, pointsAmount: 80, couponAmount: 0 });
     expect(c.pkg_order.updateMany).not.toHaveBeenCalled();
   });
 
@@ -100,6 +100,20 @@ describe("reconcileRideDiscountToFare", () => {
   it("never throws into the fare-change flow", async () => {
     const c = rc();
     c.pkg_order.findUnique.mockRejectedValue(new Error("db down"));
-    await expect(reconcileRideDiscountToFare(468, 170, c)).resolves.toEqual({ refundedPoints: 0, pointsUsed: 0, pointsAmount: 0 });
+    await expect(reconcileRideDiscountToFare(468, 170, c)).resolves.toEqual({ refundedPoints: 0, pointsUsed: 0, pointsAmount: 0, couponAmount: null });
+  });
+
+  it("clamps a coupon that is bigger than the new fare and works the points cap off what is left", async () => {
+    const c = rc({ order: { uid: 31, referral_points_used: 40, referral_points_amount: 40, cou_amt: 100 } });
+    const r = await reconcileRideDiscountToFare(1, 60, c); // coupon 100 -> 60, nothing left to pay -> cap 0
+    expect(c.pkg_order.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { cou_amt: 60 } });
+    expect(r).toEqual({ refundedPoints: 40, pointsUsed: 0, pointsAmount: 0, couponAmount: 60 });
+  });
+
+  it("leaves a coupon alone when it still fits inside the fare", async () => {
+    const c = rc({ order: { uid: 31, referral_points_used: 0, referral_points_amount: 0, cou_amt: 50 } });
+    const r = await reconcileRideDiscountToFare(1, 170, c);
+    expect(c.pkg_order.update).not.toHaveBeenCalled();
+    expect(r.couponAmount).toBe(50);
   });
 });

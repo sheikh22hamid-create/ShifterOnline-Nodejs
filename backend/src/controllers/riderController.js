@@ -661,6 +661,12 @@ async function applyReferral(req, res) {
       },
     });
 
+    // Same one-time sign-up bonus the registration flow gives a referred driver
+    // (riderAuthController.register) - applying the code later used to skip it.
+    // The "already applied" guards above make this run at most once per driver.
+    // Never throws, so a bonus failure can't undo an applied referral.
+    await require("../services/referralRewardService").creditSignUpBonus({ referredId: riderId, referredType: "DRIVER" });
+
     return res.status(200).json({
       Result: "true",
       ResponseCode: "200",

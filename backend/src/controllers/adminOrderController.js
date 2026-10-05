@@ -361,7 +361,9 @@ async function cancel(req, res) {
 
     await prisma.pkg_order.update({
       where: { id },
-      data: { o_status: "Cancelled", cancel_reason: comment || "Cancelled by admin" },
+      // order_status 4 like every other cancel path: with only o_status set, a
+      // late driver 'arrived' / 'complete' could still act on the order.
+      data: { o_status: "Cancelled", order_status: 4, cancel_reason: comment || "Cancelled by admin" },
     });
 
     if (wasUnassigned) {
@@ -372,18 +374,28 @@ async function cancel(req, res) {
       const fee = Number(pkg?.cancellation_charge_customer) || 0;
       // Wallet-paid booking: refund net of the fee instead of a bare debit row.
       const walletRefund = await walletPrepayment.refundIfWalletPaid(order, { deduct: fee, note: "cancelled by admin" });
-      if (fee > 0 && !(walletRefund && walletRefund.paid > 0)) {
-        await prisma.tbl_wallet_history.create({
-          data: {
-            user_id: order.uid,
-            amount: fee,
-            type: "debit",
-            remark: `Admin-cancelled order #${id}: ${comment || "no reason given"}`,
-            wallet_type: "user",
-            order_id: id,
-            created_at: istNow(),
-          },
-        });
+      if (fee > 0) {
+        if (!(walletRefund && walletRefund.paid > 0)) {
+          // The ledger row alone never moved tbl_user.wallet (history showed a
+          // debit while the balance stayed put) - take both together, as
+          // customerCancel does.
+          await prisma.$transaction([
+            prisma.tbl_user.update({ where: { id: order.uid }, data: { wallet: { decrement: fee } } }),
+            prisma.tbl_wallet_history.create({
+              data: {
+                user_id: order.uid,
+                amount: fee,
+                type: "debit",
+                remark: `Admin-cancelled order #${id}: ${comment || "no reason given"}`,
+                wallet_type: "user",
+                order_id: id,
+                created_at: istNow(),
+              },
+            }),
+          ]);
+        }
+        // Admin order view + finance ledger read the charge from the order row.
+        await prisma.pkg_order.update({ where: { id }, data: { cancel_charge: fee } });
       }
     } else {
       // Admin cancelled without a cancellation fee: refund a wallet-paid fare in full.

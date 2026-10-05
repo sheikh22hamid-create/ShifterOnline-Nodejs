@@ -45,7 +45,7 @@ const tripLifecycle = require("../tripLifecycle");
 
 const order = (o = {}) => ({
   id: 297, uid: 5, rid: 1, city_id: 1, d_charge: 100, total_dcharge: 100, commission: 5,
-  trans_id: "cash_payment", free_waiting_time: "0", wating_charge: "0", ...o,
+  trans_id: "cash_payment", free_waiting_time: "0", wating_charge: "0", payment_status: 1, ...o,
 });
 
 describe("tripLifecycle.updateStatus('complete') — payment settlement hook", () => {

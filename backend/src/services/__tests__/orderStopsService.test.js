@@ -1,3 +1,4 @@
+jest.mock("../referralPointsRefund", () => ({ reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../config/db", () => {
   const mockPrisma = {
     pkg_order: {
@@ -48,6 +49,7 @@ jest.mock("../../utils/geoDistance", () => ({
 }));
 
 const prisma = require("../../config/db");
+const { reconcileRideDiscountToFare } = require("../referralPointsRefund");
 const pricingEngine = require("../pricingEngine");
 const dispatchManager = require("../dispatchManager");
 const { getMultiStopDistanceKm } = require("../../utils/geoDistance");
@@ -138,6 +140,13 @@ describe("orderStopsService", () => {
       expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(
         55, "order:stop_added", expect.objectContaining({ order_id: "101", total: "220" })
       );
+    });
+
+    it("re-applies the ride-discount cap to the new fare after the stop is added", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(baseOrder);
+      prisma.pkg_order.update.mockResolvedValue({ ...baseOrder, total_dcharge: 220 });
+      await orderStopsService.confirmAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" });
+      expect(reconcileRideDiscountToFare).toHaveBeenCalledWith(101, 220, prisma);
     });
 
     it("sequences a second stop after the first", async () => {

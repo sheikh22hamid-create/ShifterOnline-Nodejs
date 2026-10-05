@@ -24,6 +24,27 @@ const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getPickupEtaRow, buildEtaView } = require("../services/pickupEtaService");
 const { buildCustomerWaitingView } = require("../services/customerWaitingView");
 
+/** Gives referral points back when a booking that already redeemed them failed. Never throws. */
+async function restoreRedeemedPoints(uid, points, reason) {
+  try {
+    const user = await prisma.tbl_user.update({ where: { id: Number(uid) }, data: { referral_points: { increment: points } } });
+    await prisma.tbl_referral_point_log.create({
+      data: {
+        user_id: Number(uid),
+        user_type: "USER",
+        points,
+        txn_type: "credit",
+        source: "ride_discount_refund",
+        balance_after: user?.referral_points || 0,
+        note: `Refunded - ${reason}`,
+        created_at: new Date(),
+      },
+    });
+  } catch (err) {
+    logger.error(`restoreRedeemedPoints: failed to give ${points} points back to user ${uid} (${reason}):`, err);
+  }
+}
+
 async function customerTripProgress(order) {
   if (!order.rid) return null;
   const [progress, timer] = await Promise.all([
@@ -388,8 +409,29 @@ async function createOrderCore({
   const coupon = await resolveCoupon({ couId, uid, fare: finalTotalCharge });
   if (!coupon.ok) return coupon;
 
+  // Validate the booking BEFORE any points are taken: a refusal after the
+  // deduction used to leave the customer without the points and without an order.
+  if (Number(bookingType) === 3) {
+    const isEligible = Boolean(
+      customerPlan &&
+      (customerPlan.noAdvancePayment === true ||
+       customerPlan.noAdvancePayment === 1 ||
+       String(customerPlan.noAdvancePayment) === "1" ||
+       String(customerPlan.noAdvancePayment) === "true" ||
+       customerPlan.subscriptionId > 0)
+    );
+    if (!isEligible) {
+      return {
+        ok: false,
+        code: "PREMIUM_PLAN_REQUIRED",
+        msg: "Next Day Delivery is exclusively available for Premium Plan members.",
+      };
+    }
+  }
+
   let referralPointsUsed = 0;
   let referralPointsAmount = 0;
+  let pointsLedger = null; // written only once the order row exists
   if (useReferralPoints && finalTotalCharge > 0) {
     const [settings, customerPoints] = await Promise.all([
       prisma.tbl_referral_setting.findFirst(),
@@ -411,18 +453,7 @@ async function createOrderCore({
         if (decremented.count > 0) {
           referralPointsUsed = pointsUsed;
           referralPointsAmount = Math.round(pointsUsed * pointValue * 100) / 100;
-          await prisma.tbl_referral_point_log.create({
-            data: {
-              user_id: Number(uid),
-              user_type: "USER",
-              points: -pointsUsed,
-              txn_type: "debit",
-              source: "ride_discount",
-              balance_after: available - pointsUsed,
-              note: `Redeemed for ride discount (₹${referralPointsAmount})`,
-              created_at: new Date(),
-            },
-          });
+          pointsLedger = { balanceAfter: available - pointsUsed };
         }
       }
     }
@@ -433,26 +464,11 @@ async function createOrderCore({
     ? nextDayScheduleDateIST()
     : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
-  if (Number(bookingType) === 3) {
-    const isEligible = Boolean(
-      customerPlan &&
-      (customerPlan.noAdvancePayment === true ||
-       customerPlan.noAdvancePayment === 1 ||
-       String(customerPlan.noAdvancePayment) === "1" ||
-       String(customerPlan.noAdvancePayment) === "true" ||
-       customerPlan.subscriptionId > 0)
-    );
-    if (!isEligible) {
-      return {
-        ok: false,
-        code: "PREMIUM_PLAN_REQUIRED",
-        msg: "Next Day Delivery is exclusively available for Premium Plan members.",
-      };
-    }
-  }
 
   const stopCharge = validStops.length * stopSettings.extraStopCharge;
-  const order = await prisma.pkg_order.create({
+  let order;
+  try {
+  order = await prisma.pkg_order.create({
     data: {
       uid: Number(uid),
       category,
@@ -501,6 +517,36 @@ async function createOrderCore({
       covered_charge: bodyTypeCharge,
     },
   });
+  } catch (err) {
+    // The points were already taken above and refunds key off an order id that
+    // will never exist - hand them straight back before surfacing the failure.
+    if (referralPointsUsed > 0) {
+      await restoreRedeemedPoints(uid, referralPointsUsed, "booking could not be created");
+    }
+    throw err;
+  }
+
+  if (pointsLedger) {
+    // Audit row only - never allowed to fail a booking whose points are already
+    // correctly taken and recorded on the order.
+    try {
+      await prisma.tbl_referral_point_log.create({
+        data: {
+          user_id: Number(uid),
+          user_type: "USER",
+          points: -referralPointsUsed,
+          txn_type: "debit",
+          source: "ride_discount",
+          ref_id: order.id,
+          balance_after: pointsLedger.balanceAfter,
+          note: `Redeemed for ride discount (₹${referralPointsAmount})`,
+          created_at: new Date(),
+        },
+      });
+    } catch (err) {
+      logger.error(`createOrderCore: point ledger write failed for order ${order.id}:`, err);
+    }
+  }
 
   if (validStops.length > 0) {
     await prisma.pkg_order_stops.createMany({
@@ -1765,6 +1811,16 @@ async function advancePayment(req, res) {
     const user = await prisma.tbl_user.findUnique({ where: { id: order.uid } });
     if (!user) return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "User Not Found" });
 
+    // The Razorpay check above only proves the client paid the amount IT sent,
+    // not that it is the advance this order actually owes (advance_payment is
+    // not a modelled Prisma column, hence the raw read). A payment smaller than
+    // the advance is still real money - it is credited to the wallet below -
+    // but must not flip payment_status to "paid", or the ride would settle as
+    // if the full advance had been collected.
+    const [advanceRow] = await prisma.$queryRaw`SELECT advance_payment FROM pkg_order WHERE id = ${orderId}`;
+    const advanceDue = Math.round(Number(advanceRow?.advance_payment) || 0);
+    const underpaid = advanceDue > 0 && Math.round(amount) < advanceDue;
+
     // Idempotency backed by the same DB unique constraint addWallet relies
     // on (razorpay_payment_id) - a retried/duplicated client call can't
     // double-credit even under a race.
@@ -1789,6 +1845,17 @@ async function advancePayment(req, res) {
     }
 
     const updatedUser = await prisma.tbl_user.update({ where: { id: user.id }, data: { wallet: { increment: amount } } });
+    if (underpaid) {
+      return res.status(200).json({
+        ResponseCode: "401",
+        Result: false,
+        ResponseMsg: `Advance payment of ₹${advanceDue} is required. ₹${amount} was received and added to your wallet.`,
+        order_id: orderId,
+        payment_status: 0,
+        remaining_amount: advanceDue - Math.round(amount),
+        user_wallet_balance: Number(updatedUser.wallet),
+      });
+    }
     await prisma.pkg_order.update({ where: { id: orderId }, data: { payment_status: 1, razorpay_payment_id: paymentId } });
 
     if (order.rid) {

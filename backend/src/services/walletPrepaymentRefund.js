@@ -80,6 +80,18 @@ async function refundWalletPrepayment(orderId, { deduct = 0, note = "" } = {}) {
 }
 
 /**
+ * Total the customer's wallet was actually debited for this order at booking
+ * (rows linked by linkWalletPrepayment). 0 when the debit was never linked, so
+ * callers can tell "unknown" from "paid in full".
+ */
+async function sumWalletPrepayment(orderId, client = prisma) {
+  const rows = await client.tbl_wallet_history.findMany({
+    where: { order_id: Number(orderId), wallet_type: "user", type: "debit", remark: PREPAY_REMARK },
+  });
+  return round2(rows.reduce((sum, r) => sum + Number(r.amount || 0), 0));
+}
+
+/**
  * What every cancel path calls: a no-op for cash/online orders (no DB touch),
  * and never throws into the cancel flow - a refund problem is logged for
  * follow-up, it must not leave the order half-cancelled.
@@ -94,4 +106,4 @@ async function refundIfWalletPaid(order, options = {}) {
   }
 }
 
-module.exports = { isWalletPaidOrder, linkWalletPrepayment, refundWalletPrepayment, refundIfWalletPaid };
+module.exports = { isWalletPaidOrder, linkWalletPrepayment, refundWalletPrepayment, refundIfWalletPaid, sumWalletPrepayment };

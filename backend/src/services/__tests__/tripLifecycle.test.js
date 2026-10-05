@@ -1,3 +1,7 @@
+jest.mock("../referralPointsRefund", () => ({
+  ...jest.requireActual("../referralPointsRefund"),
+  reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}),
+}));
 jest.mock("../../config/db", () => ({
   driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
   $executeRaw: jest.fn(),
@@ -212,6 +216,25 @@ describe("tripLifecycle.acceptOrder", () => {
     // order.radius_range (3, the customer's search-radius setting).
     expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, expectedDistanceKm, 12, 9);
     expect(result.order.advance_payment).toBe("55"); // 40 (radiusCharge) + 15 (cancellation_charge_customer)
+  });
+
+  it("re-applies the ride-discount cap to the fare re-priced at accept (booking-time fare came from the client)", async () => {
+    const { reconcileRideDiscountToFare } = require("../referralPointsRefund");
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.pkg_order.findUnique.mockResolvedValue({
+      id: 297, uid: 9, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12,
+      plat: "28.704059", plong: "77.102490",
+    });
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak", rlats: "28.650000", rlongs: "77.080000" });
+    pricingEngine.priceForPackageId.mockResolvedValue({
+      pkg: { pickup_per_km_charge: "4", cancellation_charge_customer: "15" }, fare: 24.78, driverEarning: 42, commission: 5, radiusCharge: 40,
+    });
+    reconcileRideDiscountToFare.mockClear();
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(reconcileRideDiscountToFare).toHaveBeenCalledWith(297, 24.78);
   });
 
   it("falls back to just cancellation_charge_customer (zero radius charge) when the rider has no known location", async () => {
@@ -1080,6 +1103,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
   it("subtracts the already-collected advance_payment from the cash-order wallet debit", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 302,
+      payment_status: 1, // advance was captured
       rid: 1,
       city_id: 1,
       d_charge: 100,
@@ -1108,6 +1132,7 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
   it("credits the driver the advance_payment left over once it covers the full commission", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({
       id: 303,
+      payment_status: 1, // advance was captured
       rid: 1,
       city_id: 1,
       d_charge: 100,

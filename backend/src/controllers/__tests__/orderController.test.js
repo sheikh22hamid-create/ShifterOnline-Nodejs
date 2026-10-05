@@ -4,7 +4,7 @@ jest.mock("../../config/db", () => ({
   order_settlement: { findUnique: jest.fn().mockResolvedValue(null) },
   tbl_package: { findMany: jest.fn() },
   tbl_goods_type: { findFirst: jest.fn() },
-  tbl_user: { findUnique: jest.fn(), updateMany: jest.fn() },
+  tbl_user: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
   tbl_referral_setting: { findFirst: jest.fn() },
   tbl_referral_point_log: { create: jest.fn() },
@@ -341,6 +341,47 @@ describe("orderController.createOrderCore", () => {
       expect(result.ok).toBe(true);
       expect(prisma.pkg_order.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ referral_points_used: 0, referral_points_amount: 0 }) })
+      );
+    });
+
+    // Points used to be taken BEFORE the booking was validated / created, so a
+    // booking that was then refused or failed left the customer without the
+    // points and without an order (and no refund, which keys off the order id).
+    it("a next-day booking refused for lack of a premium plan never touches the points", async () => {
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await createOrderCore({ ...baseInput, useReferralPoints: true, bookingType: 3 });
+
+      expect(result).toMatchObject({ ok: false, code: "PREMIUM_PLAN_REQUIRED" });
+      expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
+      expect(prisma.tbl_referral_point_log.create).not.toHaveBeenCalled();
+    });
+
+    it("gives the points back when the order row cannot be created", async () => {
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+      prisma.tbl_user.update.mockResolvedValue({ referral_points: 100 });
+      prisma.pkg_order.create.mockRejectedValueOnce(new Error("db down"));
+
+      await expect(createOrderCore({ ...baseInput, useReferralPoints: true })).rejects.toThrow("db down");
+
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { referral_points: { increment: 5 } } });
+      expect(prisma.tbl_referral_point_log.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({ user_id: 1, points: 5, txn_type: "credit", source: "ride_discount_refund" }),
+      });
+    });
+
+    it("a failed points-ledger write does not burn the points or block the booking", async () => {
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+      prisma.tbl_referral_point_log.create.mockRejectedValueOnce(new Error("log table missing"));
+
+      const result = await createOrderCore({ ...baseInput, useReferralPoints: true });
+
+      expect(result.ok).toBe(true);
+      expect(prisma.pkg_order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ referral_points_used: 5 }) })
       );
     });
 
