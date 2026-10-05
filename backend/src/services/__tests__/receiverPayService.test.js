@@ -1,7 +1,9 @@
 jest.mock("../../config/db", () => ({
-  order_receiver_pay: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
+  order_receiver_pay: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+  order_settlement: { findUnique: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
+jest.mock("../../whatsapp/notifications", () => ({ sendWhatsAppNotification: jest.fn() }));
 jest.mock("../receiverPaySettings", () => ({
   isReceiverPayAvailable: jest.fn(),
   getReceiverPaySettings: jest.fn(),
@@ -75,5 +77,64 @@ describe("receiverPayService.createForOrder / getActiveForOrder / close / getCon
   it("getConfig exposes the booker-facing limits", async () => {
     settings.getReceiverPaySettings.mockResolvedValue({ enabled: true, maxPercent: 10, maxAmount: 50, linkTtlHours: 24 });
     expect(await svc.getConfig()).toEqual({ enabled: true, max_percent: 10, max_amount: 50 });
+  });
+});
+
+const notifications = require("../../whatsapp/notifications");
+
+describe("receiverPayService.issueLink", () => {
+  const rpRow = (o = {}) => ({ id: 1, order_id: 77, status: "active", receiver_phone: "9876543210", link_sent_at: null, link_send_count: 0, ...o });
+  const settlementRow = (o = {}) => ({ id: 4, order_id: 77, payer: "receiver", status: "pending", amount_due: 90, receiver_markup: 2.7, ...o });
+
+  beforeEach(() => {
+    process.env.PUBLIC_BASE_URL = "https://api.example.test";
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(rpRow());
+    prisma.order_settlement.findUnique.mockResolvedValue(settlementRow());
+    prisma.order_receiver_pay.update.mockResolvedValue({});
+    notifications.sendWhatsAppNotification.mockResolvedValue(true);
+  });
+  afterAll(() => { delete process.env.PUBLIC_BASE_URL; });
+
+  it("stores only the token hash + expiry, WhatsApps the link with the exact breakup", async () => {
+    const { sent, link } = await svc.issueLink({ orderId: 77 });
+    const token = link.replace("https://api.example.test/pay/", "");
+    const data = prisma.order_receiver_pay.update.mock.calls[0][0].data;
+    expect(data.token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(data.token_hash).not.toContain(token);
+    expect(data.token_expires_at.getTime()).toBeGreaterThan(Date.now() + 23 * 3600 * 1000);
+    expect(data.link_send_count).toEqual({ increment: 1 });
+    const [phone, text] = notifications.sendWhatsAppNotification.mock.calls[0];
+    expect(phone).toBe("9876543210");
+    expect(text).toContain("92.70");
+    expect(text).toContain(link);
+    expect(sent).toBe(true);
+  });
+  it("reports sent=false (but still returns the link) when WhatsApp is not ready", async () => {
+    notifications.sendWhatsAppNotification.mockResolvedValue(false);
+    const out = await svc.issueLink({ orderId: 77 });
+    expect(out.sent).toBe(false);
+    expect(out.link).toContain("/pay/");
+  });
+  it("refuses when the receiver row is not active", async () => {
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(rpRow({ status: "declined" }));
+    await expect(svc.issueLink({ orderId: 77 })).rejects.toMatchObject({ code: "NOT_ACTIVE" });
+  });
+  it("refuses when the settlement is not a pending receiver settlement", async () => {
+    prisma.order_settlement.findUnique.mockResolvedValue(settlementRow({ status: "paid_online" }));
+    await expect(svc.issueLink({ orderId: 77 })).rejects.toMatchObject({ code: "NOT_PAYABLE" });
+    prisma.order_settlement.findUnique.mockResolvedValue(settlementRow({ payer: "customer" }));
+    await expect(svc.issueLink({ orderId: 77 })).rejects.toMatchObject({ code: "NOT_PAYABLE" });
+  });
+  it("refuses when PUBLIC_BASE_URL is not configured", async () => {
+    delete process.env.PUBLIC_BASE_URL;
+    await expect(svc.issueLink({ orderId: 77 })).rejects.toMatchObject({ code: "NOT_CONFIGURED" });
+  });
+  it("resend is rate limited to once a minute and capped at 10", async () => {
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(rpRow({ link_sent_at: new Date(Date.now() - 10 * 1000), link_send_count: 1 }));
+    await expect(svc.issueLink({ orderId: 77, resend: true })).rejects.toMatchObject({ code: "TOO_SOON" });
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(rpRow({ link_sent_at: new Date(Date.now() - 120 * 1000), link_send_count: 10 }));
+    await expect(svc.issueLink({ orderId: 77, resend: true })).rejects.toMatchObject({ code: "LINK_LIMIT" });
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(rpRow({ link_sent_at: new Date(Date.now() - 120 * 1000), link_send_count: 1 }));
+    await expect(svc.issueLink({ orderId: 77, resend: true })).resolves.toMatchObject({ sent: true });
   });
 });

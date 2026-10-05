@@ -19,6 +19,9 @@ const earlyDropService = require("./earlyDropService");
 const pickupEtaService = require("./pickupEtaService");
 const settlementSettings = require("./settlementSettings");
 const settlementService = require("./settlementService");
+const receiverPayService = require("./receiverPayService");
+const receiverPaySettings = require("./receiverPaySettings");
+const receiverPayCalc = require("./receiverPayCalc");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
@@ -632,11 +635,27 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // (never a completed ride with no money flow).
     // Rounded separately from cashCollected (which feeds the Monthly ledger and
     // must stay as-is): float residue like 1.8e-15 must not create a Rs 0 settlement.
-    const settlementAmountDue = isCashOrder ? round2(finalTotal - prepaidTotal) : 0;
+    // Receiver-pay (spec 2026-10-05): when the booker chose that the receiver pays, the advance is
+    // a held deposit (still debited from the booker wallet below via advance_apply), so the amount
+    // due is NOT netted by it. A missing/failed lookup just means a normal ride.
+    const receiverPayRow = isCashOrder
+      ? await receiverPayService.getActiveForOrder(orderId).catch(() => null)
+      : null;
+    const receiverAmountDue = receiverPayRow ? round2(finalTotal - nonAdvancePrepaid) : 0;
+    const useReceiverMode = Boolean(receiverPayRow) && receiverAmountDue > 0;
+    const settlementAmountDue = useReceiverMode ? receiverAmountDue : (isCashOrder ? round2(finalTotal - prepaidTotal) : 0);
     let settlementCreated = false;
     if (!isMonthlyDriver && !isDailyDriverExempt && isCashOrder && settlementAmountDue > 0
         && (await settlementSettings.isSettlementEnabled())) {
       try {
+        let receiver;
+        if (useReceiverMode) {
+          const { maxAmount } = await receiverPaySettings.getReceiverPaySettings();
+          receiver = {
+            markup: receiverPayCalc.computeMarkup(receiverAmountDue, Number(receiverPayRow.commission_percent), maxAmount),
+            advanceHeld: advanceApplied,
+          };
+        }
         await settlementService.createForCompletedOrder({
           orderId,
           uid: order.uid,
@@ -646,7 +665,8 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
           fare: finalTotal,
           commissionAmount: pricingEngine.commissionAmount(finalTotal, effectiveCommissionPercent),
           perTripCharge: driverBenefit?.benefit > 0 ? Number(driverBenefit.perTripCharge) || 0 : 0,
-          prepaidAmount: prepaidTotal,
+          prepaidAmount: useReceiverMode ? nonAdvancePrepaid : prepaidTotal,
+          ...(useReceiverMode ? { receiver } : {}),
         });
         settlementCreated = true;
       } catch (err) {
@@ -664,6 +684,20 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
         } else {
           logger.error(`updateStatus: settlement creation failed for order ${orderId}, using legacy commission flow:`, err);
         }
+      }
+    }
+
+    if (receiverPayRow) {
+      if (useReceiverMode && settlementCreated) {
+        // The WhatsApp link is best-effort: the driver / booker can resend it, and a failure here
+        // must never fail a completed ride.
+        await receiverPayService.issueLink({ orderId }).catch((err) =>
+          logger.error(`updateStatus: receiver pay link failed for order ${orderId}:`, err)
+        );
+      } else {
+        await receiverPayService.close(orderId, "not_applicable").catch((err) =>
+          logger.error(`updateStatus: closing receiver pay for order ${orderId} failed:`, err)
+        );
       }
     }
 

@@ -1,7 +1,8 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const settings = require("./receiverPaySettings");
-const { parseCommissionPercent } = require("./receiverPayCalc");
+const { parseCommissionPercent, receiverPayable } = require("./receiverPayCalc");
+const { mintToken } = require("./receiverPayToken");
 const { normalizeToLast10Digits } = require("../utils/phone");
 
 class ReceiverPayError extends Error {
@@ -53,7 +54,7 @@ async function createForOrder({ orderId, uid, phone, name, percent }) {
   });
 }
 
-function getActiveForOrder(orderId) {
+async function getActiveForOrder(orderId) {
   return prisma.order_receiver_pay.findFirst({ where: { order_id: orderId, status: "active" } });
 }
 
@@ -73,4 +74,70 @@ async function getConfig() {
   return { enabled: available, max_percent: s.maxPercent, max_amount: s.maxAmount };
 }
 
-module.exports = { ReceiverPayError, isCashBooking, validateBooking, createForOrder, getActiveForOrder, close, getConfig };
+const RESEND_COOLDOWN_MS = 60 * 1000;
+const MAX_LINK_SENDS = 10;
+
+function buildPayLink(token) {
+  const base = String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  return `${base}/pay/${token}`;
+}
+
+function buildLinkMessage({ orderId, amountDue, markup, total, link }) {
+  const money = (n) => Number(n).toFixed(2);
+  const breakup = markup > 0
+    ? `Fare (discount ke baad): ₹${money(amountDue)}\nService fee: ₹${money(markup)}\n*Total: ₹${money(total)}*`
+    : `*Total: ₹${money(total)}*`;
+  return (
+    `Hello! 👋\n` +
+    `Order *#${orderId}* ki delivery complete ho gayi hai. Is order ka payment aapko karna hai. 💳\n\n` +
+    `${breakup}\n\n` +
+    `Secure payment link (app ki zaroorat nahi):\n${link}\n\n` +
+    `Agar aap pay nahi karna chahte, to link me *Decline* dabayein.\n\n` +
+    `— *Team Shifter Online*\n📞 Customer Care: 9109114515`
+  );
+}
+
+// Mints a fresh token on every call, so a resend invalidates the previous link.
+async function issueLink({ orderId, resend = false }) {
+  const row = await prisma.order_receiver_pay.findUnique({ where: { order_id: orderId } });
+  if (!row || row.status !== "active") throw new ReceiverPayError("NOT_ACTIVE", "Receiver payment is not active for this order.");
+  const settlement = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+  if (!settlement || settlement.payer !== "receiver" || settlement.status !== "pending") {
+    throw new ReceiverPayError("NOT_PAYABLE", "There is nothing for the receiver to pay on this order.");
+  }
+  if (!process.env.PUBLIC_BASE_URL) {
+    logger.error("receiverPay.issueLink: PUBLIC_BASE_URL is not configured; cannot build a pay link.");
+    throw new ReceiverPayError("NOT_CONFIGURED", "Payment link is not available right now.");
+  }
+  const now = new Date();
+  if (resend) {
+    if (row.link_send_count >= MAX_LINK_SENDS) throw new ReceiverPayError("LINK_LIMIT", "The link was already sent too many times.");
+    if (row.link_sent_at && now.getTime() - new Date(row.link_sent_at).getTime() < RESEND_COOLDOWN_MS) {
+      throw new ReceiverPayError("TOO_SOON", "Please wait a minute before sending the link again.");
+    }
+  }
+  const { linkTtlHours } = await settings.getReceiverPaySettings();
+  const { token, hash } = mintToken();
+  await prisma.order_receiver_pay.update({
+    where: { id: row.id },
+    data: {
+      token_hash: hash,
+      token_expires_at: new Date(now.getTime() + linkTtlHours * 3600 * 1000),
+      link_sent_at: now,
+      link_send_count: { increment: 1 },
+      updated_at: now,
+    },
+  });
+  const link = buildPayLink(token);
+  const total = receiverPayable(settlement.amount_due, settlement.receiver_markup);
+  // Lazy require: whatsapp/notifications pulls in the WhatsApp client; keep it out of module load.
+  const { sendWhatsAppNotification } = require("../whatsapp/notifications");
+  const sent = await sendWhatsAppNotification(
+    row.receiver_phone,
+    buildLinkMessage({ orderId, amountDue: Number(settlement.amount_due), markup: Number(settlement.receiver_markup), total, link })
+  );
+  if (!sent) logger.warn(`receiverPay.issueLink: WhatsApp not delivered for order ${orderId}; link must be resent or shared.`);
+  return { sent: Boolean(sent), link };
+}
+
+module.exports = { ReceiverPayError, isCashBooking, validateBooking, createForOrder, getActiveForOrder, close, getConfig, buildPayLink, buildLinkMessage, issueLink };

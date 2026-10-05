@@ -37,10 +37,13 @@ jest.mock("../../utils/pickupRelocateSettings", () => ({ getPickupRelocateSettin
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../settlementSettings", () => ({ isSettlementEnabled: jest.fn() }));
 jest.mock("../settlementService", () => ({ createForCompletedOrder: jest.fn() }));
+jest.mock("../receiverPayService", () => ({ getActiveForOrder: jest.fn().mockResolvedValue(null), issueLink: jest.fn().mockResolvedValue({ sent: true }), close: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("../receiverPaySettings", () => ({ getReceiverPaySettings: jest.fn().mockResolvedValue({ enabled: true, maxPercent: 5, maxAmount: 0, linkTtlHours: 24 }) }));
 
 const prisma = require("../../config/db");
 const settlementSettings = require("../settlementSettings");
 const settlementService = require("../settlementService");
+const receiverPayService = require("../receiverPayService");
 const tripLifecycle = require("../tripLifecycle");
 
 const order = (o = {}) => ({
@@ -59,6 +62,7 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     prisma.order_settlement.findUnique.mockResolvedValue(null);
     settlementSettings.isSettlementEnabled.mockResolvedValue(true);
     settlementService.createForCompletedOrder.mockResolvedValue({ id: 1 });
+    receiverPayService.getActiveForOrder.mockResolvedValue(null);
   });
 
   it("creates a settlement and defers the commission debit (regular driver, cash order, feature on)", async () => {
@@ -175,5 +179,73 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     await tripLifecycle.updateStatus(297, 1, "complete");
 
     expect(settlementSettings.isSettlementEnabled).not.toHaveBeenCalled();
+  });
+
+  describe("receiver mode", () => {
+    const rpRow = { id: 3, order_id: 297, commission_percent: "3.00", status: "active" };
+
+    it("does not net the advance, passes markup + held advance, keeps the advance debit, and issues the link", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.pkg_order.findUnique.mockResolvedValue(order({ referral_points_amount: 10, cou_amt: 5 }));
+      prisma.$queryRaw.mockResolvedValue([{ advance_payment: 15 }]);
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(settlementService.createForCompletedOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ amountDue: 85, prepaidAmount: 15, receiver: { markup: 2.55, advanceHeld: 15 } })
+      );
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 5 }, data: { wallet: { decrement: 15 } } });
+      expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 297 });
+    });
+
+    it("advance 0: held advance is 0 and the full amount is due", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(settlementService.createForCompletedOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ amountDue: 100, prepaidAmount: 0, receiver: { markup: 3, advanceHeld: 0 } })
+      );
+    });
+
+    it("advance larger than the amount: the held advance is only what was actually applied", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      prisma.$queryRaw.mockResolvedValue([{ advance_payment: 150 }]);
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(settlementService.createForCompletedOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ amountDue: 100, receiver: expect.objectContaining({ advanceHeld: 100 }) })
+      );
+    });
+
+    it("a normal ride never carries a receiver key", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(settlementService.createForCompletedOrder.mock.calls[0][0]).not.toHaveProperty("receiver");
+      expect(receiverPayService.issueLink).not.toHaveBeenCalled();
+    });
+
+    it("Monthly Driver: receiver row is closed and the ride runs the normal way", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, monthly_plan: 1 });
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(settlementService.createForCompletedOrder).not.toHaveBeenCalled();
+      expect(receiverPayService.close).toHaveBeenCalledWith(297, "not_applicable");
+    });
+
+    it("settlement creation failure closes the receiver row and falls back to the legacy path", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      settlementService.createForCompletedOrder.mockRejectedValue(new Error("db down"));
+      const result = await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
+      expect(receiverPayService.close).toHaveBeenCalledWith(297, "not_applicable");
+    });
+
+    it("a link failure never fails the completed ride", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      receiverPayService.issueLink.mockRejectedValue(new Error("whatsapp down"));
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      const result = await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(result).toMatchObject({ success: true, settlement_pending: true });
+    });
   });
 });
