@@ -11,7 +11,7 @@ jest.mock("../../config/db", () => ({
   app_settings: { findMany: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
-jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn() }));
+jest.mock("../../utils/razorpayVerify", () => ({ verifyRazorpayPayment: jest.fn(), fetchRazorpayOrder: jest.fn() }));
 jest.mock("../../utils/razorpayOrders", () => ({ createRazorpayOrder: jest.fn() }));
 jest.mock("../walletNotifier", () => ({
   notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined),
@@ -20,7 +20,7 @@ jest.mock("../walletNotifier", () => ({
 jest.mock("../../sockets/socketServer", () => ({ getIO: () => ({ to: () => ({ emit: jest.fn() }) }) }));
 
 const prisma = require("../../config/db");
-const { verifyRazorpayPayment } = require("../../utils/razorpayVerify");
+const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../../utils/razorpayVerify");
 const { createRazorpayOrder } = require("../../utils/razorpayOrders");
 const { hashToken } = require("../receiverPayToken");
 const svc = require("../receiverSettlementService");
@@ -165,6 +165,51 @@ describe("settleByReceiver", () => {
   });
 });
 
+describe("settleByReceiver reconciliation and getPublicState edge cases", () => {
+  const pay = { token: TOKEN, paymentId: "pay_1", razorpayOrderId: "order_R1", signature: "sig" };
+
+  it("payer flipped to customer under the lock: PAID_BUT_STATE_CHANGED, no wallet effect, payer noted", async () => {
+    setup({ r: rp({ razorpay_order_id: "order_R1" }) });
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(settlement())
+      .mockResolvedValue(settlement({ payer: "customer" }));
+    await expect(svc.settleByReceiver(pay)).rejects.toMatchObject({ code: "PAID_BUT_STATE_CHANGED" });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ note: expect.stringMatching(/converted to customer payment; needs manual reconciliation/) }),
+    });
+  });
+  it("pre-check failure after capture (settlement already cash_received): verified from the Razorpay order and audited", async () => {
+    setup({ s: settlement({ status: "cash_received" }), r: rp({ razorpay_order_id: "order_R1" }) });
+    fetchRazorpayOrder.mockResolvedValue({ id: "order_R1", amount: 9270 });
+    await expect(svc.settleByReceiver(pay)).rejects.toMatchObject({ code: "PAID_BUT_STATE_CHANGED" });
+    expect(fetchRazorpayOrder).toHaveBeenCalledWith("order_R1");
+    expect(verifyRazorpayPayment).toHaveBeenCalledWith({ paymentId: "pay_1", orderId: "order_R1", signature: "sig", expectedAmountRupees: 92.7 });
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ note: expect.stringContaining("needs manual reconciliation") }),
+    });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+  it("pre-check failure with a failed verification keeps the original INVALID_STATE and writes no audit", async () => {
+    setup({ s: settlement({ status: "cash_received" }), r: rp({ razorpay_order_id: "order_R1" }) });
+    fetchRazorpayOrder.mockResolvedValue({ id: "order_R1", amount: 9270 });
+    verifyRazorpayPayment.mockResolvedValue({ ok: false, reason: "bad" });
+    await expect(svc.settleByReceiver(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(prisma.order_settlement_event.create).not.toHaveBeenCalled();
+  });
+  it("pre-check failure for a different Razorpay order is a plain INVALID_STATE (no fetch)", async () => {
+    setup({ s: settlement({ status: "cash_received" }), r: rp({ razorpay_order_id: "order_OTHER" }) });
+    await expect(svc.settleByReceiver(pay)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(fetchRazorpayOrder).not.toHaveBeenCalled();
+  });
+  it("getPublicState: declined row with a paid_online settlement stays closed", async () => {
+    setup({ s: settlement({ status: "paid_online" }), r: rp({ status: "declined" }) });
+    expect(await svc.getPublicState(TOKEN)).toEqual({ state: "closed" });
+  });
+});
+
 describe("declineReceiverPay", () => {
   it("before completion (no settlement yet): just marks the row declined", async () => {
     setup();
@@ -212,5 +257,48 @@ describe("declineReceiverPay", () => {
     setup();
     await expect(svc.declineReceiverPay({ orderId: 50, actor: "driver", actorId: 999 })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(svc.declineReceiverPay({ orderId: 50, actor: "booker", actorId: 999 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+  it("declining a disputed settlement is INVALID_STATE and leaves the receiver row untouched", async () => {
+    setup({ s: settlement({ status: "disputed" }) });
+    await expect(svc.declineReceiverPay({ orderId: 50, actor: "driver", actorId: 9 })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(prisma.order_receiver_pay.updateMany).not.toHaveBeenCalled();
+  });
+  it("already-normal settlement leaves the receiver row untouched", async () => {
+    setup({ s: settlement({ payer: "customer" }) });
+    await svc.declineReceiverPay({ orderId: 50, actor: "receiver" });
+    expect(prisma.order_receiver_pay.updateMany).not.toHaveBeenCalled();
+  });
+  it("decline before completion where the re-read finds a settlement: converts it", async () => {
+    setup();
+    prisma.order_settlement.findUnique
+      .mockResolvedValueOnce(null)
+      .mockImplementation(() => Promise.resolve(current));
+    const out = await svc.declineReceiverPay({ orderId: 50, actor: "system" });
+    expect(out.phase).toBe("converted");
+    expect(prisma.order_receiver_pay.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "declined", declined_by: "system" }),
+    });
+    expect(prisma.order_settlement_event.create).toHaveBeenCalledWith({ data: expect.objectContaining({ actor: "system" }) });
+  });
+  it("flips the row inside the conversion transaction", async () => {
+    setup();
+    await svc.declineReceiverPay({ orderId: 50, actor: "driver", actorId: 9 });
+    expect(prisma.order_receiver_pay.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "declined", declined_by: "driver" }),
+    });
+  });
+});
+
+describe("declineByToken", () => {
+  it("rejects an expired token without changing any state", async () => {
+    setup({ r: rp({ token_expires_at: new Date(Date.now() - 1000) }) });
+    await expect(svc.declineByToken(TOKEN)).rejects.toMatchObject({ code: "LINK_EXPIRED" });
+    expect(prisma.order_receiver_pay.updateMany).not.toHaveBeenCalled();
+    expect(prisma.order_settlement.update).not.toHaveBeenCalled();
+  });
+  it("declines with a valid token", async () => {
+    setup();
+    const out = await svc.declineByToken(TOKEN);
+    expect(out.phase).toBe("converted");
   });
 });

@@ -38,7 +38,8 @@ jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error
 jest.mock("../settlementSettings", () => ({ isSettlementEnabled: jest.fn() }));
 jest.mock("../settlementService", () => ({ createForCompletedOrder: jest.fn() }));
 jest.mock("../receiverPayService", () => ({ getActiveForOrder: jest.fn().mockResolvedValue(null), issueLink: jest.fn().mockResolvedValue({ sent: true }), close: jest.fn().mockResolvedValue(undefined) }));
-jest.mock("../receiverPaySettings", () => ({ getReceiverPaySettings: jest.fn().mockResolvedValue({ enabled: true, maxPercent: 5, maxAmount: 0, linkTtlHours: 24 }) }));
+jest.mock("../receiverSettlementService", () => ({ declineReceiverPay: jest.fn().mockResolvedValue({ phase: "converted" }) }));
+jest.mock("../receiverPaySettings",() => ({ getReceiverPaySettings: jest.fn().mockResolvedValue({ enabled: true, maxPercent: 5, maxAmount: 0, linkTtlHours: 24 }) }));
 
 const prisma = require("../../config/db");
 const settlementSettings = require("../settlementSettings");
@@ -238,6 +239,25 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
       const result = await tripLifecycle.updateStatus(297, 1, "complete");
       expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
       expect(receiverPayService.close).toHaveBeenCalledWith(297, "not_applicable");
+    });
+
+    it("row declined while completing: converts via system decline and sends no link", async () => {
+      const rss = require("../receiverSettlementService");
+      receiverPayService.getActiveForOrder.mockResolvedValueOnce(rpRow).mockResolvedValue(null);
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      const result = await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(result).toMatchObject({ success: true });
+      expect(rss.declineReceiverPay).toHaveBeenCalledWith({ orderId: 297, actor: "system" });
+      expect(receiverPayService.issueLink).not.toHaveBeenCalled();
+    });
+
+    it("row still active after create: no decline, link issued", async () => {
+      const rss = require("../receiverSettlementService");
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(rss.declineReceiverPay).not.toHaveBeenCalled();
+      expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 297 });
     });
 
     it("a link failure never fails the completed ride", async () => {

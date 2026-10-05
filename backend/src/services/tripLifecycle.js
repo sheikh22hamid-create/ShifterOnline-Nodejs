@@ -688,7 +688,24 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     }
 
     if (receiverPayRow) {
+      // A decline that raced completion may have flipped the row after we read it but found no
+      // settlement to convert; re-read and convert the freshly created receiver-mode settlement.
+      let stillActive = true;
       if (useReceiverMode && settlementCreated) {
+        const reread = await receiverPayService.getActiveForOrder(orderId).catch(() => null);
+        if (!reread) {
+          stillActive = false;
+          try {
+            const receiverSettlementService = require("./receiverSettlementService");
+            await receiverSettlementService.declineReceiverPay({ orderId, actor: "system" });
+          } catch (err) {
+            logger.error(`updateStatus: converting declined receiver pay for order ${orderId} failed:`, err);
+          }
+        }
+      }
+      if (!stillActive) {
+        // Already declined and converted above; no link to send.
+      } else if (useReceiverMode && settlementCreated) {
         // The WhatsApp link is best-effort: the driver / booker can resend it, and a failure here
         // must never fail a completed ride.
         await receiverPayService.issueLink({ orderId }).catch((err) =>
