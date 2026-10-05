@@ -87,7 +87,21 @@ async function pkgHistoryDriver(req, res) {
     }
     const benefitByOrder = Object.fromEntries(benefitLogs.map((b) => [Number(b.ride_id), b]));
 
-    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm }));
+    // Receiver-pays orders: the driver collects amount_due (advance is a held
+    // deposit refunded to the booker), so the cash math must not net it off.
+    // Never let a lookup failure (missing table/model, DB error) break history.
+    let receiverModeByOrder = {};
+    try {
+      const recvRows = await prisma.order_settlement.findMany({
+        where: { order_id: { in: orderIds }, payer: "receiver" },
+        select: { order_id: true },
+      });
+      receiverModeByOrder = Object.fromEntries((recvRows || []).map((r) => [Number(r.order_id), true]));
+    } catch (e) {
+      receiverModeByOrder = {};
+    }
+
+    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm, receiverModeByOrder }));
 
     return res.status(200).json({ OrderHistory: history, ResponseCode: "200", Result: "true", ResponseMsg: "Order History Get Successfully!!!" });
   } catch (err) {
@@ -104,6 +118,7 @@ async function pkgHistoryDriver(req, res) {
 // queries above); a caller with just one row can pass single-entry maps.
 function formatPkgOrderForDriver(row, ctx) {
   const { stopsByOrder, benefitByOrder, planNameCache, globalComm } = ctx;
+  const isReceiverMode = !!(ctx.receiverModeByOrder && ctx.receiverModeByOrder[Number(row.id)]);
   const timerInfo = getAdvancePaymentTimerInfo(row);
   const advAmount = Number(row.advance_payment || 0);
   const isPaid = Number(row.payment_status || 0) === 1 || (row.advance_payment !== null && advAmount === 0);
@@ -148,7 +163,10 @@ function formatPkgOrderForDriver(row, ctx) {
   // tripLifecycle's prepaidTotal), so they come off the cash the driver
   // collects just like the advance does.
   const discountAbsorbed = Number(row.referral_points_amount || 0) + Number(row.cou_amt || 0);
-  const cashCollect = Math.max(0, Number((fare - advPay - discountAbsorbed).toFixed(2)));
+  // Receiver mode: advance is a held deposit refunded to the booker, so the
+  // driver collects fare - discounts (= settlement amount_due).
+  const advPayForCash = isReceiverMode ? 0 : advPay;
+  const cashCollect = Math.max(0, Number((fare - advPayForCash - discountAbsorbed).toFixed(2)));
 
   const walletDiff = Number((driverEarning - cashCollect).toFixed(2));
   let walletAction = "none";
@@ -273,7 +291,7 @@ function formatPkgOrderForDriver(row, ctx) {
         total_deductions: adminAmount,
         driver_total_earning: driverEarning,
       },
-      payment_by_user: { total_amount_by_user: fare, advance_payment: advPay, cash_to_collect: cashCollect },
+      payment_by_user: { total_amount_by_user: fare, advance_payment: advPayForCash, cash_to_collect: cashCollect },
       final_settlement: {
         driver_total_earning: driverEarning,
         cash_collected_from_user: cashCollect,

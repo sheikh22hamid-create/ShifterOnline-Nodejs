@@ -133,6 +133,7 @@ async function homeData(req, res) {
         benefitByOrder: {}, // active orders are never "Completed" yet, so the benefit lookup formatPkgOrderForDriver does is a no-op anyway
         planNameCache: {},
         globalComm: Number(setting?.rider_commission ?? 10),
+        receiverModeByOrder: {}, // an active order has no settlement yet
       });
     }
 

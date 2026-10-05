@@ -56,4 +56,37 @@ describe("driver earnings timestamps", () => {
     expect(formatPkgOrderForDriver({ id: 2, o_status: "Completed", payment_status: 1 }, context).trip_duration_minutes).toBeNull();
     expect(formatPkgOrderForDriver({ id: 2, o_status: "Cancelled", payment_status: 1 }, context).earnings_completed_at).toBeNull();
   });
+  describe("receiver-pays orders: driver collects amount_due, advance is a held deposit", () => {
+    const base = { id: 7, o_status: "Processing", payment_status: 1, total_dcharge: 100, advance_payment: "20", admin_amount: 10, category: "Bike" };
+    const rctx = { ...context, receiverModeByOrder: { 7: true } };
+
+    it("collects the full fare (advance not subtracted) and reports advance_payment 0", () => {
+      const trip = formatPkgOrderForDriver(base, rctx);
+      expect(trip.cash_to_collect).toBe(100);
+      expect(trip.cash_collected_from_user).toBe(100);
+      const pay = trip.trip_payment_summary.payment_by_user;
+      expect(pay.cash_to_collect).toBe(100);
+      expect(pay.advance_payment).toBe(0);
+    });
+
+    it("wallet adjustment debits exactly the commission (cash 100 - earning 90)", () => {
+      const trip = formatPkgOrderForDriver(base, rctx);
+      expect(trip.wallet_adjustment).toBe(10);
+      expect(trip.trip_payment_summary.final_settlement.wallet_adjustment_action).toBe("debit");
+    });
+
+    it("nets coupon/points but not the advance (commission less absorbed discount)", () => {
+      const trip = formatPkgOrderForDriver({ ...base, cou_amt: "10" }, rctx);
+      expect(trip.cash_to_collect).toBe(90);
+      expect(trip.wallet_adjustment).toBe(0);
+    });
+
+    it("the same order NOT in receiver mode is unchanged (advance netted off)", () => {
+      for (const c of [context, { ...context, receiverModeByOrder: {} }, { ...context, receiverModeByOrder: { 8: true } }]) {
+        const trip = formatPkgOrderForDriver(base, c);
+        expect(trip.cash_to_collect).toBe(80);
+        expect(trip.trip_payment_summary.payment_by_user.advance_payment).toBe(20);
+      }
+    });
+  });
 });
