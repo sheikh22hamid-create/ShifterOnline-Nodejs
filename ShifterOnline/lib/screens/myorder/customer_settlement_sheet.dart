@@ -207,9 +207,18 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
     }
     final sent = res['sent'] == true || res['sent'] == 'true';
     final link = res['link']?.toString() ?? '';
-    if (sent || link.isEmpty) {
+    if (sent) {
       Get.snackbar("", "Payment link sent to the receiver".tr,
           snackPosition: SnackPosition.TOP, duration: const Duration(seconds: 2));
+      return;
+    }
+    if (link.isEmpty) {
+      Get.snackbar(
+          "",
+          SettlementApiService.friendlyErrorMessage(
+              'NOT_CONFIGURED', res['ResponseMsg']?.toString()),
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 3));
       return;
     }
     await showDialog<void>(

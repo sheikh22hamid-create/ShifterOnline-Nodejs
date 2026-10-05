@@ -4325,7 +4325,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           return _HeroState(
             lead: "Payment is ".tr,
             accent: "pending".tr,
-            sub: "Please settle ₹$due with your driver or online".tr,
+            sub: isReceiverPaying(settlement)
+                ? "${"Receiver is paying".tr} - ${"Receiver pays total".tr} ₹${receiverPayTotal(settlement).toStringAsFixed(2)}"
+                : "Please settle ₹$due with your driver or online".tr,
             color: const Color(0xFFFF9100),
             headerSub: "Payment pending for completed ride".tr,
           );
@@ -4868,7 +4870,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           Text(
                             settlement != null && isCompleted
                                 ? (settleStatus == 'pending'
-                                    ? (settlement['customer_choice'] == 'driver' ? "Paying driver".tr : "Tap to pay".tr)
+                                    ? (isReceiverPaying(settlement) ? "Receiver is paying".tr : settlement['customer_choice'] == 'driver' ? "Paying driver".tr : "Tap to pay".tr)
                                     : settleStatus == 'cash_received'
                                         ? "Cash settled".tr
                                         : settleStatus == 'paid_online'
@@ -4894,7 +4896,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   ),
                 ],
               ),
-              if (!(settlement != null && isCompleted) && receiverPayInfo != null &&
+              if (!(settlement != null && isCompleted) && !isCancelled && receiverPayInfo != null &&
                   (receiverPayInfo['status']?.toString() == 'active' ||
                       receiverPayInfo['status']?.toString() == 'declined')) ...[
                 const SizedBox(height: 10),
