@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const settlementService = require("../services/settlementService");
+const receiverSettlementService = require("../services/receiverSettlementService");
 
 const { SettlementError } = settlementService;
 
@@ -89,6 +90,10 @@ async function list(req, res) {
       escalated: !!s.escalated_at,
       dispute_reason: s.dispute_reason,
       dispute_raised_by: s.dispute_raised_by,
+      payer: s.payer || "customer",
+      receiver_markup: Number(s.receiver_markup || 0),
+      advance_held: Number(s.advance_held || 0),
+      reversal_shortfall: Number(s.reversal_shortfall || 0),
     }));
     return res.status(200).json({ success: true, data, pagination: { page, limit, total } });
   } catch (err) {
@@ -144,4 +149,21 @@ async function resolve(req, res) {
   }
 }
 
-module.exports = { list, detail, resolve };
+async function convertToCustomer(req, res) {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return invalidId(res);
+    if (!req.user?.id) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const existing = await prisma.order_settlement.findUnique({ where: { id }, select: { id: true, order_id: true, city_id: true } });
+    if (!existing || outOfScope(req, existing)) return res.status(404).json(NOT_FOUND_BODY);
+    const result = await receiverSettlementService.declineReceiverPay({ orderId: existing.order_id, actor: "admin", actorId: req.user.id });
+    return res.status(200).json({ success: true, data: { phase: result.phase, settlement: result.settlement } });
+  } catch (err) {
+    if (err instanceof SettlementError) {
+      return res.status(err.code === "NOT_FOUND" ? 404 : 400).json({ success: false, code: err.code, message: err.message });
+    }
+    return internalError(res, err, "adminSettlement convertToCustomer");
+  }
+}
+
+module.exports = { list, detail, resolve, convertToCustomer };

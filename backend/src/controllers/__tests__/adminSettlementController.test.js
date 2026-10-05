@@ -11,7 +11,10 @@ jest.mock("../../services/settlementService", () => {
   return { SettlementError, adminResolve: jest.fn(), publicView: jest.fn((s) => s) };
 });
 
+jest.mock("../../services/receiverSettlementService", () => ({ declineReceiverPay: jest.fn() }));
+
 const prisma = require("../../config/db");
+const receiverSettlementService = require("../../services/receiverSettlementService");
 const svc = require("../../services/settlementService");
 const logger = require("../../utils/logger");
 const c = require("../adminSettlementController");
@@ -244,5 +247,38 @@ describe("adminSettlementController.resolve", () => {
     const r2 = res();
     await c.resolve({ params: { id: "1" }, body: { outcome: "waived", note: "x" }, user: { id: 3 }, scopedCityId: null }, r2);
     expect(svc.adminResolve).toHaveBeenCalledTimes(2);
+  });
+});
+describe("adminSettlementController receiver-pay", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("list exposes the receiver-pay fields", async () => {
+    const row = { id: 4, order_id: 50, uid: 7, rid: 9, city_id: 1, status: "pending", amount_due: 90, fare: 100, method: null,
+      pending_since: new Date(), escalated_at: null, dispute_reason: null, dispute_raised_by: null,
+      payer: "receiver", receiver_markup: 2.7, advance_held: 20, reversal_shortfall: 0 };
+    prisma.order_settlement.findMany.mockResolvedValue([row]);
+    prisma.order_settlement.count.mockResolvedValue(1);
+    prisma.tbl_user.findMany.mockResolvedValue([]);
+    prisma.tbl_rider.findMany.mockResolvedValue([]);
+    const r = res();
+    await c.list({ query: {}, scopedCityId: null }, r);
+    expect(json(r).data[0]).toMatchObject({ payer: "receiver", receiver_markup: 2.7, advance_held: 20, reversal_shortfall: 0 });
+  });
+
+  it("convertToCustomer converts a receiver settlement as admin", async () => {
+    prisma.order_settlement.findUnique.mockResolvedValue({ id: 4, order_id: 50, city_id: 1 });
+    receiverSettlementService.declineReceiverPay.mockResolvedValue({ phase: "converted", settlement: { id: 4 } });
+    const r = res();
+    await c.convertToCustomer({ params: { id: "4" }, user: { id: 1 }, scopedCityId: null }, r);
+    expect(receiverSettlementService.declineReceiverPay).toHaveBeenCalledWith({ orderId: 50, actor: "admin", actorId: 1 });
+    expect(r.json).toHaveBeenCalledWith({ success: true, data: { phase: "converted", settlement: { id: 4 } } });
+  });
+
+  it("convertToCustomer respects city scope", async () => {
+    prisma.order_settlement.findUnique.mockResolvedValue({ id: 4, order_id: 50, city_id: 2 });
+    const r = res();
+    await c.convertToCustomer({ params: { id: "4" }, user: { id: 1 }, scopedCityId: 1 }, r);
+    expect(r.status).toHaveBeenCalledWith(404);
+    expect(receiverSettlementService.declineReceiverPay).not.toHaveBeenCalled();
   });
 });

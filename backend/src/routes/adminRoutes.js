@@ -199,6 +199,7 @@ router.post("/payouts/:id/reject", auth, authorize("superadmin", "admin"), payou
 router.get("/settlements", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.list);
 router.get("/settlements/:id", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.detail);
 router.post("/settlements/:id/resolve", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.resolve);
+router.post("/settlements/:id/convert-to-customer", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.convertToCustomer);
 
 // --- Custom Orders & Bidding Engine ------------------------------------------
 router.get("/custom-orders", auth, authorize(...RIDER_ROLES), scopeFilter, customOrderController.list);
