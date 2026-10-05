@@ -113,7 +113,8 @@ default 0, `receiver_credited` TINYINT(1) default 0. `confirmed_by` also accepts
    the order is cash, `dmobile` is a valid 10-digit number, and the percent is
    within the admin limits. Creates the `order_receiver_pay` row. The existing
    booked-WhatsApp message to `dmobile` gains a line: who chose them as payer,
-   approx fare, and "Reply NO to decline".
+   approx fare; the receiver can decline only from the pay link (no WhatsApp reply
+   keyword).
 2. **Driver accepts**: advance flow unchanged.
 3. **Completion** (`tripLifecycle` settlement block): if an `active`
    `order_receiver_pay` exists and the driver is a regular driver, create the
@@ -155,7 +156,7 @@ keyword, no admin resend).
 
 ## Fallback and edge cases
 
-- **Decline** (receiver on page/WhatsApp, driver "Receiver refused", or booker
+- **Decline** (receiver on the pay page, driver "Receiver refused", or booker
   "I'll pay myself"): before completion, status becomes `declined` and
   completion creates a normal settlement. After completion, under the lock, a
   `pending` receiver-mode settlement is converted: `payer = customer`,
