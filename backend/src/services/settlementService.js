@@ -505,7 +505,8 @@ async function listPendingForDriver(riderId) {
 async function findBlockingSettlement(uid) {
   if (!(await settlementSettings.isSettlementEnabled())) return null;
   return prisma.order_settlement.findFirst({
-    where: { uid: Number(uid), status: { in: [STATUS.PENDING, STATUS.CUSTOMER_OWES] } },
+    // A pending receiver-pays settlement is the receiver's to pay, so it must not stop the booker booking again.
+    where: { uid: Number(uid), OR: [{ status: STATUS.CUSTOMER_OWES }, { status: STATUS.PENDING, payer: "customer" }] },
     select: { order_id: true, amount_due: true, status: true },
   });
 }

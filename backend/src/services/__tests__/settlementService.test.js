@@ -753,8 +753,29 @@ describe("settlementService.findBlockingSettlement", () => {
     prisma.order_settlement.findFirst.mockResolvedValue({ order_id: 50, amount_due: 85, status: "pending" });
     expect(await svc.findBlockingSettlement(7)).toEqual({ order_id: 50, amount_due: 85, status: "pending" });
     expect(prisma.order_settlement.findFirst).toHaveBeenCalledWith({
-      where: { uid: 7, status: { in: ["pending", "customer_owes"] } },
+      where: { uid: 7, OR: [{ status: "customer_owes" }, { status: "pending", payer: "customer" }] },
       select: { order_id: true, amount_due: true, status: true },
     });
+  });
+
+  // The mocked prisma cannot evaluate a where, so evaluate the issued filter against sample rows.
+  const matches = (where, row) => where.uid === row.uid && where.OR.some((c) => Object.entries(c).every(([k, v]) => row[k] === v));
+  async function blockingFilter() {
+    jest.clearAllMocks();
+    jest.spyOn(svc.settlementSettings, "isSettlementEnabled").mockResolvedValue(true);
+    prisma.order_settlement.findFirst.mockResolvedValue(null);
+    await svc.findBlockingSettlement(7);
+    return prisma.order_settlement.findFirst.mock.calls[0][0].where;
+  }
+  it("a pending receiver-mode settlement does not block the booker", async () => {
+    expect(matches(await blockingFilter(), { uid: 7, status: "pending", payer: "receiver" })).toBe(false);
+  });
+  it("a pending customer-mode settlement blocks", async () => {
+    expect(matches(await blockingFilter(), { uid: 7, status: "pending", payer: "customer" })).toBe(true);
+  });
+  it("customer_owes blocks whatever the payer", async () => {
+    const w = await blockingFilter();
+    expect(matches(w, { uid: 7, status: "customer_owes", payer: "receiver" })).toBe(true);
+    expect(matches(w, { uid: 7, status: "customer_owes", payer: "customer" })).toBe(true);
   });
 });
