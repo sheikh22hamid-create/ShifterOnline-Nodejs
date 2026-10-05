@@ -12,7 +12,9 @@ import 'package:http/http.dart' as http;
 
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
+import '../../services/settlement_api_service.dart';
 import '../../utils/colors.dart';
+import '../../utils/receiver_pay_options.dart';
 import 'wallet_page.dart';
 
 class ConfirmOrderMap extends StatefulWidget {
@@ -25,7 +27,8 @@ class ConfirmOrderMap extends StatefulWidget {
   final double walletBalance;
   final String currency;
   final String deliveryType;
-  final Function(int payValue, String paymentTitle) onConfirmPayment;
+  final String? dropMobile;
+  final Function(int payValue, String paymentTitle, ReceiverPaySelection receiverPay) onConfirmPayment;
   final VoidCallback onViewBreakup;
 
   const ConfirmOrderMap({
@@ -39,6 +42,7 @@ class ConfirmOrderMap extends StatefulWidget {
     required this.walletBalance,
     required this.currency,
     required this.deliveryType,
+    this.dropMobile,
     required this.onConfirmPayment,
     required this.onViewBreakup,
   }) : super(key: key);
@@ -64,11 +68,37 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   int _paymentWallet = 1;
   int _paymentOnline = 1;
 
+  // Receiver pays (cash only). Config failure keeps it disabled so booking
+  // behaves exactly as before.
+  ReceiverPayConfig _receiverConfig = ReceiverPayConfig.disabled;
+  bool _receiverPays = false;
+  double _receiverPercent = 0;
+
+  // Effective payValue for the selected method: cash 1, wallet -2, else 0.
+  int get _effectivePayValue =>
+      _selectedPaymentMethod == 2 ? 1 : (_selectedPaymentMethod == 1 ? -2 : 0);
+
+  String? get _receiverReason => receiverPayUnavailableReason(
+        config: _receiverConfig,
+        payValue: _effectivePayValue,
+        dropMobile: widget.dropMobile,
+      );
+
+  Future<void> _fetchReceiverPayConfig() async {
+    try {
+      final cfg = await SettlementApiService.getReceiverPayConfig();
+      if (mounted) setState(() => _receiverConfig = cfg);
+    } catch (_) {
+      // Keep disabled.
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _initMap();
     _fetchPaymentStatus();
+    _fetchReceiverPayConfig();
     _fetchRestrictedItems();
     _fetchBookingGuidelines();
   }
@@ -131,6 +161,10 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                 _selectedPaymentMethod = 1;
               } else {
                 _selectedPaymentMethod = 0;
+              }
+              if (_selectedPaymentMethod != 2) {
+                _receiverPays = false;
+                _receiverPercent = 0;
               }
             });
           }
@@ -400,7 +434,8 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     if (_selectedPaymentMethod == 1 && _paymentWallet == 1) {
       if (widget.walletBalance >= widget.deliveryFees) {
         setState(() => _isProcessing = true);
-        widget.onConfirmPayment(-2, "Wallet");
+        // Receiver pays is never combined with wallet.
+        widget.onConfirmPayment(-2, "Wallet", ReceiverPaySelection.off);
         Future.delayed(const Duration(seconds: 15), () {
           if (mounted) setState(() => _isProcessing = false);
         });
@@ -409,7 +444,15 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
       }
     } else if (_selectedPaymentMethod == 2 && _paymentCod == 1) {
       setState(() => _isProcessing = true);
-      widget.onConfirmPayment(1, "Cash");
+      final receiverOn = _receiverPays && _receiverReason == null;
+      widget.onConfirmPayment(
+        1,
+        "Cash",
+        ReceiverPaySelection(
+          enabled: receiverOn,
+          percent: receiverOn ? _receiverPercent : 0,
+        ),
+      );
       Future.delayed(const Duration(seconds: 15), () {
         if (mounted) setState(() => _isProcessing = false);
       });
@@ -687,7 +730,12 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                         icon: Icons.account_balance_wallet_rounded,
                         title: "Shifter Wallet",
                         subtitle: "Available: ${widget.currency}${widget.walletBalance.toStringAsFixed(2)}",
-                        onTap: () => setState(() => _selectedPaymentMethod = 1),
+                        onTap: () => setState(() {
+                          _selectedPaymentMethod = 1;
+                          // Receiver pays is cash only.
+                          _receiverPays = false;
+                          _receiverPercent = 0;
+                        }),
                         trailing: isWalletInsufficient
                             ? InkWell(
                                 onTap: () => Get.to(() => const WalletPage()),
@@ -718,6 +766,10 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                               )
                             : null,
                       ),
+                    if (_receiverConfig.enabled) ...[
+                      const SizedBox(height: 9),
+                      _buildReceiverPayCard(),
+                    ],
                   ],
 
                   const SizedBox(height: 14),
@@ -845,6 +897,118 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildReceiverPayCard() {
+    final notifier = Provider.of<ColorNotifier>(context, listen: false);
+    final reason = _receiverReason;
+    final active = _receiverPays && reason == null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: active ? linercolor.withValues(alpha: 0.08) : notifier.getBgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active ? linercolor : notifier.bordecolor.withValues(alpha: 0.8),
+          width: active ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_pin_circle_rounded,
+                  color: active ? linercolor : greaycolor, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Receiver pays".tr,
+                      style: TextStyle(
+                        fontFamily: 'Gilroy_Bold',
+                        fontSize: 13.5,
+                        color: notifier.text,
+                      ),
+                    ),
+                    if (reason != null) ...[
+                      const SizedBox(height: 1.5),
+                      Text(
+                        reason.tr,
+                        style: TextStyle(
+                          fontFamily: 'Gilroy_Medium',
+                          fontSize: 11.5,
+                          color: greaycolor,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Switch(
+                activeThumbColor: linercolor,
+                value: active,
+                onChanged: reason != null
+                    ? null
+                    : (v) => setState(() {
+                          _receiverPays = v;
+                          if (!v) _receiverPercent = 0;
+                        }),
+              ),
+            ],
+          ),
+          if (active) ...[
+            const SizedBox(height: 6),
+            Text(
+              "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.".tr,
+              style: TextStyle(
+                fontFamily: 'Gilroy_Medium',
+                fontSize: 11.5,
+                color: greaycolor,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "Receiver's commission".tr,
+              style: TextStyle(
+                fontFamily: 'Gilroy_Bold',
+                fontSize: 12.5,
+                color: notifier.text,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: percentChoices(_receiverConfig.maxPercent).map((p) {
+                final label = p == p.roundToDouble()
+                    ? "${p.toInt()}%"
+                    : "${p.toStringAsFixed(1)}%";
+                return ChoiceChip(
+                  label: Text(label),
+                  selected: _receiverPercent == p,
+                  selectedColor: linercolor.withValues(alpha: .15),
+                  onSelected: (_) => setState(() => _receiverPercent = p),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Receiver gets a WhatsApp link to pay (no app needed).".tr,
+              style: TextStyle(
+                fontFamily: 'Gilroy_Medium',
+                fontSize: 11.5,
+                color: greaycolor,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

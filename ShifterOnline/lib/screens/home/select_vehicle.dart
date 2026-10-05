@@ -12,7 +12,9 @@ import 'package:intl/intl.dart';
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../bottombar.dart';
+import '../../services/settlement_api_service.dart';
 import '../../utils/colors.dart';
+import '../../utils/receiver_pay_options.dart';
 import '../../utils/schedule_time.dart';
 import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
@@ -783,7 +785,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       stops: _stopsData,
       deliveryFees: _payableAmount(fee), walletBalance: walletBalance, currency: _text(model['currency'], '₹'),
       deliveryType: _text(model['package_id'] ?? model['id']),
-      onConfirmPayment: (payValue, _) => _submitOrder(payValue, category, model, fee),
+      dropMobile: _text(_dropData['c_number']),
+      onConfirmPayment: (payValue, _, receiverPay) => _submitOrder(payValue, category, model, fee, receiverPay),
       onViewBreakup: () => _showFareBreakdown(model, fee),
     ));
   }
@@ -795,7 +798,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     return _number(response is Map ? response['wallet_balance'] : 0);
   }
 
-  Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee) async {
+  Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee, [ReceiverPaySelection receiverPay = ReceiverPaySelection.off]) async {
+    // Receiver pays is cash-only: never combined with the wallet (-2).
+    final receiverOn = receiverPay.enabled && payValue == 1;
     if (_currentBookingType == 2 && _scheduledFor == null) {
       // Came here from the confirm screen's "Confirm and place order" with no
       // date/time chosen - send the customer back to the date & time picker
@@ -814,6 +819,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       return;
     }
     final login = _storage.read('UserLogin');
+    // Wallet withdrawal runs only for payValue == -2; a receiver-pays order is
+    // cash (payValue == 1) so it can never reach this block.
     if (payValue == -2 && login is Map) {
       final balance = await _fetchWalletBalance();
       // Only what's left after the coupon / referral-points discount is taken from the wallet.
@@ -845,6 +852,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
       'extra_mile_charge': 0, 'cou_id': _appliedCoupon == null ? 0 : (int.tryParse(_appliedCoupon!['id'].toString()) ?? 0), 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
+      if (receiverOn) 'receiver_pays': true,
+      if (receiverOn) 'receiver_commission_percent': receiverPay.percent,
       if (_goodsTypeId != null) 'goods_type_id': _goodsTypeId,
       if (_goodsOtherSelected && _goodsOtherController.text.trim().isNotEmpty) 'goods_type_other': _goodsOtherController.text.trim(),
       'stops': _stopsData.map((stop) => {
@@ -859,6 +868,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final orderId = response['order_id']?.toString() ?? '';
       await _storage.write('OrderID', orderId);
       ApiWrapper.showToastMessage(_text(response['ResponseMsg'], 'Order placed successfully.'));
+      if (receiverOn && response['receiver_pay'] != true) {
+        ApiWrapper.showToastMessage('Receiver pays could not be enabled; you will pay normally.'.tr);
+      }
       final referralPointsUsed = _number(response['referral_points_used']);
       if (referralPointsUsed > 0) {
         final referralAmount = _number(response['referral_points_amount']);
@@ -908,6 +920,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         final match = RegExp(r'order #(\d+)').firstMatch(msg);
         final pendingOrderId = match != null ? match.group(1) : response['order_id']?.toString();
         _showPendingSettlementDialog(msg, pendingOrderId);
+      } else if (response is Map && response['code']?.toString() == 'RECEIVER_PAY_UNAVAILABLE') {
+        ApiWrapper.showToastMessage(SettlementApiService.friendlyErrorMessage('RECEIVER_PAY_UNAVAILABLE', msg));
       } else {
         ApiWrapper.showToastMessage(msg);
       }
