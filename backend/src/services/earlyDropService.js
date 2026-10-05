@@ -108,20 +108,40 @@ async function computeEarlyDropFare(order, point) {
   };
 }
 
-// A wallet-paid booking was charged the full fare up front; hand back the part
-// of it the shorter trip no longer needs. Idempotent per order.
-async function refundWalletDifference(tx, order, fareDiff) {
+// A wallet-paid booking was charged up front; hand back the part of it the
+// shorter trip no longer needs. Idempotent per order.
+//
+// Bounded by what the customer actually paid from the wallet: with referral
+// points / a coupon the wallet debit was already smaller than the old fare, so
+// refunding the whole fare difference would pay the customer more than they
+// ever put in. refund = min(fareDiff, walletPaid - what is still payable at the
+// new fare after points + coupon). When the debit can't be found (never linked
+// to the order) we can't bound it, so the plain fare difference is kept.
+async function refundWalletDifference(tx, order, fareDiff, { newFare, pointsAmount = 0 } = {}) {
   if (fareDiff <= 0) return 0;
   const walletPaid = Number(order.p_method_id) === -2 || String(order.trans_id || "").toLowerCase().startsWith("wallet");
   if (!walletPaid) return 0;
   const key = `early_drop_refund:${order.id}`;
   const already = await tx.tbl_wallet_history.findFirst({ where: { payment_id: key, type: "credit", wallet_type: "user" } });
   if (already) return 0;
-  await tx.tbl_user.update({ where: { id: order.uid }, data: { wallet: { increment: fareDiff } } });
+
+  let refund = fareDiff;
+  if (typeof tx.tbl_wallet_history.findMany === "function") {
+    const debits = await tx.tbl_wallet_history.findMany({
+      where: { order_id: Number(order.id), wallet_type: "user", type: "debit", remark: "Delivery payment" },
+    });
+    const paid = round2(debits.reduce((sum, r) => sum + Number(r.amount || 0), 0));
+    if (paid > 0 && Number.isFinite(Number(newFare))) {
+      const stillPayable = Math.max(0, Number(newFare) - Number(pointsAmount || 0) - (Number(order.cou_amt) || 0));
+      refund = round2(Math.min(fareDiff, Math.max(0, paid - stillPayable)));
+    }
+  }
+  if (refund <= 0) return 0;
+  await tx.tbl_user.update({ where: { id: order.uid }, data: { wallet: { increment: refund } } });
   await tx.tbl_wallet_history.create({
     data: {
       user_id: order.uid,
-      amount: fareDiff,
+      amount: refund,
       type: "credit",
       remark: `Early drop refund for order #${order.id} (shorter trip)`,
       wallet_type: "user",
@@ -130,7 +150,7 @@ async function refundWalletDifference(tx, order, fareDiff) {
       created_at: istNow(),
     },
   });
-  return fareDiff;
+  return refund;
 }
 
 /**
@@ -161,7 +181,7 @@ async function applyEarlyDrop(order, riderId, point, distanceM) {
     // Order #468: 326 points were redeemed at the Rs652 booking fare (50% cap);
     // the fare fell to Rs170 but every point stayed spent. Hand back what the
     // new fare's cap no longer allows.
-    await reconcileRideDiscountToFare(order.id, fare.newFare, tx);
+    const points = await reconcileRideDiscountToFare(order.id, fare.newFare, tx);
     const payload = {
       original_drop: { lat: Number(order.dlat), lng: Number(order.dlong), address: order.daddress || "" },
       actual_drop: { lat: point.lat, lng: point.lng, address },
@@ -177,7 +197,7 @@ async function applyEarlyDrop(order, riderId, point, distanceM) {
       create: { order_id: order.id, rider_id: riderId, user_id: order.uid, milestone: MILESTONE, payload },
       update: { payload },
     });
-    await refundWalletDifference(tx, order, fareDiff);
+    await refundWalletDifference(tx, order, fareDiff, { newFare: fare.newFare, pointsAmount: points.pointsAmount });
   });
 
   logger.info(`earlyDrop: order #${order.id} dropped ${Math.round(distanceM)} m before the booked drop; fare ₹${fare.oldFare} -> ₹${fare.newFare}`);

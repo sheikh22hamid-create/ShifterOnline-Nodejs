@@ -1,8 +1,10 @@
 jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn() },
   tbl_user: { update: jest.fn() },
-  tbl_wallet_history: { findFirst: jest.fn(), create: jest.fn() },
-  pkg_order: { update: jest.fn() },
+  tbl_wallet_history: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
+  tbl_referral_setting: { findFirst: jest.fn() },
+  tbl_referral_point_log: { create: jest.fn() },
+  pkg_order: { update: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
   pkg_order_stops: { findMany: jest.fn() },
   driver_trip_progress: { findUnique: jest.fn() },
   driver_trip_event: { upsert: jest.fn() },
@@ -33,6 +35,11 @@ beforeEach(() => {
   prisma.driver_trip_progress.findUnique.mockResolvedValue(null);
   prisma.$transaction.mockImplementation((fn) => fn(prisma));
   prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
+  prisma.tbl_wallet_history.findMany.mockResolvedValue([]); // debit not linked -> plain fare difference
+  prisma.pkg_order.findUnique.mockResolvedValue({ uid: 3, referral_points_used: 0, referral_points_amount: 0, cou_amt: 0 });
+  prisma.pkg_order.updateMany.mockResolvedValue({ count: 1 });
+  prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, ride_discount_percent: 50, point_value: 1 });
+  prisma.tbl_user.update.mockResolvedValue({ referral_points: 241 });
 });
 
 describe("earlyDropService", () => {
@@ -108,5 +115,49 @@ describe("earlyDropService", () => {
     prisma.tbl_wallet_history.findFirst.mockResolvedValue({ id: 1 }); // already refunded
     await early.applyEarlyDrop(walletOrder, 9, { lat: 22.75, lng: 75.9 }, 7000);
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
+
+  describe("points / coupon used on the booking (order #468)", () => {
+    const pointsOrder = (extra = {}) => ({
+      ...order, total_dcharge: 652, d_charge: 652, driver_earning: 600, commission: 8.24, ...extra,
+    });
+
+    it("hands back the points the cheaper fare no longer allows", async () => {
+      computeRouteDistanceKm.mockResolvedValue(0.1);
+      pricingEngine.priceForPackageId.mockResolvedValue({ fare: 170, driverEarning: 156, commission: 8.24 });
+      prisma.pkg_order.findUnique.mockResolvedValue({ uid: 3, referral_points_used: 326, referral_points_amount: 326, cou_amt: 0 });
+
+      const result = await early.applyEarlyDrop(pointsOrder(), 9, { lat: 22.75, lng: 75.9 }, 7000);
+
+      expect(result).toMatchObject({ old_fare: 652, new_fare: 170 });
+      expect(prisma.pkg_order.updateMany).toHaveBeenCalledWith({
+        where: { id: 7, referral_points_used: 326 },
+        data: { referral_points_used: 85, referral_points_amount: 85 },
+      });
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { referral_points: { increment: 241 } } });
+    });
+
+    it("wallet refund never exceeds what the customer actually paid from the wallet", async () => {
+      computeRouteDistanceKm.mockResolvedValue(0.1);
+      pricingEngine.priceForPackageId.mockResolvedValue({ fare: 170, driverEarning: 156, commission: 8.24 });
+      // 652 fare, 326 points -> customer paid only 326 from the wallet.
+      prisma.pkg_order.findUnique.mockResolvedValue({ uid: 3, referral_points_used: 326, referral_points_amount: 326, cou_amt: 0 });
+      prisma.tbl_wallet_history.findMany.mockResolvedValue([{ amount: 326 }]);
+
+      await early.applyEarlyDrop(pointsOrder({ p_method_id: -2, trans_id: "wallet" }), 9, { lat: 22.75, lng: 75.9 }, 7000);
+
+      // stillPayable = 170 - 85 (points kept) = 85; refund = min(482, 326 - 85) = 241 (not 482)
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { wallet: { increment: 241 } } });
+    });
+
+    it("full-fare wallet payment with no points still refunds the whole fare difference", async () => {
+      computeRouteDistanceKm.mockResolvedValue(6);
+      pricingEngine.priceForPackageId.mockResolvedValue({ fare: 120, driverEarning: 108, commission: 10 });
+      prisma.tbl_wallet_history.findMany.mockResolvedValue([{ amount: 200 }]);
+
+      await early.applyEarlyDrop({ ...order, p_method_id: -2, trans_id: "wallet" }, 9, { lat: 22.75, lng: 75.9 }, 7000);
+
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { wallet: { increment: 80 } } });
+    });
   });
 });

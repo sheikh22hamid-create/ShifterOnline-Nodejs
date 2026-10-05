@@ -169,6 +169,7 @@ async function packageListEstimate(req, res) {
   }
 }
 
+<<<<<<< Updated upstream
 async function autoSaveOrderAddress({ uid, address, lat, lng, type, contactName, contactNumber, houseno, landmark }) {
   if (!prisma.tbl_address || typeof prisma.tbl_address.findFirst !== "function") return null;
   if (!uid || !address || lat === undefined || lng === undefined) return null;
@@ -219,6 +220,19 @@ async function autoSaveOrderAddress({ uid, address, lat, lng, type, contactName,
     logger.warn(`autoSaveOrderAddress failed for user ${uid}: ${err.message}`);
     return null;
   }
+=======
+function nextDayScheduleDateIST(now = new Date()) {
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + istOffsetMs);
+  const istHour = istNow.getUTCHours();
+  // Cutoff at 10 PM IST (22:00) -> if after 10 PM, schedule for +2 days, otherwise +1 day (tomorrow)
+  const daysToAdd = istHour >= 22 ? 2 : 1;
+  const targetDate = new Date(istNow.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+  const yyyy = targetDate.getUTCFullYear();
+  const mm = String(targetDate.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(targetDate.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+>>>>>>> Stashed changes
 }
 
 async function createOrderCore({
@@ -238,6 +252,7 @@ async function createOrderCore({
     return { ok: false, code: "VALIDATION", msg: "uid, category, a non-empty delivery_type array, and valid coordinates are required" };
   }
 
+<<<<<<< Updated upstream
   const blockingSettlement = await settlementService.findBlockingSettlement(uid);
   if (blockingSettlement) {
     return {
@@ -249,6 +264,9 @@ async function createOrderCore({
 
   const goods = await resolveGoodsType({ goodsTypeId, goodsTypeOther });
   if (!goods.ok) return goods;
+=======
+  const isNextDayBooking = Number(bookingType) === 3;
+>>>>>>> Stashed changes
 
   const requestedPackageIds = deliveryTypeIds.map(Number);
 
@@ -281,6 +299,14 @@ async function createOrderCore({
     pricingEngine.getActiveCustomerPlan(uid),
     pricingEngine.getSlabPricingConfig(),
   ]);
+
+  if (isNextDayBooking && (!planDiscount || !planDiscount.noAdvancePayment)) {
+    return {
+      ok: false,
+      code: "PREMIUM_PLAN_REQUIRED",
+      msg: "Next Day Delivery is exclusive to Premium Plan members with No Advance Payment privilege. Please purchase or upgrade your plan.",
+    };
+  }
 
   const packagesById = new Map(validPackages.map((p) => [p.id, p]));
   const invalidPackageIds = requestedPackageIds.filter((id) => !packagesById.has(id));
@@ -429,7 +455,11 @@ async function createOrderCore({
   }
 
   const parsedWeight = parseFloat(String(packageWeight));
+<<<<<<< Updated upstream
   const finalScheduleDateTime = Number(bookingType) === 3
+=======
+  const finalScheduleDateTime = isNextDayBooking
+>>>>>>> Stashed changes
     ? nextDayScheduleDateIST()
     : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
@@ -502,6 +532,7 @@ async function createOrderCore({
     },
   });
 
+<<<<<<< Updated upstream
   if (validStops.length > 0) {
     await prisma.pkg_order_stops.createMany({
       data: validStops.map((stop, index) => ({ order_id: order.id, sequence: index + 1, lat: String(stop.lat), lng: String(stop.lng), address: stop.address || null, hno: stop.hno || null, landmark: stop.landmark || null, contact_name: stop.contact_name || null, contact_number: stop.contact_number || null })),
@@ -590,14 +621,20 @@ async function createOrderCore({
   // sweep-interval-sized delay vs the old instant dispatch. Once the app
   // grows a real time picker for this button, the wait becomes meaningful.)
   if (Number(bookingType) !== 3 && Number(bookingType) !== 2) {
+=======
+  if (!isNextDayBooking) {
+>>>>>>> Stashed changes
     dispatchManager.startDispatch(order, {
       fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
       // Handed through so dispatchManager can price each eligible driver's own
       // popup off their real pickup distance without a redundant re-fetch of
       // the package row/discount it already looked up for tier 0 above.
       pkg: firstPkg, discount: planDiscount,
+<<<<<<< Updated upstream
       ...(firstVehicleSlabConfig ? { slabConfig: firstVehicleSlabConfig } : {}),
       ...(slabPricingConfig?.modelMultipliers ? { modelMultipliers: slabPricingConfig.modelMultipliers } : {}),
+=======
+>>>>>>> Stashed changes
     }).catch((err) =>
       logger.error(`createOrderCore: dispatch failed to start for order ${order.id}:`, err)
     );
@@ -637,6 +674,7 @@ async function createOrder(req, res) {
     if (!result.ok && result.code === "VALIDATION") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
     }
+<<<<<<< Updated upstream
     if (!result.ok && result.code === "INVALID_COUPON") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
     }
@@ -649,6 +687,11 @@ async function createOrder(req, res) {
     if (!result.ok && result.code === "SETTLEMENT_PENDING") {
       return res.status(403).json({ ResponseCode: "403", Result: "false", code: "SETTLEMENT_PENDING", ResponseMsg: result.msg });
     }
+=======
+    if (!result.ok && result.code === "PREMIUM_PLAN_REQUIRED") {
+      return res.status(403).json({ ResponseCode: "403", Result: "false", ResponseMsg: result.msg });
+    }
+>>>>>>> Stashed changes
     if (!result.ok && result.code === "INVALID_PACKAGES") {
       return res.status(400).json({
         ResponseCode: "400",
@@ -671,6 +714,37 @@ async function createOrder(req, res) {
     });
   } catch (err) {
     logger.error("createOrder failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
+async function checkNextDayEligibility(req, res) {
+  try {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid is required" });
+    }
+
+    const planDiscount = await pricingEngine.getActivePlanDiscount(Number(uid));
+    const isEligible = Boolean(planDiscount && planDiscount.noAdvancePayment);
+    const deliveryDate = nextDayScheduleDateIST();
+
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: "true",
+      is_eligible: isEligible,
+      has_active_plan: Boolean(planDiscount),
+      no_advance_payment: Boolean(planDiscount?.noAdvancePayment),
+      plan_name: planDiscount?.planName || null,
+      delivery_date: deliveryDate,
+      delivery_window: "10:00 AM - 08:00 PM",
+      cutoff_time: "10:00 PM",
+      ResponseMsg: isEligible
+        ? "User is eligible for Next Day Delivery"
+        : "Next Day Delivery is exclusive to Premium Plan members with No Advance Payment privilege.",
+    });
+  } catch (err) {
+    logger.error("checkNextDayEligibility failed:", err);
     return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
   }
 }
@@ -1937,8 +2011,12 @@ module.exports = {
   packageListEstimate,
   createOrder,
   createOrderCore,
+<<<<<<< Updated upstream
   getPendingScheduleConfirmations,
   respondScheduleConfirmation,
+=======
+  checkNextDayEligibility,
+>>>>>>> Stashed changes
   getOrderDetails,
   customerCancel,
   driverCancel,

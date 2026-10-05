@@ -34,8 +34,11 @@ router.post("/buy/item-list", orderController.buyOrderItemList);
 router.post("/buy/item-unavailable", orderController.markBuyOrderItemUnavailable);
 router.post("/buy/item-upload", orderController.buyOrderItemUpload);
 router.post("/rate", orderController.rateOrder);
+<<<<<<< Updated upstream
 router.post("/driver-feedback", require("../controllers/driverFeedbackController").submitDriverFeedback);
 router.post("/customer-feedback", require("../controllers/customerFeedbackController").submitCustomerFeedback);
+=======
+>>>>>>> Stashed changes
 router.post("/next-day-eligibility", orderController.checkNextDayEligibility);
 router.post("/upload-photo", uploadController.uploadOrderPhoto);
 
