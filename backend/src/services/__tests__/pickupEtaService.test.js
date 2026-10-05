@@ -106,3 +106,38 @@ describe("buildEtaView", () => {
     expect(svc.buildEtaView({ order_status: 2 }, row, now).pickup_eta_remaining_seconds).toBe(0);
   });
 });
+
+describe("isPickupEtaExpired", () => {
+  const now = Date.UTC(2026, 9, 5, 10, 0, 0);
+  const order = { id: 9, order_status: 1, plat: "22.0000", plong: "75.0000" };
+  const past = { pickup_deadline_at: new Date(now - 1000) };
+  const rider = (lat, ageMs = 5000) => ({ rlats: String(lat), rlongs: "75.0000", rloc_updated_at: new Date(now - ageMs) });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.pkg_order_wait_timer.findFirst.mockResolvedValue(null);
+    prisma.app_settings.findMany.mockResolvedValue([]);
+  });
+
+  it("is true once the deadline has passed and the driver is far away", async () => {
+    expect(await svc.isPickupEtaExpired(order, past, rider(22.1), now)).toBe(true);
+  });
+
+  it("is false before the deadline", async () => {
+    expect(await svc.isPickupEtaExpired(order, { pickup_deadline_at: new Date(now + 60000) }, rider(22.1), now)).toBe(false);
+  });
+
+  it("is false when the driver is inside the geofence, or already arrived", async () => {
+    expect(await svc.isPickupEtaExpired(order, past, rider(22.0005), now)).toBe(false);
+    prisma.pkg_order_wait_timer.findFirst.mockResolvedValue({ id: 1 });
+    expect(await svc.isPickupEtaExpired(order, past, rider(22.1), now)).toBe(false);
+  });
+
+  it("ignores a stale GPS fix near the pickup", async () => {
+    expect(await svc.isPickupEtaExpired(order, past, rider(22.0005, 10 * 60000), now)).toBe(true);
+  });
+
+  it("is false once the trip is past the heading-to-pickup stage", async () => {
+    expect(await svc.isPickupEtaExpired({ ...order, order_status: 2 }, past, rider(22.1), now)).toBe(false);
+  });
+});

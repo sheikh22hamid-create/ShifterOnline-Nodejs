@@ -1,11 +1,13 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
+const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 
 // Pickup ETA for an accepted order: Google's driver -> pickup travel time plus
 // an admin-configurable buffer is what the customer is shown, and the same
-// moment is the deadline after which tripLifecycle.sweepPickupEtaDeadlines
-// auto-cancels the order on the driver's side (with the driver penalty).
+// moment is the deadline. Once it passes with the driver still outside the
+// pickup geofence, the customer may cancel for free (isPickupEtaExpired): no
+// customer charge, no driver penalty, no driver payment. Nothing auto-cancels.
 //
 // pickup_eta_minutes / pickup_deadline_at are deliberately NOT modelled in
 // prisma/schema.prisma (raw SQL only, like advance_payment): a modelled column
@@ -181,8 +183,33 @@ async function getPickupEtaRow(orderId, client = prisma) {
   }
 }
 
+/**
+ * True when the accepted driver has missed the pickup ETA: still heading to
+ * pickup (order_status 1), deadline passed, no recorded arrival, and not
+ * inside the pickup geofence by a fresh GPS fix (a stale fix can't vouch).
+ */
+async function isPickupEtaExpired(order, etaRow, rider, now = Date.now()) {
+  const deadlineMs = etaRow?.pickup_deadline_at ? new Date(etaRow.pickup_deadline_at).getTime() : 0;
+  if (Number(order?.order_status) !== 1 || !deadlineMs || now < deadlineMs) return false;
+
+  const arrived = await prisma.pkg_order_wait_timer.findFirst({
+    where: { order_id: Number(order.id), first_arrival_at: { not: null } },
+    select: { id: true },
+  }).catch(() => null);
+  if (arrived) return false;
+
+  const fresh = rider?.rloc_updated_at && now - new Date(rider.rloc_updated_at).getTime() <= RIDER_LOCATION_FRESHNESS_MS;
+  if (fresh) {
+    const { geofenceM } = await getPickupEtaSettings();
+    const distanceM = haversineKm(Number(order.plat), Number(order.plong), Number(rider.rlats), Number(rider.rlongs)) * 1000;
+    if (Number.isFinite(distanceM) && distanceM <= geofenceM) return false;
+  }
+  return true;
+}
+
 // What the customer / driver / admin apps get on an order payload.
-function buildEtaView(order, etaRow, now = Date.now()) {
+// `etaExpired` (from isPickupEtaExpired) tells the customer app to offer a free cancel.
+function buildEtaView(order, etaRow, now = Date.now(), etaExpired = false) {
   const deadlineMs = etaRow?.pickup_deadline_at ? new Date(etaRow.pickup_deadline_at).getTime() : 0;
   const active = Number(order?.order_status) === 1 && deadlineMs > 0;
   return {
@@ -191,6 +218,7 @@ function buildEtaView(order, etaRow, now = Date.now()) {
     pickup_eta_minutes: Number(etaRow?.pickup_eta_minutes) || 0,
     pickup_deadline_at: deadlineMs ? new Date(deadlineMs).toISOString() : null,
     pickup_eta_remaining_seconds: active ? Math.max(0, Math.round((deadlineMs - now) / 1000)) : 0,
+    pickup_eta_expired: Boolean(etaExpired),
   };
 }
 
@@ -203,6 +231,7 @@ module.exports = {
   clearPickupDeadline,
   refreshAfterPickupChange,
   getPickupEtaRow,
+  isPickupEtaExpired,
   buildEtaView,
   DEFAULT_BUFFER_MIN,
   DEFAULT_GEOFENCE_M,

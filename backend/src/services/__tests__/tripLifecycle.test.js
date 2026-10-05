@@ -528,6 +528,44 @@ describe("tripLifecycle.customerCancel", () => {
     });
   });
 
+  describe("driver missed the pickup ETA - free cancel", () => {
+    const { refundIfWalletPaid } = require("../walletPrepaymentRefund");
+    const pickupEtaService = require("../pickupEtaService");
+    const order = { id: 297, uid: 7, rid: 1, order_status: 1, delivery_type: 6, p_method_id: -2 };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it("charges the customer nothing, pays the driver nothing and keeps the plan allowance", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: null });
+      jest.spyOn(pickupEtaService, "getPickupEtaRow").mockResolvedValue({ pickup_deadline_at: new Date(Date.now() - 1000) });
+      jest.spyOn(pickupEtaService, "isPickupEtaExpired").mockResolvedValue(true);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 25, driver_earning: 40 });
+
+      const result = await tripLifecycle.customerCancel(7, 297, "driver too late");
+
+      expect(result).toEqual({ success: true });
+      expect(refundIfWalletPaid).toHaveBeenCalledWith(order, { deduct: 0 });
+      expect(pricingEngine.getActiveCustomerPlan).not.toHaveBeenCalled();
+      expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled(); // no customer debit, no driver compensation
+    });
+
+    it("still charges the normal cancellation fee while the ETA has not expired", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: null });
+      jest.spyOn(pickupEtaService, "getPickupEtaRow").mockResolvedValue({ pickup_deadline_at: new Date(Date.now() + 600000) });
+      jest.spyOn(pickupEtaService, "isPickupEtaExpired").mockResolvedValue(false);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 15 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+      expect(refundIfWalletPaid).toHaveBeenCalledWith(order, { deduct: 15 });
+    });
+  });
+
   it("stops dispatch when cancelling an unassigned order", async () => {
     prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0 });
     prisma.$executeRaw.mockResolvedValueOnce(1);
@@ -1846,83 +1884,5 @@ describe("finalizeAcceptedOrder — late-accept customer warning (booking_type=2
     await tripLifecycle.acceptOrder(297, 1);
 
     expect(pushNotifier.notifyCustomerLatePickup).not.toHaveBeenCalled();
-  });
-});
-
-
-describe("tripLifecycle.sweepPickupEtaDeadlines — driver missed the pickup ETA", () => {
-  const dueRow = { id: 600, rid: 11, uid: 7, plat: "22.0000", plong: "75.0000", advance_payment: "0", payment_status: 1 };
-  const lockedRow = { id: 600, uid: 7, rid: 11, order_status: 1, o_status: "Processing", advance_payment: "0", payment_status: 1, delivery_type: 6 };
-  const riderAt = (lat, lng, ageMs = 10000) => ({ rlats: String(lat), rlongs: String(lng), rloc_updated_at: new Date(Date.now() - ageMs), fcm_token: "rider_tok" });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    prisma.$transaction.mockImplementation((cb) => cb(prisma));
-    // 1st raw read = the sweep's due-orders query, 2nd = driverCancel's locked re-read.
-    prisma.$queryRaw.mockReset();
-    prisma.$queryRaw.mockResolvedValueOnce([dueRow]).mockResolvedValueOnce([lockedRow]);
-    prisma.$executeRaw.mockResolvedValue(1);
-    prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
-    prisma.pkg_order.findUnique.mockResolvedValue({ id: 600, uid: 7, rid: 0, order_status: 4, o_status: "Cancelled" });
-    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "customer_tok" });
-    prisma.tbl_rider.findUnique.mockResolvedValue(riderAt(22.1, 75.0)); // ~11 km from pickup
-    pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_driver: 20, driver_cancel_user_earning: 10 });
-  });
-
-  it("cancels on the driver's side, charges the driver penalty and notifies both sides", async () => {
-    await tripLifecycle.sweepPickupEtaDeadlines();
-
-    expect(prisma.order_status_history.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ order_id: 600, rider_id: 11, status: "Driver Cancelled", remark: expect.stringContaining("ETA") }),
-    });
-    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ user_id: 11, amount: 20, type: "debit", wallet_type: "driver", order_id: 600 }),
-    });
-    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ user_id: 7, amount: 10, type: "credit", wallet_type: "user", order_id: 600 }),
-    });
-    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:driver_cancelled", expect.objectContaining({ order_id: 600, o_status: "Cancelled" }));
-    expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(11, "order:customer_cancelled", expect.objectContaining({ order_id: "600", o_status: "Cancelled" }));
-    expect(pushNotifier.notifyCustomerDriverEtaTimeoutCancel).toHaveBeenCalledWith("customer_tok", 600);
-    expect(pushNotifier.notifyDriverEtaTimeoutCancel).toHaveBeenCalledWith("rider_tok", 600);
-  });
-
-  it("does not cancel when the driver's fresh fix is already inside the pickup geofence", async () => {
-    prisma.tbl_rider.findUnique.mockResolvedValue(riderAt(22.0005, 75.0)); // ~55 m away
-
-    await tripLifecycle.sweepPickupEtaDeadlines();
-
-    expect(prisma.order_status_history.create).not.toHaveBeenCalled();
-    expect(dispatchManager.emitCustomerEvent).not.toHaveBeenCalled();
-    expect(pushNotifier.notifyDriverEtaTimeoutCancel).not.toHaveBeenCalled();
-  });
-
-  it("ignores the geofence check when the driver's last fix is stale and still cancels", async () => {
-    prisma.tbl_rider.findUnique.mockResolvedValue(riderAt(22.0005, 75.0, 10 * 60 * 1000));
-
-    await tripLifecycle.sweepPickupEtaDeadlines();
-
-    expect(prisma.order_status_history.create).toHaveBeenCalled();
-  });
-
-  it("does not cancel while the customer's advance payment is still outstanding", async () => {
-    prisma.$queryRaw.mockReset();
-    prisma.$queryRaw.mockResolvedValueOnce([{ ...dueRow, advance_payment: "40", payment_status: 0 }]);
-
-    await tripLifecycle.sweepPickupEtaDeadlines();
-
-    expect(prisma.order_status_history.create).not.toHaveBeenCalled();
-    expect(dispatchManager.emitCustomerEvent).not.toHaveBeenCalled();
-  });
-
-  it("leaves the order alone when the driver arrived between the sweep's read and the locked re-read", async () => {
-    prisma.$queryRaw.mockReset();
-    prisma.$queryRaw.mockResolvedValueOnce([dueRow]).mockResolvedValueOnce([{ ...lockedRow, order_status: 2, o_status: "Pickup" }]);
-
-    await tripLifecycle.sweepPickupEtaDeadlines();
-
-    expect(prisma.$executeRaw).not.toHaveBeenCalled();
-    expect(prisma.order_status_history.create).not.toHaveBeenCalled();
-    expect(dispatchManager.emitCustomerEvent).not.toHaveBeenCalled();
   });
 });

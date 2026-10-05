@@ -21,7 +21,7 @@ const settlementService = require("../services/settlementService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
-const { getPickupEtaRow, buildEtaView } = require("../services/pickupEtaService");
+const { getPickupEtaRow, buildEtaView, isPickupEtaExpired } = require("../services/pickupEtaService");
 const { buildCustomerWaitingView } = require("../services/customerWaitingView");
 
 /** Gives referral points back when a booking that already redeemed them failed. Never throws. */
@@ -817,7 +817,8 @@ async function getOrderDetails(req, res) {
       });
     }
 
-    const etaView = buildEtaView(order, await getPickupEtaRow(order.id));
+    const etaRow = await getPickupEtaRow(order.id);
+    const etaView = buildEtaView(order, etaRow, Date.now(), await isPickupEtaExpired(order, etaRow, rider));
 
     return res.status(200).json({
       ResponseCode: "200",

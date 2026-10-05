@@ -71,14 +71,6 @@ setInterval(() => {
   );
 }, PICKUP_RELOCATION_CEILING_SWEEP_INTERVAL_MS);
 
-// Driver missed the pickup ETA deadline -> auto-cancel on the driver's side
-// (with the driver penalty) - see tripLifecycle.sweepPickupEtaDeadlines.
-setInterval(() => {
-  tripLifecycle.sweepPickupEtaDeadlines().catch((err) =>
-    logger.error("sweepPickupEtaDeadlines interval failed:", err)
-  );
-}, PICKUP_TIMEOUT_SWEEP_INTERVAL_MS);
-
 // Advance-payment timeout auto-cancel — see tripLifecycle.sweepExpiredAdvancePayments
 // doc comment. Same DB-anchored periodic-sweep pattern as sweepOverduePickups
 // above, just a shorter interval to match its much shorter (2 min) window.

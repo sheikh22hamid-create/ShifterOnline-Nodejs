@@ -104,25 +104,6 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId, timeoutMinutes
   );
 }
 
-/** See tripLifecycle.sweepPickupEtaDeadlines - the driver missed the pickup ETA deadline; the order was cancelled on their side. */
-async function notifyCustomerDriverEtaTimeoutCancel(fcmToken, orderId) {
-  return sendCustomerPush(
-    fcmToken,
-    "Driver Cancelled",
-    "Your driver could not reach the pickup location in time, so this booking was cancelled. Please book again - we are sorry for the inconvenience.",
-    { type: "order_cancelled", order_id: String(orderId), reason: "driver_eta_timeout" }
-  );
-}
-
-async function notifyDriverEtaTimeoutCancel(fcmToken, orderId) {
-  return sendPushNotification(
-    fcmToken,
-    "Order Cancelled",
-    "You did not reach the pickup location within the ETA, so this order was cancelled and a cancellation penalty may apply.",
-    { type: "order_cancelled", order_id: String(orderId), reason: "driver_eta_timeout" }
-  );
-}
-
 /** See tripLifecycle.sweepExpiredAdvancePayments — customer never paid the advance within 2 minutes of the driver accepting. */
 async function notifyCustomerAdvancePaymentTimeoutCancel(fcmToken, orderId) {
   return sendCustomerPush(
@@ -391,8 +372,6 @@ module.exports = {
   notifyCustomerNoDriverFound,
   notifyCustomerPickupTimeoutCancel,
   notifyDriverPickupTimeoutCancel,
-  notifyCustomerDriverEtaTimeoutCancel,
-  notifyDriverEtaTimeoutCancel,
   notifyCustomerAdvancePaymentTimeoutCancel,
   notifyDriverAdvancePaymentTimeoutCancel,
   notifyDriverCustomerCancelled,

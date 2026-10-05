@@ -4303,6 +4303,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         ],
       );
 
+  /// Backend says the driver missed the pickup ETA (Google + buffer): customer may cancel free.
+  bool get _pickupEtaExpired => orderProduc?["pickup_eta_expired"] == true;
+
   /// What the hero card (and the header subtitle) say for the trip's current stage.
   _HeroState _heroState() {
     final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
@@ -4409,6 +4412,15 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         sub: "Share the OTP once your goods are loaded".tr,
         color: const Color(0xFFFF9100),
         headerSub: "Driver has arrived at pickup".tr,
+      );
+    }
+    if (hasRider && _pickupEtaExpired) {
+      return _HeroState(
+        lead: "Driver is ".tr,
+        accent: "running late".tr,
+        sub: "Driver missed the ETA. You can cancel for free.".tr,
+        color: const Color(0xFFFF9100),
+        headerSub: "Driver missed the pickup ETA".tr,
       );
     }
     if (hasRider) {
@@ -6060,7 +6072,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       ),
                       SizedBox(height: 10),
                       Text(
-                        "This will lead to cancellation of the order (cancellation charges may apply), Do you want to proceed ?".tr,
+                        _pickupEtaExpired
+                            ? "Your driver did not reach the pickup in time. You can cancel for free - no cancellation charge applies. Do you want to proceed ?".tr
+                            : "This will lead to cancellation of the order (cancellation charges may apply), Do you want to proceed ?".tr,
                         style: TextStyle(
                           color: notifier.text,
                           fontFamily: 'Gilroy_Medium',

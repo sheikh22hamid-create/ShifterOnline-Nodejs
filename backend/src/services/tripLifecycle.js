@@ -320,7 +320,7 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   }
 
   // Pickup ETA for the customer (Google driver -> pickup time + admin buffer)
-  // and the deadline sweepPickupEtaDeadlines enforces. Immediate bookings only:
+  // and the deadline pickupEtaService tracks. Immediate bookings only:
   // scheduled / next-day orders are accepted long before pickup is due, so a
   // deadline measured from accept would be meaningless for them. Best-effort -
   // a failure (or no driver GPS fix) just means no ETA, never a failed accept.
@@ -1082,9 +1082,20 @@ async function customerCancel(uid, orderId, comment) {
     return { success: false, msg: "Order not found" };
   }
 
+  // Driver missed the pickup ETA (Google + buffer) and isn't at the pickup:
+  // the customer cancels free - evaluated before the cancel changes the order.
+  let driverMissedEta = false;
+  if (Number(orderBefore.rid) !== 0 && Number(orderBefore.order_status) === 1) {
+    const [etaRow, etaRider] = await Promise.all([
+      pickupEtaService.getPickupEtaRow(orderId),
+      prisma.tbl_rider.findUnique({ where: { id: Number(orderBefore.rid) }, select: { rlats: true, rlongs: true, rloc_updated_at: true } }),
+    ]);
+    driverMissedEta = await pickupEtaService.isPickupEtaExpired(orderBefore, etaRow, etaRider);
+  }
+
   const affectedRows = await prisma.$executeRaw`
     UPDATE pkg_order
-    SET o_status = 'Cancelled', order_status = 4, cancel_reason = ${comment || null}
+    SET o_status = 'Cancelled', order_status = 4, cancel_reason = ${driverMissedEta ? `Driver missed pickup ETA - free cancel${comment ? `: ${comment}` : ""}` : (comment || null)}
     WHERE id = ${orderId} AND uid = ${uid} AND o_status NOT IN ('Completed', 'Cancelled')
   `;
 
@@ -1101,9 +1112,10 @@ async function customerCancel(uid, orderId, comment) {
     const isAdvanceTimeout = comment && String(comment).toLowerCase().includes("advance");
 
     const pkg = await pricingEngine.getPackageById(orderBefore.delivery_type);
-    let cancellationCharge = (isUnpaidAdvance || isAdvanceTimeout) ? 0 : (Number(pkg?.cancellation_charge_customer) || 0);
+    let cancellationCharge = (isUnpaidAdvance || isAdvanceTimeout || driverMissedEta) ? 0 : (Number(pkg?.cancellation_charge_customer) || 0);
 
-    const customerPlan = await pricingEngine.getActiveCustomerPlan(uid);
+    // A free cancel caused by the driver must not burn the customer's plan allowance.
+    const customerPlan = driverMissedEta ? null : await pricingEngine.getActiveCustomerPlan(uid);
     const hasFreeCancellation = customerPlan && customerPlan.cancellationEnabled && (
       customerPlan.freeCancellations === -1 || customerPlan.cancellationsUsed < customerPlan.freeCancellations
     );
@@ -1254,7 +1266,7 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
 
     if (Number(order.rid) !== Number(riderId)) throw new Error("NOT_ASSIGNED_DRIVER");
 
-    // Automated cancels (sweepPickupEtaDeadlines) only act on the exact state
+    // Automated cancels only act on the exact state
     // they decided on - e.g. a driver who arrived between the sweep's read and
     // this locked re-read must not be cancelled.
     if (opts.requireOrderStatus != null && Number(order.order_status) !== Number(opts.requireOrderStatus)) {
@@ -1409,84 +1421,6 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
     refund_amount: refundAmount,
     refund_status: refundStatus,
   };
-}
-
-/**
- * Auto-cancels, on the DRIVER's side, an accepted order whose driver has not
- * reached the pickup by the ETA deadline set at accept
- * (pickupEtaService: Google driver -> pickup time + admin buffer). Goes through
- * driverCancel so the driver penalty (package cancellation_charge_driver),
- * customer compensation, refunds and customer notification are exactly those
- * of a manual driver cancel.
- *
- * Never cancels when: the admin switched it off; the driver already arrived
- * (order_status 2 / a first_arrival_at on the wait timer - also covers a pickup
- * relocation re-opening the trip); the customer's advance payment is still
- * outstanding (the driver is blocked from starting); or the driver's fresh GPS
- * fix is inside the geofence around the pickup (admin radius) - they are
- * there, arrival detection is just still confirming.
- */
-async function sweepPickupEtaDeadlines() {
-  const settings = await pickupEtaService.getPickupEtaSettings();
-  if (!settings.autoCancelEnabled) return;
-
-  let due;
-  try {
-    due = await prisma.$queryRaw`
-      SELECT o.id, o.rid, o.uid, o.plat, o.plong, o.advance_payment, o.payment_status
-      FROM pkg_order o
-      WHERE o.order_status = 1 AND o.rid > 0
-        AND o.o_status NOT IN ('Completed', 'Cancelled')
-        AND o.pickup_deadline_at IS NOT NULL AND o.pickup_deadline_at <= ${new Date()}
-        AND NOT EXISTS (SELECT 1 FROM pkg_order_wait_timer t WHERE t.order_id = o.id AND t.first_arrival_at IS NOT NULL)
-    `;
-  } catch (err) {
-    logger.error("sweepPickupEtaDeadlines: failed to query overdue orders:", err);
-    return;
-  }
-
-  for (const order of due) {
-    try {
-      const orderId = Number(order.id);
-      const riderId = Number(order.rid);
-
-      const advanceDue = Math.round(Number(order.advance_payment) || 0) > 0 && Number(order.payment_status) !== 1;
-      if (advanceDue) continue;
-
-      const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { rlats: true, rlongs: true, rloc_updated_at: true, fcm_token: true } });
-      const fresh = rider?.rloc_updated_at && Date.now() - new Date(rider.rloc_updated_at).getTime() <= RIDER_LOCATION_FRESHNESS_MS;
-      if (fresh) {
-        const distanceM = haversineKm(Number(order.plat), Number(order.plong), Number(rider.rlats), Number(rider.rlongs)) * 1000;
-        if (Number.isFinite(distanceM) && distanceM <= settings.geofenceM) continue;
-      }
-
-      const reason = "Auto-cancelled: driver did not reach the pickup location within the ETA";
-      let result;
-      try {
-        result = await driverCancel(orderId, riderId, reason, { requireOrderStatus: 1 });
-      } catch (err) {
-        if (err.message === "ORDER_STATE_CHANGED" || err.message === "ORDER_NOT_CANCELLABLE" || err.message === "NOT_ASSIGNED_DRIVER") continue;
-        throw err;
-      }
-      if (!result?.success) continue;
-
-      logger.warn(`sweepPickupEtaDeadlines: order #${orderId} auto-cancelled - driver ${riderId} missed the pickup ETA deadline`);
-      await pickupEtaService.clearPickupDeadline(orderId);
-
-      dispatchManager.emitDriverEvent(riderId, "order:customer_cancelled", {
-        order_id: String(orderId),
-        reason: "You did not reach the pickup location within the ETA, so this order was cancelled.",
-        order_status: 4,
-        o_status: "Cancelled",
-      });
-      const customer = await prisma.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { fcm_token: true } });
-      await pushNotifier.notifyCustomerDriverEtaTimeoutCancel(customer?.fcm_token, orderId).catch(() => {});
-      if (rider?.fcm_token) await pushNotifier.notifyDriverEtaTimeoutCancel(rider.fcm_token, orderId).catch(() => {});
-      notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
-    } catch (err) {
-      logger.error(`sweepPickupEtaDeadlines: failed cancelling order ${order.id}:`, err);
-    }
-  }
 }
 
 async function rateOrder(uid, orderId, riderId, star, comment) {
@@ -2130,7 +2064,6 @@ module.exports = {
   cancelOverduePickup,
   sweepOverduePickups,
   sweepPickupRelocationCeiling,
-  sweepPickupEtaDeadlines,
   cancelExpiredAdvancePayment,
   sweepExpiredAdvancePayments,
   sendScheduledOrderReminders,
