@@ -4,6 +4,7 @@ jest.mock("../../config/db", () => ({
   tbl_user: { findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn() },
   pkg_order: { findUnique: jest.fn() },
+  order_receiver_pay: { findUnique: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() }));
 jest.mock("../../services/settlementService", () => {
@@ -166,6 +167,54 @@ describe("adminSettlementController.detail", () => {
     const r = res();
     await c.detail({ params: { id: "99" } }, r);
     expect(r.status).toHaveBeenCalledWith(404);
+  });
+});
+
+describe("adminSettlementController.detail - receiver_pay", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.order_settlement.findUnique.mockResolvedValue({ id: 4, order_id: 50, city_id: 1, payer: "receiver", status: "pending" });
+    prisma.order_settlement_event.findMany.mockResolvedValue([]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 50, paddress: "A", daddress: "B", d_charge: 100, total_dcharge: 100, commission: 10, o_status: "Completed" });
+  });
+
+  it("returns the receiver row without the token hash or razorpay id", async () => {
+    prisma.order_receiver_pay.findUnique.mockResolvedValue({
+      receiver_phone: "9876543210", receiver_name: "Ramesh", commission_percent: "3.00", status: "active",
+      declined_by: null, declined_at: null, link_sent_at: new Date("2026-10-05T10:00:00Z"), link_send_count: 1,
+      token_expires_at: new Date("2026-10-06T10:00:00Z"), token_hash: "a".repeat(64), razorpay_order_id: "order_X",
+    });
+    const r = res();
+    await c.detail({ params: { id: "4" }, scopedCityId: null }, r);
+    expect(json(r).data.receiver_pay).toMatchObject({ receiver_phone: "9876543210", receiver_name: "Ramesh", commission_percent: 3, status: "active", link_send_count: 1 });
+    expect(JSON.stringify(json(r))).not.toContain("token_hash");
+    expect(JSON.stringify(json(r))).not.toContain("order_X");
+    expect(prisma.order_receiver_pay.findUnique.mock.calls[0][0].select.token_hash).toBeUndefined();
+  });
+
+  it("returns receiver_pay: null when there is no row", async () => {
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(null);
+    const r = res();
+    await c.detail({ params: { id: "4" }, scopedCityId: null }, r);
+    expect(json(r).data.receiver_pay).toBeNull();
+  });
+
+  it("still returns the detail (receiver_pay null) when the receiver lookup throws", async () => {
+    prisma.order_receiver_pay.findUnique.mockRejectedValue(new Error("table missing"));
+    const r = res();
+    await c.detail({ params: { id: "4" }, scopedCityId: null }, r);
+    expect(json(r).success).toBe(true);
+    expect(json(r).data.receiver_pay).toBeNull();
+  });
+
+  it("still returns the detail when the Prisma model is missing entirely", async () => {
+    const saved = prisma.order_receiver_pay;
+    delete prisma.order_receiver_pay;
+    const r = res();
+    await c.detail({ params: { id: "4" }, scopedCityId: null }, r);
+    prisma.order_receiver_pay = saved;
+    expect(json(r).success).toBe(true);
+    expect(json(r).data.receiver_pay).toBeNull();
   });
 });
 

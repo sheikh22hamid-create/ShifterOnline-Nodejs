@@ -101,21 +101,52 @@ async function list(req, res) {
   }
 }
 
+// Receiver-pays details for the drawer. Never selects token_hash / razorpay ids, and a missing
+// table or model (dev/prod schema drift) must not break the drawer, so every failure yields null.
+const RECEIVER_PAY_SELECT = {
+  receiver_phone: true, receiver_name: true, commission_percent: true, status: true, declined_by: true,
+  declined_at: true, link_sent_at: true, link_send_count: true, token_expires_at: true,
+};
+
+async function loadReceiverRow(orderId) {
+  try {
+    return await prisma.order_receiver_pay.findUnique({ where: { order_id: orderId }, select: RECEIVER_PAY_SELECT });
+  } catch {
+    return null;
+  }
+}
+
 async function detail(req, res) {
   try {
     const id = parseId(req.params.id);
     if (!id) return invalidId(res);
     const settlement = await prisma.order_settlement.findUnique({ where: { id } });
     if (!settlement || outOfScope(req, settlement)) return res.status(404).json(NOT_FOUND_BODY);
-    const [events, order] = await Promise.all([
+    const [events, order, receiverRow] = await Promise.all([
       prisma.order_settlement_event.findMany({ where: { settlement_id: id }, orderBy: { id: "asc" } }),
       prisma.pkg_order.findUnique({ where: { id: settlement.order_id } }),
+      loadReceiverRow(settlement.order_id),
     ]);
+    // Whitelist the fields (in addition to the query's select) so a secret can never leak by accident.
+    const receiver_pay = receiverRow
+      ? {
+          receiver_phone: receiverRow.receiver_phone,
+          receiver_name: receiverRow.receiver_name,
+          commission_percent: Number(receiverRow.commission_percent),
+          status: receiverRow.status,
+          declined_by: receiverRow.declined_by,
+          declined_at: receiverRow.declined_at,
+          link_sent_at: receiverRow.link_sent_at,
+          link_send_count: receiverRow.link_send_count,
+          token_expires_at: receiverRow.token_expires_at,
+        }
+      : null;
     return res.status(200).json({
       success: true,
       data: {
         settlement,
         events,
+        receiver_pay,
         order: order && {
           id: order.id, paddress: order.paddress, daddress: order.daddress, d_charge: order.d_charge,
           total_dcharge: order.total_dcharge, commission: order.commission, o_status: order.o_status,
