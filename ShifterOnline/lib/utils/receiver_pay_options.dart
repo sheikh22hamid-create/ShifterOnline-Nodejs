@@ -99,3 +99,11 @@ double receiverDueAmount({required double total, required double discount}) {
   final due = total - discount;
   return due > 0 ? due : 0.0;
 }
+
+/// Toast text (an English translation key) after the booker changed the receiver's number.
+/// [linkSent] is the backend's `link_sent`: true when the new link reached WhatsApp, false/null
+/// when nothing was sent (no payment pending yet, or WhatsApp could not deliver).
+String receiverNumberUpdatedKey(dynamic linkSent) =>
+    _truthy(linkSent)
+        ? 'Receiver number updated. Payment link sent to the new number.'
+        : 'Receiver number updated';

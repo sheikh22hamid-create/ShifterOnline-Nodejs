@@ -7,6 +7,7 @@ import '../../services/settlement_api_service.dart';
 import '../../utils/Colors.dart';
 import '../../utils/node_socket_manager.dart';
 import '../../utils/receiver_pay_options.dart';
+import 'change_receiver_number_dialog.dart';
 
 class CustomerSettlementSheet extends StatefulWidget {
   final int orderId;
@@ -228,6 +229,12 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
     if (confirmed == true && mounted) {
       await _handleTakeOver();
     }
+  }
+
+  Future<void> _handleChangeNumber() async {
+    if (_resending || _takingOver) return;
+    final changed = await showChangeReceiverNumberDialog(context, uid: widget.uid, orderId: widget.orderId);
+    if (changed == true && mounted) widget.onSettled();
   }
 
   Future<void> _handleResend() async {
@@ -597,6 +604,11 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                         )
                       : Text("Resend payment link".tr,
                           style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 14.5, color: linercolor)),
+                ),
+                TextButton(
+                  onPressed: (_takingOver || _resending) ? null : _handleChangeNumber,
+                  child: Text("Change receiver number".tr,
+                      style: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 13, color: linercolor)),
                 ),
               ] else ...[
                 // Payment Method Options

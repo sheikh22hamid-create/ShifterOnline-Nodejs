@@ -21,6 +21,7 @@ class SettlementApiService {
   static const String _endpointDispute = "api/order/settlement/dispute";
   static const String _endpointTakeOver = "api/order/settlement/take-over";
   static const String _endpointResendLink = "api/order/settlement/resend-link";
+  static const String _endpointReceiverPhone = "api/order/settlement/receiver-phone";
   static const String _endpointReceiverPayConfig = "api/order/receiver-pay/config";
 
   static Map<String, String> _buildHeaders() {
@@ -58,7 +59,7 @@ class SettlementApiService {
         return 'Receiver pays is not available for this order.';
       case 'NOT_ACTIVE':
       case 'NOT_PAYABLE':
-        return 'The receiver payment is no longer active.';
+        return 'The receiver payment is already settled or no longer active.';
       case 'NOT_CONFIGURED':
         return 'Payment link is not available right now.';
       case 'TOO_SOON':
@@ -191,6 +192,14 @@ class SettlementApiService {
     required int orderId,
   }) =>
       _post(_endpointResendLink, {'uid': uid, 'order_id': orderId});
+
+  /// Booker corrects the receiver's number; the backend re-sends the pay link when one is pending.
+  static Future<Map<String, dynamic>> changeReceiverPhone({
+    required int uid,
+    required int orderId,
+    required String mobile,
+  }) =>
+      _post(_endpointReceiverPhone, {'uid': uid, 'order_id': orderId, 'mobile': mobile});
 
   /// Never throws: any failure yields ReceiverPayConfig.disabled so booking works exactly as before.
   static Future<ReceiverPayConfig> getReceiverPayConfig() async {

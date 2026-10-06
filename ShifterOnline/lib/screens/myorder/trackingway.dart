@@ -46,6 +46,7 @@ import '../home/location_search_screen.dart';
 import '../../services/settlement_api_service.dart';
 import 'customer_settlement_sheet.dart';
 import '../../utils/receiver_pay_options.dart';
+import 'change_receiver_number_dialog.dart';
 import 'customer_feedback_sheet.dart';
 
 class TrackingWay extends StatefulWidget {
@@ -4914,11 +4915,27 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     color: linercolor.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(
                     receiverPayInfo['status']?.toString() == 'active'
                         ? "${"Receiver pays".tr}${(receiverPayInfo['receiver_name'] ?? '').toString().trim().isEmpty ? '' : ' ${receiverPayInfo['receiver_name']}'} - ${"Your commission (added to the receiver's total)".tr}: ${receiverPayInfo['commission_percent'] ?? 0}%"
                         : "Receiver declined - you will pay normally.".tr,
                     style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Medium", fontSize: 12),
+                  ),
+                      if (receiverPayInfo['status']?.toString() == 'active')
+                        InkWell(
+                          onTap: _changeReceiverNumber,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              "Change receiver number".tr,
+                              style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -8074,6 +8091,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         pageRefresh();
       },
     );
+  }
+
+  Future<void> _changeReceiverNumber() async {
+    final uidInt = int.tryParse(uid) ?? 0;
+    final orderIdInt = int.tryParse(orderid) ?? 0;
+    if (uidInt <= 0 || orderIdInt <= 0) return;
+    final changed = await showChangeReceiverNumberDialog(context, uid: uidInt, orderId: orderIdInt);
+    if (changed == true && mounted) pageRefresh();
   }
 
   void _openSettlementSheet() {

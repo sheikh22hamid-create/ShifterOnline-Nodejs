@@ -121,4 +121,15 @@ void main() {
       expect(receiverDueAmount(total: 0, discount: 0), 0);
     });
   });
+
+  group('receiverNumberUpdatedKey', () {
+    test('says the link was sent only when the backend sent it', () {
+      expect(receiverNumberUpdatedKey(true), 'Receiver number updated. Payment link sent to the new number.');
+      expect(receiverNumberUpdatedKey('true'), 'Receiver number updated. Payment link sent to the new number.');
+    });
+    test('plain confirmation when no link went out', () {
+      expect(receiverNumberUpdatedKey(false), 'Receiver number updated');
+      expect(receiverNumberUpdatedKey(null), 'Receiver number updated');
+    });
+  });
 }

@@ -1016,6 +1016,15 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                 color: greaycolor,
               ),
             ),
+            const SizedBox(height: 2),
+            Text(
+              "+91 ${normalizeIndianMobile(widget.dropMobile)}",
+              style: TextStyle(
+                fontFamily: 'Gilroy_Bold',
+                fontSize: 12.5,
+                color: linercolor,
+              ),
+            ),
           ],
         ],
       ),
