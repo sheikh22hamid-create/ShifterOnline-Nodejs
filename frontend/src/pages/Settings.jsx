@@ -97,6 +97,7 @@ const HANDLED_FLAG_KEYS = [
   'receiver_commission_max_percent',
   'receiver_commission_max_amount',
   'receiver_pay_link_ttl_hours',
+  'receiver_tracking_enabled',
 ]
 
 function PaymentGateways() {
@@ -744,6 +745,25 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               How long the WhatsApp payment link stays valid after it is sent (Default: 24).
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Receiver Live Tracking">
+          <div>
+            <Label htmlFor="flag-receiver_tracking_enabled">Live Tracking Link (receiver_tracking_enabled)</Label>
+            <select
+              id="flag-receiver_tracking_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.receiver_tracking_enabled ?? '1'}
+              onChange={(e) => setFlags((f) => ({ ...f, receiver_tracking_enabled: e.target.value }))}
+            >
+              <option value="1">Enabled (1 - the drop contact gets a WhatsApp live tracking link)</option>
+              <option value="0">Disabled (0 - no links are sent and existing links stop working)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Needs <code>PUBLIC_BASE_URL</code> on the server and, for the map, <code>MAPTILER_KEY</code>. Without the key the page still shows status and ETA, just no map.
             </p>
           </div>
         </Section>
