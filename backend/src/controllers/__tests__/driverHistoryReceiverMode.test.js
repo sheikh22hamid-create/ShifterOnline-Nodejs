@@ -34,11 +34,20 @@ async function run() {
 
 describe("pkgHistoryDriver receiver-mode lookup", () => {
   it("uses the receiver-mode cash amount for orders with a receiver settlement", async () => {
-    prisma.order_settlement.findMany.mockResolvedValue([{ order_id: 7 }]);
+    prisma.order_settlement.findMany.mockResolvedValue([{ order_id: 7, receiver_markup: 0, status: "pending" }]);
     const out = await run();
-    expect(prisma.order_settlement.findMany).toHaveBeenCalledWith({ where: { order_id: { in: [7] }, payer: "receiver" }, select: { order_id: true } });
+    expect(prisma.order_settlement.findMany).toHaveBeenCalledWith({
+      where: { order_id: { in: [7] }, payer: "receiver" }, select: { order_id: true, receiver_markup: true, status: true },
+    });
     expect(out.OrderHistory[0].cash_to_collect).toBe(100);
     expect(out.OrderHistory[0].trip_payment_summary.payment_by_user.advance_payment).toBe(0);
+  });
+
+  it("adds the booker's commission to the cash to collect, except when the receiver paid online", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([{ order_id: 7, receiver_markup: 3, status: "cash_received" }]);
+    expect((await run()).OrderHistory[0].cash_to_collect).toBe(103);
+    prisma.order_settlement.findMany.mockResolvedValue([{ order_id: 7, receiver_markup: 3, status: "paid_online" }]);
+    expect((await run()).OrderHistory[0].cash_to_collect).toBe(100);
   });
 
   it("keeps normal numbers when the order has no receiver settlement", async () => {

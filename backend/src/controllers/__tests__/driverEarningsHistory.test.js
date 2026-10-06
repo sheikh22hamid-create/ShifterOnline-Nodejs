@@ -81,6 +81,12 @@ describe("driver earnings timestamps", () => {
       expect(trip.wallet_adjustment).toBe(0);
     });
 
+    it("the booker's commission is collected in cash too and handed over from the driver wallet", () => {
+      const trip = formatPkgOrderForDriver(base, { ...rctx, receiverMarkupByOrder: { 7: 3 } });
+      expect(trip.cash_to_collect).toBe(103);
+      expect(trip.wallet_adjustment).toBe(13);
+    });
+
     it("the same order NOT in receiver mode is unchanged (advance netted off)", () => {
       for (const c of [context, { ...context, receiverModeByOrder: {} }, { ...context, receiverModeByOrder: { 8: true } }]) {
         const trip = formatPkgOrderForDriver(base, c);

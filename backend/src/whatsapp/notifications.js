@@ -169,8 +169,11 @@ async function notifyOrderBooked(orderId) {
   try {
     const rp = await prisma.order_receiver_pay.findFirst({ where: { order_id: order.id, status: "active" } });
     if (rp) {
+      const pct = Number(rp.commission_percent) || 0;
+      const feeNote = pct > 0 ? `Fare ke upar ${pct}% service fee lagegi, cash ya online dono me. ` : "";
       receiverPayLine =
         `💳 *${senderName}* ne aapko payment karne wala (payer) chuna hai. ` +
+        feeNote +
         `Delivery ke baad aapko ek secure payment link bheja jayega, usme app ki zaroorat nahi hai. ` +
         `Agar aap pay nahi karna chahte, to link me *Decline* dabayein.\n\n`;
     }

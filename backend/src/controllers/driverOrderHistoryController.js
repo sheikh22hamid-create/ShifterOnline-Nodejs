@@ -87,21 +87,27 @@ async function pkgHistoryDriver(req, res) {
     }
     const benefitByOrder = Object.fromEntries(benefitLogs.map((b) => [Number(b.ride_id), b]));
 
-    // Receiver-pays orders: the driver collects amount_due (advance is a held
-    // deposit refunded to the booker), so the cash math must not net it off.
+    // Receiver-pays orders: the driver collects amount_due plus the booker's commission (advance is
+    // a held deposit refunded to the booker), so the cash math must not net the advance off.
     // Never let a lookup failure (missing table/model, DB error) break history.
     let receiverModeByOrder = {};
+    let receiverMarkupByOrder = {};
     try {
       const recvRows = await prisma.order_settlement.findMany({
         where: { order_id: { in: orderIds }, payer: "receiver" },
-        select: { order_id: true },
+        select: { order_id: true, receiver_markup: true, status: true },
       });
       receiverModeByOrder = Object.fromEntries((recvRows || []).map((r) => [Number(r.order_id), true]));
+      // The commission rides on the cash the driver collects; an online payment never reaches the driver's hands.
+      receiverMarkupByOrder = Object.fromEntries(
+        (recvRows || []).filter((r) => r.status !== "paid_online").map((r) => [Number(r.order_id), Number(r.receiver_markup || 0)])
+      );
     } catch (e) {
       receiverModeByOrder = {};
+      receiverMarkupByOrder = {};
     }
 
-    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm, receiverModeByOrder }));
+    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm, receiverModeByOrder, receiverMarkupByOrder }));
 
     return res.status(200).json({ OrderHistory: history, ResponseCode: "200", Result: "true", ResponseMsg: "Order History Get Successfully!!!" });
   } catch (err) {
@@ -166,7 +172,8 @@ function formatPkgOrderForDriver(row, ctx) {
   // Receiver mode: advance is a held deposit refunded to the booker, so the
   // driver collects fare - discounts (= settlement amount_due).
   const advPayForCash = isReceiverMode ? 0 : advPay;
-  const cashCollect = Math.max(0, Number((fare - advPayForCash - discountAbsorbed).toFixed(2)));
+  const receiverMarkup = isReceiverMode ? Number((ctx.receiverMarkupByOrder && ctx.receiverMarkupByOrder[Number(row.id)]) || 0) : 0;
+  const cashCollect = Math.max(0, Number((fare - advPayForCash - discountAbsorbed + receiverMarkup).toFixed(2)));
 
   const walletDiff = Number((driverEarning - cashCollect).toFixed(2));
   let walletAction = "none";

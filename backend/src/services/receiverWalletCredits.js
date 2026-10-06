@@ -79,7 +79,8 @@ async function markReceiverRow(tx, orderId, status) {
 }
 
 // Extra settlement fields an admin outcome implies for a receiver-mode settlement.
-//  - cash_received / paid_online: the receiver did pay, so credit the booker (once).
+//  - cash_received / paid_online: the receiver did pay (the commission too, in cash or online),
+//    so credit the booker (once).
 //  - waived / customer_owes: the receiver did not pay, so the advance is consumed against the
 //    fare and the settlement becomes a normal customer one (any earlier credits are reversed,
 //    capped at the available balance; the uncollected part is recorded as reversal_shortfall).
@@ -87,9 +88,9 @@ async function adminOutcomePatch(tx, s, outcome, { notifications }) {
   if (s.payer !== "receiver") return {};
   if (outcome === "cash_received" || outcome === "paid_online") {
     if (s.receiver_credited) return {};
-    await applyReceiverCredits(tx, s, { includeMarkup: outcome === "paid_online", notifications });
+    await applyReceiverCredits(tx, s, { includeMarkup: true, notifications });
     await markReceiverRow(tx, s.order_id, "paid");
-    return { receiver_credited: true, ...(outcome === "cash_received" ? { receiver_markup: 0 } : {}) };
+    return { receiver_credited: true };
   }
   let shortfall = 0;
   if (s.receiver_credited) ({ shortfall } = await reverseReceiverCredits(tx, s, { notifications }));

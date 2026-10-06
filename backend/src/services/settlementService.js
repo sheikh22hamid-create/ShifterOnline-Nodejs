@@ -120,6 +120,10 @@ function effectOps(effect, s) {
         remark: `Advance payment balance for order #${s.order_id} (cash collected was less than net earning)`,
       });
     }
+    // Receiver mode: the driver also collected the booker's commission in cash. It is handed to the
+    // booker's wallet by the platform, so it comes off the driver wallet like the platform commission.
+    const receiverMarkup = s.payer === "receiver" ? round2(Number(s.receiver_markup || 0)) : 0;
+    if (receiverMarkup > 0) ops.push({ type: "debit", amount: receiverMarkup, remark: `Receiver commission collected in cash for order #${s.order_id}` });
     return ops;
   }
   if (effect === EFFECT.ONLINE) {
@@ -292,9 +296,9 @@ async function markCashReceived({ orderId, riderId }) {
     notifications.push(...n);
     const receiverPatch = {};
     if (s.payer === "receiver") {
-      await receiverWalletCredits.applyReceiverCredits(tx, s, { includeMarkup: false, notifications });
+      await receiverWalletCredits.applyReceiverCredits(tx, s, { includeMarkup: true, notifications });
       await receiverWalletCredits.markReceiverRow(tx, s.order_id, "paid");
-      Object.assign(receiverPatch, { receiver_credited: true, receiver_markup: 0 });
+      Object.assign(receiverPatch, { receiver_credited: true });
     }
     const now = new Date();
     const updated = await tx.order_settlement.update({

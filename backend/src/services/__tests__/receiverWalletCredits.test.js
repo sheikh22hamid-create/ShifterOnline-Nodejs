@@ -84,11 +84,11 @@ describe("adminOutcomePatch", () => {
     expect(patch).toEqual({ receiver_credited: true });
     expect(tx.order_receiver_pay.updateMany).toHaveBeenCalledWith({ where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "paid" }) });
   });
-  it("cash_received credits the advance only and zeroes the markup", async () => {
+  it("cash_received credits advance + commission and keeps the commission on the row", async () => {
     const tx = makeTx();
     const patch = await credits.adminOutcomePatch(tx, s(), "cash_received", { notifications: [] });
-    expect(patch).toEqual({ receiver_credited: true, receiver_markup: 0 });
-    expect(tx.tbl_wallet_history.create).toHaveBeenCalledTimes(1);
+    expect(patch).toEqual({ receiver_credited: true });
+    expect(tx.tbl_wallet_history.create).toHaveBeenCalledTimes(2);
   });
   it("does not credit twice when already credited", async () => {
     const tx = makeTx();
