@@ -34,7 +34,7 @@ async function poolRiderIds(cityId, todayStr = rules.istDateString()) {
 // whose order was cancelled does not count, so a cancelled trip never blocks the next one.
 async function findOpenBooking(userId) {
   const rows = await prisma.$queryRaw`
-    SELECT f.id
+    SELECT f.id, f.order_id
     FROM free_booking_order f
     JOIN pkg_order o ON o.id = f.order_id
     WHERE f.user_id = ${Number(userId)}
@@ -47,8 +47,9 @@ async function findOpenBooking(userId) {
   return rows[0] || null;
 }
 
-// Same driver conditions as dispatchManager.selectEligibleDrivers (online, approved, fresh
-// location, right vehicle, within the order radius, not on another trip), limited to the pool.
+// A subset of selectEligibleDrivers' conditions (online, approved, fresh location, right vehicle,
+// within the order radius, not on another trip), limited to the pool; the fallback at cascade
+// exhaustion covers any mismatch.
 async function findPoolDriver({ uid, cityId, category, plat, plong, radiusKm, todayStr }) {
   const freshSince = new Date(Date.now() - RIDER_LOCATION_FRESHNESS_MS);
   const rows = await prisma.$queryRaw`
@@ -84,6 +85,21 @@ async function findPoolDriver({ uid, cityId, category, plat, plong, radiusKm, to
   return rows[0] || null;
 }
 
+// Self-heal: an open row whose credit never ran (e.g. a transient error right after completion, with
+// no settlement transition to retry it) is retried once here. tryCredit is idempotent and never
+// throws. Returns the open row that remains after the retry (null when it settled or was voided),
+// and whether the user was locked by a credit that just landed. Called through module.exports so
+// tests can observe the retry.
+async function findOpenBookingAfterRetry(userId) {
+  let open = await findOpenBooking(userId);
+  if (!open) return { open: null, locked: false };
+  await module.exports.tryCredit(open.order_id);
+  open = await findOpenBooking(userId);
+  if (open) return { open, locked: false };
+  const fresh = await prisma.tbl_user.findUnique({ where: { id: Number(userId) }, select: { free_booking_locked: true } });
+  return { open: null, locked: Boolean(fresh?.free_booking_locked) };
+}
+
 async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, bookingType = 1 }) {
   const userId = Number(uid);
   const user = await prisma.tbl_user.findUnique({
@@ -97,13 +113,15 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
   // Scheduled / next-day bookings are not dispatched at booking time: never free bookings.
   const instant = Number(bookingType) === 1;
   const cityOpen = rules.isCityOfferOpen(setting, new Date()) && instant;
-  const locked = Boolean(user?.free_booking_locked);
+  let locked = Boolean(user?.free_booking_locked);
 
   let openBooking = false;
   let pool = null;
   if (premium && cityOpen && !locked) {
-    openBooking = Boolean(await findOpenBooking(userId));
-    if (!openBooking) {
+    const healed = await findOpenBookingAfterRetry(userId);
+    openBooking = Boolean(healed.open);
+    locked = healed.locked;
+    if (!openBooking && !locked) {
       pool = await findPoolDriver({
         uid: userId, cityId: city, category, plat, plong, radiusKm, todayStr: rules.istDateString(),
       });
@@ -160,8 +178,13 @@ async function getUserStatus(uid) {
   const setting = user?.city_id ? await getCitySetting(user.city_id) : null;
   const premium = Boolean(plan);
   const cityOpen = rules.isCityOfferOpen(setting, new Date());
-  const locked = Boolean(user?.free_booking_locked);
-  const openBooking = premium && cityOpen && !locked ? Boolean(await findOpenBooking(userId)) : false;
+  let locked = Boolean(user?.free_booking_locked);
+  let openBooking = false;
+  if (premium && cityOpen && !locked) {
+    const healed = await findOpenBookingAfterRetry(userId);
+    openBooking = Boolean(healed.open);
+    locked = healed.locked;
+  }
 
   const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: true });
   if (outcome !== OUTCOME.ELIGIBLE) return { state: outcome, message: rules.OUTCOME_MESSAGE[outcome] };

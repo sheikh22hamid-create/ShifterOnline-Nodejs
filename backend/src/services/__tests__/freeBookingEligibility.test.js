@@ -21,6 +21,8 @@ const hour = 3600 * 1000;
 const openSetting = () => ({ enabled: true, offer_start: new Date(Date.now() - hour), offer_end: new Date(Date.now() + hour) });
 const input = { uid: 7, plat: 22.7, plong: 75.8, category: "E-Loader", radiusKm: 5, cityId: 3, bookingType: 1 };
 
+afterEach(() => jest.restoreAllMocks());
+
 beforeEach(() => {
   jest.resetAllMocks();
   prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: false });
@@ -50,9 +52,36 @@ describe("checkEligibility", () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true });
     expect((await svc.checkEligibility(input)).outcome).toBe("locked");
   });
-  it("open_booking when an earlier free booking is still open", async () => {
-    prisma.$queryRaw.mockResolvedValueOnce([{ id: 1 }]);
+  it("open_booking when an earlier free booking is still open (the retry credit leaves it open)", async () => {
+    const credit = jest.spyOn(svc, "tryCredit").mockResolvedValue({ credited: false, action: "wait" });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 1, order_id: 41 }]).mockResolvedValueOnce([{ id: 1, order_id: 41 }]);
     expect((await svc.checkEligibility(input)).outcome).toBe("open_booking");
+    expect(credit).toHaveBeenCalledTimes(1);
+    expect(credit).toHaveBeenCalledWith(41);
+  });
+  it("self-heals: a stuck open row is credited on the next check and the user is then locked", async () => {
+    const credit = jest.spyOn(svc, "tryCredit").mockResolvedValue({ credited: true, action: "credit" });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 1, order_id: 41 }]).mockResolvedValueOnce([]);
+    prisma.tbl_user.findUnique
+      .mockResolvedValueOnce({ city_id: 3, free_booking_locked: false })
+      .mockResolvedValueOnce({ free_booking_locked: true });
+    const out = await svc.checkEligibility(input);
+    expect(credit).toHaveBeenCalledWith(41);
+    expect(out.outcome).toBe("locked");
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+  it("self-heals: a stuck row that is voided frees the user to proceed to the pool check", async () => {
+    jest.spyOn(svc, "tryCredit").mockResolvedValue({ credited: false, action: "void" });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 1, order_id: 41 }]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ rider_id: 9, distance_km: 1 }]);
+    prisma.tbl_user.findUnique
+      .mockResolvedValueOnce({ city_id: 3, free_booking_locked: false })
+      .mockResolvedValueOnce({ free_booking_locked: false });
+    expect((await svc.checkEligibility(input)).outcome).toBe("eligible");
+  });
+  it("does not retry the credit when there is no open row", async () => {
+    const credit = jest.spyOn(svc, "tryCredit");
+    await svc.checkEligibility(input);
+    expect(credit).not.toHaveBeenCalled();
   });
   it("the open-booking query ignores cancelled orders", async () => {
     await svc.checkEligibility(input);
@@ -114,6 +143,21 @@ describe("getDispatchPoolFilter", () => {
 });
 
 describe("getUserStatus", () => {
+  it("open_booking after one retry credit leaves the row open", async () => {
+    const credit = jest.spyOn(svc, "tryCredit").mockResolvedValue({ credited: false, action: "wait" });
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: false, free_booking_just_unlocked: false });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 1, order_id: 41 }]).mockResolvedValueOnce([{ id: 1, order_id: 41 }]);
+    expect((await svc.getUserStatus(7)).state).toBe("open_booking");
+    expect(credit).toHaveBeenCalledWith(41);
+  });
+  it("self-heals a stuck row: after the retry credit the state is locked, not open_booking", async () => {
+    jest.spyOn(svc, "tryCredit").mockResolvedValue({ credited: true, action: "credit" });
+    prisma.tbl_user.findUnique
+      .mockResolvedValueOnce({ city_id: 3, free_booking_locked: false, free_booking_just_unlocked: false })
+      .mockResolvedValueOnce({ free_booking_locked: true });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 1, order_id: 41 }]).mockResolvedValueOnce([]);
+    expect((await svc.getUserStatus(7)).state).toBe("locked");
+  });
   it("available for a premium, unlocked user in an open city", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: false, free_booking_just_unlocked: false });
     expect((await svc.getUserStatus(7)).state).toBe("available");
