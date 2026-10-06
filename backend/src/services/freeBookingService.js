@@ -38,7 +38,7 @@ async function poolRiderIds(cityId, todayStr = rules.istDateString()) {
 // whose order was cancelled does not count, so a cancelled trip never blocks the next one.
 async function findOpenBooking(userId) {
   const rows = await prisma.$queryRaw`
-    SELECT f.id, f.order_id
+    SELECT f.id, f.order_id, o.o_status
     FROM free_booking_order f
     JOIN pkg_order o ON o.id = f.order_id
     WHERE f.user_id = ${Number(userId)}
@@ -97,6 +97,8 @@ async function findPoolDriver({ uid, cityId, category, plat, plong, radiusKm, to
 async function findOpenBookingAfterRetry(userId) {
   let open = await findOpenBooking(userId);
   if (!open) return { open: null, locked: false };
+  // A trip still in progress has nothing to credit: skip the two FOR UPDATE locks tryCredit takes.
+  if (open.o_status !== "Completed") return { open, locked: false };
   await module.exports.tryCredit(open.order_id);
   open = await findOpenBooking(userId);
   if (open) return { open, locked: false };
