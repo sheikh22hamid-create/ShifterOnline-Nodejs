@@ -58,6 +58,7 @@ describe("voidOrder", () => {
     await ctrl.voidOrder(mkReq({ id: 1, role: "superadmin" }, { params: { id: "5" } }), res);
     expect(admin.findOrderInCity).not.toHaveBeenCalled();
     expect(freeBookingService.voidOrder).toHaveBeenCalledWith("5");
+    expect(logger.info).toHaveBeenCalledWith("free-booking void order=5 by admin=1");
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 });

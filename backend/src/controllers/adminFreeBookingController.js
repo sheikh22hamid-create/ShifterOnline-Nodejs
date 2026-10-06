@@ -63,6 +63,7 @@ const voidOrder = async (req, res) => {
     }
     const ok = await freeBookingService.voidOrder(req.params.id);
     if (!ok) return res.status(409).json({ success: false, message: "This booking is no longer open" });
+    logger.info(`free-booking void order=${req.params.id} by admin=${req.user.id}`);
     return res.json({ success: true, message: "Free booking voided" });
   } catch (e) { return fail(res, e, "voidOrder"); }
 };

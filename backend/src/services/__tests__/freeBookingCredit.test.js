@@ -56,6 +56,7 @@ describe("tryCredit", () => {
       data: expect.objectContaining({ status: "FREE_BOOKING_REWARD_CREDITED", credit_amount: 500, wallet_history_id: 77 }),
     });
     expect(walletNotifier.notifyCustomerWalletTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ type: "credit", amount: 500 }));
+    expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_REWARD_PENDING->FREE_BOOKING_REWARD_CREDITED reason=- amount=500");
   });
 
   it("credits the full invoice even when a coupon or points paid part of it (spec: actual fare)", async () => {
@@ -111,6 +112,7 @@ describe("tryCredit", () => {
     });
     expect(tx.tbl_user.update).not.toHaveBeenCalled();
     expect(tx.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_REWARD_PENDING->FREE_BOOKING_NOT_ELIGIBLE reason=payment_failed amount=-");
   });
 
   it("voids as vehicle_changed when another driver finished the trip", async () => {
@@ -162,6 +164,12 @@ describe("markCompleted", () => {
     });
     expect(out.credited).toBe(true);
   });
+  it("logs the CONFIRMED -> REWARD_PENDING transition with the amount", async () => {
+    prisma.free_booking_order.updateMany.mockResolvedValue({ count: 1 });
+    makeTx({ row: pendingRow() });
+    await svc.markCompleted({ orderId: 50, finalTotal: 500 });
+    expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_CONFIRMED->FREE_BOOKING_REWARD_PENDING reason=- amount=500");
+  });
   it("does nothing for an order that is not a CONFIRMED free booking", async () => {
     prisma.free_booking_order.updateMany.mockResolvedValue({ count: 0 });
     expect(await svc.markCompleted({ orderId: 50, finalTotal: 500 })).toEqual({ credited: false });
@@ -187,6 +195,7 @@ describe("recordAcceptance", () => {
       data: { status: "FREE_BOOKING_NOT_ELIGIBLE", not_eligible_reason: "vehicle_changed" },
     });
     expect(customerInbox.saveCustomerNotification).toHaveBeenCalledWith(7, expect.any(String), expect.any(String));
+    expect(logger.info).toHaveBeenCalledWith("free-booking order=50 open->FREE_BOOKING_NOT_ELIGIBLE reason=vehicle_changed amount=-");
   });
   it("ignores orders that are not CONFIRMED free bookings", async () => {
     prisma.free_booking_order.findUnique.mockResolvedValue(null);

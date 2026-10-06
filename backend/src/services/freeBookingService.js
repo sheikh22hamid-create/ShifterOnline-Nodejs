@@ -10,6 +10,10 @@ const rules = require("./freeBookingRules");
 
 const { STATUS, OUTCOME, REASON, OPEN_STATUSES } = rules;
 
+// Spec section 10: one line per status transition, written after the write succeeded.
+const logTransition = (orderId, from, to, reason, amount) =>
+  logger.info(`free-booking order=${orderId} ${from}->${to} reason=${reason ?? "-"} amount=${amount ?? "-"}`);
+
 const asDate = (yyyyMmDd) => new Date(`${yyyyMmDd}T00:00:00.000Z`);
 
 function getCitySetting(cityId) {
@@ -140,7 +144,7 @@ async function createForOrder({ order, check, radiusKm }) {
       .catch(() => null);
     planAmount = plan?.price ?? null;
   }
-  return prisma.free_booking_order.create({
+  const created = await prisma.free_booking_order.create({
     data: {
       order_id: Number(order.id),
       user_id: Number(order.uid),
@@ -151,6 +155,8 @@ async function createForOrder({ order, check, radiusKm }) {
       premium_plan_amount: planAmount,
     },
   });
+  logTransition(order.id, "create", STATUS.CONFIRMED);
+  return created;
 }
 
 /** Pool rider ids a free-booking order may be offered to; null = normal order, no filter. Never throws. */
@@ -199,12 +205,23 @@ const notifyUser = (userId, title, description) =>
   customerInbox.saveCustomerNotification(userId, title, description);
 
 // Atomic: only an open row flips, so a race between two callers voids once.
-async function voidRow(rowId, reason) {
+// orderId is only used to label the log line; when unknown it is looked up after the write.
+async function voidRow(rowId, reason, orderId) {
   const res = await prisma.free_booking_order.updateMany({
     where: { id: rowId, status: { in: OPEN_STATUSES } },
     data: { status: STATUS.NOT_ELIGIBLE, not_eligible_reason: reason },
   });
-  return res.count === 1;
+  if (res.count !== 1) return false;
+  let label = orderId;
+  if (label == null) {
+    try {
+      label = (await prisma.free_booking_order.findUnique({ where: { id: rowId }, select: { order_id: true } }))?.order_id;
+    } catch (err) {
+      logger.warn(`freeBookingService.voidRow: order lookup for log failed (row ${rowId}): ${err.message}`);
+    }
+  }
+  logTransition(label ?? `row#${rowId}`, "open", STATUS.NOT_ELIGIBLE, reason);
+  return true;
 }
 
 async function voidOrder(freeBookingOrderId, reason = REASON.ADMIN_VOID) {
@@ -218,9 +235,10 @@ async function recordAcceptance(orderId, riderId) {
   const ids = await poolRiderIds(row.city_id);
   if (ids.includes(Number(riderId))) {
     await prisma.free_booking_order.update({ where: { id: row.id }, data: { pool_rider_id: Number(riderId), accepted_in_pool: true } });
+    logger.info(`free-booking order=${orderId} ${STATUS.CONFIRMED}->${STATUS.CONFIRMED} reason=pool_driver_accepted amount=-`);
     return;
   }
-  if (await voidRow(row.id, REASON.VEHICLE_CHANGED)) {
+  if (await voidRow(row.id, REASON.VEHICLE_CHANGED, Number(orderId))) {
     await notifyUser(
       row.user_id,
       "Free Booking not applicable",
@@ -236,6 +254,7 @@ async function fallbackToNormalDispatch(orderId) {
     data: { status: STATUS.NOT_ELIGIBLE, not_eligible_reason: REASON.POOL_UNAVAILABLE },
   });
   if (res.count !== 1) return false;
+  logTransition(orderId, STATUS.CONFIRMED, STATUS.NOT_ELIGIBLE, REASON.POOL_UNAVAILABLE);
   // The flip is atomic and final, so the caller must always learn it happened: a failed
   // notification must not make dispatch cancel the order as "No driver found".
   try {
@@ -261,12 +280,16 @@ async function fallbackToNormalDispatch(orderId) {
 async function tryCredit(orderId) {
   const id = Number(orderId);
   const notifications = [];
+  let fromStatus = null;
+  let voidReason = null;
+  let creditAmount = null;
   try {
     const result = await prisma.$transaction(async (tx) => {
       const locked = await tx.$queryRaw`SELECT id, user_id FROM free_booking_order WHERE order_id = ${id} FOR UPDATE`;
       if (!locked[0]) return { credited: false, action: "skip" };
       const row = await tx.free_booking_order.findUnique({ where: { id: locked[0].id } });
       if (!row || !OPEN_STATUSES.includes(row.status)) return { credited: false, action: "skip" };
+      fromStatus = row.status;
 
       const userRows = await tx.$queryRaw`SELECT free_booking_locked FROM tbl_user WHERE id = ${row.user_id} FOR UPDATE`;
       const userLocked = Boolean(Number(userRows[0]?.free_booking_locked));
@@ -288,6 +311,7 @@ async function tryCredit(orderId) {
           where: { id: row.id },
           data: { status: STATUS.NOT_ELIGIBLE, not_eligible_reason: decision.reason },
         });
+        voidReason = decision.reason;
         return { credited: false, action: "void" };
       }
 
@@ -319,8 +343,12 @@ async function tryCredit(orderId) {
         },
       });
       notifications.push({ userId: row.user_id, amount: decision.amount, remark });
+      creditAmount = decision.amount;
       return { credited: true, action: "credit" };
     });
+
+    if (result.action === "void") logTransition(id, fromStatus, STATUS.NOT_ELIGIBLE, voidReason);
+    if (result.action === "credit") logTransition(id, fromStatus, STATUS.REWARD_CREDITED, null, creditAmount);
 
     for (const n of notifications) {
       Promise.resolve(walletNotifier.notifyCustomerWalletTransaction(n.userId, { type: "credit", amount: n.amount, remark: n.remark }))
@@ -340,6 +368,7 @@ async function markCompleted({ orderId, finalTotal }) {
     data: { status: STATUS.REWARD_PENDING, actual_fare: rules.round2(finalTotal), completed_at: new Date() },
   });
   if (res.count !== 1) return { credited: false };
+  logTransition(orderId, STATUS.CONFIRMED, STATUS.REWARD_PENDING, null, rules.round2(finalTotal));
   return tryCredit(orderId);
 }
 
