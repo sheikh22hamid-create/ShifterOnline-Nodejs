@@ -98,8 +98,8 @@ function buildLinkMessage({ orderId, amountDue, markup, total, link }) {
   );
 }
 
-// Mints a fresh token on every call, so a resend invalidates the previous link.
-async function issueLink({ orderId, resend = false }) {
+// The pay row and settlement an order must be in before a receiver can be given a pay link.
+async function loadPayable(orderId) {
   const row = await prisma.order_receiver_pay.findUnique({ where: { order_id: orderId } });
   if (!row || row.status !== "active") throw new ReceiverPayError("NOT_ACTIVE", "Receiver payment is not active for this order.");
   const settlement = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
@@ -107,16 +107,14 @@ async function issueLink({ orderId, resend = false }) {
     throw new ReceiverPayError("NOT_PAYABLE", "There is nothing for the receiver to pay on this order.");
   }
   if (!process.env.PUBLIC_BASE_URL) {
-    logger.error("receiverPay.issueLink: PUBLIC_BASE_URL is not configured; cannot build a pay link.");
+    logger.error("receiverPay: PUBLIC_BASE_URL is not configured; cannot build a pay link.");
     throw new ReceiverPayError("NOT_CONFIGURED", "Payment link is not available right now.");
   }
-  const now = new Date();
-  if (resend) {
-    if (row.link_send_count >= MAX_LINK_SENDS) throw new ReceiverPayError("LINK_LIMIT", "The link was already sent too many times.");
-    if (row.link_sent_at && now.getTime() - new Date(row.link_sent_at).getTime() < RESEND_COOLDOWN_MS) {
-      throw new ReceiverPayError("TOO_SOON", "Please wait a minute before sending the link again.");
-    }
-  }
+  return { row, settlement };
+}
+
+// Mints a fresh pay token (the previous link stops working). `counted` also records a WhatsApp send.
+async function rotatePayToken(row, now, { counted }) {
   const { linkTtlHours } = await settings.getReceiverPaySettings();
   const { token, hash } = mintToken();
   await prisma.order_receiver_pay.update({
@@ -124,11 +122,32 @@ async function issueLink({ orderId, resend = false }) {
     data: {
       token_hash: hash,
       token_expires_at: new Date(now.getTime() + linkTtlHours * 3600 * 1000),
-      link_sent_at: now,
-      link_send_count: { increment: 1 },
       updated_at: now,
+      ...(counted ? { link_sent_at: now, link_send_count: { increment: 1 } } : {}),
     },
   });
+  return token;
+}
+
+// A pay link for the tracking page's "Pay now" button: same token rotation as issueLink, but nothing is
+// sent over WhatsApp and it does not count against the resend limit.
+async function mintLink({ orderId }) {
+  const { row } = await loadPayable(orderId);
+  const token = await rotatePayToken(row, new Date(), { counted: false });
+  return { link: buildPayLink(token) };
+}
+
+// Mints a fresh token on every call, so a resend invalidates the previous link.
+async function issueLink({ orderId, resend = false }) {
+  const { row, settlement } = await loadPayable(orderId);
+  const now = new Date();
+  if (resend) {
+    if (row.link_send_count >= MAX_LINK_SENDS) throw new ReceiverPayError("LINK_LIMIT", "The link was already sent too many times.");
+    if (row.link_sent_at && now.getTime() - new Date(row.link_sent_at).getTime() < RESEND_COOLDOWN_MS) {
+      throw new ReceiverPayError("TOO_SOON", "Please wait a minute before sending the link again.");
+    }
+  }
+  const token = await rotatePayToken(row, now, { counted: true });
   const link = buildPayLink(token);
   const total = receiverPayable(settlement.amount_due, settlement.receiver_markup);
   // Lazy require: whatsapp/notifications pulls in the WhatsApp client; keep it out of module load.
@@ -179,4 +198,5 @@ async function changeReceiverPhone({ orderId, phone, uid = null }) {
   }
 }
 
-module.exports = { changeReceiverPhone, ReceiverPayError, isCashBooking, validateBooking, createForOrder, getActiveForOrder, close, getConfig, buildPayLink, buildLinkMessage, issueLink };
+module.exports = { changeReceiverPhone, ReceiverPayError, isCashBooking, validateBooking, createForOrder, getActiveForOrder, close, getConfig, buildPayLink, buildLinkMessage, issueLink, mintLink };
+

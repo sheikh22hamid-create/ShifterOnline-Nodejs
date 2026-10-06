@@ -145,3 +145,40 @@ describe("receiverPayService.issueLink", () => {
     await expect(svc.issueLink({ orderId: 77, resend: true })).resolves.toMatchObject({ sent: true });
   });
 });
+
+describe("receiverPayService.mintLink", () => {
+  const row = (o = {}) => ({ id: 3, order_id: 50, status: "active", receiver_phone: "9876543210", link_send_count: 2, link_sent_at: new Date(), ...o });
+  const settlement = (o = {}) => ({ payer: "receiver", status: "pending", amount_due: 100, receiver_markup: 3, ...o });
+  beforeEach(() => {
+    process.env.PUBLIC_BASE_URL = "https://api.example.com";
+    settings.getReceiverPaySettings.mockResolvedValue({ linkTtlHours: 24 });
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(row());
+    prisma.order_settlement.findUnique.mockResolvedValue(settlement());
+    prisma.order_receiver_pay.update.mockResolvedValue({});
+  });
+  it("rotates the pay token, returns the /pay link and neither counts a send nor sends WhatsApp", async () => {
+    const { link } = await svc.mintLink({ orderId: 50 });
+    expect(link).toMatch(/^https:\/\/api\.example\.com\/pay\/[A-Za-z0-9_-]{43}$/);
+    const data = prisma.order_receiver_pay.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ token_hash: expect.any(String), token_expires_at: expect.any(Date) });
+    expect(data).not.toHaveProperty("link_send_count");
+    expect(data).not.toHaveProperty("link_sent_at");
+    const { sendWhatsAppNotification } = require("../../whatsapp/notifications");
+    expect(sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+  it("NOT_ACTIVE when the row is missing or not active", async () => {
+    prisma.order_receiver_pay.findUnique.mockResolvedValue(row({ status: "paid" }));
+    await expect(svc.mintLink({ orderId: 50 })).rejects.toMatchObject({ code: "NOT_ACTIVE" });
+  });
+  it("NOT_PAYABLE when nothing is pending for the receiver", async () => {
+    prisma.order_settlement.findUnique.mockResolvedValue(settlement({ payer: "customer" }));
+    await expect(svc.mintLink({ orderId: 50 })).rejects.toMatchObject({ code: "NOT_PAYABLE" });
+    expect(prisma.order_receiver_pay.update).not.toHaveBeenCalled();
+  });
+  it("NOT_CONFIGURED without PUBLIC_BASE_URL, before touching the token", async () => {
+    delete process.env.PUBLIC_BASE_URL;
+    await expect(svc.mintLink({ orderId: 50 })).rejects.toMatchObject({ code: "NOT_CONFIGURED" });
+    expect(prisma.order_receiver_pay.update).not.toHaveBeenCalled();
+  });
+});
+
