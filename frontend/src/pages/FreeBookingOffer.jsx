@@ -91,7 +91,7 @@ export default function FreeBookingOffer() {
     setCandidates([])
     setOrders([])
     setAddForm({ rider_id: '', valid_from: '', valid_to: '' })
-    setLockUserId('')
+    setCustSearch(''); setCustResults([]); setPickedCust(null)
   }, [cityId])
 
   // Runs `request`, then `apply(res)`; on failure runs `clear()` and toasts. Stale results are dropped.
