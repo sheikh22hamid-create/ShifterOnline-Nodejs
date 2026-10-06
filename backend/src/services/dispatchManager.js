@@ -116,6 +116,13 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       )`
     : Prisma.empty;
 
+  // Free Booking Offer: a CONFIRMED free booking is only offered to the city's pool drivers.
+  // getDispatchPoolFilter never throws; null means a normal order (no filter).
+  const poolIds = await require("./freeBookingService").getDispatchPoolFilter(order);
+  const poolBlock = poolIds
+    ? Prisma.sql`AND r.id IN (${Prisma.join(poolIds.length ? poolIds : [0])})`
+    : Prisma.empty;
+
   const rows = await prisma.$queryRaw`
     SELECT
       r.id AS rider_id,
@@ -174,6 +181,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
       ${settlementBlock}
+      ${poolBlock}
       AND (
         r.wallet_balance IS NULL
         OR r.wallet_balance >= -COALESCE(
@@ -407,6 +415,20 @@ async function checkCascadeTermination(orderId) {
 
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (order && order.rid === 0 && order.order_status === 0) {
+    // Free Booking Offer: the pool is exhausted, so continue as a normal booking (no refund)
+    // instead of cancelling. The audit row is flipped atomically, so this happens once.
+    let continueAsNormal = false;
+    try {
+      continueAsNormal = await require("./freeBookingService").fallbackToNormalDispatch(orderId);
+    } catch (err) {
+      logger.error(`dispatchManager: free-booking fallback failed for order ${orderId}:`, err);
+    }
+    if (continueAsNormal) {
+      activeDispatches.delete(orderId);
+      await startDispatch(order, null);
+      return;
+    }
+
     try {
       adminSocket.notifyDispatchAlert(orderId, order.city_id);
     } catch (adminErr) {
