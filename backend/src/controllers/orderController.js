@@ -19,6 +19,7 @@ const orderPickupService = require("../services/orderPickupService");
 const orderStopsService = require("../services/orderStopsService");
 const settlementService = require("../services/settlementService");
 const receiverPayService = require("../services/receiverPayService");
+const freeBookingService = require("../services/freeBookingService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -250,6 +251,7 @@ async function createOrderCore({
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
   stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
   receiverPays = false, receiverCommissionPercent,
+  freeBooking = false,
 }) {
   if (
     !uid ||
@@ -342,6 +344,22 @@ async function createOrderCore({
     Math.max(resolveSearchRadiusKm(radiusRangeRaw, radiusChargeRaw, firstPkg?.per_km_charge, radiusKm), 1),
     100
   );
+
+  // Free Booking Offer: the client's request is never trusted, so re-run the same check here.
+  let freeBookingCheck = null;
+  if (freeBooking) {
+    freeBookingCheck = await freeBookingService.checkEligibility({
+      uid, plat, plong, category, radiusKm: resolvedRadiusKm, cityId: resolvedCityId, bookingType,
+    });
+    if (freeBookingCheck.outcome !== "eligible") {
+      return {
+        ok: false,
+        code: "FREE_BOOKING_UNAVAILABLE",
+        outcome: freeBookingCheck.outcome,
+        msg: "Free Booking is no longer available for this booking.",
+      };
+    }
+  }
 
   let firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
     slabPricingConfig?.slabRates,
@@ -576,6 +594,18 @@ async function createOrderCore({
     }
   }
 
+  // Free-booking audit row. Like receiver-pay above, never allowed to fail an already-created
+  // booking: without it the ride is simply a normal booking.
+  order.free_booking = false;
+  if (freeBookingCheck) {
+    try {
+      await freeBookingService.createForOrder({ order, check: freeBookingCheck, radiusKm: resolvedRadiusKm });
+      order.free_booking = true;
+    } catch (err) {
+      logger.error(`createOrderCore: free-booking row failed for order ${order.id}:`, err);
+    }
+  }
+
   // Wallet-paid booking: the app already debited the fare (remark "Delivery
   // payment", no order id) just before this call. Tie that debit to this order
   // so a cancel / no-driver outcome can refund exactly what was paid.
@@ -687,7 +717,7 @@ async function createOrder(req, res) {
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
-      receiver_pays, receiver_commission_percent,
+      receiver_pays, receiver_commission_percent, free_booking,
     } = req.body;
 
     const result = await createOrderCore({
@@ -701,6 +731,7 @@ async function createOrder(req, res) {
       body_type: body_type || bodyType,
       goodsTypeId: goods_type_id, goodsTypeOther: goods_type_other,
       receiverPays: receiver_pays === true || receiver_pays === "true" || receiver_pays === 1 || receiver_pays === "1", receiverCommissionPercent: receiver_commission_percent,
+      freeBooking: free_booking === true || free_booking === "true" || free_booking === 1 || free_booking === "1",
     });
 
     if (!result.ok && result.code === "VALIDATION") {
@@ -717,6 +748,9 @@ async function createOrder(req, res) {
     }
     if (!result.ok && result.code === "RECEIVER_PAY_UNAVAILABLE") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", code: "RECEIVER_PAY_UNAVAILABLE", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "FREE_BOOKING_UNAVAILABLE") {
+      return res.status(409).json({ ResponseCode: "409", Result: "false", code: "FREE_BOOKING_UNAVAILABLE", outcome: result.outcome, ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "SETTLEMENT_PENDING") {
       return res.status(403).json({ ResponseCode: "403", Result: "false", code: "SETTLEMENT_PENDING", ResponseMsg: result.msg });
@@ -740,6 +774,7 @@ async function createOrder(req, res) {
       body_type: order.body_type || "any",
       covered_charge: Number(order.covered_charge) || 0,
       receiver_pay: Boolean(order.receiver_pay),
+      free_booking: Boolean(order.free_booking),
       ResponseMsg: "Package Order Placed Successfully!!!",
     });
   } catch (err) {
