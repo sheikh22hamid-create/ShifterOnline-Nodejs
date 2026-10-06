@@ -23,7 +23,17 @@ Prerequisites: dev backend with migration `20261006010000_add_order_track_link` 
 | 17 | `cd backend && npx jest` | All pass except the pre-existing `aadharPdfVerify` |
 | 18 | Change the pickup or add or change a stop after the trip is on the way | The pin and route follow it |
 | 19 | Open the link with MAPTILER_KEY set but a wrong/blocked key | Tiles missing, page still works |
+| 20 | Open the tracking link on a phone in dark mode | Page is light with the orange header, never dark |
+| 21 | Complete a delivery (cash order, no Receiver pays) and open the link | Delivered screen: summary, driven route on the map, rating form, help buttons, app button; NO payment card and no amounts anywhere |
+| 22 | Complete a Receiver-pays delivery with a 3% commission | Payment card shows fare, service fee and total; "Pay now" opens the /pay page with the same total; after paying, returning to the tracking link shows "Paid" |
+| 23 | Rate 5 stars and pick tags, submit | "Thanks for your feedback"; the Receiver tab in the admin Trip Feedback shows it; reloading the link shows the thank-you, not the form |
+| 24 | Rate 2 stars | Negative tags are offered instead of positive ones |
+| 25 | Double-tap Pay now / Submit | Only one request goes out |
+| 26 | "Call support" and "WhatsApp" | Dialer opens with 9109114515; WhatsApp chat opens with "Order #<id> - I need help" prefilled |
+| 27 | Open the link 25 hours after delivery | "This tracking link has expired"; none of the delivered cards show |
 
 ## Result log
 
 - Not run on a device yet.
+- Delivered screen and theme: not run on a device yet.
+

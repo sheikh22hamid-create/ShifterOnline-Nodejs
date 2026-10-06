@@ -1,49 +1,7 @@
 // Behaviour tests for the tracking page script, run against a minimal hand-written fake DOM
 // (jsdom is not installed and must not be added as a dependency).
-const { renderPage } = require("../trackPage");
+const { boot } = require("./helpers/trackPageHarness");
 
-function makeEl() {
-  const el = {
-    textContent: "", hidden: false, href: "", className: "", children: [], style: {},
-    classList: { add() {}, remove() {} },
-    appendChild(c) { el.children.push(c); return c; },
-  };
-  Object.defineProperty(el, "textContent", {
-    get() { return el._t || ""; },
-    set(v) { el._t = String(v); if (v === "") el.children = []; },
-  });
-  return el;
-}
-
-function boot(snapshots, opts = {}) {
-  const html = renderPage({ tileUrl: opts.tileUrl || null, attribution: "" });
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-  const els = {};
-  const document = {
-    hidden: !!opts.hidden,
-    getElementById(id) { return (els[id] = els[id] || makeEl()); },
-    createElement() { return makeEl(); },
-    addEventListener() {},
-  };
-  document.getElementById("cfg").textContent = JSON.stringify({ tileUrl: opts.tileUrl || null, attribution: "" });
-  document.getElementById("map").hidden = true;
-  const timers = [];
-  const fetchCalls = [];
-  let i = 0;
-  const fetchStub = (url) => {
-    fetchCalls.push(url);
-    const body = snapshots[Math.min(i++, snapshots.length - 1)];
-    if (body instanceof Error) return Promise.reject(body);
-    return Promise.resolve({ status: body && body.__status ? body.__status : 200, json: () => Promise.resolve(body) });
-  };
-  const win = opts.L ? { L: opts.L } : {};
-  new Function("document", "location", "fetch", "setTimeout", "clearTimeout", "window", "L", script)(
-    document, { pathname: "/track/abc123" }, fetchStub,
-    (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, () => {}, win, opts.L
-  );
-  const flush = () => new Promise((r) => setImmediate(r));
-  return { els, timers, fetchCalls, flush, document };
-}
 
 describe("tracking page script", () => {
   it("polls the token URL, sanitises the tel: link and renders text only", async () => {

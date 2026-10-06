@@ -45,3 +45,22 @@ describe("renderPage", () => {
     expect(html).toContain("document.hidden");
   });
 });
+
+describe("app theme", () => {
+  const html = renderPage({ tileUrl: null, attribution: "" });
+  it("is always light and uses the app orange", () => {
+    expect(html).toContain("color-scheme: light");
+    expect(html).not.toMatch(/prefers-color-scheme:\s*dark/);
+    expect(html).toContain("#FF6B35");
+    expect(html).toContain("#F7F7F7");
+  });
+  it("has an inline favicon so the browser does not request /favicon.ico", () => {
+    expect(html).toContain('rel="icon" href="data:,"');
+  });
+  it("contains the delivered blocks", () => {
+    for (const id of ["summaryCard", "payCard", "payBtn", "reviewCard", "reviewBtn", "thanksCard", "helpCard", "helpCall", "helpWa", "appBtn"]) {
+      expect(html).toContain(`id="${id}"`);
+    }
+  });
+});
+
