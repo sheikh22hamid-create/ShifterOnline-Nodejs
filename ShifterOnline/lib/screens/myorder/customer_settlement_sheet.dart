@@ -405,7 +405,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                     ),
                     if (isReceiverMode && markup > 0)
                       Text(
-                        "${"Includes your".tr} ₹${markup.toStringAsFixed(2)} ${"service fee".tr} ${"(if paid online)".tr}",
+                        "${"Includes your".tr} ₹${markup.toStringAsFixed(2)} ${"service fee".tr}",
                         style: TextStyle(
                           fontFamily: "Gilroy_Medium",
                           fontSize: 12,

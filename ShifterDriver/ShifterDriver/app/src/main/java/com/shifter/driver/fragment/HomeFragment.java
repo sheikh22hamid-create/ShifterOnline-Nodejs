@@ -2237,7 +2237,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                     if (curr == null || curr.trim().isEmpty()) curr = "₹";
                     double amount = 0.0;
                     try {
-                        amount = Double.parseDouble(finalSettlement.getAmountDue());
+                        amount = Double.parseDouble(com.shifter.driver.utility.ReceiverPayText.collectAmount(finalSettlement));
                     } catch (Exception ignored) {}
                     String formattedAmount = curr + String.format(java.util.Locale.getDefault(), "%.2f", amount);
 

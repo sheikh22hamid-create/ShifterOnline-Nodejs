@@ -71,16 +71,6 @@ public class ReceiverPayTextTest {
     }
 
     @Test
-    public void onlineHint_usesTotalWhenPositive() {
-        assertEquals("Receiver's online total: \u20B992.70", ReceiverPayText.onlineHint("\u20B9", "92.7", "90"));
-    }
-
-    @Test
-    public void onlineHint_nullTotalFallsBack() {
-        assertEquals("Receiver's online total: \u20B990.00", ReceiverPayText.onlineHint("\u20B9", null, "90"));
-    }
-
-    @Test
     public void graceWarning_receiverModeSaysReceiver() {
         assertEquals(ReceiverPayText.RECEIVER_GRACE_WARNING, ReceiverPayText.graceWarning(true, "orig"));
         assertTrue(ReceiverPayText.graceWarning(true, "orig").contains("receiver"));
@@ -101,11 +91,6 @@ public class ReceiverPayTextTest {
     }
 
     @Test
-    public void onlineHint_zeroTotalFallsBack() {
-        assertEquals("Receiver's online total: \u20B990.00", ReceiverPayText.onlineHint("\u20B9", "0", "90"));
-    }
-
-    @Test
     public void pendingSettlementDesc_customerIsUnchanged() {
         assertEquals("Tap to collect ₹120.00. New orders are paused after the grace period while a payment is pending.",
                 ReceiverPayText.pendingSettlementDesc(false, "₹120.00"));
@@ -115,5 +100,35 @@ public class ReceiverPayTextTest {
     public void pendingSettlementDesc_receiverSaysReceiverAndDropsPauseWarning() {
         assertEquals("Tap to collect ₹120.00 from the receiver.",
                 ReceiverPayText.pendingSettlementDesc(true, "₹120.00"));
+    }
+
+    @Test
+    public void collectAmount_receiverModeIncludesTheBookersFee() {
+        SettlementView v = view("{\"payer\":\"receiver\",\"status\":\"pending\",\"amount_due\":\"100\",\"receiver_pay_total\":\"103\"}");
+        assertEquals("103", ReceiverPayText.collectAmount(v));
+    }
+
+    @Test
+    public void collectAmount_fallsBackToAmountDue() {
+        assertEquals("100", ReceiverPayText.collectAmount(view("{\"payer\":\"receiver\",\"status\":\"pending\",\"amount_due\":\"100\"}")));
+        assertEquals("100", ReceiverPayText.collectAmount(view("{\"payer\":\"receiver\",\"status\":\"pending\",\"amount_due\":\"100\",\"receiver_pay_total\":\"0\"}")));
+    }
+
+    @Test
+    public void collectAmount_customerModeIsAmountDueEvenIfATotalIsPresent() {
+        SettlementView v = view("{\"payer\":\"customer\",\"status\":\"pending\",\"amount_due\":\"100\",\"receiver_pay_total\":\"103\"}");
+        assertEquals("100", ReceiverPayText.collectAmount(v));
+    }
+
+    @Test
+    public void feeHint_explainsTheFeeIsPartOfTheCashToCollect() {
+        assertEquals("Includes the booker's service fee of ₹3.00. Collect the full amount.",
+                ReceiverPayText.feeHint("₹", "103", "100"));
+    }
+
+    @Test
+    public void feeHint_emptyWhenThereIsNoFee() {
+        assertEquals("", ReceiverPayText.feeHint("₹", "100", "100"));
+        assertEquals("", ReceiverPayText.feeHint("₹", null, "100"));
     }
 }

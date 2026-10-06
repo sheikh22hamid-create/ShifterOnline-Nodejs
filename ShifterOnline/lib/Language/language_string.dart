@@ -8,7 +8,7 @@ class LocalString extends Translations {
           "Receiver pays": "Receiver pays",
           "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.": "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.",
           "Your commission (added to the receiver's total)": "Your commission (added to the receiver's total)",
-          "Commission applies only if the receiver pays online.": "Commission applies only if the receiver pays online.",
+          "Commission applies whether the receiver pays cash or online.": "Commission applies whether the receiver pays cash or online.",
           "(if paid online)": "(if paid online)",
           "You will pay for this order instead of the receiver. The receiver's link will stop working and you will lose the service fee.": "You will pay for this order instead of the receiver. The receiver's link will stop working and you will lose the service fee.",
           "Turn off Receiver pays and try again.": "Turn off Receiver pays and try again.",

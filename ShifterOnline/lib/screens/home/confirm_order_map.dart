@@ -1000,7 +1000,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             ),
             const SizedBox(height: 6),
             Text(
-              "Commission applies only if the receiver pays online.".tr,
+              "Commission applies whether the receiver pays cash or online.".tr,
               style: TextStyle(
                 fontFamily: 'Gilroy_Medium',
                 fontSize: 11.5,

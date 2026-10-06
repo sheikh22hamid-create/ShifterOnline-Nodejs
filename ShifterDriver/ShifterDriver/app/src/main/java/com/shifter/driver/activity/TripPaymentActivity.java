@@ -430,7 +430,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
 
         binding.txtOrderHeader.setText("ORDER #" + settlement.getOrderId());
 
-        double amountDue = parseDoubleSafe(settlement.getAmountDue());
+        double amountDue = parseDoubleSafe(ReceiverPayText.collectAmount(settlement));
         String formattedAmount = currency + String.format(Locale.getDefault(), "%.2f", amountDue);
         binding.txtAmountDueValue.setText(formattedAmount);
 
@@ -560,9 +560,9 @@ public class TripPaymentActivity extends LocaleAwareActivity {
             if (receiverMode) {
                 binding.btnReceiverRefused.setEnabled(!receiverBusy);
                 binding.btnResendLink.setEnabled(!receiverBusy);
-                binding.txtReceiverOnlineHint.setText(ReceiverPayText.onlineHint(
-                        currency, settlement.getReceiverPayTotal(), settlement.getAmountDue()));
-                binding.txtReceiverOnlineHint.setVisibility(View.VISIBLE);
+                String feeHint = ReceiverPayText.feeHint(currency, settlement.getReceiverPayTotal(), settlement.getAmountDue());
+                binding.txtReceiverOnlineHint.setText(feeHint);
+                binding.txtReceiverOnlineHint.setVisibility(feeHint.isEmpty() ? View.GONE : View.VISIBLE);
             } else {
                 binding.txtReceiverOnlineHint.setVisibility(View.GONE);
             }
@@ -575,7 +575,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
                 binding.txtStatusTitle.setTextColor(Color.parseColor("#92400E"));
                 binding.txtStatusDesc.setText(ReceiverPayText.collectLine(
                         currency,
-                        settlement.getAmountDue(),
+                        ReceiverPayText.collectAmount(settlement),
                         orderItem != null ? orderItem.getDropName() : null,
                         orderItem != null ? orderItem.getCustomerDmobile() : null));
                 binding.txtStatusDesc.setTextColor(Color.parseColor("#B45309"));
@@ -695,7 +695,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
 
     private void showConfirmReceivedDialog() {
         if (settlement == null) return;
-        double amountDue = parseDoubleSafe(settlement.getAmountDue());
+        double amountDue = parseDoubleSafe(ReceiverPayText.collectAmount(settlement));
         String formatted = currency + String.format(Locale.getDefault(), "%.2f", amountDue);
 
         new AlertDialog.Builder(this)

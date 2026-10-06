@@ -25,9 +25,21 @@ public final class ReceiverPayText {
         return sb.toString();
     }
 
-    public static String onlineHint(String currency, String total, String amountDue) {
-        double t = parse(total);
-        return "Receiver's online total: " + money(currency, t > 0 ? t : parse(amountDue));
+    /**
+     * What the driver collects in cash. In receiver mode the receiver also pays the booker's service
+     * fee, so it is the receiver total; otherwise (and when the total is missing) it is amount_due.
+     */
+    public static String collectAmount(SettlementView s) {
+        if (s == null) return null;
+        if (isReceiverMode(s) && parse(s.getReceiverPayTotal()) > 0) return s.getReceiverPayTotal();
+        return s.getAmountDue();
+    }
+
+    /** One-line note under the amount when it contains the booker's fee; empty when there is none. */
+    public static String feeHint(String currency, String total, String amountDue) {
+        double fee = parse(total) - parse(amountDue);
+        if (parse(total) <= 0 || fee <= 0.004) return "";
+        return "Includes the booker's service fee of " + money(currency, fee) + ". Collect the full amount.";
     }
 
     public static final String RECEIVER_GRACE_WARNING =

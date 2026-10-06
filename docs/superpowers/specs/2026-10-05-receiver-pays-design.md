@@ -41,13 +41,12 @@ so it only works while `settlement_enabled` is on.
 | Booker uses own second number as receiver | Allowed; no special check. |
 | Receiver without the app | WhatsApp updates + signed web pay link; no app needed. |
 | Architecture | Extend the settlement system; pay page served by the backend itself (no new deploy). |
-| Cash receiver | Allowed, but commission is Rs 0 (see Non-goals). |
+| Cash receiver | Allowed. **Update 2026-10-06:** the commission applies to cash too (see "Cash commission" below). |
 | Customer wallet | **Spend-only.** The customer app has no withdraw option and none is to be added; the commission and refunded advance stay in the wallet to be spent on rides. |
 
 ## Non-goals
 
-- Commission on **cash** payments (driver would have to remit the extra to the
-  company). Receiver-cash works, commission is 0.
+- ~~Commission on cash payments~~ - superseded 2026-10-06, see "Cash commission".
 - Saved/trusted receivers, shareable seller pay links, receiver wallet.
 - Changing fare, advance amount/timer, coupon or referral logic.
 - Non-cash booking payment methods: receiver-pay is offered only on orders
@@ -273,3 +272,19 @@ Details decided during the build:
 - Admin reversal of a receiver settlement uses the ORIGINAL row for the driver
   wallet reversal.
 - `/verify` failures lock the page's Pay button for the session.
+
+## Cash commission (added 2026-10-06)
+
+The booker's commission now applies when the receiver pays the driver in cash.
+
+- The driver collects `amount_due + receiver_markup` in cash (`receiver_pay_total` in the settlement view).
+- `effectOps(cash)` adds a driver-wallet debit of `receiver_markup` (remark "Receiver commission collected in
+  cash"), appended after the normal commission ops. The platform credits the same amount to the booker, so it
+  is neutral; the driver hands over what the receiver paid on top of the fare.
+- `markCashReceived` and the admin `cash_received` outcome credit advance **and** commission to the booker and no
+  longer zero `receiver_markup` (it must stay on the row so a later admin reversal can credit the driver back
+  using the original locked row).
+- Unchanged: decline / take-over / "Receiver refused" convert to customer mode with markup 0, so no commission.
+- Driver history cash math adds the markup for receiver orders that are not `paid_online`.
+- Risk: a driver who collects only the fare still has the commission debited, so the driver app shows the full
+  total and a fee hint.
