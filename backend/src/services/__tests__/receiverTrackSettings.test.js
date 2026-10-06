@@ -49,3 +49,19 @@ describe("getMapConfig", () => {
     expect(s.getMapConfig({ MAPTILER_KEY: "short" }).tileUrl).toBeNull();
   });
 });
+
+describe("getHelpConfig / APP_URL", () => {
+  it("defaults to the support number and builds the WhatsApp number with the country code", () => {
+    expect(s.getHelpConfig({})).toEqual({ phone: "9109114515", whatsapp: "919109114515" });
+  });
+  it("accepts an env override, normalising spaces and a country prefix", () => {
+    expect(s.getHelpConfig({ SUPPORT_PHONE: "+91 98765 43210" })).toEqual({ phone: "9876543210", whatsapp: "919876543210" });
+  });
+  it("falls back to the default for an invalid override", () => {
+    expect(s.getHelpConfig({ SUPPORT_PHONE: "12345" }).phone).toBe("9109114515");
+  });
+  it("exposes the Play Store listing", () => {
+    expect(s.APP_URL).toBe("https://play.google.com/store/apps/details?id=com.shifter.online");
+  });
+});
+

@@ -33,4 +33,16 @@ function getMapConfig(env = process.env) {
   return { tileUrl: `https://api.maptiler.com/maps/${style}/{z}/{x}/{y}.png?key=${key}`, attribution: ATTRIBUTION };
 }
 
-module.exports = { KEYS, isTrackingEnabled, getMapConfig };
+const APP_URL = "https://play.google.com/store/apps/details?id=com.shifter.online";
+const DEFAULT_SUPPORT_PHONE = "9109114515";
+
+// Support number shown on the delivered screen: the Customer Care number the WhatsApp messages already
+// use, overridable with SUPPORT_PHONE. WhatsApp wants the country code.
+function getHelpConfig(env = process.env) {
+  const digits = String(env.SUPPORT_PHONE || "").replace(/\D/g, "").slice(-10);
+  const phone = digits.length === 10 ? digits : DEFAULT_SUPPORT_PHONE;
+  return { phone, whatsapp: `91${phone}` };
+}
+
+module.exports = { KEYS, APP_URL, isTrackingEnabled, getMapConfig, getHelpConfig };
+

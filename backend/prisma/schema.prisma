@@ -1965,3 +1965,18 @@ model order_track_link {
   created_at     DateTime  @db.DateTime(0)
   last_viewed_at DateTime? @db.DateTime(0)
 }
+
+model order_receiver_feedback {
+  id              Int      @id @default(autoincrement())
+  order_id        Int      @unique(map: "uq_order_receiver_feedback_order")
+  rider_id        Int
+  receiver_phone  String   @db.VarChar(15)
+  driver_rating   Int?
+  delivery_rating Int?
+  feedback_tags   String?  @db.VarChar(255)
+  comment         String?  @db.Text
+  created_at      DateTime @db.DateTime(0)
+
+  @@index([rider_id], map: "idx_order_receiver_feedback_rider")
+}
+
