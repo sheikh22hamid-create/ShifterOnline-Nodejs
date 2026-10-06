@@ -395,6 +395,26 @@ async function markCompleted({ orderId, finalTotal }) {
   return tryCredit(orderId);
 }
 
+/**
+ * A cancelled trip leaves its open free-booking row CONFIRMED (cancellation does not go through this
+ * service). Flip those rows to NOT_ELIGIBLE (cancelled) so the audit list is accurate. Returns the
+ * number of rows changed. Never throws.
+ */
+async function reapCancelled() {
+  try {
+    const count = await prisma.$executeRaw`
+      UPDATE free_booking_order f JOIN pkg_order o ON o.id = f.order_id
+      SET f.status = ${STATUS.NOT_ELIGIBLE}, f.not_eligible_reason = ${REASON.CANCELLED}
+      WHERE f.status IN (${STATUS.CONFIRMED}, ${STATUS.REWARD_PENDING}) AND o.o_status = 'Cancelled'
+    `;
+    if (count > 0) logger.info(`free-booking orders=${count} open->${STATUS.NOT_ELIGIBLE} reason=${REASON.CANCELLED} amount=-`);
+    return count;
+  } catch (err) {
+    logger.error("freeBookingService.reapCancelled failed:", err);
+    return 0;
+  }
+}
+
 /** A referral by this user just became successful. True if a locked user was unlocked. */
 async function unlockForReferral(userId) {
   const res = await prisma.tbl_user.updateMany({
@@ -417,5 +437,5 @@ module.exports = {
   getCitySetting, poolRiderIds, findOpenBooking, findPoolDriver,
   checkEligibility, createForOrder, getDispatchPoolFilter, getUserStatus,
   recordAcceptance, markCompleted, tryCredit, fallbackToNormalDispatch,
-  unlockForReferral, setUserLock, voidOrder,
+  unlockForReferral, setUserLock, voidOrder, reapCancelled,
 };

@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const freeBookingService = require("./freeBookingService");
 const rules = require("./freeBookingRules");
+const logger = require("../utils/logger");
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const asDate = (s) => new Date(`${s}T00:00:00.000Z`);
@@ -175,6 +176,12 @@ async function removeFromPool(id, cityId) {
 
 async function listOrders({ cityId, status, unrestricted = false }) {
   if (!unrestricted && !cityId) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
+  // Bring cancelled trips' rows up to date before listing; a failure here must never break the list.
+  try {
+    await freeBookingService.reapCancelled();
+  } catch (err) {
+    logger.warn(`freeBookingAdminService.listOrders: reapCancelled failed: ${err.message}`);
+  }
   return prisma.free_booking_order.findMany({
     where: { ...(cityId ? { city_id: Number(cityId) } : {}), ...(status ? { status } : {}) },
     orderBy: { id: "desc" },

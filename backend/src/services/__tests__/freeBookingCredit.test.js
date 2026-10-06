@@ -1,5 +1,6 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
+  $executeRaw: jest.fn(),
   $transaction: jest.fn(),
   tbl_user: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   free_booking_pool: { findMany: jest.fn() },
@@ -309,5 +310,31 @@ describe("lock and unlock", () => {
     expect(prisma.tbl_user.update).toHaveBeenLastCalledWith({
       where: { id: 7 }, data: { free_booking_locked: false, free_booking_just_unlocked: false },
     });
+  });
+});
+
+describe("reapCancelled", () => {
+  it("runs one joined UPDATE for open rows of cancelled orders and returns the count", async () => {
+    prisma.$executeRaw.mockResolvedValue(3);
+    expect(await svc.reapCancelled()).toBe(3);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const sql = prisma.$executeRaw.mock.calls[0][0].join("?");
+    expect(sql).toMatch(/UPDATE free_booking_order f JOIN pkg_order o ON o\.id = f\.order_id/);
+    expect(sql).toMatch(/o\.o_status = 'Cancelled'/);
+    expect(prisma.$executeRaw.mock.calls[0].slice(1)).toEqual([
+      "FREE_BOOKING_NOT_ELIGIBLE", "cancelled", "FREE_BOOKING_CONFIRMED", "FREE_BOOKING_REWARD_PENDING",
+    ]);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("reason=cancelled"));
+  });
+  it("does not log when nothing changed", async () => {
+    prisma.$executeRaw.mockResolvedValue(0);
+    expect(await svc.reapCancelled()).toBe(0);
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+  it("never throws: logs the error and returns 0", async () => {
+    prisma.$executeRaw.mockRejectedValue(new Error("db down"));
+    expect(await svc.reapCancelled()).toBe(0);
+    expect(logger.error).toHaveBeenCalled();
   });
 });

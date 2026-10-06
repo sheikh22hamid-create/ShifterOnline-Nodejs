@@ -6,9 +6,11 @@ jest.mock("../../config/db", () => ({
   tbl_vehicle_details: { findMany: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
 }));
-jest.mock("../freeBookingService", () => ({ poolRiderIds: jest.fn().mockResolvedValue([]) }));
+jest.mock("../freeBookingService", () => ({ poolRiderIds: jest.fn().mockResolvedValue([]), reapCancelled: jest.fn() }));
+jest.mock("../../utils/logger", () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn() }));
 
 const prisma = require("../../config/db");
+const freeBookingService = require("../freeBookingService");
 const svc = require("../freeBookingAdminService");
 
 beforeEach(() => jest.resetAllMocks());
@@ -125,6 +127,21 @@ describe("listOrders scope", () => {
     await expect(svc.listOrders({ cityId: null })).rejects.toThrow(/not assigned/i);
     prisma.free_booking_order.findMany.mockResolvedValue([]);
     await expect(svc.listOrders({ cityId: null, unrestricted: true })).resolves.toEqual([]);
+  });
+});
+
+describe("listOrders reaps cancelled rows first", () => {
+  it("calls reapCancelled before listing", async () => {
+    const order = [];
+    freeBookingService.reapCancelled.mockImplementation(async () => { order.push("reap"); return 1; });
+    prisma.free_booking_order.findMany.mockImplementation(async () => { order.push("list"); return [{ id: 1 }]; });
+    await expect(svc.listOrders({ cityId: 3 })).resolves.toEqual([{ id: 1 }]);
+    expect(order).toEqual(["reap", "list"]);
+  });
+  it("still lists when reapCancelled throws", async () => {
+    freeBookingService.reapCancelled.mockRejectedValue(new Error("boom"));
+    prisma.free_booking_order.findMany.mockResolvedValue([{ id: 2 }]);
+    await expect(svc.listOrders({ cityId: 3 })).resolves.toEqual([{ id: 2 }]);
   });
 });
 
