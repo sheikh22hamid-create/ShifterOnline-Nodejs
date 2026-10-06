@@ -132,4 +132,17 @@ void main() {
       expect(receiverNumberUpdatedKey(null), 'Receiver number updated');
     });
   });
+
+  group('dueAtDrop', () {
+    test('normal order: advance is netted off the fare', () {
+      expect(dueAtDrop(total: 100, advance: 20, discount: 10, receiverMode: false), 70);
+    });
+    test('receiver pays: the advance is a held deposit and is not netted off', () {
+      expect(dueAtDrop(total: 100, advance: 20, discount: 10, receiverMode: true), 90);
+    });
+    test('never negative', () {
+      expect(dueAtDrop(total: 50, advance: 80, discount: 0, receiverMode: false), 0);
+      expect(dueAtDrop(total: 50, advance: 0, discount: 80, receiverMode: true), 0);
+    });
+  });
 }

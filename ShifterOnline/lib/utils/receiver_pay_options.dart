@@ -100,6 +100,18 @@ double receiverDueAmount({required double total, required double discount}) {
   return due > 0 ? due : 0.0;
 }
 
+/// Cash still due at the drop: fare minus advance minus coupon/points. In receiver-pays mode the
+/// advance is a held deposit refunded to the booker, so it is NOT subtracted. Never negative.
+double dueAtDrop({
+  required double total,
+  required double advance,
+  required double discount,
+  required bool receiverMode,
+}) {
+  final due = total - (receiverMode ? 0.0 : advance) - discount;
+  return due > 0 ? due : 0.0;
+}
+
 /// Toast text (an English translation key) after the booker changed the receiver's number.
 /// [linkSent] is the backend's `link_sent`: true when the new link reached WhatsApp, false/null
 /// when nothing was sent (no payment pending yet, or WhatsApp could not deliver).

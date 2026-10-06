@@ -3262,7 +3262,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (totalDouble == 0.0 && advDouble > 0) {
       totalDouble = advDouble;
     }
-    double remainingDouble = (totalDouble - advDouble - _prepaidDiscountAmount()) > 0 ? (totalDouble - advDouble - _prepaidDiscountAmount()) : 0.0;
+    double remainingDouble = dueAtDrop(total: totalDouble, advance: advDouble, discount: _prepaidDiscountAmount(), receiverMode: _isReceiverPayActive());
 
     final totalStr = (totalDouble % 1 == 0) ? totalDouble.toInt().toString() : totalDouble.toStringAsFixed(2);
     final advanceStr = (advDouble % 1 == 0) ? advDouble.toInt().toString() : advDouble.toStringAsFixed(2);
@@ -3590,7 +3590,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (totalDouble == 0.0 && advDouble > 0) {
       totalDouble = advDouble;
     }
-    double remainingDouble = (totalDouble - advDouble - _prepaidDiscountAmount()) > 0 ? (totalDouble - advDouble - _prepaidDiscountAmount()) : 0.0;
+    double remainingDouble = dueAtDrop(total: totalDouble, advance: advDouble, discount: _prepaidDiscountAmount(), receiverMode: _isReceiverPayActive());
 
     final totalStr = (totalDouble % 1 == 0) ? totalDouble.toInt().toString() : totalDouble.toStringAsFixed(2);
     final advanceStr = (advDouble % 1 == 0) ? advDouble.toInt().toString() : advDouble.toStringAsFixed(2);
@@ -4706,7 +4706,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final advance = double.tryParse(rawAdvance) ?? 0.0;
     if (total == 0.0 && advance > 0) total = advance;
     final discount = _prepaidDiscountAmount();
-    final remaining = (total - advance - discount) > 0 ? (total - advance - discount) : 0.0;
+    final remaining = dueAtDrop(total: total, advance: advance, discount: discount, receiverMode: _isReceiverPayActive());
     final waitingBilled = isCompleted ? _waitingBilledAmount() : 0.0;
 
     const green = Color(0xFF00C853);
@@ -7283,7 +7283,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (actualDouble == 0.0 && advDouble > 0) {
       actualDouble = advDouble;
     }
-    double remainingDouble = (actualDouble - advDouble - _prepaidDiscountAmount()) > 0 ? (actualDouble - advDouble - _prepaidDiscountAmount()) : 0.0;
+    double remainingDouble = dueAtDrop(total: actualDouble, advance: advDouble, discount: _prepaidDiscountAmount(), receiverMode: _isReceiverPayActive());
 
     // Mutable: reduced in place when referral points partially cover the
     // advance, so the Razorpay button below always asks for what's still due.
@@ -8091,6 +8091,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         pageRefresh();
       },
     );
+  }
+
+  /// True while the booker chose "Receiver pays" for this order and the receiver has not declined.
+  bool _isReceiverPayActive() {
+    final info = orderProduc;
+    return info is Map && info['receiver_pay'] is Map && (info['receiver_pay'] as Map)['status']?.toString() == 'active';
   }
 
   Future<void> _changeReceiverNumber() async {

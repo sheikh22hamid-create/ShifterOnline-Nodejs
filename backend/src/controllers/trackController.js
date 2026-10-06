@@ -25,8 +25,9 @@ async function snapshot(req, res) {
 function page(req, res) {
   // strict-origin (not no-referrer): a domain-restricted MapTiler key needs the Origin on tile requests,
   // and it still keeps the token path from leaking to cdnjs or MapTiler.
-  res.set({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "strict-origin", "X-Robots-Tag": "noindex" });
+  res.set({ "Cache-Control": "no-store", "Referrer-Policy": "strict-origin", "X-Robots-Tag": "noindex" });
   if (!trackLinkService.isTokenShape(req.params.token)) return res.status(404).json(INVALID);
+  res.set({ "Content-Type": "text/html; charset=utf-8" });
   return res.send(renderPage(getMapConfig()));
 }
 

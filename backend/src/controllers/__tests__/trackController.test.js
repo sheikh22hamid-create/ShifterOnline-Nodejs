@@ -61,6 +61,15 @@ describe("page", () => {
     c.page({ params: { token: "x" } }, r);
     expect(r.status).toHaveBeenCalledWith(404);
   });
+  it("the 404 is JSON (not labelled text/html) and the page is labelled text/html", () => {
+    const bad = res();
+    c.page({ params: { token: "x" } }, bad);
+    const sent = bad.set.mock.calls.map(([h]) => h).filter(Boolean);
+    expect(sent.some((h) => String(h["Content-Type"] || "").startsWith("text/html"))).toBe(false);
+    const good = res();
+    c.page({ params: { token: TOKEN } }, good);
+    expect(good.set).toHaveBeenCalledWith(expect.objectContaining({ "Content-Type": "text/html; charset=utf-8" }));
+  });
   it("the malformed-token 404 also carries the no-store / noindex headers", () => {
     const r = res();
     c.page({ params: { token: "x" } }, r);
