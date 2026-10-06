@@ -105,11 +105,13 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   // A driver whose last ride's payment has been pending past the admin grace
   // window gets no new offers (spec 2026-10-04). Only built when the feature
   // is on, so a DB without the order_settlement table is never queried.
+  // Receiver-mode settlements (payer = 'receiver') are excluded: they wait on the receiver, whom the
+  // driver cannot hurry (the driver can still tap "Receiver refused"), so they must not stall the driver.
   const settlement = await settlementSettings.getSettlementSettings();
   const settlementBlock = settlement.enabled
     ? Prisma.sql`AND r.id NOT IN (
         SELECT rid FROM order_settlement
-        WHERE status = 'pending' AND rid IS NOT NULL
+        WHERE status = 'pending' AND rid IS NOT NULL AND payer = 'customer'
           AND pending_since <= ${new Date(Date.now() - settlement.driverBlockGraceMinutes * 60 * 1000)}
       )`
     : Prisma.empty;

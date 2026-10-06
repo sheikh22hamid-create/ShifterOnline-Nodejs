@@ -1760,6 +1760,8 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
     expect(fragment).toBeDefined();
     expect(fragment.strings.join(" ")).toContain("status = 'pending'");
     expect(fragment.strings.join(" ")).toContain("rid IS NOT NULL");
+    // A receiver-mode settlement waits on the receiver, not on the driver, so it never blocks dispatch.
+    expect(fragment.strings.join(" ")).toContain("payer = 'customer'");
     const cutoff = fragment.values.find((v) => v instanceof Date);
     expect(Math.abs(cutoff.getTime() - (Date.now() - 10 * 60 * 1000))).toBeLessThan(60 * 1000);
 
