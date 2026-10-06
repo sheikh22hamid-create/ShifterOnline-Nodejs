@@ -103,6 +103,16 @@ describe("tryCredit", () => {
     expect(tx.free_booking_order.update).not.toHaveBeenCalled();
   });
 
+  it("voids a waived settlement as payment_failed and does not credit", async () => {
+    const tx = makeTx({ row: pendingRow(), settlement: { status: "waived" } });
+    expect(await svc.tryCredit(50)).toEqual({ credited: false, action: "void" });
+    expect(tx.free_booking_order.update).toHaveBeenCalledWith({
+      where: { id: 5 }, data: { status: "FREE_BOOKING_NOT_ELIGIBLE", not_eligible_reason: "payment_failed" },
+    });
+    expect(tx.tbl_user.update).not.toHaveBeenCalled();
+    expect(tx.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
   it("voids as vehicle_changed when another driver finished the trip", async () => {
     const tx = makeTx({ row: pendingRow(), order: { o_status: "Completed", rid: 10 } });
     expect((await svc.tryCredit(50)).action).toBe("void");

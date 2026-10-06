@@ -252,7 +252,7 @@ async function tryCredit(orderId) {
         logger.warn(`freeBookingService.tryCredit: order_settlement table missing, treating order ${id} as unsettled-free: ${err.message}`);
       }
 
-      const decision = rules.decideCredit({ row, order, userLocked, paymentSettled: rules.isPaymentSettled(settlement) });
+      const decision = rules.decideCredit({ row, order, userLocked, paymentSettled: rules.isPaymentSettled(settlement), settlementStatus: settlement?.status });
       if (decision.action === "skip" || decision.action === "wait") return { credited: false, action: decision.action };
       if (decision.action === "void") {
         await tx.free_booking_order.update({

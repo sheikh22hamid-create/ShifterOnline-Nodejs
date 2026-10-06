@@ -67,6 +67,12 @@ describe("decideCredit", () => {
   it("voids when a different driver finished the trip", () => expect(go({ order: { ...order, rid: 10 } })).toEqual({ action: "void", reason: REASON.VEHICLE_CHANGED }));
   it("voids when the accepting driver was not in the pool", () => expect(go({ row: { ...row, accepted_in_pool: false } }).reason).toBe(REASON.VEHICLE_CHANGED));
   it("waits while payment is not settled", () => expect(go({ paymentSettled: false }).action).toBe("wait"));
+  it("voids a waived settlement as payment_failed (the customer never pays)", () => {
+    expect(go({ paymentSettled: false, settlementStatus: "waived" })).toEqual({ action: "void", reason: REASON.PAYMENT_FAILED });
+  });
+  it.each(["pending", "disputed", "customer_owes"])("keeps waiting while the settlement is %s", (settlementStatus) => {
+    expect(go({ paymentSettled: false, settlementStatus }).action).toBe("wait");
+  });
   it("voids when the user is locked", () => expect(go({ userLocked: true })).toEqual({ action: "void", reason: REASON.LOCKED }));
   it("voids a zero fare", () => expect(go({ row: { ...row, actual_fare: "0" } })).toEqual({ action: "void", reason: REASON.ZERO_FARE }));
 });

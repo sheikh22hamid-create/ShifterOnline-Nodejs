@@ -31,13 +31,13 @@ beforeEach(() => {
 });
 
 describe("runTransition free-booking hook", () => {
-  it.each(["cash_received", "paid_online"])("tries the free-booking credit after a transition to %s", async (status) => {
+  it.each(["cash_received", "paid_online", "waived"])("tries the free-booking credit after a transition to %s", async (status) => {
     await settlementService.runTransition(async () => ({ settlement: settlement(status) }));
     await flush();
     expect(freeBookingService.tryCredit).toHaveBeenCalledWith(50);
   });
 
-  it.each(["pending", "disputed", "waived", "customer_owes"])("does not try the credit for %s", async (status) => {
+  it.each(["pending", "disputed", "customer_owes"])("does not try the credit for %s", async (status) => {
     await settlementService.runTransition(async () => ({ settlement: settlement(status) }));
     await flush();
     expect(freeBookingService.tryCredit).not.toHaveBeenCalled();

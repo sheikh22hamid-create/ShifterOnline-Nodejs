@@ -25,6 +25,7 @@ const REASON = Object.freeze({
   ZERO_FARE: "zero_fare",
   POOL_UNAVAILABLE: "pool_unavailable",
   ADMIN_VOID: "admin_void",
+  PAYMENT_FAILED: "payment_failed",
 });
 
 const OUTCOME_MESSAGE = Object.freeze({
@@ -66,13 +67,16 @@ function isPaymentSettled(settlement) {
   return PAID_SETTLEMENT_STATUSES.includes(settlement.status);
 }
 
-function decideCredit({ row, order, userLocked, paymentSettled }) {
+// settlementStatus (optional) lets a waived settlement void the booking: the customer never pays, so
+// no refund is due. pending / disputed / customer_owes keep waiting (customer_owes can still be paid).
+function decideCredit({ row, order, userLocked, paymentSettled, settlementStatus }) {
   if (!row || !OPEN_STATUSES.includes(row.status)) return { action: "skip" };
   if (order?.o_status === "Cancelled") return { action: "void", reason: REASON.CANCELLED };
   if (order?.o_status !== "Completed" || row.actual_fare == null) return { action: "wait" };
   if (!row.accepted_in_pool || Number(order.rid) !== Number(row.pool_rider_id)) {
     return { action: "void", reason: REASON.VEHICLE_CHANGED };
   }
+  if (settlementStatus === "waived") return { action: "void", reason: REASON.PAYMENT_FAILED };
   if (!paymentSettled) return { action: "wait" };
   if (userLocked) return { action: "void", reason: REASON.LOCKED };
   const amount = round2(row.actual_fare);
