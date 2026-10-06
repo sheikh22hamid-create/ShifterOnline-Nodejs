@@ -11,6 +11,7 @@ const pushNotifier = require("../services/pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const { getIO } = require("../sockets/socketServer");
 const { buildNextDaySequence } = require("../utils/geoDistance");
+const receiverPayService = require("../services/receiverPayService");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -330,6 +331,13 @@ async function update(req, res) {
     if (data.total_dcharge !== undefined) data.total_dcharge = Number(data.total_dcharge);
 
     const updated = await prisma.pkg_order.update({ where: { id }, data });
+    if (data.dmobile !== undefined) {
+      // Keep the receiver-pays pay-link recipient in step with the drop contact. Orders without an
+      // active receiver payment, or a number that is not a valid mobile, are simply left alone.
+      await receiverPayService.changeReceiverPhone({ orderId: id, phone: data.dmobile }).catch((err) => {
+        if (!(err instanceof receiverPayService.ReceiverPayError)) logger.error(`update: receiver phone sync failed for order ${id}:`, err);
+      });
+    }
     try {
       adminSocket.notifyOrderStatusUpdate(updated);
     } catch (adminErr) {

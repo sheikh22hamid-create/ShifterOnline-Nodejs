@@ -146,4 +146,35 @@ async function issueLink({ orderId, resend = false }) {
   return { sent: Boolean(sent), link };
 }
 
-module.exports = { ReceiverPayError, isCashBooking, validateBooking, createForOrder, getActiveForOrder, close, getConfig, buildPayLink, buildLinkMessage, issueLink };
+// The booker typed the wrong receiver number. Allowed until the receiver payment is settled or taken
+// over: it fixes the drop contact and the pay-link recipient together, and while a payment is pending
+// it mints a fresh link (the old token dies) and sends it to the new number. `uid` is null for an admin.
+async function changeReceiverPhone({ orderId, phone, uid = null }) {
+  const normalized = normalizeToLast10Digits(phone);
+  if (normalized.length !== 10) throw new ReceiverPayError("VALIDATION", "A valid 10-digit receiver mobile number is required.");
+  const row = await prisma.order_receiver_pay.findUnique({ where: { order_id: orderId } });
+  if (!row || row.status !== "active") throw new ReceiverPayError("NOT_ACTIVE", "Receiver payment is not active for this order.");
+  if (uid !== null && Number(row.uid) !== Number(uid)) throw new ReceiverPayError("FORBIDDEN", "This order belongs to another customer.");
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { o_status: true } });
+  if (!order || order.o_status === "Cancelled") throw new ReceiverPayError("NOT_ACTIVE", "Receiver payment is not active for this order.");
+  const settlement = await prisma.order_settlement.findUnique({ where: { order_id: orderId } });
+  const pending = Boolean(settlement) && settlement.payer === "receiver" && settlement.status === "pending";
+  if (settlement && !pending) throw new ReceiverPayError("NOT_PAYABLE", "The payment is already settled, so the receiver number cannot be changed.");
+  if (normalized === row.receiver_phone) return { changed: false, link_sent: null, link: null };
+
+  await prisma.$transaction([
+    prisma.order_receiver_pay.update({ where: { id: row.id }, data: { receiver_phone: normalized, updated_at: new Date() } }),
+    prisma.pkg_order.update({ where: { id: orderId }, data: { dmobile: normalized } }),
+  ]);
+  if (!pending) return { changed: true, link_sent: null, link: null };
+  try {
+    const { sent, link } = await issueLink({ orderId });
+    return { changed: true, link_sent: sent, link: sent ? null : link };
+  } catch (err) {
+    // The number is already saved; the booker can still use Resend link.
+    logger.warn(`receiverPay.changeReceiverPhone: new link for order ${orderId} failed: ${err && err.message}`);
+    return { changed: true, link_sent: false, link: null };
+  }
+}
+
+module.exports = { changeReceiverPhone, ReceiverPayError, isCashBooking, validateBooking, createForOrder, getActiveForOrder, close, getConfig, buildPayLink, buildLinkMessage, issueLink };

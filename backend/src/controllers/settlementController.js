@@ -144,6 +144,16 @@ const customerResendLink = customerAction("settlement customerResendLink", async
   return ok(res, sent ? { sent: true } : { sent: false, link }, sent ? "Payment link sent to the receiver" : "Link created; WhatsApp could not deliver it, share it manually");
 });
 
+// Booker fixes a wrongly entered receiver number; see receiverPayService.changeReceiverPhone.
+const customerChangeReceiverPhone = customerAction("settlement customerChangeReceiverPhone", async ({ req, res, uid, orderId }) => {
+  const out = await receiverPayService.changeReceiverPhone({ orderId, uid, phone: (req.body || {}).mobile });
+  const msg = !out.changed ? "That is already the receiver's number"
+    : out.link_sent === true ? "Receiver number updated and the payment link was sent to the new number"
+    : out.link_sent === false ? "Receiver number updated. The link could not be sent; use Resend payment link"
+    : "Receiver number updated";
+  return ok(res, { changed: out.changed, link_sent: out.link_sent, link: out.link }, msg);
+});
+
 const driverResendLink = driverAction("settlement driverResendLink", async ({ res, riderId, orderId }) => {
   await assertOrderParty(orderId, "driver", riderId);
   const { sent, link } = await receiverPayService.issueLink({ orderId, resend: true });
@@ -151,7 +161,7 @@ const driverResendLink = driverAction("settlement driverResendLink", async ({ re
 });
 
 module.exports = {
-  customerTakeOver, customerResendLink, driverReceiverRefused, driverResendLink,
+  customerTakeOver, customerResendLink, customerChangeReceiverPhone, driverReceiverRefused, driverResendLink,
   receiverPayConfig,
   customerState, customerChooseDriver, customerPayOnlineCreate, customerPayOnlineVerify, customerDispute,
   driverState, driverReceived, driverDispute, driverPending,
