@@ -10,6 +10,7 @@ import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:provider/provider.dart';
 import 'package:goParcel/Payment/razor_pay.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'free_booking_status_card.dart';
 
 class PremiumPlansScreen extends StatefulWidget {
   const PremiumPlansScreen({super.key});
@@ -554,6 +555,7 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
                                 horizontal: 16, vertical: 16),
                             child: Column(
                               children: [
+                                const FreeBookingStatusCard(),
                                 ...List.generate(_plans.length, (index) {
                                   return _buildPlanCard(index);
                                 }),
