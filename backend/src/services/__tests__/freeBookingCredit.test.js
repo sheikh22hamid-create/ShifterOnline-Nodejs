@@ -206,6 +206,16 @@ describe("fallbackToNormalDispatch", () => {
     });
     expect(customerInbox.saveCustomerNotification).toHaveBeenCalled();
   });
+  it.each([
+    ["the notification", () => { customerInbox.saveCustomerNotification.mockRejectedValue(new Error("inbox down")); }],
+    ["the user lookup", () => { prisma.free_booking_order.findUnique.mockRejectedValue(new Error("db blip")); }],
+  ])("still returns true after the flip when %s fails (order must continue as normal)", async (_n, arrange) => {
+    prisma.free_booking_order.updateMany.mockResolvedValue({ count: 1 });
+    prisma.free_booking_order.findUnique.mockResolvedValue({ user_id: 7 });
+    arrange();
+    expect(await svc.fallbackToNormalDispatch(50)).toBe(true);
+    expect(logger.error).toHaveBeenCalled();
+  });
   it("returns false for a normal order", async () => {
     prisma.free_booking_order.updateMany.mockResolvedValue({ count: 0 });
     expect(await svc.fallbackToNormalDispatch(50)).toBe(false);

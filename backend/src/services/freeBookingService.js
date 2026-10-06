@@ -213,13 +213,19 @@ async function fallbackToNormalDispatch(orderId) {
     data: { status: STATUS.NOT_ELIGIBLE, not_eligible_reason: REASON.POOL_UNAVAILABLE },
   });
   if (res.count !== 1) return false;
-  const row = await prisma.free_booking_order.findUnique({ where: { order_id: Number(orderId) }, select: { user_id: true } });
-  if (row) {
-    await notifyUser(
-      row.user_id,
-      "Free Booking not available",
-      "No free vehicle could take your booking, so it continues as a normal booking. No wallet refund will be given for this trip."
-    );
+  // The flip is atomic and final, so the caller must always learn it happened: a failed
+  // notification must not make dispatch cancel the order as "No driver found".
+  try {
+    const row = await prisma.free_booking_order.findUnique({ where: { order_id: Number(orderId) }, select: { user_id: true } });
+    if (row) {
+      await notifyUser(
+        row.user_id,
+        "Free Booking not available",
+        "No free vehicle could take your booking, so it continues as a normal booking. No wallet refund will be given for this trip."
+      );
+    }
+  } catch (err) {
+    logger.error(`freeBookingService.fallbackToNormalDispatch: notify failed for order ${orderId}:`, err);
   }
   return true;
 }
