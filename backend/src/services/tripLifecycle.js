@@ -735,6 +735,14 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
       }
     }
 
+    // Fire-and-forget, placed right after the settlement row exists and BEFORE the wallet / ledger /
+    // commission steps below, so a failure in those cannot leave the Free Booking row stuck CONFIRMED.
+    // Records the final invoice total for a Free Booking and credits the
+    // booker's wallet once the payment is settled (or immediately if nothing is left to collect).
+    freeBookingService.markCompleted({ orderId, finalTotal }).catch((err) => {
+      logger.error(`freeBooking.markCompleted error for order ${orderId}:`, err);
+    });
+
     if (isMonthlyDriver) {
       if (cashCollected > 0) {
         const existingLedger = await prisma.monthly_driver_ledger.findFirst({
@@ -1006,12 +1014,6 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // completion on this.
     referralRewardService.processReferralRewardsForCompletedOrder({ uid: order.uid, riderId, orderId }).catch((err) => {
       logger.error(`processReferralRewardsForCompletedOrder error for order ${orderId}:`, err);
-    });
-
-    // Fire-and-forget - records the final invoice total for a Free Booking and credits the
-    // booker's wallet once the payment is settled (or immediately if nothing is left to collect).
-    freeBookingService.markCompleted({ orderId, finalTotal }).catch((err) => {
-      logger.error(`freeBooking.markCompleted error for order ${orderId}:`, err);
     });
 
     // Fire-and-forget, same pattern as above - activates whatever reward

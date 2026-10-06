@@ -41,7 +41,10 @@ jest.mock("../receiverPayService", () => ({ getActiveForOrder: jest.fn().mockRes
 jest.mock("../receiverSettlementService", () => ({ declineReceiverPay: jest.fn().mockResolvedValue({ phase: "converted" }) }));
 jest.mock("../receiverPaySettings",() => ({ getReceiverPaySettings: jest.fn().mockResolvedValue({ enabled: true, maxPercent: 5, maxAmount: 0, linkTtlHours: 24 }) }));
 
+jest.mock("../freeBookingService", () => ({ markCompleted: jest.fn().mockResolvedValue({ credited: false }), recordAcceptance: jest.fn().mockResolvedValue(undefined) }));
+
 const prisma = require("../../config/db");
+const freeBookingService = require("../freeBookingService");
 const settlementSettings = require("../settlementSettings");
 const settlementService = require("../settlementService");
 const receiverPayService = require("../receiverPayService");
@@ -112,6 +115,14 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
     const result = await tripLifecycle.updateStatus(297, 1, "complete");
     expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_balance: { decrement: 5 } } });
+  });
+
+  it("marks a Free Booking completed even when a later money step throws (completion hook runs early)", async () => {
+    settlementSettings.isSettlementEnabled.mockResolvedValue(false);
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    prisma.tbl_rider.update.mockRejectedValueOnce(new Error("commission debit failed"));
+    await expect(tripLifecycle.updateStatus(297, 1, "complete")).rejects.toThrow("commission debit failed");
+    expect(freeBookingService.markCompleted).toHaveBeenCalledWith({ orderId: 297, finalTotal: 100 });
   });
 
   it("does nothing new when the feature is off", async () => {
