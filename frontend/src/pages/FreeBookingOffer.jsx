@@ -3,6 +3,7 @@ import { Gift, Plus, Trash2, Lock, Unlock, Ban } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import useDebouncedValue from '../hooks/useDebouncedValue'
 
 const TABS = [
   { id: 'settings', label: 'Settings' },
@@ -57,7 +58,10 @@ export default function FreeBookingOffer() {
   const [candidates, setCandidates] = useState([])
   const [orders, setOrders] = useState([])
   const [addForm, setAddForm] = useState({ rider_id: '', valid_from: '', valid_to: '' })
-  const [lockUserId, setLockUserId] = useState('')
+  const [custSearch, setCustSearch] = useState('')
+  const [custResults, setCustResults] = useState([])
+  const [pickedCust, setPickedCust] = useState(null)
+  const debouncedCust = useDebouncedValue(custSearch)
 
   const params = useCallback(() => (isSuper ? { city_id: cityId } : {}), [isSuper, cityId])
   const ready = Boolean(cityId)
@@ -240,15 +244,26 @@ export default function FreeBookingOffer() {
     }))
   }
 
+  // Customer lookup for the lock / unlock box: name, email or the full mobile number.
+  useEffect(() => {
+    const q = debouncedCust.trim()
+    if (pickedCust || q.length < 2) { setCustResults([]); return undefined }
+    let live = true
+    api.get('/customers', { params: { search: q, limit: 8 } })
+      .then((res) => { if (live) setCustResults(res.data?.data ?? []) })
+      .catch(() => { if (live) setCustResults([]) })
+    return () => { live = false }
+  }, [debouncedCust, pickedCust])
+
   function setLock(locked) {
-    const id = Number(lockUserId)
+    const id = pickedCust?.id
     if (!Number.isInteger(id) || id <= 0) {
-      toastRef.current.error('Enter a valid customer ID')
+      toastRef.current.error('Search and select a customer first')
       return
     }
     return runWrite(() => mutate({
       request: () => api.post(`/free-booking/users/${id}/${locked ? 'lock' : 'unlock'}`, { ...params() }),
-      success: `Customer #${id} ${locked ? 'locked' : 'unlocked'}`,
+      success: `${pickedCust.name || 'Customer'} (#${id}) ${locked ? 'locked' : 'unlocked'}`,
       failMsg: 'Could not change the lock',
     }))
   }
@@ -356,8 +371,28 @@ export default function FreeBookingOffer() {
         <div className="space-y-4">
           {canWrite && (
             <div className="rounded-2xl border p-5 flex flex-wrap items-end gap-3" style={cardStyle}>
-              <Field label="Customer ID (manual lock / unlock)">
-                <input type="number" value={lockUserId} onChange={(e) => setLockUserId(e.target.value)} className={inputClass} style={inputStyle} />
+              <Field label="Customer (manual lock / unlock)">
+                {pickedCust ? (
+                  <div className="mt-1 flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm" style={{ ...inputStyle }}>
+                    <span>{pickedCust.name || 'Customer'} · {pickedCust.mobile} · #{pickedCust.id}</span>
+                    <button type="button" onClick={() => { setPickedCust(null); setCustSearch('') }} className="text-xs underline" style={{ color: 'var(--ink-muted)' }}>change</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input type="text" placeholder="Search name, email or full mobile number" value={custSearch} onChange={(e) => setCustSearch(e.target.value)} className={inputClass} style={{ ...inputStyle, minWidth: 320 }} />
+                    {custResults.length > 0 && (
+                      <ul className="absolute z-10 mt-1 w-full rounded-xl border overflow-hidden shadow-lg" style={cardStyle}>
+                        {custResults.map((c) => (
+                          <li key={c.id}>
+                            <button type="button" onClick={() => { setPickedCust({ id: c.id, name: c.fname, mobile: c.mobile }); setCustResults([]) }} className="w-full text-left px-3.5 py-2 text-sm hover:opacity-80" style={{ color: 'var(--ink)' }}>
+                              {c.fname || 'Customer'} · {c.mobile} · #{c.id}{c.city_name ? ` · ${c.city_name}` : ''}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </Field>
               <button onClick={() => setLock(true)} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-semibold border flex items-center gap-1" style={{ color: 'var(--ink)', borderColor: 'var(--border)', ...busyStyle }}><Lock size={16} /> Lock</button>
               <button onClick={() => setLock(false)} disabled={busy} style={busyStyle} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 flex items-center gap-1"><Unlock size={16} /> Unlock</button>
