@@ -54,6 +54,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const ServiceZones = lazy(() => import('./pages/ServiceZones'))
 const MonthlyDrivers = lazy(() => import('./pages/MonthlyDrivers'))
 const DailyDrivers = lazy(() => import('./pages/DailyDrivers'))
+const FreeBookingOffer = lazy(() => import('./pages/FreeBookingOffer'))
 const MonthlyAttendanceReports = lazy(() => import('./pages/MonthlyAttendanceReports'))
 const ProfitAndRevenue = lazy(() => import('./pages/ProfitAndRevenue'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -94,6 +95,7 @@ function App() {
             <Route path="/favorite-routes" element={<FavoriteRoutes />} />
             <Route path="/monthly-drivers" element={<MonthlyDrivers />} />
             <Route path="/daily-drivers" element={<DailyDrivers />} />
+            <Route path="/free-booking" element={<FreeBookingOffer />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />
             <Route path="/trip-feedback" element={<TripFeedback />} />
             <Route path="/driver-training" element={<DriverTraining />} />
