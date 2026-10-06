@@ -817,7 +817,30 @@ describe("dispatchManager overlapping batch cascade", () => {
 
   it("a free-booking order whose pool is exhausted restarts as a normal booking instead of being cancelled", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
-    freeBookingService.fallbackToNormalDispatch.mockResolvedValueOnce(true);
+    // Capture the Set the dispatcher keeps its timer handles in (state.timers), so the test can leave a
+    // timer from the OLD cascade pending across the restart.
+    const handles = new Set();
+    let oldTimers = null;
+    const realSetTimeout = global.setTimeout;
+    const realAdd = Set.prototype.add;
+    const spyAdd = jest.spyOn(Set.prototype, "add").mockImplementation(function (v) {
+      if (!oldTimers && handles.has(v)) oldTimers = this;
+      return realAdd.call(this, v);
+    });
+    const spyTimeout = jest.spyOn(global, "setTimeout").mockImplementation((...args) => {
+      const h = realSetTimeout(...args);
+      handles.add(h);
+      return h;
+    });
+    let queryCallsAtFallback = -1;
+    let staleFired = 0;
+    freeBookingService.fallbackToNormalDispatch.mockImplementationOnce(async () => {
+      queryCallsAtFallback = prisma.$queryRaw.mock.calls.length;
+      // a leftover timer of the old cascade, still pending when the cascade is restarted
+      const stale = realSetTimeout(() => { staleFired++; }, 1000);
+      realAdd.call(oldTimers, stale);
+      return true;
+    });
 
     await dispatchManager.startDispatch(order);
     await flush();
@@ -831,9 +854,16 @@ describe("dispatchManager overlapping batch cascade", () => {
     await flush();
 
     expect(freeBookingService.fallbackToNormalDispatch).toHaveBeenCalledWith(order.id);
+    spyAdd.mockRestore();
+    spyTimeout.mockRestore();
+    // a new cascade really started: drivers were queried again after the fallback
+    expect(prisma.$queryRaw.mock.calls.length).toBeGreaterThan(queryCallsAtFallback);
     expect(emitted.filter((e) => e.event === "order:no_driver_found")).toHaveLength(0);
     const cancelled = prisma.pkg_order.update.mock.calls.some(([args]) => args.data && args.data.o_status === "Cancelled");
     expect(cancelled).toBe(false);
+    // the old cascade's pending timer was cleared by the restart and never fires into the new one
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(staleFired).toBe(0);
   });
 
   it("a fallback error is swallowed and the normal 'No driver found' cancel still happens", async () => {
@@ -1837,6 +1867,7 @@ describe("selectEligibleDrivers with a free booking", () => {
   it("adds no pool filter for a normal order", async () => {
     freeBookingService.getDispatchPoolFilter.mockResolvedValueOnce(null);
     await dispatchManager.selectEligibleDrivers(fbOrder, 6, []);
+    expect(freeBookingService.getDispatchPoolFilter).toHaveBeenCalledWith(fbOrder);
     expect(poolFragment()).toBeUndefined();
   });
 

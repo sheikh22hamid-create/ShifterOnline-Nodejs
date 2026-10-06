@@ -424,6 +424,8 @@ async function checkCascadeTermination(orderId) {
       logger.error(`dispatchManager: free-booking fallback failed for order ${orderId}:`, err);
     }
     if (continueAsNormal) {
+      for (const t of state.timers) clearTimeout(t);
+      state.timers.clear();
       activeDispatches.delete(orderId);
       await startDispatch(order, null);
       return;
@@ -940,6 +942,7 @@ async function runBatchInner(orderId) {
 
   const timer = setTimeout(() => {
     state.timers.delete(timer);
+    if (activeDispatches.get(orderId) !== state) return; // stale timer from a replaced cascade
     runBatch(orderId).catch((err) =>
       logger.error(`dispatchManager: next batch failed for order ${orderId}:`, err)
     );
@@ -1052,12 +1055,12 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
       );
 
       // Once locks are freed, if cascade is still active, trigger next batch for newly freed drivers
-      if (activeDispatches.has(orderId)) {
-        state.consecutiveEmptyTurns = 0;
-        runBatch(orderId).catch((err) =>
-          logger.error(`dispatchManager: retry batch after expiry failed for order ${orderId}:`, err)
-        );
-      }
+      // Identity check: a callback from a replaced (free-booking fallback) cascade must not act on the new one.
+      if (activeDispatches.get(orderId) !== state) return;
+      state.consecutiveEmptyTurns = 0;
+      runBatch(orderId).catch((err) =>
+        logger.error(`dispatchManager: retry batch after expiry failed for order ${orderId}:`, err)
+      );
 
       await checkCascadeTermination(orderId);
     } catch (err) {
