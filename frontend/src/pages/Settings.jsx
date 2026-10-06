@@ -73,6 +73,7 @@ const HANDLED_FLAG_KEYS = [
   'model1_suspension_hours',
   'covered_body_charge',
   'half_body_charge',
+  'advance_payment_timeout_minutes',
   'pickup_otp_timeout_minutes',
   'pickup_relocate_ceiling_minutes',
   'pickup_small_move_threshold_m',
@@ -365,6 +366,20 @@ function SettingsForm({ data, onSaved }) {
           <div>
             <Label htmlFor="reject_timer">Dispatch reject timer (sec)</Label>
             <Input id="reject_timer" type="number" value={form.reject_timer} onChange={(e) => setForm((f) => ({ ...f, reject_timer: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="flag-advance_payment_timeout_minutes">Advance payment timeout (min)</Label>
+            <Input
+              id="flag-advance_payment_timeout_minutes"
+              type="number"
+              min="1"
+              placeholder="e.g. 2"
+              value={flags.advance_payment_timeout_minutes ?? '2'}
+              onChange={(e) => setFlags((f) => ({ ...f, advance_payment_timeout_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Minutes allowed for the customer to complete the advance payment after driver acceptance. If unpaid within this window, the booking auto-cancels.
+            </p>
           </div>
           <div>
             <Label htmlFor="flag-pickup_otp_timeout_minutes">Pickup OTP timeout (min)</Label>

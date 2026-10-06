@@ -1,12 +1,15 @@
 const { ADVANCE_PAYMENT_TIMEOUT_MS } = require("../config/constants");
+const { getCachedAdvancePaymentTimeoutSeconds } = require("./advancePaymentTimeout");
 
 // Shared by orderController.mapInfo (customer tracking screen) and
 // driverOrderHistoryController.pkgHistoryDriver (driver trip list) - both
-// display the same 2-minute advance-payment countdown, ported once here
-// instead of twice. Node port of the legacy PHP's getAdvancePaymentTimerInfo()
+// display the advance-payment countdown, ported once here instead of twice.
+// Node port of the legacy PHP's getAdvancePaymentTimerInfo()
 // (admin/include/advance_payment_helper.php).
-function getAdvancePaymentTimerInfo(order) {
-  const timeoutSeconds = ADVANCE_PAYMENT_TIMEOUT_MS / 1000;
+function getAdvancePaymentTimerInfo(order, customTimeoutSeconds) {
+  const timeoutSeconds = typeof customTimeoutSeconds === "number" && customTimeoutSeconds > 0
+    ? customTimeoutSeconds
+    : getCachedAdvancePaymentTimeoutSeconds();
   const advAmount = Number(order.advance_payment || 0);
   const payStatus = Number(order.payment_status || 0);
   const orderStatus = Number(order.order_status || 0);

@@ -22,6 +22,7 @@ const receiverPayService = require("../services/receiverPayService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
+const { getAdvancePaymentTimeoutMinutes } = require("../utils/advancePaymentTimeout");
 const { getPickupEtaRow, buildEtaView, isPickupEtaExpired } = require("../services/pickupEtaService");
 const { buildCustomerWaitingView } = require("../services/customerWaitingView");
 
@@ -888,6 +889,7 @@ async function getOrderDetails(req, res) {
           receiver_pay: await getReceiverPaySummary(order.id),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
+          advance_payment_timeout_minutes: String(await getAdvancePaymentTimeoutMinutes()),
           otp: order.otp,
           total_Delivery_charge: String(order.total_dcharge),
           grand_total: String(order.total_dcharge),

@@ -15,6 +15,7 @@ const walletPrepayment = require("./walletPrepaymentRefund");
 const { refundReferralPointsForOrder, reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
+const { getAdvancePaymentTimeoutSeconds } = require("../utils/advancePaymentTimeout");
 const earlyDropService = require("./earlyDropService");
 const pickupEtaService = require("./pickupEtaService");
 const settlementSettings = require("./settlementSettings");
@@ -1772,7 +1773,9 @@ async function cancelExpiredAdvancePayment(orderId) {
   `;
   if (!order) return;
 
-  const cutoff = new Date(Date.now() - ADVANCE_PAYMENT_TIMEOUT_MS);
+  const timeoutSeconds = await getAdvancePaymentTimeoutSeconds();
+  const timeoutMinutes = (timeoutSeconds / 60).toFixed(timeoutSeconds % 60 === 0 ? 0 : 1);
+  const cutoff = new Date(Date.now() - timeoutSeconds * 1000);
 
   // Atomic conditional update, same guard the PHP used (order_status still
   // 1/"accepted", payment_status still unpaid, advance_payment > 0,
@@ -1781,18 +1784,19 @@ async function cancelExpiredAdvancePayment(orderId) {
   // lands between the read and this write can't be clobbered.
   // Note: Handles both UTC accept_time (standard) and legacy +330m IST accept_time.
   if (typeof prisma.$executeRaw !== "function") return;
+  const cancelReason = `Advance payment timeout (${timeoutMinutes} minutes exceeded)`;
   const affected = await prisma.$executeRaw`
     UPDATE pkg_order
     SET o_status = 'Cancelled', order_status = 4,
-        cancel_reason = 'Advance payment timeout (2 minutes exceeded)'
+        cancel_reason = ${cancelReason}
     WHERE id = ${orderId}
       AND order_status = 1
       AND (payment_status = 0 OR payment_status IS NULL)
       AND CAST(advance_payment AS DECIMAL(10,2)) > 0
       AND accept_time IS NOT NULL
       AND (
-        accept_time <= (NOW() - INTERVAL 120 SECOND)
-        OR (accept_time > NOW() AND accept_time <= (DATE_ADD(NOW(), INTERVAL 330 MINUTE) - INTERVAL 120 SECOND))
+        TIMESTAMPDIFF(SECOND, accept_time, NOW()) >= ${timeoutSeconds}
+        OR (accept_time > NOW() AND TIMESTAMPDIFF(SECOND, accept_time, DATE_ADD(NOW(), INTERVAL 330 MINUTE)) >= ${timeoutSeconds})
       )
   `;
   if (affected === 0) return; // already paid, already cancelled another way, or not yet expired
@@ -1806,7 +1810,7 @@ async function cancelExpiredAdvancePayment(orderId) {
       order_id: orderId,
       rider_id: riderId,
       status: "cancelled",
-      remark: "Auto-cancelled: Advance payment not received within 2 minutes",
+      remark: `Auto-cancelled: Advance payment not received within ${timeoutMinutes} minutes`,
     },
   });
 
@@ -1826,7 +1830,7 @@ async function cancelExpiredAdvancePayment(orderId) {
   if (riderId) {
     dispatchManager.emitDriverEvent(riderId, "order:customer_cancelled", {
       order_id: String(orderId),
-      reason: "Advance payment timeout (2 minutes exceeded)",
+      reason: cancelReason,
       order_status: 4,
       o_status: "Cancelled",
     });
@@ -1842,7 +1846,7 @@ async function cancelExpiredAdvancePayment(orderId) {
   notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
 
   logger.warn(
-    `tripLifecycle: order ${orderId} auto-cancelled — advance payment not received within ${ADVANCE_PAYMENT_TIMEOUT_MS / 60000} minutes of driver accepting (rider ${riderId})`
+    `tripLifecycle: order ${orderId} auto-cancelled — advance payment not received within ${timeoutMinutes} minutes of driver accepting (rider ${riderId})`
   );
 }
 
@@ -1854,6 +1858,7 @@ async function cancelExpiredAdvancePayment(orderId) {
  * at accept time that a redeploy would silently drop.
  */
 async function sweepExpiredAdvancePayments() {
+  const timeoutSeconds = await getAdvancePaymentTimeoutSeconds();
   let expired;
   try {
     expired = await prisma.$queryRaw`
@@ -1863,8 +1868,8 @@ async function sweepExpiredAdvancePayments() {
         AND CAST(advance_payment AS DECIMAL(10,2)) > 0
         AND accept_time IS NOT NULL
         AND (
-          accept_time <= (NOW() - INTERVAL 120 SECOND)
-          OR (accept_time > NOW() AND accept_time <= (DATE_ADD(NOW(), INTERVAL 330 MINUTE) - INTERVAL 120 SECOND))
+          TIMESTAMPDIFF(SECOND, accept_time, NOW()) >= ${timeoutSeconds}
+          OR (accept_time > NOW() AND TIMESTAMPDIFF(SECOND, accept_time, DATE_ADD(NOW(), INTERVAL 330 MINUTE)) >= ${timeoutSeconds})
         )
     `;
   } catch (err) {
