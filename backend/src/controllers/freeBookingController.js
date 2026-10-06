@@ -10,10 +10,18 @@ async function check(req, res) {
     if (!uid || !category || !isFiniteNumber(plat) || !isFiniteNumber(plong)) {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid, category, plat and plong are required" });
     }
+    // Optional inputs: absent means the default, but a supplied bad value is refused rather than ignored.
+    const provided = (v) => v !== undefined && v !== null && v !== "";
+    if (provided(radius_km) && !(isFiniteNumber(radius_km) && Number(radius_km) > 0)) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "radius_km must be a positive number" });
+    }
+    if (provided(booking_type) && ![1, 2, 3].includes(Number(booking_type))) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "booking_type must be 1, 2 or 3" });
+    }
     const result = await freeBookingService.checkEligibility({
       uid: Number(uid), plat: Number(plat), plong: Number(plong), category,
-      radiusKm: Number(radius_km) || 4, cityId: city_id ? Number(city_id) : undefined,
-      bookingType: booking_type ? Number(booking_type) : 1,
+      radiusKm: provided(radius_km) ? Number(radius_km) : 4, cityId: city_id ? Number(city_id) : undefined,
+      bookingType: provided(booking_type) ? Number(booking_type) : 1,
     });
     return res.json({ ResponseCode: "200", Result: "true", outcome: result.outcome, message: OUTCOME_MESSAGE[result.outcome] });
   } catch (err) {
