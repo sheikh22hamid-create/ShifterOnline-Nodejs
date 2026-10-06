@@ -59,7 +59,7 @@
 **Interfaces:**
 - Produces: `receiverTrackSettings.getHelpConfig(env = process.env): { phone: string, whatsapp: string }`, `receiverTrackSettings.APP_URL: string`; Prisma model `order_receiver_feedback` (`id, order_id (unique), rider_id, receiver_phone, driver_rating?, delivery_rating?, feedback_tags?, comment?, created_at`).
 
-- [ ] **Step 1: Write the failing tests** (append to the existing file, which already mocks `../../config/db` and logger)
+- [x] **Step 1: Write the failing tests** (append to the existing file, which already mocks `../../config/db` and logger)
 
 ```js
 describe("getHelpConfig / APP_URL", () => {
@@ -78,12 +78,12 @@ describe("getHelpConfig / APP_URL", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd backend && npx jest src/services/__tests__/receiverTrackSettings.test.js`
 Expected: the new tests FAIL (`s.getHelpConfig is not a function`).
 
-- [ ] **Step 3: Implement** in `receiverTrackSettings.js`: add above `module.exports`
+- [x] **Step 3: Implement** in `receiverTrackSettings.js`: add above `module.exports`
 
 ```js
 const APP_URL = "https://play.google.com/store/apps/details?id=com.shifter.online";
@@ -100,7 +100,7 @@ function getHelpConfig(env = process.env) {
 
 and change the export line to `module.exports = { KEYS, APP_URL, isTrackingEnabled, getMapConfig, getHelpConfig };`.
 
-- [ ] **Step 4: Add the migration, the Prisma model and the env docs**
+- [x] **Step 4: Add the migration, the Prisma model and the env docs**
 
 `migration.sql`:
 
@@ -147,12 +147,12 @@ Append to `backend/.env.example`:
 # SUPPORT_PHONE=9109114515
 ```
 
-- [ ] **Step 5: Validate and run the tests**
+- [x] **Step 5: Validate and run the tests**
 
 Run: `cd backend && npx prisma validate && npx prisma generate && npx jest src/services/__tests__/receiverTrackSettings.test.js`
 Expected: schema valid, client generated, all settings tests PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/prisma backend/src/services/receiverTrackSettings.js backend/src/services/__tests__/receiverTrackSettings.test.js backend/.env.example
@@ -185,7 +185,7 @@ Delivered snapshot (exact shape):
   app_url }
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 // backend/src/services/__tests__/trackSnapshotDelivered.test.js
@@ -344,12 +344,12 @@ describe("exported helpers", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `cd backend && npx jest src/services/__tests__/trackSnapshotDelivered.test.js`
 Expected: FAIL (no `isCompleted`, no extras, `tripRouteService` mock path unused).
 
-- [ ] **Step 3: Implement in `trackSnapshotService.js`**
+- [x] **Step 3: Implement in `trackSnapshotService.js`**
 
 Add requires next to the existing ones:
 
@@ -455,16 +455,16 @@ and replace the `if (status === 5 || order.o_status === "Completed") { ... }` bl
 
 (`status` is still computed from `order.order_status` just above the cancelled check; keep that line.) Change the export to `module.exports = { buildSnapshot, loadLinkedOrder, isCompleted, deliveredWindowOpen };`.
 
-- [ ] **Step 4: Update the two existing snapshot tests that assert the old delivered shape**
+- [x] **Step 4: Update the two existing snapshot tests that assert the old delivered shape**
 
 In `trackSnapshotService.test.js` the mock block gets `simplify: jest.fn((p) => p)` added to the `../trackEtaService` mock and a mock `jest.mock("../tripRouteService", () => ({ buildRoute: jest.fn().mockRejectedValue(new Error("not under test")) }));`; the DB mock gets `order_receiver_pay`, `order_settlement` and `order_receiver_feedback` entries each `{ findUnique: jest.fn().mockResolvedValue(null) }`. The test "is delivered with the IST delivery time, with no position, for 24 hours" changes its `toEqual({...})` to `toMatchObject({ state: "delivered", order_id: 50, step: 5, delivered_at: "2026-10-06T15:00:00.000+05:30", poll_ms: 15000 })`; "a completed order with no delivery time" already uses `toMatchObject` and stays. The "cancelled" and "expired" tests are unchanged (they must still `toEqual` their small shapes).
 
-- [ ] **Step 5: Run the snapshot tests**
+- [x] **Step 5: Run the snapshot tests**
 
 Run: `cd backend && npx jest src/services/__tests__/trackSnapshotService.test.js src/services/__tests__/trackSnapshotDelivered.test.js src/controllers/__tests__/trackController.test.js`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/src/services/trackSnapshotService.js backend/src/services/__tests__/trackSnapshotService.test.js backend/src/services/__tests__/trackSnapshotDelivered.test.js
@@ -485,7 +485,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: Task 2 `loadLinkedOrder`, `isCompleted`, `deliveredWindowOpen`; Task 1 table; existing `receiverPayService` internals (`mintToken`, `buildPayLink`, `ReceiverPayError`, `settings.getReceiverPaySettings`).
 - Produces: `receiverPayService.mintLink({ orderId }): Promise<{ link: string }>`; `trackActionService.mintPayLink(link, { now? }): Promise<{ link }>`, `.submitReview(link, body, { now? }): Promise<{ ok: true }>`, `.TrackActionError` (`code`, `message`, `status`), `.ALLOWED_TAGS: Set<string>`; controller handlers `payLink`, `review`; routes `POST /api/track/:token/pay-link` and `/review`.
 
-- [ ] **Step 1: Write the failing `mintLink` tests** (append to `receiverPayService.test.js`; it mocks `order_receiver_pay`, `order_settlement` and the settings module already)
+- [x] **Step 1: Write the failing `mintLink` tests** (append to `receiverPayService.test.js`; it mocks `order_receiver_pay`, `order_settlement` and the settings module already)
 
 ```js
 describe("receiverPayService.mintLink", () => {
@@ -525,7 +525,7 @@ describe("receiverPayService.mintLink", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify they fail**, then implement in `receiverPayService.js`. Replace the top of `issueLink` and add `mintLink`:
+- [x] **Step 2: Run to verify they fail**, then implement in `receiverPayService.js`. Replace the top of `issueLink` and add `mintLink`:
 
 Run: `cd backend && npx jest src/services/__tests__/receiverPayService.test.js` -> the `mintLink` tests FAIL (`svc.mintLink is not a function`).
 
@@ -588,9 +588,9 @@ In `issueLink`, replace everything from the `const row = await prisma.order_rece
 
 (the lines after it, from `const link = buildPayLink(token);`, stay as they are). Add `mintLink` to `module.exports`. The existing `issueLink` tests must keep passing unchanged.
 
-- [ ] **Step 3: Run** `cd backend && npx jest src/services/__tests__/receiverPayService.test.js src/services/__tests__/receiverPayChangePhone.test.js` -> PASS.
+- [x] **Step 3: Run** `cd backend && npx jest src/services/__tests__/receiverPayService.test.js src/services/__tests__/receiverPayChangePhone.test.js` -> PASS.
 
-- [ ] **Step 4: Write the failing `trackActionService` tests**
+- [x] **Step 4: Write the failing `trackActionService` tests**
 
 ```js
 // backend/src/services/__tests__/trackActionService.test.js
@@ -695,7 +695,7 @@ describe("submitReview", () => {
 });
 ```
 
-- [ ] **Step 5: Run to verify it fails**: `cd backend && npx jest src/services/__tests__/trackActionService.test.js` -> FAIL (module missing). Then implement:
+- [x] **Step 5: Run to verify it fails**: `cd backend && npx jest src/services/__tests__/trackActionService.test.js` -> FAIL (module missing). Then implement:
 
 ```js
 // backend/src/services/trackActionService.js
@@ -788,9 +788,9 @@ async function submitReview(link, body, { now = Date.now() } = {}) {
 module.exports = { TrackActionError, ALLOWED_TAGS, mintPayLink, submitReview };
 ```
 
-- [ ] **Step 6: Run** `cd backend && npx jest src/services/__tests__/trackActionService.test.js` -> PASS.
+- [x] **Step 6: Run** `cd backend && npx jest src/services/__tests__/trackActionService.test.js` -> PASS.
 
-- [ ] **Step 7: Write the failing controller and route tests**
+- [x] **Step 7: Write the failing controller and route tests**
 
 Append to `trackController.test.js` (add `jest.mock("../../services/trackActionService", () => { class TrackActionError extends Error { constructor(code, message, status) { super(message); this.code = code; this.status = status; } } return { TrackActionError, mintPayLink: jest.fn(), submitReview: jest.fn() }; });` with the other mocks, and `const actions = require("../../services/trackActionService");`):
 
@@ -849,7 +849,7 @@ Update `trackRoutes.test.js`: the controller mock becomes `{ snapshot: jest.fn()
 expect(paths(apiRouter)).toEqual(["get /:token x2", "post /:token/pay-link x2", "post /:token/review x2"]);
 ```
 
-- [ ] **Step 8: Run to verify they fail**, then implement the controller handlers and routes.
+- [x] **Step 8: Run to verify they fail**, then implement the controller handlers and routes.
 
 In `trackController.js` add `const trackActionService = require("../services/trackActionService");` and, before `module.exports`:
 
@@ -890,12 +890,12 @@ apiRouter.post("/:token/pay-link", actionLimiter, controller.payLink);
 apiRouter.post("/:token/review", actionLimiter, controller.review);
 ```
 
-- [ ] **Step 9: Run the whole backend suite**
+- [x] **Step 9: Run the whole backend suite**
 
 Run: `cd backend && npx jest`
 Expected: all PASS except the pre-existing `aadharPdfVerify`.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add backend/src
@@ -917,7 +917,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: the Task 2 delivered snapshot and the Task 3 endpoints (`POST /api/track/<token>/pay-link` answers `{ok, url}`; `POST /api/track/<token>/review` answers `{ok}` or 409 `{ok:false, code:"ALREADY_SUBMITTED"}`).
 - Produces: `renderPage(config): string` (unchanged signature); DOM ids used by tests: `summaryCard sumDriver sumPickup sumDrop sumDistance payCard payFare payFeeRow payFee payTotal payBtn paidNote payMsg reviewCard starsDriver starsDelivery tags comment reviewBtn reviewMsg thanksCard helpCard helpCall helpWa appBtn` plus the existing `order status eta stale offline map driverCard driverName driverVehicle call addrCard pickupAddr dropAddr steps cfg`.
 
-- [ ] **Step 1: Create the shared harness** (extract and extend what `trackPageBehaviour.test.js` has inline today)
+- [x] **Step 1: Create the shared harness** (extract and extend what `trackPageBehaviour.test.js` has inline today)
 
 ```js
 // backend/src/controllers/__tests__/helpers/trackPageHarness.js
@@ -991,7 +991,7 @@ In `trackPageBehaviour.test.js` delete the local `makeEl` and `boot` and the `re
 
 Run: `cd backend && npx jest src/controllers/__tests__/trackPageBehaviour.test.js` -> all existing behaviour tests PASS on the harness (this proves the extraction).
 
-- [ ] **Step 2: Write the failing page tests**
+- [x] **Step 2: Write the failing page tests**
 
 Append to `trackPage.test.js`:
 
@@ -1251,9 +1251,9 @@ describe("trip route map", () => {
 });
 ```
 
-- [ ] **Step 3: Run to verify they fail**: `cd backend && npx jest src/controllers/__tests__/trackPage.test.js src/controllers/__tests__/trackPageDelivered.test.js` -> FAIL (old dark page, no delivered blocks).
+- [x] **Step 3: Run to verify they fail**: `cd backend && npx jest src/controllers/__tests__/trackPage.test.js src/controllers/__tests__/trackPageDelivered.test.js` -> FAIL (old dark page, no delivered blocks).
 
-- [ ] **Step 4: Replace `backend/src/controllers/trackPage.js` with this content**
+- [x] **Step 4: Replace `backend/src/controllers/trackPage.js` with this content**
 
 The file is a template literal: it must not contain a backtick or `${`. In the page script the middle dot and the rupee sign are written as `\\u00B7`, `\\u20B9`, `\\u2605` and `\\u2014` (double backslash in the file, so the page script receives `·` and so on). Keep them as written.
 
@@ -1653,7 +1653,7 @@ function renderPage(config) {
 module.exports = { renderPage };
 ````
 
-- [ ] **Step 5: Run the page tests and the syntax check**
+- [x] **Step 5: Run the page tests and the syntax check**
 
 Run: `cd backend && npx jest src/controllers/__tests__/trackPage.test.js src/controllers/__tests__/trackPageBehaviour.test.js src/controllers/__tests__/trackPageDelivered.test.js src/controllers/__tests__/trackController.test.js`
 Expected: PASS. If an existing `trackPage.test.js` assertion pins something the redesign intentionally removed (the old accent/dark values), update that assertion and say so in your report; do not weaken any safety assertion (SRI pins, `innerHTML`, the JSON config escaping).
@@ -1661,7 +1661,7 @@ Expected: PASS. If an existing `trackPage.test.js` assertion pins something the 
 Run: `cd backend && node -e "const {renderPage}=require('./src/controllers/trackPage');const h=renderPage({tileUrl:null,attribution:''});const m=h.match(/<script>([\s\S]*?)<\/script>/);new Function(m[1]);console.log('page script parses', m[1].length)"`
 Expected: `page script parses <n>`.
 
-- [ ] **Step 6: Append QA rows** to `docs/superpowers/plans/2026-10-06-receiver-live-tracking-qa.md` (rows 20-27) and add a short result-log line "Delivered screen and theme: not run on a device yet":
+- [x] **Step 6: Append QA rows** to `docs/superpowers/plans/2026-10-06-receiver-live-tracking-qa.md` (rows 20-27) and add a short result-log line "Delivered screen and theme: not run on a device yet":
 
 ```
 | 20 | Open the tracking link on a phone in dark mode | Page is light with the orange header, never dark |
@@ -1674,7 +1674,7 @@ Expected: `page script parses <n>`.
 | 27 | Open the link 25 hours after delivery | "This tracking link has expired"; none of the delivered cards show |
 ```
 
-- [ ] **Step 7: Run the whole backend suite**, then commit
+- [x] **Step 7: Run the whole backend suite**, then commit
 
 Run: `cd backend && npx jest` -> all PASS except the pre-existing `aadharPdfVerify`.
 
@@ -1697,7 +1697,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 - Consumes: Task 1 table `order_receiver_feedback`.
 - Produces: `adminTripFeedbackController.listReceiverFeedback(req, res)` answering `{ success, data: [{ id, order_id, receiver_mobile, driver_id, driver_name, driver_mobile, pickup, drop, goods_type, driver_rating, delivery_rating, feedback_tags, comment, created_at }], total, page, limit }`; route `GET /api/v1/admin/receiver-feedback`.
 
-- [ ] **Step 1: Write the failing backend test**
+- [x] **Step 1: Write the failing backend test**
 
 ```js
 // backend/src/controllers/__tests__/adminReceiverFeedback.test.js
@@ -1775,9 +1775,9 @@ it("answers 500 without leaking details", async () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**: `cd backend && npx jest src/controllers/__tests__/adminReceiverFeedback.test.js` -> FAIL (`listReceiverFeedback` undefined).
+- [x] **Step 2: Run to verify it fails**: `cd backend && npx jest src/controllers/__tests__/adminReceiverFeedback.test.js` -> FAIL (`listReceiverFeedback` undefined).
 
-- [ ] **Step 3: Implement** in `adminTripFeedbackController.js`: add before `module.exports` and export it.
+- [x] **Step 3: Implement** in `adminTripFeedbackController.js`: add before `module.exports` and export it.
 
 ```js
 const RECEIVER_RATING_COLUMNS = ["driver_rating", "delivery_rating"];
@@ -1868,9 +1868,9 @@ Change the export line to `module.exports = { list, listCustomerFeedback, listRe
 router.get("/receiver-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.listReceiverFeedback);
 ```
 
-- [ ] **Step 4: Run to verify it passes**: `cd backend && npx jest src/controllers/__tests__/adminReceiverFeedback.test.js` -> PASS.
+- [x] **Step 4: Run to verify it passes**: `cd backend && npx jest src/controllers/__tests__/adminReceiverFeedback.test.js` -> PASS.
 
-- [ ] **Step 5: Add the third tab in `frontend/src/pages/TripFeedback.jsx`** (read the file first; make exactly these edits):
+- [x] **Step 5: Add the third tab in `frontend/src/pages/TripFeedback.jsx`** (read the file first; make exactly these edits):
 
 1. Import: add `Package` to the `lucide-react` import list (`import { Search, Star, ..., Quote, Package } from 'lucide-react'`).
 2. After the `CUSTOMER_HEADERS` constant add:
@@ -1890,7 +1890,7 @@ const headers = tab === 'driver' ? DRIVER_HEADERS : tab === 'receiver' ? RECEIVE
 Run: `cd frontend && npm run build`
 Expected: build succeeds.
 
-- [ ] **Step 6: Run the whole backend suite**, then commit
+- [x] **Step 6: Run the whole backend suite**, then commit
 
 Run: `cd backend && npx jest` -> all PASS except the pre-existing `aadharPdfVerify`.
 
