@@ -295,6 +295,7 @@ router.get("/fleet/active-trips", auth, authorize(...RIDER_ROLES), scopeFilter, 
 // --- Driver & Customer post-trip feedback ------------------------------------
 router.get("/trip-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.list);
 router.get("/customer-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.listCustomerFeedback);
+router.get("/receiver-feedback", auth, authorize(...RIDER_ROLES), scopeFilter, adminTripFeedbackController.listReceiverFeedback);
 
 // --- CMS: Cancellation Reasons, Legal Pages, FAQs ----------------------------
 router.get("/cancel-reasons", auth, cmsController.listCancelReasons);

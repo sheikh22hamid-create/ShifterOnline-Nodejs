@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Search, Star, MessageSquareText, OctagonAlert, UserCheck, Truck, Quote } from 'lucide-react'
+import { Search, Star, MessageSquareText, OctagonAlert, UserCheck, Truck, Quote, Package } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
 import useRealtimeSync from '../hooks/useRealtimeSync'
@@ -12,6 +12,8 @@ const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', col
 
 const DRIVER_HEADERS = ['Order', 'Driver', 'Customer', 'Customer Rating', 'Pickup Location', 'Drop Location', 'Pickup-to-Drop Road', 'No Entry Zone', 'Submitted']
 const CUSTOMER_HEADERS = ['Order', 'Customer', 'Driver', 'Driver Rating', 'Delivery Speed', 'Vehicle Condition', 'Feedback Tags', 'Customer Comment', 'Submitted']
+const RECEIVER_HEADERS = ['Order', 'Receiver', 'Driver', 'Driver Rating', 'Delivery Speed', 'Feedback Tags', 'Receiver Comment', 'Submitted']
+
 
 const CUSTOMER_TYPES = { commercial: 'Commercial', home_shifting: 'Home shifting' }
 
@@ -30,7 +32,7 @@ function Stars({ value }) {
 }
 
 export default function TripFeedback() {
-  const [tab, setTab] = useState('driver') // 'driver' | 'customer'
+  const [tab, setTab] = useState('driver') // 'driver' | 'customer' | 'receiver'
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [noEntry, setNoEntry] = useState('')
@@ -38,7 +40,8 @@ export default function TripFeedback() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
-  const endpoint = tab === 'customer' ? '/customer-feedback' : '/trip-feedback'
+  const endpoint = tab === 'customer' ? '/customer-feedback' : tab === 'receiver' ? '/receiver-feedback' : '/trip-feedback'
+  const headers = tab === 'driver' ? DRIVER_HEADERS : tab === 'receiver' ? RECEIVER_HEADERS : CUSTOMER_HEADERS
 
   const fetcher = useCallback(
     () =>
@@ -89,6 +92,8 @@ export default function TripFeedback() {
         <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
           {tab === 'driver'
             ? 'What drivers reported after each completed trip: customer, pickup, drop and road ratings, plus any no-entry zone.'
+            : tab === 'receiver'
+            ? 'What receivers said on the public tracking page after delivery: driver rating, delivery speed, tags and comments.'
             : 'What customers reported after trip completion & payment: driver rating, delivery speed, vehicle condition, tags and comments.'}
         </p>
       </div>
@@ -121,7 +126,21 @@ export default function TripFeedback() {
           <UserCheck size={15} />
           <span>Customer Feedback</span>
         </button>
+        <button
+          type="button"
+          onClick={() => switchTab('receiver')}
+          className="flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-all"
+          style={{
+            background: tab === 'receiver' ? 'var(--surface, #ffffff)' : 'transparent',
+            color: tab === 'receiver' ? 'var(--brand, #16A34A)' : 'var(--ink-muted)',
+            boxShadow: tab === 'receiver' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          }}
+        >
+          <Package size={15} />
+          <span>Receiver Feedback</span>
+        </button>
       </div>
+
 
       {/* Filter Row */}
       <div className="flex flex-wrap items-center gap-2">
@@ -179,7 +198,7 @@ export default function TripFeedback() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).map((h) => (
+                {headers.map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -190,23 +209,23 @@ export default function TripFeedback() {
               {loading &&
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).length} className="px-4 py-3">
+                    <td colSpan={headers.length} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).length} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={headers.length} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
               )}
               {!loading && !error && rows.length === 0 && (
                 <tr>
-                  <td colSpan={(tab === 'driver' ? DRIVER_HEADERS : CUSTOMER_HEADERS).length} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+                  <td colSpan={headers.length} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                     <MessageSquareText size={22} className="mx-auto mb-2" />
-                    No {tab === 'driver' ? 'driver' : 'customer'} feedback found.
+                    No {tab} feedback found.
                   </td>
                 </tr>
               )}
@@ -250,6 +269,49 @@ export default function TripFeedback() {
                             <Badge tone="danger"><OctagonAlert size={11} /> Yes</Badge>
                           ) : (
                             <Badge tone="success">No</Badge>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{formatDateTime(r.created_at)}</td>
+                      </>
+                    ) : tab === 'receiver' ? (
+                      /* Receiver Feedback Row */
+                      <>
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <div className="font-mono-data font-medium" style={{ color: 'var(--ink)' }}>#{r.order_id}</div>
+                          {r.goods_type && (
+                            <div className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>{r.goods_type}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="font-mono-data font-medium" style={{ color: 'var(--ink)' }}>{r.receiver_mobile}</div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="whitespace-nowrap font-medium" style={{ color: 'var(--ink)' }}>{r.driver_name}</div>
+                          <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{r.driver_mobile || `#${r.driver_id}`}</div>
+                        </td>
+                        <td className="px-4 py-2.5"><Stars value={r.driver_rating} /></td>
+                        <td className="px-4 py-2.5"><Stars value={r.delivery_rating} /></td>
+                        <td className="px-4 py-2.5">
+                          {r.feedback_tags ? (
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {r.feedback_tags.split(',').map((tag, idx) => (
+                                <Badge key={idx} tone="neutral" className="text-[10.5px]">
+                                  {tag.trim()}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ink-faint)' }}>—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 max-w-[220px]">
+                          {r.comment ? (
+                            <div className="flex items-start gap-1 text-[12px] italic" style={{ color: 'var(--ink-muted)' }}>
+                              <Quote size={11} className="shrink-0 mt-0.5" style={{ color: 'var(--brand)' }} />
+                              <span title={r.comment}>{truncate(r.comment, 55)}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--ink-faint)' }}>—</span>
                           )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-2.5 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{formatDateTime(r.created_at)}</td>
@@ -302,6 +364,7 @@ export default function TripFeedback() {
                     )}
                   </tr>
                 ))}
+
             </tbody>
           </table>
         </div>

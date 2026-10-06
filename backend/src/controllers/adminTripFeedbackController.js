@@ -204,5 +204,87 @@ async function listCustomerFeedback(req, res) {
   }
 }
 
-module.exports = { list, listCustomerFeedback };
+const RECEIVER_RATING_COLUMNS = ["driver_rating", "delivery_rating"];
+
+/**
+ * Admin "Receiver Feedback" tab: the review a receiver left on the public tracking page after delivery.
+ * Query: page, limit, search (order id, receiver number or driver name), rating (1-5, either rating),
+ * from, to (YYYY-MM-DD). City-scoped admins only see their city's orders.
+ */
+async function listReceiverFeedback(req, res) {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+
+    const where = {};
+    const and = [];
+    const rating = parseInt(req.query.rating, 10);
+    if (rating >= 1 && rating <= 5) where.OR = RECEIVER_RATING_COLUMNS.map((c) => ({ [c]: rating }));
+
+    if (req.query.from || req.query.to) {
+      where.created_at = {};
+      if (req.query.from) where.created_at.gte = new Date(`${req.query.from}T00:00:00`);
+      if (req.query.to) where.created_at.lte = new Date(`${req.query.to}T23:59:59`);
+    }
+
+    const search = String(req.query.search || "").trim();
+    if (search) {
+      const asNumber = parseInt(search, 10);
+      const riders = await prisma.tbl_rider.findMany({ where: { full_name: { contains: search } }, select: { id: true }, take: 200 });
+      and.push({
+        OR: [
+          ...(Number.isFinite(asNumber) ? [{ order_id: asNumber }] : []),
+          { receiver_phone: { contains: search } },
+          ...(riders.length ? [{ rider_id: { in: riders.map((r) => r.id) } }] : []),
+        ],
+      });
+    }
+    if (req.scopedCityId) {
+      const inCity = await prisma.pkg_order.findMany({ where: { city_id: req.scopedCityId }, select: { id: true } });
+      and.push({ order_id: { in: inCity.map((o) => o.id) } });
+    }
+    if (and.length) where.AND = and;
+
+    const [total, rows] = await Promise.all([
+      prisma.order_receiver_feedback.count({ where }),
+      prisma.order_receiver_feedback.findMany({ where, orderBy: { id: "desc" }, skip: (page - 1) * limit, take: limit }),
+    ]);
+
+    const orderIds = rows.map((r) => r.order_id);
+    const rids = [...new Set(rows.map((r) => r.rider_id))];
+    const [orders, riders] = await Promise.all([
+      orderIds.length
+        ? prisma.pkg_order.findMany({ where: { id: { in: orderIds } }, select: { id: true, paddress: true, daddress: true, goods_type_name: true, city_id: true } })
+        : [],
+      rids.length ? prisma.tbl_rider.findMany({ where: { id: { in: rids } }, select: { id: true, full_name: true, fmobile: true } }) : [],
+    ]);
+    const orderById = Object.fromEntries(orders.map((o) => [o.id, o]));
+    const riderById = Object.fromEntries(riders.map((r) => [r.id, r]));
+
+    const data = rows.map((r) => ({
+      id: r.id,
+      order_id: r.order_id,
+      receiver_mobile: r.receiver_phone,
+      driver_id: r.rider_id,
+      driver_name: riderById[r.rider_id]?.full_name || `Driver #${r.rider_id}`,
+      driver_mobile: riderById[r.rider_id]?.fmobile || null,
+      pickup: orderById[r.order_id]?.paddress || null,
+      drop: orderById[r.order_id]?.daddress || null,
+      goods_type: orderById[r.order_id]?.goods_type_name || null,
+      driver_rating: r.driver_rating,
+      delivery_rating: r.delivery_rating,
+      feedback_tags: r.feedback_tags,
+      comment: r.comment,
+      created_at: r.created_at,
+    }));
+
+    return res.status(200).json({ success: true, data, total, page, limit });
+  } catch (err) {
+    logger.error("admin receiver feedback list failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+module.exports = { list, listCustomerFeedback, listReceiverFeedback };
+
 
