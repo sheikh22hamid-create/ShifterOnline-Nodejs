@@ -14,6 +14,10 @@ const scopeOf = (req) => {
   if (!Number.isFinite(cityId)) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
   return { unrestricted: false, cityId };
 };
+// Route ids must be positive integers: a bad one is a 400, never a NaN into Prisma (a 500).
+const requireId = (v, label) => {
+  if (!/^\d+$/.test(String(v ?? "").trim()) || Number(v) <= 0) throw Object.assign(new Error(`${label} must be a valid id`), { statusCode: 400 });
+};
 const cityOf = (req) => scopeOf(req).cityId;
 
 const getSettings = async (req, res) => {
@@ -57,6 +61,7 @@ const voidOrder = async (req, res) => {
   try {
     // A city-bound admin may only void bookings of their own city; a superadmin is unrestricted.
     const scope = scopeOf(req);
+    requireId(req.params.id, "Booking id");
     if (!scope.unrestricted) {
       const order = await admin.findOrderInCity(req.params.id, scope.cityId);
       if (!order) return res.status(404).json({ success: false, message: "Booking not found" });
@@ -70,6 +75,7 @@ const voidOrder = async (req, res) => {
 const setLock = (locked) => async (req, res) => {
   try {
     const scope = scopeOf(req);
+    requireId(req.params.userId, "User id");
     await admin.assertUserInCity(req.params.userId, scope.cityId, scope.unrestricted);
     await freeBookingService.setUserLock(req.params.userId, locked);
     logger.info(`free-booking ${locked ? "lock" : "unlock"} user=${req.params.userId} by admin=${req.user.id}`);

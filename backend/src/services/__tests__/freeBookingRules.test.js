@@ -25,6 +25,20 @@ describe("isCityOfferOpen", () => {
   });
 });
 
+describe("isCityOfferOpen boundaries", () => {
+  const start = new Date("2026-10-01T00:00:00.000Z");
+  const end = new Date("2026-10-31T00:00:00.000Z");
+  const s = { enabled: true, offer_start: start, offer_end: end };
+  it("is open exactly at offer_start and exactly at offer_end (inclusive)", () => {
+    expect(rules.isCityOfferOpen(s, new Date(start.getTime()))).toBe(true);
+    expect(rules.isCityOfferOpen(s, new Date(end.getTime()))).toBe(true);
+  });
+  it("is closed one millisecond before start and after end", () => {
+    expect(rules.isCityOfferOpen(s, new Date(start.getTime() - 1))).toBe(false);
+    expect(rules.isCityOfferOpen(s, new Date(end.getTime() + 1))).toBe(false);
+  });
+});
+
 describe("decideOutcome", () => {
   const ok = { premium: true, cityOpen: true, locked: false, openBooking: false, poolVehicleFound: true };
   it("eligible when everything holds", () => expect(rules.decideOutcome(ok)).toBe(OUTCOME.ELIGIBLE));
@@ -75,4 +89,14 @@ describe("decideCredit", () => {
   });
   it("voids when the user is locked", () => expect(go({ userLocked: true })).toEqual({ action: "void", reason: REASON.LOCKED }));
   it("voids a zero fare", () => expect(go({ row: { ...row, actual_fare: "0" } })).toEqual({ action: "void", reason: REASON.ZERO_FARE }));
+  it.each([
+    ["pool_rider_id null", { row: { ...row, pool_rider_id: null } }],
+    ["pool_rider_id undefined", { row: { ...row, pool_rider_id: undefined } }],
+    ["order.rid null", { order: { ...order, rid: null } }],
+    ["order.rid undefined", { order: { ...order, rid: undefined } }],
+    ["both null", { row: { ...row, pool_rider_id: null }, order: { ...order, rid: null } }],
+  ])("voids vehicle_changed when accepted_in_pool but %s", (_n, o) => {
+    expect(go(o)).toEqual({ action: "void", reason: REASON.VEHICLE_CHANGED });
+  });
+  it("waits when the order row is missing", () => expect(go({ order: null })).toEqual({ action: "wait" }));
 });

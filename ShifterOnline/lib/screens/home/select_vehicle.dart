@@ -69,6 +69,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _loadingModels = false;
   bool _booking = false;
   bool _freeBookingRequested = false;
+  bool _checkingFreeBooking = false;
   String? _availabilityError;
   int? _radiusSuggestionShownFor;
   String? _modelsError;
@@ -774,7 +775,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Future<void> _bookSelected() async {
     final selected = _selected; final model = _selectedModel; final fee = model == null ? null : _modelFare(model);
-    if (selected == null || model == null || fee == null || _booking) return;
+    if (selected == null || model == null || fee == null || _booking || _checkingFreeBooking) return;
     final maxStops = _vehicleMaxExtraStops;
     if (maxStops != null && _stopsData.length > maxStops) {
       ApiWrapper.showToastMessage('This vehicle allows only $maxStops extra ${maxStops == 1 ? 'stop' : 'stops'}. Please remove ${_stopsData.length - maxStops} to continue.');
@@ -783,18 +784,23 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     // Free Booking Offer: only instant bookings, and only for premium customers (the server decides).
     _freeBookingRequested = false;
     if (_currentBookingType == 1) {
-      final uid = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
-      final fb = await FreeBookingApiService.check(
-        uid: uid, plat: _pickup.latitude, plong: _pickup.longitude,
-        category: _text(_categoryOf(selected)['cat_name'] ?? _categoryOf(selected)['name'], _vehicleName(selected)),
-        radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
-      );
-      if (!mounted) return;
-      if (fb['outcome'] == 'eligible') {
-        if (!await showFreeBookingAppliedDialog()) return;
-        _freeBookingRequested = true;
-      } else if (fb['outcome'] == 'no_free_vehicle') {
-        if (!await showNoFreeVehicleDialog()) return;
+      _checkingFreeBooking = true;
+      try {
+        final uid = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
+        final fb = await FreeBookingApiService.check(
+          uid: uid, plat: _pickup.latitude, plong: _pickup.longitude,
+          category: _text(_categoryOf(selected)['cat_name'] ?? _categoryOf(selected)['name'], _vehicleName(selected)),
+          radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
+        );
+        if (!mounted) return;
+        if (fb['outcome'] == 'eligible') {
+          if (!await showFreeBookingAppliedDialog()) return;
+          _freeBookingRequested = true;
+        } else if (fb['outcome'] == 'no_free_vehicle') {
+          if (!await showNoFreeVehicleDialog()) return;
+        }
+      } finally {
+        _checkingFreeBooking = false;
       }
     }
     final walletBalance = await _fetchWalletBalance();
@@ -868,6 +874,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final deducted = await ApiWrapper.dataPostNode(Config.nodeWalletWithdraw, {'mobile': login['mobile'], 'wallet_type': 'user', 'amount': payable.toStringAsFixed(2), 'remark': 'Delivery payment'});
       if (deducted is! Map || !(deducted['Result'] == true || deducted['Result'] == 'true')) { setState(() => _booking = false); ApiWrapper.showToastMessage('Wallet payment failed.'); return; }
     }
+    final requestedFreeBooking = _freeBookingRequested;
     final uid = _storage.read('Uid');
     final response = await ApiWrapper.dataPostNode(Config.nodeOrderCreate, {
       'uid': int.tryParse(uid?.toString() ?? '') ?? 0,
@@ -910,6 +917,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ApiWrapper.showToastMessage(_text(response['ResponseMsg'], 'Order placed successfully.'));
       if (receiverOn && response['receiver_pay'] != true) {
         ApiWrapper.showToastMessage('Receiver pays could not be enabled; you will pay normally.'.tr);
+      }
+      if (requestedFreeBooking && !(response['free_booking'] == true || response['free_booking'] == 'true')) {
+        ApiWrapper.showToastMessage('Free Booking could not be applied to this order. It will be a normal booking.'.tr);
       }
       final referralPointsUsed = _number(response['referral_points_used']);
       if (referralPointsUsed > 0) {

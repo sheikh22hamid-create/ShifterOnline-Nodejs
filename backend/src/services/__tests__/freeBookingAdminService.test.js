@@ -6,9 +6,11 @@ jest.mock("../../config/db", () => ({
   tbl_vehicle_details: { findMany: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
 }));
-jest.mock("../freeBookingService", () => ({ poolRiderIds: jest.fn().mockResolvedValue([]) }));
+jest.mock("../freeBookingService", () => ({ poolRiderIds: jest.fn().mockResolvedValue([]), reapCancelled: jest.fn() }));
+jest.mock("../../utils/logger", () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn() }));
 
 const prisma = require("../../config/db");
+const freeBookingService = require("../freeBookingService");
 const svc = require("../freeBookingAdminService");
 
 beforeEach(() => jest.resetAllMocks());
@@ -128,11 +130,107 @@ describe("listOrders scope", () => {
   });
 });
 
+describe("listOrders reaps cancelled rows first", () => {
+  it("calls reapCancelled before listing", async () => {
+    const order = [];
+    freeBookingService.reapCancelled.mockImplementation(async () => { order.push("reap"); return 1; });
+    prisma.free_booking_order.findMany.mockImplementation(async () => { order.push("list"); return [{ id: 1 }]; });
+    await expect(svc.listOrders({ cityId: 3 })).resolves.toEqual([{ id: 1 }]);
+    expect(order).toEqual(["reap", "list"]);
+  });
+  it("still lists when reapCancelled throws", async () => {
+    freeBookingService.reapCancelled.mockRejectedValue(new Error("boom"));
+    prisma.free_booking_order.findMany.mockResolvedValue([{ id: 2 }]);
+    await expect(svc.listOrders({ cityId: 3 })).resolves.toEqual([{ id: 2 }]);
+  });
+});
+
 describe("assertUserInCity", () => {
   it("lets a superadmin (null city) through and blocks an admin on another city's user", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ id: 7, city_id: 4 });
     await expect(svc.assertUserInCity(7, null, true)).resolves.toBeUndefined();
     await expect(svc.assertUserInCity(7, 3)).rejects.toThrow(/city/i);
     await expect(svc.assertUserInCity(7, null)).rejects.toThrow(/not assigned/i);
+  });
+});
+
+const status = (p) => p.catch((e) => e.statusCode);
+
+describe("numeric id validation (400, never a Prisma 500)", () => {
+  it.each(["abc", "", null, undefined, "1.5", "-2", "0", NaN])("pool id %p is rejected before any query", async (id) => {
+    expect(await status(svc.updatePool(id, 3, { active: false }))).toBe(400);
+    expect(await status(svc.removeFromPool(id, 3))).toBe(400);
+    expect(prisma.free_booking_pool.findUnique).not.toHaveBeenCalled();
+  });
+  it.each(["abc", "", null, undefined, "x9"])("addToPool rider_id %p is rejected", async (riderId) => {
+    expect(await status(svc.addToPool({ cityId: 3, riderId, validFrom: "2026-10-06", validTo: "2026-10-10", adminId: 1 }))).toBe(400);
+    expect(prisma.tbl_rider.findUnique).not.toHaveBeenCalled();
+  });
+  it("findOrderInCity rejects a non-numeric id", async () => {
+    expect(await status(svc.findOrderInCity("abc", 3))).toBe(400);
+  });
+  it("a numeric string id still works", async () => {
+    prisma.free_booking_pool.findUnique.mockResolvedValue({ id: 2, city_id: 3, valid_from: new Date("2026-10-06"), valid_to: new Date("2026-10-10") });
+    prisma.free_booking_pool.update.mockResolvedValue({ id: 2 });
+    await svc.updatePool("2", 3, { active: false });
+    expect(prisma.free_booking_pool.update).toHaveBeenCalledWith({ where: { id: 2 }, data: { active: false } });
+  });
+});
+
+describe("saveSettings strict parsing", () => {
+  const okDates = { offerStart: "2026-10-01T00:00:00Z", offerEnd: "2026-10-31T00:00:00Z" };
+  beforeEach(() => prisma.free_booking_setting.upsert.mockResolvedValue({}));
+  it.each([[true, true], ["true", true], [1, true], ["1", true], [false, false], ["false", false], [0, false], ["0", false], [undefined, false], [null, false]])(
+    "enabled %p => %p", async (input, expected) => {
+      await svc.saveSettings({ cityId: 3, enabled: input, ...okDates, adminId: 1 });
+      expect(prisma.free_booking_setting.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: expect.objectContaining({ enabled: expected }) }));
+    }
+  );
+  it.each(["yes", "maybe", 2, {}, "TRUE "])("enabled %p is a 400", async (input) => {
+    expect(await status(svc.saveSettings({ cityId: 3, enabled: input, ...okDates, adminId: 1 }))).toBe(400);
+    expect(prisma.free_booking_setting.upsert).not.toHaveBeenCalled();
+  });
+  it("an unparseable date is a 400 even when the offer is OFF", async () => {
+    expect(await status(svc.saveSettings({ cityId: 3, enabled: false, offerStart: "not-a-date", offerEnd: null, adminId: 1 }))).toBe(400);
+    expect(await status(svc.saveSettings({ cityId: 3, enabled: "false", offerStart: null, offerEnd: "garbage", adminId: 1 }))).toBe(400);
+    expect(prisma.free_booking_setting.upsert).not.toHaveBeenCalled();
+  });
+  it("valid dates are still stored when the offer is OFF", async () => {
+    await svc.saveSettings({ cityId: 3, enabled: false, ...okDates, adminId: 1 });
+    expect(prisma.free_booking_setting.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ enabled: false, offer_start: new Date(okDates.offerStart), offer_end: new Date(okDates.offerEnd) }),
+    }));
+  });
+});
+
+describe("assertUserInCity missing / invalid users", () => {
+  it("404s a missing customer for a superadmin and for a city admin", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue(null);
+    expect(await status(svc.assertUserInCity(7, null, true))).toBe(404);
+    expect(await status(svc.assertUserInCity(7, 3))).toBe(404);
+    await expect(svc.assertUserInCity(7, 3)).rejects.toThrow("Customer not found");
+  });
+  it("keeps the city rules for existing users: 400 for another city, 403 for an unassigned admin", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 7, city_id: 4 });
+    expect(await status(svc.assertUserInCity(7, 3))).toBe(400);
+    expect(await status(svc.assertUserInCity(7, null))).toBe(403);
+    await expect(svc.assertUserInCity(7, 4)).resolves.toBeUndefined();
+  });
+  it("400s a non-numeric user id", async () => {
+    expect(await status(svc.assertUserInCity("abc", 3))).toBe(400);
+    expect(await status(svc.assertUserInCity("abc", null, true))).toBe(400);
+    expect(prisma.tbl_user.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveCityId empty-string fallback", () => {
+  it("a superadmin's empty query city_id falls back to the body", () => {
+    expect(svc.resolveCityId({ role: "superadmin" }, { city_id: "" }, { city_id: 5 })).toBe(5);
+  });
+  it("a non-finite query city_id also falls back to the body", () => {
+    expect(svc.resolveCityId({ role: "superadmin" }, { city_id: "abc" }, { city_id: "6" })).toBe(6);
+  });
+  it("is null when both are empty", () => {
+    expect(svc.resolveCityId({ role: "superadmin" }, { city_id: "" }, { city_id: "" })).toBeNull();
   });
 });

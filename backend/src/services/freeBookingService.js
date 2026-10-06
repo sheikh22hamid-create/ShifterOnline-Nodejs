@@ -38,7 +38,7 @@ async function poolRiderIds(cityId, todayStr = rules.istDateString()) {
 // whose order was cancelled does not count, so a cancelled trip never blocks the next one.
 async function findOpenBooking(userId) {
   const rows = await prisma.$queryRaw`
-    SELECT f.id, f.order_id
+    SELECT f.id, f.order_id, o.o_status
     FROM free_booking_order f
     JOIN pkg_order o ON o.id = f.order_id
     WHERE f.user_id = ${Number(userId)}
@@ -97,6 +97,8 @@ async function findPoolDriver({ uid, cityId, category, plat, plong, radiusKm, to
 async function findOpenBookingAfterRetry(userId) {
   let open = await findOpenBooking(userId);
   if (!open) return { open: null, locked: false };
+  // A trip still in progress has nothing to credit: skip the two FOR UPDATE locks tryCredit takes.
+  if (open.o_status !== "Completed") return { open, locked: false };
   await module.exports.tryCredit(open.order_id);
   open = await findOpenBooking(userId);
   if (open) return { open, locked: false };
@@ -234,7 +236,12 @@ async function recordAcceptance(orderId, riderId) {
   if (!row || row.status !== STATUS.CONFIRMED) return;
   const ids = await poolRiderIds(row.city_id);
   if (ids.includes(Number(riderId))) {
-    await prisma.free_booking_order.update({ where: { id: row.id }, data: { pool_rider_id: Number(riderId), accepted_in_pool: true } });
+    // Conditional write: a concurrent void between the read above and here must not be overwritten.
+    const res = await prisma.free_booking_order.updateMany({
+      where: { id: row.id, status: STATUS.CONFIRMED },
+      data: { pool_rider_id: Number(riderId), accepted_in_pool: true },
+    });
+    if (res.count !== 1) return;
     logger.info(`free-booking order=${orderId} ${STATUS.CONFIRMED}->${STATUS.CONFIRMED} reason=pool_driver_accepted amount=-`);
     return;
   }
@@ -317,7 +324,18 @@ async function tryCredit(orderId) {
 
       const key = `free_booking_credit:${id}`;
       const duplicate = await tx.tbl_wallet_history.findFirst({ where: { payment_id: key, wallet_type: "user" } });
-      if (duplicate) return { credited: false, action: "duplicate" };
+      if (duplicate) {
+        // The wallet was already credited but the row never flipped (e.g. a crash between the two
+        // writes): repair the row only. The wallet and the user lock are not touched again.
+        await tx.free_booking_order.update({
+          where: { id: row.id },
+          data: {
+            status: STATUS.REWARD_CREDITED, credit_amount: Number(duplicate.amount),
+            wallet_history_id: duplicate.id, credited_at: new Date(),
+          },
+        });
+        return { credited: false, action: "duplicate" };
+      }
 
       const remark = `Free Booking refund for order #${id}`;
       await tx.tbl_user.update({
@@ -363,6 +381,11 @@ async function tryCredit(orderId) {
 
 /** Trip completed: record the final invoice total and try to credit straight away. */
 async function markCompleted({ orderId, finalTotal }) {
+  // round2(undefined) would be 0 and void the booking as zero_fare: refuse a non-numeric total instead.
+  if (finalTotal == null || finalTotal === "" || typeof finalTotal === "boolean" || !Number.isFinite(Number(finalTotal))) {
+    logger.error(`freeBookingService.markCompleted: invalid finalTotal for order ${orderId}: ${String(finalTotal)}`);
+    return { credited: false };
+  }
   const res = await prisma.free_booking_order.updateMany({
     where: { order_id: Number(orderId), status: STATUS.CONFIRMED },
     data: { status: STATUS.REWARD_PENDING, actual_fare: rules.round2(finalTotal), completed_at: new Date() },
@@ -370,6 +393,26 @@ async function markCompleted({ orderId, finalTotal }) {
   if (res.count !== 1) return { credited: false };
   logTransition(orderId, STATUS.CONFIRMED, STATUS.REWARD_PENDING, null, rules.round2(finalTotal));
   return tryCredit(orderId);
+}
+
+/**
+ * A cancelled trip leaves its open free-booking row CONFIRMED (cancellation does not go through this
+ * service). Flip those rows to NOT_ELIGIBLE (cancelled) so the audit list is accurate. Returns the
+ * number of rows changed. Never throws.
+ */
+async function reapCancelled() {
+  try {
+    const count = await prisma.$executeRaw`
+      UPDATE free_booking_order f JOIN pkg_order o ON o.id = f.order_id
+      SET f.status = ${STATUS.NOT_ELIGIBLE}, f.not_eligible_reason = ${REASON.CANCELLED}
+      WHERE f.status IN (${STATUS.CONFIRMED}, ${STATUS.REWARD_PENDING}) AND o.o_status = 'Cancelled'
+    `;
+    if (count > 0) logger.info(`free-booking orders=${count} open->${STATUS.NOT_ELIGIBLE} reason=${REASON.CANCELLED} amount=-`);
+    return count;
+  } catch (err) {
+    logger.error("freeBookingService.reapCancelled failed:", err);
+    return 0;
+  }
 }
 
 /** A referral by this user just became successful. True if a locked user was unlocked. */
@@ -394,5 +437,5 @@ module.exports = {
   getCitySetting, poolRiderIds, findOpenBooking, findPoolDriver,
   checkEligibility, createForOrder, getDispatchPoolFilter, getUserStatus,
   recordAcceptance, markCompleted, tryCredit, fallbackToNormalDispatch,
-  unlockForReferral, setUserLock, voidOrder,
+  unlockForReferral, setUserLock, voidOrder, reapCancelled,
 };

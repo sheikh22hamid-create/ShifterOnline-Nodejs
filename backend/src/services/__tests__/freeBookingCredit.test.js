@@ -1,5 +1,6 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
+  $executeRaw: jest.fn(),
   $transaction: jest.fn(),
   tbl_user: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   free_booking_pool: { findMany: jest.fn() },
@@ -97,6 +98,31 @@ describe("tryCredit", () => {
     expect(tx.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
 
+  it("repairs an open row whose history row already exists, without touching the wallet or locking the user again", async () => {
+    const tx = makeTx({ row: pendingRow(), duplicate: { id: 31, amount: "500.00" } });
+    const out = await svc.tryCredit(50);
+    expect(out).toEqual({ credited: false, action: "duplicate" });
+    expect(tx.free_booking_order.update).toHaveBeenCalledTimes(1);
+    expect(tx.free_booking_order.update).toHaveBeenCalledWith({
+      where: { id: 5 },
+      data: { status: "FREE_BOOKING_REWARD_CREDITED", credit_amount: 500, wallet_history_id: 31, credited_at: expect.any(Date) },
+    });
+    expect(tx.tbl_user.update).not.toHaveBeenCalled();
+    expect(tx.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(walletNotifier.notifyCustomerWalletTransaction).not.toHaveBeenCalled();
+  });
+
+  it("takes the free_booking_order lock first, then the tbl_user lock (both FOR UPDATE)", async () => {
+    const tx = makeTx({ row: pendingRow() });
+    await svc.tryCredit(50);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    const sql = (i) => tx.$queryRaw.mock.calls[i][0].join("?");
+    expect(sql(0)).toMatch(/free_booking_order/);
+    expect(sql(0)).toMatch(/FOR UPDATE/);
+    expect(sql(1)).toMatch(/tbl_user/);
+    expect(sql(1)).toMatch(/FOR UPDATE/);
+  });
+
   it("waits while the settlement is pending: nothing is written", async () => {
     const tx = makeTx({ row: pendingRow(), settlement: { status: "pending" } });
     expect(await svc.tryCredit(50)).toEqual({ credited: false, action: "wait" });
@@ -170,6 +196,15 @@ describe("markCompleted", () => {
     await svc.markCompleted({ orderId: 50, finalTotal: 500 });
     expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_CONFIRMED->FREE_BOOKING_REWARD_PENDING reason=- amount=500");
   });
+  it.each([["undefined", undefined], ["null", null], ["NaN", NaN], ["garbage string", "abc"]])(
+    "writes nothing and logs an error when finalTotal is %s (never voids a booking as zero_fare)",
+    async (_n, finalTotal) => {
+      expect(await svc.markCompleted({ orderId: 50, finalTotal })).toEqual({ credited: false });
+      expect(prisma.free_booking_order.updateMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalled();
+    }
+  );
   it("does nothing for an order that is not a CONFIRMED free booking", async () => {
     prisma.free_booking_order.updateMany.mockResolvedValue({ count: 0 });
     expect(await svc.markCompleted({ orderId: 50, finalTotal: 500 })).toEqual({ credited: false });
@@ -182,8 +217,30 @@ describe("recordAcceptance", () => {
   it("stores the pool rider who accepted", async () => {
     prisma.free_booking_order.findUnique.mockResolvedValue(confirmed);
     prisma.free_booking_pool.findMany.mockResolvedValue([{ rider_id: 9 }]);
+    prisma.free_booking_order.updateMany.mockResolvedValue({ count: 1 });
     await svc.recordAcceptance(50, 9);
-    expect(prisma.free_booking_order.update).toHaveBeenCalledWith({ where: { id: 5 }, data: { pool_rider_id: 9, accepted_in_pool: true } });
+    expect(prisma.free_booking_order.updateMany).toHaveBeenCalledWith({
+      where: { id: 5, status: "FREE_BOOKING_CONFIRMED" },
+      data: { pool_rider_id: 9, accepted_in_pool: true },
+    });
+    expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_CONFIRMED->FREE_BOOKING_CONFIRMED reason=pool_driver_accepted amount=-");
+  });
+  it("does nothing more when a concurrent void won the race (updateMany count 0)", async () => {
+    prisma.free_booking_order.findUnique.mockResolvedValue(confirmed);
+    prisma.free_booking_pool.findMany.mockResolvedValue([{ rider_id: 9 }]);
+    prisma.free_booking_order.updateMany.mockResolvedValue({ count: 0 });
+    await svc.recordAcceptance(50, 9);
+    expect(prisma.free_booking_order.updateMany).toHaveBeenCalledTimes(1);
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(customerInbox.saveCustomerNotification).not.toHaveBeenCalled();
+  });
+  it("sends no notification when the non-pool void loses the race (voidRow count 0)", async () => {
+    prisma.free_booking_order.findUnique.mockResolvedValue(confirmed);
+    prisma.free_booking_pool.findMany.mockResolvedValue([{ rider_id: 9 }]);
+    prisma.free_booking_order.updateMany.mockResolvedValue({ count: 0 });
+    await svc.recordAcceptance(50, 99);
+    expect(customerInbox.saveCustomerNotification).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
   });
   it("voids the booking and tells the customer when a non-pool driver accepted", async () => {
     prisma.free_booking_order.findUnique.mockResolvedValue(confirmed);
@@ -253,5 +310,31 @@ describe("lock and unlock", () => {
     expect(prisma.tbl_user.update).toHaveBeenLastCalledWith({
       where: { id: 7 }, data: { free_booking_locked: false, free_booking_just_unlocked: false },
     });
+  });
+});
+
+describe("reapCancelled", () => {
+  it("runs one joined UPDATE for open rows of cancelled orders and returns the count", async () => {
+    prisma.$executeRaw.mockResolvedValue(3);
+    expect(await svc.reapCancelled()).toBe(3);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const sql = prisma.$executeRaw.mock.calls[0][0].join("?");
+    expect(sql).toMatch(/UPDATE free_booking_order f JOIN pkg_order o ON o\.id = f\.order_id/);
+    expect(sql).toMatch(/o\.o_status = 'Cancelled'/);
+    expect(prisma.$executeRaw.mock.calls[0].slice(1)).toEqual([
+      "FREE_BOOKING_NOT_ELIGIBLE", "cancelled", "FREE_BOOKING_CONFIRMED", "FREE_BOOKING_REWARD_PENDING",
+    ]);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("reason=cancelled"));
+  });
+  it("does not log when nothing changed", async () => {
+    prisma.$executeRaw.mockResolvedValue(0);
+    expect(await svc.reapCancelled()).toBe(0);
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+  it("never throws: logs the error and returns 0", async () => {
+    prisma.$executeRaw.mockRejectedValue(new Error("db down"));
+    expect(await svc.reapCancelled()).toBe(0);
+    expect(logger.error).toHaveBeenCalled();
   });
 });
