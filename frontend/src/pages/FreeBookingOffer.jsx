@@ -60,29 +60,88 @@ export default function FreeBookingOffer() {
 
   useEffect(() => {
     if (!isSuper) return
-    api.get('/cities').then((res) => setCities(res.data?.data || res.data || [])).catch(() => {})
+    api.get('/cities')
+      .then((res) => setCities(res.data?.data || res.data || []))
+      .catch((err) => {
+        setCities([])
+        toastRef.current.error(errMsg(err, 'Could not load cities'))
+      })
   }, [isSuper])
+
+  // Latest city + a per-loader request counter: a response is applied only if it is still the newest
+  // request AND the city has not changed since it was sent.
+  const cityRef = useRef(cityId)
+  const reqRef = useRef({ settings: 0, pool: 0, orders: 0 })
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+  // Declared before the load effect so on a city change it runs first: clear every city-scoped value.
+  useEffect(() => {
+    cityRef.current = cityId
+    setSettings({ enabled: false, offer_start: '', offer_end: '' })
+    setSettingsLoaded(false)
+    setPool([])
+    setCandidates([])
+    setOrders([])
+    setAddForm({ rider_id: '', valid_from: '', valid_to: '' })
+    setLockUserId('')
+  }, [cityId])
+
+  // Runs `request`, then `apply(res)`; on failure runs `clear()` and toasts. Stale results are dropped.
+  const guarded = useCallback((kind, request, apply, clear, failMsg) => {
+    const sentCity = cityId
+    const token = ++reqRef.current[kind]
+    const fresh = () => cityRef.current === sentCity && reqRef.current[kind] === token
+    request()
+      .then((res) => { if (fresh()) apply(res) })
+      .catch((err) => {
+        if (!fresh()) return
+        clear()
+        toastRef.current.error(errMsg(err, failMsg))
+      })
+  }, [cityId])
 
   const loadSettings = useCallback(() => {
     if (!ready) return
-    api.get('/free-booking/settings', { params: params() })
-      .then((res) => {
+    guarded(
+      'settings',
+      () => api.get('/free-booking/settings', { params: params() }),
+      (res) => {
         const d = res.data.data
         setSettings({ enabled: d.enabled, offer_start: toLocalInput(d.offer_start), offer_end: toLocalInput(d.offer_end) })
-      })
-      .catch((err) => toastRef.current.error(errMsg(err, 'Could not load settings')))
-  }, [ready, params])
+        setSettingsLoaded(true)
+      },
+      () => setSettingsLoaded(false),
+      'Could not load settings',
+    )
+  }, [ready, params, guarded])
 
   const loadPool = useCallback(() => {
     if (!ready) return
-    api.get('/free-booking/pool', { params: params() }).then((res) => setPool(res.data.data || [])).catch(() => {})
-    api.get('/free-booking/pool/candidates', { params: params() }).then((res) => setCandidates(res.data.data || [])).catch(() => {})
-  }, [ready, params])
+    guarded(
+      'pool',
+      () => Promise.all([
+        api.get('/free-booking/pool', { params: params() }),
+        api.get('/free-booking/pool/candidates', { params: params() }),
+      ]),
+      ([poolRes, candRes]) => {
+        setPool(poolRes.data.data || [])
+        setCandidates(candRes.data.data || [])
+      },
+      () => { setPool([]); setCandidates([]) },
+      'Could not load the offer pool',
+    )
+  }, [ready, params, guarded])
 
   const loadOrders = useCallback(() => {
     if (!ready) return
-    api.get('/free-booking/orders', { params: params() }).then((res) => setOrders(res.data.data || [])).catch(() => {})
-  }, [ready, params])
+    guarded(
+      'orders',
+      () => api.get('/free-booking/orders', { params: params() }),
+      (res) => setOrders(res.data.data || []),
+      () => setOrders([]),
+      'Could not load free bookings',
+    )
+  }, [ready, params, guarded])
 
   useEffect(() => {
     if (tab === 'settings') loadSettings()
@@ -202,7 +261,7 @@ export default function FreeBookingOffer() {
             </Field>
           </div>
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>The offer only applies between these two times, and only while it is ON.</p>
-          {canWrite && <button type="submit" className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600">Save</button>}
+          {canWrite && settingsLoaded && <button type="submit" className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600">Save</button>}
         </form>
       )}
 
