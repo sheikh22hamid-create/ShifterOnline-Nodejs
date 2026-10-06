@@ -76,3 +76,20 @@ describe("Track <id> reply", () => {
     expect(await handleTrackingQuery(String(oid), "9822222222")).not.toContain("Live track");
   });
 });
+
+describe("Track <id> reply formatting", () => {
+  it("with no link the receiver's reply is unchanged: a single blank line before Customer Care", async () => {
+    trackLine.mockResolvedValue("");
+    const receiver = await handleTrackingQuery(String(oid), "9822222222");
+    const sender = await handleTrackingQuery(String(oid), "9811111111");
+    expect(receiver).toBe(sender);
+    expect(receiver.endsWith("₹350\n\n📞 Customer Care: 9109114515")).toBe(true);
+    expect(receiver).not.toContain("\n\n\n");
+  });
+  it("with a link there is no triple newline and one blank line before Customer Care", async () => {
+    const receiver = await handleTrackingQuery(String(oid), "9822222222");
+    expect(receiver).toContain(LINE.trim());
+    expect(receiver).not.toContain("\n\n\n");
+    expect(receiver.endsWith(`${LINE.trim()}\n\n📞 Customer Care: 9109114515`)).toBe(true);
+  });
+});

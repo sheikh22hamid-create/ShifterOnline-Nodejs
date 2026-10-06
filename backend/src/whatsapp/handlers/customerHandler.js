@@ -142,7 +142,8 @@ async function handleTrackingQuery(orderId, senderPhone) {
 
     const isReceiverParty = senderClean === normalizePhone10(order.dmobile) && senderClean !== normalizePhone10(order.pmobile);
     if (isReceiverParty && Number(order.order_status) < 4) {
-      reply += `\n${await trackLine(order, normalizePhone10(order.dmobile))}`.replace(/\n+$/, "\n");
+      const line = await trackLine(order, normalizePhone10(order.dmobile));
+      if (line) reply += `\n${line}`.replace(/\n+$/, "\n");
     }
 
     reply += `\n📞 Customer Care: 9109114515`;
