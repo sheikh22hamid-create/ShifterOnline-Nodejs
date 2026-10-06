@@ -1889,7 +1889,7 @@ describe("finalizeAcceptedOrder â€” late-accept customer warning (booking_type=2
   });
 });
 
-describe("finalizeAcceptedOrder — free booking acceptance hook", () => {
+describe("finalizeAcceptedOrder - free booking acceptance hook", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((cb) => cb(prisma));

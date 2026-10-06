@@ -169,7 +169,7 @@ export default function FreeBookingOffer() {
   }
 
   // Runs a mutation for the city selected right now. When the response arrives the admin may have switched
-  // city: then nothing is reloaded and no toast is shown (the other city's data is not what is on screen).
+  // city: then nothing is reloaded and no success toast is shown (the other city's data is not what is on screen); failures always toast.
   async function mutate({ request, success, failMsg, reload, onSuccess }) {
     const sentCity = cityRef.current
     const sameCity = () => cityRef.current === sentCity
@@ -180,7 +180,7 @@ export default function FreeBookingOffer() {
       if (success) toastRef.current.success(success)
       if (reload) reload()
     } catch (err) {
-      if (sameCity()) toastRef.current.error(errMsg(err, failMsg))
+      toastRef.current.error(errMsg(err, failMsg))
     }
   }
 
