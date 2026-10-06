@@ -7,12 +7,14 @@ jest.mock("../../config/db", () => ({
   free_booking_pool: { findMany: jest.fn() },
   free_booking_order: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
 }));
+jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 jest.mock("../pricingEngine", () => ({ getActiveCustomerPlan: jest.fn() }));
 jest.mock("../walletNotifier", () => ({ notifyCustomerWalletTransaction: jest.fn().mockResolvedValue() }));
 jest.mock("../customerInbox", () => ({ saveCustomerNotification: jest.fn().mockResolvedValue() }));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../pricingEngine");
+const logger = require("../../utils/logger");
 const svc = require("../freeBookingService");
 
 const hour = 3600 * 1000;
@@ -107,6 +109,7 @@ describe("getDispatchPoolFilter", () => {
   it("never throws: a DB error means no filter", async () => {
     prisma.free_booking_order.findUnique.mockRejectedValue(new Error("boom"));
     expect(await svc.getDispatchPoolFilter({ id: 50 })).toBeNull();
+    expect(logger.error).toHaveBeenCalled();
   });
 });
 
