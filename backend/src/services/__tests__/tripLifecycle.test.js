@@ -62,6 +62,8 @@ const lockManager = require("../lockManager");
 const pricingEngine = require("../pricingEngine");
 const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
+const freeBookingService = require("../freeBookingService");
+const logger = require("../../utils/logger");
 const { SCHEDULED_ORDER_PRIORITY_WINDOW_MS } = require("../../config/constants");
 const { haversineKm } = require("../../utils/geoDistance");
 const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
@@ -1884,5 +1886,33 @@ describe("finalizeAcceptedOrder â€” late-accept customer warning (booking_type=2
     await tripLifecycle.acceptOrder(297, 1);
 
     expect(pushNotifier.notifyCustomerLatePickup).not.toHaveBeenCalled();
+  });
+});
+
+describe("finalizeAcceptedOrder — free booking acceptance hook", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.$executeRaw.mockResolvedValue(1);
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak" });
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, booking_type: 1 });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("records the acceptance for the order and rider", async () => {
+    const record = jest.spyOn(freeBookingService, "recordAcceptance").mockResolvedValue(undefined);
+    await tripLifecycle.acceptOrder(297, 1);
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith(297, 1);
+  });
+
+  it("a rejected recordAcceptance is logged and does not break the accept", async () => {
+    jest.spyOn(freeBookingService, "recordAcceptance").mockRejectedValue(new Error("db blip"));
+    const logged = jest.spyOn(logger, "error").mockImplementation(() => {});
+    await expect(tripLifecycle.acceptOrder(297, 1)).resolves.toBeDefined();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("recordAcceptance error for order 297"), expect.any(Error));
   });
 });
