@@ -818,7 +818,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     return _number(response is Map ? response['wallet_balance'] : 0);
   }
 
-  Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee, [ReceiverPaySelection receiverPay = ReceiverPaySelection.off]) async {
+  Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee, [ReceiverPaySelection receiverPay = ReceiverPaySelection.off, bool walletAlreadyDebited = false]) async {
     // Receiver pays is cash-only: never combined with the wallet (-2).
     final receiverOn = receiverPay.enabled && payValue == 1;
     if (_currentBookingType == 2 && _scheduledFor == null) {
@@ -838,10 +838,29 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ApiWrapper.showToastMessage('Selected delivery model is unavailable.');
       return;
     }
+    // Free Booking re-check BEFORE any wallet debit: if the offer no longer applies, ask first.
+    if (_freeBookingRequested) {
+      final uidNow = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
+      final fb = await FreeBookingApiService.check(
+        uid: uidNow, plat: _pickup.latitude, plong: _pickup.longitude,
+        category: _text(category['cat_name'] ?? category['name'], _vehicleName(_selected!)),
+        radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
+      );
+      if (!mounted) return;
+      if (fb['outcome'] != 'eligible') {
+        _freeBookingRequested = false;
+        final proceed = await showNoFreeVehicleDialog();
+        if (!mounted) return;
+        if (!proceed) {
+          setState(() => _booking = false);
+          return;
+        }
+      }
+    }
     final login = _storage.read('UserLogin');
     // Wallet withdrawal runs only for payValue == -2; a receiver-pays order is
     // cash (payValue == 1) so it can never reach this block.
-    if (payValue == -2 && login is Map) {
+    if (payValue == -2 && login is Map && !walletAlreadyDebited) {
       final balance = await _fetchWalletBalance();
       // Only what's left after the coupon / referral-points discount is taken from the wallet.
       final payable = _payableAmount(fee);
@@ -935,9 +954,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (response is Map && response['code']?.toString() == 'FREE_BOOKING_UNAVAILABLE') {
         // The pool vehicle went away between the check and the booking: ask again, then book normally.
         _freeBookingRequested = false;
-        if (await showNoFreeVehicleDialog()) {
-          await _submitOrder(payValue, category, model, fee, receiverPay);
+        if (payValue == -2) {
+          // The wallet was already debited for this order: never offer Cancel and never debit again.
+          ApiWrapper.showToastMessage('A free vehicle just became unavailable; placing your booking as a normal booking (no refund).');
+          await _submitOrder(payValue, category, model, fee, receiverPay, true);
+          return;
         }
+        setState(() => _booking = true);
+        final proceed = await showNoFreeVehicleDialog();
+        if (!mounted) return;
+        setState(() => _booking = false);
+        if (proceed) await _submitOrder(payValue, category, model, fee, receiverPay);
         return;
       }
       final isSettlementBlock = response is Map &&
