@@ -20,7 +20,7 @@ describe("renderPage", () => {
   it("injects the config as inert JSON, escaping anything that could close the script tag", () => {
     const html = renderPage({ tileUrl: null, attribution: "</script><script>alert(1)</script>" });
     expect(html).not.toContain("</script><script>alert(1)");
-    expect(html).toContain("\u003c/script");
+    expect(html).toContain("\\u003c/script");
     const m = html.match(/<script type="application\/json" id="cfg">([\s\S]*?)<\/script>/);
     expect(JSON.parse(m[1]).attribution).toBe("</script><script>alert(1)</script>");
   });

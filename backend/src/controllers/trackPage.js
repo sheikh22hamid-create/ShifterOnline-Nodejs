@@ -140,8 +140,14 @@ const TEMPLATE = `<!doctype html>
       if (key !== lastKey) { if (routeLine) map.removeLayer(routeLine); routeLine = L.polyline(s.route, { color: "#1a73e8", weight: 5, opacity: 0.8 }).addTo(map); lastKey = key; }
       pts = pts.concat(s.route);
     }
-    if (s.pickup && !pickupMarker) pickupMarker = L.marker([s.pickup.lat, s.pickup.lng], { icon: pinIcon("p"), interactive: false }).addTo(map);
-    if (s.drop && !dropMarker) dropMarker = L.marker([s.drop.lat, s.drop.lng], { icon: pinIcon("d"), interactive: false }).addTo(map);
+    if (s.pickup) {
+      if (!pickupMarker) pickupMarker = L.marker([s.pickup.lat, s.pickup.lng], { icon: pinIcon("p"), interactive: false }).addTo(map);
+      else pickupMarker.setLatLng([s.pickup.lat, s.pickup.lng]);
+    }
+    if (s.drop) {
+      if (!dropMarker) dropMarker = L.marker([s.drop.lat, s.drop.lng], { icon: pinIcon("d"), interactive: false }).addTo(map);
+      else dropMarker.setLatLng([s.drop.lat, s.drop.lng]);
+    }
     if (s.pickup) pts.push([s.pickup.lat, s.pickup.lng]);
     if (s.drop) pts.push([s.drop.lat, s.drop.lng]);
     if (s.position) { moveDriver(s.position); pts.push([s.position.lat, s.position.lng]); }
