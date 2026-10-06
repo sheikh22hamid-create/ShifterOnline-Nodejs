@@ -12,6 +12,7 @@ const adminSocket = require("../sockets/adminSocket");
 const { getIO } = require("../sockets/socketServer");
 const { buildNextDaySequence } = require("../utils/geoDistance");
 const receiverPayService = require("../services/receiverPayService");
+const receiverTrackMessage = require("../services/receiverTrackMessage");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -337,6 +338,7 @@ async function update(req, res) {
       await receiverPayService.changeReceiverPhone({ orderId: id, phone: data.dmobile }).catch((err) => {
         if (!(err instanceof receiverPayService.ReceiverPayError)) logger.error(`update: receiver phone sync failed for order ${id}:`, err);
       });
+      await receiverTrackMessage.syncReceiverPhone(id, data.dmobile);
     }
     try {
       adminSocket.notifyOrderStatusUpdate(updated);

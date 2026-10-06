@@ -1956,3 +1956,12 @@ model order_receiver_pay {
   @@index([uid], map: "idx_order_receiver_pay_uid")
   @@index([razorpay_order_id], map: "idx_order_receiver_pay_rzp_order")
 }
+
+model order_track_link {
+  id             Int       @id @default(autoincrement())
+  order_id       Int       @unique(map: "uq_order_track_link_order")
+  token          String    @unique(map: "uq_order_track_link_token") @db.Char(43)
+  receiver_phone String    @db.VarChar(15)
+  created_at     DateTime  @db.DateTime(0)
+  last_viewed_at DateTime? @db.DateTime(0)
+}

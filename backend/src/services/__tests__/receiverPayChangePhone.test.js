@@ -6,6 +6,7 @@ jest.mock("../../config/db", () => ({
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 jest.mock("../../whatsapp/notifications", () => ({ sendWhatsAppNotification: jest.fn() }));
+jest.mock("../receiverTrackMessage", () => ({ syncReceiverPhone: jest.fn().mockResolvedValue({ rotated: false }) }));
 jest.mock("../receiverPaySettings", () => ({
   isReceiverPayAvailable: jest.fn(),
   getReceiverPaySettings: jest.fn(),
@@ -14,6 +15,7 @@ jest.mock("../receiverPaySettings", () => ({
 const prisma = require("../../config/db");
 const settings = require("../receiverPaySettings");
 const { sendWhatsAppNotification } = require("../../whatsapp/notifications");
+const trackMsg = require("../receiverTrackMessage");
 const svc = require("../receiverPayService");
 
 const rpRow = (o = {}) => ({ id: 3, order_id: 50, uid: 7, receiver_phone: "9876500000", status: "active", link_send_count: 0, link_sent_at: null, ...o });
@@ -93,5 +95,16 @@ describe("receiverPayService.changeReceiverPhone", () => {
       await expect(svc.changeReceiverPhone({ orderId: 50, uid: 7, phone: "9876543210" })).rejects.toMatchObject({ code: "NOT_PAYABLE" });
     }
     expect(prisma.pkg_order.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("receiverPayService.changeReceiverPhone keeps the tracking link in step", () => {
+  it("rotates the tracking link to the new number after saving it", async () => {
+    await svc.changeReceiverPhone({ orderId: 50, uid: 7, phone: "98765 43210" });
+    expect(trackMsg.syncReceiverPhone).toHaveBeenCalledWith(50, "9876543210");
+  });
+  it("does nothing for the tracking link when the number did not change", async () => {
+    await svc.changeReceiverPhone({ orderId: 50, uid: 7, phone: "98765 00000" });
+    expect(trackMsg.syncReceiverPhone).not.toHaveBeenCalled();
   });
 });

@@ -24,7 +24,7 @@ is visible.
 
 | Element | Detail |
 |---|---|
-| Status timeline | Driver assigned, Reached pickup, Parcel picked up, On the way, Reached drop, Delivered. The current step is highlighted and finished steps show their time. |
+| Status timeline | Five steps: Driver assigned, Reached pickup, On the way (parcel picked up, the same moment), Reached drop, Delivered. The current step is highlighted. No per-step times except the delivery time (`pkg_order` mixes IST and UTC columns). |
 | Driver card | First name, vehicle number, a "Call driver" button (`tel:`). Shown from assignment on. |
 | ETA | "Arriving in ~12 min" and "4.2 km away", only while the parcel is on the way. Before pickup the page says "Driver is heading to the pickup point" with no distance. |
 | Map | Leaflet. Pickup and drop markers, the route line, and the driver marker rotated by heading and animated between polls. Hidden until the parcel is picked up (see Privacy). |
@@ -44,18 +44,19 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
 ## Link and token
 
 - Table `order_track_link`: `id`, `order_id` (unique), `token` (unique, 32 random bytes as base64url),
-  `receiver_phone`, `created_at`, `expires_at` (nullable), `revoked_at` (nullable), `last_viewed_at`.
-- The link is created lazily and idempotently (`getOrCreate(orderId)`) the first time a receiver message
+  `receiver_phone`, `created_at`, `last_viewed_at`. No `expires_at` / `revoked_at` columns (see Lifecycle).
+- The link is created lazily and idempotently (`getOrCreate(orderId, rawPhone)`) the first time a receiver message
   that needs it is built, which is the driver-assigned message. It is the same link for the whole order, so
   later milestone messages repeat it instead of minting a new one.
 - The token is stored in plain text. This is deliberate and differs from the pay link (hash only): the link
   has to be re-sent later, it is view-only, and it expires. A DB reader already sees every order anyway.
-- Lifecycle: the link works from creation. It stops working 24 hours after the order is Completed
-  (`expires_at` is set when the order completes) and immediately when the order is Cancelled. After expiry the
-  page answers with the "link expired" end state, not a 404, so the receiver is not confused.
-- Changing the receiver number (the `changeReceiverPhone` feature, and the admin order edit that calls it)
-  revokes the old link, creates a new one for the new number and, if the order already has a driver, sends the
-  new link to the new number. The old number's page then shows "link no longer valid".
+- Lifecycle: expiry is derived from the order, nothing is stored. The page is `expired` 24 hours after the
+  order is Completed and `cancelled` as soon as it is Cancelled, so the receiver is not confused by a 404.
+  A link is valid only while the order's current `dmobile` equals the row's `receiver_phone`.
+- Changing the receiver number (the `changeReceiverPhone` feature, and the admin order edit) rotates the token
+  on the same row for the new number and, if the order already has a driver, sends the new link to the new
+  number. The old number's link then answers `invalid` ("link no longer valid").
+- When sender and receiver are the same number, no link is added (that person booked in the app).
 - Rate limit: reuses `ipRateLimiter` (per IP, rightmost X-Forwarded-For): page 60/min, API 120/min.
 
 ## Privacy rules (enforced server side, in the snapshot builder)
@@ -68,6 +69,7 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
   only together with the live map (status 3), because the page does not need them earlier.
 - The driver's phone number is returned because every existing receiver WhatsApp message already shows it.
 - Responses carry `Cache-Control: no-store` and `X-Robots-Tag: noindex`; the page has `noindex`.
+- The page is served with `Referrer-Policy: strict-origin` (not `no-referrer`): the domain-restricted MapTiler key needs the Origin on tile requests, and `strict-origin` still keeps the token path from leaking to cdnjs or MapTiler.
 
 ## API
 
@@ -75,7 +77,7 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
 
 ```
 { state: "active" | "delivered" | "cancelled" | "expired" | "invalid",
-  order_id, step: 1..6, steps: [{key, at}],
+  order_id, step: 0..5 (0 = no driver yet),
   driver: { first_name, vehicle_no, phone } | null,
   eta: { minutes, distance_km, updated_at } | null,
   position: { lat, lng, heading, updated_at, stale } | null,
@@ -89,7 +91,8 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
 
 ## Backend pieces
 
-1. `trackLinkService`: `getOrCreate`, `findByToken`, `revokeForOrder`, `expireForOrder`, `buildLink`.
+1. `trackLinkService`: `isTokenShape`, `getOrCreate(orderId, rawPhone)` (rotates the token when the phone differs),
+   `findByToken`, `buildLink`, `touchViewed`.
 2. `trackSnapshotService`: builds the JSON above from `pkg_order`, `tbl_rider`, `order_track_link` and the
    wait timer (arrival at drop = `pkg_order_wait_timer.drop_wait_start`), applying the privacy rules.
 3. Live position: `trackingSocket` keeps an in-memory `Map<riderId, {lat,lng,heading,at}>` updated on every
@@ -98,7 +101,8 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
    only see its own pings and fall back to the DB value, which is acceptable.
 4. `trackEtaService`: ETA and route driver -> drop using the existing `fetchGoogleDrive` /
    `estimateDrive` from `pickupEtaService`, extended to also return the route polyline (new field mask
-   `routes.polyline.encodedPolyline`, decoded server side, simplified to at most about 150 points).
+   `routes.polyline.geoJsonLinestring` via the `GEO_JSON_LINESTRING` encoding, so no polyline decoder is needed;
+   simplified to at most about 150 points).
    Per order cache for 60 seconds, recomputed only when the driver moved more than 150 m or the cache is
    older than 2 minutes, with a single in-flight call per order. The route (pickup -> drop) is cached for
    the order until completion. Without a Google key or on failure it falls back to the straight-line
@@ -109,8 +113,9 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
    string concatenation of untrusted values; all dynamic text is set with `textContent`.
 6. WhatsApp (`whatsapp/notifications.js`): the receiver message of driver assigned, reached pickup, trip
    started and reached drop gets a "Track live: <link>" line; `handleTrackingQuery` adds the link for a
-   receiver-authorized number. The existing milestone de-duplication stays. If the link cannot be built
-   (flag off, `PUBLIC_BASE_URL` missing) the messages are sent exactly as today.
+   receiver-authorized number. The driver-assigned message to the receiver is new (`notifyDriverAssigned`
+   only messaged the sender before) and is sent only when a link exists. The existing milestone
+   de-duplication stays. If the link cannot be built (flag off, `PUBLIC_BASE_URL` missing) the messages are sent exactly as today.
 7. Settings: new key `receiver_tracking_enabled` (default on) read through the same settings helper style as
    `receiverPaySettings`, plus a toggle on the admin Settings page. Env: `MAPTILER_KEY`, optional
    `MAPTILER_STYLE` (default `streets-v2`); `PUBLIC_BASE_URL` is reused. Without `MAPTILER_KEY` the page
@@ -127,10 +132,10 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
 
 ## Testing
 
-- Jest: `trackLinkService` (idempotent create, revoke, expiry, number change), `trackSnapshotService`
+- Jest: `trackLinkService` (idempotent create, token rotation on a changed number, malformed-token rejection, link building), `trackSnapshotService`
   (privacy gating by status, stale position, delivered/cancelled/expired states, fallbacks),
-  `trackEtaService` (cache window, 150 m movement rule, single in-flight call, Google failure fallback,
-  polyline decode), controllers (404 shape, headers, rate limiter wiring), page (no untrusted
+  `trackEtaService` (cache window, 150 m movement rule, single in-flight call, Google failure fallback),
+  controllers (404 shape, headers, rate limiter wiring), page (no untrusted
   interpolation, tile template injected as JSON), WhatsApp message builders (link line present/absent).
 - Manual QA checklist (`docs/superpowers/plans/2026-10-06-receiver-live-tracking-qa.md`): a real order from booking to delivery on a phone
   with a weak network, checking each privacy rule and the end states.

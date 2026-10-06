@@ -8,6 +8,7 @@ jest.mock("../../services/pricingEngine", () => ({}));
 jest.mock("../../services/pushNotifier", () => ({}));
 jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn() }));
 jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn() }));
+jest.mock("../../services/receiverTrackMessage", () => ({ syncReceiverPhone: jest.fn().mockResolvedValue({ rotated: false }) }));
 jest.mock("../../services/receiverPayService", () => {
   class ReceiverPayError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
   return { ReceiverPayError, changeReceiverPhone: jest.fn() };
@@ -16,6 +17,7 @@ jest.mock("../../services/receiverPayService", () => {
 const prisma = require("../../config/db");
 const logger = require("../../utils/logger");
 const receiverPayService = require("../../services/receiverPayService");
+const trackMsg = require("../../services/receiverTrackMessage");
 const { update } = require("../adminOrderController");
 
 const res = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() });
@@ -52,5 +54,17 @@ describe("adminOrderController.update - dmobile sync", () => {
     await update(req({ dmobile: "98765 43210" }), r);
     expect(r.status).toHaveBeenCalledWith(200);
     expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("adminOrderController.update - tracking link", () => {
+  it("rotates the tracking link even when the order has no receiver-pays row", async () => {
+    receiverPayService.changeReceiverPhone.mockRejectedValue(new receiverPayService.ReceiverPayError("NOT_ACTIVE", "nope"));
+    await update(req({ dmobile: "98765 43210" }), res());
+    expect(trackMsg.syncReceiverPhone).toHaveBeenCalledWith(50, "98765 43210");
+  });
+  it("is not touched by other edits", async () => {
+    await update(req({ paddress: "x" }), res());
+    expect(trackMsg.syncReceiverPhone).not.toHaveBeenCalled();
   });
 });

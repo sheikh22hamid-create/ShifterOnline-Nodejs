@@ -1,5 +1,6 @@
 const prisma = require("../../config/db");
 const logger = require("../../utils/logger");
+const { trackLine } = require("../../services/receiverTrackMessage");
 
 /**
  * Handles Instant Fare Estimate via WhatsApp
@@ -137,6 +138,12 @@ async function handleTrackingQuery(orderId, senderPhone) {
     const isSenderParty = senderClean === normalizePhone10(order.pmobile) || senderClean === normalizePhone10(user?.mobile);
     if (isSenderParty && order.order_status < 3 && order.otp) {
       reply += `🔑 *Pickup OTP*: *${order.otp}*\n`;
+    }
+
+    const isReceiverParty = senderClean === normalizePhone10(order.dmobile) && senderClean !== normalizePhone10(order.pmobile);
+    if (isReceiverParty && Number(order.order_status) < 4) {
+      const line = await trackLine(order, normalizePhone10(order.dmobile));
+      if (line) reply += `\n${line}`.replace(/\n+$/, "\n");
     }
 
     reply += `\n📞 Customer Care: 9109114515`;

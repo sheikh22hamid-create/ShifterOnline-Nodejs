@@ -4,6 +4,7 @@ const settings = require("./receiverPaySettings");
 const { parseCommissionPercent, receiverPayable } = require("./receiverPayCalc");
 const { mintToken } = require("./receiverPayToken");
 const { normalizeToLast10Digits } = require("../utils/phone");
+const receiverTrackMessage = require("./receiverTrackMessage");
 
 class ReceiverPayError extends Error {
   constructor(code, message) {
@@ -166,6 +167,7 @@ async function changeReceiverPhone({ orderId, phone, uid = null }) {
     prisma.order_receiver_pay.update({ where: { id: row.id }, data: { receiver_phone: normalized, updated_at: new Date() } }),
     prisma.pkg_order.update({ where: { id: orderId }, data: { dmobile: normalized } }),
   ]);
+  await receiverTrackMessage.syncReceiverPhone(orderId, normalized);
   if (!pending) return { changed: true, link_sent: null, link: null };
   try {
     const { sent, link } = await issueLink({ orderId });
