@@ -43,6 +43,14 @@ public final class ReceiverPayText {
                 + (receiverMode ? "receiver" : "customer") + " in cash or direct UPI?";
     }
 
+    /** Home pending-settlement card description. Non-receiver text is the original, unchanged. */
+    public static String pendingSettlementDesc(boolean receiverMode, String formattedAmount) {
+        if (receiverMode) {
+            return "Tap to collect " + formattedAmount + " from the receiver.";
+        }
+        return "Tap to collect " + formattedAmount + ". New orders are paused after the grace period while a payment is pending.";
+    }
+
     private static String money(String currency, double v) {
         return (currency == null ? "" : currency) + String.format(Locale.getDefault(), "%.2f", v);
     }

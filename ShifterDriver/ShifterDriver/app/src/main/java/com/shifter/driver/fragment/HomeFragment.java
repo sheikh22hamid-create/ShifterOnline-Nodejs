@@ -2243,7 +2243,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
 
                     binding.cardPendingSettlement.setVisibility(View.VISIBLE);
                     binding.txtPendingSettlementTitle.setText("Payment Pending for Order #" + finalSettlement.getOrderId());
-                    binding.txtPendingSettlementDesc.setText("Tap to collect " + formattedAmount + ". New orders are paused after the grace period while a payment is pending.");
+                    binding.txtPendingSettlementDesc.setText(com.shifter.driver.utility.ReceiverPayText.pendingSettlementDesc(com.shifter.driver.utility.ReceiverPayText.isReceiverMode(finalSettlement), formattedAmount));
 
                     binding.cardPendingSettlement.setOnClickListener(v -> {
                         Intent intent = new Intent(getActivity(), com.shifter.driver.activity.TripPaymentActivity.class);

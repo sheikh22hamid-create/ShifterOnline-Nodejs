@@ -104,4 +104,16 @@ public class ReceiverPayTextTest {
     public void onlineHint_zeroTotalFallsBack() {
         assertEquals("Receiver's online total: \u20B990.00", ReceiverPayText.onlineHint("\u20B9", "0", "90"));
     }
+
+    @Test
+    public void pendingSettlementDesc_customerIsUnchanged() {
+        assertEquals("Tap to collect ₹120.00. New orders are paused after the grace period while a payment is pending.",
+                ReceiverPayText.pendingSettlementDesc(false, "₹120.00"));
+    }
+
+    @Test
+    public void pendingSettlementDesc_receiverSaysReceiverAndDropsPauseWarning() {
+        assertEquals("Tap to collect ₹120.00 from the receiver.",
+                ReceiverPayText.pendingSettlementDesc(true, "₹120.00"));
+    }
 }
