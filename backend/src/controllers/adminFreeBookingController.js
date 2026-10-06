@@ -7,9 +7,14 @@ const fail = (res, err, label) => {
   logger.error(`adminFreeBooking.${label} failed:`, err);
   return res.status(500).json({ success: false, message: "Internal server error" });
 };
-const cityOf = (req) => admin.resolveCityId(req.user, req.query, req.body);
-// A city-bound admin always has a city; a superadmin has one only if they picked it.
-const scopeCity = (req) => (req.user.role === "superadmin" ? null : cityOf(req));
+// Superadmin is unrestricted (city optional); every other role must be bound to a city or is refused.
+const scopeOf = (req) => {
+  if (req.user.role === "superadmin") return { unrestricted: true, cityId: admin.resolveCityId(req.user, req.query, req.body) };
+  const cityId = req.user.city_id == null ? NaN : Number(req.user.city_id);
+  if (!Number.isFinite(cityId)) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
+  return { unrestricted: false, cityId };
+};
+const cityOf = (req) => scopeOf(req).cityId;
 
 const getSettings = async (req, res) => {
   try { return res.json({ success: true, data: await admin.getSettings(cityOf(req)) }); } catch (e) { return fail(res, e, "getSettings"); }
@@ -46,15 +51,15 @@ const removeFromPool = async (req, res) => {
   try { await admin.removeFromPool(req.params.id, cityOf(req)); return res.json({ success: true, message: "Removed from the offer pool" }); } catch (e) { return fail(res, e, "removeFromPool"); }
 };
 const listOrders = async (req, res) => {
-  try { return res.json({ success: true, data: await admin.listOrders({ cityId: cityOf(req), status: req.query.status }) }); } catch (e) { return fail(res, e, "listOrders"); }
+  try { return res.json({ success: true, data: await admin.listOrders({ ...scopeOf(req), status: req.query.status }) }); } catch (e) { return fail(res, e, "listOrders"); }
 };
 const voidOrder = async (req, res) => {
   try {
     // A city-bound admin may only void bookings of their own city; a superadmin is unrestricted.
-    const scope = scopeCity(req);
-    if (scope) {
-      const rows = await admin.listOrders({ cityId: scope });
-      if (!rows.some((r) => String(r.id) === String(req.params.id))) return res.status(404).json({ success: false, message: "Booking not found" });
+    const scope = scopeOf(req);
+    if (!scope.unrestricted) {
+      const order = await admin.findOrderInCity(req.params.id, scope.cityId);
+      if (!order) return res.status(404).json({ success: false, message: "Booking not found" });
     }
     const ok = await freeBookingService.voidOrder(req.params.id);
     if (!ok) return res.status(409).json({ success: false, message: "This booking is no longer open" });
@@ -63,8 +68,10 @@ const voidOrder = async (req, res) => {
 };
 const setLock = (locked) => async (req, res) => {
   try {
-    await admin.assertUserInCity(req.params.userId, scopeCity(req));
+    const scope = scopeOf(req);
+    await admin.assertUserInCity(req.params.userId, scope.cityId, scope.unrestricted);
     await freeBookingService.setUserLock(req.params.userId, locked);
+    logger.info(`free-booking ${locked ? "lock" : "unlock"} user=${req.params.userId} by admin=${req.user.id}`);
     return res.json({ success: true, message: locked ? "Free Booking locked for this customer" : "Free Booking unlocked for this customer" });
   } catch (e) { return fail(res, e, locked ? "lock" : "unlock"); }
 };

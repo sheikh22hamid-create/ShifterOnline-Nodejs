@@ -145,12 +145,25 @@ async function updatePool(id, cityId, patch = {}) {
   const row = await ownedPoolRow(id, cityId);
   const data = {};
   if (patch.active !== undefined) data.active = Boolean(patch.active);
-  if (patch.valid_from !== undefined || patch.valid_to !== undefined) {
-    const from = patch.valid_from ?? row.valid_from.toISOString().slice(0, 10);
-    const to = patch.valid_to ?? row.valid_to.toISOString().slice(0, 10);
+  const datesChanged = patch.valid_from !== undefined || patch.valid_to !== undefined;
+  let from = row.valid_from ? row.valid_from.toISOString().slice(0, 10) : null;
+  let to = row.valid_to ? row.valid_to.toISOString().slice(0, 10) : null;
+  if (datesChanged) {
+    from = patch.valid_from ?? from;
+    to = patch.valid_to ?? to;
     checkDates(from, to);
     data.valid_from = asDate(from);
     data.valid_to = asDate(to);
+  }
+  const willBeActive = data.active !== undefined ? data.active : Boolean(row.active);
+  if (willBeActive && (data.active === true || datesChanged)) {
+    const overlap = await prisma.free_booking_pool.findFirst({
+      where: {
+        city_id: Number(cityId), rider_id: row.rider_id, active: true, id: { not: row.id },
+        valid_from: { lte: asDate(to) }, valid_to: { gte: asDate(from) },
+      },
+    });
+    if (overlap) throw bad("This driver is already in the pool for an overlapping period");
   }
   return prisma.free_booking_pool.update({ where: { id: Number(id) }, data });
 }
@@ -160,7 +173,8 @@ async function removeFromPool(id, cityId) {
   await prisma.free_booking_pool.delete({ where: { id: Number(id) } });
 }
 
-async function listOrders({ cityId, status }) {
+async function listOrders({ cityId, status, unrestricted = false }) {
+  if (!unrestricted && !cityId) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
   return prisma.free_booking_order.findMany({
     where: { ...(cityId ? { city_id: Number(cityId) } : {}), ...(status ? { status } : {}) },
     orderBy: { id: "desc" },
@@ -168,14 +182,20 @@ async function listOrders({ cityId, status }) {
   });
 }
 
-/** A city-bound admin may only lock/unlock customers of their own city (null cityId = superadmin). */
-async function assertUserInCity(userId, cityId) {
-  if (!cityId) return;
+/** A single free booking of the city, or null (direct lookup, not a list scan). */
+async function findOrderInCity(id, cityId) {
+  return prisma.free_booking_order.findFirst({ where: { id: Number(id), city_id: Number(cityId) } });
+}
+
+/** A city-bound admin may only lock/unlock customers of their own city; only `unrestricted` (superadmin) skips the check. */
+async function assertUserInCity(userId, cityId, unrestricted = false) {
+  if (unrestricted) return;
+  if (!cityId) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
   const user = await prisma.tbl_user.findUnique({ where: { id: Number(userId) }, select: { id: true, city_id: true } });
   if (!user || Number(user.city_id) !== Number(cityId)) throw bad("This customer belongs to another city");
 }
 
 module.exports = {
   resolveCityId, getSettings, saveSettings, listPool, listCandidates,
-  addToPool, updatePool, removeFromPool, listOrders, assertUserInCity,
+  addToPool, updatePool, removeFromPool, listOrders, assertUserInCity, findOrderInCity,
 };

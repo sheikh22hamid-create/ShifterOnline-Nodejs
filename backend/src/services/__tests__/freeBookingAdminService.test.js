@@ -97,10 +97,42 @@ describe("updatePool and removeFromPool", () => {
   });
 });
 
+describe("updatePool overlap", () => {
+  const row = { id: 2, city_id: 3, rider_id: 9, active: false, valid_from: new Date("2026-10-06"), valid_to: new Date("2026-10-10") };
+  it("rejects reactivating a row that overlaps another active period", async () => {
+    prisma.free_booking_pool.findUnique.mockResolvedValue(row);
+    prisma.free_booking_pool.findFirst.mockResolvedValue({ id: 5 });
+    await expect(svc.updatePool(2, 3, { active: true })).rejects.toThrow(/already/i);
+    expect(prisma.free_booking_pool.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({ rider_id: 9, id: { not: 2 } }) });
+    expect(prisma.free_booking_pool.update).not.toHaveBeenCalled();
+  });
+  it("rejects a date change that overlaps another active period", async () => {
+    prisma.free_booking_pool.findUnique.mockResolvedValue({ ...row, active: true });
+    prisma.free_booking_pool.findFirst.mockResolvedValue({ id: 5 });
+    await expect(svc.updatePool(2, 3, { valid_to: "2026-10-20" })).rejects.toThrow(/already/i);
+  });
+  it("allows a change with no overlap", async () => {
+    prisma.free_booking_pool.findUnique.mockResolvedValue(row);
+    prisma.free_booking_pool.findFirst.mockResolvedValue(null);
+    prisma.free_booking_pool.update.mockResolvedValue({ id: 2 });
+    await svc.updatePool(2, 3, { active: true });
+    expect(prisma.free_booking_pool.update).toHaveBeenCalledWith({ where: { id: 2 }, data: { active: true } });
+  });
+});
+
+describe("listOrders scope", () => {
+  it("refuses a missing city unless unrestricted", async () => {
+    await expect(svc.listOrders({ cityId: null })).rejects.toThrow(/not assigned/i);
+    prisma.free_booking_order.findMany.mockResolvedValue([]);
+    await expect(svc.listOrders({ cityId: null, unrestricted: true })).resolves.toEqual([]);
+  });
+});
+
 describe("assertUserInCity", () => {
   it("lets a superadmin (null city) through and blocks an admin on another city's user", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ id: 7, city_id: 4 });
-    await expect(svc.assertUserInCity(7, null)).resolves.toBeUndefined();
+    await expect(svc.assertUserInCity(7, null, true)).resolves.toBeUndefined();
     await expect(svc.assertUserInCity(7, 3)).rejects.toThrow(/city/i);
+    await expect(svc.assertUserInCity(7, null)).rejects.toThrow(/not assigned/i);
   });
 });
