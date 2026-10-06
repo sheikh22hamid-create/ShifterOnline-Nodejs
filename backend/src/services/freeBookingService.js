@@ -234,7 +234,12 @@ async function recordAcceptance(orderId, riderId) {
   if (!row || row.status !== STATUS.CONFIRMED) return;
   const ids = await poolRiderIds(row.city_id);
   if (ids.includes(Number(riderId))) {
-    await prisma.free_booking_order.update({ where: { id: row.id }, data: { pool_rider_id: Number(riderId), accepted_in_pool: true } });
+    // Conditional write: a concurrent void between the read above and here must not be overwritten.
+    const res = await prisma.free_booking_order.updateMany({
+      where: { id: row.id, status: STATUS.CONFIRMED },
+      data: { pool_rider_id: Number(riderId), accepted_in_pool: true },
+    });
+    if (res.count !== 1) return;
     logger.info(`free-booking order=${orderId} ${STATUS.CONFIRMED}->${STATUS.CONFIRMED} reason=pool_driver_accepted amount=-`);
     return;
   }
@@ -317,7 +322,18 @@ async function tryCredit(orderId) {
 
       const key = `free_booking_credit:${id}`;
       const duplicate = await tx.tbl_wallet_history.findFirst({ where: { payment_id: key, wallet_type: "user" } });
-      if (duplicate) return { credited: false, action: "duplicate" };
+      if (duplicate) {
+        // The wallet was already credited but the row never flipped (e.g. a crash between the two
+        // writes): repair the row only. The wallet and the user lock are not touched again.
+        await tx.free_booking_order.update({
+          where: { id: row.id },
+          data: {
+            status: STATUS.REWARD_CREDITED, credit_amount: Number(duplicate.amount),
+            wallet_history_id: duplicate.id, credited_at: new Date(),
+          },
+        });
+        return { credited: false, action: "duplicate" };
+      }
 
       const remark = `Free Booking refund for order #${id}`;
       await tx.tbl_user.update({
@@ -363,6 +379,11 @@ async function tryCredit(orderId) {
 
 /** Trip completed: record the final invoice total and try to credit straight away. */
 async function markCompleted({ orderId, finalTotal }) {
+  // round2(undefined) would be 0 and void the booking as zero_fare: refuse a non-numeric total instead.
+  if (finalTotal == null || finalTotal === "" || typeof finalTotal === "boolean" || !Number.isFinite(Number(finalTotal))) {
+    logger.error(`freeBookingService.markCompleted: invalid finalTotal for order ${orderId}: ${String(finalTotal)}`);
+    return { credited: false };
+  }
   const res = await prisma.free_booking_order.updateMany({
     where: { order_id: Number(orderId), status: STATUS.CONFIRMED },
     data: { status: STATUS.REWARD_PENDING, actual_fare: rules.round2(finalTotal), completed_at: new Date() },
