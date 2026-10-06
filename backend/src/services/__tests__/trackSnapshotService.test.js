@@ -122,9 +122,33 @@ describe("on the way (order_status 3)", () => {
   });
   it("marks a position older than 2 minutes as stale and does not compute an ETA from it", async () => {
     live.record(9, 22.75, 75.85, 0, NOW - 3 * 60 * 1000);
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ rloc_updated_at: new Date(NOW - 4 * 60 * 1000) }));
     const s = await buildSnapshot(link, { now: NOW });
     expect(s.position.stale).toBe(true);
     expect(s.eta).toBeNull();
+  });
+  it("a fresher DB position (REST fix) beats an older live socket ping", async () => {
+    live.record(9, 22.75, 75.85, 120, NOW - 5 * 60 * 1000);
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ rloc_updated_at: new Date(NOW - 5000) }));
+    const s = await buildSnapshot(link, { now: NOW });
+    expect(s.position).toMatchObject({ lat: 22.71, lng: 75.81, stale: false, updated_at: new Date(NOW - 5000).toISOString() });
+  });
+  it("a fresher live ping beats an older DB position", async () => {
+    live.record(9, 22.75, 75.85, 120, NOW - 2000);
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ rloc_updated_at: new Date(NOW - 60000) }));
+    const s = await buildSnapshot(link, { now: NOW });
+    expect(s.position).toMatchObject({ lat: 22.75, lng: 75.85, heading: 120, stale: false });
+  });
+  it("uses the live ping when the DB has no position", async () => {
+    live.record(9, 22.75, 75.85, 0, NOW - 2000);
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ rlats: null, rlongs: null, rloc_updated_at: null }));
+    expect((await buildSnapshot(link, { now: NOW })).position).toMatchObject({ lat: 22.75, lng: 75.85, stale: false });
+  });
+  it("a DB position with null rloc_updated_at is the oldest source and, alone, is stale", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ rloc_updated_at: null }));
+    expect((await buildSnapshot(link, { now: NOW })).position).toMatchObject({ lat: 22.71, stale: true, updated_at: null });
+    live.record(9, 22.75, 75.85, 0, NOW - 3 * 60 * 1000);
+    expect((await buildSnapshot(link, { now: NOW })).position).toMatchObject({ lat: 22.75, stale: true });
   });
   it("has a null position when the driver never reported one", async () => {
     prisma.tbl_rider.findUnique.mockResolvedValue(rider({ rlats: null, rlongs: null, rloc_updated_at: null }));

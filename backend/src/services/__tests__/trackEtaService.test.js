@@ -60,6 +60,47 @@ describe("getEta", () => {
   });
 });
 
+describe("destination awareness and eviction", () => {
+  const MOVED = { lat: 22.76, lng: 75.85 }; // ~1.1 km from TO
+  const NEAR = { lat: 22.75001, lng: 75.85 }; // ~1 m from TO
+  const routeOk = (coords) => jest.fn().mockResolvedValue({ ok: true, json: async () => ({ routes: [{ polyline: { geoJsonLinestring: { coordinates: coords } } }] }) });
+  it("recomputes the route when the drop moved more than 50 m", async () => {
+    const f = routeOk([[75.8, 22.7], [75.85, 22.76]]);
+    await svc.getRoute(1, FROM, TO, { now: 0, fetchImpl: f });
+    await svc.getRoute(1, FROM, MOVED, { now: 1000, fetchImpl: f });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it("recomputes the route when the pickup moved more than 50 m", async () => {
+    const f = routeOk([[75.8, 22.7], [75.85, 22.75]]);
+    await svc.getRoute(1, FROM, TO, { now: 0, fetchImpl: f });
+    await svc.getRoute(1, { lat: 22.71, lng: 75.8 }, TO, { now: 1000, fetchImpl: f });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it("reuses the route when the drop moved less than 50 m", async () => {
+    const f = routeOk([[75.8, 22.7], [75.85, 22.75]]);
+    await svc.getRoute(1, FROM, TO, { now: 0, fetchImpl: f });
+    await svc.getRoute(1, FROM, NEAR, { now: 1000, fetchImpl: f });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it("recomputes the ETA when the drop moved, even inside the 60 s window", async () => {
+    const f = googleOk();
+    await svc.getEta(1, FROM, TO, { now: 0, fetchImpl: f });
+    await svc.getEta(1, FROM, NEAR, { now: 1000, fetchImpl: f });
+    expect(f).toHaveBeenCalledTimes(1);
+    await svc.getEta(1, FROM, MOVED, { now: 2000, fetchImpl: f });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+  it("sweeps entries older than their TTL on the next write", async () => {
+    const f = googleOk();
+    await svc.getEta(1, FROM, TO, { now: 0, fetchImpl: f });
+    await svc.getRoute(1, FROM, TO, { now: 0, fetchImpl: f });
+    expect(svc._sizes()).toEqual({ eta: 1, route: 1 });
+    await svc.getEta(2, FROM, TO, { now: 11 * 60 * 1000, fetchImpl: f });
+    await svc.getRoute(2, FROM, TO, { now: 31 * 60 * 1000, fetchImpl: f });
+    expect(svc._sizes()).toEqual({ eta: 1, route: 1 });
+  });
+});
+
 describe("getRoute", () => {
   const routeOk = (coords) => jest.fn().mockResolvedValue({ ok: true, json: async () => ({ routes: [{ polyline: { geoJsonLinestring: { coordinates: coords } } }] }) });
   it("returns [lat,lng] pairs (GeoJSON is lng,lat)", async () => {

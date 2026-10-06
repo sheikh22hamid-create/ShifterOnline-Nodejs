@@ -69,6 +69,7 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
   only together with the live map (status 3), because the page does not need them earlier.
 - The driver's phone number is returned because every existing receiver WhatsApp message already shows it.
 - Responses carry `Cache-Control: no-store` and `X-Robots-Tag: noindex`; the page has `noindex`.
+- The page is served with `Referrer-Policy: strict-origin` (not `no-referrer`): the domain-restricted MapTiler key needs the Origin on tile requests, and `strict-origin` still keeps the token path from leaking to cdnjs or MapTiler.
 
 ## API
 
@@ -76,7 +77,7 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
 
 ```
 { state: "active" | "delivered" | "cancelled" | "expired" | "invalid",
-  order_id, step: 0..5 (0 = no driver yet), steps: [{key, at}],
+  order_id, step: 0..5 (0 = no driver yet),
   driver: { first_name, vehicle_no, phone } | null,
   eta: { minutes, distance_km, updated_at } | null,
   position: { lat, lng, heading, updated_at, stale } | null,

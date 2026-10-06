@@ -34,7 +34,7 @@ function boot(snapshots, opts = {}) {
     fetchCalls.push(url);
     const body = snapshots[Math.min(i++, snapshots.length - 1)];
     if (body instanceof Error) return Promise.reject(body);
-    return Promise.resolve({ status: 200, json: () => Promise.resolve(body) });
+    return Promise.resolve({ status: body && body.__status ? body.__status : 200, json: () => Promise.resolve(body) });
   };
   const win = opts.L ? { L: opts.L } : {};
   new Function("document", "location", "fetch", "setTimeout", "clearTimeout", "window", "L", script)(
@@ -91,6 +91,29 @@ describe("tracking page script", () => {
     await p.flush();
     expect(p.els.offline.textContent).toMatch(/retrying/);
     expect(p.timers.length).toBe(1);
+  });
+
+  it("a 429 body without state keeps the previous render, shows the retry note and backs off", async () => {
+    const p = boot([
+      { state: "active", step: 3, poll_ms: 5000, driver: { first_name: "Ravi", phone: "123" } },
+      { __status: 429, success: false, message: "Too many requests" },
+    ]);
+    await p.flush();
+    expect(p.els.status.textContent).toBe("Your parcel is on the way");
+    p.timers[0].fn();
+    await p.flush();
+    expect(p.els.status.textContent).toBe("Your parcel is on the way");
+    expect(p.els.driverName.textContent).toBe("Ravi");
+    expect(p.els.offline.textContent).toMatch(/retrying/);
+    expect(p.timers.length).toBe(2);
+    expect(p.timers[1].ms).toBeGreaterThan(5000);
+  });
+  it("an invalid 404 with state still renders and stops polling", async () => {
+    const p = boot([{ __status: 404, state: "invalid", poll_ms: 15000 }]);
+    await p.flush();
+    expect(p.els.status.textContent).toMatch(/no longer valid/);
+    expect(p.els.offline.textContent).toBe("");
+    expect(p.timers.length).toBe(0);
   });
 
   it("does not fetch while the tab is hidden, only reschedules", async () => {

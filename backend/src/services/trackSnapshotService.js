@@ -34,15 +34,19 @@ async function safe(label, fn) {
 
 // Last known position: the live ping first, then the throttled DB copy. Position is `stale` after 2 minutes.
 function currentPosition(riderId, rider, now) {
+  // The driver app writes every fix to the DB over REST and to the socket; take whichever is newer.
   const live = livePositions.get(riderId);
+  const p = toPoint(rider && rider.rlats, rider && rider.rlongs);
+  const dbAt = p && rider.rloc_updated_at ? new Date(rider.rloc_updated_at).getTime() : null;
   let lat; let lng; let heading; let at;
-  if (live) {
+  const useLive = live && (!p || (Number.isFinite(dbAt) ? live.at >= dbAt : true));
+  if (useLive) {
     ({ lat, lng, heading, at } = live);
-  } else {
-    const p = toPoint(rider && rider.rlats, rider && rider.rlongs);
-    if (!p) return null;
+  } else if (p) {
     lat = p.lat; lng = p.lng; heading = 0;
-    at = rider.rloc_updated_at ? new Date(rider.rloc_updated_at).getTime() : null;
+    at = Number.isFinite(dbAt) ? dbAt : null;
+  } else {
+    return null;
   }
   return {
     lat, lng, heading: Number.isFinite(heading) ? heading : 0,

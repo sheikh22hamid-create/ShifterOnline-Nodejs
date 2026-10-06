@@ -53,12 +53,17 @@ describe("page", () => {
   it("serves HTML with the privacy headers", () => {
     const r = res();
     c.page({ params: { token: TOKEN } }, r);
-    expect(r.set).toHaveBeenCalledWith(expect.objectContaining({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex" }));
+    expect(r.set).toHaveBeenCalledWith(expect.objectContaining({ "Cache-Control": "no-store", "Referrer-Policy": "strict-origin", "X-Robots-Tag": "noindex" }));
     expect(r.send).toHaveBeenCalledWith(expect.stringContaining("<!doctype html>"));
   });
   it("404s a malformed token", () => {
     const r = res();
     c.page({ params: { token: "x" } }, r);
     expect(r.status).toHaveBeenCalledWith(404);
+  });
+  it("the malformed-token 404 also carries the no-store / noindex headers", () => {
+    const r = res();
+    c.page({ params: { token: "x" } }, r);
+    expect(r.set).toHaveBeenCalledWith(expect.objectContaining({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex" }));
   });
 });

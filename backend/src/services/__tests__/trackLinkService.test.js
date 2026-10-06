@@ -88,6 +88,26 @@ describe("buildLink / touchViewed", () => {
   });
   it("touchViewed never throws", async () => {
     prisma.order_track_link.update.mockRejectedValue(new Error("db"));
-    await expect(svc.touchViewed(1)).resolves.toBeUndefined();
+    await expect(svc.touchViewed(1001, 0)).resolves.toBeUndefined();
+  });
+  it("touchViewed skips the write if the same link was touched under 60 s ago", async () => {
+    prisma.order_track_link.update.mockResolvedValue({});
+    await svc.touchViewed(2001, 1000000);
+    await svc.touchViewed(2001, 1000000 + 59000);
+    expect(prisma.order_track_link.update).toHaveBeenCalledTimes(1);
+    await svc.touchViewed(2002, 1000000 + 59000);
+    expect(prisma.order_track_link.update).toHaveBeenCalledTimes(2);
+  });
+  it("touchViewed writes again after 60 s", async () => {
+    prisma.order_track_link.update.mockResolvedValue({});
+    await svc.touchViewed(3001, 5000000);
+    await svc.touchViewed(3001, 5000000 + 61000);
+    expect(prisma.order_track_link.update).toHaveBeenCalledTimes(2);
+  });
+  it("a failed write still counts as attempted and does not throw", async () => {
+    prisma.order_track_link.update.mockRejectedValue(new Error("db"));
+    await svc.touchViewed(4001, 9000000);
+    await svc.touchViewed(4001, 9000000 + 1000);
+    expect(prisma.order_track_link.update).toHaveBeenCalledTimes(1);
   });
 });

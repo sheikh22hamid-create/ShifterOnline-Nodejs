@@ -15,6 +15,15 @@ const etaInflight = new Map();
 const routeCache = new Map(); // orderId -> { at, ttl, points }
 const routeInflight = new Map();
 
+const DEST_TOLERANCE_M = 50;
+const ETA_TTL_MS = ETA_MAX_REUSE_MS * 5;
+const within = (a, b, meters) => haversineKm(a.lat, a.lng, b.lat, b.lng) * 1000 <= meters;
+
+function sweep(cache, ttlOf, now) {
+  for (const [k, v] of cache) if (now - v.at >= ttlOf(v)) cache.delete(k);
+}
+function _sizes() { return { eta: etaCache.size, route: routeCache.size }; }
+
 function _reset() {
   etaCache.clear(); etaInflight.clear(); routeCache.clear(); routeInflight.clear();
 }
@@ -31,7 +40,7 @@ const toEta = (drive, now) => ({
 // Driver -> drop ETA. Cached per order so a busy page never turns into one Google call per poll.
 async function getEta(orderId, from, to, { now = Date.now(), fetchImpl } = {}) {
   const hit = etaCache.get(orderId);
-  if (hit) {
+  if (hit && within(hit.to, to, DEST_TOLERANCE_M)) {
     const age = now - hit.at;
     const movedM = haversineKm(hit.from.lat, hit.from.lng, from.lat, from.lng) * 1000;
     if (age < ETA_FRESH_MS || (age < ETA_MAX_REUSE_MS && movedM < ETA_MOVE_M)) return hit.value;
@@ -40,7 +49,8 @@ async function getEta(orderId, from, to, { now = Date.now(), fetchImpl } = {}) {
   const pending = (async () => {
     const drive = (await fetchGoogleDrive(from, to, { fetchImpl })) || estimateDrive(from, to);
     const value = toEta(drive, now);
-    etaCache.set(orderId, { from, at: now, value });
+    sweep(etaCache, () => ETA_TTL_MS, now);
+    etaCache.set(orderId, { from, to, at: now, value });
     return value;
   })().finally(() => etaInflight.delete(orderId));
   etaInflight.set(orderId, pending);
@@ -89,16 +99,17 @@ async function fetchGoogleRoute(origin, destination, { fetchImpl = fetch, apiKey
 // Pickup -> drop line for the map; the same for the whole trip, so it is cached per order.
 async function getRoute(orderId, from, to, { now = Date.now(), fetchImpl } = {}) {
   const hit = routeCache.get(orderId);
-  if (hit && now - hit.at < hit.ttl) return hit.points;
+  if (hit && now - hit.at < hit.ttl && within(hit.from, from, DEST_TOLERANCE_M) && within(hit.to, to, DEST_TOLERANCE_M)) return hit.points;
   if (routeInflight.has(orderId)) return routeInflight.get(orderId);
   const pending = (async () => {
     const google = await fetchGoogleRoute(from, to, fetchImpl ? { fetchImpl } : {});
     const points = google ? simplify(google) : [[from.lat, from.lng], [to.lat, to.lng]];
-    routeCache.set(orderId, { at: now, ttl: google ? ROUTE_TTL_MS : ROUTE_FALLBACK_TTL_MS, points });
+    sweep(routeCache, (v) => v.ttl, now);
+    routeCache.set(orderId, { from, to, at: now, ttl: google ? ROUTE_TTL_MS : ROUTE_FALLBACK_TTL_MS, points });
     return points;
   })().finally(() => routeInflight.delete(orderId));
   routeInflight.set(orderId, pending);
   return pending;
 }
 
-module.exports = { getEta, getRoute, clearOrder, simplify, _reset };
+module.exports = { getEta, getRoute, clearOrder, simplify, _reset, _sizes };

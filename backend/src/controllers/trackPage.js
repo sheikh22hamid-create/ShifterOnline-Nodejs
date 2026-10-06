@@ -10,7 +10,7 @@ const TEMPLATE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Shifter Online - Track delivery</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha256-tXCrvaljxgtN5LT/Syb5Mm9T+yzPFGH98JVcoJT7JTk=" crossorigin="anonymous">
 <style>
   :root { color-scheme: light dark; --bg:#f6f7f9; --card:#fff; --text:#1b1f24; --muted:#5f6b7a; --accent:#0a7d4f; --warn:#b26a00; --line:#e3e6ea; }
   @media (prefers-color-scheme: dark) { :root { --bg:#111418; --card:#1a1f26; --text:#eceff3; --muted:#9aa5b1; --accent:#3ecf8e; --warn:#ffb74d; --line:#2a313a; } }
@@ -61,7 +61,7 @@ const TEMPLATE = `<!doctype html>
   <div class="card"><ol id="steps"></ol></div>
 </main>
 <script type="application/json" id="cfg">__CONFIG__</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha256-XJrs/DDkVkUZ29zdzFOkGCJ9zHVo5hnpdi3c7HYJ7Uc=" crossorigin="anonymous"></script>
 <script>
 (function () {
   var CONFIG = JSON.parse(document.getElementById("cfg").textContent);
@@ -192,9 +192,10 @@ const TEMPLATE = `<!doctype html>
     fetch(api, { cache: "no-store" })
       .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
       .then(function (x) {
-        failures = 0; setText("offline", "");
         var s = x.body || {};
-        if (s.state === "error") { throw new Error("server"); }
+        // A 429 / proxy error body has no state: keep the last render and back off.
+        if (typeof s.state !== "string" || s.state === "error") { throw new Error("server"); }
+        failures = 0; setText("offline", "");
         render(s);
         pollMs = s.poll_ms || 5000;
         if (!terminal(s.state)) schedule();

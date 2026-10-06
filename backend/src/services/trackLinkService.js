@@ -36,7 +36,17 @@ function buildLink(token) {
   return base ? `${base}/track/${token}` : null;
 }
 
-async function touchViewed(id) {
+const VIEW_TOUCH_MS = 60 * 1000;
+const lastTouched = new Map(); // link id -> ms of the last write attempt
+
+// Throttled to one write per link per minute; the page polls every 5 s.
+async function touchViewed(id, now = Date.now()) {
+  const last = lastTouched.get(id);
+  if (last !== undefined && now - last < VIEW_TOUCH_MS) return;
+  if (lastTouched.size > 5000) {
+    for (const [k, t] of lastTouched) if (now - t > 10 * 60 * 1000) lastTouched.delete(k);
+  }
+  lastTouched.set(id, now);
   try {
     await prisma.order_track_link.update({ where: { id }, data: { last_viewed_at: new Date() } });
   } catch (_) {

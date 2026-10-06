@@ -13,9 +13,16 @@ describe("renderPage", () => {
   it("loads Leaflet 1.9.4 from cdnjs with the verified SRI hashes", () => {
     const html = renderPage(cfg);
     expect(html).toContain("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js");
-    expect(html).toContain("sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=");
+    expect(html).toContain("sha256-XJrs/DDkVkUZ29zdzFOkGCJ9zHVo5hnpdi3c7HYJ7Uc=");
     expect(html).toContain("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css");
-    expect(html).toContain("sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=");
+    expect(html).toContain("sha256-tXCrvaljxgtN5LT/Syb5Mm9T+yzPFGH98JVcoJT7JTk=");
+  });
+  it("pins each Leaflet URL to its OWN hash (the .min files, not the non-min ones)", () => {
+    const html = renderPage(cfg);
+    expect(html).toMatch(/<script[^>]*leaflet\.min\.js[^>]*integrity="sha256-XJrs\/DDkVkUZ29zdzFOkGCJ9zHVo5hnpdi3c7HYJ7Uc="/);
+    expect(html).toMatch(/<link[^>]*leaflet\.min\.css[^>]*integrity="sha256-tXCrvaljxgtN5LT\/Syb5Mm9T\+yzPFGH98JVcoJT7JTk="/);
+    expect(html).not.toContain("sha256-20nQCchB9co0qIjJZRGuk2");
+    expect(html).not.toContain("sha256-p4NxAoJBhIIN+hmNHrzRCf9tD");
   });
   it("injects the config as inert JSON, escaping anything that could close the script tag", () => {
     const html = renderPage({ tileUrl: null, attribution: "</script><script>alert(1)</script>" });
