@@ -222,6 +222,16 @@ async function runTransition(work) {
     }
   }
   if (!result.alreadyDone) emitSettlementUpdated(result.settlement);
+  // Free Booking Offer: a payment that just settled may release a pending wallet credit.
+  // tryCredit is idempotent and never throws; this must never affect the settlement itself.
+  if (!result.alreadyDone && result.settlement && ["cash_received", "paid_online"].includes(result.settlement.status)) {
+    try {
+      Promise.resolve(require("./freeBookingService").tryCredit(result.settlement.order_id))
+        .catch((err) => logger.error(`free-booking credit after settlement failed for order ${result.settlement.order_id}:`, err));
+    } catch (err) {
+      logger.error(`free-booking credit after settlement failed for order ${result.settlement.order_id}:`, err);
+    }
+  }
   return result;
 }
 

@@ -22,6 +22,7 @@ const settlementService = require("./settlementService");
 const receiverPayService = require("./receiverPayService");
 const receiverPaySettings = require("./receiverPaySettings");
 const receiverPayCalc = require("./receiverPayCalc");
+const freeBookingService = require("./freeBookingService");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
@@ -195,6 +196,12 @@ async function claimOrderForRider(orderId, riderId) {
  * accept ack doesn't wait on any of it — see that function's comment.
  */
 async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
+  // Free Booking Offer: remember which driver took the order and void the booking if they are
+  // not a pool driver. Fire-and-forget: it must never delay or break the accept.
+  freeBookingService.recordAcceptance(orderId, riderId).catch((err) => {
+    logger.error(`recordAcceptance error for order ${orderId}:`, err);
+  });
+
   // An accept that lost the race (claimOrderForRider returned success:
   // false) never reaches here, so this can't wrongly reset the streak for
   // an attempt that didn't really succeed.
@@ -999,6 +1006,12 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // completion on this.
     referralRewardService.processReferralRewardsForCompletedOrder({ uid: order.uid, riderId, orderId }).catch((err) => {
       logger.error(`processReferralRewardsForCompletedOrder error for order ${orderId}:`, err);
+    });
+
+    // Fire-and-forget - records the final invoice total for a Free Booking and credits the
+    // booker's wallet once the payment is settled (or immediately if nothing is left to collect).
+    freeBookingService.markCompleted({ orderId, finalTotal }).catch((err) => {
+      logger.error(`freeBooking.markCompleted error for order ${orderId}:`, err);
     });
 
     // Fire-and-forget, same pattern as above - activates whatever reward
