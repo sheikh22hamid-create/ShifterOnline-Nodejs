@@ -21,7 +21,7 @@ Prerequisites: dev backend with migration `20261006010000_add_order_track_link` 
 | 15 | Open `/track/garbage` and `/api/track/garbage` | 404, no stack traces |
 | 16 | View page source / network | No pickup OTP, booker details or fare anywhere in the API responses |
 | 17 | `cd backend && npx jest` | All pass except the pre-existing `aadharPdfVerify` |
-| 18 | Change the drop pickup/stop after the trip is on the way | The pin and route follow it |
+| 18 | Change the pickup or add or change a stop after the trip is on the way | The pin and route follow it |
 | 19 | Open the link with MAPTILER_KEY set but a wrong/blocked key | Tiles missing, page still works |
 
 ## Result log

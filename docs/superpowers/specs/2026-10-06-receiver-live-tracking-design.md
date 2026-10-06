@@ -45,7 +45,7 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
 
 - Table `order_track_link`: `id`, `order_id` (unique), `token` (unique, 32 random bytes as base64url),
   `receiver_phone`, `created_at`, `last_viewed_at`. No `expires_at` / `revoked_at` columns (see Lifecycle).
-- The link is created lazily and idempotently (`getOrCreate(orderId)`) the first time a receiver message
+- The link is created lazily and idempotently (`getOrCreate(orderId, rawPhone)`) the first time a receiver message
   that needs it is built, which is the driver-assigned message. It is the same link for the whole order, so
   later milestone messages repeat it instead of minting a new one.
 - The token is stored in plain text. This is deliberate and differs from the pay link (hash only): the link
@@ -76,7 +76,7 @@ MapTiler dashboard. Google is still used server side for ETA and the route (the 
 
 ```
 { state: "active" | "delivered" | "cancelled" | "expired" | "invalid",
-  order_id, step: 1..5, steps: [{key, at}],
+  order_id, step: 0..5 (0 = no driver yet), steps: [{key, at}],
   driver: { first_name, vehicle_no, phone } | null,
   eta: { minutes, distance_km, updated_at } | null,
   position: { lat, lng, heading, updated_at, stale } | null,
@@ -90,7 +90,8 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
 
 ## Backend pieces
 
-1. `trackLinkService`: `getOrCreate`, `findByToken`, `revokeForOrder`, `expireForOrder`, `buildLink`.
+1. `trackLinkService`: `isTokenShape`, `getOrCreate(orderId, rawPhone)` (rotates the token when the phone differs),
+   `findByToken`, `buildLink`, `touchViewed`.
 2. `trackSnapshotService`: builds the JSON above from `pkg_order`, `tbl_rider`, `order_track_link` and the
    wait timer (arrival at drop = `pkg_order_wait_timer.drop_wait_start`), applying the privacy rules.
 3. Live position: `trackingSocket` keeps an in-memory `Map<riderId, {lat,lng,heading,at}>` updated on every
@@ -112,8 +113,8 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
 6. WhatsApp (`whatsapp/notifications.js`): the receiver message of driver assigned, reached pickup, trip
    started and reached drop gets a "Track live: <link>" line; `handleTrackingQuery` adds the link for a
    receiver-authorized number. The driver-assigned message to the receiver is new (`notifyDriverAssigned`
-   only messaged the sender before) and is sent only when a link exists. The existing milestone de-duplication stays. If the link cannot be built
-   (flag off, `PUBLIC_BASE_URL` missing) the messages are sent exactly as today.
+   only messaged the sender before) and is sent only when a link exists. The existing milestone
+   de-duplication stays. If the link cannot be built (flag off, `PUBLIC_BASE_URL` missing) the messages are sent exactly as today.
 7. Settings: new key `receiver_tracking_enabled` (default on) read through the same settings helper style as
    `receiverPaySettings`, plus a toggle on the admin Settings page. Env: `MAPTILER_KEY`, optional
    `MAPTILER_STYLE` (default `streets-v2`); `PUBLIC_BASE_URL` is reused. Without `MAPTILER_KEY` the page
@@ -130,10 +131,10 @@ slow clients down (5000 normally, 15000 for non-active states) without a client 
 
 ## Testing
 
-- Jest: `trackLinkService` (idempotent create, revoke, expiry, number change), `trackSnapshotService`
+- Jest: `trackLinkService` (idempotent create, token rotation on a changed number, malformed-token rejection, link building), `trackSnapshotService`
   (privacy gating by status, stale position, delivered/cancelled/expired states, fallbacks),
-  `trackEtaService` (cache window, 150 m movement rule, single in-flight call, Google failure fallback,
-  polyline decode), controllers (404 shape, headers, rate limiter wiring), page (no untrusted
+  `trackEtaService` (cache window, 150 m movement rule, single in-flight call, Google failure fallback),
+  controllers (404 shape, headers, rate limiter wiring), page (no untrusted
   interpolation, tile template injected as JSON), WhatsApp message builders (link line present/absent).
 - Manual QA checklist (`docs/superpowers/plans/2026-10-06-receiver-live-tracking-qa.md`): a real order from booking to delivery on a phone
   with a weak network, checking each privacy rule and the end states.
