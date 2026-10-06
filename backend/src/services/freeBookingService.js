@@ -247,7 +247,9 @@ async function tryCredit(orderId) {
       try {
         settlement = await tx.order_settlement.findUnique({ where: { order_id: id }, select: { status: true } });
       } catch (err) {
-        logger.warn(`freeBookingService.tryCredit: settlement lookup failed for order ${id}: ${err.message}`);
+        // Only "table missing" means "no settlement"; anything else must not fail open on the money path.
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2021")) throw err;
+        logger.warn(`freeBookingService.tryCredit: order_settlement table missing, treating order ${id} as unsettled-free: ${err.message}`);
       }
 
       const decision = rules.decideCredit({ row, order, userLocked, paymentSettled: rules.isPaymentSettled(settlement) });

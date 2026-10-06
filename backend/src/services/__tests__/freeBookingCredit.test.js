@@ -5,11 +5,13 @@ jest.mock("../../config/db", () => ({
   free_booking_pool: { findMany: jest.fn() },
   free_booking_order: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
 }));
+jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../pricingEngine", () => ({ getActiveCustomerPlan: jest.fn() }));
 jest.mock("../walletNotifier", () => ({ notifyCustomerWalletTransaction: jest.fn().mockResolvedValue() }));
 jest.mock("../customerInbox", () => ({ saveCustomerNotification: jest.fn().mockResolvedValue() }));
 jest.mock("../../utils/istTime", () => ({ istNow: () => new Date("2026-10-06T10:00:00Z") }));
 
+const { Prisma } = require("@prisma/client");
 const prisma = require("../../config/db");
 const walletNotifier = require("../walletNotifier");
 const customerInbox = require("../customerInbox");
@@ -30,7 +32,6 @@ function makeTx({ row, locked = false, order = { o_status: "Completed", rid: 9 }
   prisma.$transaction.mockImplementation(async (fn) => fn(tx));
   return tx;
 }
-jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 const pendingRow = (o = {}) => ({
   id: 5, order_id: 50, user_id: 7, status: "FREE_BOOKING_REWARD_PENDING",
   accepted_in_pool: true, pool_rider_id: 9, actual_fare: "500.00", ...o,
@@ -67,6 +68,24 @@ describe("tryCredit", () => {
     const tx = makeTx({ row: pendingRow(), settlement: { status: "paid_online" } });
     expect((await svc.tryCredit(50)).credited).toBe(true);
     expect(tx.tbl_user.update).toHaveBeenCalled();
+  });
+
+  it("treats a missing settlement table (P2021) as no settlement and credits", async () => {
+    const tx = makeTx({ row: pendingRow() });
+    tx.order_settlement.findUnique.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("x", { code: "P2021", clientVersion: "test" }));
+    expect(await svc.tryCredit(50)).toEqual({ credited: true, action: "credit" });
+    expect(tx.tbl_user.update).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a generic error", () => new Error("conn lost")],
+    ["P2022", () => new Prisma.PrismaClientKnownRequestError("x", { code: "P2022", clientVersion: "test" })],
+  ])("does not credit when the settlement lookup fails with %s", async (_n, mk) => {
+    const tx = makeTx({ row: pendingRow() });
+    tx.order_settlement.findUnique.mockRejectedValue(mk());
+    expect(await svc.tryCredit(50)).toEqual({ credited: false, action: "error" });
+    expect(tx.tbl_user.update).not.toHaveBeenCalled();
+    expect(tx.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
 
   it("is idempotent: an existing history row means no second credit", async () => {
