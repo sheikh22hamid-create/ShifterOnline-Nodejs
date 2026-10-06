@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../bottombar.dart';
+import '../../services/free_booking_api_service.dart';
 import '../../services/settlement_api_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/receiver_pay_options.dart';
@@ -20,6 +21,7 @@ import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
 import 'coupon_sheet.dart';
+import 'free_booking_dialogs.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 import '../myorder/trackingway.dart';
@@ -66,6 +68,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _loadingAvailability = false;
   bool _loadingModels = false;
   bool _booking = false;
+  bool _freeBookingRequested = false;
   String? _availabilityError;
   int? _radiusSuggestionShownFor;
   String? _modelsError;
@@ -777,6 +780,23 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ApiWrapper.showToastMessage('This vehicle allows only $maxStops extra ${maxStops == 1 ? 'stop' : 'stops'}. Please remove ${_stopsData.length - maxStops} to continue.');
       return;
     }
+    // Free Booking Offer: only instant bookings, and only for premium customers (the server decides).
+    _freeBookingRequested = false;
+    if (_currentBookingType == 1) {
+      final uid = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
+      final fb = await FreeBookingApiService.check(
+        uid: uid, plat: _pickup.latitude, plong: _pickup.longitude,
+        category: _text(_categoryOf(selected)['cat_name'] ?? _categoryOf(selected)['name'], _vehicleName(selected)),
+        radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
+      );
+      if (!mounted) return;
+      if (fb['outcome'] == 'eligible') {
+        if (!await showFreeBookingAppliedDialog()) return;
+        _freeBookingRequested = true;
+      } else if (fb['outcome'] == 'no_free_vehicle') {
+        if (!await showNoFreeVehicleDialog()) return;
+      }
+    }
     final walletBalance = await _fetchWalletBalance();
     if (!mounted) return;
     final category = _categoryOf(selected);
@@ -798,7 +818,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     return _number(response is Map ? response['wallet_balance'] : 0);
   }
 
-  Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee, [ReceiverPaySelection receiverPay = ReceiverPaySelection.off]) async {
+  Future<void> _submitOrder(int payValue, Map<String, dynamic> category, Map<String, dynamic> model, double fee, [ReceiverPaySelection receiverPay = ReceiverPaySelection.off, bool walletAlreadyDebited = false]) async {
     // Receiver pays is cash-only: never combined with the wallet (-2).
     final receiverOn = receiverPay.enabled && payValue == 1;
     if (_currentBookingType == 2 && _scheduledFor == null) {
@@ -818,10 +838,29 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ApiWrapper.showToastMessage('Selected delivery model is unavailable.');
       return;
     }
+    // Free Booking re-check BEFORE any wallet debit: if the offer no longer applies, ask first.
+    if (_freeBookingRequested) {
+      final uidNow = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
+      final fb = await FreeBookingApiService.check(
+        uid: uidNow, plat: _pickup.latitude, plong: _pickup.longitude,
+        category: _text(category['cat_name'] ?? category['name'], _vehicleName(_selected!)),
+        radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
+      );
+      if (!mounted) return;
+      if (fb['outcome'] != 'eligible') {
+        _freeBookingRequested = false;
+        final proceed = await showNoFreeVehicleDialog();
+        if (!mounted) return;
+        if (!proceed) {
+          setState(() => _booking = false);
+          return;
+        }
+      }
+    }
     final login = _storage.read('UserLogin');
     // Wallet withdrawal runs only for payValue == -2; a receiver-pays order is
     // cash (payValue == 1) so it can never reach this block.
-    if (payValue == -2 && login is Map) {
+    if (payValue == -2 && login is Map && !walletAlreadyDebited) {
       final balance = await _fetchWalletBalance();
       // Only what's left after the coupon / referral-points discount is taken from the wallet.
       final payable = _payableAmount(fee);
@@ -853,6 +892,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'extra_mile_charge': 0, 'cou_id': _appliedCoupon == null ? 0 : (int.tryParse(_appliedCoupon!['id'].toString()) ?? 0), 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
       if (receiverOn) 'receiver_pays': true,
+      if (_freeBookingRequested) 'free_booking': true,
       if (receiverOn) 'receiver_commission_percent': receiverPay.percent,
       if (_goodsTypeId != null) 'goods_type_id': _goodsTypeId,
       if (_goodsOtherSelected && _goodsOtherController.text.trim().isNotEmpty) 'goods_type_other': _goodsOtherController.text.trim(),
@@ -911,6 +951,22 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       }
     } else {
       final msg = _text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.');
+      if (response is Map && response['code']?.toString() == 'FREE_BOOKING_UNAVAILABLE') {
+        // The pool vehicle went away between the check and the booking: ask again, then book normally.
+        _freeBookingRequested = false;
+        if (payValue == -2) {
+          // The wallet was already debited for this order: never offer Cancel and never debit again.
+          ApiWrapper.showToastMessage('A free vehicle just became unavailable; placing your booking as a normal booking (no refund).');
+          await _submitOrder(payValue, category, model, fee, receiverPay, true);
+          return;
+        }
+        setState(() => _booking = true);
+        final proceed = await showNoFreeVehicleDialog();
+        if (!mounted) return;
+        setState(() => _booking = false);
+        if (proceed) await _submitOrder(payValue, category, model, fee, receiverPay);
+        return;
+      }
       final isSettlementBlock = response is Map &&
           (response['ResponseCode']?.toString() == '403' ||
               response['code']?.toString() == 'SETTLEMENT_PENDING' ||

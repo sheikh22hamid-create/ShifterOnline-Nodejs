@@ -116,6 +116,13 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       )`
     : Prisma.empty;
 
+  // Free Booking Offer: a CONFIRMED free booking is only offered to the city's pool drivers.
+  // getDispatchPoolFilter never throws; null means a normal order (no filter).
+  const poolIds = await require("./freeBookingService").getDispatchPoolFilter(order);
+  const poolBlock = poolIds
+    ? Prisma.sql`AND r.id IN (${Prisma.join(poolIds.length ? poolIds : [0])})`
+    : Prisma.empty;
+
   const rows = await prisma.$queryRaw`
     SELECT
       r.id AS rider_id,
@@ -174,6 +181,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
           AND o_status NOT IN ('Completed', 'Cancelled')
       )
       ${settlementBlock}
+      ${poolBlock}
       AND (
         r.wallet_balance IS NULL
         OR r.wallet_balance >= -COALESCE(
@@ -407,6 +415,22 @@ async function checkCascadeTermination(orderId) {
 
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (order && order.rid === 0 && order.order_status === 0) {
+    // Free Booking Offer: the pool is exhausted, so continue as a normal booking (no refund)
+    // instead of cancelling. The audit row is flipped atomically, so this happens once.
+    let continueAsNormal = false;
+    try {
+      continueAsNormal = await require("./freeBookingService").fallbackToNormalDispatch(orderId);
+    } catch (err) {
+      logger.error(`dispatchManager: free-booking fallback failed for order ${orderId}:`, err);
+    }
+    if (continueAsNormal) {
+      for (const t of state.timers) clearTimeout(t);
+      state.timers.clear();
+      activeDispatches.delete(orderId);
+      await startDispatch(order, null);
+      return;
+    }
+
     try {
       adminSocket.notifyDispatchAlert(orderId, order.city_id);
     } catch (adminErr) {
@@ -918,6 +942,7 @@ async function runBatchInner(orderId) {
 
   const timer = setTimeout(() => {
     state.timers.delete(timer);
+    if (activeDispatches.get(orderId) !== state) return; // stale timer from a replaced cascade
     runBatch(orderId).catch((err) =>
       logger.error(`dispatchManager: next batch failed for order ${orderId}:`, err)
     );
@@ -1030,12 +1055,12 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
       );
 
       // Once locks are freed, if cascade is still active, trigger next batch for newly freed drivers
-      if (activeDispatches.has(orderId)) {
-        state.consecutiveEmptyTurns = 0;
-        runBatch(orderId).catch((err) =>
-          logger.error(`dispatchManager: retry batch after expiry failed for order ${orderId}:`, err)
-        );
-      }
+      // Identity check: a callback from a replaced (free-booking fallback) cascade must not act on the new one.
+      if (activeDispatches.get(orderId) !== state) return;
+      state.consecutiveEmptyTurns = 0;
+      runBatch(orderId).catch((err) =>
+        logger.error(`dispatchManager: retry batch after expiry failed for order ${orderId}:`, err)
+      );
 
       await checkCascadeTermination(orderId);
     } catch (err) {

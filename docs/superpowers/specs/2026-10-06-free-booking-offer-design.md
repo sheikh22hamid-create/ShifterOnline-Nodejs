@@ -40,6 +40,7 @@ A booking is a **free booking** only if ALL of these hold:
    `active = 1`, same city), matches the requested vehicle type (`tbl_rider.vehicle = category`),
    is online/approved with a fresh location (same conditions as `selectEligibleDrivers`), and is within
    the order's search radius of the pickup.
+6. The booking is an **instant** booking (`booking_type = 1`). Scheduled and next-day bookings are not dispatched at booking time, so a pool check then would be meaningless; they are never free bookings.
 
 Outcomes of the check:
 

@@ -29,10 +29,15 @@ jest.mock("../pricingEngine", () => {
 jest.mock("../settlementSettings", () => ({
   getSettlementSettings: jest.fn().mockResolvedValue({ enabled: false, driverBlockGraceMinutes: 10 }),
 }));
+jest.mock("../freeBookingService", () => ({
+  getDispatchPoolFilter: jest.fn().mockResolvedValue(null),
+  fallbackToNormalDispatch: jest.fn().mockResolvedValue(false),
+}));
 jest.mock("../pushNotifier");
 jest.mock("../walletPrepaymentRefund");
 
 const prisma = require("../../config/db");
+const freeBookingService = require("../freeBookingService");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pushNotifier = require("../pushNotifier");
@@ -44,7 +49,7 @@ const {
   SCHEDULED_ORDER_PRIORITY_POPUP_MS,
 } = require("../../config/constants");
 
-const flush = async (ticks = 20) => {
+const flush = async (ticks = 24) => {
   for (let i = 0; i < ticks; i++) {
     await Promise.resolve();
   }
@@ -808,6 +813,77 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect([1, 2, 3, 4, 5, 6, 7, 8].every((id) => !lockManager.isLocked(id))).toBe(true);
 
     expect(pushNotifier.notifyCustomerNoDriverFound).toHaveBeenCalledWith("cust-tok", order.id);
+  });
+
+  it("a free-booking order whose pool is exhausted restarts as a normal booking instead of being cancelled", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    // Capture the Set the dispatcher keeps its timer handles in (state.timers), so the test can leave a
+    // timer from the OLD cascade pending across the restart.
+    const handles = new Set();
+    let oldTimers = null;
+    const realSetTimeout = global.setTimeout;
+    const realAdd = Set.prototype.add;
+    const spyAdd = jest.spyOn(Set.prototype, "add").mockImplementation(function (v) {
+      if (!oldTimers && handles.has(v)) oldTimers = this;
+      return realAdd.call(this, v);
+    });
+    const spyTimeout = jest.spyOn(global, "setTimeout").mockImplementation((...args) => {
+      const h = realSetTimeout(...args);
+      handles.add(h);
+      return h;
+    });
+    let queryCallsAtFallback = -1;
+    let staleFired = 0;
+    freeBookingService.fallbackToNormalDispatch.mockImplementationOnce(async () => {
+      queryCallsAtFallback = prisma.$queryRaw.mock.calls.length;
+      // a leftover timer of the old cascade, still pending when the cascade is restarted
+      const stale = realSetTimeout(() => { staleFired++; }, 1000);
+      realAdd.call(oldTimers, stale);
+      return true;
+    });
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS - BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(0);
+    await flush();
+
+    expect(freeBookingService.fallbackToNormalDispatch).toHaveBeenCalledWith(order.id);
+    spyAdd.mockRestore();
+    spyTimeout.mockRestore();
+    // a new cascade really started: drivers were queried again after the fallback
+    expect(prisma.$queryRaw.mock.calls.length).toBeGreaterThan(queryCallsAtFallback);
+    expect(emitted.filter((e) => e.event === "order:no_driver_found")).toHaveLength(0);
+    const cancelled = prisma.pkg_order.update.mock.calls.some(([args]) => args.data && args.data.o_status === "Cancelled");
+    expect(cancelled).toBe(false);
+    // the old cascade's pending timer was cleared by the restart and never fires into the new one
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(staleFired).toBe(0);
+  });
+
+  it("a fallback error is swallowed and the normal 'No driver found' cancel still happens", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    freeBookingService.fallbackToNormalDispatch.mockRejectedValueOnce(new Error("boom"));
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS - BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(0);
+    await flush();
+
+    expect(emitted.filter((e) => e.event === "order:no_driver_found")).toHaveLength(1);
+    const cancelled = prisma.pkg_order.update.mock.calls.some(([args]) => args.data && args.data.o_status === "Cancelled");
+    expect(cancelled).toBe(true);
   });
 
   it("a lone rider who only ever lets the popup time out (never accepting or rejecting) eventually reaches no_driver_found instead of looping forever", async () => {
@@ -1773,4 +1849,37 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
 
   });
 
+});
+
+describe("selectEligibleDrivers with a free booking", () => {
+  const fbOrder = { id: 50, uid: 7, plat: "22.7", plong: "75.8", category: "E-Loader", radius_range: 5, city_id: 3, body_type: "any" };
+  const poolFragment = () =>
+    prisma.$queryRaw.mock.calls[0].slice(1)
+      .filter((v) => v && Array.isArray(v.strings))
+      .find((v) => v.strings.join("").includes("AND r.id IN ("));
+
+  beforeEach(() => {
+    jest.useRealTimers();
+    jest.clearAllMocks();
+    prisma.$queryRaw.mockResolvedValue([makeRiderRow(9)]);
+  });
+
+  it("adds no pool filter for a normal order", async () => {
+    freeBookingService.getDispatchPoolFilter.mockResolvedValueOnce(null);
+    await dispatchManager.selectEligibleDrivers(fbOrder, 6, []);
+    expect(freeBookingService.getDispatchPoolFilter).toHaveBeenCalledWith(fbOrder);
+    expect(poolFragment()).toBeUndefined();
+  });
+
+  it("restricts a free-booking order to the pool riders", async () => {
+    freeBookingService.getDispatchPoolFilter.mockResolvedValueOnce([9, 12]);
+    await dispatchManager.selectEligibleDrivers(fbOrder, 6, []);
+    expect(poolFragment().values).toEqual([9, 12]);
+  });
+
+  it("an empty pool matches nobody (never falls through to everyone)", async () => {
+    freeBookingService.getDispatchPoolFilter.mockResolvedValueOnce([]);
+    await dispatchManager.selectEligibleDrivers(fbOrder, 6, []);
+    expect(poolFragment().values).toEqual([0]);
+  });
 });

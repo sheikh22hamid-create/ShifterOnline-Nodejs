@@ -14,6 +14,9 @@ jest.mock("../../config/db", () => ({
   $transaction: jest.fn((ops) => Promise.all(ops)),
 }));
 
+jest.mock("../freeBookingService", () => ({ unlockForReferral: jest.fn().mockResolvedValue(true) }));
+const freeBookingService = require("../freeBookingService");
+
 const prisma = require("../../config/db");
 const { processReferralRewardsForCompletedOrder } = require("../referralRewardService");
 
@@ -165,6 +168,34 @@ describe("referralRewardService.processReferralRewardsForCompletedOrder", () => 
       where: { id: 11 },
       data: { referral_points: 100 },
     });
+  });
+  it("unlocks the Free Booking benefit of a USER referrer when the referral becomes successful", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
+    prisma.pkg_order.count.mockResolvedValue(1);
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(freeBookingService.unlockForReferral).toHaveBeenCalledWith(10);
+  });
+
+  it("does not unlock anything for a DRIVER referrer", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral({ referrer_type: "DRIVER" }));
+    prisma.pkg_order.count.mockResolvedValue(1);
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(freeBookingService.unlockForReferral).not.toHaveBeenCalled();
+  });
+
+  it("does not unlock when the referral was already claimed by another process", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
+    prisma.pkg_order.count.mockResolvedValue(1);
+    prisma.tbl_referral.updateMany.mockResolvedValue({ count: 0 });
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(freeBookingService.unlockForReferral).not.toHaveBeenCalled();
+  });
+
+  it("does not unlock when the referred user has no completed order yet (referral stays pending)", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
+    prisma.pkg_order.count.mockResolvedValue(0);
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(freeBookingService.unlockForReferral).not.toHaveBeenCalled();
   });
 });
 

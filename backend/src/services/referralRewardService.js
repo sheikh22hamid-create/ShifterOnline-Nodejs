@@ -48,6 +48,14 @@ async function awardReferralReward({ referral, referredId, referredType, orderId
       },
     });
     if (claimed.count === 0) return 0; // already claimed by another process
+    // Free Booking Offer: a successful referral unlocks the referrer's locked benefit. Only an
+    // actual pending->completed transition reaches here, and unlockForReferral only flips a
+    // locked user, so a referral that completed before the lock can never unlock it.
+    if (referral.referrer_type === "USER") {
+      require("./freeBookingService").unlockForReferral(referral.referrer_id).catch((err) => {
+        logger.error(`unlockForReferral failed for user ${referral.referrer_id}:`, err);
+      });
+    }
 
     const referrerModel = referral.referrer_type === "DRIVER" ? prisma.tbl_rider : prisma.tbl_user;
     const referrer = await referrerModel.findUnique({ where: { id: referral.referrer_id } });

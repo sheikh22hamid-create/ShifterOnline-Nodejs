@@ -5,6 +5,7 @@ const legacyOrderController = require("../controllers/legacyOrderController");
 const orderAvailabilityController = require("../controllers/orderAvailabilityController");
 const orderInvoiceController = require("../controllers/orderInvoiceController");
 const settlementController = require("../controllers/settlementController");
+const freeBookingController = require("../controllers/freeBookingController");
 
 const router = express.Router();
 router.post("/trip-progress", require('../controllers/driverTripController').syncProgress);
@@ -14,6 +15,8 @@ router.post("/fare-estimate", orderController.fareEstimate);
 router.post("/distance", orderController.distanceEstimate);
 router.post("/packagelist", orderController.packageListEstimate);
 router.post("/create", orderController.createOrder);
+router.post("/free-booking/check", freeBookingController.check);
+router.post("/free-booking/status", freeBookingController.status);
 router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);
 router.post("/schedule-confirmations", orderController.getPendingScheduleConfirmations);

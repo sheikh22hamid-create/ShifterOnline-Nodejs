@@ -1222,6 +1222,9 @@ model tbl_user {
   referred_by      Int                 @default(0)
   referred_by_type String              @default("") @db.VarChar(10)
   referral_points  Int                 @default(0)
+  free_booking_locked        Boolean   @default(false)
+  free_booking_locked_at     DateTime? @db.DateTime(0)
+  free_booking_just_unlocked Boolean   @default(false)
 }
 
 model tbl_user_device {
@@ -1980,3 +1983,54 @@ model order_receiver_feedback {
   @@index([rider_id], map: "idx_order_receiver_feedback_rider")
 }
 
+
+// Free Booking Offer (spec 2026-10-06). One row per city; no row = offer OFF.
+model free_booking_setting {
+  city_id     Int       @id
+  enabled     Boolean   @default(false)
+  offer_start DateTime? @db.DateTime(0)
+  offer_end   DateTime? @db.DateTime(0)
+  updated_by  Int?
+  updated_at  DateTime  @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// Vehicles (riders) the admin put in the offer pool, with a validity window.
+model free_booking_pool {
+  id                 Int      @id @default(autoincrement())
+  city_id            Int
+  rider_id           Int
+  vehicle_details_id Int?
+  valid_from         DateTime @db.Date
+  valid_to           DateTime @db.Date
+  active             Boolean  @default(true)
+  added_by           Int?
+  created_at         DateTime @default(now()) @db.DateTime(0)
+  updated_at         DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([city_id, active, valid_from, valid_to], map: "idx_fbp_city_active_dates")
+  @@index([rider_id], map: "idx_fbp_rider")
+}
+
+// One row per free booking: the audit record and the state machine.
+model free_booking_order {
+  id                   Int       @id @default(autoincrement())
+  order_id             Int       @unique(map: "uq_fbo_order")
+  user_id              Int
+  city_id              Int?
+  status               String    @db.VarChar(40)
+  not_eligible_reason  String?   @db.VarChar(60)
+  pool_rider_id        Int?
+  accepted_in_pool     Boolean   @default(false)
+  actual_fare          Decimal?  @db.Decimal(10, 2)
+  credit_amount        Decimal?  @db.Decimal(10, 2)
+  wallet_history_id    Int?
+  search_radius_km     Int?
+  premium_plan_id      Int?
+  premium_plan_amount  Decimal?  @db.Decimal(10, 2)
+  created_at           DateTime  @default(now()) @db.DateTime(0)
+  completed_at         DateTime? @db.DateTime(0)
+  credited_at          DateTime? @db.DateTime(0)
+
+  @@index([user_id, status], map: "idx_fbo_user_status")
+  @@index([city_id, status], map: "idx_fbo_city_status")
+}
