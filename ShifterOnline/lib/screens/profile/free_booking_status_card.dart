@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import '../../services/free_booking_api_service.dart';
 
@@ -37,10 +38,10 @@ class _FreeBookingStatusCardState extends State<FreeBookingStatusCard> {
     final good = _state == 'available' || _state == 'unlocked';
     final color = good ? Colors.green : Colors.orange.shade800;
     final title = switch (_state) {
-      'available' => 'Free Booking Available',
-      'unlocked' => 'Free Booking Unlocked',
-      'locked' => 'Free Booking Locked',
-      _ => 'Free Booking',
+      'available' => 'Free Booking Available'.tr,
+      'unlocked' => 'Free Booking Unlocked'.tr,
+      'locked' => 'Free Booking Locked'.tr,
+      _ => 'Free Booking'.tr,
     };
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
