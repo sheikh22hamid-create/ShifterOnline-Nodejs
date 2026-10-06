@@ -73,7 +73,8 @@ function decideCredit({ row, order, userLocked, paymentSettled, settlementStatus
   if (!row || !OPEN_STATUSES.includes(row.status)) return { action: "skip" };
   if (order?.o_status === "Cancelled") return { action: "void", reason: REASON.CANCELLED };
   if (order?.o_status !== "Completed" || row.actual_fare == null) return { action: "wait" };
-  if (!row.accepted_in_pool || Number(order.rid) !== Number(row.pool_rider_id)) {
+  // A missing rider id on either side must never match (Number(null) === Number(null) === 0).
+  if (!row.accepted_in_pool || row.pool_rider_id == null || order.rid == null || Number(order.rid) !== Number(row.pool_rider_id)) {
     return { action: "void", reason: REASON.VEHICLE_CHANGED };
   }
   if (settlementStatus === "waived") return { action: "void", reason: REASON.PAYMENT_FAILED };
