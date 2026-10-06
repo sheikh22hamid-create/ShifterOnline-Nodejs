@@ -89,7 +89,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private boolean isWaitingForPayment = false;
     private android.os.CountDownTimer paymentCountDownTimer;
     private long remainingPaymentSeconds = 120;
-    private final String defaultPaymentMsg = "Please wait for 2 minutes while the user completes the payment.\nIf the payment is not received within 2 minutes, the order will be automatically cancelled.";
+    private final String defaultPaymentMsg = "Please wait while the user completes the payment.\nIf the payment is not received in time, the order will be automatically cancelled.";
 
     private android.os.Handler pickupWaitingTimerHandler;
     private Runnable pickupWaitingTimerRunnable;

@@ -105,7 +105,7 @@ function registerOrderHandlers(io, socket) {
         payment_status: order.payment_status ?? 0,
         advance_payment_timer: timerInfo.remaining_seconds,
         advance_payment_msg: timerInfo.is_advance_payment_required
-          ? "Please complete the advance payment to confirm your order. Kindly note that if the payment is not completed within 2 minutes, your order will be automatically cancelled."
+          ? `Please complete the advance payment to confirm your order. Kindly note that if the payment is not completed within ${Math.round(timerInfo.advance_timeout_seconds / 60)} minutes, your order will be automatically cancelled.`
           : "",
       });
     } catch (err) {

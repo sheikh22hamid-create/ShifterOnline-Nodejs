@@ -1,5 +1,6 @@
 const { sendPushNotification } = require("../config/firebase");
 const { saveCustomerNotificationByToken } = require("./customerInbox");
+const { getAdvancePaymentTimeoutMinutes } = require("../utils/advancePaymentTimeout");
 
 function stringifyPayload(payload) {
   return Object.fromEntries(Object.entries(payload).map(([k, v]) => [k, String(v ?? "")]));
@@ -104,22 +105,24 @@ async function notifyDriverPickupTimeoutCancel(fcmToken, orderId, timeoutMinutes
   );
 }
 
-/** See tripLifecycle.sweepExpiredAdvancePayments — customer never paid the advance within 2 minutes of the driver accepting. */
+/** See tripLifecycle.sweepExpiredAdvancePayments — customer never paid the advance within timeout of the driver accepting. */
 async function notifyCustomerAdvancePaymentTimeoutCancel(fcmToken, orderId) {
+  const timeoutMinutes = await getAdvancePaymentTimeoutMinutes().catch(() => 2);
   return sendCustomerPush(
     fcmToken,
     "Order Cancelled",
-    `Order #${orderId} cancelled: the advance payment wasn't completed within 2 minutes.`,
+    `Order #${orderId} cancelled: the advance payment wasn't completed within ${timeoutMinutes} minutes.`,
     { type: "advance_timeout_cancel", action: "order_cancelled", order_id: String(orderId) }
   );
 }
 
 /** Driver-side counterpart of notifyCustomerAdvancePaymentTimeoutCancel — same event, told from the driver's side. */
 async function notifyDriverAdvancePaymentTimeoutCancel(fcmToken, orderId) {
+  const timeoutMinutes = await getAdvancePaymentTimeoutMinutes().catch(() => 2);
   return sendPushNotification(
     fcmToken,
     "Order Cancelled",
-    `Customer did not pay the advance within 2 minutes. Order #${orderId} has been cancelled — you're free for new orders.`,
+    `Customer did not pay the advance within ${timeoutMinutes} minutes. Order #${orderId} has been cancelled — you're free for new orders.`,
     { type: "order_dismiss", order_id: String(orderId), reason: "advance_payment_timeout" },
     "order_dismiss_channel_v1"
   );
