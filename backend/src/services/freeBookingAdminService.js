@@ -10,8 +10,32 @@ const bad = (msg) => Object.assign(new Error(msg), { statusCode: 400 });
 /** admin = bound to own city; superadmin = chosen city (query or body), null if none given. */
 function resolveCityId(user, query = {}, body = {}) {
   if (user?.role !== "superadmin") return user?.city_id != null ? Number(user.city_id) : null;
-  const raw = query.city_id ?? body.city_id;
-  return raw != null && raw !== "" && Number.isFinite(Number(raw)) ? Number(raw) : null;
+  // Each source is checked on its own so an empty query value does not hide a usable body value.
+  for (const raw of [query.city_id, body.city_id]) {
+    if (raw != null && raw !== "" && Number.isFinite(Number(raw))) return Number(raw);
+  }
+  return null;
+}
+
+/** A positive integer id from a route param / body field, or a 400 (never NaN into Prisma). */
+function toId(value, label) {
+  const n = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : NaN;
+  if (!Number.isInteger(n) || n <= 0) throw bad(`${label} must be a valid id`);
+  return n;
+}
+
+/** true/'true'/1/'1' => true; false/'false'/0/'0'/undefined/null => false; anything else => 400. */
+function parseEnabled(v) {
+  if (v === true || v === "true" || v === 1 || v === "1") return true;
+  if (v === false || v === "false" || v === 0 || v === "0" || v == null) return false;
+  throw bad("enabled must be true or false");
+}
+
+function parseOptionalDate(v, label) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) throw bad(`${label} is not a valid date`);
+  return d;
 }
 
 const requireCity = (cityId) => {
@@ -31,17 +55,12 @@ async function getSettings(cityId) {
 
 async function saveSettings({ cityId, enabled, offerStart, offerEnd, adminId }) {
   requireCity(cityId);
-  const on = Boolean(enabled);
-  let start = null;
-  let end = null;
-  if (offerStart || offerEnd || on) {
-    start = offerStart ? new Date(offerStart) : null;
-    end = offerEnd ? new Date(offerEnd) : null;
-    if (on && (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))) {
-      throw bad("Offer start and end are required to turn the offer ON");
-    }
-    if (start && end && end.getTime() <= start.getTime()) throw bad("Offer end must be after the start");
-  }
+  const on = parseEnabled(enabled);
+  // Validated even when the offer is OFF: an Invalid Date must never reach Prisma.
+  const start = parseOptionalDate(offerStart, "Offer start");
+  const end = parseOptionalDate(offerEnd, "Offer end");
+  if (on && (!start || !end)) throw bad("Offer start and end are required to turn the offer ON");
+  if (start && end && end.getTime() <= start.getTime()) throw bad("Offer end must be after the start");
   const data = { enabled: on, offer_start: start, offer_end: end, updated_by: adminId ?? null };
   return prisma.free_booking_setting.upsert({
     where: { city_id: Number(cityId) },
@@ -112,8 +131,9 @@ function checkDates(validFrom, validTo) {
 
 async function addToPool({ cityId, riderId, validFrom, validTo, adminId }) {
   requireCity(cityId);
+  riderId = toId(riderId, "rider_id");
   checkDates(validFrom, validTo);
-  const rider = await prisma.tbl_rider.findUnique({ where: { id: Number(riderId) }, select: { id: true, city_id: true, a_status: true, status: true } });
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { id: true, city_id: true, a_status: true, status: true } });
   if (!rider) throw bad("Driver not found");
   if (Number(rider.city_id) !== Number(cityId)) throw bad("This driver belongs to another city");
   if (Number(rider.a_status) !== 1 || Number(rider.status) !== 1) throw bad("Only approved, active drivers can join the pool");
@@ -137,7 +157,7 @@ async function addToPool({ cityId, riderId, validFrom, validTo, adminId }) {
 }
 
 async function ownedPoolRow(id, cityId) {
-  const row = await prisma.free_booking_pool.findUnique({ where: { id: Number(id) } });
+  const row = await prisma.free_booking_pool.findUnique({ where: { id: toId(id, "Pool entry id") } });
   if (!row || Number(row.city_id) !== Number(cityId)) throw Object.assign(new Error("Pool entry not found"), { statusCode: 404 });
   return row;
 }
@@ -191,18 +211,19 @@ async function listOrders({ cityId, status, unrestricted = false }) {
 
 /** A single free booking of the city, or null (direct lookup, not a list scan). */
 async function findOrderInCity(id, cityId) {
-  return prisma.free_booking_order.findFirst({ where: { id: Number(id), city_id: Number(cityId) } });
+  return prisma.free_booking_order.findFirst({ where: { id: toId(id, "Booking id"), city_id: Number(cityId) } });
 }
 
 /** A city-bound admin may only lock/unlock customers of their own city; only `unrestricted` (superadmin) skips the check. */
 async function assertUserInCity(userId, cityId, unrestricted = false) {
-  if (unrestricted) return;
-  if (!cityId) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
-  const user = await prisma.tbl_user.findUnique({ where: { id: Number(userId) }, select: { id: true, city_id: true } });
-  if (!user || Number(user.city_id) !== Number(cityId)) throw bad("This customer belongs to another city");
+  const id = toId(userId, "User id");
+  if (!unrestricted && !cityId) throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
+  const user = await prisma.tbl_user.findUnique({ where: { id }, select: { id: true, city_id: true } });
+  if (!user) throw Object.assign(new Error("Customer not found"), { statusCode: 404 });
+  if (!unrestricted && Number(user.city_id) !== Number(cityId)) throw bad("This customer belongs to another city");
 }
 
 module.exports = {
   resolveCityId, getSettings, saveSettings, listPool, listCandidates,
-  addToPool, updatePool, removeFromPool, listOrders, assertUserInCity, findOrderInCity,
+  addToPool, updatePool, removeFromPool, listOrders, assertUserInCity, findOrderInCity, toId,
 };

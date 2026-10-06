@@ -82,3 +82,38 @@ describe("lock", () => {
     expect(logger.info).toHaveBeenCalledWith("free-booking lock user=7 by admin=1");
   });
 });
+
+describe("non-numeric ids answer 400 without touching the services", () => {
+  const sa = { id: 1, role: "superadmin" };
+  it("voidOrder", async () => {
+    const res = mkRes();
+    await ctrl.voidOrder(mkReq(sa, { params: { id: "abc" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(freeBookingService.voidOrder).not.toHaveBeenCalled();
+    expect(admin.findOrderInCity).not.toHaveBeenCalled();
+  });
+  it.each([["lockUser"], ["unlockUser"]])("%s", async (fn) => {
+    const res = mkRes();
+    await ctrl[fn](mkReq(sa, { params: { userId: "x1" } }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(admin.assertUserInCity).not.toHaveBeenCalled();
+    expect(freeBookingService.setUserLock).not.toHaveBeenCalled();
+  });
+});
+
+describe("lock / unlock city check", () => {
+  it("calls assertUserInCity with the unrestricted flag for a superadmin too, and surfaces its 404", async () => {
+    admin.assertUserInCity.mockRejectedValueOnce(Object.assign(new Error("Customer not found"), { statusCode: 404 }));
+    const res = mkRes();
+    await ctrl.unlockUser(mkReq({ id: 1, role: "superadmin" }, { params: { userId: "7" } }), res);
+    expect(admin.assertUserInCity).toHaveBeenCalledWith("7", null, true);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(freeBookingService.setUserLock).not.toHaveBeenCalled();
+  });
+  it("a city admin's 404 for a missing customer is passed through", async () => {
+    admin.assertUserInCity.mockRejectedValueOnce(Object.assign(new Error("Customer not found"), { statusCode: 404 }));
+    const res = mkRes();
+    await ctrl.lockUser(mkReq({ id: 1, role: "admin", city_id: 3 }, { params: { userId: "7" } }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+});
