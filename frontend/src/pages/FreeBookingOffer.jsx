@@ -47,6 +47,10 @@ export default function FreeBookingOffer() {
   const [tab, setTab] = useState('settings')
   const [cities, setCities] = useState([])
   const [cityId, setCityId] = useState(isSuper ? '' : String(user?.city_id ?? ''))
+  // A non-superadmin is pinned to their own city (also covers `user` arriving after the first render).
+  useEffect(() => {
+    if (user && user.role !== 'superadmin') setCityId(String(user.city_id ?? ''))
+  }, [user])
 
   const [settings, setSettings] = useState({ enabled: false, offer_start: '', offer_end: '' })
   const [pool, setPool] = useState([])
@@ -149,72 +153,110 @@ export default function FreeBookingOffer() {
     if (tab === 'bookings') loadOrders()
   }, [tab, loadSettings, loadPool, loadOrders])
 
-  async function saveSettings(e) {
-    e.preventDefault()
+  // One write at a time: a second click while a request is in flight is ignored.
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
+  async function runWrite(fn) {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
     try {
-      await api.put('/free-booking/settings', {
+      await fn()
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  // Runs a mutation for the city selected right now. When the response arrives the admin may have switched
+  // city: then nothing is reloaded and no toast is shown (the other city's data is not what is on screen).
+  async function mutate({ request, success, failMsg, reload, onSuccess }) {
+    const sentCity = cityRef.current
+    const sameCity = () => cityRef.current === sentCity
+    try {
+      await request()
+      if (!sameCity()) return
+      if (onSuccess) onSuccess()
+      if (success) toastRef.current.success(success)
+      if (reload) reload()
+    } catch (err) {
+      if (sameCity()) toastRef.current.error(errMsg(err, failMsg))
+    }
+  }
+
+  function saveSettings(e) {
+    e.preventDefault()
+    return runWrite(() => mutate({
+      request: () => api.put('/free-booking/settings', {
         ...params(),
         enabled: settings.enabled,
         offer_start: fromLocalInput(settings.offer_start),
         offer_end: fromLocalInput(settings.offer_end),
-      })
-      toast.success('Free Booking settings saved')
-      loadSettings()
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not save settings'))
-    }
+      }),
+      success: 'Free Booking settings saved',
+      failMsg: 'Could not save settings',
+      reload: loadSettings,
+    }))
   }
 
-  async function addToPool(e) {
+  function addToPool(e) {
     e.preventDefault()
-    try {
-      await api.post('/free-booking/pool', { ...params(), ...addForm })
-      toast.success('Driver added to the offer pool')
-      setAddForm({ rider_id: '', valid_from: '', valid_to: '' })
-      loadPool()
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not add driver'))
-    }
+    return runWrite(() => mutate({
+      request: () => api.post('/free-booking/pool', { ...params(), ...addForm }),
+      success: 'Driver added to the offer pool',
+      failMsg: 'Could not add driver',
+      onSuccess: () => setAddForm({ rider_id: '', valid_from: '', valid_to: '' }),
+      reload: loadPool,
+    }))
   }
 
-  async function togglePool(row) {
-    try {
-      await api.put(`/free-booking/pool/${row.id}`, { ...params(), active: !row.active })
-      loadPool()
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not update'))
-    }
+  function togglePool(row) {
+    return runWrite(() => mutate({
+      request: () => api.put(`/free-booking/pool/${row.id}`, { ...params(), active: !row.active }),
+      failMsg: 'Could not update',
+      reload: loadPool,
+    }))
   }
 
-  async function removePool(row) {
-    try {
-      await api.delete(`/free-booking/pool/${row.id}`, { params: params() })
-      toast.success('Removed from the offer pool')
-      loadPool()
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not remove'))
-    }
+  function removePool(row) {
+    if (busyRef.current) return
+    if (!window.confirm('Remove this vehicle from the offer pool?')) return
+    return runWrite(() => mutate({
+      request: () => api.delete(`/free-booking/pool/${row.id}`, { params: params() }),
+      success: 'Removed from the offer pool',
+      failMsg: 'Could not remove',
+      reload: loadPool,
+    }))
   }
 
-  async function voidBooking(row) {
-    try {
-      await api.post(`/free-booking/orders/${row.id}/void`, { ...params() })
-      toast.success('Free booking voided')
-      loadOrders()
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not void'))
-    }
+  function voidBooking(row) {
+    if (busyRef.current) return
+    if (!window.confirm('Void this free booking? The customer will not receive the wallet credit.')) return
+    return runWrite(() => mutate({
+      request: () => api.post(`/free-booking/orders/${row.id}/void`, { ...params() }),
+      success: 'Free booking voided',
+      failMsg: 'Could not void',
+      reload: loadOrders,
+    }))
   }
 
-  async function setLock(locked) {
-    if (!lockUserId) return
-    try {
-      await api.post(`/free-booking/users/${lockUserId}/${locked ? 'lock' : 'unlock'}`, { ...params() })
-      toast.success(locked ? 'Locked' : 'Unlocked')
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not change the lock'))
+  function setLock(locked) {
+    const id = Number(lockUserId)
+    if (!Number.isInteger(id) || id <= 0) {
+      toastRef.current.error('Enter a valid customer ID')
+      return
     }
+    return runWrite(() => mutate({
+      request: () => api.post(`/free-booking/users/${id}/${locked ? 'lock' : 'unlock'}`, { ...params() }),
+      success: `Customer #${id} ${locked ? 'locked' : 'unlocked'}`,
+      failMsg: 'Could not change the lock',
+    }))
   }
+
+  const busyStyle = busy ? { opacity: 0.5 } : {}
+
+  // Not-yet-loaded user: render nothing rather than flash a wrong message.
+  if (!user) return null
 
   return (
     <div className="space-y-5">
@@ -244,7 +286,11 @@ export default function FreeBookingOffer() {
         ))}
       </div>
 
-      {!ready && <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>Select a city to manage the offer.</p>}
+      {!ready && (
+        <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>
+          {isSuper ? 'Select a city to manage the offer.' : 'Your account is not assigned to a city. Ask a superadmin to assign one.'}
+        </p>
+      )}
 
       {ready && tab === 'settings' && (
         <form onSubmit={saveSettings} className="rounded-2xl border p-5 space-y-4 max-w-xl" style={cardStyle}>
@@ -261,7 +307,7 @@ export default function FreeBookingOffer() {
             </Field>
           </div>
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>The offer only applies between these two times, and only while it is ON.</p>
-          {canWrite && settingsLoaded && <button type="submit" className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600">Save</button>}
+          {canWrite && settingsLoaded && <button type="submit" disabled={busy} style={busyStyle} className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600">Save</button>}
         </form>
       )}
 
@@ -281,7 +327,7 @@ export default function FreeBookingOffer() {
               <Field label="Valid to">
                 <input type="date" required value={addForm.valid_to} onChange={(e) => setAddForm({ ...addForm, valid_to: e.target.value })} className={inputClass} style={inputStyle} />
               </Field>
-              <button type="submit" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 flex items-center justify-center gap-1"><Plus size={16} /> Add to pool</button>
+              <button type="submit" disabled={busy} style={busyStyle} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 flex items-center justify-center gap-1"><Plus size={16} /> Add to pool</button>
             </form>
           )}
           <div className="rounded-2xl border overflow-x-auto" style={cardStyle}>
@@ -296,8 +342,8 @@ export default function FreeBookingOffer() {
                     <td className="p-3">{row.rider_name}</td>
                     <td className="p-3">{row.vehicle}{row.reg_num ? ` · ${row.reg_num}` : ''}</td>
                     <td className="p-3">{dateOnly(row.valid_from)} → {dateOnly(row.valid_to)}</td>
-                    <td className="p-3"><input type="checkbox" disabled={!canWrite} checked={row.active} onChange={() => togglePool(row)} /></td>
-                    <td className="p-3 text-right">{canWrite && <button onClick={() => removePool(row)} title="Remove from pool"><Trash2 size={16} /></button>}</td>
+                    <td className="p-3"><input type="checkbox" disabled={!canWrite || busy} style={busyStyle} checked={row.active} onChange={() => togglePool(row)} /></td>
+                    <td className="p-3 text-right">{canWrite && <button onClick={() => removePool(row)} disabled={busy} style={busyStyle} title="Remove from pool"><Trash2 size={16} /></button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -313,10 +359,11 @@ export default function FreeBookingOffer() {
               <Field label="Customer ID (manual lock / unlock)">
                 <input type="number" value={lockUserId} onChange={(e) => setLockUserId(e.target.value)} className={inputClass} style={inputStyle} />
               </Field>
-              <button onClick={() => setLock(true)} className="rounded-xl px-4 py-2.5 text-sm font-semibold border flex items-center gap-1" style={{ color: 'var(--ink)', borderColor: 'var(--border)' }}><Lock size={16} /> Lock</button>
-              <button onClick={() => setLock(false)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 flex items-center gap-1"><Unlock size={16} /> Unlock</button>
+              <button onClick={() => setLock(true)} disabled={busy} className="rounded-xl px-4 py-2.5 text-sm font-semibold border flex items-center gap-1" style={{ color: 'var(--ink)', borderColor: 'var(--border)', ...busyStyle }}><Lock size={16} /> Lock</button>
+              <button onClick={() => setLock(false)} disabled={busy} style={busyStyle} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 flex items-center gap-1"><Unlock size={16} /> Unlock</button>
             </div>
           )}
+          <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>If a free booking's payment settlement is waived, its refund is cancelled permanently, even if the settlement is changed later.</p>
           <div className="rounded-2xl border overflow-x-auto" style={cardStyle}>
             <table className="w-full text-sm" style={{ color: 'var(--ink)' }}>
               <thead><tr className="text-left text-xs" style={{ color: 'var(--ink-muted)' }}>
@@ -334,7 +381,7 @@ export default function FreeBookingOffer() {
                     <td className="p-3">{o.not_eligible_reason ?? ''}</td>
                     <td className="p-3 text-right">
                       {canWrite && ['FREE_BOOKING_CONFIRMED', 'FREE_BOOKING_REWARD_PENDING'].includes(o.status) && (
-                        <button onClick={() => voidBooking(o)} title="Void this free booking"><Ban size={16} /></button>
+                        <button onClick={() => voidBooking(o)} disabled={busy} style={busyStyle} title="Void this free booking"><Ban size={16} /></button>
                       )}
                     </td>
                   </tr>
