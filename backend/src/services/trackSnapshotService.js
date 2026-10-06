@@ -5,6 +5,8 @@ const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 const settings = require("./receiverTrackSettings");
 const livePositions = require("./liveDriverPositions");
 const etaService = require("./trackEtaService");
+const tripRouteService = require("./tripRouteService");
+const { receiverPayable } = require("./receiverPayCalc");
 
 const POLL_ACTIVE_MS = 5000;
 const POLL_IDLE_MS = 15000;
@@ -13,6 +15,73 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 const short = (s) => (s ? String(s).slice(0, 80) : null);
 const firstName = (full) => String(full || "").trim().split(/\s+/)[0] || null;
+
+const ORDER_SELECT = {
+  id: true, rid: true, order_status: true, o_status: true, dmobile: true,
+  plat: true, plong: true, dlat: true, dlong: true, paddress: true, daddress: true, drop_time: true, ddate: true,
+};
+
+// drop_time / ddate hold IST wall-clock values (see driverOrderHistoryController).
+const deliveredAt = (order) => order.drop_time || order.ddate || null;
+const isCompleted = (order) => Number(order.order_status) === 5 || order.o_status === "Completed";
+function deliveredWindowOpen(order, now) {
+  const done = deliveredAt(order);
+  return !done || now <= new Date(done).getTime() - IST_OFFSET_MS + EXPIRE_AFTER_DELIVERY_MS;
+}
+
+// The order behind a link, or the reason there is none. The link belongs to the order's current drop
+// contact, so a changed number kills the old link. Shared with the pay-link and review endpoints.
+async function loadLinkedOrder(link) {
+  if (!(await settings.isTrackingEnabled())) return { reason: "expired" };
+  const order = await prisma.pkg_order.findUnique({ where: { id: link.order_id }, select: ORDER_SELECT });
+  if (!order || normalizeToLast10Digits(order.dmobile) !== link.receiver_phone) return { reason: "invalid" };
+  return { order };
+}
+
+// Money is only ever shown to a receiver who has to pay (a Receiver-pays row exists).
+async function payState(orderId) {
+  const row = await prisma.order_receiver_pay.findUnique({ where: { order_id: orderId }, select: { status: true } });
+  if (!row) return null;
+  const s = await prisma.order_settlement.findUnique({
+    where: { order_id: orderId }, select: { payer: true, status: true, amount_due: true, receiver_markup: true },
+  });
+  if (!s) return null;
+  const amounts = { amount_due: Number(s.amount_due), markup: Number(s.receiver_markup), total: receiverPayable(s.amount_due, s.receiver_markup) };
+  if (row.status === "paid") return { state: "paid", ...amounts };
+  if (row.status === "active" && s.payer === "receiver" && s.status === "pending") return { state: "payable", ...amounts };
+  return null;
+}
+
+async function deliveredExtras(order) {
+  const [rider, trip, pay, review] = await Promise.all([
+    safe("rider", () => prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { first_name: true, vehicle_no: true } })),
+    safe("trip route", () => tripRouteService.buildRoute(prisma, order.id)),
+    safe("pay", () => payState(order.id)),
+    safe("review", () => prisma.order_receiver_feedback.findUnique({ where: { order_id: order.id }, select: { id: true } })),
+  ]);
+  const hasTrail = Boolean(trip && trip.has_trail);
+  const distance = trip && Number(trip.distance_km) > 0 ? Math.round(Number(trip.distance_km) * 10) / 10 : null;
+  return {
+    summary: {
+      driver: rider ? { first_name: firstName(rider.first_name), vehicle_no: rider.vehicle_no || null } : null,
+      pickup: order.paddress ? { address: short(order.paddress) } : null,
+      drop: order.daddress ? { address: short(order.daddress) } : null,
+      distance_km: distance,
+    },
+    trip_route: trip
+      ? {
+          has_trail: hasTrail,
+          points: hasTrail ? etaService.simplify(trip.points.map((p) => [p.lat, p.lng])) : [],
+          pickup: trip.final_pickup || trip.pickup || null,
+          drop: trip.drop || null,
+        }
+      : null,
+    pay,
+    review: { submitted: Boolean(review) },
+    help: settings.getHelpConfig(),
+    app_url: settings.APP_URL,
+  };
+}
 
 function toPoint(lat, lng) {
   // Number("") is 0, so a blank column must be rejected before the numeric check.
@@ -56,33 +125,24 @@ function currentPosition(riderId, rider, now) {
 }
 
 async function buildSnapshot(link, { now = Date.now() } = {}) {
-  if (!(await settings.isTrackingEnabled())) return { state: "expired", poll_ms: POLL_IDLE_MS };
-  const order = await prisma.pkg_order.findUnique({
-    where: { id: link.order_id },
-    select: {
-      id: true, rid: true, order_status: true, o_status: true, dmobile: true,
-      plat: true, plong: true, dlat: true, dlong: true, paddress: true, daddress: true, drop_time: true, ddate: true,
-    },
-  });
-  // The link belongs to the order's current drop contact; a changed number kills the old link.
-  if (!order || normalizeToLast10Digits(order.dmobile) !== link.receiver_phone) return { state: "invalid", poll_ms: POLL_IDLE_MS };
+  const loaded = await loadLinkedOrder(link);
+  if (!loaded.order) return { state: loaded.reason, poll_ms: POLL_IDLE_MS };
+  const order = loaded.order;
 
   const status = Number(order.order_status);
   if (status === 4 || order.o_status === "Cancelled") {
     etaService.clearOrder(order.id);
     return { state: "cancelled", order_id: order.id, poll_ms: POLL_IDLE_MS };
   }
-  if (status === 5 || order.o_status === "Completed") {
+  if (isCompleted(order)) {
     etaService.clearOrder(order.id);
-    // drop_time / ddate hold IST wall-clock values (see driverOrderHistoryController).
-    const doneAt = order.drop_time || order.ddate;
-    if (doneAt && now > new Date(doneAt).getTime() - IST_OFFSET_MS + EXPIRE_AFTER_DELIVERY_MS) {
-      return { state: "expired", poll_ms: POLL_IDLE_MS };
-    }
+    if (!deliveredWindowOpen(order, now)) return { state: "expired", poll_ms: POLL_IDLE_MS };
+    const doneAt = deliveredAt(order);
     return {
       state: "delivered", order_id: order.id, step: 5,
       delivered_at: doneAt ? new Date(doneAt).toISOString().replace("Z", "+05:30") : null,
       poll_ms: POLL_IDLE_MS,
+      ...(await deliveredExtras(order)),
     };
   }
 
@@ -119,4 +179,5 @@ async function buildSnapshot(link, { now = Date.now() } = {}) {
   };
 }
 
-module.exports = { buildSnapshot };
+module.exports = { buildSnapshot, loadLinkedOrder, isCompleted, deliveredWindowOpen };
+

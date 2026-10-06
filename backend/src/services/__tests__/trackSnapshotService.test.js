@@ -2,10 +2,18 @@ jest.mock("../../config/db", () => ({
   pkg_order: { findUnique: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
   pkg_order_wait_timer: { findUnique: jest.fn() },
+  order_receiver_pay: { findUnique: jest.fn().mockResolvedValue(null) },
+  order_settlement: { findUnique: jest.fn().mockResolvedValue(null) },
+  order_receiver_feedback: { findUnique: jest.fn().mockResolvedValue(null) },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
-jest.mock("../receiverTrackSettings", () => ({ isTrackingEnabled: jest.fn() }));
-jest.mock("../trackEtaService", () => ({ getEta: jest.fn(), getRoute: jest.fn(), clearOrder: jest.fn() }));
+jest.mock("../receiverTrackSettings", () => ({
+  isTrackingEnabled: jest.fn(),
+  getHelpConfig: jest.fn(() => ({ phone: "9109114515", whatsapp: "919109114515" })),
+  APP_URL: "https://play.google.com/store/apps/details?id=com.shifter.online",
+}));
+jest.mock("../trackEtaService", () => ({ getEta: jest.fn(), getRoute: jest.fn(), clearOrder: jest.fn(), simplify: jest.fn((p) => p) }));
+jest.mock("../tripRouteService", () => ({ buildRoute: jest.fn().mockRejectedValue(new Error("not under test")) }));
 
 const prisma = require("../../config/db");
 const settings = require("../receiverTrackSettings");
@@ -29,6 +37,9 @@ beforeEach(() => {
   prisma.pkg_order.findUnique.mockResolvedValue(order());
   prisma.tbl_rider.findUnique.mockResolvedValue(rider());
   prisma.pkg_order_wait_timer.findUnique.mockResolvedValue(null);
+  prisma.order_receiver_pay.findUnique.mockResolvedValue(null);
+  prisma.order_settlement.findUnique.mockResolvedValue(null);
+  prisma.order_receiver_feedback.findUnique.mockResolvedValue(null);
   eta.getEta.mockResolvedValue({ minutes: 12, distance_km: 4.2, updated_at: "x" });
   eta.getRoute.mockResolvedValue([[22.7, 75.8], [22.8, 75.9]]);
 });
@@ -54,8 +65,9 @@ describe("states", () => {
     // drop_time holds IST wall-clock: 15:00 IST = 09:30 UTC
     prisma.pkg_order.findUnique.mockResolvedValue(order({ order_status: 5, o_status: "Completed", drop_time: new Date("2026-10-06T15:00:00Z") }));
     const s = await buildSnapshot(link, { now: Date.UTC(2026, 9, 7, 8, 0, 0) }); // 22.5 h later
-    expect(s).toEqual({ state: "delivered", order_id: 50, step: 5, delivered_at: "2026-10-06T15:00:00.000+05:30", poll_ms: 15000 });
+    expect(s).toMatchObject({ state: "delivered", order_id: 50, step: 5, delivered_at: "2026-10-06T15:00:00.000+05:30", poll_ms: 15000 });
   });
+
   it("is expired 24 hours after delivery", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue(order({ order_status: 5, o_status: "Completed", drop_time: new Date("2026-10-06T15:00:00Z") }));
     expect((await buildSnapshot(link, { now: Date.UTC(2026, 9, 7, 10, 0, 0) })).state).toBe("expired");
