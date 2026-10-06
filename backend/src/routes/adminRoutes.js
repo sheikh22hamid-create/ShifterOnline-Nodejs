@@ -88,6 +88,7 @@ router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", 
 
 // --- Daily Driver System -----------------------------------------------------
 const adminDailyDriverController = require("../controllers/adminDailyDriverController");
+const adminFreeBookingController = require("../controllers/adminFreeBookingController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
 router.put("/daily-driver/plans/:planId", auth, authorize("superadmin", "admin"), adminDailyDriverController.updatePlan);
@@ -99,6 +100,19 @@ router.post("/daily-driver/requests/:enrollmentId/reject", auth, authorize("supe
 router.get("/daily-driver/:riderId/ledger", auth, authorize(...RIDER_ROLES), adminDailyDriverController.getLedger);
 router.get("/daily-driver/scheduled-orders/pending", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listAssignableScheduledOrders);
 router.post("/daily-driver/force-assign", auth, authorize("superadmin", "admin"), scopeFilter, adminDailyDriverController.forceAssign);
+
+// Free Booking Offer (spec 2026-10-06)
+router.get("/free-booking/settings", auth, authorize(...RIDER_ROLES), adminFreeBookingController.getSettings);
+router.put("/free-booking/settings", auth, authorize("superadmin", "admin"), adminFreeBookingController.saveSettings);
+router.get("/free-booking/pool", auth, authorize(...RIDER_ROLES), adminFreeBookingController.listPool);
+router.get("/free-booking/pool/candidates", auth, authorize(...RIDER_ROLES), adminFreeBookingController.listCandidates);
+router.post("/free-booking/pool", auth, authorize("superadmin", "admin"), adminFreeBookingController.addToPool);
+router.put("/free-booking/pool/:id", auth, authorize("superadmin", "admin"), adminFreeBookingController.updatePool);
+router.delete("/free-booking/pool/:id", auth, authorize("superadmin", "admin"), adminFreeBookingController.removeFromPool);
+router.get("/free-booking/orders", auth, authorize(...RIDER_ROLES), adminFreeBookingController.listOrders);
+router.post("/free-booking/orders/:id/void", auth, authorize("superadmin", "admin"), adminFreeBookingController.voidOrder);
+router.post("/free-booking/users/:userId/lock", auth, authorize("superadmin", "admin"), adminFreeBookingController.lockUser);
+router.post("/free-booking/users/:userId/unlock", auth, authorize("superadmin", "admin"), adminFreeBookingController.unlockUser);
 
 
 // --- Staff & Executive Management -----------------------------------------
