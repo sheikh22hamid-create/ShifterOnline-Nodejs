@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const adminSocket = require("./adminSocket");
 const logger = require("../utils/logger");
 const { RIDER_LOCATION_WRITE_THROTTLE_MS } = require("../config/constants");
+const livePositions = require("../services/liveDriverPositions");
 
 /** rider_id -> last DB write timestamp, to throttle location persistence. */
 const lastDbWriteAt = new Map();
@@ -18,6 +19,8 @@ function registerTrackingHandlers(io, socket) {
     if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng) || !riderId) {
       return;
     }
+
+    livePositions.record(riderId, parsedLat, parsedLng, parsedHeading);
 
     if (order_id) {
       io.to(`order_${order_id}`).emit("driver:location_stream", {
