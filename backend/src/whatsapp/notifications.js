@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { trackLine } = require("../services/receiverTrackMessage");
 
 let whatsappClientRef = null;
 
@@ -235,6 +236,8 @@ async function notifyDriverArrived(orderId) {
   const riderPhone = rider?.fmobile || "9109114515";
   const riderVehicle = rider?.vehicle_no ? `(${rider.vehicle_no})` : "";
 
+  const trackLineText = receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "";
+
   const senderMsg =
     `Hello! 👋\n` +
     `🚚 *Driver Arrived at Pickup Location!*\n\n` +
@@ -255,6 +258,7 @@ async function notifyDriverArrived(orderId) {
     `🛵 *Driver*: *${riderName}* ${riderVehicle} — 📞 ${riderPhone}\n` +
     `📍 *From*: ${order.paddress || "N/A"}\n` +
     `🎯 *To*: ${order.daddress || "N/A"}\n\n` +
+    trackLineText +
     `Live status ke liye chat me *Track ${order.id}* likhein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
@@ -285,7 +289,7 @@ async function notifyTripStarted(orderId) {
   const riderPhone = rider?.fmobile || "9109114515";
   const riderVehicle = rider?.vehicle_no ? `(${rider.vehicle_no})` : "";
 
-  const msg =
+  const buildMsg = (extra) =>
     `Hello! 👋\n` +
     `📦 *Pickup Completed — Parcel In Transit!*\n\n` +
     `Aapka parcel successfully pickup ho chuka hai aur driver drop location ke liye nikal gaya hai. 🚚💨\n\n` +
@@ -294,18 +298,21 @@ async function notifyTripStarted(orderId) {
     `📍 *From*: ${order.paddress || "N/A"}\n` +
     `🎯 *To*: ${order.daddress || "N/A"}\n` +
     `👤 *Receiver*: ${receiverName}${receiverPhone ? ` (📞 ${receiverPhone})` : ""}\n\n` +
+    extra +
     `Live status check karne ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
+  const senderMsg = buildMsg("");
+  const receiverMsg = buildMsg(receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "");
 
   if (senderPhone && !wasMilestoneSent(order.id, "pickup", senderPhone)) {
     markMilestoneSent(order.id, "pickup", senderPhone);
-    await sendWhatsAppNotification(senderPhone, msg);
+    await sendWhatsAppNotification(senderPhone, senderMsg);
   }
 
   if (receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "pickup", receiverPhone)) {
     markMilestoneSent(order.id, "pickup", receiverPhone);
-    await sendWhatsAppNotification(receiverPhone, msg);
+    await sendWhatsAppNotification(receiverPhone, receiverMsg);
   }
 
   return true;
@@ -324,7 +331,7 @@ async function notifyDriverArrivedDrop(orderId) {
   const riderPhone = rider?.fmobile || "9109114515";
   const riderVehicle = rider?.vehicle_no ? `(${rider.vehicle_no})` : "";
 
-  const msg =
+  const buildMsg = (extra) =>
     `Hello! 👋\n` +
     `🚚 *Driver Arrived at Drop Location!*\n\n` +
     `Driver parcel deliver karne ke liye drop location par pahunch chuka hai. Kripya parcel receive karein.\n\n` +
@@ -332,17 +339,20 @@ async function notifyDriverArrivedDrop(orderId) {
     `🛵 *Driver*: *${riderName}* ${riderVehicle} — 📞 ${riderPhone}\n` +
     `🎯 *Drop Location*: ${order.daddress || "N/A"}\n` +
     `👤 *Receiver*: ${receiverName}\n\n` +
+    extra +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
+  const senderMsg = buildMsg("");
+  const receiverMsg = buildMsg(receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "");
 
   if (receiverPhone && !wasMilestoneSent(order.id, "arrived_drop", receiverPhone)) {
     markMilestoneSent(order.id, "arrived_drop", receiverPhone);
-    await sendWhatsAppNotification(receiverPhone, msg);
+    await sendWhatsAppNotification(receiverPhone, receiverMsg);
   }
 
   if (senderPhone && senderPhone !== receiverPhone && !wasMilestoneSent(order.id, "arrived_drop", senderPhone)) {
     markMilestoneSent(order.id, "arrived_drop", senderPhone);
-    await sendWhatsAppNotification(senderPhone, msg);
+    await sendWhatsAppNotification(senderPhone, senderMsg);
   }
 
   return true;
@@ -391,8 +401,8 @@ async function notifyDriverAssigned(orderId) {
   const data = await getOrderDetailsWithParticipants(orderId);
   if (!data) return false;
 
-  const { order, rider, senderPhone } = data;
-  if (!rider || !senderPhone) return false;
+  const { order, rider, senderPhone, receiverPhone, receiverName } = data;
+  if (!rider) return false;
 
   const riderName = `${rider.first_name || ""} ${rider.last_name || ""}`.trim();
   const riderPhone = rider.fmobile || "9109114515";
@@ -407,9 +417,28 @@ async function notifyDriverAssigned(orderId) {
     `Live status ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*`;
 
-  if (!wasMilestoneSent(order.id, "assigned", senderPhone)) {
+  if (senderPhone && !wasMilestoneSent(order.id, "assigned", senderPhone)) {
     markMilestoneSent(order.id, "assigned", senderPhone);
     await sendWhatsAppNotification(senderPhone, msg);
+  }
+
+  const receiverLine = receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "";
+  if (receiverLine && !wasMilestoneSent(order.id, "assigned", receiverPhone)) {
+    markMilestoneSent(order.id, "assigned", receiverPhone);
+    await sendWhatsAppNotification(
+      receiverPhone,
+      `Hello! 👋\n` +
+        `🛵 *Aapke liye driver assign ho gaya hai!*\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `*Driver*: ${riderName} ${riderVehicle}\n` +
+        `📱 *Phone*: ${riderPhone}\n` +
+        `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
+        `👤 *Receiver*: ${receiverName}\n\n` +
+        `Parcel pickup hone ke baad aap driver ko live map par dekh sakenge.\n` +
+        receiverLine +
+        `— *Team Shifter Online*\n` +
+        `📞 Customer Care: 9109114515`
+    );
   }
 
   return true;
