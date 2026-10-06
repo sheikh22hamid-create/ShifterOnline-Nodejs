@@ -110,4 +110,15 @@ void main() {
       expect(receiverMarkup({}), 0);
     });
   });
+
+  group('receiverDueAmount', () {
+    test('is total minus discount; the advance is not subtracted', () {
+      expect(receiverDueAmount(total: 500, discount: 50), 450);
+      expect(receiverDueAmount(total: 500, discount: 0), 500);
+    });
+    test('clamps at zero', () {
+      expect(receiverDueAmount(total: 100, discount: 150), 0);
+      expect(receiverDueAmount(total: 0, discount: 0), 0);
+    });
+  });
 }

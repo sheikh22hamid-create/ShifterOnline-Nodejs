@@ -92,3 +92,10 @@ double receiverPayTotal(Map settlement) {
 
 /// The booker's own service fee included in the receiver total (0 when absent).
 double receiverMarkup(Map settlement) => _num(settlement['receiver_markup']);
+
+/// What the receiver pays before completion: fare minus coupon/points. The booker's
+/// advance is a held deposit and is NOT subtracted. Never negative.
+double receiverDueAmount({required double total, required double discount}) {
+  final due = total - discount;
+  return due > 0 ? due : 0.0;
+}

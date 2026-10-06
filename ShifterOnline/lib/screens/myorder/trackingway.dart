@@ -4719,6 +4719,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final receiverPayInfo = (orderProduc is Map && orderProduc['receiver_pay'] is Map)
         ? Map<String, dynamic>.from(orderProduc['receiver_pay'] as Map)
         : null;
+    // Receiver pays total minus discount (the advance is a held deposit, not netted off).
+    final receiverActive = receiverPayInfo?['status']?.toString() == 'active';
+    final tileAmount = receiverActive ? receiverDueAmount(total: total, discount: discount) : remaining;
 
     Color dueColor;
     Color dueBg;
@@ -4866,7 +4869,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            "$currency${_waitingMoney(settlement != null && isCompleted ? (settleStatus == 'waived' ? 0 : settleAmount) : (isCancelled ? 0 : remaining))}",
+                            "$currency${_waitingMoney(settlement != null && isCompleted ? (settleStatus == 'waived' ? 0 : settleAmount) : (isCancelled ? 0 : tileAmount))}",
                             style: TextStyle(color: dueColor, fontFamily: "Gilroy_Bold", fontSize: 21),
                           ),
                           Text(
