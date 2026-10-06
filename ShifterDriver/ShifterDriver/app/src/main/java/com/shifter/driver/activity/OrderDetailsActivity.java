@@ -739,8 +739,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         String msg = extractAdvancePaymentMsg(rootObj, pdOrder);
         updateWaitingMessage(msg);
 
-        long timerSeconds = extractAdvancePaymentTimer(rootObj, pdOrder);
-        startPaymentCountDown(timerSeconds);
+        if (rootObj != null || pdOrder != null) {
+            long timerSeconds = extractAdvancePaymentTimer(rootObj, pdOrder);
+            startPaymentCountDown(timerSeconds);
+        } else {
+            updateTimerText(0);
+        }
 
         findViewById(R.id.btn_cancel_order_waiting).setOnClickListener(v -> {
             showRejectSheet();
@@ -910,13 +914,26 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
     }
 
-    private void updateWaitingDetailsFromResponse(com.google.gson.JsonObject rootObj, PDOrder pdOrder) {
+    private void updateWaitingDetailsFromResponse(com.google.gson.JsonObject rootObj, PDOrder pdOrder, PDOrderItem latestOrder) {
         if (!isWaitingForPayment) return;
 
-        String msg = extractAdvancePaymentMsg(rootObj, pdOrder);
+        String msg = (latestOrder != null && latestOrder.getAdvancePaymentMsg() != null && !latestOrder.getAdvancePaymentMsg().trim().isEmpty())
+                ? latestOrder.getAdvancePaymentMsg()
+                : extractAdvancePaymentMsg(rootObj, pdOrder);
         updateWaitingMessage(msg);
 
-        long timerSecs = extractAdvancePaymentTimer(rootObj, pdOrder);
+        long timerSecs = 0;
+        if (latestOrder != null && latestOrder.getAdvancePaymentTimer() != null && !latestOrder.getAdvancePaymentTimer().trim().isEmpty()) {
+            try {
+                timerSecs = Long.parseLong(latestOrder.getAdvancePaymentTimer().trim());
+            } catch (Exception e) {
+                try { timerSecs = (long) Double.parseDouble(latestOrder.getAdvancePaymentTimer().trim()); } catch (Exception ignored) {}
+            }
+        }
+        if (timerSecs <= 0) {
+            timerSecs = extractAdvancePaymentTimer(rootObj, pdOrder);
+        }
+
         if (timerSecs <= 0) {
             if (paymentCountDownTimer != null) {
                 paymentCountDownTimer.cancel();
@@ -928,7 +945,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             return;
         }
 
-        if (paymentCountDownTimer == null) {
+        if (paymentCountDownTimer == null || Math.abs(remainingPaymentSeconds - timerSecs) > 3) {
             startPaymentCountDown(timerSecs);
         }
     }
@@ -983,7 +1000,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                                     new SessionManager(OrderDetailsActivity.this).setActiveOrder(orderItem);
                                     initOrderDetailsScreen();
                                 } else {
-                                    updateWaitingDetailsFromResponse(response.body(), pdOrder);
+                                    updateWaitingDetailsFromResponse(response.body(), pdOrder, latestOrder);
                                     if (isWaitingForPayment) waitingHandler.postDelayed(waitingRunnable, 2000);
                                 }
                             } else {
