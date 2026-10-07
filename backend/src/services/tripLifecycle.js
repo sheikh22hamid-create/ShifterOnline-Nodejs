@@ -270,6 +270,13 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
 
   notifyAdminStatus(order);
 
+  // Booking Guarantee: any accept/assignment path (driver accept, force-assign) ends a held case. Best-effort.
+  try {
+    await bookingGuarantee.closeOnAssign(orderId, null);
+  } catch (err) {
+    logger.error(`finalizeAcceptedOrder: closeOnAssign failed for order ${orderId}:`, err);
+  }
+
   // Advance payment: the same radiusCharge just billed into d_charge/
   // total_dcharge above (driver's real pickup distance beyond the free 1km,
   // at the package's pickup_per_km_charge) + admin's existing per-package

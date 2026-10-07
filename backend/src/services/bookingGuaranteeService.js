@@ -105,6 +105,18 @@ async function finishExpiry(row) {
   await writeAudit(prisma, row, "refunds_processed");
   await prisma.booking_guarantee_case.update({ where: { id: row.id }, data: { refunds_done_at: new Date() } });
 
+  // Tell the admin panel the held order is now cancelled (history row + live event). Best-effort.
+  if (order) {
+    try {
+      await prisma.order_status_history.create({
+        data: { order_id: row.order_id, rider_id: null, status: "Cancelled", remark: "No driver found - Booking Guarantee window expired" },
+      });
+      adminSocket.notifyOrderStatusUpdate({ id: row.order_id, city_id: order.city_id, order_status: 4, o_status: "Cancelled", rid: 0 });
+    } catch (err) {
+      logger.error(`bookingGuarantee: admin expiry notify failed for order ${row.order_id}:`, err);
+    }
+  }
+
   const paid = row.wallet_history_id ? Number(row.compensation_amount) || 0 : 0;
   dispatchManager().emitCustomerEvent(row.uid, "order:no_driver_found", { order_id: String(row.order_id), compensation_amount: paid });
   try {
@@ -143,10 +155,18 @@ async function expireCase(caseId) {
     const amount = Number(row.compensation_amount) || 0;
     let credit = null;
     let walletHistoryId = row.wallet_history_id;
-    if (amount > 0) {
+    // The customer may have been deleted while the case was open: skip the credit (it could never succeed
+    // and would roll this whole transaction back every sweep) but still cancel the order and close the case.
+    const userRow = amount > 0 ? await tx.tbl_user.findUnique({ where: { id: row.uid }, select: { id: true } }) : null;
+    if (amount > 0 && !userRow) {
+      await writeAudit(tx, row, "credit_skipped_user_missing", { meta: { amount } });
+    } else if (amount > 0) {
       const key = `booking_guarantee_credit:${row.order_id}`;
       const duplicate = await tx.tbl_wallet_history.findFirst({ where: { payment_id: key, wallet_type: "user" } });
-      if (!duplicate) {
+      if (duplicate) {
+        walletHistoryId = duplicate.id;
+        await tx.booking_guarantee_case.update({ where: { id: caseId }, data: { wallet_history_id: duplicate.id } });
+      } else {
         const remark = `Booking Guarantee compensation for order #${row.order_id}`;
         await tx.tbl_user.update({ where: { id: row.uid }, data: { wallet: { increment: amount } } });
         const history = await tx.tbl_wallet_history.create({

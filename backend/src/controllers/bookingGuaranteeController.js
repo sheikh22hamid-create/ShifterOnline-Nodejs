@@ -8,6 +8,9 @@ async function quote(req, res) {
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "package_ids must be a non-empty array" });
     }
+    if (ids.length > 20) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "package_ids must have at most 20 entries" });
+    }
     const q = await bookingGuarantee.quote(ids);
     return res.json({ ResponseCode: "200", Result: "true", amount: q.amount, package_id: q.packageId });
   } catch (err) {

@@ -4,6 +4,7 @@ jest.mock("../../config/db", () => ({
   booking_guarantee_audit: { create: jest.fn().mockResolvedValue({}) },
   tbl_package: { findMany: jest.fn() },
   pkg_order: { findUnique: jest.fn(), updateMany: jest.fn() },
+  order_status_history: { create: jest.fn().mockResolvedValue({}) },
   tbl_user: { findUnique: jest.fn(), update: jest.fn() },
   tbl_wallet_history: { findFirst: jest.fn(), create: jest.fn() },
 }));
@@ -13,7 +14,7 @@ jest.mock("../walletPrepaymentRefund", () => ({ refundIfWalletPaid: jest.fn().mo
 jest.mock("../referralPointsRefund", () => ({ refundReferralPointsForOrder: jest.fn().mockResolvedValue(0) }));
 jest.mock("../walletNotifier", () => ({ notifyCustomerWalletTransaction: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../pushNotifier", () => ({ notifyCustomerNoDriverFound: jest.fn().mockResolvedValue({ sent: true }) }));
-jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
+jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn(), notifyOrderStatusUpdate: jest.fn() }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 
 const prisma = require("../../config/db");
@@ -122,8 +123,9 @@ describe("expireCase", () => {
     prisma.tbl_wallet_history.create.mockResolvedValue({ id: 777 });
     prisma.tbl_user.update.mockResolvedValue({});
     prisma.booking_guarantee_case.update.mockResolvedValue({});
-    prisma.pkg_order.findUnique.mockResolvedValue({ id: 500, uid: 7, p_method_id: -2 });
-    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "tok" });
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 500, uid: 7, city_id: 3, p_method_id: -2 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 7, fcm_token: "tok" });
+    prisma.order_status_history.create.mockResolvedValue({});
   };
 
   it("cancels the order, credits the frozen amount once, refunds the fare, and tells the customer", async () => {
@@ -173,9 +175,42 @@ describe("expireCase", () => {
 
   it("a wallet row with the idempotency key already present is never credited twice", async () => {
     setupExpiry({ dup: { id: 555 } });
-    await svc.expireCase(1);
+    expect(await svc.expireCase(1)).toBe(true);
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(prisma.booking_guarantee_case.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_history_id: 555 } });
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:no_driver_found", { order_id: "500", compensation_amount: 100 });
+  });
+
+  it("a customer row that no longer exists skips the credit but still cancels and expires the case", async () => {
+    setupExpiry();
+    prisma.tbl_user.findUnique.mockResolvedValue(null);
+    expect(await svc.expireCase(1)).toBe(true);
+    expect(prisma.pkg_order.updateMany).toHaveBeenCalled();
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(auditEvents()).toContain("credit_skipped_user_missing");
+    expect(auditEvents()).not.toContain("wallet_credited");
+    const skipped = prisma.booking_guarantee_audit.create.mock.calls.map(([a]) => a.data).find((d) => d.event === "credit_skipped_user_missing");
+    expect(JSON.parse(skipped.meta)).toEqual({ amount: 100 });
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:no_driver_found", { order_id: "500", compensation_amount: 0 });
+  });
+
+  it("tells the admin panel the order was cancelled (history row + socket event) on first expiry", async () => {
+    setupExpiry();
+    expect(await svc.expireCase(1)).toBe(true);
+    expect(prisma.order_status_history.create).toHaveBeenCalledWith({
+      data: { order_id: 500, rider_id: null, status: "Cancelled", remark: "No driver found - Booking Guarantee window expired" },
+    });
+    expect(adminSocket.notifyOrderStatusUpdate).toHaveBeenCalledWith({ id: 500, city_id: 3, order_status: 4, o_status: "Cancelled", rid: 0 });
+  });
+
+  it("a failure in the admin history/socket notification never breaks the expiry", async () => {
+    setupExpiry();
+    prisma.order_status_history.create.mockRejectedValue(new Error("db"));
+    adminSocket.notifyOrderStatusUpdate.mockImplementation(() => { throw new Error("socket"); });
+    expect(await svc.expireCase(1)).toBe(true);
+    adminSocket.notifyOrderStatusUpdate.mockReset();
   });
 
   it("pays the FROZEN amount even if package config changed since (config is never re-read)", async () => {

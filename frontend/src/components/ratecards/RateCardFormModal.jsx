@@ -417,10 +417,11 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
     setSubmitting(true)
     setError('')
     try {
+      const payload = { ...form, no_driver_compensation: form.no_driver_compensation === '' ? '0' : form.no_driver_compensation }
       if (isEdit) {
-        await api.put(`/rate-cards/${rateCard.id}`, form)
+        await api.put(`/rate-cards/${rateCard.id}`, payload)
       } else {
-        await api.post('/rate-cards', form)
+        await api.post('/rate-cards', payload)
       }
       onSaved()
     } catch (err) {

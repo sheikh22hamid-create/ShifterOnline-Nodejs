@@ -1,6 +1,26 @@
+import { useEffect, useState } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 import GuaranteeCountdown from './GuaranteeCountdown'
 import { formatCurrency } from '../../utils/format'
+
+/** The "assign a driver within mm:ss" line; reads "window expired" once the deadline passes. */
+function AssignLine({ alert }) {
+  const target = new Date(alert.deadline_at).getTime()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  if (Number.isFinite(target) && target <= now) {
+    return <>Order #{alert.order_id} · window expired — order is being cancelled</>
+  }
+  return (
+    <>
+      Order #{alert.order_id} · assign a driver within <GuaranteeCountdown deadline={alert.deadline_at} />
+      {Number(alert.amount) > 0 && <> · customer is owed {formatCurrency(alert.amount)} if none is assigned</>}
+    </>
+  )
+}
 
 /**
  * Persistent, high-priority banners for Booking Guarantee alerts (the plain toast scrolls away; this stays

@@ -21,6 +21,20 @@ describe("bookingGuaranteeController.quote", () => {
     expect(r.status).toHaveBeenCalledWith(400);
     expect(svc.quote).not.toHaveBeenCalled();
   });
+  it("rejects more than 20 package_ids with 400 and never calls the service", async () => {
+    const r = res();
+    await quote({ body: { package_ids: Array.from({ length: 21 }, (_, i) => i + 1) } }, r);
+    expect(r.status).toHaveBeenCalledWith(400);
+    expect(r.json).toHaveBeenCalledWith({ ResponseCode: "400", Result: "false", ResponseMsg: "package_ids must have at most 20 entries" });
+    expect(svc.quote).not.toHaveBeenCalled();
+  });
+  it("exactly 20 package_ids passes through", async () => {
+    svc.quote.mockResolvedValue({ packageId: 1, amount: 5 });
+    const r = res();
+    const ids = Array.from({ length: 20 }, (_, i) => i + 1);
+    await quote({ body: { package_ids: ids } }, r);
+    expect(svc.quote).toHaveBeenCalledWith(ids);
+  });
   it("a service failure is a 500, not a crash", async () => {
     svc.quote.mockRejectedValue(new Error("db"));
     const r = res();

@@ -1939,3 +1939,30 @@ describe("finalizeAcceptedOrder - free booking acceptance hook", () => {
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("recordAcceptance error for order 297"), expect.any(Error));
   });
 });
+
+describe("finalizeAcceptedOrder - booking guarantee close", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((cb) => cb(prisma));
+    prisma.$executeRaw.mockResolvedValue(1);
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 1, first_name: "Deepak" });
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, booking_type: 1 });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("closes an open guarantee case (no admin) when the order is accepted outside assignRider", async () => {
+    const bookingGuarantee = require("../bookingGuaranteeService");
+    await tripLifecycle.acceptOrder(297, 1);
+    expect(bookingGuarantee.closeOnAssign).toHaveBeenCalledWith(297, null);
+  });
+
+  it("a rejected closeOnAssign is logged and does not fail the accept", async () => {
+    const bookingGuarantee = require("../bookingGuaranteeService");
+    bookingGuarantee.closeOnAssign.mockRejectedValueOnce(new Error("boom"));
+    const logged = jest.spyOn(logger, "error").mockImplementation(() => {});
+    await expect(tripLifecycle.acceptOrder(297, 1)).resolves.toBeDefined();
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("closeOnAssign"), expect.any(Error));
+  });
+});

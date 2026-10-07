@@ -56,11 +56,23 @@ export default function AppShell() {
       toast.warning(data?.message || `Order #${data?.order_id} needs manual driver assignment!`)
     }
 
+    // An order that is assigned, cancelled or expired no longer needs its guarantee banner.
+    function handleOrderStatusUpdate(data) {
+      if (data?.order_id == null) return
+      const gone =
+        (data.o_status != null && String(data.o_status).toLowerCase() !== 'pending') ||
+        Number(data.rid) > 0 ||
+        Number(data.order_status) > 0
+      if (gone) setGuaranteeAlerts((prev) => prev.filter((a) => String(a.order_id) !== String(data.order_id)))
+    }
+
     socket.on('admin:new_order', handleNewOrder)
+    socket.on('admin:order_status_update', handleOrderStatusUpdate)
     socket.on('admin:dispatch_alert', handleDispatchAlert)
 
     return () => {
       socket.off('admin:new_order', handleNewOrder)
+      socket.off('admin:order_status_update', handleOrderStatusUpdate)
       socket.off('admin:dispatch_alert', handleDispatchAlert)
     }
   }, [socket, toast])
