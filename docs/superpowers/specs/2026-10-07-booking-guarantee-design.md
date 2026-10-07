@@ -57,11 +57,12 @@ automatically. `create`/`update` build explicit data objects and need the field 
 | opened_at, deadline_at, closed_at | `deadline_at = opened_at + admin assignment time` |
 | resolved_by_admin_id | set when an admin assigns |
 | wallet_history_id | set when compensation is credited |
+| refunds_done_at | set once the prepaid-fare/points refunds ran; the sweeper repairs cases where it is NULL |
 
 ### `booking_guarantee_audit`
 Append-only: `id, case_id, order_id, event, admin_id?, meta JSON, created_at`.
 Events: `opened`, `admin_alerted`, `admin_assigned`, `customer_cancelled`,
-`admin_cancelled`, `expired`, `wallet_credited`, `fare_refunded`.
+`admin_cancelled`, `expired`, `wallet_credited`, `refunds_processed`, `order_already_closed`.
 
 ### Admin Assignment Time
 A settings row following the existing settings-service pattern (see
@@ -132,7 +133,7 @@ Implemented as one pure function `computeGuaranteeCompensation(packages)`.
 - Persistent high-priority banner for guarantee alerts (extends `AppShell.jsx`).
 - Orders list: badge + live countdown from `deadline_at`; existing Assign Rider
   action resolves the case.
-- Settings: "Admin Assignment Time" (minutes).
+- A dedicated Booking Guarantee page holds the Admin Assignment Time setting and the case history.
 - Rate card: "No Driver Found Compensation (₹)" per package.
 - Read-only case history with the audit trail.
 
