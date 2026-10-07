@@ -81,6 +81,9 @@ module.exports = {
   // reminder/dispatch is due.
   SCHEDULED_ORDER_REMINDER_LEAD_MS: 30 * 60 * 1000, // default for the admin-configurable scheduled_confirm_popup_minutes
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS: 30 * 1000,
+  // Default for the admin-configurable scheduled_min_advance_minutes: the earliest a customer may
+  // schedule a ride, measured from "now" (was hardcoded in the customer app).
+  SCHEDULED_ORDER_MIN_ADVANCE_MINUTES: 45,
 
   // Driver priority-interest dispatch (booking_type=2) — see
   // docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md §3/§6.

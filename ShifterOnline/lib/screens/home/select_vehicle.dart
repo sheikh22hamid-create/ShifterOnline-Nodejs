@@ -100,6 +100,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   // the global admin setting); null until the first estimate loads.
   int? _vehicleMaxExtraStops;
 
+  // Admin-configured minimum scheduling lead time; the default applies until the
+  // server value arrives (or if that request fails).
+  int _scheduleMinLeadMinutes = ScheduleTimeValidation.defaultMinLeadMinutes;
   bool _referralDiscountEnabled = false;
   double _referralDiscountPercent = 0;
   double _referralPointValue = 1;
@@ -149,6 +152,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       _loadRoute();
       _refreshAvailability();
       _fetchReferralDiscountInfo();
+      _fetchScheduledSettings();
       _fetchGoodsTypes();
       _fetchNextDayEligibility();
       _fetchFreeRideChanceStatus();
@@ -276,11 +280,31 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     }
   }
 
+  /// Reads the admin's "Minimum advance booking time" so the picker's validation
+  /// and its message use it instead of a number baked into the app. A failed
+  /// request keeps the default.
+  Future<void> _fetchScheduledSettings() async {
+    try {
+      final response = await ApiWrapper.dataGetNode(Config.nodeScheduledSettings);
+      if (!mounted) return;
+      if (response is Map && (response['Result'] == true || response['Result'] == 'true')) {
+        final minutes = int.tryParse(_text(response['min_advance_minutes']));
+        if (minutes != null && minutes > 0) {
+          setState(() => _scheduleMinLeadMinutes = minutes);
+        }
+      }
+    } catch (_) {
+      // Keep the default lead time.
+    }
+  }
+
   Future<void> _pickScheduleDateTime() async {
     final now = DateTime.now();
+    // Suggest a time that already satisfies the minimum (a 90-minute minimum must not open on "in 1 hour").
+    final suggested = now.add(Duration(minutes: math.max(60, _scheduleMinLeadMinutes + 15)));
     final date = await showDatePicker(
       context: context,
-      initialDate: _scheduledFor ?? now.add(const Duration(hours: 1)),
+      initialDate: _scheduledFor ?? suggested,
       firstDate: now,
       lastDate: now.add(const Duration(days: 7)),
     );
@@ -288,12 +312,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
     final time = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(_scheduledFor ?? now.add(const Duration(hours: 1))),
+      initialTime: TimeOfDay.fromDateTime(_scheduledFor ?? suggested),
     );
     if (time == null || !mounted) return;
 
     final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    final error = ScheduleTimeValidation.validate(picked);
+    final error = ScheduleTimeValidation.validate(picked, minLeadMinutes: _scheduleMinLeadMinutes);
     if (error != null) {
       ApiWrapper.showToastMessage(error);
       return;

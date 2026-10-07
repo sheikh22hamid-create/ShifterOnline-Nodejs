@@ -26,6 +26,11 @@ const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeServ
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getAdvancePaymentTimeoutMinutes } = require("../utils/advancePaymentTimeout");
+const { getScheduledMinAdvanceMinutes, getScheduledConfirmLeadMinutes } = require("../utils/scheduledConfirmSettings");
+
+// Slack on the minimum scheduling lead so a time the app just validated cannot be refused by the server
+// a few seconds later (network delay, picker rounding to the minute).
+const SCHEDULE_LEAD_GRACE_MS = 60 * 1000;
 const { getPickupEtaRow, buildEtaView, isPickupEtaExpired } = require("../services/pickupEtaService");
 const { buildCustomerWaitingView } = require("../services/customerWaitingView");
 
@@ -441,6 +446,19 @@ async function createOrderCore({
 
   // Validate the booking BEFORE any points are taken: a refusal after the
   // deduction used to leave the customer without the points and without an order.
+  // A scheduled ride must be booked at least the admin's minimum lead time ahead (the apps check this
+  // too, but an older app or a direct API call must not be able to skip it). An unparseable time keeps
+  // the legacy "treat as due immediately" behaviour; SCHEDULE_LEAD_GRACE_MS absorbs picker/clock drift.
+  if (Number(bookingType) === 2 && (scheduleDateTime || schedule_date_time)) {
+    const scheduledMs = Date.parse(String(scheduleDateTime || schedule_date_time));
+    if (Number.isFinite(scheduledMs)) {
+      const minMinutes = await getScheduledMinAdvanceMinutes();
+      if (scheduledMs - Date.now() < minMinutes * 60 * 1000 - SCHEDULE_LEAD_GRACE_MS) {
+        return { ok: false, code: "VALIDATION", msg: `Please pick a time at least ${minMinutes} minutes from now.` };
+      }
+    }
+  }
+
   if (Number(bookingType) === 3) {
     const isEligible = Boolean(
       customerPlan &&
@@ -1839,6 +1857,28 @@ async function getMapInfo(req, res) {
  * referral points" before/during booking without duplicating the admin
  * settings + points-balance math client-side.
  */
+/**
+ * Admin-configured scheduled-booking limits for the customer app's date/time picker, so the minimum
+ * lead time (and the message that names it) is not hardcoded in the app.
+ */
+async function scheduledBookingSettings(req, res) {
+  try {
+    const [minAdvanceMinutes, confirmPopupMinutes] = await Promise.all([
+      getScheduledMinAdvanceMinutes(),
+      getScheduledConfirmLeadMinutes(),
+    ]);
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: true,
+      min_advance_minutes: minAdvanceMinutes,
+      confirm_popup_minutes: confirmPopupMinutes,
+    });
+  } catch (err) {
+    logger.error("scheduledBookingSettings failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: false, ResponseMsg: "Internal server error" });
+  }
+}
+
 async function referralDiscountInfo(req, res) {
   try {
     const uid = Number(req.query.uid || req.body?.uid || 0);
@@ -2157,6 +2197,7 @@ module.exports = {
   advancePaymentFromWallet,
   redeemAdvanceWithPoints,
   referralDiscountInfo,
+  scheduledBookingSettings,
   previewDestinationChange,
   confirmDestinationChange,
   previewPickupChange,

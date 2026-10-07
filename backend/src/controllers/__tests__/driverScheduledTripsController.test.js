@@ -1,6 +1,9 @@
 const { listScheduledTrips, markInterest, removeInterest } = require("../driverScheduledTripsController");
 const prisma = require("../../config/db");
 
+jest.mock("../../utils/scheduledConfirmSettings", () => ({
+  getScheduledConfirmLeadMinutes: jest.fn().mockResolvedValue(30),
+}));
 jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn() },
   pkg_order: { findMany: jest.fn(), findUnique: jest.fn() },
@@ -39,6 +42,17 @@ describe("listScheduledTrips", () => {
       ResponseCode: "200",
       TripData: [expect.objectContaining({ id: "100", is_interested: "1" })],
     }));
+  });
+
+  it("sends the admin's Confirmation popup lead time as priority_window_minutes", async () => {
+    require("../../utils/scheduledConfirmSettings").getScheduledConfirmLeadMinutes.mockResolvedValueOnce(20);
+    prisma.tbl_rider.findUnique.mockResolvedValueOnce({ id: 7, vehicle: "Bike", city_id: 3 });
+    prisma.pkg_order.findMany.mockResolvedValueOnce([]);
+
+    const res = mockRes();
+    await listScheduledTrips({ body: { uid: 7 } }, res);
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ResponseCode: "200", priority_window_minutes: 20 }));
   });
 
   it("queries pkg_order with the rider's category/city and the fixed pending/unassigned/booking_type=2 filters", async () => {

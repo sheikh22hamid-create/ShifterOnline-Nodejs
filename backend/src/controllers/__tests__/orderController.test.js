@@ -24,6 +24,10 @@ jest.mock("../../services/pricingEngine", () => ({
   getCoveredBodyCharge: jest.fn().mockResolvedValue(0),
 }));
 jest.mock("../../services/dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("../../utils/scheduledConfirmSettings", () => ({
+  getScheduledMinAdvanceMinutes: jest.fn().mockResolvedValue(45),
+  getScheduledConfirmLeadMinutes: jest.fn().mockResolvedValue(30),
+}));
 jest.mock("../../sockets/adminSocket", () => ({ notifyNewOrder: jest.fn() }));
 jest.mock("../../utils/geoDistance", () => ({ getRoadDistanceKm: jest.fn() }));
 jest.mock("../../services/orderDestinationService", () => ({
@@ -44,6 +48,7 @@ const pricingEngine = require("../../services/pricingEngine");
 const dispatchManager = require("../../services/dispatchManager");
 const orderDestinationService = require("../../services/orderDestinationService");
 const { getRoadDistanceKm } = require("../../utils/geoDistance");
+const scheduledSettings = require("../../utils/scheduledConfirmSettings");
 const {
   createOrderCore,
   createOrder,
@@ -52,6 +57,7 @@ const {
   previewDestinationChange,
   confirmDestinationChange,
   redeemAdvanceWithPoints,
+  scheduledBookingSettings,
 } = require("../orderController");
 
 describe("orderController.redeemAdvanceWithPoints — per-ride referral cap", () => {
@@ -85,6 +91,16 @@ describe("orderController.redeemAdvanceWithPoints — per-ride referral cap", ()
   it("still redeems normally when nothing was used at booking", async () => {
     const body = await run({ total_dcharge: 200, referral_points_used: 0 });
     expect(body.points_used).toBe(5); // also bounded by 10% of the 50 advance
+  });
+});
+
+describe("orderController.scheduledBookingSettings", () => {
+  it("returns the admin's minimum advance time and confirmation lead time for the customer app", async () => {
+    scheduledSettings.getScheduledMinAdvanceMinutes.mockResolvedValue(20);
+    scheduledSettings.getScheduledConfirmLeadMinutes.mockResolvedValue(30);
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    await scheduledBookingSettings({}, res);
+    expect(res.json).toHaveBeenCalledWith({ ResponseCode: "200", Result: true, min_advance_minutes: 20, confirm_popup_minutes: 30 });
   });
 });
 
@@ -297,6 +313,45 @@ describe("orderController.createOrderCore", () => {
         }),
       })
     );
+  });
+
+  describe("scheduled booking (booking_type 2) minimum lead time", () => {
+    const inMinutes = (m) => new Date(Date.now() + m * 60 * 1000).toISOString();
+    beforeEach(() => scheduledSettings.getScheduledMinAdvanceMinutes.mockResolvedValue(45));
+
+    it("rejects a time earlier than the admin minimum, naming that number in the message", async () => {
+      const result = await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: inMinutes(30) });
+      expect(result).toMatchObject({ ok: false, code: "VALIDATION", msg: "Please pick a time at least 45 minutes from now." });
+      expect(prisma.pkg_order.create).not.toHaveBeenCalled();
+    });
+
+    it("accepts a time at or beyond the minimum", async () => {
+      const result = await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: inMinutes(50) });
+      expect(result.ok).toBe(true);
+    });
+
+    it("follows the admin value: with 10 minutes, 15 minutes ahead is fine and 5 is refused with '10 minutes'", async () => {
+      scheduledSettings.getScheduledMinAdvanceMinutes.mockResolvedValue(10);
+      expect((await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: inMinutes(15) })).ok).toBe(true);
+      const tooSoon = await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: inMinutes(5) });
+      expect(tooSoon).toMatchObject({ ok: false, code: "VALIDATION", msg: "Please pick a time at least 10 minutes from now." });
+    });
+
+    it("a raised admin minimum is enforced even though an older app only checks 45 minutes", async () => {
+      scheduledSettings.getScheduledMinAdvanceMinutes.mockResolvedValue(90);
+      const result = await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: inMinutes(50) });
+      expect(result).toMatchObject({ ok: false, code: "VALIDATION", msg: "Please pick a time at least 90 minutes from now." });
+    });
+
+    it("tolerates up to a minute of picker/clock drift just under the minimum", async () => {
+      const result = await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: new Date(Date.now() + 44.5 * 60 * 1000).toISOString() });
+      expect(result.ok).toBe(true);
+    });
+
+    it("an unparseable time keeps the legacy 'due immediately' behaviour; other booking types are not checked", async () => {
+      expect((await createOrderCore({ ...baseInput, bookingType: 2, scheduleDateTime: "not a date" })).ok).toBe(true);
+      expect((await createOrderCore({ ...baseInput, bookingType: 1, scheduleDateTime: inMinutes(1) })).ok).toBe(true);
+    });
   });
 
   describe("referral-points ride discount", () => {

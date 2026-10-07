@@ -130,6 +130,17 @@ public class ScheduledTripsActivity extends LocaleAwareActivity implements GetRe
     }
 
     private void onScheduledTripsResponse(JSONObject response) {
+        // The window length is the admin's "Confirmation popup lead time" (sent by the backend), not a
+        // number baked into the layout. Without it (older backend / odd response) show no number rather
+        // than a wrong one.
+        android.widget.TextView windowTitle = findViewById(R.id.txt_priority_window_title);
+        if (windowTitle != null) {
+            int windowMinutes = response.optInt("priority_window_minutes", 0);
+            windowTitle.setText(windowMinutes > 0
+                    ? windowMinutes + "-Minute Priority Dispatch Window"
+                    : "Priority Dispatch Window");
+        }
+
         List<JSONObject> trips = new ArrayList<>();
         JSONArray tripData = response.optJSONArray("TripData");
         if (tripData != null) {

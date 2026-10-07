@@ -169,6 +169,7 @@ class Config {
   static const String nodePackageList = "api/order/packagelist";
   static const String nodeNextDayEligibility = "api/order/next-day-eligibility";
   static const String nodeReferralDiscountInfo = "api/order/referral-discount-info";
+  static const String nodeScheduledSettings = "api/order/scheduled-settings";
   static const String nodeGoodsTypes = "api/order/goods-types";
   static const String nodeRestrictedItems = "api/order/restricted-items";
   static const String nodeBookingGuidelines = "api/order/booking-guidelines";

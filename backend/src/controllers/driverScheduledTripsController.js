@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { getScheduledConfirmLeadMinutes } = require("../utils/scheduledConfirmSettings");
 
 // Driver-facing browse + interest-marking for booking_type=2 scheduled
 // orders — see docs/superpowers/specs/2026-09-21-scheduled-order-priority-dispatch-design.md
@@ -54,7 +55,17 @@ async function listScheduledTrips(req, res) {
       is_interested: interestedOrderIds.has(o.id) ? "1" : "0",
     }));
 
-    return res.status(200).json({ TripData: tripData, ResponseCode: "200", Result: "true", ResponseMsg: "Scheduled Trips Fetched Successfully" });
+    // The admin's "Confirmation popup lead time" (Settings > Scheduled Rides), shown by the driver app as
+    // the Priority Dispatch Window instead of a hardcoded number.
+    const priorityWindowMinutes = await getScheduledConfirmLeadMinutes();
+
+    return res.status(200).json({
+      TripData: tripData,
+      priority_window_minutes: priorityWindowMinutes,
+      ResponseCode: "200",
+      Result: "true",
+      ResponseMsg: "Scheduled Trips Fetched Successfully",
+    });
   } catch (err) {
     logger.error("listScheduledTrips failed:", err);
     return res.status(200).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });

@@ -87,6 +87,7 @@ const HANDLED_FLAG_KEYS = [
   'max_extra_stops',
   'customer_wallet_max_topup',
   'scheduled_confirm_popup_minutes',
+  'scheduled_min_advance_minutes',
   'max_blocked_drivers_per_user',
   'extra_stop_charge',
   'settlement_enabled',
@@ -582,7 +583,21 @@ function SettingsForm({ data, onSaved }) {
               onChange={(e) => setFlags((f) => ({ ...f, scheduled_confirm_popup_minutes: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              This many minutes before the scheduled time, the customer is asked "Do you still want to continue with this scheduled ride?" (Continue / Cancel). Cancelling also removes the booking from drivers who had pre-accepted it. The order always goes LIVE exactly at the selected time (Default: 30).
+              This many minutes before the scheduled time, the customer is asked "Do you still want to continue with this scheduled ride?" (Continue / Cancel). Cancelling also removes the booking from drivers who had pre-accepted it. The order always goes LIVE exactly at the selected time. The Driver app also shows this value as the Priority Dispatch Window on its Scheduled Trips page (Default: 30).
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-scheduled_min_advance_minutes">Minimum advance booking time (minutes)</Label>
+            <Input
+              id="flag-scheduled_min_advance_minutes"
+              type="number"
+              min="1"
+              placeholder="e.g. 45"
+              value={flags.scheduled_min_advance_minutes ?? '45'}
+              onChange={(e) => setFlags((f) => ({ ...f, scheduled_min_advance_minutes: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              The earliest a customer can schedule a ride, counted from the moment they book. The User app uses this number when validating the date &amp; time and in its "Please pick a time at least … minutes from now" message (Default: 45).
             </p>
           </div>
         </Section>

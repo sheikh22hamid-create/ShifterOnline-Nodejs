@@ -56,6 +56,7 @@ router.post("/advance-payment", orderController.advancePayment);
 router.post("/advance-payment/redeem-points", orderController.redeemAdvanceWithPoints);
 router.post("/advance-payment/wallet", orderController.advancePaymentFromWallet);
 router.get("/referral-discount-info", orderController.referralDiscountInfo);
+router.get("/scheduled-settings", orderController.scheduledBookingSettings);
 router.post("/settlement/state", settlementController.customerState);
 router.post("/settlement/choose-driver", settlementController.customerChooseDriver);
 router.post("/settlement/pay-online/create", settlementController.customerPayOnlineCreate);
