@@ -1888,10 +1888,12 @@ async function advancePayment(req, res) {
 
     const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
     if (!order) return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Order Not Found" });
-    if (order.o_status === "Cancelled" || Number(order.order_status) === 4) {
-      return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Order is already cancelled." });
-    }
-    if (Number(order.payment_status) === 1) {
+    // The Razorpay payment is already verified above, so the money is real. If
+    // the advance-payment timeout cancelled the order while the customer was
+    // still on the Razorpay screen, we must NOT drop the payment: it is
+    // credited to their wallet and ledger below, but the order stays cancelled.
+    const orderCancelled = order.o_status === "Cancelled" || Number(order.order_status) === 4;
+    if (!orderCancelled && Number(order.payment_status) === 1) {
       return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Order Already Paid" });
     }
 
@@ -1918,7 +1920,7 @@ async function advancePayment(req, res) {
           mobile: String(user.mobile ?? ""),
           amount,
           type: "credit",
-          remark,
+          remark: orderCancelled ? `Advance payment received after order #${orderId} was cancelled (timeout)` : remark,
           payment_id: paymentId,
           razorpay_payment_id: paymentId,
           wallet_type: "user",
@@ -1932,6 +1934,17 @@ async function advancePayment(req, res) {
     }
 
     const updatedUser = await prisma.tbl_user.update({ where: { id: user.id }, data: { wallet: { increment: amount } } });
+    if (orderCancelled) {
+      logger.warn(`advancePayment: payment ${paymentId} (₹${amount}) arrived after order ${orderId} was cancelled - credited to wallet of user ${user.id}`);
+      return res.status(200).json({
+        ResponseCode: "401",
+        Result: false,
+        ResponseMsg: `Your order was cancelled because the payment time ran out. ₹${amount} has been added to your wallet.`,
+        order_id: orderId,
+        payment_status: 0,
+        user_wallet_balance: Number(updatedUser.wallet),
+      });
+    }
     if (underpaid) {
       return res.status(200).json({
         ResponseCode: "401",

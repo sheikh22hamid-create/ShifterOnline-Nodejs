@@ -69,6 +69,44 @@ describe("orderController.advancePayment amount check", () => {
     expect(markedPaid()).toBe(true);
   });
 
+  describe("payment lands after the advance-payment timeout already cancelled the order", () => {
+    beforeEach(() => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ id: 77, uid: 5, rid: 9, o_status: "Cancelled", order_status: 4, payment_status: 0 });
+    });
+
+    it("the money Razorpay captured is credited to the wallet and written to the ledger", async () => {
+      const r = res();
+      await advancePayment({ body: body(60) }, r);
+      expect(prisma.tbl_wallet_history.create).toHaveBeenCalledTimes(1);
+      expect(prisma.tbl_wallet_history.create.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({ user_id: 5, amount: 60, type: "credit", order_id: 77, razorpay_payment_id: "pay_1" })
+      );
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 5 }, data: { wallet: { increment: 60 } } });
+    });
+
+    it("does not revive the cancelled order or notify the driver", async () => {
+      await advancePayment({ body: body(60) }, res());
+      expect(markedPaid()).toBe(false);
+      expect(prisma.tbl_rider.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("tells the app the order is cancelled but the amount is safe in the wallet", async () => {
+      const r = res();
+      await advancePayment({ body: body(60) }, r);
+      expect(r.json).toHaveBeenCalledWith(expect.objectContaining({
+        Result: false, ResponseCode: "401", order_id: 77, payment_status: 0, user_wallet_balance: 100,
+        ResponseMsg: expect.stringContaining("added to your wallet"),
+      }));
+    });
+
+    it("a retried call with the same payment id is not credited twice", async () => {
+      prisma.tbl_wallet_history.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+      const r = res();
+      await advancePayment({ body: body(60) }, r);
+      expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    });
+  });
+
   it("rounds the due like the rest of the flow (Rs59.6 advance accepts Rs60)", async () => {
     prisma.$queryRaw.mockResolvedValue([{ advance_payment: "59.6" }]);
     await advancePayment({ body: body(60) }, res());
