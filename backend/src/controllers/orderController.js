@@ -20,6 +20,7 @@ const orderStopsService = require("../services/orderStopsService");
 const settlementService = require("../services/settlementService");
 const receiverPayService = require("../services/receiverPayService");
 const freeBookingService = require("../services/freeBookingService");
+const bookingGuaranteeService = require("../services/bookingGuaranteeService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -922,6 +923,8 @@ async function getOrderDetails(req, res) {
           // Payment settlement state (null when the order has none / feature off).
           settlement: await settlementService.getPublicViewForOrder(order.id),
           receiver_pay: await getReceiverPaySummary(order.id),
+          // Booking Guarantee: none | pending | paid | not_paid, the amount, and the admin-window deadline.
+          guarantee: await bookingGuaranteeService.getView(order),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           advance_payment_timeout_minutes: String(await getAdvancePaymentTimeoutMinutes()),
