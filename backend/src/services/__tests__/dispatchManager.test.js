@@ -33,11 +33,15 @@ jest.mock("../freeBookingService", () => ({
   getDispatchPoolFilter: jest.fn().mockResolvedValue(null),
   fallbackToNormalDispatch: jest.fn().mockResolvedValue(false),
 }));
+jest.mock("../bookingGuaranteeService", () => ({
+  openForExhaustedOrder: jest.fn().mockResolvedValue(false),
+}));
 jest.mock("../pushNotifier");
 jest.mock("../walletPrepaymentRefund");
 
 const prisma = require("../../config/db");
 const freeBookingService = require("../freeBookingService");
+const bookingGuaranteeService = require("../bookingGuaranteeService");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pushNotifier = require("../pushNotifier");
@@ -890,6 +894,65 @@ describe("dispatchManager overlapping batch cascade", () => {
     expect(emitted.filter((e) => e.event === "order:no_driver_found")).toHaveLength(1);
     const cancelled = prisma.pkg_order.update.mock.calls.some(([args]) => args.data && args.data.o_status === "Cancelled");
     expect(cancelled).toBe(true);
+  });
+
+  it("Booking Guarantee: an exhausted order is HELD (not cancelled, no refund, no no_driver_found) and the case is opened with the selected tiers", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    bookingGuaranteeService.openForExhaustedOrder.mockResolvedValueOnce(true);
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS - BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(0);
+    await flush();
+
+    expect(bookingGuaranteeService.openForExhaustedOrder).toHaveBeenCalledTimes(1);
+    const [openedOrder, tiers] = bookingGuaranteeService.openForExhaustedOrder.mock.calls[0];
+    expect(openedOrder.id).toBe(order.id);
+    expect(Array.isArray(tiers) && tiers.length > 0).toBe(true);
+    expect(emitted.filter((e) => e.event === "order:no_driver_found")).toHaveLength(0);
+    expect(prisma.pkg_order.update.mock.calls.some(([args]) => args.data && args.data.o_status === "Cancelled")).toBe(false);
+    expect(require("../walletPrepaymentRefund").refundIfWalletPaid).not.toHaveBeenCalled();
+    expect(pushNotifier.notifyCustomerNoDriverFound).not.toHaveBeenCalled();
+    // the dispatch's in-memory state is released; the case row owns the wait now
+    expect([1, 2, 3, 4, 5, 6, 7, 8].every((id) => !lockManager.isLocked(id))).toBe(true);
+  });
+
+  it("Booking Guarantee: if opening the case throws, the normal 'No driver found' cancel still happens", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
+    bookingGuaranteeService.openForExhaustedOrder.mockRejectedValueOnce(new Error("table missing"));
+
+    await dispatchManager.startDispatch(order);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS - BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(BATCH_GAP_MS);
+    await flush();
+    await jest.advanceTimersByTimeAsync(0);
+    await flush();
+
+    expect(emitted.filter((e) => e.event === "order:no_driver_found")).toHaveLength(1);
+    expect(prisma.pkg_order.update.mock.calls.some(([args]) => args.data && args.data.o_status === "Cancelled")).toBe(true);
+  });
+
+  it("startup reconciliation skips orders that have an open Booking Guarantee case", async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$executeRaw.mockResolvedValue(0);
+
+    await dispatchManager.reconcileStaleOffersOnStartup();
+
+    const sqlText = (call) => (Array.isArray(call[0]) ? call[0].join("?") : String(call[0]));
+    const cancelSql = prisma.$executeRaw.mock.calls.map(sqlText).find((s) => s.includes("No driver found (recovered after restart)"));
+    const selectSql = prisma.$queryRaw.mock.calls.map(sqlText).find((s) => s.includes("p_method_id = -2"));
+    expect(cancelSql).toContain("booking_guarantee_case");
+    expect(selectSql).toContain("booking_guarantee_case");
   });
 
   it("a lone rider who only ever lets the popup time out (never accepting or rejecting) eventually reaches no_driver_found instead of looping forever", async () => {

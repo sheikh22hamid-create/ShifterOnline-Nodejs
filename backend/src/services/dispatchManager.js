@@ -431,6 +431,22 @@ async function checkCascadeTermination(orderId) {
       return;
     }
 
+    // Booking Guarantee (spec 2026-10-07): instead of cancelling, hold the order for the admin
+    // assignment window. A failure here falls through to the normal cancel below, so a missing
+    // table/outage can never strand an order.
+    let heldForGuarantee = false;
+    try {
+      heldForGuarantee = await require("./bookingGuaranteeService").openForExhaustedOrder(order, state.tiers);
+    } catch (err) {
+      logger.error(`dispatchManager: booking guarantee open failed for order ${orderId}:`, err);
+    }
+    if (heldForGuarantee) {
+      for (const t of state.timers) clearTimeout(t);
+      state.timers.clear();
+      activeDispatches.delete(orderId);
+      return;
+    }
+
     try {
       adminSocket.notifyDispatchAlert(orderId, order.city_id);
     } catch (adminErr) {
@@ -1348,11 +1364,13 @@ async function reconcileStaleOffersOnStartup() {
     // cancel an order no driver was ever offered yet.
     // Same condition as the UPDATE below, read first so wallet-prepaid fares of
     // the orders it cancels can be refunded.
+    // Orders held by an open Booking Guarantee case are excluded: the guarantee sweeper (not this) closes them, and pays the customer.
     const staleWalletOrders = await prisma.$queryRaw`
       SELECT id, uid, p_method_id, trans_id FROM pkg_order
       WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
         AND booking_type NOT IN (2, 3)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
+        AND id NOT IN (SELECT order_id FROM booking_guarantee_case WHERE status = 'open')
         AND (p_method_id = -2 OR trans_id LIKE 'wallet%' OR referral_points_used > 0)
     `;
     const staleOrders = await prisma.$executeRaw`
@@ -1361,6 +1379,7 @@ async function reconcileStaleOffersOnStartup() {
       WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
         AND booking_type NOT IN (2, 3)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
+        AND id NOT IN (SELECT order_id FROM booking_guarantee_case WHERE status = 'open')
     `;
     for (const stale of staleWalletOrders || []) {
       await walletPrepayment.refundIfWalletPaid(stale, { note: "no driver found" });
