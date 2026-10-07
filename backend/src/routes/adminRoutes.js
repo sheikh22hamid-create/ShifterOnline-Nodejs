@@ -89,6 +89,7 @@ router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", 
 // --- Daily Driver System -----------------------------------------------------
 const adminDailyDriverController = require("../controllers/adminDailyDriverController");
 const adminFreeBookingController = require("../controllers/adminFreeBookingController");
+const adminBookingGuaranteeController = require("../controllers/adminBookingGuaranteeController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
 router.put("/daily-driver/plans/:planId", auth, authorize("superadmin", "admin"), adminDailyDriverController.updatePlan);
@@ -113,6 +114,12 @@ router.get("/free-booking/orders", auth, authorize(...RIDER_ROLES), adminFreeBoo
 router.post("/free-booking/orders/:id/void", auth, authorize("superadmin", "admin"), adminFreeBookingController.voidOrder);
 router.post("/free-booking/users/:userId/lock", auth, authorize("superadmin", "admin"), adminFreeBookingController.lockUser);
 router.post("/free-booking/users/:userId/unlock", auth, authorize("superadmin", "admin"), adminFreeBookingController.unlockUser);
+
+// Booking Guarantee (spec 2026-10-07)
+router.get("/booking-guarantee/settings", auth, authorize(...RIDER_ROLES), adminBookingGuaranteeController.getSettings);
+router.put("/booking-guarantee/settings", auth, authorize("superadmin", "admin"), adminBookingGuaranteeController.saveSettings);
+router.get("/booking-guarantee/cases", auth, authorize(...RIDER_ROLES), scopeFilter, adminBookingGuaranteeController.listCases);
+router.get("/booking-guarantee/cases/:orderId/audit", auth, authorize(...RIDER_ROLES), scopeFilter, adminBookingGuaranteeController.caseAudit);
 
 
 // --- Staff & Executive Management -----------------------------------------

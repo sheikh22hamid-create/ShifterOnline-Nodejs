@@ -33,6 +33,16 @@ function validateSubtitleLength(field, rawValue) {
   return trimmed || null;
 }
 
+// tbl_package.no_driver_compensation (Booking Guarantee): a non-negative amount; DECIMAL(10,2) caps it below 1e8.
+function validateCompensation(raw) {
+  if (raw === undefined) return null;
+  const n = Number(raw);
+  if (raw === null || raw === "" || !Number.isFinite(n) || n < 0 || n >= 1e8) {
+    return "no_driver_compensation must be a non-negative amount";
+  }
+  return null;
+}
+
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
   return res.status(500).json({ success: false, message: "Internal server error" });
@@ -149,6 +159,10 @@ async function create(req, res) {
     if (!PACKAGE_TYPES.includes(b.type)) {
       return res.status(400).json({ success: false, message: `type must be one of ${PACKAGE_TYPES.join(", ")}` });
     }
+    const compensationError = validateCompensation(b.no_driver_compensation);
+    if (compensationError) {
+      return res.status(400).json({ success: false, message: compensationError });
+    }
 
     let infoSections;
     let cardSubtitle;
@@ -224,6 +238,7 @@ async function create(req, res) {
         driver_earning: b.driver_earning ?? 0,
         driver_cancel_admin_earning: b.driver_cancel_admin_earning ?? 0,
         driver_cancel_user_earning: b.driver_cancel_user_earning ?? 0,
+        no_driver_compensation: b.no_driver_compensation ?? 0,
         user_detail_image: b.user_detail_image ?? null,
         driver_detail_image: b.driver_detail_image ?? null,
         status: b.status !== undefined ? parseInt(b.status, 10) : 1,
@@ -247,6 +262,10 @@ async function update(req, res) {
     const b = req.body;
     if (b.type !== undefined && !PACKAGE_TYPES.includes(b.type)) {
       return res.status(400).json({ success: false, message: `type must be one of ${PACKAGE_TYPES.join(", ")}` });
+    }
+    const compensationError = validateCompensation(b.no_driver_compensation);
+    if (compensationError) {
+      return res.status(400).json({ success: false, message: compensationError });
     }
     if (b.cat_id !== undefined) {
       const category = await prisma.pkg_category.findUnique({ where: { id: parseInt(b.cat_id, 10) } });
@@ -281,6 +300,7 @@ async function update(req, res) {
       "driver_earning",
       "driver_cancel_admin_earning",
       "driver_cancel_user_earning",
+      "no_driver_compensation",
       "user_detail_image",
       "driver_detail_image",
     ];
@@ -823,6 +843,7 @@ async function generateModels(req, res) {
 }
 
 module.exports = {
+  _validateCompensation: validateCompensation,
   list,
   getOne,
   create,
