@@ -84,9 +84,12 @@ async function closeWith(orderId, status, event, adminId, extraData = {}) {
   return true;
 }
 
-/** Admin assigned a driver: close as resolved, no compensation. */
-const closeOnAssign = (orderId, adminId) =>
-  closeWith(orderId, STATUS.ASSIGNED, "admin_assigned", adminId, { resolved_by_admin_id: adminId ?? null });
+/**
+ * A driver was assigned: close as resolved, no compensation. `event` is the audit label: the default is an
+ * admin assignment; driver accepts and force-assigns pass "driver_assigned" with no admin.
+ */
+const closeOnAssign = (orderId, adminId, event = "admin_assigned") =>
+  closeWith(orderId, STATUS.ASSIGNED, event, adminId, { resolved_by_admin_id: adminId ?? null });
 
 /** Customer or admin cancelled during the window: close, no compensation. */
 const closeOnCancel = (orderId, event, adminId = null) => closeWith(orderId, STATUS.CANCELLED, event, adminId);

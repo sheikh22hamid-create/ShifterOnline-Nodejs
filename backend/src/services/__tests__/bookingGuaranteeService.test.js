@@ -100,6 +100,16 @@ describe("closeOnAssign / closeOnCancel", () => {
     });
     expect(auditEvents()).toEqual(["admin_assigned"]);
   });
+  it("a driver accept / force-assign is audited as driver_assigned with no admin", async () => {
+    prisma.booking_guarantee_case.updateMany.mockResolvedValue({ count: 1 });
+    prisma.booking_guarantee_case.findUnique.mockResolvedValue(caseRow({ status: "resolved_assigned" }));
+    expect(await svc.closeOnAssign(500, null, "driver_assigned")).toBe(true);
+    expect(prisma.booking_guarantee_case.updateMany).toHaveBeenCalledWith({
+      where: { order_id: 500, status: "open" },
+      data: expect.objectContaining({ status: "resolved_assigned", resolved_by_admin_id: null }),
+    });
+    expect(auditEvents()).toEqual(["driver_assigned"]);
+  });
   it("assign on an order with no open case is a no-op", async () => {
     prisma.booking_guarantee_case.updateMany.mockResolvedValue({ count: 0 });
     expect(await svc.closeOnAssign(500, 9)).toBe(false);

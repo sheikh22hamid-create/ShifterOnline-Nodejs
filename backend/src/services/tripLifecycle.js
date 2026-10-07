@@ -272,7 +272,7 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
 
   // Booking Guarantee: any accept/assignment path (driver accept, force-assign) ends a held case. Best-effort.
   try {
-    await bookingGuarantee.closeOnAssign(orderId, null);
+    await bookingGuarantee.closeOnAssign(orderId, null, "driver_assigned");
   } catch (err) {
     logger.error(`finalizeAcceptedOrder: closeOnAssign failed for order ${orderId}:`, err);
   }

@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const dispatchManager = require("../services/dispatchManager");
 const logger = require("../utils/logger");
+const bookingGuarantee = require("../services/bookingGuaranteeService");
 
 /**
  * Gets the order queue for a driver (both active trip and pending queue).
@@ -108,6 +109,13 @@ async function assignOrderToQueue(req, res) {
           status: "active",
         },
       });
+
+      // The order now has a driver: close any open Booking Guarantee case (no payout). Best-effort.
+      try {
+        await bookingGuarantee.closeOnAssign(orderId, req.user?.id ?? null);
+      } catch (guaranteeErr) {
+        logger.error(`assignOrderToQueue: booking guarantee close failed for order ${orderId}:`, guaranteeErr);
+      }
 
       // Emit direct assign to driver via socket
       try {

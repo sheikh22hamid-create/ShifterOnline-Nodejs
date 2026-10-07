@@ -12,19 +12,19 @@ function AssignLine({ alert }) {
     return () => clearInterval(id)
   }, [])
   if (Number.isFinite(target) && target <= now) {
-    return <>Order #{alert.order_id} · window expired — order is being cancelled</>
+    return <>Order #{alert.order_id} Â· window expired â€” order is being cancelled</>
   }
   return (
     <>
-      Order #{alert.order_id} · assign a driver within <GuaranteeCountdown deadline={alert.deadline_at} />
-      {Number(alert.amount) > 0 && <> · customer is owed {formatCurrency(alert.amount)} if none is assigned</>}
+      Order #{alert.order_id} Â· assign a driver within <GuaranteeCountdown deadline={alert.deadline_at} />
+      {Number(alert.amount) > 0 && <> Â· customer is owed {formatCurrency(alert.amount)} if none is assigned</>}
     </>
   )
 }
 
 /**
  * Persistent, high-priority banners for Booking Guarantee alerts (the plain toast scrolls away; this stays
- * until the admin dismisses it or the window ends). `alerts` = [{ order_id, amount, deadline_at, message }].
+ * until the admin dismisses it or the order is assigned/cancelled). `alerts` = [{ order_id, amount, deadline_at, message }].
  */
 export default function GuaranteeBanner({ alerts, onOpen, onDismiss }) {
   if (!alerts.length) return null
@@ -33,6 +33,7 @@ export default function GuaranteeBanner({ alerts, onOpen, onDismiss }) {
       {alerts.map((a) => (
         <div
           key={a.order_id}
+          role="alert"
           className="flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-2xl"
           style={{ background: 'var(--danger-soft)', borderColor: 'var(--danger)', color: 'var(--ink)' }}
         >
@@ -42,8 +43,7 @@ export default function GuaranteeBanner({ alerts, onOpen, onDismiss }) {
               {a.message}
             </div>
             <div className="mt-0.5 text-[13px]">
-              Order #{a.order_id} Â· assign a driver within <GuaranteeCountdown deadline={a.deadline_at} />
-              {Number(a.amount) > 0 && <> Â· customer is owed {formatCurrency(a.amount)} if none is assigned</>}
+              <AssignLine alert={a} />
             </div>
             <button
               type="button"

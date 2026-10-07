@@ -1955,7 +1955,7 @@ describe("finalizeAcceptedOrder - booking guarantee close", () => {
   it("closes an open guarantee case (no admin) when the order is accepted outside assignRider", async () => {
     const bookingGuarantee = require("../bookingGuaranteeService");
     await tripLifecycle.acceptOrder(297, 1);
-    expect(bookingGuarantee.closeOnAssign).toHaveBeenCalledWith(297, null);
+    expect(bookingGuarantee.closeOnAssign).toHaveBeenCalledWith(297, null, "driver_assigned");
   });
 
   it("a rejected closeOnAssign is logged and does not fail the accept", async () => {

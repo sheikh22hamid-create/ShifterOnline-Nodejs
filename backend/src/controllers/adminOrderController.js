@@ -726,6 +726,15 @@ async function assignNextDayBatch(req, res) {
       `;
     }
 
+    // These orders now have a driver: close any open Booking Guarantee case (no payout). Best-effort per order.
+    for (const id of orderIds) {
+      try {
+        await bookingGuarantee.closeOnAssign(id, req.user?.id ?? null);
+      } catch (guaranteeErr) {
+        logger.error(`assignNextDayBatch: booking guarantee close failed for order ${id}:`, guaranteeErr);
+      }
+    }
+
     if (req.body.notify_driver_now) {
       try {
         await prisma.tbl_rnoti.create({

@@ -17,7 +17,7 @@ const STATUS_LABEL = {
 }
 const STATUS_TONE = { open: 'warning', resolved_assigned: 'success', expired_compensated: 'danger', cancelled: 'neutral' }
 const EVENT_LABEL = {
-  opened: 'Case opened', admin_alerted: 'Admins alerted', admin_assigned: 'Admin assigned a driver',
+  opened: 'Case opened', admin_alerted: 'Admins alerted', admin_assigned: 'Admin assigned a driver', driver_assigned: 'Driver assigned',
   customer_cancelled: 'Customer cancelled', admin_cancelled: 'Admin cancelled', expired: 'Window expired',
   wallet_credited: 'Compensation credited', refunds_processed: 'Refunds processed', order_already_closed: 'Order already closed',
 }

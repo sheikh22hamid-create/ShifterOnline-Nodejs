@@ -271,6 +271,29 @@ describe("adminOrderController next-day orders", () => {
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
+    it("closes any open Booking Guarantee case for every order in the batch, and a failure never blocks the assignment", async () => {
+      const bookingGuarantee = require("../../services/bookingGuaranteeService");
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1, full_name: "Deepak" });
+      prisma.pkg_order.findMany.mockResolvedValue([
+        { id: 200, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "A", daddress: "B", total_dcharge: 250, uid: 9 },
+        { id: 100, booking_type: 3, city_id: 1, rid: 0, o_status: "Pending", paddress: "C", daddress: "D", total_dcharge: 300, uid: 11 },
+      ]);
+      prisma.pkg_order.update.mockResolvedValue({});
+      prisma.$transaction.mockResolvedValue([{}, {}]);
+      bookingGuarantee.closeOnAssign.mockRejectedValueOnce(new Error("boom")); // first order's close fails
+      const req = {
+        body: { rider_id: "2", sequence: [{ order_id: 200, position: 1 }, { order_id: 100, position: 2 }] },
+        user: { role: "superadmin", id: 5 },
+      };
+      const res = makeRes();
+
+      await assignNextDayBatch(req, res);
+
+      expect(bookingGuarantee.closeOnAssign).toHaveBeenCalledWith(200, 5);
+      expect(bookingGuarantee.closeOnAssign).toHaveBeenCalledWith(100, 5);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
     it("does not notify the driver or customers when notify_driver_now is false", async () => {
       prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1, full_name: "Deepak" });
       prisma.pkg_order.findMany.mockResolvedValue([
