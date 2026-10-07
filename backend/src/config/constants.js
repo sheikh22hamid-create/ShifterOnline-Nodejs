@@ -39,6 +39,9 @@ module.exports = {
   // Model 1 reliability suspension — see dispatchManager's
   // recordModel1Outcome/isModel1Suspended.
   MODEL_1_PACKAGE_ID: 6,
+  // Booking Guarantee (spec 2026-10-07): default admin assignment window and how often overdue cases are swept.
+  BOOKING_GUARANTEE_DEFAULT_ASSIGN_MINUTES: 10,
+  BOOKING_GUARANTEE_SWEEP_INTERVAL_MS: 15 * 1000,
   MODEL1_MISS_LIMIT: 5,
   MODEL1_SUSPENSION_HOURS: 24,
 
