@@ -10,6 +10,7 @@ const payoutController = require("../controllers/payoutController");
 const adminSettlementController = require("../controllers/adminSettlementController");
 const customOrderController = require("../controllers/customOrderController");
 const marketingController = require("../controllers/marketingController");
+const adminPlanPurchaseController = require("../controllers/adminPlanPurchaseController");
 const referralController = require("../controllers/referralController");
 const settingsController = require("../controllers/settingsController");
 const analyticsController = require("../controllers/analyticsController");
@@ -239,6 +240,7 @@ router.put("/marketing/coupons/:id", auth, authorize("superadmin"), marketingCon
 router.delete("/marketing/coupons/:id", auth, authorize("superadmin"), marketingController.deleteCoupon);
 
 router.get("/marketing/premium-plans", auth, marketingController.listPremiumPlans);
+router.get("/marketing/premium-plans/purchases", auth, authorize(...RIDER_ROLES), scopeFilter, adminPlanPurchaseController.listPlanPurchases);
 router.post("/marketing/premium-plans", auth, authorize("superadmin"), marketingController.createPremiumPlan);
 router.put("/marketing/premium-plans/:id", auth, authorize("superadmin"), marketingController.updatePremiumPlan);
 router.delete("/marketing/premium-plans/:id", auth, authorize("superadmin"), marketingController.deletePremiumPlan);

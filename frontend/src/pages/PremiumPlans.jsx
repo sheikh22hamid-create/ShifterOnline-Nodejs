@@ -7,6 +7,7 @@ import useApiQuery from '../hooks/useApiQuery'
 import Badge from '../components/common/Badge'
 import Modal from '../components/common/Modal'
 import PremiumPlanFormModal from '../components/marketing/PremiumPlanFormModal'
+import PlanPurchaseHistory from '../components/marketing/PlanPurchaseHistory'
 import { formatCurrency } from '../utils/format'
 
 export default function PremiumPlans() {
@@ -18,6 +19,7 @@ export default function PremiumPlans() {
   const { data, loading, error, refetch } = useApiQuery(fetcher)
   const plans = data?.data ?? []
 
+  const [tab, setTab] = useState('plans') // 'plans' | 'purchases'
   const [formTarget, setFormTarget] = useState(undefined)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
@@ -47,7 +49,7 @@ export default function PremiumPlans() {
             Customer and driver subscription tiers.
           </p>
         </div>
-        {canManage && (
+        {canManage && tab === 'plans' && (
           <button
             type="button"
             onClick={() => setFormTarget(null)}
@@ -59,25 +61,47 @@ export default function PremiumPlans() {
         )}
       </div>
 
-      {loading && (
+      <div className="mt-4 flex gap-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+        {[
+          { id: 'plans', label: 'Plans' },
+          { id: 'purchases', label: 'Purchase History' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className="rounded-t-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors"
+            style={{
+              color: tab === t.id ? 'var(--brand)' : 'var(--ink-muted)',
+              borderBottom: tab === t.id ? '2px solid var(--brand)' : '2px solid transparent',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'purchases' && <PlanPurchaseHistory />}
+
+      {tab === 'plans' && loading && (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-40 animate-pulse rounded-xl" style={{ background: 'var(--border)' }} />
           ))}
         </div>
       )}
-      {!loading && error && (
+      {tab === 'plans' && !loading && error && (
         <div className="surface-card mt-4 rounded-xl p-4 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
           {error}
         </div>
       )}
-      {!loading && !error && plans.length === 0 && (
+      {tab === 'plans' && !loading && !error && plans.length === 0 && (
         <div className="surface-card mt-4 rounded-xl p-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
           No premium plans yet.
         </div>
       )}
 
-      {!loading && !error && plans.length > 0 && (
+      {tab === 'plans' && !loading && !error && plans.length > 0 && (
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {plans.map((p) => (
             <div key={p.id} className="surface-card relative flex flex-col rounded-xl p-4" style={{ borderColor: p.is_popular ? 'var(--brand)' : 'var(--border)' }}>
