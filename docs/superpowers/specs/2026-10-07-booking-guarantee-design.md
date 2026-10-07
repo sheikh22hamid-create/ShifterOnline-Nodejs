@@ -169,3 +169,12 @@ Implemented as one pure function `computeGuaranteeCompensation(packages)`.
 
 The migration adds one column and two tables. Per the project's known dev/prod
 schema drift, it must be applied to prod by hand before deploying.
+
+**Prod deploy requirement.** The migration file
+`backend/prisma/migrations/20261007020000_add_booking_guarantee/migration.sql`
+must be run on PROD before deploying the backend.
+
+**After deploy:** in Rate Cards, set each package's "No Driver Found
+Compensation" (initial intent: lowest model Rs 0, then Rs 100 / Rs 500 /
+Rs 1000 / Rs 2000 by `sort_order`), and set the "Admin assignment time" on the
+Booking Guarantee page.
