@@ -6,6 +6,7 @@ import { useToast } from '../../context/ToastContext'
 import { playOrderChime } from '../../utils/sound'
 import { formatCurrency } from '../../utils/format'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
+import GuaranteeBanner from '../orders/GuaranteeBanner'
 import GlobalSearchModal from './GlobalSearchModal'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
@@ -15,6 +16,7 @@ export default function AppShell() {
   const [incomingOrder, setIncomingOrder] = useState(null)
   const [activeOrderDrawerId, setActiveOrderDrawerId] = useState(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [guaranteeAlerts, setGuaranteeAlerts] = useState([])
   const { socket } = useSocket()
   const toast = useToast()
 
@@ -43,6 +45,14 @@ export default function AppShell() {
     }
 
     function handleDispatchAlert(data) {
+      if (data?.kind === 'booking_guarantee') {
+        playOrderChime()
+        setGuaranteeAlerts((prev) => [
+          ...prev.filter((a) => a.order_id !== data.order_id),
+          { order_id: data.order_id, amount: data.amount, deadline_at: data.deadline_at, message: data.message },
+        ])
+        return
+      }
       toast.warning(data?.message || `Order #${data?.order_id} needs manual driver assignment!`)
     }
 
@@ -57,6 +67,11 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen" style={{ background: 'var(--bg)' }}>
+      <GuaranteeBanner
+        alerts={guaranteeAlerts}
+        onOpen={(orderId) => setActiveOrderDrawerId(orderId)}
+        onDismiss={(orderId) => setGuaranteeAlerts((prev) => prev.filter((a) => a.order_id !== orderId))}
+      />
       {/* Floating Interactive Order Alert Card */}
       {incomingOrder && (
         <div

@@ -26,6 +26,7 @@ const EMPTY_FORM = {
   cancellation_charge_driver: '0',
   driver_cancel_admin_earning: '0',
   driver_cancel_user_earning: '0',
+  no_driver_compensation: '0',
   outside_min_charge: '0',
   outside_per_km_charge: '0',
   outside_surcharge: '0',
@@ -317,6 +318,7 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
             cancellation_charge_driver: rateCard.cancellation_charge_driver ?? '0',
             driver_cancel_admin_earning: rateCard.driver_cancel_admin_earning ?? '0',
             driver_cancel_user_earning: rateCard.driver_cancel_user_earning ?? '0',
+            no_driver_compensation: rateCard.no_driver_compensation ?? '0',
             driver_card_subtitle: rateCard.driver_card_subtitle ?? '',
             driver_info_subtitle: rateCard.driver_info_subtitle ?? '',
             driver_info_sections: Array.isArray(rateCard.driver_info_sections)
@@ -822,6 +824,26 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
                 placeholder="0"
               />
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}>
+          <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
+            Booking Guarantee
+          </p>
+          <div>
+            <Label htmlFor="no_driver_compensation">No Driver Found Compensation (₹)</Label>
+            <Input
+              id="no_driver_compensation"
+              type="number"
+              min="0"
+              value={form.no_driver_compensation}
+              onChange={(e) => set('no_driver_compensation', e.target.value)}
+              placeholder="0"
+            />
+            <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+              Paid to the customer when no driver is found and this is the highest model they switched on.
+            </p>
           </div>
         </div>
 

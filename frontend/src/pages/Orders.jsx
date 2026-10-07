@@ -6,6 +6,7 @@ import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import Pagination from '../components/common/Pagination'
 import OrderDetailDrawer from '../components/orders/OrderDetailDrawer'
+import GuaranteeCountdown from '../components/orders/GuaranteeCountdown'
 import { ORDER_STATUS_FILTERS, orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
 import { formatCurrency, formatDateTime, truncate } from '../utils/format'
 
@@ -24,10 +25,17 @@ export default function Orders() {
   const orders = data?.data ?? []
   const total = data?.total ?? 0
 
+  const guaranteeFetcher = useCallback(
+    () => api.get('/booking-guarantee/cases', { params: { status: 'open' } }).then((res) => res.data),
+    []
+  )
+  const { data: guaranteeData, refetch: refetchGuarantee } = useApiQuery(guaranteeFetcher)
+  const guaranteeByOrder = new Map((guaranteeData?.data ?? []).map((c) => [c.order_id, c]))
+
   // Real-time synchronization for orders list
   useRealtimeSync(
     ['admin:new_order', 'admin:order_status_update', 'admin:dispatch_alert'],
-    refetch
+    () => { refetch(); refetchGuarantee() }
   )
 
   return (
@@ -147,6 +155,11 @@ export default function Orders() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       <Badge tone={orderStatusTone(o.o_status)}>{orderStatusLabel(o.o_status)}</Badge>
+                      {guaranteeByOrder.has(o.id) && (
+                        <div className="mt-1 text-[11px] font-semibold" style={{ color: 'var(--danger)' }}>
+                          Guarantee · <GuaranteeCountdown deadline={guaranteeByOrder.get(o.id).deadline_at} />
+                        </div>
+                      )}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
                       {formatCurrency(o.total_dcharge)}
