@@ -4,6 +4,8 @@ jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
   tbl_user: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   free_booking_pool: { findMany: jest.fn() },
+  free_booking_setting: { findUnique: jest.fn() },
+  tbl_referral: { count: jest.fn() },
   free_booking_order: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
@@ -289,17 +291,52 @@ describe("fallbackToNormalDispatch", () => {
 });
 
 describe("lock and unlock", () => {
-  it("unlockForReferral only flips a locked user", async () => {
+  const lockedAt = new Date("2026-10-06T08:00:00Z");
+  const lockedUser = (over = {}) =>
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true, free_booking_locked_at: lockedAt, ...over });
+  beforeEach(() => {
+    prisma.tbl_user.updateMany.mockReset();
+    prisma.free_booking_setting.findUnique.mockReset();
+    prisma.tbl_referral.count.mockReset();
+  });
+  it("unlockForReferral flips a locked user when the city needs 1 referral (default)", async () => {
+    lockedUser();
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ referrals_required: 1 });
     prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
     expect(await svc.unlockForReferral(7)).toBe(true);
+    expect(prisma.tbl_referral.count).not.toHaveBeenCalled();
     expect(prisma.tbl_user.updateMany).toHaveBeenCalledWith({
       where: { id: 7, free_booking_locked: true },
       data: { free_booking_locked: false, free_booking_just_unlocked: true },
     });
   });
+  it("unlockForReferral defaults to 1 when the city has no setting row", async () => {
+    lockedUser();
+    prisma.free_booking_setting.findUnique.mockResolvedValue(null);
+    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+    expect(await svc.unlockForReferral(7)).toBe(true);
+  });
   it("unlockForReferral is a no-op for a user who is not locked", async () => {
-    prisma.tbl_user.updateMany.mockResolvedValue({ count: 0 });
+    lockedUser({ free_booking_locked: false });
     expect(await svc.unlockForReferral(7)).toBe(false);
+    expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
+  });
+  it("stays locked until the required number of referrals made since the lock is reached", async () => {
+    lockedUser();
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ referrals_required: 3 });
+    prisma.tbl_referral.count.mockResolvedValue(2);
+    expect(await svc.unlockForReferral(7)).toBe(false);
+    expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.tbl_referral.count).toHaveBeenCalledWith({
+      where: { referrer_id: 7, referrer_type: "USER", status: "completed", verified_at: { gte: lockedAt } },
+    });
+  });
+  it("unlocks once the required referral count is reached", async () => {
+    lockedUser();
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ referrals_required: 3 });
+    prisma.tbl_referral.count.mockResolvedValue(3);
+    prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+    expect(await svc.unlockForReferral(7)).toBe(true);
   });
   it("setUserLock(true) stamps locked_at; setUserLock(false) clears both flags", async () => {
     await svc.setUserLock(7, true);

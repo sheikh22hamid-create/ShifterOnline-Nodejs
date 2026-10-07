@@ -1,6 +1,5 @@
 const logger = require("../utils/logger");
 const freeBookingService = require("../services/freeBookingService");
-const { OUTCOME_MESSAGE } = require("../services/freeBookingRules");
 
 const isFiniteNumber = (v) => v !== null && v !== "" && Number.isFinite(Number(v));
 
@@ -23,7 +22,7 @@ async function check(req, res) {
       radiusKm: provided(radius_km) ? Number(radius_km) : 4, cityId: city_id ? Number(city_id) : undefined,
       bookingType: provided(booking_type) ? Number(booking_type) : 1,
     });
-    return res.json({ ResponseCode: "200", Result: "true", outcome: result.outcome, message: OUTCOME_MESSAGE[result.outcome] });
+    return res.json({ ResponseCode: "200", Result: "true", outcome: result.outcome, message: result.message });
   } catch (err) {
     logger.error("freeBooking.check failed:", err);
     return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });

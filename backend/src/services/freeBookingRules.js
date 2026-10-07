@@ -37,6 +37,20 @@ const OUTCOME_MESSAGE = Object.freeze({
   [OUTCOME.OPEN_BOOKING]: "Your earlier Free Booking is still being settled. You can book again once it is credited.",
 });
 
+/** Referrals a city asks for to unlock; anything missing/invalid means the original rule of 1. */
+const referralsRequiredOf = (setting) => {
+  const n = Number(setting?.referrals_required);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+};
+
+/** Customer-facing text for an outcome; the locked text names how many referrals are needed. */
+function outcomeMessage(outcome, referralsRequired = 1) {
+  if (outcome === OUTCOME.LOCKED && referralsRequired > 1) {
+    return `Free Booking is locked. Complete ${referralsRequired} successful referrals to unlock it.`;
+  }
+  return OUTCOME_MESSAGE[outcome];
+}
+
 const PAID_SETTLEMENT_STATUSES = Object.freeze(["cash_received", "paid_online"]);
 const IST_OFFSET_MS = 330 * 60 * 1000;
 
@@ -87,5 +101,6 @@ function decideCredit({ row, order, userLocked, paymentSettled, settlementStatus
 
 module.exports = {
   STATUS, OPEN_STATUSES, OUTCOME, REASON, OUTCOME_MESSAGE, PAID_SETTLEMENT_STATUSES,
+  referralsRequiredOf, outcomeMessage,
   round2, istDateString, isCityOfferOpen, decideOutcome, isPaymentSettled, decideCredit,
 };

@@ -231,4 +231,16 @@ describe("getUserStatus", () => {
     expect(out.state).toBe("locked");
     expect(out.message).toMatch(/referral/i);
   });
+  it("locked message names the city's required referral count", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true, free_booking_just_unlocked: false });
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), referrals_required: 3 });
+    expect((await svc.getUserStatus(7)).message).toMatch(/Complete 3 successful referrals/);
+  });
+  it("checkEligibility returns the locked message with the required count", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true });
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), referrals_required: 2 });
+    const out = await svc.checkEligibility(input);
+    expect(out.outcome).toBe("locked");
+    expect(out.message).toMatch(/Complete 2 successful referrals/);
+  });
 });

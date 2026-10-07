@@ -296,7 +296,7 @@ public class PlanDetailActivity extends LocaleAwareActivity
     // ─────────────────────────── RAZORPAY CHECKOUT ───────────────────────────
     private void startRazorpayCheckout() {
         Checkout checkout = new Checkout();
-        checkout.setKeyID("rzp_test_Rr8n8p41taq6fM");
+        checkout.setKeyID(com.shifter.driver.BuildConfig.RAZORPAY_KEY);
         try {
             JSONObject options = new JSONObject();
             options.put("name", "Driver Premium Plan");

@@ -135,7 +135,10 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
   }
 
   const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: Boolean(pool) });
-  return { outcome, cityId: city, planId: plan?.planId ?? null, poolRiderId: pool ? Number(pool.rider_id) : null };
+  return {
+    outcome, cityId: city, planId: plan?.planId ?? null, poolRiderId: pool ? Number(pool.rider_id) : null,
+    message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)),
+  };
 }
 
 async function createForOrder({ order, check, radiusKm }) {
@@ -195,7 +198,7 @@ async function getUserStatus(uid) {
   }
 
   const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: true });
-  if (outcome !== OUTCOME.ELIGIBLE) return { state: outcome, message: rules.OUTCOME_MESSAGE[outcome] };
+  if (outcome !== OUTCOME.ELIGIBLE) return { state: outcome, message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)) };
   if (user.free_booking_just_unlocked) {
     await prisma.tbl_user.updateMany({ where: { id: userId, free_booking_just_unlocked: true }, data: { free_booking_just_unlocked: false } });
     return { state: "unlocked", message: "Free Booking unlocked! Your next trip with a free vehicle can be credited back." };
@@ -415,10 +418,32 @@ async function reapCancelled() {
   }
 }
 
-/** A referral by this user just became successful. True if a locked user was unlocked. */
+/**
+ * A referral by this user just became successful. Unlocks a locked user once they have the city's
+ * required number of successful referrals made since the lock (earlier ones never count).
+ * True if the user was unlocked.
+ */
 async function unlockForReferral(userId) {
+  const id = Number(userId);
+  const user = await prisma.tbl_user.findUnique({
+    where: { id },
+    select: { city_id: true, free_booking_locked: true, free_booking_locked_at: true },
+  });
+  if (!user?.free_booking_locked) return false;
+  const required = rules.referralsRequiredOf(user.city_id ? await getCitySetting(user.city_id) : null);
+  if (required > 1) {
+    const done = await prisma.tbl_referral.count({
+      where: {
+        referrer_id: id,
+        referrer_type: "USER",
+        status: "completed",
+        ...(user.free_booking_locked_at ? { verified_at: { gte: user.free_booking_locked_at } } : {}),
+      },
+    });
+    if (done < required) return false;
+  }
   const res = await prisma.tbl_user.updateMany({
-    where: { id: Number(userId), free_booking_locked: true },
+    where: { id, free_booking_locked: true },
     data: { free_booking_locked: false, free_booking_just_unlocked: true },
   });
   return res.count === 1;

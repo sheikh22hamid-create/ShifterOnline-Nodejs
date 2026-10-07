@@ -26,7 +26,8 @@ const getSettings = async (req, res) => {
 const saveSettings = async (req, res) => {
   try {
     await admin.saveSettings({
-      cityId: cityOf(req), enabled: req.body.enabled, offerStart: req.body.offer_start, offerEnd: req.body.offer_end, adminId: req.user?.id,
+      cityId: cityOf(req), enabled: req.body.enabled, offerStart: req.body.offer_start, offerEnd: req.body.offer_end,
+      referralsRequired: req.body.referrals_required, adminId: req.user?.id,
     });
     return res.json({ success: true, message: "Free Booking settings saved", data: await admin.getSettings(cityOf(req)) });
   } catch (e) { return fail(res, e, "saveSettings"); }

@@ -1990,6 +1990,8 @@ model free_booking_setting {
   enabled     Boolean   @default(false)
   offer_start DateTime? @db.DateTime(0)
   offer_end   DateTime? @db.DateTime(0)
+  // Successful referrals (made after the lock) a locked customer needs to unlock the offer again.
+  referrals_required Int @default(1)
   updated_by  Int?
   updated_at  DateTime  @default(now()) @updatedAt @db.DateTime(0)
 }

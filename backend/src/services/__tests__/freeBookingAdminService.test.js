@@ -6,7 +6,7 @@ jest.mock("../../config/db", () => ({
   tbl_vehicle_details: { findMany: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
 }));
-jest.mock("../freeBookingService", () => ({ poolRiderIds: jest.fn().mockResolvedValue([]), reapCancelled: jest.fn() }));
+jest.mock("../freeBookingService", () => ({ poolRiderIds: jest.fn().mockResolvedValue([]), reapCancelled: jest.fn(), getCitySetting: jest.fn() }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), error: jest.fn(), warn: jest.fn() }));
 
 const prisma = require("../../config/db");
@@ -232,5 +232,33 @@ describe("resolveCityId empty-string fallback", () => {
   });
   it("is null when both are empty", () => {
     expect(svc.resolveCityId({ role: "superadmin" }, { city_id: "" }, { city_id: "" })).toBeNull();
+  });
+});
+
+describe("referrals_required", () => {
+  const okDates = { offerStart: "2026-10-01T00:00:00Z", offerEnd: "2026-10-31T00:00:00Z" };
+  beforeEach(() => prisma.free_booking_setting.upsert.mockResolvedValue({}));
+  it("saves a valid count", async () => {
+    await svc.saveSettings({ cityId: 3, enabled: true, ...okDates, referralsRequired: "3", adminId: 1 });
+    expect(prisma.free_booking_setting.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ referrals_required: 3 }),
+    }));
+  });
+  it("keeps the stored value when not supplied", async () => {
+    await svc.saveSettings({ cityId: 3, enabled: true, ...okDates, adminId: 1 });
+    expect(prisma.free_booking_setting.upsert.mock.calls.at(-1)[0].update).not.toHaveProperty("referrals_required");
+  });
+  it.each([0, -1, 1.5, "abc", 51])("rejects %p with a 400", async (bad) => {
+    prisma.free_booking_setting.upsert.mockClear();
+    await expect(svc.saveSettings({ cityId: 3, enabled: true, ...okDates, referralsRequired: bad, adminId: 1 }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.free_booking_setting.upsert).not.toHaveBeenCalled();
+  });
+  it("getSettings returns the count, defaulting to 1", async () => {
+    const fb = require("../freeBookingService");
+    fb.getCitySetting.mockResolvedValue({ enabled: true, referrals_required: 4 });
+    expect((await svc.getSettings(3)).referrals_required).toBe(4);
+    fb.getCitySetting.mockResolvedValue(null);
+    expect((await svc.getSettings(3)).referrals_required).toBe(1);
   });
 });

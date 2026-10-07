@@ -50,10 +50,23 @@ async function getSettings(cityId) {
     enabled: Boolean(row?.enabled),
     offer_start: row?.offer_start ?? null,
     offer_end: row?.offer_end ?? null,
+    referrals_required: rules.referralsRequiredOf(row),
   };
 }
 
-async function saveSettings({ cityId, enabled, offerStart, offerEnd, adminId }) {
+const MAX_REFERRALS_REQUIRED = 50;
+
+/** undefined/null/'' = not supplied (keep the stored value); otherwise a whole number 1..50 or a 400. */
+function parseReferralsRequired(v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d+$/.test(v.trim()) ? Number(v) : NaN;
+  if (!Number.isInteger(n) || n < 1 || n > MAX_REFERRALS_REQUIRED) {
+    throw bad(`Referrals required must be a whole number from 1 to ${MAX_REFERRALS_REQUIRED}`);
+  }
+  return n;
+}
+
+async function saveSettings({ cityId, enabled, offerStart, offerEnd, referralsRequired, adminId }) {
   requireCity(cityId);
   const on = parseEnabled(enabled);
   // Validated even when the offer is OFF: an Invalid Date must never reach Prisma.
@@ -61,7 +74,11 @@ async function saveSettings({ cityId, enabled, offerStart, offerEnd, adminId }) 
   const end = parseOptionalDate(offerEnd, "Offer end");
   if (on && (!start || !end)) throw bad("Offer start and end are required to turn the offer ON");
   if (start && end && end.getTime() <= start.getTime()) throw bad("Offer end must be after the start");
-  const data = { enabled: on, offer_start: start, offer_end: end, updated_by: adminId ?? null };
+  const required = parseReferralsRequired(referralsRequired);
+  const data = {
+    enabled: on, offer_start: start, offer_end: end, updated_by: adminId ?? null,
+    ...(required !== undefined ? { referrals_required: required } : {}),
+  };
   return prisma.free_booking_setting.upsert({
     where: { city_id: Number(cityId) },
     create: { city_id: Number(cityId), ...data },

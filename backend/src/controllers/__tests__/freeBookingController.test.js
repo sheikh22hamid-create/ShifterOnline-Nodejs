@@ -20,7 +20,7 @@ describe("check", () => {
     expect(res.status).toHaveBeenCalledWith(400);
   });
   it("returns the outcome and its customer message", async () => {
-    svc.checkEligibility.mockResolvedValue({ outcome: "no_free_vehicle", cityId: 3, planId: 1, poolRiderId: null });
+    svc.checkEligibility.mockResolvedValue({ outcome: "no_free_vehicle", cityId: 3, planId: 1, poolRiderId: null, message: "You will NOT receive any refund for this trip." });
     const res = mockRes();
     await controller.check({ body }, res);
     expect(svc.checkEligibility).toHaveBeenCalledWith({ uid: 7, plat: 22.7, plong: 75.8, category: "E-Loader", radiusKm: 5, cityId: 3, bookingType: 1 });

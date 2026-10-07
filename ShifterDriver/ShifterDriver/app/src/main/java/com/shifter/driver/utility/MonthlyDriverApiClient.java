@@ -27,7 +27,7 @@ import okhttp3.Response;
 public class MonthlyDriverApiClient {
 
     private static final String TAG = "MonthlyDriverApiClient";
-    private static final String BASE_URL = "https://dev-api.shifteronline.com";
+    private static final String BASE_URL = com.shifter.driver.BuildConfig.API_BASE_URL.replaceAll("/+$", "");
     private static final MediaType JSON_MEDIA = MediaType.parse("application/json; charset=utf-8");
 
     private static final OkHttpClient client = new OkHttpClient.Builder()

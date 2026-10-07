@@ -53,7 +53,7 @@ export default function FreeBookingOffer() {
     if (user && user.role !== 'superadmin') setCityId(String(user.city_id ?? ''))
   }, [user])
 
-  const [settings, setSettings] = useState({ enabled: false, offer_start: '', offer_end: '' })
+  const [settings, setSettings] = useState({ enabled: false, offer_start: '', offer_end: '', referrals_required: '1' })
   const [pool, setPool] = useState([])
   const [candidates, setCandidates] = useState([])
   const [orders, setOrders] = useState([])
@@ -85,7 +85,7 @@ export default function FreeBookingOffer() {
   // Declared before the load effect so on a city change it runs first: clear every city-scoped value.
   useEffect(() => {
     cityRef.current = cityId
-    setSettings({ enabled: false, offer_start: '', offer_end: '' })
+    setSettings({ enabled: false, offer_start: '', offer_end: '', referrals_required: '1' })
     setSettingsLoaded(false)
     setPool([])
     setCandidates([])
@@ -115,7 +115,7 @@ export default function FreeBookingOffer() {
       () => api.get('/free-booking/settings', { params: params() }),
       (res) => {
         const d = res.data.data
-        setSettings({ enabled: d.enabled, offer_start: toLocalInput(d.offer_start), offer_end: toLocalInput(d.offer_end) })
+        setSettings({ enabled: d.enabled, offer_start: toLocalInput(d.offer_start), offer_end: toLocalInput(d.offer_end), referrals_required: String(d.referrals_required ?? 1) })
         setSettingsLoaded(true)
       },
       () => setSettingsLoaded(false),
@@ -196,6 +196,7 @@ export default function FreeBookingOffer() {
         enabled: settings.enabled,
         offer_start: fromLocalInput(settings.offer_start),
         offer_end: fromLocalInput(settings.offer_end),
+        referrals_required: Number(settings.referrals_required),
       }),
       success: 'Free Booking settings saved',
       failMsg: 'Could not save settings',
@@ -322,6 +323,10 @@ export default function FreeBookingOffer() {
             </Field>
           </div>
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>The offer only applies between these two times, and only while it is ON.</p>
+          <Field label="Referrals needed to unlock again">
+            <input type="number" min="1" max="50" step="1" required disabled={!canWrite} value={settings.referrals_required} onChange={(e) => setSettings({ ...settings, referrals_required: e.target.value })} className={inputClass} style={inputStyle} />
+          </Field>
+          <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>After a customer gets a free booking, the offer locks. They unlock it by completing this many successful referrals (counted after the lock). Default 1.</p>
           {canWrite && settingsLoaded && <button type="submit" disabled={busy} style={busyStyle} className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600">Save</button>}
         </form>
       )}
