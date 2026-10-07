@@ -131,7 +131,7 @@ describe("expireCase", () => {
     expect(await svc.expireCase(1)).toBe(true);
 
     expect(prisma.pkg_order.updateMany).toHaveBeenCalledWith({
-      where: { id: 500, rid: 0, order_status: 0 },
+      where: { id: 500, rid: 0, order_status: 0, o_status: { notIn: ["Cancelled", "Completed"] } },
       data: { o_status: "Cancelled", cancel_reason: "No driver found", order_status: 4 },
     });
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 100 } } });

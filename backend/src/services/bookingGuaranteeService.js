@@ -129,7 +129,7 @@ async function expireCase(caseId) {
     const row = await tx.booking_guarantee_case.findUnique({ where: { id: caseId } });
 
     const cancelled = await tx.pkg_order.updateMany({
-      where: { id: row.order_id, rid: 0, order_status: 0 },
+      where: { id: row.order_id, rid: 0, order_status: 0, o_status: { notIn: ["Cancelled", "Completed"] } },
       data: { o_status: "Cancelled", cancel_reason: "No driver found", order_status: 4 },
     });
     if (cancelled.count === 0) {
