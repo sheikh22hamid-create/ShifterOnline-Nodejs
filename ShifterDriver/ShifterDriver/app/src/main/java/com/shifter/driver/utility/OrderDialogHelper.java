@@ -597,12 +597,26 @@ public class OrderDialogHelper {
                 flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
             }
             
-            Log.d("TimingProbe", "PENDING_INTENTS_START t=" + System.currentTimeMillis());
-            android.app.PendingIntent piHome = android.app.PendingIntent.getActivity(context, 101, homeIntent, flags);
-            piHome.send();
+            // Android 14+ (we target 36): a PendingIntent only starts an activity from the
+            // background when BOTH the creator and the sender explicitly opt in. The driver may
+            // be inside another app when this fires (overlay popup accepted), so opt in.
+            android.os.Bundle creatorOptions = null;
+            android.os.Bundle sendOptions = null;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                creatorOptions = android.app.ActivityOptions.makeBasic()
+                        .setPendingIntentCreatorBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        .toBundle();
+                sendOptions = android.app.ActivityOptions.makeBasic()
+                        .setPendingIntentBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        .toBundle();
+            }
 
-            android.app.PendingIntent piDetails = android.app.PendingIntent.getActivity(context, 102, intent, flags);
-            piDetails.send();
+            Log.d("TimingProbe", "PENDING_INTENTS_START t=" + System.currentTimeMillis());
+            android.app.PendingIntent piHome = android.app.PendingIntent.getActivity(context, 101, homeIntent, flags, creatorOptions);
+            piHome.send(context, 0, null, null, null, null, sendOptions);
+
+            android.app.PendingIntent piDetails = android.app.PendingIntent.getActivity(context, 102, intent, flags, creatorOptions);
+            piDetails.send(context, 0, null, null, null, null, sendOptions);
             Log.d("TimingProbe", "PENDING_INTENTS_SENT t=" + System.currentTimeMillis());
 
         } catch (Exception e) {

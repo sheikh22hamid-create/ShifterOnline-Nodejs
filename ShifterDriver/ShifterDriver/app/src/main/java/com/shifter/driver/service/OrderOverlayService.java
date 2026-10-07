@@ -457,6 +457,22 @@ public class OrderOverlayService extends Service {
 
         btnReject.setText("REJECT (" + (timerMillis / 1000) + "S)");
 
+        // While the accept is in flight the overlay window must STAY on screen:
+        // once the server acks, we start the app's screens from this service,
+        // and Android (10+) only allows that from the background while the app
+        // still has a visible window. Removing the overlay at tap time (as this
+        // used to) left only a foreground service, so the system blocked the
+        // launch and the driver stayed in the other app.
+        final Runnable lockForAccept = () -> {
+            if (countDownTimer != null) {
+                countDownTimer.cancel();
+                countDownTimer = null;
+            }
+            btnAccept.setEnabled(false);
+            btnReject.setEnabled(false);
+            btnAccept.setText("ACCEPTING...");
+        };
+
         countDownTimer = new CountDownTimer(timerMillis, 1000) {
             @Override
             public void onTick(long millisUntilFinished) {
@@ -466,7 +482,7 @@ public class OrderOverlayService extends Service {
             @Override
             public void onFinish() {
                 if (isDirectAssign) {
-                    hideOverlayUI();
+                    lockForAccept.run();
                     acceptOrder(orderId, riderId, intent);
                 } else {
                     removeOverlay();
@@ -477,7 +493,7 @@ public class OrderOverlayService extends Service {
 
         btnAccept.setOnClickListener(v -> {
             Log.d("TimingProbe", "ACCEPT_TAP t=" + System.currentTimeMillis());
-            hideOverlayUI();
+            lockForAccept.run();
             acceptOrder(orderId, riderId, intent);
         });
 
@@ -672,16 +688,19 @@ public class OrderOverlayService extends Service {
                             if (value != null) data.put(key, String.valueOf(value));
                         }
                     }
+                    // Launch while the overlay window is still attached (see lockForAccept),
+                    // then let it go once the app's screen has had time to come up.
                     com.shifter.driver.utility.OrderDialogHelper.startOrderDetailsActivity(getApplicationContext(), orderId, data);
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::removeOverlay, 600);
                 } else {
                     Log.e(TAG, "Order accept failed: " + message);
                     Toast.makeText(getApplicationContext(), message.isEmpty() ? "Order no longer available" : message, Toast.LENGTH_LONG).show();
+                    removeOverlay();
                 }
-                stopSelf();
             });
         } catch (Exception e) {
             Log.e(TAG, "Error emitting order:accept", e);
-            stopSelf();
+            removeOverlay();
         }
     }
 
