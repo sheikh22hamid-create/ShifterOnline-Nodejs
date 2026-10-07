@@ -105,12 +105,13 @@ function notifyOrderStatusUpdate(order) {
 }
 
 /** Fired when a dispatch cascade exhausts all tiers with no acceptance */
-function notifyDispatchAlert(orderId, cityId, message) {
+function notifyDispatchAlert(orderId, cityId, message, extra) {
   broadcastToScope(cityId, "admin:dispatch_alert", {
     order_id: orderId,
     city_id: cityId,
     message: message || `Attention: Order #${orderId} requires manual assignment!`,
     timestamp: Date.now(),
+    ...(extra || {}),
   });
 }
 

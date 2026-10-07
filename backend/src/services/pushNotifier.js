@@ -62,11 +62,14 @@ async function notifyCustomerOrderAssigned(fcmToken, data) {
   );
 }
 
-async function notifyCustomerNoDriverFound(fcmToken, orderId) {
+async function notifyCustomerNoDriverFound(fcmToken, orderId, compensationAmount = 0) {
+  const paid = Number(compensationAmount) > 0;
   return sendCustomerPush(
     fcmToken,
     "No drivers found",
-    "No drivers found. None of the available drivers accepted your order. Please try again.",
+    paid
+      ? `No drivers found. ₹${Number(compensationAmount).toFixed(2)} has been added to your wallet as our Booking Guarantee.`
+      : "No drivers found. None of the available drivers accepted your order. Please try again.",
     { type: "no_driver_found", order_id: String(orderId) }
   );
 }
