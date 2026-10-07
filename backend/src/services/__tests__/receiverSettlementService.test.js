@@ -120,8 +120,9 @@ describe("settleByReceiver", () => {
     expect(out).toMatchObject({ status: "paid_online", method: "online", wallet_effect: "online", confirmed_by: "receiver_online", receiver_credited: true });
     // driver online effect: fare 100 - commission 10
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { increment: 90 } } });
-    // booker: advance refund + commission
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    // booker: commission only - the advance simply stays in the wallet (no refund, no debit)
+    expect(prisma.tbl_user.update).not.toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).toHaveBeenCalledTimes(1);
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 2.7 } } });
     expect(prisma.order_receiver_pay.updateMany).toHaveBeenCalledWith({ where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "paid" }) });
   });
@@ -133,7 +134,7 @@ describe("settleByReceiver", () => {
     expect(prisma.order_receiver_pay.findFirst).toHaveBeenCalledWith({ where: { razorpay_order_id: "order_R1" } });
     expect(out).toMatchObject({ status: "paid_online", receiver_credited: true });
     expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 2.7 } } });
   });
   it("a stale token and a non-matching order id is INVALID_LINK with no wallet writes", async () => {
     setup({ r: rp({ razorpay_order_id: "order_R1" }) });
@@ -238,7 +239,7 @@ describe("declineReceiverPay", () => {
       where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "declined", declined_by: "booker" }),
     });
   });
-  it("after completion: converts to customer mode with the advance netted off", async () => {
+  it("after completion: converts to customer mode - the advance is debited from the wallet and netted off", async () => {
     setup();
     const out = await svc.declineReceiverPay({ orderId: 50, actor: "driver", actorId: 9 });
     expect(out.phase).toBe("converted");
@@ -246,7 +247,8 @@ describe("declineReceiverPay", () => {
       where: { id: 4 },
       data: expect.objectContaining({ payer: "customer", amount_due: 70, prepaid_amount: 30, receiver_markup: 0, razorpay_order_id: null }),
     });
-    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_user.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 20 } } });
   });
   it("conversion also works when the decline landed just before the settlement row existed (row already declined)", async () => {
     setup({ r: rp({ status: "declined" }) });

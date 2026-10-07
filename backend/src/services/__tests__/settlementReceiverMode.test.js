@@ -91,11 +91,12 @@ describe("publicView", () => {
 });
 
 describe("markCashReceived - receiver mode", () => {
-  it("refunds the advance AND credits the commission to the booker, and the driver hands the commission over", async () => {
+  it("credits only the commission to the booker (the advance stays in the wallet), and the driver hands the commission over", async () => {
     setup(row());
     const { settlement } = await svc.markCashReceived({ orderId: 50, riderId: 9 });
     expect(settlement.status).toBe("cash_received");
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).toHaveBeenCalledTimes(1);
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 2.7 } } });
     // the driver collected fare + commission in cash, so the commission is debited from the driver wallet
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { decrement: 2.7 } } });
@@ -103,14 +104,13 @@ describe("markCashReceived - receiver mode", () => {
     expect(data).toMatchObject({ receiver_credited: true, status: "cash_received" });
     expect(data).not.toHaveProperty("receiver_markup");
     expect(prisma.order_receiver_pay.updateMany).toHaveBeenCalledWith({ where: { order_id: 50, status: "active" }, data: expect.objectContaining({ status: "paid" }) });
-    expect(walletNotifier.notifyCustomerWalletTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ type: "credit", amount: 20 }));
     expect(walletNotifier.notifyCustomerWalletTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ type: "credit", amount: 2.7 }));
+    expect(walletNotifier.notifyCustomerWalletTransaction).not.toHaveBeenCalledWith(7, expect.objectContaining({ amount: 20 }));
   });
-  it("with 0% commission only the advance is refunded and the driver wallet is untouched", async () => {
+  it("with 0% commission the booker wallet and the driver wallet are untouched (advance simply stays)", async () => {
     setup(row({ receiver_markup: 0 }));
     await svc.markCashReceived({ orderId: 50, riderId: 9 });
-    expect(prisma.tbl_user.update).toHaveBeenCalledTimes(1);
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
   });
   it("a normal customer settlement is untouched (no booker wallet writes)", async () => {
@@ -131,21 +131,22 @@ describe("adminResolve - receiver mode", () => {
   it("paid_online credits the booker once", async () => {
     setup(row());
     await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "paid_online", note: "verified" });
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 2.7 } } });
   });
-  it("cash_received credits the advance and the commission, and keeps the commission on the row", async () => {
+  it("cash_received credits the commission (not the advance), and keeps the commission on the row", async () => {
     setup(row({ status: "disputed" }));
     await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "cash_received", note: "driver showed receipt" });
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
+    expect(prisma.tbl_user.update).not.toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 20 } } });
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 2.7 } } });
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { wallet_balance: { decrement: 2.7 } } });
     expect(prisma.order_settlement.update.mock.calls[0][0].data).not.toHaveProperty("receiver_markup");
   });
-  it("waived converts to customer mode with the advance netted and no booker credit", async () => {
+  it("waived converts to customer mode: the advance is debited from the booker wallet and netted, no credit", async () => {
     setup(row());
     await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "waived", note: "goodwill" });
-    expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_user.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 20 } } });
     expect(prisma.order_settlement.update).toHaveBeenCalledWith({
       where: { id: 4 }, data: expect.objectContaining({ payer: "customer", amount_due: 70, prepaid_amount: 30, receiver_markup: 0, status: "waived" }),
     });
@@ -172,13 +173,21 @@ describe("adminResolve - receiver mode driver wallet and reversals", () => {
       where: { id: 4 }, data: expect.objectContaining({ payer: "customer", receiver_credited: false, reversal_shortfall: 0, status: "waived" }),
     });
   });
-  it("records the uncollected part as reversal_shortfall when the booker wallet is short", async () => {
+  it("when the booker wallet is short of the advance, only the part still there is netted; the rest stays due", async () => {
     setup(row({ status: "paid_online", wallet_effect: "online", effect_seq: 1, receiver_credited: true, receiver_markup: 0 }));
     prisma.tbl_user.findUnique.mockResolvedValue({ wallet: 5 });
     await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "waived", note: "refund" });
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 5 } } });
     expect(prisma.order_settlement.update).toHaveBeenCalledWith({
-      where: { id: 4 }, data: expect.objectContaining({ receiver_credited: false, reversal_shortfall: 15 }),
+      where: { id: 4 }, data: expect.objectContaining({ receiver_credited: false, reversal_shortfall: 0, amount_due: 85, prepaid_amount: 15 }),
+    });
+  });
+  it("records an uncollectable commission reversal as reversal_shortfall", async () => {
+    setup(row({ status: "paid_online", wallet_effect: "online", effect_seq: 1, receiver_credited: true, advance_held: 0 }));
+    prisma.tbl_user.findUnique.mockResolvedValue({ wallet: 1 });
+    await svc.adminResolve({ settlementId: 4, adminId: 1, outcome: "waived", note: "refund" });
+    expect(prisma.order_settlement.update).toHaveBeenCalledWith({
+      where: { id: 4 }, data: expect.objectContaining({ receiver_credited: false, reversal_shortfall: 1.7 }),
     });
   });
 });

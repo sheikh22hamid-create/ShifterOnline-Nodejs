@@ -652,8 +652,8 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // Rounded separately from cashCollected (which feeds the Monthly ledger and
     // must stay as-is): float residue like 1.8e-15 must not create a Rs 0 settlement.
     // Receiver-pay (spec 2026-10-05): when the booker chose that the receiver pays, the advance is
-    // a held deposit (still debited from the booker wallet below via advance_apply), so the amount
-    // due is NOT netted by it. A missing/failed lookup just means a normal ride.
+    // a held deposit (it stays in the booker wallet - advance_apply below is skipped - until/unless the
+    // receiver fails to pay), so the amount due is NOT netted by it: the receiver sees the full fare. A missing/failed lookup just means a normal ride.
     const receiverPayRow = isCashOrder
       ? await receiverPayService.getActiveForOrder(orderId).catch((err) => {
           logger.warn(`updateStatus: receiver pay lookup failed for order ${orderId}, treating as a normal ride:`, err);
@@ -970,7 +970,11 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // accept time regardless of the final settlement method. Guarded by a
     // unique payment_id key (same idempotency pattern as driverCancel's
     // refund) so a retried 'complete' call can never double-debit.
-    if (advanceApplied > 0) {
+    // Receiver-pays (settlement in receiver mode): the advance is a deposit that STAYS in the booker's
+    // wallet when the receiver pays the full fare. receiverSettlementService / adminOutcomePatch
+    // debit it only if the receiver ends up not paying.
+    const advanceStaysInWallet = settlementCreated && useReceiverMode;
+    if (advanceApplied > 0 && !advanceStaysInWallet) {
       const applyKey = `advance_apply:${orderId}`;
       const alreadyApplied = await prisma.tbl_wallet_history.findFirst({
         where: { payment_id: applyKey, type: "debit", wallet_type: "user" },

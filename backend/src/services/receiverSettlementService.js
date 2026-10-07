@@ -204,10 +204,12 @@ async function declineReceiverPay({ orderId, actor, actorId = null }) {
     if (s.payer !== "receiver") return { settlement: s, alreadyDone: true };
     if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
     await markRowDeclined(tx);
-    const advance = round2(s.advance_held);
-    const newDue = round2(Math.max(0, Number(s.amount_due) - advance));
+    // The advance stayed in the booker wallet while the receiver was expected to pay; now it is
+    // consumed against the fare (only what the wallet still holds - the rest stays due).
+    const { consumed } = await receiverWalletCredits.consumeAdvance(tx, s, { notifications });
+    const newDue = round2(Math.max(0, Number(s.amount_due) - consumed));
     const base = {
-      payer: "customer", amount_due: newDue, prepaid_amount: round2(Number(s.prepaid_amount) + advance),
+      payer: "customer", amount_due: newDue, prepaid_amount: round2(Number(s.prepaid_amount) + consumed),
       receiver_markup: 0, razorpay_order_id: null, customer_choice: null, updated_at: new Date(),
     };
     const note = `Receiver payment declined by ${actor}; switched to customer payment`;

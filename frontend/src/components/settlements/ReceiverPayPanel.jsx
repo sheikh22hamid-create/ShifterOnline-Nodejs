@@ -76,7 +76,7 @@ export default function ReceiverPayPanel({ settlement, receiverPay, onConvert, c
           <span className="font-mono-data">{formatCurrency(advanceHeld)}</span>
         </Row>
         <Row label="Booker wallet credited">
-          {settlement.receiver_credited ? `Yes (advance refund${markup > 0 ? ' + commission' : ''})` : 'No'}
+          {settlement.receiver_credited ? `Yes${markup > 0 ? ' (commission credited)' : ''}` : 'No'}
         </Row>
         {shortfall > 0 && (
           <Row label="Reversal shortfall">

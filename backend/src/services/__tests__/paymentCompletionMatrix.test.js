@@ -274,6 +274,7 @@ function commissionOfPct(fare, pct) {
   return round2((fare * pct) / 100);
 }
 
+
 describe("advance payment adjustment at completion", () => {
   async function completeWith({ fare, advance, paymentStatus = 1, razorpayId = null, applied = false, pointsUsed = 0 }) {
     jest.clearAllMocks();

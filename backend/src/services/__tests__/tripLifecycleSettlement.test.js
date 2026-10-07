@@ -196,7 +196,7 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
   describe("receiver mode", () => {
     const rpRow = { id: 3, order_id: 297, commission_percent: "3.00", status: "active" };
 
-    it("does not net the advance, passes markup + held advance, keeps the advance debit, and issues the link", async () => {
+    it("does not net the advance, passes markup + held advance, leaves the advance in the booker wallet, and issues the link", async () => {
       receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
       prisma.pkg_order.findUnique.mockResolvedValue(order({ referral_points_amount: 10, cou_amt: 5 }));
       prisma.$queryRaw.mockResolvedValue([{ advance_payment: 15 }]);
@@ -204,8 +204,19 @@ describe("tripLifecycle.updateStatus('complete') — payment settlement hook", (
       expect(settlementService.createForCompletedOrder).toHaveBeenCalledWith(
         expect.objectContaining({ amountDue: 85, prepaidAmount: 15, receiver: { markup: 2.55, advanceHeld: 15 } })
       );
-      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 5 }, data: { wallet: { decrement: 15 } } });
+      // The advance stays as the booker's balance (no advance_apply debit) - it is only debited later
+      // if the receiver ends up not paying.
+      expect(prisma.tbl_user.update).not.toHaveBeenCalledWith({ where: { id: 5 }, data: { wallet: { decrement: 15 } } });
       expect(receiverPayService.issueLink).toHaveBeenCalledWith({ orderId: 297 });
+    });
+
+    it("if the receiver settlement cannot be created, the ride falls back to normal and the advance is applied as usual", async () => {
+      receiverPayService.getActiveForOrder.mockResolvedValue(rpRow);
+      prisma.pkg_order.findUnique.mockResolvedValue(order());
+      prisma.$queryRaw.mockResolvedValue([{ advance_payment: 15 }]);
+      settlementService.createForCompletedOrder.mockRejectedValue(new Error("db down"));
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 5 }, data: { wallet: { decrement: 15 } } });
     });
 
     it("advance 0: held advance is 0 and the full amount is due", async () => {

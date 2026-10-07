@@ -297,9 +297,9 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
 
             {settlement.payer === 'receiver' && !isAlreadyResolved && (
               <div className="mt-3 rounded-lg border p-3 text-[12px]" style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }}>
-                <strong style={{ color: 'var(--ink)' }}>Receiver-paid order:</strong> <em>Cash Received</em> and <em>Paid Online</em> refund the booker&apos;s advance
-                (Paid Online also credits the booker&apos;s commission). <em>Waive</em> and <em>Customer Owes</em> convert the order to normal customer payment and the
-                advance is consumed against the fare, never refunded.
+                <strong style={{ color: 'var(--ink)' }}>Receiver-paid order:</strong> <em>Cash Received</em> and <em>Paid Online</em> leave the booker&apos;s advance in their wallet as a balance
+                for future bookings (the booker&apos;s commission is credited too). <em>Waive</em> and <em>Customer Owes</em> convert the order to normal customer payment and the
+                advance is taken from the booker&apos;s wallet and applied against the fare.
               </div>
             )}
 
