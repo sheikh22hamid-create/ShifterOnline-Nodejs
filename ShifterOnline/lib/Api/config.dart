@@ -253,6 +253,7 @@ class Config {
   static const String nodeInvoiceUrl = "api/order/invoice-url";
   static const String nodeAdvancePayment = "api/order/advance-payment";
   static const String nodeAdvancePaymentRedeemPoints = "api/order/advance-payment/redeem-points";
+  static const String nodeAdvancePaymentWallet = "api/order/advance-payment/wallet";
   // "Buy Anything" create + item confirm/remove - Node ports of
   // cust_api/buy_order.php, confirm_item.php, item_remove.php.
   static const String nodeBuyOrderCreate = "api/order/legacy/create";

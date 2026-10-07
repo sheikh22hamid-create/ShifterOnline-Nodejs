@@ -276,7 +276,7 @@ function commissionOfPct(fare, pct) {
 
 
 describe("advance payment adjustment at completion", () => {
-  async function completeWith({ fare, advance, paymentStatus = 1, razorpayId = null, applied = false, pointsUsed = 0 }) {
+  async function completeWith({ fare, advance, paymentStatus = 1, razorpayId = null, applied = false, appliedAmount = null, pointsUsed = 0 }) {
     jest.clearAllMocks();
     const order = { ...makeOrder({ fare, pointsUsed, coupon: 0 }), payment_status: paymentStatus, razorpay_payment_id: razorpayId };
     prisma.pkg_order.findUnique.mockResolvedValue(order);
@@ -288,7 +288,7 @@ describe("advance payment adjustment at completion", () => {
     prisma.tbl_rider.update.mockResolvedValue({});
     prisma.tbl_user.update.mockResolvedValue({ referral_points: 999 });
     prisma.tbl_wallet_history.findFirst.mockImplementation(async ({ where }) =>
-      (where.payment_id === "advance_apply:468" && applied ? { id: 7 } : null));
+      (where.payment_id === "advance_apply:468" && applied ? { id: 7, ...(appliedAmount != null ? { amount: appliedAmount } : {}) } : null));
     prisma.daily_driver_enrollment.findFirst.mockResolvedValue(null);
     prisma.order_settlement.findUnique.mockResolvedValue(null);
     prisma.tbl_referral_setting.findFirst.mockResolvedValue({ referral_enabled: true, ride_discount_percent: PERCENT, point_value: 1 });
@@ -296,8 +296,21 @@ describe("advance payment adjustment at completion", () => {
     await tripLifecycle.updateStatus(468, 38, "complete");
     const walletDebits = prisma.tbl_user.update.mock.calls.filter(([a]) => a?.data?.wallet?.decrement).map(([a]) => a.data.wallet.decrement);
     const historyDebit = prisma.tbl_wallet_history.create.mock.calls.map(([a]) => a.data).find((d) => d.payment_id === "advance_apply:468");
-    return { walletDebits, historyDebit };
+    const walletCredits = prisma.tbl_user.update.mock.calls.filter(([a]) => a?.data?.wallet?.increment).map(([a]) => a.data.wallet.increment);
+    return { walletDebits, historyDebit, walletCredits };
   }
+
+  it("advance already debited at payment time (paid from the wallet): completion does not debit it again", async () => {
+    const { walletDebits, walletCredits } = await completeWith({ fare: 170, advance: 100, applied: true, appliedAmount: 100 });
+    expect(walletDebits).toEqual([]);
+    expect(walletCredits).toEqual([]); // the whole Rs100 was needed by the Rs170 ride, no surplus
+  });
+
+  it("wallet-paid advance bigger than the fare: the surplus is handed back, once", async () => {
+    const { walletDebits, walletCredits } = await completeWith({ fare: 40, advance: 60, applied: true, appliedAmount: 60 });
+    expect(walletDebits).toEqual([]);
+    expect(walletCredits).toEqual([20]); // Rs60 debited at payment, only Rs40 needed
+  });
 
   it("normal ride: the whole advance is applied to the fare and taken back from the customer's wallet once", async () => {
     const { walletDebits, historyDebit } = await completeWith({ fare: 170, advance: 15 });

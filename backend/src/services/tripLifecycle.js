@@ -12,6 +12,7 @@ const walletNotifier = require("./walletNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
 const walletPrepayment = require("./walletPrepaymentRefund");
+const walletAdvance = require("./walletAdvanceService");
 const { refundReferralPointsForOrder, reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -974,29 +975,53 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // wallet when the receiver pays the full fare. receiverSettlementService / adminOutcomePatch
     // debit it only if the receiver ends up not paying.
     const advanceStaysInWallet = settlementCreated && useReceiverMode;
-    if (advanceApplied > 0 && !advanceStaysInWallet) {
-      const applyKey = `advance_apply:${orderId}`;
-      const alreadyApplied = await prisma.tbl_wallet_history.findFirst({
-        where: { payment_id: applyKey, type: "debit", wallet_type: "user" },
-      });
-      if (!alreadyApplied) {
-        await prisma.tbl_user.update({
-          where: { id: order.uid },
-          data: { wallet: { decrement: advanceApplied } },
+    const applyKey = `advance_apply:${orderId}`;
+    const alreadyApplied = (!advanceStaysInWallet && advancePaid > 0)
+      ? await prisma.tbl_wallet_history.findFirst({ where: { payment_id: applyKey, type: "debit", wallet_type: "user" } })
+      : null;
+    if (alreadyApplied) {
+      // An advance paid straight from the wallet (walletAdvanceService) was debited IN FULL when it was
+      // paid. Like the Razorpay path, only what the ride actually needed is kept: hand the surplus back.
+      const debited = Number(alreadyApplied.amount);
+      const surplus = Number.isFinite(debited) ? round2(debited - advanceApplied) : 0;
+      if (surplus > 0) {
+        const surplusKey = `advance_surplus:${orderId}`;
+        const surplusDone = await prisma.tbl_wallet_history.findFirst({
+          where: { payment_id: surplusKey, type: "credit", wallet_type: "user" },
         });
-        await prisma.tbl_wallet_history.create({
-          data: {
-            user_id: order.uid,
-            amount: advanceApplied,
-            type: "debit",
-            remark: `Advance payment applied to completed order #${orderId}${advanceApplied < advancePaid ? ` (₹${round2(advancePaid - advanceApplied)} surplus advance kept in wallet)` : ""}`,
-            wallet_type: "user",
-            order_id: orderId,
-            payment_id: applyKey,
-            created_at: istNow(),
-          },
-        });
+        if (!surplusDone) {
+          await prisma.tbl_user.update({ where: { id: order.uid }, data: { wallet: { increment: surplus } } });
+          await prisma.tbl_wallet_history.create({
+            data: {
+              user_id: order.uid,
+              amount: surplus,
+              type: "credit",
+              remark: `Surplus advance returned for completed order #${orderId}`,
+              wallet_type: "user",
+              order_id: orderId,
+              payment_id: surplusKey,
+              created_at: istNow(),
+            },
+          });
+        }
       }
+    } else if (advanceApplied > 0 && !advanceStaysInWallet) {
+      await prisma.tbl_user.update({
+        where: { id: order.uid },
+        data: { wallet: { decrement: advanceApplied } },
+      });
+      await prisma.tbl_wallet_history.create({
+        data: {
+          user_id: order.uid,
+          amount: advanceApplied,
+          type: "debit",
+          remark: `Advance payment applied to completed order #${orderId}${advanceApplied < advancePaid ? ` (₹${round2(advancePaid - advanceApplied)} surplus advance kept in wallet)` : ""}`,
+          wallet_type: "user",
+          order_id: orderId,
+          payment_id: applyKey,
+          created_at: istNow(),
+        },
+      });
     }
 
     if (driverBenefit?.benefit > 0) {
@@ -1195,6 +1220,9 @@ async function customerCancel(uid, orderId, comment) {
   await refundReferralPointsIfAny(orderId, uid, orderBefore.referral_points_used).catch((err) => {
     logger.error(`customerCancel: refundReferralPointsIfAny failed for order ${orderId}:`, err);
   });
+  // An advance paid from the wallet was debited up front: give it back (the cancellation charge, if any,
+  // is taken below on top, same net result as the Razorpay-credited advance that never left the wallet).
+  await walletAdvance.refundWalletAdvanceIfAny(orderId);
 
   if (orderBefore.rid !== 0) {
     const isUnpaidAdvance = Number(orderBefore.advance_payment || 0) > 0 && Number(orderBefore.payment_status || 0) === 0;
@@ -1393,6 +1421,7 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
     if (affected === 0) throw new Error("ORDER_NOT_CANCELLABLE");
 
     await refundReferralPointsIfAny(orderId, Number(order.uid), Number(order.referral_points_used) || 0, tx);
+    await walletAdvance.refundWalletAdvanceIfAny(orderId, tx);
 
     const amount = Math.max(0, Math.round(Number(order.advance_payment) || 0));
     // Legacy payment paths have historically persisted the gateway payment id
@@ -1577,6 +1606,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
   const walletRefund = await walletPrepayment.refundIfWalletPaid(order, { deduct: cancellationCharge, note: "OTP not provided" });
   const penaltyNettedInRefund = Boolean(walletRefund && walletRefund.paid > 0);
   await refundReferralPointsForOrder(orderId);
+  await walletAdvance.refundWalletAdvanceIfAny(orderId);
   const penaltyRemark = `No-show penalty — OTP not provided within ${timeoutMinutes} minutes (order #${orderId})`;
   if (cancellationCharge > 0 && !penaltyNettedInRefund) {
     await prisma.$transaction([

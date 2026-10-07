@@ -81,6 +81,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   bool isAdvanceDialogOpened = false;
   bool isAdvancePaymentFlow = false;
   bool _advancePaymentCompleted = false;
+  // Wallet auto-pay of the advance is attempted once per order, before the
+  // payment screen is ever shown (see _autoPayAdvanceFromWallet).
+  bool _walletAdvanceInFlight = false;
+  String _walletAdvanceTriedOrderId = "";
   NodeSocketSubscription? _socketSubscription;
   String? razorpayOrderId;
   Timer? _advanceTimer;
@@ -7260,11 +7264,62 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       return;
     }
     if (!isAdvanceDialogOpened) {
+      // Before showing the payment screen, let the server pay the advance from
+      // the Shifter wallet when the balance covers it in full. Only when it
+      // can't (short wallet, receiver-pays order, any error) does the normal
+      // payment screen appear. Tried once per order.
+      final String orderKey = (dataObj?["order_id"] ?? orderid).toString();
+      if (_walletAdvanceInFlight) return;
+      if (_walletAdvanceTriedOrderId != orderKey) {
+        _walletAdvanceTriedOrderId = orderKey;
+        _walletAdvanceInFlight = true;
+        _autoPayAdvanceFromWallet().then((paid) async {
+          _walletAdvanceInFlight = false;
+          if (!mounted) return;
+          if (paid) {
+            isAdvancePaymentFlow = false;
+            _advancePaymentCompleted = true;
+            await pageRefresh();
+          } else {
+            checkAdvancePaymentStatus();
+          }
+        });
+        return;
+      }
       isAdvanceDialogOpened = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showAdvancePaymentDialog();
       });
     }
+  }
+
+  /// Asks the server to pay this order's advance from the customer's Shifter
+  /// wallet. The server debits it (ledger entry + driver notification) only if
+  /// the wallet covers the whole advance; returns true when it did, false in
+  /// every other case so the normal payment screen is shown.
+  Future<bool> _autoPayAdvanceFromWallet() async {
+    try {
+      String currentOrderId = orderProduc?["order_id"]?.toString() ??
+          buyMapinfo?["order_id"]?.toString() ??
+          orderid;
+      if (currentOrderId.isEmpty || currentOrderId == "0") {
+        currentOrderId = (getdata.read("OrderID") ?? "0").toString();
+      }
+      final currentUid = (uid.toString().isNotEmpty && uid.toString() != "0")
+          ? uid.toString()
+          : (getdata.read("Uid") ?? "").toString();
+      final val = await ApiWrapper.dataPostNode(Config.nodeAdvancePaymentWallet, {
+        "order_id": currentOrderId,
+        "uid": currentUid,
+      });
+      if (val != null && val.isNotEmpty && val['ResponseCode'] == "200" && (val['Result'] == true || val['Result'] == "true")) {
+        ApiWrapper.showToastMessage(val["ResponseMsg"] ?? "Advance paid from wallet".tr);
+        return true;
+      }
+    } catch (e) {
+      debugPrint("======== Advance wallet auto-pay error ======== $e");
+    }
+    return false;
   }
 
   /// Cancels the advance-payment countdown and, if its dialog is currently

@@ -13,6 +13,7 @@ const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 const { sendPushNotification } = require("../config/firebase");
 const logger = require("../utils/logger");
 const walletPrepayment = require("../services/walletPrepaymentRefund");
+const walletAdvanceService = require("../services/walletAdvanceService");
 const { SEARCH_RADIUS_KM } = require("../config/constants");
 const orderDestinationService = require("../services/orderDestinationService");
 const orderPickupService = require("../services/orderPickupService");
@@ -1985,6 +1986,36 @@ async function advancePayment(req, res) {
 }
 
 /**
+ * The customer app calls this before showing the advance payment screen: when the wallet balance
+ * covers the whole advance it is debited at once (ledger + driver push) and the app skips the screen.
+ * A short wallet (code 402) or any other refusal changes nothing and the app shows the normal screen.
+ */
+async function advancePaymentFromWallet(req, res) {
+  const b = req.body || {};
+  const orderId = Number(b.order_id || 0);
+  if (!orderId) {
+    return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Missing Parameters" });
+  }
+  try {
+    const out = await walletAdvanceService.payAdvanceFromWallet(orderId, { uid: Number(b.uid || 0) || undefined });
+    if (out.code !== "200") {
+      return res.status(200).json({ ResponseCode: out.code, Result: false, ResponseMsg: out.msg, order_id: orderId, payment_status: 0 });
+    }
+    return res.status(200).json({
+      ResponseCode: "200",
+      Result: true,
+      ResponseMsg: `Advance payment of ₹${out.due} paid from your wallet`,
+      order_id: orderId,
+      payment_status: 1,
+      amount: out.due,
+    });
+  } catch (err) {
+    logger.error("advancePaymentFromWallet failed:", err);
+    return res.status(200).json({ ResponseCode: "500", Result: false, ResponseMsg: "Internal server error" });
+  }
+}
+
+/**
  * Covers all or part of this order's advance_payment using the customer's
  * referral points instead of Razorpay - capped by the same admin
  * ride_discount_percent used for the booking-time redemption. Reduces
@@ -2122,6 +2153,7 @@ module.exports = {
   paymentMethodStatus,
   getMapInfo,
   advancePayment,
+  advancePaymentFromWallet,
   redeemAdvanceWithPoints,
   referralDiscountInfo,
   previewDestinationChange,
