@@ -1993,11 +1993,12 @@ async function advancePayment(req, res) {
 async function advancePaymentFromWallet(req, res) {
   const b = req.body || {};
   const orderId = Number(b.order_id || 0);
-  if (!orderId) {
+  const uid = Number(b.uid || 0);
+  if (!orderId || !uid) {
     return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Missing Parameters" });
   }
   try {
-    const out = await walletAdvanceService.payAdvanceFromWallet(orderId, { uid: Number(b.uid || 0) || undefined });
+    const out = await walletAdvanceService.payAdvanceFromWallet(orderId, { uid });
     if (out.code !== "200") {
       return res.status(200).json({ ResponseCode: out.code, Result: false, ResponseMsg: out.msg, order_id: orderId, payment_status: 0 });
     }

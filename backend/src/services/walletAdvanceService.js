@@ -28,7 +28,8 @@ async function payAdvanceFromWallet(orderId, { uid } = {}) {
     const rows = await tx.$queryRaw`SELECT id, uid, rid, advance_payment, payment_status, o_status, order_status FROM pkg_order WHERE id = ${orderId} FOR UPDATE`;
     const order = rows[0];
     if (!order) return { code: "401", msg: "Order Not Found" };
-    if (uid && Number(order.uid) !== Number(uid)) return { code: "401", msg: "This order belongs to another customer." };
+    // Fail closed: the caller must say whose wallet it is paying from, and it must be the order's owner.
+    if (!uid || Number(order.uid) !== Number(uid)) return { code: "401", msg: "This order belongs to another customer." };
     if (order.o_status === "Cancelled" || Number(order.order_status) === 4) return { code: "401", msg: "Order is already cancelled." };
     if (Number(order.payment_status) === 1) return { code: "401", msg: "Order Already Paid" };
     const due = Math.round(Number(order.advance_payment) || 0);

@@ -54,7 +54,13 @@ describe("payAdvanceFromWallet", () => {
 
   it("wallet exactly equal to the advance is enough", async () => {
     setup({ wallet: 100 });
-    expect((await svc.payAdvanceFromWallet(77)).code).toBe("200");
+    expect((await svc.payAdvanceFromWallet(77, { uid: 5 })).code).toBe("200");
+  });
+
+  it("fails closed without a uid: nothing is debited", async () => {
+    setup();
+    expect((await svc.payAdvanceFromWallet(77)).code).toBe("401");
+    expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
   });
 
   it("wallet Rs60 < advance Rs100: nothing changes, code 402 (app shows the normal payment screen)", async () => {
@@ -68,7 +74,7 @@ describe("payAdvanceFromWallet", () => {
 
   it("a concurrent spend between the read and the guarded debit cannot overdraw the wallet", async () => {
     setup({ updated: 0 });
-    expect((await svc.payAdvanceFromWallet(77)).code).toBe("402");
+    expect((await svc.payAdvanceFromWallet(77, { uid: 5 })).code).toBe("402");
     expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
     expect(prisma.pkg_order.update).not.toHaveBeenCalled();
   });
@@ -79,7 +85,7 @@ describe("payAdvanceFromWallet", () => {
     ["no advance due", { advance_payment: "0" }],
   ])("%s: refused, nothing debited", async (_n, patch) => {
     setup({ o: order(patch) });
-    expect((await svc.payAdvanceFromWallet(77)).code).toBe("401");
+    expect((await svc.payAdvanceFromWallet(77, { uid: 5 })).code).toBe("401");
     expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
   });
 
@@ -91,7 +97,7 @@ describe("payAdvanceFromWallet", () => {
 
   it("receiver-pays orders are not auto-paid (the advance stays a deposit in the wallet)", async () => {
     setup({ receiver: { id: 1 } });
-    expect((await svc.payAdvanceFromWallet(77)).code).toBe("402");
+    expect((await svc.payAdvanceFromWallet(77, { uid: 5 })).code).toBe("402");
     expect(prisma.tbl_user.updateMany).not.toHaveBeenCalled();
   });
 });
