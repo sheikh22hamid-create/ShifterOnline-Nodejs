@@ -555,7 +555,7 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
                                 horizontal: 16, vertical: 16),
                             child: Column(
                               children: [
-                                const FreeBookingStatusCard(),
+                                const FreeBookingStatusCard(showUpsell: false),
                                 ...List.generate(_plans.length, (index) {
                                   return _buildPlanCard(index);
                                 }),

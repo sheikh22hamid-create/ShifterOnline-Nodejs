@@ -23,6 +23,7 @@ import 'package:goParcel/screens/myorder/myorder.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/screens/notification/notification.dart';
 import 'package:goParcel/screens/profile/AddressList.dart';
+import 'package:goParcel/screens/profile/free_booking_status_card.dart';
 import 'package:goParcel/screens/profile/premium_plans_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -3279,6 +3280,7 @@ class _HomeState extends State<Home> {
 
                       const SizedBox(height: 4),
                       _buildActiveOrderCard(),
+                      const FreeBookingStatusCard(),
                       _buildRewardMilestoneCard(),
                       _buildDeliveryOptionsRow(),
                       _buildRouteSelectionCard(),

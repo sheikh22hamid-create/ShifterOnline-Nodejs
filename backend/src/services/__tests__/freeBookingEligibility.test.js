@@ -231,6 +231,13 @@ describe("getUserStatus", () => {
     expect(out.state).toBe("locked");
     expect(out.message).toMatch(/referral/i);
   });
+  it("not_premium is only reported while the offer is open in the city", async () => {
+    pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: false, free_booking_just_unlocked: false });
+    expect((await svc.getUserStatus(7)).state).toBe("not_premium");
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ enabled: false });
+    expect((await svc.getUserStatus(7)).state).toBe("offer_off");
+  });
   it("locked message names the city's required referral count", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true, free_booking_just_unlocked: false });
     prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), referrals_required: 3 });

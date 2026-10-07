@@ -197,6 +197,8 @@ async function getUserStatus(uid) {
     locked = healed.locked;
   }
 
+  // Non-premium users only hear about the offer (so the app can upsell Premium) while it is live in their city.
+  if (!premium && !cityOpen) return { state: OUTCOME.OFFER_OFF, message: rules.OUTCOME_MESSAGE[OUTCOME.OFFER_OFF] };
   const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: true });
   if (outcome !== OUTCOME.ELIGIBLE) return { state: outcome, message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)) };
   if (user.free_booking_just_unlocked) {
