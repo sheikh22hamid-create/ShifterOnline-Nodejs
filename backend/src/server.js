@@ -28,6 +28,7 @@ const {
   SCHEDULED_ORDER_SWEEP_INTERVAL_MS,
   LEAD_EXPIRY_SWEEP_INTERVAL_MS,
   DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS,
+  BOOKING_GUARANTEE_SWEEP_INTERVAL_MS,
 } = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
@@ -51,6 +52,15 @@ server.listen(PORT, () => {
 // Best-effort cleanup of whatever a previous crash/restart left behind.
 // Never blocks startup — listen() above already happened.
 dispatchManager.reconcileStaleOffersOnStartup();
+
+// Booking Guarantee: expire overdue admin-assignment windows (cancel + compensate). The case row and its
+// deadline live in the DB, so this is restart-safe; run once at boot (after the startup reconciliation
+// above, which deliberately skips orders held by an open case) and then on an interval.
+const bookingGuaranteeService = require("./services/bookingGuaranteeService");
+const sweepBookingGuarantee = () =>
+  bookingGuaranteeService.expireDue().catch((err) => logger.error("bookingGuarantee sweep failed:", err));
+setTimeout(sweepBookingGuarantee, 5000);
+setInterval(sweepBookingGuarantee, BOOKING_GUARANTEE_SWEEP_INTERVAL_MS);
 
 // Customer no-show auto-cancel — see tripLifecycle.sweepOverduePickups doc
 // comment for why this is a periodic DB-anchored sweep rather than a
