@@ -340,17 +340,34 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   }
 
   // Pickup ETA for the customer (Google driver -> pickup time + admin buffer)
-  // and the deadline pickupEtaService tracks. Immediate bookings only:
-  // scheduled / next-day orders are accepted long before pickup is due, so a
-  // deadline measured from accept would be meaningless for them. Best-effort -
-  // a failure (or no driver GPS fix) just means no ETA, never a failed accept.
-  const etaBookingType = Number(order.booking_type);
-  const pickupEta = !etaBookingType || etaBookingType === 1 ? await pickupEtaService.computeAndStorePickupEta(orderId) : null;
+  // and the deadline pickupEtaService tracks (see pickupEtaApplies for which
+  // bookings get one). Best-effort - a failure (or no driver GPS fix) just
+  // means no ETA, never a failed accept.
+  const pickupEta = pickupEtaApplies(order) ? await pickupEtaService.computeAndStorePickupEta(orderId) : null;
 
   return {
     order: { ...order, ...priced, ...(pickupEta || {}), advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
     rider,
   };
+}
+
+// A scheduled order counts as "due" this long before its time as well: a driver accepting it just
+// ahead of the pickup time is already on the way (the dispatch sweep ticks every 30s).
+const PICKUP_ETA_DUE_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * Whether an accepted order gets a pickup ETA / deadline. Instant bookings always do. A scheduled
+ * booking (booking_type 2) does once its time has come - accepted at go-live the driver is heading
+ * to pickup right now, so a deadline from the accept is meaningful. One accepted well ahead of its
+ * time (e.g. an admin force-assign) and next-day orders do not: a deadline measured from accept
+ * would be meaningless for them.
+ */
+function pickupEtaApplies(order, now = Date.now()) {
+  const type = Number(order?.booking_type);
+  if (!type || type === 1) return true;
+  if (type !== 2) return false;
+  const scheduleMs = order.schedule_date_time ? Date.parse(order.schedule_date_time) : NaN;
+  return Number.isNaN(scheduleMs) || scheduleMs - now <= SCHEDULED_ORDER_GO_LIVE_LEAD_MS + PICKUP_ETA_DUE_GRACE_MS;
 }
 
 /**
@@ -2182,6 +2199,7 @@ async function dispatchDueScheduledOrders() {
 }
 
 module.exports = {
+  pickupEtaApplies,
   acceptOrder,
   claimOrderForRider,
   finalizeAcceptedOrder,

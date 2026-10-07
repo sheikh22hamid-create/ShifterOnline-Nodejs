@@ -122,8 +122,26 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   AnimationController? _driverAnimController;
   bool _mapFitted = false;
 
+  Timer? _etaExpiryTimer;
+
+  /// The backend only flips `pickup_eta_expired` when the order is read, and nothing
+  /// else refreshes this screen when a quiet (stuck) driver runs past the deadline -
+  /// so the "driver is late, cancel for free" state used to appear only after some
+  /// unrelated refresh. Wake up at the server-computed deadline and re-read the order.
+  void _scheduleEtaExpiryRefresh() {
+    _etaExpiryTimer?.cancel();
+    _etaExpiryTimer = null;
+    if (_pickupEtaExpired) return;
+    final remaining = int.tryParse(orderProduc?["pickup_eta_remaining_seconds"]?.toString() ?? "") ?? 0;
+    if (remaining <= 0) return;
+    _etaExpiryTimer = Timer(Duration(seconds: remaining + 2), () {
+      if (mounted) pageRefresh();
+    });
+  }
+
   @override
   void dispose() {
+    _etaExpiryTimer?.cancel();
     _advanceTimer?.cancel();
     _settlementPollTimer?.cancel();
     _waitingTicker?.cancel();
@@ -4372,6 +4390,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final hasRider = riderId.isNotEmpty && riderId != "0" && riderId != "null";
     final eta = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
     final km = double.tryParse(orderProduc?["pickup_distance_km"]?.toString() ?? "") ?? 0;
+    // The moment the driver is due at pickup (Google ETA + buffer), in the phone's local time.
+    final pickupDeadline = DateTime.tryParse(orderProduc?["pickup_deadline_at"]?.toString() ?? "")?.toLocal();
+    final pickupDeadlineLabel = pickupDeadline == null ? "" : DateFormat('h:mm a').format(pickupDeadline);
 
     if (s == "completed") {
       final date = _formatOrderDate(orderProduc?["order_deliver_date"]?.toString());
@@ -4493,7 +4514,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         headerSub: "Driver is on the way to pickup".tr,
         etaCaption: eta > 0 ? "Arriving at pickup in".tr : "",
         etaValue: eta > 0 ? "$eta ${"min".tr}" : "",
-        etaFoot: km > 0 ? "${km.toStringAsFixed(1)} km ${"away".tr}" : "",
+        etaFoot: [
+          if (km > 0) "${km.toStringAsFixed(1)} km ${"away".tr}",
+          if (pickupDeadlineLabel.isNotEmpty) "${"by".tr} $pickupDeadlineLabel",
+        ].join(" · "),
       );
     }
     return _HeroState(
@@ -5912,6 +5936,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           checkAdvancePaymentStatus();
           _checkSettlementStatusAndPoll();
           _maybeAutoOpenFeedback();
+          _scheduleEtaExpiryRefresh();
         }
       }
     });

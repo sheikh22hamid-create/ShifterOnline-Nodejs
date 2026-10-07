@@ -486,6 +486,36 @@ describe("tripLifecycle.rejectOrder", () => {
   });
 });
 
+describe("tripLifecycle.pickupEtaApplies - which accepted orders get a pickup ETA / deadline", () => {
+  const now = Date.parse("2026-10-08T12:00:00Z");
+  const at = (offsetMs) => new Date(now + offsetMs).toISOString();
+
+  it("always for an instant booking (booking_type 1, or unset)", () => {
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 1 }, now)).toBe(true);
+    expect(tripLifecycle.pickupEtaApplies({}, now)).toBe(true);
+  });
+
+  it("for a scheduled booking whose time has come (accepted at or after go-live)", () => {
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2, schedule_date_time: at(0) }, now)).toBe(true);
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2, schedule_date_time: at(-10 * 60000) }, now)).toBe(true);
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2, schedule_date_time: at(60 * 1000) }, now)).toBe(true); // within the 2-minute grace
+  });
+
+  it("not for a scheduled booking accepted well ahead of its time (e.g. admin force-assign)", () => {
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2, schedule_date_time: at(3 * 60 * 1000) }, now)).toBe(false);
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2, schedule_date_time: at(5 * 3600 * 1000) }, now)).toBe(false);
+  });
+
+  it("a scheduled booking with an unparseable time is treated as due, like the dispatch sweep does", () => {
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2, schedule_date_time: "garbage" }, now)).toBe(true);
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 2 }, now)).toBe(true);
+  });
+
+  it("never for a next-day booking (booking_type 3)", () => {
+    expect(tripLifecycle.pickupEtaApplies({ booking_type: 3, schedule_date_time: at(0) }, now)).toBe(false);
+  });
+});
+
 describe("tripLifecycle.customerCancel", () => {
   beforeEach(() => {
     jest.clearAllMocks();
