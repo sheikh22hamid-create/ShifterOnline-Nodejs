@@ -32,6 +32,7 @@ class _SocketListeners {
   final SocketEventCallback? onDestinationUpdated;
   final SocketEventCallback? onScheduleConfirm;
   final SocketEventCallback? onSettlementUpdated;
+  final SocketEventCallback? onGuaranteePending;
 
   const _SocketListeners({
     this.onOrderAssigned,
@@ -43,6 +44,7 @@ class _SocketListeners {
     this.onDestinationUpdated,
     this.onScheduleConfirm,
     this.onSettlementUpdated,
+    this.onGuaranteePending,
   });
 }
 
@@ -76,6 +78,7 @@ class NodeSocketManager with WidgetsBindingObserver {
     SocketEventCallback? onDestinationUpdated,
     SocketEventCallback? onScheduleConfirm,
     SocketEventCallback? onSettlementUpdated,
+    SocketEventCallback? onGuaranteePending,
   }) {
     final id = ++_nextSubscriptionId;
     _listeners[id] = _SocketListeners(
@@ -88,6 +91,7 @@ class NodeSocketManager with WidgetsBindingObserver {
       onDestinationUpdated: onDestinationUpdated,
       onScheduleConfirm: onScheduleConfirm,
       onSettlementUpdated: onSettlementUpdated,
+      onGuaranteePending: onGuaranteePending,
     );
     return NodeSocketSubscription(this, id);
   }
@@ -156,6 +160,7 @@ class NodeSocketManager with WidgetsBindingObserver {
     _socket!.on('order:status_changed', (data) => _dispatch((l) => l.onStatusChanged, data));
     _socket!.on('order:completed', (data) => _dispatch((l) => l.onOrderCompleted, data));
     _socket!.on('order:no_driver_found', (data) => _dispatch((l) => l.onNoDriverFound, data));
+    _socket!.on('order:guarantee_pending', (data) => _dispatch((l) => l.onGuaranteePending, data));
     _socket!.on('order:driver_cancelled', (data) => _dispatch((l) => l.onDriverCancelled, data));
     _socket!.on('order:destination_updated', (data) => _dispatch((l) => l.onDestinationUpdated, data));
     _socket!.on('order:schedule_confirm', (data) => _dispatch((l) => l.onScheduleConfirm, data));

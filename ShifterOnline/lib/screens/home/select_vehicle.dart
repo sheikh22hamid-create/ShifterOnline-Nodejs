@@ -21,6 +21,8 @@ import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
 import 'confirm_order_map.dart';
 import 'coupon_sheet.dart';
+import 'package:goParcel/services/booking_guarantee_api_service.dart';
+import 'package:goParcel/utils/booking_guarantee.dart';
 import 'free_booking_dialogs.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
@@ -76,6 +78,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   List<Map<String, dynamic>> _vehicles = [];
   List<Map<String, dynamic>> _models = [];
   int? _selectedModelIndex;
+  double _guaranteeAmount = 0;
+  int _guaranteeRequestSeq = 0;
 
   List<String> _vehicleDetailNotes = [];
   double? _fareDistanceKm;
@@ -598,6 +602,20 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     return int.tryParse(match?.group(1) ?? '') ?? (fallbackIndex + 1);
   }
 
+  /// Refreshes the "if no driver is found, you get ₹X" line for the CURRENT model selection. The quote is
+  /// computed server-side from the same id list the order will send; a stale response is ignored.
+  Future<void> _refreshGuaranteeQuote() async {
+    final model = _selectedModel;
+    final seq = ++_guaranteeRequestSeq;
+    if (model == null) {
+      if (mounted) setState(() => _guaranteeAmount = 0);
+      return;
+    }
+    final amount = await BookingGuaranteeApiService.quote(_bookingDeliveryTypeIds(model));
+    if (!mounted || seq != _guaranteeRequestSeq) return;
+    setState(() => _guaranteeAmount = amount);
+  }
+
   List<int> _bookingDeliveryTypeIds(Map<String, dynamic> selectedModel) {
     final selectedIndex = _models.indexOf(selectedModel);
     final selectedOrder = _modelOrder(selectedModel, selectedIndex < 0 ? 0 : selectedIndex);
@@ -624,6 +642,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       return;
     }
     setState(() { _loadingModels = true; _modelsError = null; _models = []; _selectedModelIndex = null; });
+    _refreshGuaranteeQuote();
     final uid = _storage.read('Uid');
     final response = await ApiWrapper.dataPostNode(Config.nodeFareEstimate, {
       'cat_id': int.tryParse(categoryId.toString()) ?? categoryId,
@@ -660,6 +679,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _planDiscountMaxCap = _number(response['plan_discount_max_cap']);
         _vehicleMaxExtraStops = int.tryParse((response['max_extra_stops'] ?? '').toString());
       });
+      _refreshGuaranteeQuote();
     } else {
       setState(() { _loadingModels = false; _modelsError = _text(response is Map ? response['ResponseMsg'] : null, 'Could not load delivery options.'); });
     }
@@ -2022,7 +2042,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
-      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () => setState(() => _selectedModelIndex = index), child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
+      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () { setState(() => _selectedModelIndex = index); _refreshGuaranteeQuote(); }, child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
       if (_selectedModel != null) ...[const SizedBox(height: 14), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
         if ((_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) || (_useReferralPoints && _referralRedeemablePoints > 0)) ...[
           if (_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) ...[
@@ -2358,6 +2378,22 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (guaranteeLine(_guaranteeAmount) != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.verified_user_outlined, size: 16, color: linercolor),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    guaranteeLine(_guaranteeAmount)!.tr,
+                    style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (_currentBookingType == 2) ...[
           InkWell(
             onTap: _pickScheduleDateTime,

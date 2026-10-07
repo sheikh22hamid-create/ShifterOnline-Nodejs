@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 import '../../../utils/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:goParcel/utils/booking_guarantee.dart';
 
 import 'screens/authscreen/signin.dart';
 
@@ -79,7 +80,9 @@ class BottombarState extends State<Bottombar> {
       Get.dialog(
         AlertDialog(
           title: Text("No drivers found".tr),
-          content: Text("None of the available drivers accepted your scheduled order #$orderId. Please try booking again.".tr),
+          content: Text(parseGuaranteeAmount(data['compensation_amount']) > 0
+              ? "No driver accepted your scheduled order #$orderId. ${noDriverMessage(parseGuaranteeAmount(data['compensation_amount'])).replaceFirst('No driver found. ', '')}".tr
+              : "None of the available drivers accepted your scheduled order #$orderId. Please try booking again.".tr),
           actions: [TextButton(onPressed: () => Get.back(), child: Text("OK".tr))],
         ),
       );

@@ -150,6 +150,7 @@ class Config {
   // Node backend order-flow endpoints (relative to nodeBaseUrl, no leading slash)
   static const String nodeOrderCreate = "api/order/create";
   static const String nodeOrderDetails = "api/order/details";
+  static const String nodeGuaranteeQuote = "api/order/guarantee-quote";
   static const String nodeOrderCancel = "api/order/customer-cancel";
   static const String nodeDestinationPreview = "api/order/destination-change/preview";
   static const String nodeDestinationConfirm = "api/order/destination-change/confirm";
