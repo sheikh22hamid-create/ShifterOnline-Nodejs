@@ -29,11 +29,11 @@ const REASON = Object.freeze({
 });
 
 const OUTCOME_MESSAGE = Object.freeze({
-  [OUTCOME.ELIGIBLE]: "Free Booking applied. After the trip is completed and paid, the full trip amount will be credited to your Shifter wallet.",
-  [OUTCOME.NO_FREE_VEHICLE]: "No free vehicle is available near your pickup right now. You can continue with a paid vehicle, but you will NOT receive any refund for this trip.",
-  [OUTCOME.LOCKED]: "Free Booking is locked. Complete a successful referral to unlock it.",
-  [OUTCOME.NOT_PREMIUM]: "Free Booking is only for Premium users.",
-  [OUTCOME.OFFER_OFF]: "Free Booking is not available right now.",
+  [OUTCOME.ELIGIBLE]: "Free Booking Chance applied. If a free pool vehicle accepts, the full trip amount will be credited to your Shifter wallet after completion.",
+  [OUTCOME.NO_FREE_VEHICLE]: "No free vehicle is available near your pickup right now. Your booking will continue with standard vehicles.",
+  [OUTCOME.LOCKED]: "Free Booking Chance is locked. Complete a successful referral to unlock it.",
+  [OUTCOME.NOT_PREMIUM]: "Free Booking Chance is only for Premium users.",
+  [OUTCOME.OFFER_OFF]: "Free Booking Chance is not available right now.",
   [OUTCOME.OPEN_BOOKING]: "Your earlier Free Booking is still being settled. You can book again once it is credited.",
 });
 
@@ -46,7 +46,7 @@ const referralsRequiredOf = (setting) => {
 /** Customer-facing text for an outcome; the locked text names how many referrals are needed. */
 function outcomeMessage(outcome, referralsRequired = 1) {
   if (outcome === OUTCOME.LOCKED && referralsRequired > 1) {
-    return `Free Booking is locked. Complete ${referralsRequired} successful referrals to unlock it.`;
+    return `Free Booking Chance is locked. Complete ${referralsRequired} successful referrals to unlock it.`;
   }
   return OUTCOME_MESSAGE[outcome];
 }

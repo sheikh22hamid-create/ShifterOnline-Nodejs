@@ -2605,16 +2605,69 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final isFinished = status == "completed" || status == "cancelled" || status == "cancel";
     final otp = (orderProduc?["otp"] ?? "").toString();
     final hasOtp = !isFinished && otp.isNotEmpty;
+    final isFreeBooking = orderProduc?["free_booking"] is Map &&
+        (orderProduc?["free_booking"]?["is_free"] == true || orderProduc?["free_booking"]?["is_free"] == "true");
 
     // OTP first and full width: it is the one thing the customer must act on at pickup.
     return Column(
       children: [
+        if (isFreeBooking) ...[
+          _buildFreeRideBadgeCard(),
+          const SizedBox(height: 14),
+        ],
         if (hasOtp) ...[
           _buildOtpCard(otp),
           const SizedBox(height: 14),
         ],
         _buildRiderDetailsCard(),
       ],
+    );
+  }
+
+  Widget _buildFreeRideBadgeCard() {
+    final fb = orderProduc?["free_booking"];
+    final badgeText = fb is Map && fb["badge_text"] != null ? fb["badge_text"].toString() : "Free Ride Active 🎁";
+    final msg = fb is Map && fb["message"] != null
+        ? fb["message"].toString()
+        : "100% of the trip amount will be credited to your Shifter wallet upon completion.";
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xff10b981).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xff10b981).withValues(alpha: 0.4), width: 1.2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xff10b981).withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xff059669), size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  badgeText.tr,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xff059669)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  msg.tr,
+                  style: const TextStyle(fontSize: 12, height: 1.25),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

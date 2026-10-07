@@ -72,6 +72,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _booking = false;
   bool _freeBookingRequested = false;
   bool _checkingFreeBooking = false;
+  bool _freeRideChanceAvailable = false;
+  bool _freeRideChanceLocked = false;
+  String? _freeRideChanceMessage;
   String? _availabilityError;
   int? _radiusSuggestionShownFor;
   String? _modelsError;
@@ -148,6 +151,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       _fetchReferralDiscountInfo();
       _fetchGoodsTypes();
       _fetchNextDayEligibility();
+      _fetchFreeRideChanceStatus();
     });
   }
 
@@ -155,6 +159,31 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   void dispose() {
     _goodsOtherController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchFreeRideChanceStatus() async {
+    final uid = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
+    if (uid == 0) return;
+    try {
+      final res = await FreeBookingApiService.status(uid);
+      if (!mounted) return;
+      final state = res['state']?.toString();
+      setState(() {
+        if (state == 'available' || state == 'unlocked') {
+          _freeRideChanceAvailable = true;
+          _freeRideChanceLocked = false;
+          _freeRideChanceMessage = res['message']?.toString();
+        } else if (state == 'locked') {
+          _freeRideChanceAvailable = false;
+          _freeRideChanceLocked = true;
+          _freeRideChanceMessage = res['message']?.toString();
+        } else {
+          _freeRideChanceAvailable = false;
+          _freeRideChanceLocked = false;
+          _freeRideChanceMessage = null;
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _fetchGoodsTypes() async {
@@ -801,28 +830,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ApiWrapper.showToastMessage('This vehicle allows only $maxStops extra ${maxStops == 1 ? 'stop' : 'stops'}. Please remove ${_stopsData.length - maxStops} to continue.');
       return;
     }
-    // Free Booking Offer: only instant bookings, and only for premium customers (the server decides).
-    _freeBookingRequested = false;
-    if (_currentBookingType == 1) {
-      _checkingFreeBooking = true;
-      try {
-        final uid = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
-        final fb = await FreeBookingApiService.check(
-          uid: uid, plat: _pickup.latitude, plong: _pickup.longitude,
-          category: _text(_categoryOf(selected)['cat_name'] ?? _categoryOf(selected)['name'], _vehicleName(selected)),
-          radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
-        );
-        if (!mounted) return;
-        if (fb['outcome'] == 'eligible') {
-          if (!await showFreeBookingAppliedDialog()) return;
-          _freeBookingRequested = true;
-        } else if (fb['outcome'] == 'no_free_vehicle') {
-          if (!await showNoFreeVehicleDialog()) return;
-        }
-      } finally {
-        _checkingFreeBooking = false;
-      }
-    }
+    // Free Booking Chance: active for instant bookings when user has free ride chance available
+    _freeBookingRequested = _currentBookingType == 1 && _freeRideChanceAvailable;
     final walletBalance = await _fetchWalletBalance();
     if (!mounted) return;
     final category = _categoryOf(selected);
@@ -863,25 +872,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       setState(() => _booking = false);
       ApiWrapper.showToastMessage('Selected delivery model is unavailable.');
       return;
-    }
-    // Free Booking re-check BEFORE any wallet debit: if the offer no longer applies, ask first.
-    if (_freeBookingRequested) {
-      final uidNow = int.tryParse(_storage.read('Uid')?.toString() ?? '') ?? 0;
-      final fb = await FreeBookingApiService.check(
-        uid: uidNow, plat: _pickup.latitude, plong: _pickup.longitude,
-        category: _text(category['cat_name'] ?? category['name'], _vehicleName(_selected!)),
-        radiusKm: _selectedRadiusKm, bookingType: _currentBookingType,
-      );
-      if (!mounted) return;
-      if (fb['outcome'] != 'eligible') {
-        _freeBookingRequested = false;
-        final proceed = await showNoFreeVehicleDialog();
-        if (!mounted) return;
-        if (!proceed) {
-          setState(() => _booking = false);
-          return;
-        }
-      }
     }
     final login = _storage.read('UserLogin');
     // Wallet withdrawal runs only for payValue == -2; a receiver-pays order is
@@ -982,19 +972,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     } else {
       final msg = _text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.');
       if (response is Map && response['code']?.toString() == 'FREE_BOOKING_UNAVAILABLE') {
-        // The pool vehicle went away between the check and the booking: ask again, then book normally.
         _freeBookingRequested = false;
-        if (payValue == -2) {
-          // The wallet was already debited for this order: never offer Cancel and never debit again.
-          ApiWrapper.showToastMessage('A free vehicle just became unavailable; placing your booking as a normal booking (no refund).');
-          await _submitOrder(payValue, category, model, fee, receiverPay, true);
-          return;
-        }
-        setState(() => _booking = true);
-        final proceed = await showNoFreeVehicleDialog();
-        if (!mounted) return;
-        setState(() => _booking = false);
-        if (proceed) await _submitOrder(payValue, category, model, fee, receiverPay);
+        await _submitOrder(payValue, category, model, fee, receiverPay, walletAlreadyDebited || payValue == -2);
         return;
       }
       final isSettlementBlock = response is Map &&
@@ -1365,6 +1344,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                 children: [
                   if (_nextDayEligible) _nextDayDeliveryBanner(),
+                  if (_freeRideChanceAvailable) _freeRideChanceBanner(),
+                  if (_freeRideChanceLocked) _freeRideChanceLockedBanner(),
                   _routeSummary(),
                   const SizedBox(height: 18),
                   Row(
@@ -1427,6 +1408,113 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               _bottomCta(),
           ],
         ),
+    );
+  }
+
+  Widget _freeRideChanceBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: showFreeRideChanceInfoDialog,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xff10b981).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xff10b981).withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff10b981).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.card_giftcard_rounded, color: Color(0xff10b981), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Free Ride Chance Active'.tr,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xff10b981)),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff10b981),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('PREMIUM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                          ),
+                          const Spacer(),
+                          const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xff10b981)),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Instant booking searches free pool vehicles first. If assigned, 100% fare is credited to your wallet!'.tr,
+                        style: TextStyle(color: notifier.text, fontSize: 11, height: 1.3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _freeRideChanceLockedBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.lock_outline_rounded, color: Colors.orange.shade800, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Free Ride Chance Locked'.tr,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.orange.shade800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _freeRideChanceMessage ?? 'Complete a successful referral to unlock your next free ride.'.tr,
+                  style: TextStyle(color: notifier.text, fontSize: 11, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -279,7 +279,7 @@ export default function FreeBookingOffer() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Gift size={22} style={{ color: 'var(--ink)' }} />
-          <h1 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>Free Booking Offer</h1>
+          <h1 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>Free Booking Chance Offer</h1>
         </div>
         {isSuper && (
           <select value={cityId} onChange={(e) => setCityId(e.target.value)} className={inputClass} style={{ ...inputStyle, width: 220, marginTop: 0 }}>
@@ -287,6 +287,16 @@ export default function FreeBookingOffer() {
             {cities.map((c) => <option key={c.id} value={c.id}>{c.title || c.name}</option>)}
           </select>
         )}
+      </div>
+
+      <div className="rounded-2xl border p-4 text-xs space-y-1" style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
+        <p className="font-semibold text-sm" style={{ color: 'var(--ink)' }}>✨ How Free Booking Chance Works</p>
+        <p>
+          Premium users book rides with the <strong>Free Ride Chance</strong> active. During dispatch, the system searches company <strong>Offer Pool</strong> vehicles first. If a pool vehicle accepts, the customer gets 100% of the fare credited to their Shifter wallet upon completion.
+        </p>
+        <p>
+          If no pool vehicle is available or nearby, dispatch <strong>automatically switches to standard drivers</strong> so the customer&apos;s booking is never blocked or cancelled. Once credited, the benefit is locked until the customer completes the configured number of referrals.
+        </p>
       </div>
 
       <div className="flex gap-2">

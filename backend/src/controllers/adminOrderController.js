@@ -14,6 +14,7 @@ const { buildNextDaySequence } = require("../utils/geoDistance");
 const receiverPayService = require("../services/receiverPayService");
 const receiverTrackMessage = require("../services/receiverTrackMessage");
 const bookingGuarantee = require("../services/bookingGuaranteeService");
+const freeBookingService = require("../services/freeBookingService");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -275,11 +276,18 @@ async function assignRider(req, res) {
       logger.error(`assignRider: booking guarantee close failed for order ${orderId}:`, guaranteeErr);
     }
 
+    try {
+      await freeBookingService.recordAcceptance(orderId, riderId);
+    } catch (fbErr) {
+      logger.error(`assignRider: free-booking recordAcceptance failed for order ${orderId}:`, fbErr);
+    }
+
     await prisma.order_status_history.create({
       data: { order_id: orderId, rider_id: riderId, status: "Processing", remark: `Manually assigned by admin #${req.user.id} (${req.user.username})` },
     });
 
     const updatedOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+    const freeBookingView = await freeBookingService.getViewForOrder(updatedOrder.id);
 
     try {
       const io = getIO();
@@ -298,6 +306,7 @@ async function assignRider(req, res) {
         vehicle_no: rider.vehicle_no,
         order_status: updatedOrder.order_status,
         o_status: updatedOrder.o_status,
+        free_booking: freeBookingView,
       });
     } catch (socketErr) {
       logger.error(`assignRider: socket notify failed for order ${orderId}:`, socketErr);

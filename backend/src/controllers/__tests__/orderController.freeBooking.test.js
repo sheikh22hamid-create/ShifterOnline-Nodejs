@@ -57,24 +57,8 @@ beforeEach(() => {
   freeBookingService.createForOrder.mockResolvedValue({ id: 1 });
 });
 
-describe("createOrderCore - free booking", () => {
-  it("refuses with FREE_BOOKING_UNAVAILABLE when the re-check is not eligible, and creates no order", async () => {
-    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "no_free_vehicle", cityId: 2, planId: 1, poolRiderId: null });
-    const result = await createOrderCore({ ...input, freeBooking: true });
-    expect(result).toMatchObject({ ok: false, code: "FREE_BOOKING_UNAVAILABLE", outcome: "no_free_vehicle" });
-    expect(prisma.pkg_order.create).not.toHaveBeenCalled();
-    expect(freeBookingService.createForOrder).not.toHaveBeenCalled();
-  });
-
-  it("refuses a free booking for a scheduled booking (booking_type 2): the service is told the booking type", async () => {
-    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "offer_off", cityId: 2, planId: 1, poolRiderId: null });
-    const result = await createOrderCore({ ...input, bookingType: 2, freeBooking: true });
-    expect(result.code).toBe("FREE_BOOKING_UNAVAILABLE");
-    expect(freeBookingService.checkEligibility).toHaveBeenCalledWith(expect.objectContaining({ bookingType: 2, uid: 1, category: "Bike" }));
-    expect(prisma.pkg_order.create).not.toHaveBeenCalled();
-  });
-
-  it("creates the order and the free-booking row when eligible", async () => {
+describe("createOrderCore - free booking chance", () => {
+  it("creates the order with free_booking true when eligible, searching pool first", async () => {
     freeBookingService.checkEligibility.mockResolvedValue({ outcome: "eligible", cityId: 2, planId: 1, poolRiderId: 9 });
     const result = await createOrderCore({ ...input, freeBooking: true });
     expect(result.ok).toBe(true);
@@ -82,6 +66,25 @@ describe("createOrderCore - free booking", () => {
     expect(freeBookingService.createForOrder).toHaveBeenCalledWith(
       expect.objectContaining({ order: expect.objectContaining({ id: 777 }), check: expect.objectContaining({ outcome: "eligible" }) })
     );
+  });
+
+  it("still creates the order and sets up pool search when outcome is no_free_vehicle (chance active)", async () => {
+    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "no_free_vehicle", cityId: 2, planId: 1, poolRiderId: null });
+    const result = await createOrderCore({ ...input, freeBooking: true });
+    expect(result.ok).toBe(true);
+    expect(result.order.free_booking).toBe(true);
+    expect(prisma.pkg_order.create).toHaveBeenCalled();
+    expect(freeBookingService.createForOrder).toHaveBeenCalled();
+  });
+
+  it("creates a normal booking (free_booking false) when user is not eligible (e.g. scheduled or offer_off) without failing", async () => {
+    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "offer_off", cityId: 2, planId: 1, poolRiderId: null });
+    const result = await createOrderCore({ ...input, bookingType: 2, freeBooking: true });
+    expect(result.ok).toBe(true);
+    expect(result.order.free_booking).toBe(false);
+    expect(freeBookingService.checkEligibility).toHaveBeenCalledWith(expect.objectContaining({ bookingType: 2, uid: 1, category: "Bike" }));
+    expect(prisma.pkg_order.create).toHaveBeenCalled();
+    expect(freeBookingService.createForOrder).not.toHaveBeenCalled();
   });
 
   it("a failing free-booking row write never fails the booking", async () => {
@@ -100,7 +103,7 @@ describe("createOrderCore - free booking", () => {
   });
 });
 
-describe("createOrder HTTP handler - free booking", () => {
+describe("createOrder HTTP handler - free booking chance", () => {
   const body = {
     uid: 1, category: "Bike", delivery_type: [6], booking_type: 1, plat: 28.7, plong: 77.1, paddress: "A",
     pick_name: "P", pmobile: "999", pick_type: "", dlat: 28.8, dlong: 77.2, daddress: "B", drop_name: "Ramesh",
@@ -109,19 +112,27 @@ describe("createOrder HTTP handler - free booking", () => {
   };
   const res = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() });
 
-  it("maps FREE_BOOKING_UNAVAILABLE to HTTP 409 with the outcome", async () => {
-    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "no_free_vehicle", cityId: 2, planId: 1, poolRiderId: null });
+  it("returns HTTP 200 with free_booking true when eligible", async () => {
+    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "eligible", cityId: 2, planId: 1, poolRiderId: 9 });
     const r = res();
     await createOrder({ body: { ...body, free_booking: true } }, r);
-    expect(r.status).toHaveBeenCalledWith(409);
-    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ code: "FREE_BOOKING_UNAVAILABLE", outcome: "no_free_vehicle" }));
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ order_id: 777, free_booking: true }));
   });
 
-  it("accepts free_booking as the string 'true' and reports free_booking in the response", async () => {
+  it("accepts free_booking as string 'true' and returns HTTP 200 with free_booking true", async () => {
     freeBookingService.checkEligibility.mockResolvedValue({ outcome: "eligible", cityId: 2, planId: 1, poolRiderId: 9 });
     const r = res();
     await createOrder({ body: { ...body, free_booking: "true" } }, r);
     expect(r.status).toHaveBeenCalledWith(200);
     expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ order_id: 777, free_booking: true }));
+  });
+
+  it("returns HTTP 200 with free_booking false when offer is off", async () => {
+    freeBookingService.checkEligibility.mockResolvedValue({ outcome: "offer_off", cityId: 2, planId: null, poolRiderId: null });
+    const r = res();
+    await createOrder({ body: { ...body, free_booking: true } }, r);
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(r.json).toHaveBeenCalledWith(expect.objectContaining({ order_id: 777, free_booking: false }));
   });
 });

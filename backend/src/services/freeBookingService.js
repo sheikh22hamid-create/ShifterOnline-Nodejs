@@ -172,7 +172,12 @@ async function getDispatchPoolFilter(order) {
       select: { status: true, city_id: true },
     });
     if (!row || row.status !== STATUS.CONFIRMED) return null;
-    return await poolRiderIds(row.city_id);
+    const ids = await poolRiderIds(row.city_id);
+    if (!ids || ids.length === 0) {
+      await fallbackToNormalDispatch(order.id);
+      return null;
+    }
+    return ids;
   } catch (err) {
     logger.error(`freeBookingService.getDispatchPoolFilter failed for order ${order?.id}:`, err);
     return null;
@@ -203,9 +208,9 @@ async function getUserStatus(uid) {
   if (outcome !== OUTCOME.ELIGIBLE) return { state: outcome, message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)) };
   if (user.free_booking_just_unlocked) {
     await prisma.tbl_user.updateMany({ where: { id: userId, free_booking_just_unlocked: true }, data: { free_booking_just_unlocked: false } });
-    return { state: "unlocked", message: "Free Booking unlocked! Your next trip with a free vehicle can be credited back." };
+    return { state: "unlocked", message: "Free Ride Chance unlocked! Your next trip with a free vehicle can be credited back." };
   }
-  return { state: "available", message: "Free Booking available. Book with a free vehicle and get the trip amount back in your wallet." };
+  return { state: "available", message: "Free Ride Chance active. Book your ride and if a free pool vehicle is assigned, get 100% cashback in your wallet." };
 }
 
 const notifyUser = (userId, title, description) =>
@@ -460,9 +465,61 @@ async function setUserLock(userId, locked) {
   });
 }
 
+async function getViewForOrder(orderId) {
+  try {
+    const row = await prisma.free_booking_order.findUnique({
+      where: { order_id: Number(orderId) },
+      select: {
+        id: true,
+        status: true,
+        accepted_in_pool: true,
+        actual_fare: true,
+        credit_amount: true,
+        not_eligible_reason: true,
+      },
+    });
+    if (!row) {
+      return {
+        is_free: false,
+        status: "STANDARD",
+        badge_text: "Standard Ride",
+        message: "Standard booking",
+      };
+    }
+    const isFree = [STATUS.CONFIRMED, STATUS.REWARD_PENDING, STATUS.REWARD_CREDITED].includes(row.status) && Boolean(row.accepted_in_pool);
+    let badgeText = "Standard Ride";
+    let message = "Fulfilled by standard vehicle";
+    if (isFree) {
+      if (row.status === STATUS.CONFIRMED) {
+        badgeText = "Free Ride Active 🎁";
+        message = "Fulfilled by Free Pool Vehicle. 100% fare will be credited to your Shifter wallet upon completion.";
+      } else if (row.status === STATUS.REWARD_PENDING) {
+        badgeText = "Free Ride - Reward Pending 🎁";
+        message = "Trip completed. 100% fare will be credited to your wallet once payment is settled.";
+      } else if (row.status === STATUS.REWARD_CREDITED) {
+        badgeText = "Free Ride - 100% Credited 🎉";
+        message = `₹${row.credit_amount || 0} credited to your Shifter wallet!`;
+      }
+    } else if (row.status === STATUS.NOT_ELIGIBLE && row.not_eligible_reason === REASON.POOL_UNAVAILABLE) {
+      badgeText = "Standard Ride";
+      message = "No free pool vehicle was available; booking continues as a standard ride.";
+    }
+    return {
+      is_free: isFree,
+      status: row.status,
+      badge_text: badgeText,
+      message,
+      credit_amount: row.credit_amount,
+    };
+  } catch (err) {
+    logger.error(`freeBookingService.getViewForOrder failed for order ${orderId}:`, err);
+    return { is_free: false, status: "STANDARD", badge_text: "Standard Ride", message: "" };
+  }
+}
+
 module.exports = {
   getCitySetting, poolRiderIds, findOpenBooking, findPoolDriver,
   checkEligibility, createForOrder, getDispatchPoolFilter, getUserStatus,
   recordAcceptance, markCompleted, tryCredit, fallbackToNormalDispatch,
-  unlockForReferral, setUserLock, voidOrder, reapCancelled,
+  unlockForReferral, setUserLock, voidOrder, reapCancelled, getViewForOrder,
 };

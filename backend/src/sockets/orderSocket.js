@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const tripLifecycle = require("../services/tripLifecycle");
+const freeBookingService = require("../services/freeBookingService");
 const logger = require("../utils/logger");
 const { getAdvancePaymentTimerInfo } = require("../utils/advancePaymentTimer");
 
@@ -55,15 +56,17 @@ function registerOrderHandlers(io, socket) {
       // waiting_screen.dart), rendered before any REST call lands. Leaving
       // these out here left the driver card showing "New"/blank rating on
       // first paint until a later pageRefresh() silently overwrote it.
-      const [ratingAgg, totalTrips] = await Promise.all([
+      const [ratingAgg, totalTrips, freeBookingView] = await Promise.all([
         prisma.pkg_order.aggregate({ where: { rid: rider.id, cust_rate: { gt: 0 } }, _avg: { cust_rate: true } }),
         prisma.pkg_order.count({ where: { rid: rider.id, o_status: "Completed" } }),
+        freeBookingService.getViewForOrder(order.id),
       ]);
       const riderStar = ratingAgg._avg.cust_rate;
 
       io.to(`customer_${order.uid}`).emit("order:assigned", {
         order_id: order.id,
         rider_id: rider.id,
+        free_booking: freeBookingView,
         rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
         // rider_mobile/rider_img/rider_lats/rider_longs are the field names
         // getOrderDetails (orderController.js) uses and TrackingWay's

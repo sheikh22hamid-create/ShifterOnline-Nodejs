@@ -347,19 +347,21 @@ async function createOrderCore({
     100
   );
 
-  // Free Booking Offer: the client's request is never trusted, so re-run the same check here.
+  // Free Booking Offer: Free Ride Chance check.
+  // Verified server-side. If the customer qualifies for the free ride chance (premium, city offer on,
+  // not locked, instant booking), we attach freeBookingCheck so dispatch searches pool drivers first.
+  // If not eligible (or offer off / locked), the booking continues smoothly as a normal booking.
   let freeBookingCheck = null;
   if (freeBooking) {
-    freeBookingCheck = await freeBookingService.checkEligibility({
-      uid, plat, plong, category, radiusKm: resolvedRadiusKm, cityId: resolvedCityId, bookingType,
-    });
-    if (freeBookingCheck.outcome !== "eligible") {
-      return {
-        ok: false,
-        code: "FREE_BOOKING_UNAVAILABLE",
-        outcome: freeBookingCheck.outcome,
-        msg: "Free Booking is no longer available for this booking.",
-      };
+    try {
+      const check = await freeBookingService.checkEligibility({
+        uid, plat, plong, category, radiusKm: resolvedRadiusKm, cityId: resolvedCityId, bookingType,
+      });
+      if (check && (check.outcome === "eligible" || check.outcome === "no_free_vehicle")) {
+        freeBookingCheck = check;
+      }
+    } catch (err) {
+      logger.error(`createOrderCore: freeBooking checkEligibility failed for uid ${uid}:`, err);
     }
   }
 
@@ -925,6 +927,8 @@ async function getOrderDetails(req, res) {
           receiver_pay: await getReceiverPaySummary(order.id),
           // Booking Guarantee: none | pending | paid | not_paid, the amount, and the admin-window deadline.
           guarantee: await bookingGuaranteeService.getView(order),
+          // Free Booking Chance view (is_free, badge_text, message)
+          free_booking: await freeBookingService.getViewForOrder(order.id),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           advance_payment_timeout_minutes: String(await getAdvancePaymentTimeoutMinutes()),

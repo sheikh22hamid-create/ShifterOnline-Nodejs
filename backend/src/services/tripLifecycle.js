@@ -199,8 +199,8 @@ async function claimOrderForRider(orderId, riderId) {
  */
 async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // Free Booking Offer: remember which driver took the order and void the booking if they are
-  // not a pool driver. Fire-and-forget: it must never delay or break the accept.
-  freeBookingService.recordAcceptance(orderId, riderId).catch((err) => {
+  // not a pool driver.
+  await freeBookingService.recordAcceptance(orderId, riderId).catch((err) => {
     logger.error(`recordAcceptance error for order ${orderId}:`, err);
   });
 

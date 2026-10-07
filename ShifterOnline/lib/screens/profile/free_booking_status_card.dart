@@ -67,14 +67,14 @@ class _FreeBookingStatusCardState extends State<FreeBookingStatusCard> {
     final good = _state == 'available' || _state == 'unlocked';
     final color = good ? Colors.green : (upsell ? const Color(0xfff26522) : Colors.orange.shade800);
     final title = switch (_state) {
-      'available' => 'Free Booking Available'.tr,
-      'unlocked' => 'Free Booking Unlocked'.tr,
-      'locked' => 'Free Booking Locked'.tr,
-      'not_premium' => 'Get Free Bookings with Premium'.tr,
-      _ => 'Free Booking'.tr,
+      'available' => 'Free Ride Chance Active'.tr,
+      'unlocked' => 'Free Ride Chance Unlocked'.tr,
+      'locked' => 'Free Ride Chance Locked'.tr,
+      'not_premium' => 'Win Free Rides with Premium'.tr,
+      _ => 'Free Ride Chance'.tr,
     };
     final body = upsell
-        ? 'Premium members can book with a free vehicle and get the trip amount back in their wallet.'.tr
+        ? 'Premium members get a chance to win 100% wallet cashback when served by a company free pool vehicle.'.tr
         : _message;
     final action = switch (_state) {
       'locked' => (label: 'Refer now'.tr, icon: Icons.share_rounded, onTap: _referNow),

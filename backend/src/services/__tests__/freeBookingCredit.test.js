@@ -375,3 +375,30 @@ describe("reapCancelled", () => {
     expect(logger.error).toHaveBeenCalled();
   });
 });
+
+describe("getViewForOrder", () => {
+  it("returns is_free true and active badge when order is confirmed with pool rider", async () => {
+    prisma.free_booking_order.findUnique.mockResolvedValue({
+      id: 1, order_id: 100, status: "FREE_BOOKING_CONFIRMED", accepted_in_pool: true, actual_fare: null, credit_amount: null,
+    });
+    const view = await svc.getViewForOrder(100);
+    expect(view.is_free).toBe(true);
+    expect(view.badge_text).toContain("Free Ride Active");
+  });
+
+  it("returns is_free false when order row is not found", async () => {
+    prisma.free_booking_order.findUnique.mockResolvedValue(null);
+    const view = await svc.getViewForOrder(999);
+    expect(view.is_free).toBe(false);
+    expect(view.badge_text).toBe("Standard Ride");
+  });
+
+  it("returns is_free false and fallback message when pool was unavailable", async () => {
+    prisma.free_booking_order.findUnique.mockResolvedValue({
+      id: 2, order_id: 200, status: "FREE_BOOKING_NOT_ELIGIBLE", not_eligible_reason: "pool_unavailable", accepted_in_pool: false,
+    });
+    const view = await svc.getViewForOrder(200);
+    expect(view.is_free).toBe(false);
+    expect(view.message).toContain("No free pool vehicle was available");
+  });
+});
