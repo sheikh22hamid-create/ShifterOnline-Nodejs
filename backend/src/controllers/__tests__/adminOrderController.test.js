@@ -13,6 +13,10 @@ jest.mock("../../services/pricingEngine", () => ({ priceForPackageId: jest.fn() 
 jest.mock("../../services/pushNotifier", () => ({ notifyCustomerNextDayAssigned: jest.fn().mockResolvedValue() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn() }));
 jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn() }));
+jest.mock("../../services/bookingGuaranteeService", () => ({
+  closeOnAssign: jest.fn().mockResolvedValue(true),
+  closeOnCancel: jest.fn().mockResolvedValue(true),
+}));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
@@ -52,6 +56,12 @@ describe("adminOrderController.assignRider", () => {
       "order:assigned",
       expect.objectContaining({ driver_earning: "100" })
     );
+  });
+
+  it("closes an open Booking Guarantee case when the admin assigns a driver", async () => {
+    const req = { params: { id: "500" }, body: { rider_id: "2" }, user: { role: "superadmin", id: 1, username: "admin" } };
+    await assignRider(req, makeRes());
+    expect(require("../../services/bookingGuaranteeService").closeOnAssign).toHaveBeenCalledWith(500, 1);
   });
 });
 

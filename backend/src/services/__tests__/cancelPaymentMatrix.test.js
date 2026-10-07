@@ -35,6 +35,10 @@ jest.mock("../dispatchManager", () => ({
   emitDriverEvent: jest.fn(), startDispatch: jest.fn(), offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
+jest.mock("../bookingGuaranteeService", () => ({
+  closeOnAssign: jest.fn().mockResolvedValue(true),
+  closeOnCancel: jest.fn().mockResolvedValue(true),
+}));
 jest.mock("../walletPrepaymentRefund", () => ({
   isWalletPaidOrder: jest.fn(() => false), linkWalletPrepayment: jest.fn(), refundIfWalletPaid: jest.fn().mockResolvedValue(null),
   sumWalletPrepayment: jest.fn().mockResolvedValue(0),

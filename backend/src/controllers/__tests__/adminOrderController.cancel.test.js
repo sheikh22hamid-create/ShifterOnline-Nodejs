@@ -17,6 +17,10 @@ jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn
 jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn(() => ({ to: () => ({ emit: jest.fn() }) })) }));
 jest.mock("../../services/walletPrepaymentRefund", () => ({ refundIfWalletPaid: jest.fn().mockResolvedValue(null), isWalletPaidOrder: jest.fn() }));
 jest.mock("../../services/referralPointsRefund", () => ({ refundReferralPointsForOrder: jest.fn().mockResolvedValue(0) }));
+jest.mock("../../services/bookingGuaranteeService", () => ({
+  closeOnAssign: jest.fn().mockResolvedValue(true),
+  closeOnCancel: jest.fn().mockResolvedValue(true),
+}));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
@@ -120,5 +124,23 @@ describe("adminOrderController.cancel - payment effects", () => {
       expect(prisma.tbl_user.update).not.toHaveBeenCalled();
       expect(refundReferralPointsForOrder).not.toHaveBeenCalled();
     }
+  });
+});
+
+const bookingGuarantee = require("../../services/bookingGuaranteeService");
+
+describe("adminOrderController.cancel - Booking Guarantee", () => {
+  it("closes an open guarantee case as admin_cancelled (no compensation) when the admin cancels the order", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ rid: 0, order_status: 0, o_status: "Pending" }));
+    await cancel(req({ comment: "customer asked" }), res());
+    expect(bookingGuarantee.closeOnCancel).toHaveBeenCalledWith(468, "admin_cancelled", 1);
+  });
+
+  it("a guarantee failure never blocks the cancel", async () => {
+    bookingGuarantee.closeOnCancel.mockRejectedValueOnce(new Error("boom"));
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ rid: 0, order_status: 0, o_status: "Pending" }));
+    const r = res();
+    await cancel(req(), r);
+    expect(r.status).toHaveBeenCalledWith(200);
   });
 });

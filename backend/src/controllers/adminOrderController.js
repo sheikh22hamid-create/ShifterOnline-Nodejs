@@ -13,6 +13,7 @@ const { getIO } = require("../sockets/socketServer");
 const { buildNextDaySequence } = require("../utils/geoDistance");
 const receiverPayService = require("../services/receiverPayService");
 const receiverTrackMessage = require("../services/receiverTrackMessage");
+const bookingGuarantee = require("../services/bookingGuaranteeService");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -268,6 +269,11 @@ async function assignRider(req, res) {
     await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: fare, commission } });
 
     dispatchManager.stopDispatch(orderId, "accepted_by_other");
+    try {
+      await bookingGuarantee.closeOnAssign(orderId, req.user.id);
+    } catch (guaranteeErr) {
+      logger.error(`assignRider: booking guarantee close failed for order ${orderId}:`, guaranteeErr);
+    }
 
     await prisma.order_status_history.create({
       data: { order_id: orderId, rider_id: riderId, status: "Processing", remark: `Manually assigned by admin #${req.user.id} (${req.user.username})` },
@@ -410,6 +416,14 @@ async function cancel(req, res) {
     } else {
       // Admin cancelled without a cancellation fee: refund a wallet-paid fare in full.
       await walletPrepayment.refundIfWalletPaid(order, { note: "cancelled by admin" });
+    }
+
+    if (wasUnassigned) {
+      try {
+        await bookingGuarantee.closeOnCancel(id, "admin_cancelled", req.user.id);
+      } catch (guaranteeErr) {
+        logger.error(`cancel: booking guarantee close failed for order ${id}:`, guaranteeErr);
+      }
     }
 
     await refundReferralPointsForOrder(id);

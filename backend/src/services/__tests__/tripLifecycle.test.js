@@ -28,6 +28,10 @@ jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
+jest.mock("../bookingGuaranteeService", () => ({
+  closeOnAssign: jest.fn().mockResolvedValue(true),
+  closeOnCancel: jest.fn().mockResolvedValue(true),
+}));
 jest.mock("../walletPrepaymentRefund", () => ({
   isWalletPaidOrder: jest.fn(() => false),
   linkWalletPrepayment: jest.fn(),
@@ -576,6 +580,25 @@ describe("tripLifecycle.customerCancel", () => {
 
     expect(result).toEqual({ success: true });
     expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "cancelled_by_user");
+  });
+
+  it("closes an open Booking Guarantee case (no compensation) when the customer cancels an unassigned order", async () => {
+    const bookingGuarantee = require("../bookingGuaranteeService");
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+
+    const result = await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+    expect(result).toEqual({ success: true });
+    expect(bookingGuarantee.closeOnCancel).toHaveBeenCalledWith(297, "customer_cancelled");
+  });
+
+  it("a Booking Guarantee failure never blocks a customer cancel", async () => {
+    const bookingGuarantee = require("../bookingGuaranteeService");
+    bookingGuarantee.closeOnCancel.mockRejectedValueOnce(new Error("boom"));
+    prisma.pkg_order.findFirst.mockResolvedValue({ id: 297, uid: 7, rid: 0 });
+    prisma.$executeRaw.mockResolvedValueOnce(1);
+    expect(await tripLifecycle.customerCancel(7, 297, "x")).toEqual({ success: true });
   });
 
   it("returns failure when the driver already won the accept race", async () => {

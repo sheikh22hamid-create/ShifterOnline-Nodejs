@@ -24,6 +24,7 @@ const receiverPayService = require("./receiverPayService");
 const receiverPaySettings = require("./receiverPaySettings");
 const receiverPayCalc = require("./receiverPayCalc");
 const freeBookingService = require("./freeBookingService");
+const bookingGuarantee = require("./bookingGuaranteeService");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
 const {
@@ -1262,6 +1263,12 @@ async function customerCancel(uid, orderId, comment) {
     }
   } else {
     dispatchManager.stopDispatch(orderId, "cancelled_by_user");
+    // Cancelled during a Booking Guarantee admin window: close the case, no compensation.
+    try {
+      await bookingGuarantee.closeOnCancel(orderId, "customer_cancelled");
+    } catch (guaranteeErr) {
+      logger.error(`customerCancel: booking guarantee close failed for order ${orderId}:`, guaranteeErr);
+    }
     // Cancelled before any driver accepted: nothing to charge, refund in full.
     await walletPrepayment.refundIfWalletPaid(orderBefore);
   }
