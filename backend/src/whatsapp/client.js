@@ -228,12 +228,18 @@ async function initWhatsAppBot() {
           if (msg.key.fromMe) {
             if (chatControl.isStopCommand(textMessage)) {
               chatControl.pauseChat(senderPhone || remoteJid);
-              sessionManager.clearSession(senderPhone);
+              sessionManager.clearSession(senderPhone, true);
               logger.info(`⏸️ [OWNER] Bot PAUSED for personal chat ${senderPhone || remoteJid} (command: "${textMessage}")`);
+              await sock.sendMessage(remoteJid, {
+                text: "⏸️ *Bot paused for this chat.*\nAap manually chat continue kar sakte hain. Wapas start karne ke liye */start* type karein.",
+              });
             } else if (chatControl.isStartCommand(textMessage)) {
               chatControl.resumeChat(senderPhone || remoteJid);
-              sessionManager.clearSession(senderPhone);
+              sessionManager.clearSession(senderPhone, true);
               logger.info(`▶️ [OWNER] Bot RESUMED for personal chat ${senderPhone || remoteJid} (command: "${textMessage}")`);
+              await sock.sendMessage(remoteJid, {
+                text: "▶️ *Bot resumed for this chat.*\nAutomated assistant active hai.",
+              });
             } else {
               logger.debug(`Skipping outbound self message to ${remoteJid}`);
             }
@@ -245,12 +251,10 @@ async function initWhatsAppBot() {
             // Check if contact sent /start or start to resume the bot
             if (chatControl.isStartCommand(textMessage)) {
               chatControl.resumeChat(senderPhone || remoteJid);
-              sessionManager.clearSession(senderPhone);
+              sessionManager.clearSession(senderPhone, true);
               logger.info(`▶️ [CONTACT] Bot RESUMED for personal chat ${senderPhone} (command: "${textMessage}")`);
               const welcomeText =
-                "Main Shifter Online Bot hoon! Main abhi training phase mein hoon. Hamari technical team aapki sahayata Se mujhe develop aur advance banaa rahi hai\n" +
-                "Aap mujhse koi bhi sawal poochh sakte hain\n" +
-                "Aapke sawal ka hamari team uchit jawab degi.";
+                "Hello ji! Main Shifter Online Bot hoon. Aap logistics, driver onboarding ya customer support se judi koi bhi query poochh sakte hain.";
               await sock.sendMessage(remoteJid, { text: welcomeText });
               continue;
             }
@@ -260,10 +264,10 @@ async function initWhatsAppBot() {
             continue;
           }
 
-          // 3. Handle explicit /stop command from contact
-          if (chatControl.isStopCommand(textMessage) && (/^\/stop/i.test(textMessage) || /bot/i.test(textMessage))) {
+          // 3. Handle explicit stop command from contact
+          if (chatControl.isStopCommand(textMessage)) {
             chatControl.pauseChat(senderPhone || remoteJid);
-            sessionManager.clearSession(senderPhone);
+            sessionManager.clearSession(senderPhone, true);
             await sock.sendMessage(remoteJid, {
               text: "⏸️ Bot service has been paused for this chat. Type */start* anytime to resume.",
             });
@@ -362,6 +366,23 @@ function detectGlobalIntent(text, sessionStep) {
     return { isGlobalSwitch: true, intent: "CALCULATE_FARE" };
   }
 
+  // 7. JOB / RECRUITER / HIRING INQUIRY
+  if (
+    t.includes("jobhai") ||
+    t.includes("naukri") ||
+    t.includes("workindia") ||
+    t.includes("recruiter") ||
+    t.includes("vacancy") ||
+    t.includes("hiring") ||
+    t.includes("office job") ||
+    t.includes("telecaller") ||
+    t.includes("resume") ||
+    t.includes("cv") ||
+    (t.includes("job") && !t.includes("driver"))
+  ) {
+    return { isGlobalSwitch: true, intent: "JOB_INQUIRY" };
+  }
+
   return { isGlobalSwitch: false, intent: null };
 }
 
@@ -373,6 +394,9 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
     const session = sessionManager.getSession(senderPhone);
     let replyText = "";
     const cleanText = (text || "").trim();
+
+    // Record incoming user message into rolling conversation history
+    sessionManager.addHistory(senderPhone, "user", cleanText);
 
     // Check for high-priority global intent switch (e.g. Support, Driver Reg, Track, Cancel, etc.)
     const globalCheck = detectGlobalIntent(cleanText, session.step);
@@ -454,6 +478,17 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
             `📞 *Customer Care*: 9109114515`;
           break;
         }
+
+        case "JOB_INQUIRY":
+          replyText =
+            `Hello ji! Shifter Online mein hiring aur recruitment se judi queries ke liye:\n\n` +
+            `📋 *Office / Staff / Recruiter Inquiries*:\n` +
+            `Agar aap recruiter hain (jaise JobHai) ya office jobs (telecalling, customer support, operations) ke liye sampark kar rahe hain, to kripya apna proposal ya resume hamari HR team ko email karein:\n` +
+            `📧 *Email*: support@shifteronline.com\n` +
+            `📞 *Helpline*: 9109114515\n\n` +
+            `🚚 *Driver Partner*: Agar aap apni gadi (Bike, 3-Wheeler, Tata Ace) ke saath delivery driver banne ke liye judna chahte hain, to kripya hamara Driver Partner App download karein:\n` +
+            `👉 https://play.google.com/store/apps/details?id=com.shifter.driver`;
+          break;
 
         default:
           break;
@@ -556,6 +591,29 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
           replyText = await driverHandler.checkDriverStatus(senderPhone);
           break;
 
+        case "JOB_INQUIRY":
+          if (aiResponse) {
+            replyText = aiResponse;
+          } else {
+            replyText =
+              `Hello ji! Shifter Online mein hiring aur recruitment se judi query ke liye:\n\n` +
+              `📋 *Office / Staff / Recruiter Inquiries*:\n` +
+              `Agar aap recruiter hain (jaise JobHai) ya office jobs ke liye sampark kar rahe hain, to kripya apna proposal / resume hamari HR team ko email karein:\n` +
+              `📧 *Email*: support@shifteronline.com\n` +
+              `📞 *Helpline*: 9109114515\n\n` +
+              `🚚 *Driver Jobs*: Agar aap gadi chalane ke liye judna chahte hain, to hamara Shifter Driver Partner App download karein:\n` +
+              `👉 https://play.google.com/store/apps/details?id=com.shifter.driver`;
+          }
+          break;
+
+        case "CONVERSATIONAL_FILLER":
+          if (aiResponse) {
+            replyText = aiResponse;
+          } else {
+            replyText = "Ji batayein, Shifter Online ke regarding aapki kya sahayata kar sakta hoon?";
+          }
+          break;
+
         case "FAQ_QUERY":
           if (aiResponse) {
             replyText = aiResponse;
@@ -583,6 +641,7 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
 
     if (replyText && sock) {
       await sock.sendMessage(remoteJid, { text: replyText });
+      sessionManager.addHistory(senderPhone, "assistant", replyText);
     }
   } catch (err) {
     logger.error(`Error handling WhatsApp message from ${senderPhone}:`, err);

@@ -63,41 +63,59 @@ function getGroqClientForKey(apiKey) {
 
 const SYSTEM_PROMPT = `
 You are the official AI Assistant for Shifter Online — India's premier real-time intra-city logistics and freight platform.
-Your goal is to parse user messages in Hindi, Hinglish, or English and classify their intent for an automated WhatsApp Bot.
+Your goal is to parse user messages in Hindi, Hinglish, or English and converse logically, politely, and contextually for an automated WhatsApp Bot.
 
 Available Intents:
 1. DRIVER_SUPPORT: User asking for driver support phone number, helpline, or driver customer care contact details.
 2. CUSTOMER_SUPPORT: User asking for customer care phone number, contact details, helpline, support email, or wanting to talk to customer care.
 3. CANCEL_RESET: User saying "no", "nhi", "nahi yrr", "cancel", "stop", "reset", "exit", or wanting to cancel the current process/flow.
-4. DRIVER_ONBOARDING: User asking about joining as a driver partner, driver registration process, required documents, earnings, downloading driver app, or vehicle attachment.
+4. DRIVER_ONBOARDING: User asking about joining as a driver partner to drive vehicle/tempo, driver registration, required documents, earnings, or downloading driver app.
 5. CALCULATE_FARE: User wants to calculate price/fare quote for shipping goods (e.g., "Connaught place se Noida Tata Ace ka kitna lagega?").
 6. BOOK_TRIP: User wants to book a delivery truck/bike immediately.
 7. TRACK_ORDER: User wants to track an active order or check status (e.g., "Order #1024 kahan hai?").
 8. CHECK_WALLET: Driver wants to check wallet balance, daily earnings, or withdrawal status.
-9. FAQ_QUERY: User asking general questions about pricing rates, cancellation rules, company details, shifting services, or general help.
-10. UNKNOWN: Casual greeting or unrelated query.
+9. FAQ_QUERY: User asking general questions about company services, moving policies, rates, or general inquiries.
+10. JOB_INQUIRY: User asking about office/staff jobs (telecaller, support, sales, HR), job vacancies, hiring, employment, or recruiters contacting from job portals (JobHai, Naukri, WorkIndia, Indeed, etc.).
+11. CONVERSATIONAL_FILLER: User replying with conversational affirmations or short acknowledgements like "Ji", "Haan", "Haanji", "Ok", "Okay", "Theek hai", "Sure", "Suno", "Acha".
+12. UNKNOWN: Casual greeting or unclassified query.
 
 You MUST reply strictly in valid JSON format:
 {
-  "intent": "DRIVER_SUPPORT" | "CUSTOMER_SUPPORT" | "CANCEL_RESET" | "DRIVER_ONBOARDING" | "CALCULATE_FARE" | "BOOK_TRIP" | "TRACK_ORDER" | "CHECK_WALLET" | "FAQ_QUERY" | "UNKNOWN",
+  "intent": "DRIVER_SUPPORT" | "CUSTOMER_SUPPORT" | "CANCEL_RESET" | "DRIVER_ONBOARDING" | "CALCULATE_FARE" | "BOOK_TRIP" | "TRACK_ORDER" | "CHECK_WALLET" | "FAQ_QUERY" | "JOB_INQUIRY" | "CONVERSATIONAL_FILLER" | "UNKNOWN",
   "entities": {
     "pickup": "pickup location if mentioned or null",
     "drop": "drop location if mentioned or null",
     "vehicleType": "Bike" | "3 wheeler" | "4 wheeler" | "E loader" | null,
     "orderId": number or string or null,
-    "goodsType": "goods description or null"
+    "goodsType": "goods description or null",
+    "jobType": "Office/Staff" | "Driver" | "Recruiter" | null
   },
-  "aiResponse": "A polite, accurate, detailed 1-3 sentence response in natural Hinglish directly answering the user's question using the Official Company Knowledge Base provided below."
+  "aiResponse": "A polite, logical, natural 1-3 sentence response in Hinglish directly answering the user in context of recent conversation history."
 }
 
 CRITICAL GREETING RULE:
 - ALWAYS start greetings with "Hello!" or "Hello ji!".
 - NEVER use "Namaste" or "Namaskar" under any circumstances.
 
+CRITICAL CONVERSATIONAL CONTINUITY & CONTEXT RULE:
+- ALWAYS read the provided "Recent Conversation History" before crafting your answer.
+- If the user sends short conversational affirmations like "Ji", "Haan", "Haanji", "Ok", "Theek hai", "Acha", "Suno", DO NOT treat it as a new booking or fare estimate request!
+- NEVER dump booking links or Customer App download links on simple conversational affirmations!
+- Instead, respond politely and contextually (e.g., if earlier they were talking about JobHai or recruitment, continue the conversation regarding JobHai).
+
+CRITICAL JOB & RECRUITMENT INQUIRY RULES:
+- If a recruiter or job portal representative reaches out (e.g. "Neha from jobhai.com", Naukri, WorkIndia, HR portals):
+  Politely acknowledge them in natural Hinglish and direct them to connect with Shifter Online HR & Management team via Email: support@shifteronline.com or Phone: 9109114515. NEVER dump customer delivery booking links!
+- If someone is asking for an office/staff job (telecaller, customer support, office staff):
+  Guide them to email their resume to support@shifteronline.com or contact 9109114515.
+- If someone wants to join with their vehicle to do delivery work as a driver:
+  Direct them to download the Shifter Driver Partner App: https://play.google.com/store/apps/details?id=com.shifter.driver and contact Driver Support 9109114515.
+
 CRITICAL BOOKING & FARE ESTIMATE RULE:
 - The WhatsApp Bot CANNOT book rides/orders, cannot take pickup/drop locations, and cannot calculate custom trip fares directly.
 - NEVER ask the user for their pickup/drop location or attempt to initiate a booking in chat.
-- If the user asks to book a vehicle/delivery or asks for prices/fare, ALWAYS state that WhatsApp direct booking is not available and instruct them to download the official Shifter Online Customer App: https://play.google.com/store/apps/details?id=com.shifter.online and mention Customer Care 9109114515.
+- ONLY IF the user explicitly asks to book a vehicle/delivery or asks for prices/fare for goods transport, instruct them to download the official Shifter Online Customer App: https://play.google.com/store/apps/details?id=com.shifter.online and mention Customer Care 9109114515.
+- DO NOT dump this link for unrelated questions, greetings, job inquiries, or conversational fillers.
 
 CRITICAL DRIVER WALLET & PROFILE RULE:
 - The WhatsApp Bot CANNOT display driver wallet balances, profile status, or earnings in chat.
@@ -136,13 +154,22 @@ async function parseMessageWithAI(userText, sessionContext = {}) {
       try {
         const client = getGroqClientForKey(apiKey);
 
+        let historyText = "";
+        if (sessionContext && Array.isArray(sessionContext.history) && sessionContext.history.length > 0) {
+          historyText = sessionContext.history
+            .map((h) => `${h.role === "user" ? "User" : "Bot"}: ${h.text}`)
+            .join("\n");
+        }
+
+        const userPrompt = `${historyText ? `Recent Conversation History:\n${historyText}\n\n` : ""}Current User Message: "${userText}"`;
+
         const response = await client.chat.completions.create({
           model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
           messages: [
             { role: "system", content: systemPromptWithKnowledge },
             {
               role: "user",
-              content: `Session Context: ${JSON.stringify(sessionContext)}\nUser Message: "${userText}"`,
+              content: userPrompt,
             },
           ],
           response_format: { type: "json_object" },
@@ -269,6 +296,43 @@ function fallbackRuleBasedParser(text) {
       intent: "CHECK_WALLET",
       entities: {},
       aiResponse: "🚚 *Shifter Driver Partner App*\n\nWallet balance, daily kamai aur duty status sirf official *Shifter Partner App* me dekhi ja sakti hai.\n\n📲 *Download / Open Driver App*:\n👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n📞 Driver Helpline: 9109114515",
+    };
+  }
+
+  // 8. JOB / RECRUITER / HIRING INQUIRIES
+  if (
+    t.includes("jobhai") ||
+    t.includes("naukri") ||
+    t.includes("workindia") ||
+    t.includes("recruiter") ||
+    t.includes("vacancy") ||
+    t.includes("hiring") ||
+    t.includes("office job") ||
+    t.includes("telecaller") ||
+    t.includes("resume") ||
+    t.includes("cv") ||
+    (t.includes("job") && !t.includes("driver"))
+  ) {
+    return {
+      intent: "JOB_INQUIRY",
+      entities: {},
+      aiResponse:
+        "Hello ji! Shifter Online mein hiring aur recruitment se judi query ke liye:\n\n" +
+        "📋 *Office / Staff / Recruiter Inquiries*:\n" +
+        "Agar aap recruiter hain (jaise JobHai) ya office roles ke liye sampark kar rahe hain, to kripya apna proposal / CV hamari HR team ko email karein:\n" +
+        "📧 Email: support@shifteronline.com\n" +
+        "📞 Helpline: 9109114515\n\n" +
+        "🚚 *Driver Jobs*: Agar aap gadi chalane ke liye judna chahte hain, to hamara Shifter Driver Partner App download karein:\n" +
+        "👉 https://play.google.com/store/apps/details?id=com.shifter.driver",
+    };
+  }
+
+  // 9. CONVERSATIONAL FILLERS / AFFIRMATIONS (Ji, Haan, Ok, etc.)
+  if (/^(ji|haan|haanji|han|hanji|ok|okay|theek hai|thik hai|acha|achha|sure|hmm|suno|boliye)$/i.test(t)) {
+    return {
+      intent: "CONVERSATIONAL_FILLER",
+      entities: {},
+      aiResponse: "Ji batayein, aapko Shifter Online ke regarding kya jankari chahiye? Main aapki poori madad karunga.",
     };
   }
 

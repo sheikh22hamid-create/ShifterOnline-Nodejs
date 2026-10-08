@@ -71,14 +71,14 @@ function resumeChat(chatId) {
 
 function isStopCommand(text) {
   if (!text) return false;
-  const t = text.trim().toLowerCase();
-  return /^(stop|\/stop|bot stop|stop bot|pause|\/pause)$/i.test(t);
+  const cleaned = String(text).trim().toLowerCase().replace(/^[\/!#.]+\s*/, "").trim();
+  return /^(stop|stop\s*bot|bot\s*stop|pause|pause\s*bot|bot\s*pause|off|bot\s*off|stop_bot|pause_bot)$/i.test(cleaned);
 }
 
 function isStartCommand(text) {
   if (!text) return false;
-  const t = text.trim().toLowerCase();
-  return /^(\/start|start|bot start|start bot|\/resume|resume)$/i.test(t);
+  const cleaned = String(text).trim().toLowerCase().replace(/^[\/!#.]+\s*/, "").trim();
+  return /^(start|start\s*bot|bot\s*start|resume|resume\s*bot|bot\s*resume|on|bot\s*on|start_bot|resume_bot)$/i.test(cleaned);
 }
 
 function getAllPausedChats() {

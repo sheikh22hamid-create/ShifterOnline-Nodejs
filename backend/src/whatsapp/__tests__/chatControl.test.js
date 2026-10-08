@@ -10,16 +10,24 @@ describe("WhatsApp Chat Pause/Resume Control", () => {
   test("should detect stop and start commands accurately", () => {
     expect(chatControl.isStopCommand("stop")).toBe(true);
     expect(chatControl.isStopCommand("/stop")).toBe(true);
+    expect(chatControl.isStopCommand("/stop bot")).toBe(true);
     expect(chatControl.isStopCommand("Stop")).toBe(true);
     expect(chatControl.isStopCommand("bot stop")).toBe(true);
     expect(chatControl.isStopCommand("stop bot")).toBe(true);
+    expect(chatControl.isStopCommand("/bot stop")).toBe(true);
     expect(chatControl.isStopCommand("pause")).toBe(true);
+    expect(chatControl.isStopCommand("/pause")).toBe(true);
+    expect(chatControl.isStopCommand("/pause bot")).toBe(true);
+    expect(chatControl.isStopCommand("!stop")).toBe(true);
     expect(chatControl.isStopCommand("hello")).toBe(false);
+    expect(chatControl.isStopCommand("bus stop")).toBe(false);
 
     expect(chatControl.isStartCommand("/start")).toBe(true);
     expect(chatControl.isStartCommand("start")).toBe(true);
+    expect(chatControl.isStartCommand("/start bot")).toBe(true);
     expect(chatControl.isStartCommand("start bot")).toBe(true);
     expect(chatControl.isStartCommand("/resume")).toBe(true);
+    expect(chatControl.isStartCommand("resume")).toBe(true);
     expect(chatControl.isStartCommand("fare")).toBe(false);
   });
 
