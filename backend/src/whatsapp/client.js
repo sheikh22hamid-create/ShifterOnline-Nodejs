@@ -481,10 +481,10 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
 
         case "JOB_INQUIRY":
           replyText =
-            `Hello ji! Shifter Online mein hiring aur recruitment se judi queries ke liye:\n\n` +
-            `📋 *Office / Staff / Recruiter Inquiries*:\n` +
-            `Agar aap recruiter hain (jaise JobHai) ya office jobs (telecalling, customer support, operations) ke liye sampark kar rahe hain, to kripya apna proposal ya resume hamari HR team ko email karein:\n` +
-            `📧 *Email*: support@shifteronline.com\n` +
+            `Hello ji! Haan, Shifter Online mein current hiring chal rahi hai.\n\n` +
+            `💼 *Office / Staff Jobs & Recruiter Inquiries*:\n` +
+            `Agar aap job search kar rahe hain ya recruiter hain, to kripya apna updated resume (CV) ya proposal hamari official careers email par bhejein:\n` +
+            `📧 *Email*: careers@shifteronline.com\n` +
             `📞 *Helpline*: 9109114515\n\n` +
             `🚚 *Driver Partner*: Agar aap apni gadi (Bike, 3-Wheeler, Tata Ace) ke saath delivery driver banne ke liye judna chahte hain, to kripya hamara Driver Partner App download karein:\n` +
             `👉 https://play.google.com/store/apps/details?id=com.shifter.driver`;
@@ -596,10 +596,10 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
             replyText = aiResponse;
           } else {
             replyText =
-              `Hello ji! Shifter Online mein hiring aur recruitment se judi query ke liye:\n\n` +
-              `📋 *Office / Staff / Recruiter Inquiries*:\n` +
-              `Agar aap recruiter hain (jaise JobHai) ya office jobs ke liye sampark kar rahe hain, to kripya apna proposal / resume hamari HR team ko email karein:\n` +
-              `📧 *Email*: support@shifteronline.com\n` +
+              `Hello ji! Haan, Shifter Online mein current hiring chal rahi hai.\n\n` +
+              `💼 *Office / Staff Jobs & Recruiter Inquiries*:\n` +
+              `Agar aap job search kar rahe hain ya recruiter hain, to kripya apna updated resume (CV) ya proposal hamari official careers email par bhejein:\n` +
+              `📧 *Email*: careers@shifteronline.com\n` +
               `📞 *Helpline*: 9109114515\n\n` +
               `🚚 *Driver Jobs*: Agar aap gadi chalane ke liye judna chahte hain, to hamara Shifter Driver Partner App download karein:\n` +
               `👉 https://play.google.com/store/apps/details?id=com.shifter.driver`;

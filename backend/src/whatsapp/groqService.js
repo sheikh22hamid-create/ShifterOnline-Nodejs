@@ -104,10 +104,11 @@ CRITICAL CONVERSATIONAL CONTINUITY & CONTEXT RULE:
 - Instead, respond politely and contextually (e.g., if earlier they were talking about JobHai or recruitment, continue the conversation regarding JobHai).
 
 CRITICAL JOB & RECRUITMENT INQUIRY RULES:
-- If a recruiter or job portal representative reaches out (e.g. "Neha from jobhai.com", Naukri, WorkIndia, HR portals):
-  Politely acknowledge them in natural Hinglish and direct them to connect with Shifter Online HR & Management team via Email: support@shifteronline.com or Phone: 9109114515. NEVER dump customer delivery booking links!
-- If someone is asking for an office/staff job (telecaller, customer support, office staff):
-  Guide them to email their resume to support@shifteronline.com or contact 9109114515.
+- SHIFTER ONLINE IS ACTIVELY HIRING! (Haan, Shifter Online mein current hiring chal rahi hai).
+- If someone is asking about jobs, vacancies, hiring, or office/staff roles (telecaller, customer support, operations, accounts, sales):
+  State clearly that Shifter Online is actively hiring, and instruct them to send their resume/CV or contact our official careers email: careers@shifteronline.com.
+- If a recruiter or job portal representative reaches out (e.g. "Neha from jobhai.com", Naukri, WorkIndia, HR agencies):
+  Politely acknowledge them in natural Hinglish, state that hiring is active, and direct them to connect/share proposals at Email: careers@shifteronline.com (or helpline 9109114515). NEVER dump customer delivery booking links!
 - If someone wants to join with their vehicle to do delivery work as a driver:
   Direct them to download the Shifter Driver Partner App: https://play.google.com/store/apps/details?id=com.shifter.driver and contact Driver Support 9109114515.
 
@@ -317,11 +318,11 @@ function fallbackRuleBasedParser(text) {
       intent: "JOB_INQUIRY",
       entities: {},
       aiResponse:
-        "Hello ji! Shifter Online mein hiring aur recruitment se judi query ke liye:\n\n" +
-        "📋 *Office / Staff / Recruiter Inquiries*:\n" +
-        "Agar aap recruiter hain (jaise JobHai) ya office roles ke liye sampark kar rahe hain, to kripya apna proposal / CV hamari HR team ko email karein:\n" +
-        "📧 Email: support@shifteronline.com\n" +
-        "📞 Helpline: 9109114515\n\n" +
+        "Hello ji! Haan, Shifter Online mein current hiring chal rahi hai.\n\n" +
+        "💼 *Job Openings & Recruiter Inquiries*:\n" +
+        "Agar aap job search kar rahe hain ya recruiter hain, to kripya apna updated resume (CV) ya hiring proposal hamari official careers email par bhejein:\n" +
+        "📧 *Email*: careers@shifteronline.com\n" +
+        "📞 *Helpline*: 9109114515\n\n" +
         "🚚 *Driver Jobs*: Agar aap gadi chalane ke liye judna chahte hain, to hamara Shifter Driver Partner App download karein:\n" +
         "👉 https://play.google.com/store/apps/details?id=com.shifter.driver",
     };
