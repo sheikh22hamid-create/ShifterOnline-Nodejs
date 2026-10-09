@@ -1,5 +1,8 @@
 # Shifter Online — API Integration Guide (Customer App + Driver App)
 
+> **Status & corrections (reviewed 2026-10-07): PARTLY OUTDATED.** This guide covers only the first order-flow endpoints. The authoritative, code-verified list of all 449 REST endpoints, every Socket.io event, payloads and access rules is [docs/SHIFTER_ONLINE_MASTER_DOCUMENT.md](../docs/SHIFTER_ONLINE_MASTER_DOCUMENT.md) (Parts 7 and 8). **Correction to section 1:** customer and driver login/signup/OTP now run on this Node backend (`/api/user/*`, `/api/rider/auth/*`, OTP via 2Factor.in). What is still true is that these APIs and the sockets carry no per-request token: identity is the `uid` / `rider_id` you send.
+
+
 This document is for the mobile app developer(s) wiring up the **Customer app** and **Driver app** to this Node.js backend. It covers every REST API and every Socket.io event those two apps need — nothing about the admin panel (that's a separate system).
 
 Written in plain language on purpose — no need to read the backend source code to use this.
@@ -15,8 +18,8 @@ Written in plain language on purpose — no need to read the backend source code
 - Base URL: `http://<server-host>:<port>` (default port `5000`, from `PORT` env var). All REST routes below are relative to this, e.g. `POST /api/order/create`.
 - Socket.io connects to the **same host/port**, no separate URL.
 
-### ⚠️ Important: there is NO login/auth API here
-This backend does not have its own login/signup/OTP endpoints for the customer or driver app. It trusts whatever `uid` (customer id) or `rider_id` (driver id) you send it — there's no token check. Login/signup/OTP must still go through wherever it currently does (the older PHP system), and the app just needs to hang on to the `uid` / `rider_id` it gets from that, then pass it into every call below.
+### ⚠️ Authentication: login exists, but calls carry no token
+Customer login/signup/OTP is `POST /api/user/{mobile-check,send-otp,verify-otp,login,login-by-otp,register,forgot-password}` and driver login/registration is `POST /api/rider/auth/*`. After login the app keeps the returned `uid` / `rider_id` and sends it in every call below. The backend trusts that id — there is no token or session check on these routes (admin routes do use a JWT).
 
 This is a known, deliberate gap for now — don't try to "fix" it on your own, just be aware every API call below is trusting the id you send it.
 
@@ -420,6 +423,6 @@ When a customer selects multiple models at order time, the server always offers 
 
 ## 11. Things to double check with backend before going live
 
-- No auth on any of these endpoints yet (see §1) — flag this if the app is going to a wider audience before that's addressed.
+- No per-request token on any customer/driver endpoint (see §1) — known, deliberately deferred; fix before wide release.
 - FCM push notifications require the driver/customer's `fcm_token` to already be saved against their `tbl_rider`/`tbl_user` row (however that's currently being set — check with backend if this app hasn't been wired to do that yet).
 - `radius_km` in order creation is the customer's actual selected search radius in km — send the real number, don't leave it as a package rate or other unrelated value.

@@ -1,5 +1,7 @@
 # Booking Guarantee — Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - migration pending.** Merged to `main`; migration `20261007020000_add_booking_guarantee` is not yet applied anywhere and the smoke test has not been run. The sweep interval is 15 s. Current code-verified description: [Master Document section 5.5](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-10-07
 
 ## Purpose

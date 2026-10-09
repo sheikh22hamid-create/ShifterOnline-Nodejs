@@ -1,5 +1,7 @@
 # Scheduled Order Date/Time Picker (Phase A) Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - minimum lead is now admin-configurable.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. The 45-minute minimum is now the setting `scheduled_min_advance_minutes`. Current code-verified description: [Master Document section 5.6](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let a customer using `ShifterOnline` pick a real future date/time (today, up to 7 days ahead) when using "Schedule Booking", and have that value actually reach the order as `schedule_date_time` — today the button is hidden and, if enabled, sends no time at all.

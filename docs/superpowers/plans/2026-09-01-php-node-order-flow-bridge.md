@@ -1,5 +1,7 @@
 # PHP↔Node Order-Flow Bridge Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): SUPERSEDED / REMOVED.** The bridge described here was built and later removed; apps call Node directly. Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document Part 2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Node's dispatch engine (`backend/`) the sole owner of the order-dispatch cascade for the live PHP-backed mobile apps, without changing any app code, by turning the relevant PHP endpoints into thin bridges to new Node routes and replacing Socket.IO-only driver/customer notifications with real FCM push.

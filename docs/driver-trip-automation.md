@@ -1,5 +1,8 @@
 # Driver trip automation
 
+> **Status & corrections (reviewed 2026-10-07): BUILT and in use.** Matches the code (`tripArrivalPolicy`, `driverTripService.progressTrip`, outbox flush every 15 s). Since this was written: OTP is now followed by a billable *loading wait* until "Pickup Complete", pickup relocation/OTP-timeout rules were added, and the trip route trail feeds the completed-order map and receiver tracking. See [Master Document sections 3.4 and 5.9](SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
+
 ## Implemented journey
 
 Accept/payment gate → automatic pickup arrival → customer notification and pickup timer → **driver enters customer OTP after goods handover** → automatic pickup completion → next stop/drop navigation → automatic stop/drop arrival → manual stop completion or final handover/payment confirmation.

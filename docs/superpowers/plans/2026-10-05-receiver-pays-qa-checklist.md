@@ -1,5 +1,7 @@
 # Receiver Pays: manual QA checklist (dev environment)
 
+> **Status & corrections (reviewed 2026-10-07): QA CHECKLIST.** Manual QA for the built feature. Current code-verified description: [Master Document section 5.2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 0. Apply `backend/prisma/migrations/20261005010000_add_receiver_pay/migration.sql` to the dev DB (it was NOT applied during development because no DATABASE_URL was available in this checkout) and run `npx prisma generate`. Expected: new columns/tables exist and the Prisma client regenerates without errors.
 1. Enable `settlement_enabled` and `receiver_pay_enabled` (+ `PUBLIC_BASE_URL`, Razorpay **test** keys, WhatsApp client connected) in the dev DB/env. Expected: settings read as enabled; config endpoint returns the limits.
 2. Book a cash order with `receiver_pays: true, receiver_commission_percent: 3`. Expected: response `receiver_pay: true`; receiver gets the booked WhatsApp with the payer line.

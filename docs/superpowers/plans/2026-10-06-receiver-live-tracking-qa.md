@@ -1,5 +1,7 @@
 # Receiver live tracking - manual QA
 
+> **Status & corrections (reviewed 2026-10-07): QA CHECKLIST.** Manual QA for the built feature. Current code-verified description: [Master Document section 5.3](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Prerequisites: dev backend with migration `20261006010000_add_order_track_link` applied (`npx prisma generate` run), `PUBLIC_BASE_URL`, `MAPTILER_KEY` set (key restricted to the domain), WhatsApp connected, `receiver_tracking_enabled` = 1, a driver account on a phone, a receiver phone with WhatsApp.
 
 | # | Check | Expected |

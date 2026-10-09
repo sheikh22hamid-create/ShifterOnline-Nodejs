@@ -1,5 +1,7 @@
 # Driver Wallet — Withdraw & Outstanding Dues Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - one rule changed.** Dispatch does **not** exclude every negative balance: a driver stays eligible down to `-driver_max_due_limit` (default 100 rupees, admin-editable) and is excluded below it. Customer wallet withdrawal is now blocked entirely (spend-only). Current code-verified description: [Master Document sections 4.3 and 5.20](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-23
 
 ## Purpose

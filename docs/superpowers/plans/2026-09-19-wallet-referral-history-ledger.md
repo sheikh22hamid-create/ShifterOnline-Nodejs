@@ -1,5 +1,7 @@
 # Wallet & Referral Points History Ledger Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.21](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Expose the already-populated `tbl_wallet_history` and `tbl_referral_point_log` ledgers in the admin panel with searchable/filterable list views and a click-through transaction detail, and add the missing driver wallet admin-adjust endpoint so driver wallet changes get the same audit trail as customer wallet changes.

@@ -1,5 +1,7 @@
 # Scheduled Order Driver Priority Dispatch (Phase B) Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - see the spec banner for changed values.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.6](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let drivers browse upcoming `booking_type=2` scheduled orders ahead of time, mark interest (non-binding), get first crack at the popup when the order goes live (30 min before pickup, 15-minute exclusive window), then fall back to the existing radius-based cascade everyone else already uses for instant orders. Customer gets a "searching" push when the order goes live and a "may run a few minutes late" heads-up if the accepting driver has little buffer left.

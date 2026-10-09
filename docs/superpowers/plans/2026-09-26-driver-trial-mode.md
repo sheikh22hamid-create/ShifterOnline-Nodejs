@@ -1,5 +1,7 @@
 # Driver Trial Mode Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.12](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let an admin put a specific driver into a "trial" state — eligible for real dispatch and a fixed number of orders — before that driver completes full KYC, with the driver app clearly showing "Unverified — Trial Mode" during this window and auto-blocking the driver once the trial order count is used up.

@@ -1,5 +1,7 @@
 # Receiver live tracking - design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code (`receiver_tracking_enabled` default on). Current code-verified description: [Master Document section 5.3](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-10-06. Status: draft for review.
 
 ## Goal

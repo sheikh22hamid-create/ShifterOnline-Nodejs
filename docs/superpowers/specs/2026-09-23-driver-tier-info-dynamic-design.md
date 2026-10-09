@@ -1,5 +1,7 @@
 # Driver Tier Cards & Admin-Driven Info Popup — Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code. Admin must fill the per-package content (nothing is seeded). Current code-verified description: [Master Document section 5.18](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-23
 
 ## Purpose

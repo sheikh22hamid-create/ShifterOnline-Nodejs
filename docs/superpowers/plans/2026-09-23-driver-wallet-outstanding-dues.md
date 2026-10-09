@@ -1,5 +1,7 @@
 # Driver Wallet Withdraw & Outstanding Dues Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - see the spec banner.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 4.3](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Rework the driver wallet backend so drivers can no longer self-recharge, withdrawal is an atomic (race-free) immediate debit, a negative balance is tracked as an admin-configurable "outstanding due" that must be cleared via an exact-amount Razorpay payment, and drivers with a negative balance stop receiving new ride offers.

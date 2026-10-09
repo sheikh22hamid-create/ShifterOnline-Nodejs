@@ -32,6 +32,8 @@ public class OrderDialogHelper {
     // each call, with no other externally-reachable handle to it.
     private static AlertDialog currentDialog;
     private static String currentOrderId;
+    private static String currentPackageId;
+    private static long currentExpiresAt;
 
     /**
      * Closes the foreground dialog currently shown for orderId, if any.
@@ -51,8 +53,20 @@ public class OrderDialogHelper {
         }
     }
 
+    /**
+     * Same tier-aware matching OrderOverlayService uses: a late "timeout"
+     * dismiss for an EARLIER tier of the same order (older package_id /
+     * expires_at) must not close the newer tier's popup that replaced it.
+     * Previously this only compared order id, so in the foreground the
+     * freshly shown popup was killed the moment the previous tier's
+     * timeout dismiss (socket and/or FCM) arrived.
+     */
     public static void dismissIfShowing(String orderId, String packageId, String expiresAt, String reason) {
-        dismissIfShowing(orderId);
+        if (currentDialog == null || !currentDialog.isShowing()) return;
+        if (OrderOfferDismiss.matches(currentOrderId, currentPackageId, currentExpiresAt,
+                orderId, packageId, expiresAt, reason, System.currentTimeMillis())) {
+            currentDialog.dismiss();
+        }
     }
 
     /**
@@ -271,6 +285,8 @@ public class OrderDialogHelper {
 
         currentDialog = dialog;
         currentOrderId = orderId;
+        currentPackageId = packageId;
+        currentExpiresAt = OrderOfferDismiss.parseExpiry(getMapValue(orderData, "expires_at", null));
         dialog.show();
         if (dialog.getWindow() != null) {
             android.util.DisplayMetrics metrics = context.getResources().getDisplayMetrics();

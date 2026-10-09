@@ -1,5 +1,7 @@
 # Payment settlement - backend rollout
 
+> **Status & corrections (reviewed 2026-10-07): ROLLOUT NOTES.** Enable `settlement_enabled` only after the new customer and driver builds are released; migration `20261004010000_add_order_settlement` must be on the target DB first. Current code-verified description: [Master Document sections 5.1 and 13.4](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 1. Back up the prod DB and diff the live schema against `prisma/schema.prisma` first (known dev/prod
    drift), then apply `backend/prisma/migrations/20261004010000_add_order_settlement/migration.sql` on the target DB
    (dev, then prod). It creates the tables `order_settlement` (including `city_id`, used for admin city

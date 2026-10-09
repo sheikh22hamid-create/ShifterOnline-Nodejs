@@ -1,5 +1,8 @@
 # Driver earnings and device review — 22 September 2026
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Driver earnings screen. Note: the 'pending withdrawal reservations' referred to here belong to the legacy admin-approved withdrawal path; drivers now withdraw positive wallet balance immediately. See [Master Document sections 4.3 and 5.20](SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
+
 ## Implemented
 
 - Selected-day net earnings, cash collected, and Shifter deductions shown separately.

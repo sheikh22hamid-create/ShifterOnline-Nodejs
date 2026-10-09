@@ -1,5 +1,7 @@
 # Customer App (ShifterOnlineFinal) Node/Socket Integration Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): DONE.** The customer app integration shipped. Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document Part 12.1](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Migrate the customer app's order-creation, driver-assignment, status-tracking, and cancel flows from legacy PHP polling to the Node backend's REST + Socket.io API, mirroring the driver app's already-shipped integration.

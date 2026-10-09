@@ -1,5 +1,7 @@
 # Receiver Pays (with booker commission) Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - dark by default.** Includes the 2026-10-06 cash-commission change (commission applies to cash too). Customer-wallet withdrawal is rejected for `wallet_type=user`. GST classification of the commission is still a launch-checklist item. Current code-verified description: [Master Document section 5.2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-10-05
 
 ## Purpose

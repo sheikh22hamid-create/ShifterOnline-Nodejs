@@ -1,5 +1,7 @@
 # Receiver tracking page - app theme and delivered experience
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code. Current code-verified description: [Master Document section 5.3](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-10-06. Status: draft for review. Extends `2026-10-06-receiver-live-tracking-design.md` (same page, link and privacy model; read that first).
 
 ## Goal

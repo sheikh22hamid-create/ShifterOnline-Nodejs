@@ -1,5 +1,7 @@
 # Admin-Configurable Vehicle Detail Specs — Design Spec
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code. Current code-verified description: [Master Document section 5.19](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-17
 Status: Approved by user, pending implementation plan
 

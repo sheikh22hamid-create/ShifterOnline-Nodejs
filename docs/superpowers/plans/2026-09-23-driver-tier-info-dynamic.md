@@ -1,5 +1,7 @@
 # Driver Tier Cards & Admin-Driven Info Popup Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.18](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remove per-km/min-fare from the driver app's tier cards, turn the tier info button into a prominent "Details" chip, and make every word of the tier info popup (plus the card's one-line subtitle) editable per tier from the admin panel instead of hardcoded in the app.

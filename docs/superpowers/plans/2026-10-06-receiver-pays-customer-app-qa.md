@@ -1,5 +1,7 @@
 # Receiver Pays - customer app manual QA
 
+> **Status & corrections (reviewed 2026-10-07): QA CHECKLIST.** Manual QA for the built feature. Current code-verified description: [Master Document section 5.2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Prerequisites: dev backend with migration `20261005010000_add_receiver_pay` applied, `settlement_enabled` = 1 and `receiver_pay_enabled` = 1 (admin Settings), `PUBLIC_BASE_URL` set, a regular (non Monthly/Daily) test driver, Razorpay test keys, WhatsApp client connected, customer app built from this branch (`cd ShifterOnline && flutter run`).
 
 | # | Check | Expected |

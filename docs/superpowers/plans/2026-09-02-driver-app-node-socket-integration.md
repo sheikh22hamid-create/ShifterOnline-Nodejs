@@ -1,5 +1,7 @@
 # Driver App Node.js Socket Integration Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): DONE.** The driver app is fully on Node (`NodeApiClient`, `NodeSocketManager`). Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document Part 12.2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wire the `ShifterPartnerFinal` native Android driver app to the Node.js order-flow backend's Socket.io layer, so the app receives dispatch cascade popups (`order:request`/`order:dismiss`) and submits accept/reject/status-update actions over a live socket connection instead of the old `accept_order.php`/`reject_order.php`/`update_status.php` Retrofit calls.

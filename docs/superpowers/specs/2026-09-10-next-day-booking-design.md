@@ -1,5 +1,7 @@
 # Next Day Booking — Design Spec
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code. Current code-verified description: [Master Document section 5.7](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-10
 Status: Approved by user, pending implementation plan
 

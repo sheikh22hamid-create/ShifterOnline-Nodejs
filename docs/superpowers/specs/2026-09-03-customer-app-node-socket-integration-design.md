@@ -1,5 +1,7 @@
 # Customer App (ShifterOnlineFinal) — Node/Socket Integration Design
 
+> **Status & corrections (reviewed 2026-10-07): DONE.** The customer app now uses Node for orders, history, packages/fares, wallet, plans and live tracking. Statements that package listing/fare estimate or history 'stay on legacy PHP' are no longer true (a few legacy buy-anything paths remain under `/api/order/legacy/*`). Current code-verified description: [Master Document Part 3 and Part 12.1](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 ## Context
 
 The driver app (`ShifterPartnerFinal`, native Java/Android) was already migrated from

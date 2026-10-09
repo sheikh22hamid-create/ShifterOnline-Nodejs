@@ -1,5 +1,7 @@
 # Next Day Booking Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.7](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a manually-managed "Next Day Booking" flow — customer app creates it, it never enters automatic dispatch, and admin assigns it (individually or as a nearest-neighbor-sequenced batch) to a driver, who gets a forced (no accept/reject) notification.

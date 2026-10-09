@@ -1,7 +1,9 @@
 # Free Booking Offer - Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - migrations pending.** Status changed from 'draft'. Endpoints are `POST /api/order/free-booking/{check,status}` (not `/api/customer/...`); a per-city `referrals_required` setting and the `PREMIUM_PLAN_REQUIRED` error exist. Migrations `20261006030000` and `20261007010000` were not applied on any DB as of 2026-10-07. Current code-verified description: [Master Document section 5.4](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-10-06
-Status: draft for review
+Status: BUILT and merged (see banner above); production migrations pending
 
 ## 1. Purpose
 

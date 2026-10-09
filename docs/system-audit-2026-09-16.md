@@ -1,5 +1,8 @@
 # Shifter system audit — 16 September 2026
 
+> **Status & corrections (reviewed 2026-10-07): SNAPSHOT - partly outdated.** This audit describes the tree on 2026-09-16. Re-checked against current code: customer wallet withdrawal is now blocked entirely (spend-only), and `forgot-password` now requires a recently verified OTP (still not bound to the caller). **Still present:** caller identity is unauthenticated (#1), the driver `withdraw-request` path accepts a negative amount (#2, driver path), driver plan purchase has no gateway verification (#3), monthly-driver city scoping (#13). The remaining findings were not re-verified. Consolidated risk list: [Master Document Part 15](SHIFTER_ONLINE_MASTER_DOCUMENT.md#part-15--known-gaps-and-risks).
+
+
 Review of the current local working tree: Flutter customer app, Java driver app, Node/Prisma backend, and React admin API integration. This is a focused source audit of critical paths, not an exhaustive certification of every endpoint or a live penetration test. No live database, payment, SMS, or production mutation was performed. Application source was not changed.
 
 Existing edits in `ShifterOnline/lib/screens/home/select_vehicle.dart` and `backend/src/services/pricingEngine.js` were preserved. No AGENTS.md was found in the workspace scan.

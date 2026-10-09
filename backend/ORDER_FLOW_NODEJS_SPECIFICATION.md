@@ -1,4 +1,7 @@
 # 🚀 Shifter Online — Real-Time Node.js & WebSocket Order Flow Engine
+
+> **Status & corrections (reviewed 2026-10-07): HISTORICAL DESIGN BRIEF - built, but behaviour has evolved.** This was the original prompt for the dispatch engine. Differences in the shipped code: dispatch is a **tier-exhaustion cascade, one lap only** (each turn queries one Model tier, up to 4 drivers, 15 s popup, `BATCH_GAP_MS` = 3 s; the cursor moves to the next tier only when the current tier has no more eligible drivers), not a fixed 0/5/10/15/20 s timeline; eligibility also excludes drivers blocked by the customer, with stale GPS (> 2 min), with an unsettled payment past the grace window, or below the due limit; when every tier is exhausted the order goes to the Free Booking fallback and then a **Booking Guarantee** admin-assignment hold instead of cancelling instantly; customer/driver login now exists on Node. Current description: [docs/SHIFTER_ONLINE_MASTER_DOCUMENT.md](../docs/SHIFTER_ONLINE_MASTER_DOCUMENT.md) (Part 3.2). Database host/name below were replaced with placeholders.
+
 ### Master Technical Specification & Implementation Prompt for Claude / Senior Backend Engineer
 
 ---
@@ -17,14 +20,14 @@ This document specifies the complete architecture, database interactions, dispat
 
 ## 🗄️ 2. Database Connection & Existing Schema
 
-### 2.1 Connection Details (Live Hostinger MySQL)
+### 2.1 Connection Details (MySQL - values live only in `backend/.env`)
 ```env
-DATABASE_URL="mysql://<redacted>:<redacted>@srv2206.hstgr.io:3306/u755836427_shifteronline"
-DB_HOST="srv2206.hstgr.io"
+DATABASE_URL="mysql://<user>:<password>@<db-host>:3306/<db-name>"
+DB_HOST="<db-host>"
 DB_PORT=3306
 DB_USER="<redacted>"
 DB_PASSWORD="<redacted>"
-DB_NAME="u755836427_shifteronline"
+DB_NAME="<db-name>"
 ```
 > Real credentials live only in `backend/.env` (gitignored) — never commit them here.
 

@@ -1,5 +1,7 @@
 # Order & Dispatch Microservice Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - behaviour has since evolved.** Dispatch is now a **tier-exhaustion cascade, one lap**, 4 drivers/batch, 15 s popup, `BATCH_GAP_MS` 3 s, with a free-booking fallback and a Booking Guarantee hold before cancelling; eligibility gained blocked-driver, stale-GPS, settlement-block, due-limit, favourite-route and plan-priority rules. Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 3.2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the real-time Order & Dispatch microservice (REST + Socket.io) inside `backend/` that replaces polling with a 5s-overlapping / 15s-popup dispatch cascade against the existing live MySQL schema.

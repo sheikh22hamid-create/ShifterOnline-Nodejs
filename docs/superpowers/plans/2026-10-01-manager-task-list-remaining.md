@@ -1,5 +1,7 @@
 # Manager Task List — Remaining 8 Points Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT (8 manager points).** Delivered: driver vehicle icon on the live map, referral-point gaps, OTP-timeout fix, cancellation popup + ringtone, completed-order GPS route map, Indian languages in both apps. Prod needs the 2026-10-01 catch-up SQL. Current code-verified description: [Master Document sections 5.30a, 5.30b and 13.4](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Finish the remaining points (#3, #4, #5, #8, #11, #12, #13, #14) from the manager's 17-point list, plus a device test for #16.

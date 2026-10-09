@@ -1,5 +1,7 @@
 # Wallet & Referral Points History Ledger — Design Spec
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code (admin driver wallet-adjust, history endpoints, Wallet Adjustments page). Current code-verified description: [Master Document section 5.21](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 **Date:** 2026-09-19
 **Status:** Approved for implementation planning
 

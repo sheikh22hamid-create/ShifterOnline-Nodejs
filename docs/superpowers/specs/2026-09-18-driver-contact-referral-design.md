@@ -1,5 +1,7 @@
 # Driver Contact-Referral (Lead) Feature — Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Driver-lead flow, admin verification queue and the customer-side mirror ('User Contact Referrals') are live; expiry runs as an hourly sweep. Current code-verified description: [Master Document section 5.17](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 ## Problem
 
 Drivers currently refer new users only by sharing a code themselves

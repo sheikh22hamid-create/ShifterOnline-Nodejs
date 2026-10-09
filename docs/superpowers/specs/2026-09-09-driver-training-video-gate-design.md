@@ -1,5 +1,7 @@
 # Driver Training Video Gate — Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT (reminder push NOT built).** Gate, progress sync and admin config/progress/reset are live. The daily reminder push (node-cron, `notifyDriverTrainingIncomplete`) was never implemented - there is no `node-cron` dependency. Current code-verified description: [Master Document section 5.11](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Status: approved, ready for implementation planning
 Date: 2026-09-09
 

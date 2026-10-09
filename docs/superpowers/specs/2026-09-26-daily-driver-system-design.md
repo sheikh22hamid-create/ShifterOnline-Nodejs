@@ -1,5 +1,7 @@
 # Daily Driver System — Backend Engine Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT (backend + admin + driver app).** The 'separate sub-projects' mentioned here are done: the admin *Daily Drivers* page and the driver-app Daily Driver screens exist. The old Monthly Driver still works for already-enrolled drivers. Current code-verified description: [Master Document section 5.13](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Status: approved (condensed — architectural, backend sub-project only). Admin panel and
 driver-app (native Android `com.shifter.driver`) UI are separate sub-projects that will
 consume this backend and are not covered here.

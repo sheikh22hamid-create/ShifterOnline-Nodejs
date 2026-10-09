@@ -1,5 +1,7 @@
 # Driver Training Video Gate Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT (reminder push NOT built).** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.11](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the mandatory driver-training video gate actually work end-to-end — fix the two broken pieces of the already-built driver-app player (wrong legacy PHP backend, gate silently bypassed on app-reopen and OTP-login), add the missing Node backend and admin-panel support, and add the three approved extras (rewatch section, reminder push, admin manual reset).

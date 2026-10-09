@@ -1,5 +1,7 @@
 # PHP ↔ Node Order-Flow Bridge — Design
 
+> **Status & corrections (reviewed 2026-10-07): SUPERSEDED / REMOVED.** The PHP-Node bridge was built and then deliberately removed. Both mobile apps now call the Node backend directly (REST + Socket.io); customer/driver auth also lives on Node. Do **not** recreate the bridge. Current code-verified description: [Master Document Part 2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 **Date:** 2026-09-01
 **Status:** Approved for planning
 **Related:** `backend/ORDER_FLOW_NODEJS_SPECIFICATION.md`, `docs/superpowers/plans/2026-08-26-order-dispatch-engine.md`

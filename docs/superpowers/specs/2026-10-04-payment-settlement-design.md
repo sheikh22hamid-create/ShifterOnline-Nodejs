@@ -1,5 +1,7 @@
 # Trip Payment Settlement Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - dark by default.** Real endpoints differ from the table here: customer `POST /api/order/settlement/{state,choose-driver,pay-online/create,pay-online/verify,dispute,take-over,resend-link,receiver-phone}`; driver `POST /api/rider/settlement/{state,received,dispute,pending,receiver-refused,resend-link}`; admin `GET /settlements`, `GET /settlements/:id`, `POST /settlements/:id/resolve`, `POST /settlements/:id/convert-to-customer`. Settings are the `settlement_*` keys on the generic Settings page (there is no `/admin/settlement-settings`). Receiver-mode settlements are exempt from the driver dispatch block. Current code-verified description: [Master Document section 5.1](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-10-04
 
 ## Purpose

@@ -1,5 +1,7 @@
 # Order Goods Type — Design
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code. Current code-verified description: [Master Document section 5.10](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-30
 
 ## Goal

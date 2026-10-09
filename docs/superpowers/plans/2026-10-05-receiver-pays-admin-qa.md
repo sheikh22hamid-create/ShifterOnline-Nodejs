@@ -1,5 +1,7 @@
 # Receiver Pays - admin panel manual QA
 
+> **Status & corrections (reviewed 2026-10-07): QA CHECKLIST.** Manual QA for the built feature. Current code-verified description: [Master Document section 5.2](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Prerequisites: dev DB with migration `20261005010000_add_receiver_pay` applied, backend running against it (`cd backend && npm run dev`), admin panel running (`cd frontend && npm run dev`), logged in as a **superadmin**. Receiver-mode settlements come from the backend QA checklist (`2026-10-05-receiver-pays-qa-checklist.md`, item 4).
 
 | # | Check | Expected |

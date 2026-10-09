@@ -1,5 +1,7 @@
 # Scheduled Order (booking_type=2) — Date/Time Picker + Driver Priority Dispatch — Design Spec
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - several values changed.** Actual behaviour: go-live **exactly at** the scheduled time (lead 0; the 30-minute advance dispatch was removed); priority window **2 minutes** (popup 60 s), not 15 minutes; the priority offer is a normal `order:request` carrying `schedule_date_time` (there is no `order:scheduled_priority_offer` event); driver endpoints are `POST /api/rider/scheduled-trips`, `/interest`, `/interest/remove`; the minimum lead time (default 45 min) and the customer confirm popup (default 30 min) are admin settings; customers also get a schedule-confirm popup. Current code-verified description: [Master Document section 5.6](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-21
 Status: Approved by user, pending implementation plan
 

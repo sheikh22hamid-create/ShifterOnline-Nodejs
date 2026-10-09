@@ -1,5 +1,7 @@
 # Add Stop (Multi-Stop Booking) — Design Spec
 
+> **Status & corrections (reviewed 2026-10-07): BUILT - extended since.** Stops can now also be added **after** booking (`/api/order/stops/preview|confirm`), alongside drop/pickup changes; limits are `max_extra_stops` (default 2) and `extra_stop_charge` (default 0) in Settings. Section 2 ('greenfield') is historical. Current code-verified description: [Master Document sections 5.8 and 3.5](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-11
 Status: Approved by user, pending implementation plan
 

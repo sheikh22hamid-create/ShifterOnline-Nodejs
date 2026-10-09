@@ -1,5 +1,7 @@
 # Admin-Configurable Vehicle Detail Specs Implementation Plan
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Implementation record - kept for history. Where it differs from the code, the code and the master document win. Current code-verified description: [Master Document section 5.19](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the hardcoded `getVehicleSpecs()` lookup table with admin-editable per-category fields (dimensions, max load, detail image) and a global policy-notes list, and add a customer-app "Details" screen that shows them.

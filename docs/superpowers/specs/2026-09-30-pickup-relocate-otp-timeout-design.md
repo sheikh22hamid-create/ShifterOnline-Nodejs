@@ -1,5 +1,7 @@
 # Pickup relocation + OTP-timeout auto-cancel flow
 
+> **Status & corrections (reviewed 2026-10-07): BUILT.** Matches the code; the 4 settings live in Settings (`pickup_relocate_ceiling_minutes` 35, `pickup_small_move_threshold_m` 200, `pickup_otp_mismatch_flag_m` 500, `pickup_timeout_driver_compensation` 0). Later change: the pickup-ETA **auto-cancel was removed**; after the Google ETA + buffer the customer may cancel free instead. Current code-verified description: [Master Document sections 3.4 and 5.9](../../SHIFTER_ONLINE_MASTER_DOCUMENT.md).
+
 Date: 2026-09-30
 
 ## Purpose
