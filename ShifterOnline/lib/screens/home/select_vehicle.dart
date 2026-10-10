@@ -323,6 +323,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       return;
     }
     setState(() => _scheduledFor = picked);
+    // Night-charge window depends on the chosen time, so refresh the fares.
+    _refreshAvailability();
   }
 
   String _text(dynamic value, [String fallback = '']) {
@@ -556,8 +558,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         'pickup_lat': _pickup.latitude,
         'pickup_lng': _pickup.longitude,
         'radius_km': _selectedRadiusKm,
-        'booking_type': _currentBookingType == 3 ? 'next_day' : 'now',
+        // Scheduled (2) and next-day (3) orders dispatch later, so every
+        // vehicle must stay selectable even with no driver online right now.
+        'booking_type': _currentBookingType == 3
+            ? 'next_day'
+            : _currentBookingType == 2
+                ? 'scheduled'
+                : 'now',
       };
+      if (_currentBookingType == 2 && _scheduledFor != null) {
+        body['scheduled_at'] = _scheduledFor!.toUtc().toIso8601String();
+      }
       final uid = _storage.read('Uid');
       if (uid != null) body['uid'] = int.tryParse(uid.toString()) ?? uid;
       final response = await http.post(Uri.parse(Config.availableVehiclesUrl),

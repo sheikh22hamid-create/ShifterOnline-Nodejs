@@ -603,8 +603,15 @@ public class OrderOverlayService extends Service {
         if (countDownTimer != null) {
             countDownTimer.cancel();
         }
-        com.shifter.driver.utility.OrderAlertPlayer.stop();
-        
+        // Only silence the alert if THIS service was actually showing an
+        // overlay. A dismiss delivered while the app is in the foreground
+        // starts this service just to find nothing to close, then stopSelf()
+        // -> onDestroy() -> here; stopping unconditionally killed the voice/
+        // ringtone of the foreground dialog's newly shown tier.
+        if (rootContainer != null) {
+            com.shifter.driver.utility.OrderAlertPlayer.stop();
+        }
+
         try {
             NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             if (notificationManager != null) {

@@ -309,8 +309,13 @@ public class OrderDialogHelper {
 
         dialog.setOnDismissListener(d -> {
             countDownTimer.cancel();
-            OrderAlertPlayer.stop();
+            // Dialog.dismiss() delivers this listener via a posted message,
+            // so for a dialog replaced by the next tier's popup it runs
+            // AFTER the new popup already started its voice/ringtone —
+            // stopping unconditionally killed the new alert instantly.
+            // Only the dialog that is still current owns the alert.
             if (currentDialog == dialog) {
+                OrderAlertPlayer.stop();
                 currentDialog = null;
                 currentOrderId = null;
             }

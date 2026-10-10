@@ -361,8 +361,13 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 : "half".equalsIgnoreCase(bodyType) ? "Half Body"
                 : "open".equalsIgnoreCase(bodyType) ? "Open Body"
                 : null;
-        if (!vehicleNo.isEmpty()) {
-            binding.txtGreetingSubtitle.setText(bodyLabel != null ? (vehicleNo + " · " + bodyLabel) : vehicleNo);
+        String typeLabel = vehicleTypeLabel(riderData != null ? riderData.getVehicle() : null);
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (typeLabel != null) parts.add(typeLabel);
+        if (!vehicleNo.isEmpty()) parts.add(vehicleNo);
+        if (bodyLabel != null && !parts.isEmpty()) parts.add(bodyLabel);
+        if (!parts.isEmpty()) {
+            binding.txtGreetingSubtitle.setText(android.text.TextUtils.join(" · ", parts));
         } else {
             binding.txtGreetingSubtitle.setText(R.string.home_day_overview);
         }
@@ -904,10 +909,23 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             riderData.setBodyType(bType);
                         }
                     }
+                    if (riderData != null) {
+                        if (result.has("trial_status") && !result.get("trial_status").isJsonNull()) {
+                            riderData.setTrialStatus(result.get("trial_status").getAsString());
+                        }
+                        if (result.has("trial_orders_allowed") && !result.get("trial_orders_allowed").isJsonNull()) {
+                            riderData.setTrialOrdersAllowed(result.get("trial_orders_allowed").getAsInt());
+                        }
+                        if (result.has("trial_orders_completed") && !result.get("trial_orders_completed").isJsonNull()) {
+                            riderData.setTrialOrdersCompleted(result.get("trial_orders_completed").getAsInt());
+                        }
+                    }
                     if (riderData != null && sessionManager != null) {
                         sessionManager.setUserDetails(riderData);
                     }
+                    updateTrialBanner();
                     setupHomeBodyTypeUI();
+                    updateGreetingAndAvatar();
                     boolean apiOnline = false;
                     if (result.has("Online") && !result.get("Online").isJsonNull()) {
                         try {
@@ -1245,6 +1263,23 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         DeliveryPreferencesBottomSheet.show(getActivity(), packageDataList, riderData, () -> {
             updateDeliveryTypesUI();
         });
+    }
+
+    /**
+     * Maps the rider's vehicle/category name (e.g. "Bike", "3 Wheeler", "Tata Ace")
+     * to Bike / Three Wheeler / Four Wheeler. Same keyword fallbacks as the
+     * backend slab pricing lookup; unknown names are shown as-is.
+     */
+    private static String vehicleTypeLabel(String vehicle) {
+        if (vehicle == null || vehicle.trim().isEmpty()) return null;
+        String v = vehicle.toLowerCase().trim();
+        if (v.contains("bike") || v.contains("scooter") || v.contains("motorcycle")
+                || v.contains("2 wheeler") || v.contains("two wheeler") || v.contains("2w")) return "Bike";
+        if (v.contains("4 wheeler") || v.contains("four") || v.contains("4w")
+                || v.contains("ace") || v.contains("tata")) return "Four Wheeler";
+        if (v.contains("3 wheeler") || v.contains("three") || v.contains("3w")
+                || v.contains("mini") || v.contains("loader") || v.contains("electric")) return "Three Wheeler";
+        return vehicle.trim();
     }
 
     /**

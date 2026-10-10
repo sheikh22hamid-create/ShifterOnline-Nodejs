@@ -212,6 +212,10 @@ async function homeData(req, res) {
       vehicle: rider.vehicle || "",
       body_type: rider.body_type || "all",
       allowed_body_types: allowedBodyTypes,
+      // Live trial counter - the app's saved login copy goes stale as orders complete.
+      trial_status: rider.trial_status,
+      trial_orders_allowed: rider.trial_orders_allowed,
+      trial_orders_completed: rider.trial_orders_completed,
       OrderHistory: activeOrderHistory,
       BuyOrderHistory: activeBuyOrderHistory,
       referral_code: referralCode,
