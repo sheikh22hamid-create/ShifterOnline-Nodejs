@@ -12,6 +12,7 @@ jest.mock("../driverOrderEventService", () => ({
   EVENTS: { ACCEPTED: "accepted", COMPLETED: "completed" },
   logEvent: jest.fn().mockResolvedValue(null),
 }));
+jest.mock("../cancelRequestService", () => ({ gateDriverCancel: jest.fn() }));
 
 const prisma = require("../../config/db");
 const orderStage = require("../orderStageService");
@@ -46,5 +47,27 @@ describe("rejectOrder -> tier penalty hook", () => {
     tierPenalty.onMiss.mockRejectedValue(new Error("boom"));
 
     await expect(tripLifecycle.rejectOrder(50, 9, 6)).resolves.toEqual({ success: true });
+  });
+});
+
+describe("driverCancel -> approval gate", () => {
+  const cancelRequestService = require("../cancelRequestService");
+
+  it("returns a requested marker and cancels nothing when approval is required", async () => {
+    cancelRequestService.gateDriverCancel.mockResolvedValue({ mode: "requested", requestId: 12 });
+    const res = await tripLifecycle.driverCancel(50, 9, "breakdown");
+    expect(res).toMatchObject({ requires_admin_approval: true, cancel_request_id: 12, refund_status: "cancel_requested" });
+  });
+
+  it("throws ORDER_NOT_CANCELLABLE after pickup for a Free/Daily driver", async () => {
+    cancelRequestService.gateDriverCancel.mockResolvedValue({ mode: "blocked" });
+    await expect(tripLifecycle.driverCancel(50, 9, "x")).rejects.toThrow("ORDER_NOT_CANCELLABLE");
+  });
+
+  it("automated system cancels (requireOrderStatus) never go through the gate", async () => {
+    cancelRequestService.gateDriverCancel.mockClear();
+    prisma.$transaction.mockRejectedValue(new Error("reached DB")); // the first DB call driverCancel makes
+    await expect(tripLifecycle.driverCancel(50, 9, "timeout", { requireOrderStatus: 1 })).rejects.toThrow("reached DB");
+    expect(cancelRequestService.gateDriverCancel).not.toHaveBeenCalled();
   });
 });

@@ -1393,6 +1393,16 @@ async function customerCancel(uid, orderId, comment) {
  * connections) can never credit the customer's wallet twice.
  */
 async function driverCancel(orderId, riderId, reason, opts = {}) {
+  // Tiered dispatch (spec 3.1): a Free/Daily driver cannot cancel on their own. Automated system cancels
+  // (opts.requireOrderStatus) and the admin-approval path itself never come through here.
+  if (opts.requireOrderStatus == null) {
+    const gate = await require("./cancelRequestService").gateDriverCancel({ orderId, riderId, reason });
+    if (gate.mode === "blocked") throw new Error("ORDER_NOT_CANCELLABLE");
+    if (gate.mode === "requested") {
+      return { refund_amount: 0, refund_status: "cancel_requested", requires_admin_approval: true, cancel_request_id: gate.requestId };
+    }
+  }
+
   let cancelledOrder = null;
   let refundAmount = 0;
   let refundStatus = "not_required";

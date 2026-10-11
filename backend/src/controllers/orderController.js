@@ -1261,6 +1261,13 @@ async function driverCancel(req, res) {
     }
 
     const result = await tripLifecycle.driverCancel(Number(order_id), Number(rider_id), reason);
+    if (result.requires_admin_approval) {
+      return res.status(200).json({
+        success: true,
+        message: "Cancel request sent to the admin for approval. Please complete the order until it is approved.",
+        data: { order_id: Number(order_id), requires_admin_approval: true, cancel_request_id: result.cancel_request_id },
+      });
+    }
     return res.status(200).json({
       success: true,
       message: "Ride cancelled and advance refunded where applicable",
