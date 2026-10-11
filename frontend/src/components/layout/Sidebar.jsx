@@ -37,6 +37,12 @@ export default function Sidebar({ open, onNavigate }) {
         if (!cancelled) setLiveCounts((c) => ({ ...c, pendingPayouts: res.data.total }))
       })
       .catch(() => {})
+    api
+      .get('/tier-dispatch/cancel-requests', { params: { status: 'pending' } })
+      .then((res) => {
+        if (!cancelled) setLiveCounts((c) => ({ ...c, pendingCancels: res.data?.data?.length || 0 }))
+      })
+      .catch(() => {})
 
     if (!socket) return () => { cancelled = true }
     socket.on('admin:new_order', refreshActiveOrders)
@@ -51,6 +57,7 @@ export default function Sidebar({ open, onNavigate }) {
   const BADGE_BY_PATH = {
     '/orders': liveCounts.activeOrders > 0 ? `${liveCounts.activeOrders} Active` : null,
     '/payouts': liveCounts.pendingPayouts > 0 ? `${liveCounts.pendingPayouts} pending` : null,
+    '/tiered-dispatch': liveCounts.pendingCancels > 0 ? `${liveCounts.pendingCancels} pending` : null,
   }
 
   // All groups start open; collapsing is per-session, not persisted — this
