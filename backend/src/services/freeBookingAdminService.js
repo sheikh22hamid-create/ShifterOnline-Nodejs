@@ -45,12 +45,26 @@ const requireCity = (cityId) => {
 async function getSettings(cityId) {
   requireCity(cityId);
   const row = await freeBookingService.getCitySetting(cityId);
+  let usedFreeOrders = 0;
+  if (row?.offer_start && row?.offer_end) {
+    usedFreeOrders = await prisma.free_booking_order.count({
+      where: {
+        city_id: Number(cityId),
+        status: { in: [rules.STATUS.CONFIRMED, rules.STATUS.REWARD_PENDING, rules.STATUS.REWARD_CREDITED] },
+        created_at: { gte: row.offer_start, lte: row.offer_end },
+      },
+    }).catch(() => 0);
+  }
   return {
     city_id: Number(cityId),
     enabled: Boolean(row?.enabled),
     offer_start: row?.offer_start ?? null,
     offer_end: row?.offer_end ?? null,
     referrals_required: rules.referralsRequiredOf(row),
+    max_free_orders: row?.max_free_orders ?? null,
+    max_amount: row?.max_amount != null ? Number(row.max_amount) : null,
+    max_km: row?.max_km != null ? Number(row.max_km) : null,
+    used_free_orders: usedFreeOrders,
   };
 }
 
@@ -66,7 +80,23 @@ function parseReferralsRequired(v) {
   return n;
 }
 
-async function saveSettings({ cityId, enabled, offerStart, offerEnd, referralsRequired, adminId }) {
+function parseOptionalPositiveInt(v, label) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = typeof v === "number" ? v : typeof v === "string" && /^\d+$/.test(v.trim()) ? Number(v) : NaN;
+  if (!Number.isInteger(n) || n < 1) throw bad(`${label} must be a positive whole number`);
+  return n;
+}
+
+function parseOptionalPositiveDecimal(v, label) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) throw bad(`${label} must be a positive number`);
+  return n;
+}
+
+async function saveSettings({ cityId, enabled, offerStart, offerEnd, referralsRequired, maxFreeOrders, maxAmount, maxKm, adminId }) {
   requireCity(cityId);
   const on = parseEnabled(enabled);
   // Validated even when the offer is OFF: an Invalid Date must never reach Prisma.
@@ -75,9 +105,16 @@ async function saveSettings({ cityId, enabled, offerStart, offerEnd, referralsRe
   if (on && (!start || !end)) throw bad("Offer start and end are required to turn the offer ON");
   if (start && end && end.getTime() <= start.getTime()) throw bad("Offer end must be after the start");
   const required = parseReferralsRequired(referralsRequired);
+  const maxOrders = parseOptionalPositiveInt(maxFreeOrders, "Max free orders");
+  const maxAmt = parseOptionalPositiveDecimal(maxAmount, "Max amount");
+  const maxDistance = parseOptionalPositiveDecimal(maxKm, "Max km");
+
   const data = {
     enabled: on, offer_start: start, offer_end: end, updated_by: adminId ?? null,
     ...(required !== undefined ? { referrals_required: required } : {}),
+    ...(maxOrders !== undefined ? { max_free_orders: maxOrders } : {}),
+    ...(maxAmt !== undefined ? { max_amount: maxAmt } : {}),
+    ...(maxDistance !== undefined ? { max_km: maxDistance } : {}),
   };
   return prisma.free_booking_setting.upsert({
     where: { city_id: Number(cityId) },

@@ -53,7 +53,16 @@ export default function FreeBookingOffer() {
     if (user && user.role !== 'superadmin') setCityId(String(user.city_id ?? ''))
   }, [user])
 
-  const [settings, setSettings] = useState({ enabled: false, offer_start: '', offer_end: '', referrals_required: '1' })
+  const [settings, setSettings] = useState({
+    enabled: false,
+    offer_start: '',
+    offer_end: '',
+    referrals_required: '1',
+    max_free_orders: '',
+    max_amount: '',
+    max_km: '',
+    used_free_orders: 0,
+  })
   const [pool, setPool] = useState([])
   const [candidates, setCandidates] = useState([])
   const [orders, setOrders] = useState([])
@@ -85,7 +94,16 @@ export default function FreeBookingOffer() {
   // Declared before the load effect so on a city change it runs first: clear every city-scoped value.
   useEffect(() => {
     cityRef.current = cityId
-    setSettings({ enabled: false, offer_start: '', offer_end: '', referrals_required: '1' })
+    setSettings({
+      enabled: false,
+      offer_start: '',
+      offer_end: '',
+      referrals_required: '1',
+      max_free_orders: '',
+      max_amount: '',
+      max_km: '',
+      used_free_orders: 0,
+    })
     setSettingsLoaded(false)
     setPool([])
     setCandidates([])
@@ -115,7 +133,16 @@ export default function FreeBookingOffer() {
       () => api.get('/free-booking/settings', { params: params() }),
       (res) => {
         const d = res.data.data
-        setSettings({ enabled: d.enabled, offer_start: toLocalInput(d.offer_start), offer_end: toLocalInput(d.offer_end), referrals_required: String(d.referrals_required ?? 1) })
+        setSettings({
+          enabled: d.enabled,
+          offer_start: toLocalInput(d.offer_start),
+          offer_end: toLocalInput(d.offer_end),
+          referrals_required: String(d.referrals_required ?? 1),
+          max_free_orders: d.max_free_orders != null ? String(d.max_free_orders) : '',
+          max_amount: d.max_amount != null ? String(d.max_amount) : '',
+          max_km: d.max_km != null ? String(d.max_km) : '',
+          used_free_orders: Number(d.used_free_orders || 0),
+        })
         setSettingsLoaded(true)
       },
       () => setSettingsLoaded(false),
@@ -197,6 +224,9 @@ export default function FreeBookingOffer() {
         offer_start: fromLocalInput(settings.offer_start),
         offer_end: fromLocalInput(settings.offer_end),
         referrals_required: Number(settings.referrals_required),
+        max_free_orders: settings.max_free_orders ? Number(settings.max_free_orders) : null,
+        max_amount: settings.max_amount ? Number(settings.max_amount) : null,
+        max_km: settings.max_km ? Number(settings.max_km) : null,
       }),
       success: 'Free Booking settings saved',
       failMsg: 'Could not save settings',
@@ -337,6 +367,67 @@ export default function FreeBookingOffer() {
             <input type="number" min="1" max="50" step="1" required disabled={!canWrite} value={settings.referrals_required} onChange={(e) => setSettings({ ...settings, referrals_required: e.target.value })} className={inputClass} style={inputStyle} />
           </Field>
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>After a customer gets a free booking, the offer locks. They unlock it by completing this many successful referrals (counted after the lock). Default 1.</p>
+
+          <div className="border-t pt-3 space-y-3" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-600">
+                Offer Limits (Optional)
+              </h3>
+              {settings.max_free_orders ? (
+                <span className="text-[11px] font-semibold text-emerald-600 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                  Used: {settings.used_free_orders || 0} / {settings.max_free_orders} Free Orders
+                </span>
+              ) : null}
+            </div>
+            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Leave empty for no limit. Orders exceeding any limit continue as normal bookings (not offered to free pool).
+            </p>
+
+            <Field label="Max Free Orders (Total limit for offer period)">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="No limit"
+                disabled={!canWrite}
+                value={settings.max_free_orders}
+                onChange={(e) => setSettings({ ...settings, max_free_orders: e.target.value })}
+                className={inputClass}
+                style={inputStyle}
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Max Order Amount (₹)">
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="No limit"
+                  disabled={!canWrite}
+                  value={settings.max_amount}
+                  onChange={(e) => setSettings({ ...settings, max_amount: e.target.value })}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Max Route Distance (km)">
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  placeholder="No limit"
+                  disabled={!canWrite}
+                  value={settings.max_km}
+                  onChange={(e) => setSettings({ ...settings, max_km: e.target.value })}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+              </Field>
+            </div>
+          </div>
+
           {canWrite && settingsLoaded && <button type="submit" disabled={busy} style={busyStyle} className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-emerald-600">Save</button>}
         </form>
       )}
