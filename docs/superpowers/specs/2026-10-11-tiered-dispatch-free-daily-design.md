@@ -60,6 +60,20 @@ New table `order_dispatch_stage` (`order_id` unique, `stage` in free|daily|norma
 - Admin panel gets a "Cancel requests" list. Approve: the order is cancelled for this driver and re-dispatched from the next stage (Free driver -> `daily`; Daily driver -> `normal`); a Free Booking row becomes NOT_ELIGIBLE (no refund); the driver gets the cancel penalty (setting `cancel_penalty_pct`, which the admin can waive afterwards). Reject: the order stays with the driver and the driver is told to complete it.
 - Pending requests do not block the driver: the order stays assigned until the admin decides.
 
+### 3.2 Free Booking limits set by the admin (manager decision, "most important point")
+
+The admin decides how generous the Free Booking offer is, per city, on the Free Booking admin page (superadmin: any city; city admin: own city, like the existing offer settings):
+
+- `max_free_orders`: the **total number of free orders for the whole offer period** (`offer_start` .. `offer_end`).
+- `max_amount`: the largest order total (Rs, `pkg_order.total_dcharge`) that can be a free order.
+- `max_km`: the longest route distance (`pkg_order.distance`, km) that can be a free order.
+- Each limit is optional; empty means "no limit", so nothing changes until the admin fills it in. Schema: `ALTER TABLE free_booking_setting ADD max_free_orders INT NULL, ADD max_amount DECIMAL(10,2) NULL, ADD max_km DECIMAL(6,2) NULL` (new migration, applied before deploy like the others).
+- An order is a Free Booking only if all hold, on top of today's rules: total <= `max_amount`, distance <= `max_km`, and the free orders already used in the offer period are fewer than `max_free_orders`. "Used" = `free_booking_order` rows of that city created inside the offer window with status CONFIRMED, REWARD_PENDING or REWARD_CREDITED (a NOT_ELIGIBLE row, for example after a fallback, does not use up the limit).
+- Over any limit the order is a normal booking: not offered to the Free stage (it starts at the Daily stage), no refund. The customer sees the usual "not available" result with the reason (over amount, over distance, or limit reached).
+- Authoritative check: at order creation, with the real total and distance (`orderController.createOrderCore`). `POST /api/order/free-booking/check` also accepts the estimated `amount` and `distance_km` so the app shows the right badge before booking. The count check and the insert of the `free_booking_order` row run under a lock on the city's setting row, so two simultaneous orders cannot both take the last free slot.
+- The admin page shows used / limit next to the limit field.
+- Implemented in Plan 2 (Free order rules and refund), not in Plan 1.
+
 ## 4. Penalty
 
 Tables
