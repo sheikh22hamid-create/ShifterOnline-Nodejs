@@ -215,6 +215,7 @@ async function verifyOtp(req, res) {
         Result: "true",
         ResponseMsg: "Login Successfully.",
         Is_New_User: "0",
+        otp_token: await otpService.issueVerificationToken(mobile),
         DriverData: driverResponse,
       });
     }
@@ -471,8 +472,23 @@ async function registerHandler(req, res) {
     const existingRider = await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
     let riderId = 0;
     let isExistingDraft = false;
+    // A trial driver (admin-created, full_name already set) completing KYC is
+    // the same person finishing registration, not a duplicate signup - reuse
+    // the row so trial history, wallet and orders stay attached to them.
+    const isTrialUpgrade = !!existingRider
+      && ["active", "exhausted", "blocked"].includes(existingRider.trial_status)
+      && existingRider.verification_status !== "approved";
+    // /auth/register is unauthenticated, so taking over an existing named
+    // account (and its payout details) must be proven by a fresh OTP on this
+    // mobile - the form takes a while to fill, hence the longer window.
+    const OTP_TOKEN_WINDOW_MS = 30 * 60 * 1000;
+    const normalizedMobile = otpService.normalizeMobile(mobile);
+    const otpToken = String(body.otp_token || "");
+    if (isTrialUpgrade && !(await otpService.checkVerificationToken(otpToken, normalizedMobile, OTP_TOKEN_WINDOW_MS))) {
+      return fail(res, "Please verify your mobile number with OTP to continue your KYC.");
+    }
     if (existingRider) {
-      if (!existingRider.full_name) {
+      if (!existingRider.full_name || isTrialUpgrade) {
         riderId = existingRider.id;
         isExistingDraft = true;
       } else {
@@ -517,11 +533,16 @@ async function registerHandler(req, res) {
     const { charge: autoVerificationCharge } = await getAutoVerificationSettings();
     const initialPaymentComplete = autoVerificationCharge > 0 ? 0 : 1;
 
+    // Validation is done - spend the OTP proof now so it can't be replayed.
+    if (isTrialUpgrade && !(await otpService.checkVerificationToken(otpToken, normalizedMobile, OTP_TOKEN_WINDOW_MS, { consume: true }))) {
+      return fail(res, "Please verify your mobile number with OTP to continue your KYC.");
+    }
+
     if (isExistingDraft && riderId > 0) {
       await prisma.tbl_rider.update({
         where: { id: riderId },
         data: {
-          full_name: fullName,
+          full_name: fullName || existingRider.full_name || "",
           email,
           dob,
           account_name: accountName,
@@ -532,14 +553,27 @@ async function registerHandler(req, res) {
           city_id: cityId,
           device_id: deviceId,
           fcm_token: fcmToken,
-          refferal_code: refferalCode,
-          reffer_code: refferCode,
-          referral_code: refferCode,
-          refer_by: referrerId,
-          referred_by: referrerId,
-          referred_by_type: refTypeStr,
+          // Trial drivers already have a share code and may have paid the
+          // verification charge on an earlier submit - don't reset either.
+          ...(isTrialUpgrade
+            ? {
+                ...(referrerId > 0
+                  ? { refferal_code: refferalCode, refer_by: referrerId, referred_by: referrerId, referred_by_type: refTypeStr }
+                  : {}),
+                ...(existingRider.reffer_code || existingRider.referral_code
+                  ? {}
+                  : { reffer_code: refferCode, referral_code: refferCode }),
+              }
+            : {
+                refferal_code: refferalCode,
+                reffer_code: refferCode,
+                referral_code: refferCode,
+                refer_by: referrerId,
+                referred_by: referrerId,
+                referred_by_type: refTypeStr,
+              }),
           status: 1,
-          payment_complete: initialPaymentComplete,
+          payment_complete: Number(existingRider.payment_complete) === 1 ? 1 : initialPaymentComplete,
         },
       });
     } else {
@@ -754,7 +788,7 @@ async function registerHandler(req, res) {
       is_all_verified: isAllVerified,
       payment_complete: paymentComplete ? 1 : 0,
       auto_verification_charge: autoVerificationCharge,
-      reffer_code: refferCode,
+      reffer_code: riderData.reffer_code || refferCode,
       rider_data: {
         ...riderData,
         mobile: riderData.fmobile,

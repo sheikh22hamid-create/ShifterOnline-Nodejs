@@ -370,13 +370,15 @@ public class LoginActivity extends LocaleAwareActivity implements GetResult.MyLi
                 String allVerify = loginData.getRiderData().getVerificationStatus();
                 int paymentComplete = loginData.getRiderData().getPaymentComplete();
                 String trialStatus = loginData.getRiderData().getTrialStatus();
-                if ((allVerify != null && allVerify.equalsIgnoreCase("approved")) || paymentComplete == 1
-                        || "active".equalsIgnoreCase(trialStatus)) {
-                    openHome();
-                } else if ("exhausted".equalsIgnoreCase(trialStatus) || "blocked".equalsIgnoreCase(trialStatus)) {
+                boolean isApproved = allVerify != null && allVerify.equalsIgnoreCase("approved");
+                if (!isApproved && ("exhausted".equalsIgnoreCase(trialStatus) || "blocked".equalsIgnoreCase(trialStatus))) {
+                    // Before the payment_complete check: it is set to 1 at login when the
+                    // verification charge is 0, which says nothing about KYC.
                     Intent intent = new Intent(LoginActivity.this, TrialEndedActivity.class);
                     startActivity(intent);
                     finish();
+                } else if (isApproved || paymentComplete == 1 || "active".equalsIgnoreCase(trialStatus)) {
+                    openHome();
                 } else if (paymentComplete == 0 && loginData.getRiderData().getAutoVerificationCharge() > 0) {
                     Intent intent = new Intent(LoginActivity.this, AutoPaymentActivity.class);
                     intent.putExtra("rider_id", loginData.getRiderData().getId());

@@ -6,6 +6,7 @@ jest.mock("../../services/otpService", () => ({
   normalizeMobile: jest.fn((m) => m),
   isValidIndianMobile: jest.fn(() => true),
   verifyOtp: jest.fn().mockResolvedValue({ ok: true }),
+  issueVerificationToken: jest.fn().mockResolvedValue("7.sig"),
 }));
 jest.mock("../../services/deviceSessionService", () => ({
   registerDevice: jest.fn().mockResolvedValue(undefined),

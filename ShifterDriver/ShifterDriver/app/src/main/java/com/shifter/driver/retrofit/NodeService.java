@@ -118,7 +118,8 @@ public interface NodeService {
             @Part("rc_owner_name") RequestBody rcOwnerName,
             @Part("rc_owner_aadhar_number") RequestBody rcOwnerAadhaarNumber,
             @Part MultipartBody.Part pucImage,
-            @Part MultipartBody.Part bimaImage
+            @Part MultipartBody.Part bimaImage,
+            @Part("otp_token") RequestBody otpToken
     );
 
     // --- KYC manual-upload endpoints (Node port of rider_api/bank_account.php,

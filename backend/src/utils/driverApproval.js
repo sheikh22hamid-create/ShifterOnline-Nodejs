@@ -36,7 +36,12 @@ async function evaluateDriverApproval(riderId) {
     if (doc) await prisma.tbl_personal_doc.update({ where: { id: doc.id }, data: { status: 1 } });
     await prisma.tbl_rider.update({
       where: { id: riderId },
-      data: { verification_status: "approved", all_verify: 1, a_status: 1, status: 1 },
+      data: {
+        verification_status: "approved", all_verify: 1, a_status: 1, status: 1,
+        // A trial driver who finishes KYC is a normal driver from here on -
+        // same end state as the admin "upgrade" action.
+        ...(["active", "exhausted"].includes(rider.trial_status) ? { trial_status: "upgraded" } : {}),
+      },
     });
     await assignDefaultDeliveryTypes(riderId);
   }

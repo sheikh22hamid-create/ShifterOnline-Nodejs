@@ -102,6 +102,8 @@ public class FirstActivity extends LocaleAwareActivity {
                 proceedToIntent(new Intent(FirstActivity.this, HomeActivity.class));
             } else if (riderData != null && ("exhausted".equalsIgnoreCase(riderData.getTrialStatus())
                     || "blocked".equalsIgnoreCase(riderData.getTrialStatus()))) {
+                // Checked before payment_complete: the server marks payment_complete=1 on
+                // login whenever the verification charge is 0, which says nothing about KYC.
                 proceedToIntent(new Intent(FirstActivity.this, TrialEndedActivity.class));
             } else if (riderData != null && riderData.getPaymentComplete() == 1) {
                 // Payment is completed (documents under review / pending admin approval) -> go straight to HomeActivity

@@ -913,6 +913,12 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         if (result.has("trial_status") && !result.get("trial_status").isJsonNull()) {
                             riderData.setTrialStatus(result.get("trial_status").getAsString());
                         }
+                        if (result.has("verification_status") && !result.get("verification_status").isJsonNull()) {
+                            riderData.setVerificationStatus(result.get("verification_status").getAsString());
+                        }
+                        if (result.has("payment_complete") && !result.get("payment_complete").isJsonNull()) {
+                            riderData.setPaymentComplete(result.get("payment_complete").getAsInt());
+                        }
                         if (result.has("trial_orders_allowed") && !result.get("trial_orders_allowed").isJsonNull()) {
                             riderData.setTrialOrdersAllowed(result.get("trial_orders_allowed").getAsInt());
                         }
@@ -924,6 +930,16 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                         sessionManager.setUserDetails(riderData);
                     }
                     updateTrialBanner();
+                    if (riderData != null && isAdded()
+                            && !"approved".equalsIgnoreCase(riderData.getVerificationStatus())
+                            && ("exhausted".equalsIgnoreCase(riderData.getTrialStatus())
+                            || "blocked".equalsIgnoreCase(riderData.getTrialStatus()))) {
+                        // Trial finished while the driver was already in the app: show the KYC screen now.
+                        Intent trialEnded = new Intent(requireContext(), com.shifter.driver.activity.TrialEndedActivity.class);
+                        trialEnded.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(trialEnded);
+                        return;
+                    }
                     setupHomeBodyTypeUI();
                     updateGreetingAndAvatar();
                     boolean apiOnline = false;

@@ -89,6 +89,13 @@ public class SendOTPActivity extends LocaleAwareActivity implements GetResult.My
         binding.imgBack.setOnClickListener(v -> finish());
         binding.btnSend.setOnClickListener(v -> verifyOtp());
         binding.btnReenter.setOnClickListener(v -> resendOtp());
+
+        // Opened from Trial Ended: nobody has sent an OTP yet, so send it now.
+        // savedInstanceState != null means the system recreated this screen
+        // (rotation, language/theme change) - the OTP was already sent then.
+        if (getIntent().getBooleanExtra("trial_kyc", false) && savedInstanceState == null) {
+            resendOtp();
+        }
     }
 
     /**
@@ -430,6 +437,13 @@ public class SendOTPActivity extends LocaleAwareActivity implements GetResult.My
                 return;
             }
 
+            // Single-use proof of this OTP; the registration call sends it back so the
+            // server knows the caller is the one who verified the number.
+            getSharedPreferences("kyc_otp", MODE_PRIVATE).edit()
+                    .putString("otp_token", result.has("otp_token") && !result.get("otp_token").isJsonNull()
+                            ? result.get("otp_token").getAsString() : "")
+                    .apply();
+
             // 🔥 Save session
             SessionManager sessionManager = new SessionManager(this);
             sessionManager.setUserDetails(riderData);  // ✅ NEW method
@@ -439,8 +453,18 @@ public class SendOTPActivity extends LocaleAwareActivity implements GetResult.My
             String allVerify = riderData.getVerificationStatus();
             String trialStatus = riderData.getTrialStatus();
 
-            if (allVerify != null && "approved".equalsIgnoreCase(allVerify)) {
+            boolean trialOver = "exhausted".equalsIgnoreCase(trialStatus) || "blocked".equalsIgnoreCase(trialStatus);
+            if (getIntent().getBooleanExtra("trial_kyc", false)
+                    && !"approved".equalsIgnoreCase(allVerify) && trialOver) {
+                // OTP just verified from Trial Ended: continue straight into KYC.
+                openChooseVerificationMethod();
+            } else if (allVerify != null && "approved".equalsIgnoreCase(allVerify)) {
                 checkTrainingGateAndProceed(riderData.getId());
+            } else if (trialOver) {
+                // Before the payment_complete check: the server sets payment_complete=1 at
+                // login when the verification charge is 0, which says nothing about KYC.
+                startActivity(new Intent(this, TrialEndedActivity.class));
+                finish();
             } else if (riderData.getPaymentComplete() == 1) {
                 // Payment is completed (documents under review / pending admin approval) -> go straight to Home/Training
                 checkTrainingGateAndProceed(riderData.getId());

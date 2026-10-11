@@ -628,7 +628,7 @@
 
     <!-- Driver Trial Mode -->
     <string name="trial_ended_label">Trial Orders Complete</string>
-    <string name="trial_ended_message">You\'ve used all your trial orders. Complete your KYC verification to keep receiving orders.</string>
+    <string name="trial_ended_message">You\'ve used all your trial orders. Complete your KYC now to get more rides and withdraw your earnings.</string>
     <string name="complete_kyc_label">Complete KYC Verification</string>
 
     <!-- Live Face Verification -->

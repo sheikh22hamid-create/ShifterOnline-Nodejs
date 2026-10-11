@@ -151,12 +151,47 @@ async function verifyOtp(mobile, otp, { allowTestBypass = false } = {}) {
 // a number could skip the OTP step by calling them directly.
 const OTP_VERIFIED_WINDOW_MS = 10 * 60 * 1000;
 
-async function hasRecentVerifiedOtp(mobile) {
+async function hasRecentVerifiedOtp(mobile, windowMs = OTP_VERIFIED_WINDOW_MS) {
   const otpRow = await prisma.tbl_otp.findFirst({ where: { mobile }, orderBy: { id: "desc" } });
-  return Boolean(otpRow && otpRow.status === 1 && Date.now() - new Date(otpRow.created_at).getTime() <= OTP_VERIFIED_WINDOW_MS);
+  return Boolean(otpRow && otpRow.status === 1 && Date.now() - new Date(otpRow.created_at).getTime() <= windowMs);
+}
+
+// Single-use proof that THIS caller just verified the OTP for a mobile, for
+// calls that act on an existing account (hasRecentVerifiedOtp alone only says
+// "someone verified it recently" - any other caller knowing the number could
+// ride on it). Issued by verifyOtp, checked by peek and spent by consume.
+function tokenSignature(otpId, mobile) {
+  return require("crypto")
+    .createHmac("sha256", process.env.JWT_SECRET || "")
+    .update(`${otpId}:${mobile}`)
+    .digest("hex");
+}
+
+async function issueVerificationToken(mobile) {
+  const otpRow = await prisma.tbl_otp.findFirst({ where: { mobile }, orderBy: { id: "desc" } });
+  if (!otpRow || otpRow.status !== 1 || !process.env.JWT_SECRET) return "";
+  return `${otpRow.id}.${tokenSignature(otpRow.id, mobile)}`;
+}
+
+async function checkVerificationToken(token, mobile, windowMs, { consume = false } = {}) {
+  const [idStr, sig] = String(token || "").split(".");
+  const otpId = Number(idStr);
+  if (!Number.isInteger(otpId) || !sig || !process.env.JWT_SECRET) return false;
+  const expected = tokenSignature(otpId, mobile);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !require("crypto").timingSafeEqual(a, b)) return false;
+
+  const otpRow = await prisma.tbl_otp.findFirst({ where: { id: otpId, mobile, status: 1 } });
+  if (!otpRow || Date.now() - new Date(otpRow.created_at).getTime() > windowMs) return false;
+  if (!consume) return true;
+  const spent = await prisma.tbl_otp.updateMany({ where: { id: otpId, status: 1 }, data: { status: 2 } });
+  return spent.count === 1;
 }
 
 module.exports = {
+  issueVerificationToken,
+  checkVerificationToken,
   hasRecentVerifiedOtp,
   normalizeMobile,
   isValidIndianMobile,

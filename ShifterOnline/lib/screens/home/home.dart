@@ -54,6 +54,10 @@ class ItemListDelet {
 
 String homeAddress = "";
 
+// Saved pickup from an earlier app session must not override the user's
+// current location; cleared once per app process on first Home open.
+bool _stalePickupCleared = false;
+
 final getdata = GetStorage();
 List pickupiteam = [];
 var priceData;
@@ -2743,6 +2747,10 @@ class _HomeState extends State<Home> {
   @override
   void initState() {
     super.initState();
+    if (!_stalePickupCleared) {
+      _stalePickupCleared = true;
+      getdata.remove("PickupAddress");
+    }
     setState(() {});
     pickDropList();
     sql.saveitemlist(
