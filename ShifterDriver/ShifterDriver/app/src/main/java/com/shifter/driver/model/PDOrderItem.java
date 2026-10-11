@@ -186,6 +186,17 @@ public class PDOrderItem implements Parcelable {
 	@SerializedName("p_method_id")
 	private String pMethodId;
 
+	@SerializedName("tier")
+	private String tier;
+
+	public String getTier() {
+		return tier;
+	}
+
+	public void setTier(String tier) {
+		this.tier = tier;
+	}
+
 	public String getBookingType() {
 		return bookingType;
 	}
@@ -304,6 +315,7 @@ public class PDOrderItem implements Parcelable {
 		planIncentiveEarned = in.readString();
 		bookingType = in.readString();
 		pMethodId = in.readString();
+		tier = in.readString();
 	}
 
 	public static final Creator<PDOrderItem> CREATOR = new Creator<PDOrderItem>() {
@@ -633,6 +645,7 @@ public class PDOrderItem implements Parcelable {
 		parcel.writeString(planIncentiveEarned);
 		parcel.writeString(bookingType);
 		parcel.writeString(pMethodId);
+		parcel.writeString(tier);
 	}
 
 	public void setDlat(double dlat) {

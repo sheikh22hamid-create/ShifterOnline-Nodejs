@@ -1030,6 +1030,21 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     // ------------------------------------------------ UI
     private void setupUI() {
+        if (orderItem != null && ("free".equalsIgnoreCase(orderItem.getTier()) || "daily".equalsIgnoreCase(orderItem.getTier()))) {
+            if (binding.layoutMandatoryBanner != null) {
+                binding.layoutMandatoryBanner.setVisibility(View.VISIBLE);
+            }
+            if (binding.txtMandatoryOrderNote != null) {
+                if ("free".equalsIgnoreCase(orderItem.getTier())) {
+                    binding.txtMandatoryOrderNote.setText("MANDATORY ORDER • FREE BOOKING");
+                } else {
+                    binding.txtMandatoryOrderNote.setText("MANDATORY ORDER • DAILY DUTY");
+                }
+            }
+        } else if (binding.layoutMandatoryBanner != null) {
+            binding.layoutMandatoryBanner.setVisibility(View.GONE);
+        }
+
         updateTripControls();
         binding.txtOrderid.setText(getString(R.string.order_id) + " #" + orderItem.getId());
         binding.txtDatetime.setText(getString(R.string.date) + " " + orderItem.getOrderDate());
@@ -1584,7 +1599,30 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         });
 
         binding.txtReject.setOnClickListener(v -> {
-            showRejectSheet();
+            boolean isMandatory = orderItem != null && ("free".equalsIgnoreCase(orderItem.getTier()) || "daily".equalsIgnoreCase(orderItem.getTier()));
+            if (isMandatory) {
+                boolean isPickedUp = isOtpVerifiedForCurrentOrder()
+                        || "pickup_complete".equals(status)
+                        || "3".equals(orderItem.getOrderFlowId())
+                        || "4".equals(orderItem.getOrderFlowId())
+                        || "5".equals(orderItem.getOrderFlowId());
+                if (isPickedUp) {
+                    new android.app.AlertDialog.Builder(this)
+                            .setTitle("Cannot Cancel")
+                            .setMessage("Cannot cancel order after pickup. Please complete the delivery.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                    return;
+                }
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Request Cancel")
+                        .setMessage("This is a mandatory order. Cancellation requires Admin approval and may incur a penalty. Reason is required.\n\nDo you want to request cancellation?")
+                        .setNegativeButton("No", null)
+                        .setPositiveButton("Proceed", (dialog, which) -> showRejectSheet())
+                        .show();
+            } else {
+                showRejectSheet();
+            }
         });
 
         binding.txtConfirm.setOnClickListener(v -> {
@@ -2026,7 +2064,11 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             case "1":
                 status = "arrived";
                 binding.txtConfirm.setText("REACHED PICKUP · MANUAL");
-                binding.txtReject.setText(getString(R.string.cancel));
+                if (orderItem != null && ("free".equalsIgnoreCase(orderItem.getTier()) || "daily".equalsIgnoreCase(orderItem.getTier()))) {
+                    binding.txtReject.setText("Request Cancel");
+                } else {
+                    binding.txtReject.setText(getString(R.string.cancel));
+                }
                 binding.txtReject.setVisibility(View.VISIBLE);
                 break;
 
@@ -2038,12 +2080,22 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 if (isOtpVerifiedForCurrentOrder()) {
                     status = "pickup_complete";
                     binding.txtConfirm.setText("PICKUP COMPLETE");
+                    if (orderItem != null && ("free".equalsIgnoreCase(orderItem.getTier()) || "daily".equalsIgnoreCase(orderItem.getTier()))) {
+                        binding.txtReject.setVisibility(View.GONE);
+                    } else {
+                        binding.txtReject.setText(getString(R.string.cancel));
+                        binding.txtReject.setVisibility(View.VISIBLE);
+                    }
                 } else {
                     status = "pickup";
                     binding.txtConfirm.setText("VERIFY OTP & START DELIVERY");
+                    if (orderItem != null && ("free".equalsIgnoreCase(orderItem.getTier()) || "daily".equalsIgnoreCase(orderItem.getTier()))) {
+                        binding.txtReject.setText("Request Cancel");
+                    } else {
+                        binding.txtReject.setText(getString(R.string.cancel));
+                    }
+                    binding.txtReject.setVisibility(View.VISIBLE);
                 }
-                binding.txtReject.setText(getString(R.string.cancel));
-                binding.txtReject.setVisibility(View.VISIBLE);
                 break;
 
             case "3":
@@ -2411,6 +2463,21 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                                 msg = result.get("message").getAsString();
                             }
                             Toast.makeText(OrderDetailsActivity.this, msg, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        JsonObject dataObj = (result != null && result.has("data") && result.get("data").isJsonObject())
+                                ? result.getAsJsonObject("data") : null;
+                        boolean requiresAdminApproval = dataObj != null && dataObj.has("requires_admin_approval")
+                                && dataObj.get("requires_admin_approval").getAsBoolean();
+
+                        if (requiresAdminApproval) {
+                            new android.app.AlertDialog.Builder(OrderDetailsActivity.this)
+                                    .setTitle("Cancellation Request Pending Admin Review")
+                                    .setMessage("Your cancellation request has been submitted to Admin for review.\n\nPlease continue the order until the Admin makes a decision.")
+                                    .setCancelable(false)
+                                    .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                                    .show();
                             return;
                         }
 

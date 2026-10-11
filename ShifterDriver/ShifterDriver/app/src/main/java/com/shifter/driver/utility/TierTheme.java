@@ -28,7 +28,9 @@ public class TierTheme {
         SILVER,
         PRIME,
         GOLD_BEAST,
-        EARNING_BEAST
+        EARNING_BEAST,
+        FREE,
+        DAILY
     }
 
     public final Type type;
@@ -129,6 +131,47 @@ public class TierTheme {
             R.drawable.ic_chart_small,
             Color.parseColor("#059669")
     );
+
+    public static final TierTheme FREE = new TierTheme(
+            Type.FREE,
+            "FREE BOOKING OFFER",
+            "FREE ORDER - completing is mandatory",
+            "Completing this order is mandatory",
+            Color.parseColor("#0284C7"),
+            R.drawable.ic_tier_prime_crown,
+            Color.parseColor("#E0F2FE"),
+            Color.parseColor("#BAE6FD"),
+            Color.parseColor("#0369A1"),
+            R.drawable.ic_info_circle,
+            Color.parseColor("#0284C7")
+    );
+
+    public static final TierTheme DAILY = new TierTheme(
+            Type.DAILY,
+            "DAILY DUTY OFFER",
+            "MANDATORY DUTY ORDER",
+            "Completing this order is mandatory",
+            Color.parseColor("#059669"),
+            R.drawable.ic_tier_earning_chart,
+            Color.parseColor("#ECFDF5"),
+            Color.parseColor("#A7F3D0"),
+            Color.parseColor("#047857"),
+            R.drawable.ic_chart_small,
+            Color.parseColor("#059669")
+    );
+
+    /**
+     * Resolves the corresponding visual theme based on tier, package_id, model_name, or title.
+     */
+    public static TierTheme resolve(String tier, String packageId, String modelName, String packageTitle) {
+        if ("free".equalsIgnoreCase(tier)) {
+            return FREE;
+        }
+        if ("daily".equalsIgnoreCase(tier)) {
+            return DAILY;
+        }
+        return resolve(packageId, modelName, packageTitle);
+    }
 
     /**
      * Resolves the corresponding visual theme based on package_id, model_name, or title.
@@ -232,8 +275,38 @@ public class TierTheme {
             String customerOrders,
             String estimatedEarning,
             Location driverLocation) {
+        return applyThemeToView(view, context, orderId, packageId, modelName, packageTitle,
+                pickupAddress, deliveryAddress, pickupLat, pickupLng, distanceKm, category,
+                customerName, customerRating, customerOrders, estimatedEarning, driverLocation,
+                null, null, null);
+    }
 
-        TierTheme theme = resolve(packageId, modelName, packageTitle);
+    /**
+     * Applies the complete visual design theme, fare amount, customer stats, tier badges, and penalty warning.
+     */
+    public static TierTheme applyThemeToView(
+            View view,
+            Context context,
+            String orderId,
+            String packageId,
+            String modelName,
+            String packageTitle,
+            String pickupAddress,
+            String deliveryAddress,
+            Double pickupLat,
+            Double pickupLng,
+            String distanceKm,
+            String category,
+            String customerName,
+            String customerRating,
+            String customerOrders,
+            String estimatedEarning,
+            Location driverLocation,
+            String tier,
+            String penaltyPct,
+            String penaltyAmount) {
+
+        TierTheme theme = resolve(tier, packageId, modelName, packageTitle);
 
         // 1. Header Container
         View headerContainer = view.findViewById(R.id.header_container);
@@ -259,10 +332,16 @@ public class TierTheme {
         TextView txtHeaderSubtitle = view.findViewById(R.id.txt_header_subtitle);
         if (txtHeaderSubtitle != null) {
             String idStr = (orderId != null && !orderId.trim().isEmpty()) ? "#" + orderId.trim() : "";
-            if (!idStr.isEmpty()) {
-                txtHeaderSubtitle.setText(idStr + " • " + theme.headerSubtitle);
+            if ("free".equalsIgnoreCase(tier)) {
+                txtHeaderSubtitle.setText(!idStr.isEmpty() ? idStr + " • FREE ORDER - completing is mandatory" : "FREE ORDER - completing is mandatory");
+            } else if ("daily".equalsIgnoreCase(tier)) {
+                txtHeaderSubtitle.setText(!idStr.isEmpty() ? idStr + " • MANDATORY DUTY ORDER" : "MANDATORY DUTY ORDER");
             } else {
-                txtHeaderSubtitle.setText(theme.headerSubtitle);
+                if (!idStr.isEmpty()) {
+                    txtHeaderSubtitle.setText(idStr + " • " + theme.headerSubtitle);
+                } else {
+                    txtHeaderSubtitle.setText(theme.headerSubtitle);
+                }
             }
         }
 
@@ -341,26 +420,52 @@ public class TierTheme {
             txtDriverRating.setText(formatCustomerRating(customerRating, customerOrders));
         }
 
-        // 8. Highlight Card
+        // 8. Highlight Card & Penalty Warning
         View highlightLayout = view.findViewById(R.id.layout_tier_highlight);
-        if (highlightLayout != null) {
-            GradientDrawable highlightBg = new GradientDrawable();
-            highlightBg.setCornerRadius(dpToPx(context, 8));
-            highlightBg.setColor(theme.highlightBgColor);
-            highlightBg.setStroke(dpToPx(context, 1), theme.highlightBorderColor);
-            highlightLayout.setBackground(highlightBg);
-        }
-
         ImageView imgHighlightIcon = view.findViewById(R.id.img_highlight_icon);
-        if (imgHighlightIcon != null) {
-            imgHighlightIcon.setImageResource(theme.highlightIconRes);
-            imgHighlightIcon.setColorFilter(theme.highlightTextColor);
-        }
-
         TextView txtTierHighlight = view.findViewById(R.id.txt_tier_highlight);
-        if (txtTierHighlight != null) {
-            txtTierHighlight.setText(theme.highlightMessage);
-            txtTierHighlight.setTextColor(theme.highlightTextColor);
+
+        double penaltyAmt = 0;
+        try {
+            if (penaltyAmount != null) {
+                penaltyAmt = Double.parseDouble(penaltyAmount.replaceAll("[^0-9.]", "").trim());
+            }
+        } catch (Exception ignored) {}
+
+        if (penaltyAmt > 0) {
+            String pctStr = (penaltyPct != null && !penaltyPct.trim().isEmpty()) ? penaltyPct.trim() : "";
+            String warnText = "Reject or skip = ₹" + (int) Math.round(penaltyAmt) + " penalty" + (!pctStr.isEmpty() ? " (" + pctStr + "%)" : "");
+            if (highlightLayout != null) {
+                GradientDrawable highlightBg = new GradientDrawable();
+                highlightBg.setCornerRadius(dpToPx(context, 8));
+                highlightBg.setColor(Color.parseColor("#FEF2F2"));
+                highlightBg.setStroke(dpToPx(context, 1), Color.parseColor("#FCA5A5"));
+                highlightLayout.setBackground(highlightBg);
+            }
+            if (imgHighlightIcon != null) {
+                imgHighlightIcon.setImageResource(R.drawable.ic_info_circle);
+                imgHighlightIcon.setColorFilter(Color.parseColor("#B91C1C"));
+            }
+            if (txtTierHighlight != null) {
+                txtTierHighlight.setText(warnText);
+                txtTierHighlight.setTextColor(Color.parseColor("#B91C1C"));
+            }
+        } else {
+            if (highlightLayout != null) {
+                GradientDrawable highlightBg = new GradientDrawable();
+                highlightBg.setCornerRadius(dpToPx(context, 8));
+                highlightBg.setColor(theme.highlightBgColor);
+                highlightBg.setStroke(dpToPx(context, 1), theme.highlightBorderColor);
+                highlightLayout.setBackground(highlightBg);
+            }
+            if (imgHighlightIcon != null) {
+                imgHighlightIcon.setImageResource(theme.highlightIconRes);
+                imgHighlightIcon.setColorFilter(theme.highlightTextColor);
+            }
+            if (txtTierHighlight != null) {
+                txtTierHighlight.setText(theme.highlightMessage);
+                txtTierHighlight.setTextColor(theme.highlightTextColor);
+            }
         }
 
         // 9. Accept Button Theme

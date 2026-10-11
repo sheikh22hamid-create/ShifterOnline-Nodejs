@@ -348,6 +348,10 @@ public class OrderOverlayService extends Service {
             customerOrders = "0";
         }
 
+        String tier = intent.getStringExtra("tier");
+        String penaltyPct = intent.getStringExtra("penalty_pct");
+        String penaltyAmount = intent.getStringExtra("penalty_amount");
+
         // 1. Apply Tier Visual Theme & Bind Order Data
         com.shifter.driver.utility.TierTheme.applyThemeToView(
                 view,
@@ -366,7 +370,10 @@ public class OrderOverlayService extends Service {
                 customerRating,
                 customerOrders,
                 estimatedEarning,
-                driverLocation
+                driverLocation,
+                tier,
+                penaltyPct,
+                penaltyAmount
         );
 
         // 2. Configure Multi-stop timeline
@@ -583,8 +590,10 @@ public class OrderOverlayService extends Service {
                     parseNullableDouble(intent.getStringExtra("pickup_latitude")),
                     parseNullableDouble(intent.getStringExtra("pickup_longitude")),
                     com.shifter.driver.locationservice.LocationUpdateService.getLocation());
-            com.shifter.driver.utility.OrderAlertPlayer.playOrderAlert(this, announcement);
-            Log.d(TAG, "Order overlay alert started: " + announcement);
+            String tier = intent.getStringExtra("tier");
+            boolean continuousRinging = "free".equalsIgnoreCase(tier) || "daily".equalsIgnoreCase(tier);
+            com.shifter.driver.utility.OrderAlertPlayer.playOrderAlert(this, announcement, continuousRinging);
+            Log.d(TAG, "Order overlay alert started (continuous=" + continuousRinging + "): " + announcement);
         } catch (Exception e) {
             Log.e(TAG, "Error playing overlay alert", e);
         }

@@ -58,8 +58,9 @@ public class OrderAlertPlayer {
 
     /**
      * Plays either Voice Announcement or Classic Ringtone when an order arrives.
+     * When continuousRinging is true (e.g. Free or Daily offers), loops the ringtone continuously.
      */
-    public static void playOrderAlert(Context context, String announcementText) {
+    public static void playOrderAlert(Context context, String announcementText, boolean continuousRinging) {
         if (context == null) return;
         Context appContext = context.getApplicationContext();
 
@@ -71,6 +72,15 @@ public class OrderAlertPlayer {
             }
 
             stop();
+
+            if (continuousRinging) {
+                playRingtoneLoop(appContext);
+                if (announcementText != null && !announcementText.trim().isEmpty()) {
+                    OrderVoiceAnnouncer.announce(announcementText);
+                    Log.d(TAG, "Continuous ringing started with voice announcement");
+                }
+                return;
+            }
 
             String mode = getSoundMode(appContext);
             Log.d(TAG, "playOrderAlert mode=" + mode);
@@ -86,6 +96,13 @@ public class OrderAlertPlayer {
         } catch (Exception e) {
             Log.e(TAG, "Error in playOrderAlert", e);
         }
+    }
+
+    /**
+     * Plays either Voice Announcement or Classic Ringtone when an order arrives.
+     */
+    public static void playOrderAlert(Context context, String announcementText) {
+        playOrderAlert(context, announcementText, false);
     }
 
     /**

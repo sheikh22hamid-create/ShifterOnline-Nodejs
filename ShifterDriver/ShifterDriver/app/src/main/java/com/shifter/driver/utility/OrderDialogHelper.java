@@ -136,6 +136,10 @@ public class OrderDialogHelper {
                 getMapValue(orderData, "customer_total_orders",
                 getMapValue(orderData, "total_orders", "0")));
 
+        String tier = getMapValue(orderData, "tier", null);
+        String penaltyPct = getMapValue(orderData, "penalty_pct", null);
+        String penaltyAmount = getMapValue(orderData, "penalty_amount", null);
+
         // 1. Apply Tier Visual Theme & Bind Order Data to View
         TierTheme.applyThemeToView(
                 view,
@@ -154,7 +158,10 @@ public class OrderDialogHelper {
                 customerRating,
                 customerOrders,
                 estimatedEarning,
-                driverLocation
+                driverLocation,
+                tier,
+                penaltyPct,
+                penaltyAmount
         );
 
         // 2. Configure Multi-stop timeline
@@ -301,8 +308,9 @@ public class OrderDialogHelper {
                     pickupAddress, deliveryAddress, tripDistanceKm,
                     getMapValue(orderData, "estimated_earning", "0"),
                     pickupLat, pickupLng, driverLocation);
-            OrderAlertPlayer.playOrderAlert(context, announcement);
-            Log.d(TAG, "Order alert playback started: " + announcement);
+            boolean continuousRinging = "free".equalsIgnoreCase(tier) || "daily".equalsIgnoreCase(tier);
+            OrderAlertPlayer.playOrderAlert(context, announcement, continuousRinging);
+            Log.d(TAG, "Order alert playback started (continuous=" + continuousRinging + "): " + announcement);
         } catch (Exception e) {
             Log.e(TAG, "Error playing order alert", e);
         }
@@ -595,6 +603,7 @@ public class OrderDialogHelper {
         );
         orderItem.setAdvancePayment(getMapValue(data, "advance_payment", "0"));
         orderItem.setGoodsType(getMapValue(data, "goods_type", ""));
+        orderItem.setTier(getMapValue(data, "tier", ""));
         // The socket dispatch payload carries stops as a JSON string.
         orderItem.setStops(parseStops(getMapValue(data, "stops", "[]")));
         // Save active order locally so app always remembers and re-opens it
