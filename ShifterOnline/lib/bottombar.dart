@@ -88,6 +88,18 @@ class BottombarState extends State<Bottombar> {
       );
     }, onScheduleConfirm: (data) {
       _checkPendingScheduleConfirmations();
+    }, onFreeBookingRefunded: (data) {
+      if (!mounted) return;
+      final amount = data['amount']?.toString() ?? '';
+      Get.dialog(
+        AlertDialog(
+          title: Text("Free Booking Refund Credited!".tr),
+          content: Text(
+            "Your order was completed by our Free Driver. The order amount (₹$amount) has been refunded to your wallet.".tr,
+          ),
+          actions: [TextButton(onPressed: () => Get.back(), child: Text("OK".tr))],
+        ),
+      );
     });
   }
 

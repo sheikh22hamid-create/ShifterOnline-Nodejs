@@ -33,6 +33,8 @@ class _SocketListeners {
   final SocketEventCallback? onScheduleConfirm;
   final SocketEventCallback? onSettlementUpdated;
   final SocketEventCallback? onGuaranteePending;
+  final SocketEventCallback? onFreeBookingRefunded;
+  final SocketEventCallback? onDriverUnassigned;
 
   const _SocketListeners({
     this.onOrderAssigned,
@@ -45,6 +47,8 @@ class _SocketListeners {
     this.onScheduleConfirm,
     this.onSettlementUpdated,
     this.onGuaranteePending,
+    this.onFreeBookingRefunded,
+    this.onDriverUnassigned,
   });
 }
 
@@ -79,6 +83,8 @@ class NodeSocketManager with WidgetsBindingObserver {
     SocketEventCallback? onScheduleConfirm,
     SocketEventCallback? onSettlementUpdated,
     SocketEventCallback? onGuaranteePending,
+    SocketEventCallback? onFreeBookingRefunded,
+    SocketEventCallback? onDriverUnassigned,
   }) {
     final id = ++_nextSubscriptionId;
     _listeners[id] = _SocketListeners(
@@ -92,6 +98,8 @@ class NodeSocketManager with WidgetsBindingObserver {
       onScheduleConfirm: onScheduleConfirm,
       onSettlementUpdated: onSettlementUpdated,
       onGuaranteePending: onGuaranteePending,
+      onFreeBookingRefunded: onFreeBookingRefunded,
+      onDriverUnassigned: onDriverUnassigned,
     );
     return NodeSocketSubscription(this, id);
   }
@@ -162,9 +170,11 @@ class NodeSocketManager with WidgetsBindingObserver {
     _socket!.on('order:no_driver_found', (data) => _dispatch((l) => l.onNoDriverFound, data));
     _socket!.on('order:guarantee_pending', (data) => _dispatch((l) => l.onGuaranteePending, data));
     _socket!.on('order:driver_cancelled', (data) => _dispatch((l) => l.onDriverCancelled, data));
+    _socket!.on('order:driver_unassigned', (data) => _dispatch((l) => l.onDriverUnassigned, data));
     _socket!.on('order:destination_updated', (data) => _dispatch((l) => l.onDestinationUpdated, data));
     _socket!.on('order:schedule_confirm', (data) => _dispatch((l) => l.onScheduleConfirm, data));
     _socket!.on('settlement:updated', (data) => _dispatch((l) => l.onSettlementUpdated, data));
+    _socket!.on('free_booking:refunded', (data) => _dispatch((l) => l.onFreeBookingRefunded, data));
 
     _socket!.connect();
   }

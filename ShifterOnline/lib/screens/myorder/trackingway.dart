@@ -241,13 +241,32 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           'Driver cancelled. Finding another driver for your order.',
         );
       }
-    }, onDestinationUpdated: (data) {
+    }, onDriverUnassigned: (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
-      debugPrint('[TrackingWay] order:destination_updated: $data');
-      final msg = data['message']?.toString();
-      if (msg != null && msg.isNotEmpty) {
-        ApiWrapper.showToastMessage(msg);
-      }
+      debugPrint('[TrackingWay] order:driver_unassigned: $data');
+      ApiWrapper.showToastMessage(
+        'Driver was unassigned. Searching for another driver for your order.'.tr,
+      );
+      pageRefresh();
+    }, onFreeBookingRefunded: (data) {
+      if (!mounted || data['order_id']?.toString() != orderid) return;
+      debugPrint('[TrackingWay] free_booking:refunded: $data');
+      final amount = data['amount']?.toString() ?? '';
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Free Booking Refund Credited!'.tr),
+          content: Text(
+            'Your order was completed by our Free Driver. ₹$amount has been refunded to your wallet.'.tr,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('OK'.tr),
+            ),
+          ],
+        ),
+      );
       pageRefresh();
     });
   }
