@@ -48,26 +48,35 @@ New table `order_dispatch_stage` (`order_id` unique, `stage` in free|daily|norma
 - A stage ends when all its eligible drivers have been offered (or none is eligible, then immediately). The order then moves to the next stage by restarting dispatch for the order, the same mechanism `checkCascadeTermination` uses today for the free-booking fallback (`startDispatch`). The "No driver found" path and Booking Guarantee run only after the `normal` stage is exhausted, as today.
 - Within a stage every eligible driver is offered in turn (existing batch/lock/expiry logic); a reject or skip penalises that driver only, it does not end the stage.
 - A driver who was offered in an earlier stage is not offered the same order again in the `normal` stage.
-- Free driver accepts, then fails before pickup (cancels / breakdown): the order is re-dispatched from the `daily` stage, the Free Booking row becomes NOT_ELIGIBLE (no refund) and the failed-complete penalty applies. After pickup a failure is handled by the admin (out of scope, no automatic re-dispatch).
 - Daily driver rejects/skips: penalty, next Daily driver, then `normal`. Daily driver accepts a Free Booking order: no refund, payer returns to normal rules (receiver pays the full amount to the driver, sender is charged nothing extra).
+
+### 3.1 Cancelling a Free/Daily order needs admin approval (manager decision)
+
+- A Free or Daily driver can NOT cancel an accepted order on their own. `tripLifecycle.driverCancel` for an order accepted in the `free` or `daily` stage creates a **cancel request** (`order_cancel_request`: `order_id`, `rider_id`, `tier`, `reason`, `status` pending|approved|rejected, `decided_by`, `decided_at`, `penalty_amount`) instead of cancelling. Normal-stage orders cancel as today.
+- Cancel requests are possible only **before pickup** (before the pickup OTP is verified). After pickup there is no cancel option at all: the driver and the customer complete the order together, nothing is re-dispatched and no admin action is needed.
+- Admin panel gets a "Cancel requests" list. Approve: the order is cancelled for this driver and re-dispatched from the next stage (Free driver -> `daily`; Daily driver -> `normal`); a Free Booking row becomes NOT_ELIGIBLE (no refund); the driver gets the cancel penalty (setting `cancel_penalty_pct`, which the admin can waive afterwards). Reject: the order stays with the driver and the driver is told to complete it.
+- Pending requests do not block the driver: the order stays assigned until the admin decides.
 
 ## 4. Penalty
 
 Tables
-- `driver_tier_penalty_setting` (single row): `enabled`, `ladder_pct` JSON (default `[5,10,20,50,100]`), `failed_complete_pct` (default 100), `updated_by`, `updated_at`.
+- `driver_tier_penalty_setting` (single row): `enabled`, `ladder_pct` JSON (default `[5,10,20,50,100]`), `cancel_penalty_pct` (default 100), `updated_by`, `updated_at`.
 - `driver_tier_penalty_counter` (`rider_id`, `tier` in free|daily, `misses`, `updated_at`; unique on rider+tier).
 
 Rules
 - On reject or skip by a Free/Daily driver: `misses += 1` for that tier, `pct = ladder[min(misses, len) - 1]`, `amount = round2(order total fare * pct / 100)`. Debit the driver wallet with a ledger row (`wallet_type = 'driver'`) and reason text; idempotency key `tier_penalty:<order>:<rider>` so one driver is penalised at most once per order. The first event wins: a skip (timeout) is penalised once, and a late reject on the same offer (the app can upgrade `timeout` to `'10'`) adds no second penalty.
 - Order total fare = the order's total as shown in the offer (`tripTotal`), at offer time.
-- Failed-complete (accepted then cancelled / not completed, section 3): `amount = round2(order total * failed_complete_pct / 100)`; not counted on the ladder.
-- Penalty debits are allowed to take the wallet negative (it is a due, consistent with existing driver dues); the existing due limit then blocks new offers.
+- Cancel penalty (an admin-approved cancel request, section 3.1): `amount = round2(order total * cancel_penalty_pct / 100)`; not counted on the ladder. The percentage is admin-set (default 100, to be confirmed by the manager).
+- **How the penalty is collected (manager decision):**
+  - Free driver (or a Daily driver with no unsettled enrollment): debited from the driver wallet at once. The wallet **may go negative** (it is a due); the existing due limit then stops new offers.
+  - Daily driver with an enrollment not yet settled: a pending `PENALTY_DEDUCTION` entry (DEBIT) is written to `daily_driver_ledger` for that enrollment. When `dailyDriverSettlementService` settles the day, the total pending penalties are first subtracted from the amount the company would pay (`COMPANY_SETTLEMENT_PAYOUT`); any part that exceeds that payout is debited from the driver wallet (negative allowed). If the company pays nothing that day (`company_retains` / `none`), the whole penalty goes to the wallet.
+  - Each penalty ledger row carries its reason (skip, reject, cancel) and the order id.
 - Admin can waive a penalty (credits back with a ledger row, event `penalty_waived`) and reset a driver's tier counter. Both are logged with the admin id.
 
 ## 5. Driver app and offer payload
 
 5.1 `order:request` payload adds `tier` (free|daily|normal), `order_amount`, `penalty_pct`, `penalty_amount` (what a reject/skip would cost right now; 0 for normal).
-5.2 Free/Daily popup: tier badge ("FREE ORDER - completing is mandatory"), the warning "Reject or skip = Rs X penalty (Y%)", Accept / Reject. `OrderAlertPlayer` loops until accept, reject or expiry. After accept the trip screen shows a "mandatory order" note and the cancel action warns with the failed-complete penalty.
+5.2 Free/Daily popup: tier badge ("FREE ORDER - completing is mandatory"), the warning "Reject or skip = Rs X penalty (Y%)", Accept / Reject. `OrderAlertPlayer` loops until accept, reject or expiry. After accept the trip screen shows a "mandatory order" note; the cancel action becomes "Request cancel" (reason required, only before pickup, hidden after pickup) and warns that the admin must approve and a penalty applies.
 5.3 After every penalty the driver gets a notification: "Penalty Rs X applied. Your next skip or reject will cost Rs Y (N%)." From the 5th miss the popup shows "100% penalty = Rs Z".
 5.4 Receiver collection reuses the existing receiver-pay collection screen (collect the full fare from the receiver).
 
@@ -83,14 +92,14 @@ Rules
 
 ## 7. Event log and Driver Performance report
 
-Table `driver_order_event`: `id`, `rider_id`, `order_id`, `tier`, `event` (offered | accepted | rejected | skipped | completed | cancelled | penalty | penalty_waived), `at`, `reason`, `penalty_pct`, `penalty_amount`, `miss_no`, `meta` JSON. Index on `(rider_id, at)` and `(tier, at)`.
+Table `driver_order_event`: `id`, `rider_id`, `order_id`, `tier`, `event` (offered | accepted | rejected | skipped | completed | cancel_requested | cancelled | cancel_rejected | penalty | penalty_waived), `at`, `reason`, `penalty_pct`, `penalty_amount`, `miss_no`, `meta` JSON. Index on `(rider_id, at)` and `(tier, at)`.
 
 Write hooks (all best-effort: a failed log write must never fail dispatch or a trip):
 - offered: `dispatchManager.insertOrderRequest`.
 - accepted: `tripLifecycle` accept (after the claim succeeds).
 - rejected: `tripLifecycle.rejectOrder` (when the row flips to `'10'`).
 - skipped: `dispatchManager.scheduleExpiry` timeout path.
-- completed / cancelled: `tripLifecycle` completion and driver-cancel paths.
+- completed: `tripLifecycle` completion. cancel_requested / cancelled / cancel_rejected: the cancel-request create and admin decision paths (a Normal-stage cancel logs `cancelled` directly).
 - penalty / penalty_waived: the penalty service.
 
 Admin page "Driver Performance" (React, new route, `scopeFilter` city scoping like other admin pages):
@@ -102,7 +111,7 @@ Admin page "Driver Performance" (React, new route, `scopeFilter` city scoping li
 
 ## 8. Settings and rollout
 
-- Admin settings page (extend the Free Booking page or a new "Dispatch tiers" tab): tiered dispatch ON/OFF, penalty ladder, failed-complete %, penalties ON/OFF.
+- Admin settings page (extend the Free Booking page or a new "Dispatch tiers" tab): tiered dispatch ON/OFF, penalty ladder, cancel penalty %, penalties ON/OFF.
 - Everything is dark by default: tiered dispatch OFF = current behaviour; penalties OFF = events are logged but nothing is debited.
 - Migrations: hand-written SQL files, `prisma migrate resolve --applied` on every DB (dev DB has no shadow DB; see the Daily Driver workflow). Apply the SQL on dev, then prod, BEFORE deploying code.
 - Driver app change ships behind the payload fields: an old app ignores `tier` and still works (it just lacks the badge and warning, ringing as today).
@@ -112,21 +121,24 @@ Admin page "Driver Performance" (React, new route, `scopeFilter` city scoping li
 - Pure-rule unit tests: ladder lookup, penalty amount, stage transition, net-spend refund calc.
 - Dispatch tests: stage filter per tier, exhaustion moves free -> daily -> normal, no re-offer in normal, tiered dispatch OFF = unchanged.
 - Penalty tests: one penalty per (order, rider), reject-after-timeout, waive restores, counter reset, wallet may go negative.
-- Free flow tests: refund only after settlement, receiver refusal voids, Daily acceptance voids, failed-complete penalty and re-dispatch.
+- Free flow tests: refund only after settlement, receiver refusal voids, Daily acceptance voids.
+- Cancel-request tests: a Free/Daily driver's cancel creates a request (order stays assigned), no request after pickup, approve re-dispatches from the next stage and applies the cancel penalty, reject keeps the order, a Normal-stage cancel is unchanged.
+- Penalty collection tests: Free driver debits the wallet (negative allowed); Daily driver penalty is netted against `COMPANY_SETTLEMENT_PAYOUT` at settlement and only the excess hits the wallet; no payout day sends it all to the wallet.
 - Event hooks: each hook writes the right event; a failing log write does not break the trip.
 - Manual: driver popup ringing and warning text on a device; customer refund popup; admin report in a browser.
 
 ## 10. Assumptions to confirm at review
 
+Manager answers (2026-10-11), already applied above: Daily driver gets the first chance on every order; penalty may take the wallet negative and a Daily driver's penalty is first adjusted against what the company owes them; Free/Daily orders cannot be cancelled without admin approval; after pickup the driver and customer complete the order together.
+
+Still open:
+- The cancel penalty % (`cancel_penalty_pct`): spec default is 100, the manager has not given a number.
 - A stage offers every eligible driver in turn before moving on (a single driver's reject does not skip the stage).
-- Failed-complete uses its own admin-set % (default 100), not the ladder.
-- Penalty debits may make a driver wallet negative (a due), relying on the existing due limit to stop new offers.
-- Score formula and status bands in section 7.
-- After pickup, a Free/Daily driver failure is handled manually by the admin.
+- Score formula and status bands in section 7 (the manager did not comment, so they stay as proposed).
 
 ## 11. Out of scope / open
 
-- Automatic re-dispatch after a Free/Daily driver fails mid-trip (after pickup).
+- Any admin takeover or re-dispatch after pickup (the driver and customer complete it together).
 - Clawback of an already-credited refund.
 - Separate Skip button in the driver app.
 - Backfilling the report with history from before the event table.
