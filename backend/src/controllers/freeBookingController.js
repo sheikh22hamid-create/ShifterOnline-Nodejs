@@ -5,7 +5,7 @@ const isFiniteNumber = (v) => v !== null && v !== "" && Number.isFinite(Number(v
 
 async function check(req, res) {
   try {
-    const { uid, plat, plong, category, radius_km, city_id, booking_type } = req.body || {};
+    const { uid, plat, plong, category, radius_km, city_id, booking_type, amount, distance_km } = req.body || {};
     if (!uid || !category || !isFiniteNumber(plat) || !isFiniteNumber(plong)) {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid, category, plat and plong are required" });
     }
@@ -21,6 +21,8 @@ async function check(req, res) {
       uid: Number(uid), plat: Number(plat), plong: Number(plong), category,
       radiusKm: provided(radius_km) ? Number(radius_km) : 4, cityId: city_id ? Number(city_id) : undefined,
       bookingType: provided(booking_type) ? Number(booking_type) : 1,
+      amount: provided(amount) ? Number(amount) : null,
+      distanceKm: provided(distance_km) ? Number(distance_km) : null,
     });
     return res.json({ ResponseCode: "200", Result: "true", outcome: result.outcome, message: result.message });
   } catch (err) {

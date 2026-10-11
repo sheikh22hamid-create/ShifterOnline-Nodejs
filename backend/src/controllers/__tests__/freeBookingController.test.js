@@ -23,10 +23,22 @@ describe("check", () => {
     svc.checkEligibility.mockResolvedValue({ outcome: "no_free_vehicle", cityId: 3, planId: 1, poolRiderId: null, message: "You will NOT receive any refund for this trip." });
     const res = mockRes();
     await controller.check({ body }, res);
-    expect(svc.checkEligibility).toHaveBeenCalledWith({ uid: 7, plat: 22.7, plong: 75.8, category: "E-Loader", radiusKm: 5, cityId: 3, bookingType: 1 });
+    expect(svc.checkEligibility).toHaveBeenCalledWith({
+      uid: 7, plat: 22.7, plong: 75.8, category: "E-Loader", radiusKm: 5, cityId: 3, bookingType: 1,
+      amount: null, distanceKm: null,
+    });
     const payload = res.json.mock.calls[0][0];
     expect(payload).toMatchObject({ ResponseCode: "200", Result: "true", outcome: "no_free_vehicle" });
     expect(payload.message).toMatch(/NOT receive any refund/);
+  });
+  it("forwards amount and distance_km when provided", async () => {
+    svc.checkEligibility.mockResolvedValue({ outcome: "eligible", cityId: 3, planId: 1, poolRiderId: 9, message: "ok" });
+    const res = mockRes();
+    await controller.check({ body: { ...body, amount: 250, distance_km: 12.5 } }, res);
+    expect(svc.checkEligibility).toHaveBeenCalledWith({
+      uid: 7, plat: 22.7, plong: 75.8, category: "E-Loader", radiusKm: 5, cityId: 3, bookingType: 1,
+      amount: 250, distanceKm: 12.5,
+    });
   });
   it("500 on an unexpected error", async () => {
     svc.checkEligibility.mockRejectedValue(new Error("db"));

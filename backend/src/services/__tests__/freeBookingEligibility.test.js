@@ -5,7 +5,7 @@ jest.mock("../../config/db", () => ({
   tbl_premium_plan: { findUnique: jest.fn() },
   free_booking_setting: { findUnique: jest.fn() },
   free_booking_pool: { findMany: jest.fn() },
-  free_booking_order: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+  free_booking_order: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn(), count: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 jest.mock("../pricingEngine", () => ({ getActiveCustomerPlan: jest.fn() }));
@@ -105,6 +105,22 @@ describe("checkEligibility", () => {
     expect(out.cityId).toBe(3);
     expect(prisma.free_booking_setting.findUnique).toHaveBeenCalledWith({ where: { city_id: 3 } });
   });
+  it("exceeds_amount when amount is greater than setting max_amount", async () => {
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), max_amount: "300" });
+    const out = await svc.checkEligibility({ ...input, amount: 350 });
+    expect(out.outcome).toBe("exceeds_amount");
+  });
+  it("exceeds_distance when distanceKm is greater than setting max_km", async () => {
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), max_km: "10" });
+    const out = await svc.checkEligibility({ ...input, distanceKm: 15 });
+    expect(out.outcome).toBe("exceeds_distance");
+  });
+  it("limit_reached when used free orders count reaches setting max_free_orders", async () => {
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), max_free_orders: 50 });
+    prisma.free_booking_order.count.mockResolvedValue(50);
+    const out = await svc.checkEligibility(input);
+    expect(out.outcome).toBe("limit_reached");
+  });
 });
 
 describe("createForOrder", () => {
@@ -118,6 +134,25 @@ describe("createForOrder", () => {
         search_radius_km: 5, premium_plan_id: 11, premium_plan_amount: "199.00",
       }),
     });
+  });
+  it("refuses to create free booking row when order total exceeds max_amount", async () => {
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), max_amount: "200" });
+    const res = await svc.createForOrder({ order: { id: 50, uid: 7, total_dcharge: 250 }, check: { cityId: 3 }, radiusKm: 4 });
+    expect(res).toBeNull();
+    expect(prisma.free_booking_order.create).not.toHaveBeenCalled();
+  });
+  it("refuses to create free booking row when order distance exceeds max_km", async () => {
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), max_km: "8" });
+    const res = await svc.createForOrder({ order: { id: 50, uid: 7, distance: 10 }, check: { cityId: 3 }, radiusKm: 4 });
+    expect(res).toBeNull();
+    expect(prisma.free_booking_order.create).not.toHaveBeenCalled();
+  });
+  it("refuses to create free booking row when max_free_orders limit is reached", async () => {
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), max_free_orders: 10 });
+    prisma.free_booking_order.count.mockResolvedValue(10);
+    const res = await svc.createForOrder({ order: { id: 50, uid: 7 }, check: { cityId: 3 }, radiusKm: 4 });
+    expect(res).toBeNull();
+    expect(prisma.free_booking_order.create).not.toHaveBeenCalled();
   });
 });
 

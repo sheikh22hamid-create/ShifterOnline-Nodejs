@@ -16,6 +16,9 @@ const OUTCOME = Object.freeze({
   NOT_PREMIUM: "not_premium",
   OFFER_OFF: "offer_off",
   OPEN_BOOKING: "open_booking",
+  LIMIT_REACHED: "limit_reached",
+  EXCEEDS_AMOUNT: "exceeds_amount",
+  EXCEEDS_DISTANCE: "exceeds_distance",
 });
 
 const REASON = Object.freeze({
@@ -35,6 +38,9 @@ const OUTCOME_MESSAGE = Object.freeze({
   [OUTCOME.NOT_PREMIUM]: "Free Booking Chance is only for Premium users.",
   [OUTCOME.OFFER_OFF]: "Free Booking Chance is not available right now.",
   [OUTCOME.OPEN_BOOKING]: "Your earlier Free Booking is still being settled. You can book again once it is credited.",
+  [OUTCOME.LIMIT_REACHED]: "The maximum number of Free Bookings for this offer period has been reached. Your booking will continue with standard vehicles.",
+  [OUTCOME.EXCEEDS_AMOUNT]: "Order total exceeds the maximum limit for Free Booking. Your booking will continue with standard vehicles.",
+  [OUTCOME.EXCEEDS_DISTANCE]: "Trip distance exceeds the maximum limit for Free Booking. Your booking will continue with standard vehicles.",
 });
 
 /** Referrals a city asks for to unlock; anything missing/invalid means the original rule of 1. */
@@ -67,11 +73,23 @@ function isCityOfferOpen(setting, now = new Date()) {
   return t >= new Date(setting.offer_start).getTime() && t <= new Date(setting.offer_end).getTime();
 }
 
-function decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound }) {
+function decideOutcome({
+  premium,
+  cityOpen,
+  locked,
+  openBooking,
+  poolVehicleFound,
+  limitReached = false,
+  exceedsAmount = false,
+  exceedsDistance = false,
+}) {
   if (!premium) return OUTCOME.NOT_PREMIUM;
   if (!cityOpen) return OUTCOME.OFFER_OFF;
   if (locked) return OUTCOME.LOCKED;
   if (openBooking) return OUTCOME.OPEN_BOOKING;
+  if (limitReached) return OUTCOME.LIMIT_REACHED;
+  if (exceedsAmount) return OUTCOME.EXCEEDS_AMOUNT;
+  if (exceedsDistance) return OUTCOME.EXCEEDS_DISTANCE;
   return poolVehicleFound ? OUTCOME.ELIGIBLE : OUTCOME.NO_FREE_VEHICLE;
 }
 

@@ -106,7 +106,7 @@ async function findOpenBookingAfterRetry(userId) {
   return { open: null, locked: Boolean(fresh?.free_booking_locked) };
 }
 
-async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, bookingType = 1 }) {
+async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, bookingType = 1, amount = null, distanceKm = null }) {
   const userId = Number(uid);
   const user = await prisma.tbl_user.findUnique({
     where: { id: userId },
@@ -121,9 +121,33 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
   const cityOpen = rules.isCityOfferOpen(setting, new Date()) && instant;
   let locked = Boolean(user?.free_booking_locked);
 
+  let exceedsAmount = false;
+  let exceedsDistance = false;
+  let limitReached = false;
+  if (setting && cityOpen) {
+    if (amount != null && setting.max_amount != null && Number(amount) > Number(setting.max_amount)) {
+      exceedsAmount = true;
+    }
+    if (distanceKm != null && setting.max_km != null && Number(distanceKm) > Number(setting.max_km)) {
+      exceedsDistance = true;
+    }
+    if (setting.max_free_orders != null && setting.offer_start && setting.offer_end) {
+      const usedCount = await prisma.free_booking_order.count({
+        where: {
+          city_id: city,
+          status: { in: [STATUS.CONFIRMED, STATUS.REWARD_PENDING, STATUS.REWARD_CREDITED] },
+          created_at: { gte: setting.offer_start, lte: setting.offer_end },
+        },
+      }).catch(() => 0);
+      if (usedCount >= Number(setting.max_free_orders)) {
+        limitReached = true;
+      }
+    }
+  }
+
   let openBooking = false;
   let pool = null;
-  if (premium && cityOpen && !locked) {
+  if (premium && cityOpen && !locked && !exceedsAmount && !exceedsDistance && !limitReached) {
     const healed = await findOpenBookingAfterRetry(userId);
     openBooking = Boolean(healed.open);
     locked = healed.locked;
@@ -134,7 +158,16 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
     }
   }
 
-  const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: Boolean(pool) });
+  const outcome = rules.decideOutcome({
+    premium,
+    cityOpen,
+    locked,
+    openBooking,
+    poolVehicleFound: Boolean(pool),
+    limitReached,
+    exceedsAmount,
+    exceedsDistance,
+  });
   return {
     outcome, cityId: city, planId: plan?.planId ?? null, poolRiderId: pool ? Number(pool.rider_id) : null,
     message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)),
@@ -142,6 +175,32 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
 }
 
 async function createForOrder({ order, check, radiusKm }) {
+  const city = check.cityId || (order?.city_id ? Number(order.city_id) : null);
+  const setting = city ? await getCitySetting(city) : null;
+  if (setting) {
+    if (setting.max_amount != null && Number(order.total_dcharge) > Number(setting.max_amount)) {
+      logger.info(`freeBooking.createForOrder: order ${order.id} total ${order.total_dcharge} exceeds max_amount ${setting.max_amount}`);
+      return null;
+    }
+    if (setting.max_km != null && Number(order.distance) > Number(setting.max_km)) {
+      logger.info(`freeBooking.createForOrder: order ${order.id} distance ${order.distance} exceeds max_km ${setting.max_km}`);
+      return null;
+    }
+    if (setting.max_free_orders != null && setting.offer_start && setting.offer_end) {
+      const used = await prisma.free_booking_order.count({
+        where: {
+          city_id: city,
+          status: { in: [STATUS.CONFIRMED, STATUS.REWARD_PENDING, STATUS.REWARD_CREDITED] },
+          created_at: { gte: setting.offer_start, lte: setting.offer_end },
+        },
+      });
+      if (used >= Number(setting.max_free_orders)) {
+        logger.info(`freeBooking.createForOrder: order ${order.id} city ${city} reached max_free_orders ${setting.max_free_orders}`);
+        return null;
+      }
+    }
+  }
+
   let planAmount = null;
   if (check.planId) {
     const plan = await prisma.tbl_premium_plan

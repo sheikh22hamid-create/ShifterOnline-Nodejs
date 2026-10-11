@@ -63,6 +63,9 @@ describe("createOrderCore - free booking chance", () => {
     const result = await createOrderCore({ ...input, freeBooking: true });
     expect(result.ok).toBe(true);
     expect(result.order.free_booking).toBe(true);
+    expect(freeBookingService.checkEligibility).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 50, distanceKm: 5, uid: 1, category: "Bike" })
+    );
     expect(freeBookingService.createForOrder).toHaveBeenCalledWith(
       expect.objectContaining({ order: expect.objectContaining({ id: 777 }), check: expect.objectContaining({ outcome: "eligible" }) })
     );

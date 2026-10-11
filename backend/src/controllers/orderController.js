@@ -353,24 +353,6 @@ async function createOrderCore({
     100
   );
 
-  // Free Booking Offer: Free Ride Chance check.
-  // Verified server-side. If the customer qualifies for the free ride chance (premium, city offer on,
-  // not locked, instant booking), we attach freeBookingCheck so dispatch searches pool drivers first.
-  // If not eligible (or offer off / locked), the booking continues smoothly as a normal booking.
-  let freeBookingCheck = null;
-  if (freeBooking) {
-    try {
-      const check = await freeBookingService.checkEligibility({
-        uid, plat, plong, category, radiusKm: resolvedRadiusKm, cityId: resolvedCityId, bookingType,
-      });
-      if (check && (check.outcome === "eligible" || check.outcome === "no_free_vehicle")) {
-        freeBookingCheck = check;
-      }
-    } catch (err) {
-      logger.error(`createOrderCore: freeBooking checkEligibility failed for uid ${uid}:`, err);
-    }
-  }
-
   let firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
     slabPricingConfig?.slabRates,
     firstPkg?.cat_id || firstPkg?.category || firstPkg?.category_id
@@ -431,6 +413,32 @@ async function createOrderCore({
   const clientBase = Number(dCharge);
   const finalTotalCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare);
   const finalDCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare);
+
+  // Free Booking Offer: Free Ride Chance check.
+  // Verified server-side. If the customer qualifies for the free ride chance (premium, city offer on,
+  // within limits, not locked, instant booking), we attach freeBookingCheck so dispatch searches pool drivers first.
+  // If not eligible (or offer off / locked / limits exceeded), the booking continues smoothly as a normal booking.
+  let freeBookingCheck = null;
+  if (freeBooking) {
+    try {
+      const check = await freeBookingService.checkEligibility({
+        uid,
+        plat,
+        plong,
+        category,
+        radiusKm: resolvedRadiusKm,
+        cityId: resolvedCityId,
+        bookingType,
+        amount: finalTotalCharge,
+        distanceKm,
+      });
+      if (check && (check.outcome === "eligible" || check.outcome === "no_free_vehicle")) {
+        freeBookingCheck = check;
+      }
+    } catch (err) {
+      logger.error(`createOrderCore: freeBooking checkEligibility failed for uid ${uid}:`, err);
+    }
+  }
 
   // Referral-point redemption against this ride's fare (admin-capped %,
   // "use whatever points are available, rest stays real cash" - never

@@ -46,6 +46,12 @@ describe("decideOutcome", () => {
   it("offer_off before locked", () => expect(rules.decideOutcome({ ...ok, cityOpen: false, locked: true })).toBe(OUTCOME.OFFER_OFF));
   it("locked before open_booking", () => expect(rules.decideOutcome({ ...ok, locked: true, openBooking: true })).toBe(OUTCOME.LOCKED));
   it("open_booking before pool", () => expect(rules.decideOutcome({ ...ok, openBooking: true, poolVehicleFound: false })).toBe(OUTCOME.OPEN_BOOKING));
+  it("limit_reached when max_free_orders is reached", () => expect(rules.decideOutcome({ ...ok, limitReached: true })).toBe(OUTCOME.LIMIT_REACHED));
+  it("exceeds_amount when order exceeds max_amount", () => expect(rules.decideOutcome({ ...ok, exceedsAmount: true })).toBe(OUTCOME.EXCEEDS_AMOUNT));
+  it("exceeds_distance when order exceeds max_km", () => expect(rules.decideOutcome({ ...ok, exceedsDistance: true })).toBe(OUTCOME.EXCEEDS_DISTANCE));
+  it("open_booking before limit_reached", () => expect(rules.decideOutcome({ ...ok, openBooking: true, limitReached: true })).toBe(OUTCOME.OPEN_BOOKING));
+  it("limit_reached before exceeds_amount", () => expect(rules.decideOutcome({ ...ok, limitReached: true, exceedsAmount: true })).toBe(OUTCOME.LIMIT_REACHED));
+  it("exceeds_amount before exceeds_distance", () => expect(rules.decideOutcome({ ...ok, exceedsAmount: true, exceedsDistance: true })).toBe(OUTCOME.EXCEEDS_AMOUNT));
   it("no_free_vehicle when the pool has nobody in range", () => expect(rules.decideOutcome({ ...ok, poolVehicleFound: false })).toBe(OUTCOME.NO_FREE_VEHICLE));
 });
 
