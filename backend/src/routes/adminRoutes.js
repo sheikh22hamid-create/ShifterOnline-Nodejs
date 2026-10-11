@@ -91,6 +91,7 @@ router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", 
 const adminDailyDriverController = require("../controllers/adminDailyDriverController");
 const adminFreeBookingController = require("../controllers/adminFreeBookingController");
 const adminBookingGuaranteeController = require("../controllers/adminBookingGuaranteeController");
+const tierDispatch = require("../controllers/adminTierDispatchController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
 router.put("/daily-driver/plans/:planId", auth, authorize("superadmin", "admin"), adminDailyDriverController.updatePlan);
@@ -115,6 +116,15 @@ router.get("/free-booking/orders", auth, authorize(...RIDER_ROLES), adminFreeBoo
 router.post("/free-booking/orders/:id/void", auth, authorize("superadmin", "admin"), adminFreeBookingController.voidOrder);
 router.post("/free-booking/users/:userId/lock", auth, authorize("superadmin", "admin"), adminFreeBookingController.lockUser);
 router.post("/free-booking/users/:userId/unlock", auth, authorize("superadmin", "admin"), adminFreeBookingController.unlockUser);
+
+router.get("/tier-dispatch/settings", auth, authorize(...RIDER_ROLES), tierDispatch.getSettings);
+router.put("/tier-dispatch/settings", auth, authorize("superadmin"), tierDispatch.saveSettings);
+router.get("/tier-dispatch/penalties", auth, authorize(...RIDER_ROLES), tierDispatch.listPenalties);
+router.post("/tier-dispatch/penalties/:id/waive", auth, authorize("superadmin", "admin"), tierDispatch.waivePenalty);
+router.post("/tier-dispatch/counters/reset", auth, authorize("superadmin", "admin"), tierDispatch.resetCounter);
+router.get("/tier-dispatch/cancel-requests", auth, authorize(...RIDER_ROLES), tierDispatch.listCancelRequests);
+router.post("/tier-dispatch/cancel-requests/:id/approve", auth, authorize("superadmin", "admin"), tierDispatch.approveCancel);
+router.post("/tier-dispatch/cancel-requests/:id/reject", auth, authorize("superadmin", "admin"), tierDispatch.rejectCancel);
 
 // Booking Guarantee (spec 2026-10-07)
 router.get("/booking-guarantee/settings", auth, authorize(...RIDER_ROLES), adminBookingGuaranteeController.getSettings);
