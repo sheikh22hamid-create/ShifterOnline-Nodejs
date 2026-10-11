@@ -131,6 +131,31 @@ async function notifyDriverAdvancePaymentTimeoutCancel(fcmToken, orderId) {
   );
 }
 
+/** Tiered dispatch: tells a driver a penalty was applied and what their next skip/reject will cost. */
+async function notifyDriverTierPenalty(fcmToken, { orderId, amount, pct, nextPct, deferred }) {
+  return sendPushNotification(
+    fcmToken,
+    "Penalty applied",
+    `Rs ${amount} (${pct}%) penalty for order #${orderId}${deferred ? ", adjusted against your Daily Driver payout" : ""}. ` +
+      `Your next skip or reject will cost ${nextPct}% of the order fare.`,
+    { type: "tier_penalty", order_id: String(orderId), pct: String(pct), next_pct: String(nextPct) },
+    "order_dismiss_channel_v1"
+  );
+}
+
+/** Tiered dispatch: tells a driver the admin's decision on their cancel request. */
+async function notifyDriverCancelDecision(fcmToken, { orderId, approved }) {
+  return sendPushNotification(
+    fcmToken,
+    approved ? "Cancel request approved" : "Cancel request rejected",
+    approved
+      ? `Order #${orderId} has been taken off you. A penalty may apply.`
+      : `Your cancel request for order #${orderId} was rejected. Please complete the order.`,
+    { type: "cancel_decision", order_id: String(orderId), approved: String(Boolean(approved)) },
+    "order_dismiss_channel_v1"
+  );
+}
+
 /** See settlementSweep — the customer still owes the payment for a completed ride. */
 async function notifyCustomerSettlementReminder(fcmToken, orderId, amount) {
   return sendCustomerPush(
@@ -395,5 +420,7 @@ module.exports = {
   notifyCustomerWalletTransaction,
   notifyDriverKycDocumentDecision,
   notifyDriverAccountStatus,
+  notifyDriverTierPenalty,
+  notifyDriverCancelDecision,
 };
 
