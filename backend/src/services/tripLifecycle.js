@@ -25,6 +25,9 @@ const receiverPayService = require("./receiverPayService");
 const receiverPaySettings = require("./receiverPaySettings");
 const receiverPayCalc = require("./receiverPayCalc");
 const freeBookingService = require("./freeBookingService");
+const orderStage = require("./orderStageService");
+const tierPenalty = require("./tierPenaltyService");
+const driverOrderEvents = require("./driverOrderEventService");
 const bookingGuarantee = require("./bookingGuaranteeService");
 const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings");
 const { getScheduledConfirmLeadMs } = require("../utils/scheduledConfirmSettings");
@@ -199,6 +202,11 @@ async function claimOrderForRider(orderId, riderId) {
  * accept ack doesn't wait on any of it — see that function's comment.
  */
 async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
+  orderStage
+    .getStage(orderId)
+    .then((stage) => driverOrderEvents.logEvent({ riderId, orderId, tier: stage || "normal", event: driverOrderEvents.EVENTS.ACCEPTED }))
+    .catch(() => {});
+
   // Free Booking Offer: remember which driver took the order and void the booking if they are
   // not a pool driver.
   await freeBookingService.recordAcceptance(orderId, riderId).catch((err) => {
@@ -435,6 +443,14 @@ async function rejectOrder(orderId, riderId, packageId = null) {
   });
   if (result.count > 0) {
     await dispatchManager.recordModel1Outcome(riderId, resolvedPackageId, "miss");
+    // Tiered dispatch: log the reject and penalise it when it happened in a Free/Daily stage. A reject that
+    // arrives after the same offer's timeout was already penalised as a skip is a no-op in the penalty service.
+    try {
+      const stage = await orderStage.getStage(orderId);
+      await tierPenalty.onMiss({ orderId, riderId, event: "rejected", stage });
+    } catch (err) {
+      logger.error(`rejectOrder: tier penalty hook failed for order ${orderId}:`, err);
+    }
   }
 
   // Only release the lock if it's actually the one for this exact tier.
@@ -769,6 +785,11 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     freeBookingService.markCompleted({ orderId, finalTotal }).catch((err) => {
       logger.error(`freeBooking.markCompleted error for order ${orderId}:`, err);
     });
+
+    orderStage
+      .getStage(orderId)
+      .then((stage) => driverOrderEvents.logEvent({ riderId, orderId, tier: stage || "normal", event: driverOrderEvents.EVENTS.COMPLETED }))
+      .catch(() => {});
 
     if (isMonthlyDriver) {
       if (cashCollected > 0) {
