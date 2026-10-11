@@ -7,17 +7,21 @@ jest.mock("../../config/db", () => ({
   free_booking_setting: { findUnique: jest.fn() },
   tbl_referral: { count: jest.fn() },
   free_booking_order: { findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
+  order_receiver_pay: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 1 }), update: jest.fn().mockResolvedValue({}) },
+  pkg_order: { findUnique: jest.fn().mockResolvedValue({ uid: 7, dmobile: "9876543210", drop_name: "Receiver" }) },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../pricingEngine", () => ({ getActiveCustomerPlan: jest.fn() }));
 jest.mock("../walletNotifier", () => ({ notifyCustomerWalletTransaction: jest.fn().mockResolvedValue() }));
 jest.mock("../customerInbox", () => ({ saveCustomerNotification: jest.fn().mockResolvedValue() }));
+jest.mock("../pushNotifier", () => ({ notifyCustomerFreeBookingRefunded: jest.fn().mockResolvedValue() }));
 jest.mock("../../utils/istTime", () => ({ istNow: () => new Date("2026-10-06T10:00:00Z") }));
 
 const { Prisma } = require("@prisma/client");
 const prisma = require("../../config/db");
 const walletNotifier = require("../walletNotifier");
 const customerInbox = require("../customerInbox");
+const pushNotifier = require("../pushNotifier");
 const logger = require("../../utils/logger");
 const svc = require("../freeBookingService");
 
@@ -40,10 +44,16 @@ const pendingRow = (o = {}) => ({
   accepted_in_pool: true, pool_rider_id: 9, actual_fare: "500.00", ...o,
 });
 
-beforeEach(() => jest.resetAllMocks());
+beforeEach(() => {
+  jest.resetAllMocks();
+  prisma.pkg_order.findUnique.mockResolvedValue({ uid: 7, dmobile: "9876543210", drop_name: "Receiver" });
+  prisma.order_receiver_pay.findFirst.mockResolvedValue(null);
+  prisma.order_receiver_pay.create.mockResolvedValue({ id: 1 });
+});
 
 describe("tryCredit", () => {
   it("credits the full fare, locks the user and records the history id", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ fcm_token: "cust-tok" });
     const tx = makeTx({ row: pendingRow() });
     const out = await svc.tryCredit(50);
     expect(out).toEqual({ credited: true, action: "credit" });
@@ -59,6 +69,7 @@ describe("tryCredit", () => {
       data: expect.objectContaining({ status: "FREE_BOOKING_REWARD_CREDITED", credit_amount: 500, wallet_history_id: 77 }),
     });
     expect(walletNotifier.notifyCustomerWalletTransaction).toHaveBeenCalledWith(7, expect.objectContaining({ type: "credit", amount: 500 }));
+    expect(pushNotifier.notifyCustomerFreeBookingRefunded).toHaveBeenCalledWith("cust-tok", 50, 500);
     expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_REWARD_PENDING->FREE_BOOKING_REWARD_CREDITED reason=- amount=500");
   });
 
@@ -216,7 +227,7 @@ describe("markCompleted", () => {
 
 describe("recordAcceptance", () => {
   const confirmed = { id: 5, user_id: 7, city_id: 3, status: "FREE_BOOKING_CONFIRMED" };
-  it("stores the pool rider who accepted", async () => {
+  it("stores the pool rider who accepted and activates receiver pay", async () => {
     prisma.free_booking_order.findUnique.mockResolvedValue(confirmed);
     prisma.free_booking_pool.findMany.mockResolvedValue([{ rider_id: 9 }]);
     prisma.free_booking_order.updateMany.mockResolvedValue({ count: 1 });
@@ -224,6 +235,13 @@ describe("recordAcceptance", () => {
     expect(prisma.free_booking_order.updateMany).toHaveBeenCalledWith({
       where: { id: 5, status: "FREE_BOOKING_CONFIRMED" },
       data: { pool_rider_id: 9, accepted_in_pool: true },
+    });
+    expect(prisma.order_receiver_pay.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        order_id: 50,
+        receiver_phone: "9876543210",
+        status: "active",
+      }),
     });
     expect(logger.info).toHaveBeenCalledWith("free-booking order=50 FREE_BOOKING_CONFIRMED->FREE_BOOKING_CONFIRMED reason=pool_driver_accepted amount=-");
   });

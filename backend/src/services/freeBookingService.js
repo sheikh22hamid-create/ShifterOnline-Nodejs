@@ -5,6 +5,8 @@ const { istNow } = require("../utils/istTime");
 const pricingEngine = require("./pricingEngine");
 const walletNotifier = require("./walletNotifier");
 const customerInbox = require("./customerInbox");
+const pushNotifier = require("./pushNotifier");
+const { normalizeToLast10Digits } = require("../utils/phone");
 const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 const rules = require("./freeBookingRules");
 
@@ -299,6 +301,49 @@ async function voidOrder(freeBookingOrderId, reason = REASON.ADMIN_VOID) {
   return voidRow(Number(freeBookingOrderId), reason);
 }
 
+/**
+ * Free Booking Spec 6: When a pool driver accepts a Free Booking order,
+ * the order's payer becomes the receiver (existing receiver-pay / order_settlement with payer = 'receiver')
+ */
+async function ensureReceiverPayForFreeOrder(orderId, userId) {
+  try {
+    const existing = await prisma.order_receiver_pay.findFirst({
+      where: { order_id: Number(orderId) },
+    });
+    if (existing) {
+      if (existing.status !== "active") {
+        await prisma.order_receiver_pay.update({
+          where: { id: existing.id },
+          data: { status: "active", updated_at: new Date() },
+        });
+      }
+      return existing;
+    }
+    const order = await prisma.pkg_order.findUnique({
+      where: { id: Number(orderId) },
+      select: { uid: true, dmobile: true, drop_name: true },
+    });
+    if (!order) return null;
+    const phone = normalizeToLast10Digits(order.dmobile) || String(order.dmobile || "").replace(/\D/g, "").slice(-10) || "0000000000";
+    const now = new Date();
+    return await prisma.order_receiver_pay.create({
+      data: {
+        order_id: Number(orderId),
+        uid: Number(order.uid || userId),
+        receiver_phone: phone,
+        receiver_name: order.drop_name ? String(order.drop_name).slice(0, 100) : null,
+        commission_percent: 0,
+        status: "active",
+        created_at: now,
+        updated_at: now,
+      },
+    });
+  } catch (err) {
+    logger.error(`freeBooking.ensureReceiverPayForFreeOrder failed for order ${orderId}:`, err);
+    return null;
+  }
+}
+
 /** A driver accepted the order: remember who, and void the booking if they are not a pool driver. */
 async function recordAcceptance(orderId, riderId) {
   const row = await prisma.free_booking_order.findUnique({ where: { order_id: Number(orderId) } });
@@ -312,6 +357,7 @@ async function recordAcceptance(orderId, riderId) {
     });
     if (res.count !== 1) return;
     logger.info(`free-booking order=${orderId} ${STATUS.CONFIRMED}->${STATUS.CONFIRMED} reason=pool_driver_accepted amount=-`);
+    await ensureReceiverPayForFreeOrder(orderId, row.user_id);
     return;
   }
   if (await voidRow(row.id, REASON.VEHICLE_CHANGED, Number(orderId))) {
@@ -435,7 +481,35 @@ async function tryCredit(orderId) {
     });
 
     if (result.action === "void") logTransition(id, fromStatus, STATUS.NOT_ELIGIBLE, voidReason);
-    if (result.action === "credit") logTransition(id, fromStatus, STATUS.REWARD_CREDITED, null, creditAmount);
+    if (result.action === "credit") {
+      logTransition(id, fromStatus, STATUS.REWARD_CREDITED, null, creditAmount);
+      // Free Booking Spec 6: After the credit the backend emits a socket event and a push (free_booking:refunded, order id, amount)
+      try {
+        const { getIO } = require("../sockets/socketServer");
+        getIO().to(`customer_${notifications[0]?.userId || id}`).emit("free_booking:refunded", {
+          order_id: Number(id),
+          amount: creditAmount,
+        });
+      } catch (_socketErr) {
+        // Socket may not be initialized in test environments
+      }
+
+      for (const n of notifications) {
+        try {
+          const user = await prisma.tbl_user.findUnique({
+            where: { id: n.userId },
+            select: { fcm_token: true },
+          });
+          if (user?.fcm_token) {
+            pushNotifier.notifyCustomerFreeBookingRefunded(user.fcm_token, id, creditAmount).catch((err) => {
+              logger.error(`freeBookingService: push notify failed for user ${n.userId}:`, err);
+            });
+          }
+        } catch (pushErr) {
+          logger.error(`freeBookingService: failed to fetch user fcm_token for refund push:`, pushErr);
+        }
+      }
+    }
 
     for (const n of notifications) {
       Promise.resolve(walletNotifier.notifyCustomerWalletTransaction(n.userId, { type: "credit", amount: n.amount, remark: n.remark }))

@@ -390,6 +390,15 @@ async function notifyDriverAccountStatus(fcmToken, isBlocked, reason) {
   );
 }
 
+async function notifyCustomerFreeBookingRefunded(fcmToken, orderId, amount) {
+  return sendPushNotification(
+    fcmToken,
+    "Free Booking Refund Credited",
+    "Your order was completed by our Free Driver. The order amount has been refunded to your wallet.",
+    stringifyPayload({ type: "free_booking_refunded", order_id: String(orderId), amount: String(amount) })
+  );
+}
+
 module.exports = {
   notifyCustomerSettlementReminder,
   notifyDriverSettlementReminder,
@@ -418,6 +427,7 @@ module.exports = {
   notifyDriverModel1Suspended,
   notifyDriverWalletTransaction,
   notifyCustomerWalletTransaction,
+  notifyCustomerFreeBookingRefunded,
   notifyDriverKycDocumentDecision,
   notifyDriverAccountStatus,
   notifyDriverTierPenalty,

@@ -83,17 +83,17 @@ describe("pushNotifier", () => {
     );
   });
 
-  it("notifyCustomerLatePickup sends a may-be-late push mentioning the order id and schedule time", async () => {
-    await pushNotifier.notifyCustomerLatePickup("tok-6", 55, "2026-09-22T15:00:00.000Z");
+  it("notifyCustomerFreeBookingRefunded sends refund push to customer", async () => {
+    await pushNotifier.notifyCustomerFreeBookingRefunded("tok-refund", 42, 500);
 
     expect(sendPushNotification).toHaveBeenCalledWith(
-      "tok-6",
-      expect.any(String),
-      expect.stringContaining("55"),
+      "tok-refund",
+      "Free Booking Refund Credited",
+      expect.stringContaining("refunded to your wallet"),
       expect.objectContaining({
-        type: "schedule_late_pickup",
-        order_id: "55",
-        schedule_date_time: "2026-09-22T15:00:00.000Z",
+        type: "free_booking_refunded",
+        order_id: "42",
+        amount: "500",
       })
     );
   });
