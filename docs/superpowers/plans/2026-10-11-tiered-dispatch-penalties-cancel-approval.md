@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Offer every order to drivers in the order Free -> Daily -> Normal (Free Booking orders) or Daily -> Normal (all other orders), charge escalating percentage penalties to Free/Daily drivers who reject or skip, and require admin approval before a Free/Daily driver can cancel an accepted order.
+**Goal:** Offer every order to drivers in the order Free -> Daily -> Normal (Free Booking orders) or Daily -> Normal (all other orders), with the popup going to up to 4 drivers of a stage at the same time (first accept wins), charge escalating percentage penalties to Free/Daily drivers who reject or skip (never to a driver whose offer someone else took), and require admin approval before a Free/Daily driver can cancel an accepted order.
 
 **Architecture:** A per-order `stage` (stored in `order_dispatch_stage` and mirrored on the in-memory dispatch state) restricts `selectEligibleDrivers` to the stage's driver set. When a stage's cascade is exhausted, `checkCascadeTermination` restarts dispatch at the next stage (the same mechanism the Free Booking fallback already uses). Penalties are percentage-of-order-fare rows in `driver_tier_penalty`, collected from the driver wallet at once, or (for a punched-in Daily Driver) deferred and netted at Daily settlement. Everything is behind the `tiered_dispatch_enabled` app setting, default OFF.
 
 **Tech Stack:** Node.js/Express, Prisma (MySQL), Jest. Backend only (`backend/`). Driver-app popup, customer-app popup, admin React pages and the Driver Performance report are Plans 2 and 3.
 
-**Spec:** `docs/superpowers/specs/2026-10-11-tiered-dispatch-free-daily-design.md` (sections 3, 3.1, 4, 5.1, 8). Spec deltas decided while planning: (1) settings live in `app_settings` keys (like `settlementSettings.js`), not a `driver_tier_penalty_setting` table; (2) penalties are recorded in a new `driver_tier_penalty` table (needed for waive and Daily netting), in addition to `driver_order_event`; (3) the "not offered again" exclusion applies to the daily stage too, not only normal.
+**Spec:** `docs/superpowers/specs/2026-10-11-tiered-dispatch-free-daily-design.md` (sections 3, 3.1, 4, 5.1, 8). Spec deltas decided while planning: (1) settings live in `app_settings` keys (like `settlementSettings.js`), not a `driver_tier_penalty_setting` table; (2) penalties are recorded in a new `driver_tier_penalty` table (needed for waive and Daily netting), in addition to `driver_order_event`; (3) the "not offered again" exclusion applies to the daily stage too, not only normal; (4) manager addendum 2026-10-11: popups inside a stage go to up to `MAX_DRIVERS_PER_BATCH` (= 4, verified in `backend/src/config/constants.js`) drivers at once with first-accept-wins (this is how the existing batch cascade already works, so no new dispatch code is needed beyond the stage), an empty stage hands over at once, an offer that someone else took is never penalised or counted (new `superseded` event), and the Free-order refund stays the full invoice that `tryCredit` credits today.
 
 ## Global Constraints
 
@@ -17,6 +17,8 @@
 - Reading a setting must fail closed: any DB error means "tiered dispatch OFF, penalties OFF".
 - Money: penalty amount = `round2(pkg_order.total_dcharge * pct / 100)`. Ladder default `[5,10,20,50,100]`, the 5th and every later miss use the last value. The counter is lifetime, per rider and per tier (free, daily), never reset automatically.
 - At most one `kind="miss"` penalty per (order, rider): the first event (skip or reject) wins.
+- A miss only counts while the order is still open (`rid = 0`, `order_status = 0`, not cancelled). If someone else already accepted it, or the customer cancelled, the driver gets no penalty, the ladder counter does not move, and a `superseded` event is logged instead of `skipped`/`rejected`.
+- Popups: at most `MAX_DRIVERS_PER_BATCH` (4) drivers hold a popup of one batch at once, in every stage; the first accept wins through the existing atomic claim. Normal stage behaviour is unchanged.
 - Cancel request is only possible while `pkg_order.o_status = 'Processing'` (before pickup). After pickup a Free/Daily driver cannot cancel at all.
 - Event/penalty log writes are best-effort: a failure must never break dispatch, accept, reject, or completion.
 - `tbl_wallet_history.created_at` uses `istNow()` from `backend/src/utils/istTime.js`.
@@ -28,6 +30,7 @@
 
 - Tiered setting OFF or unreadable: the whole existing `dispatchManager.test.js` suite must pass unchanged (pinned in Task 6).
 - A reject arriving after the same offer's timeout must not create a second penalty or advance the miss counter twice (pinned in Task 7).
+- A driver whose popup was still live when someone else accepted (or the customer cancelled) gets no penalty, no counter increment and a `superseded` event, including when the order is taken between the pre-check and the penalty transaction (pinned in Tasks 6 and 7).
 - An admin approving a cancel request after the order state changed (driver already picked up, customer cancelled) must not re-dispatch or penalise (pinned in Task 10).
 - A `daily` stage with zero punched-in drivers must hand over to `normal` without waiting for any popup timer (pinned in Task 6).
 - Global dispatch settings must be writable only by a superadmin, and a city admin must not see another city's cancel requests or penalties (pinned in Task 11).
@@ -556,7 +559,7 @@ git commit -m "feat(tiered-dispatch): fail-closed settings reader/writer"
 - Test: `backend/src/services/__tests__/driverOrderEventService.test.js`
 
 **Interfaces:**
-- Produces: `EVENTS` (`OFFERED, ACCEPTED, REJECTED, SKIPPED, COMPLETED, CANCEL_REQUESTED, CANCELLED, CANCEL_REJECTED, PENALTY, PENALTY_WAIVED, COUNTER_RESET` with the matching lowercase string values), `logEvent({riderId, orderId, tier, event, reason, penaltyPct, penaltyAmount, missNo}) -> Promise<row|null>` (never throws; `tier` defaults to `"normal"`).
+- Produces: `EVENTS` (`OFFERED, ACCEPTED, REJECTED, SKIPPED, SUPERSEDED, COMPLETED, CANCEL_REQUESTED, CANCELLED, CANCEL_REJECTED, PENALTY, PENALTY_WAIVED, COUNTER_RESET` with the matching lowercase string values), `logEvent({riderId, orderId, tier, event, reason, penaltyPct, penaltyAmount, missNo}) -> Promise<row|null>` (never throws; `tier` defaults to `"normal"`).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -597,6 +600,10 @@ it("never throws: a failed write is logged and returns null", async () => {
   expect(logger.error).toHaveBeenCalled();
 });
 
+it("has a superseded event for offers someone else took", () => {
+  expect(events.EVENTS.SUPERSEDED).toBe("superseded");
+});
+
 it("truncates a long reason to the column size", async () => {
   prisma.driver_order_event.create.mockResolvedValue({ id: 3 });
   await events.logEvent({ riderId: 1, orderId: 2, event: "cancel_requested", reason: "x".repeat(400) });
@@ -620,6 +627,7 @@ const EVENTS = Object.freeze({
   ACCEPTED: "accepted",
   REJECTED: "rejected",
   SKIPPED: "skipped",
+  SUPERSEDED: "superseded",
   COMPLETED: "completed",
   CANCEL_REQUESTED: "cancel_requested",
   CANCELLED: "cancelled",
@@ -887,7 +895,7 @@ git commit -m "feat(tiered-dispatch): per-order stage service"
 
 **Interfaces:**
 - Consumes: `orderStageService` (Task 5), `tierPenaltyRules.nextStage` (Task 2), `driverOrderEventService.logEvent/EVENTS` (Task 4), `tierPenaltyService.previewForOffer({riderId, stage, order}) -> {pct, amount}` and `tierPenaltyService.onMiss({orderId, riderId, event, stage, fcmToken})` (Task 7).
-- Produces: `startDispatch(order, tier0Pricing, opts = {stage, earlierStageRiderIds})`; `selectEligibleDrivers(order, packageId, excludeRiderIds, limit, stage = null)`; `order:request` payload gains `tier`, `order_amount`, `penalty_pct`, `penalty_amount` (all strings).
+- Produces: `stopDispatch(orderId, "accepted_by_other")` also logs a `superseded` event per driver whose popup was still live; `startDispatch(order, tier0Pricing, opts = {stage, earlierStageRiderIds})`; `selectEligibleDrivers(order, packageId, excludeRiderIds, limit, stage = null)`; `order:request` payload gains `tier`, `order_amount`, `penalty_pct`, `penalty_amount` (all strings).
 
 - [ ] **Step 1: Create the temporary no-op `tierPenaltyService.js`**
 
@@ -920,7 +928,7 @@ jest.mock("../tierPenaltyService", () => ({
   onMiss: jest.fn().mockResolvedValue({ applied: false }),
 }));
 jest.mock("../driverOrderEventService", () => ({
-  EVENTS: { OFFERED: "offered" },
+  EVENTS: { OFFERED: "offered", SUPERSEDED: "superseded" },
   logEvent: jest.fn().mockResolvedValue(null),
 }));
 ```
@@ -1024,13 +1032,57 @@ The file has three top-level `describe`s. The first one, `describe("dispatchMana
         expect.objectContaining({ orderId: 297, event: "skipped", stage: "daily" })
       );
     });
+
+    it("a Free/Daily stage offers the popup to up to MAX_DRIVERS_PER_BATCH drivers at the same time", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("free");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4, 5, 6]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      const first = emitted.filter((e) => e.event === "order:request");
+      expect(first.map((e) => e.room).sort()).toEqual(["driver_1", "driver_2", "driver_3", "driver_4"]);
+      expect(first).toHaveLength(MAX_DRIVERS_PER_BATCH);
+      expect(first.every((e) => e.payload.tier === "free")).toBe(true);
+    });
+
+    it("when someone else accepts, drivers whose popup was still live get a superseded event and no penalty", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("daily");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      // Rider 1 won: finalizeAcceptedOrder releases that rider's own lock before it stops the dispatch.
+      lockManager.releaseLock(1);
+      dispatchManager.stopDispatch(297, "accepted_by_other");
+      await flush();
+
+      const superseded = driverOrderEvents.logEvent.mock.calls.map((c) => c[0]).filter((a) => a.event === "superseded");
+      expect(superseded.map((a) => a.riderId).sort()).toEqual([2, 3, 4]);
+      expect(superseded.every((a) => a.tier === "daily" && a.orderId === 297)).toBe(true);
+      expect(tierPenalty.onMiss).not.toHaveBeenCalled();
+    });
+
+    it("a customer cancel does not log superseded events", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("daily");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+      dispatchManager.stopDispatch(297, "cancelled_by_user");
+      await flush();
+
+      const superseded = driverOrderEvents.logEvent.mock.calls.map((c) => c[0]).filter((a) => a.event === "superseded");
+      expect(superseded).toHaveLength(0);
+    });
   });
 ```
 
 - [ ] **Step 3: Run the dispatch suite to verify the new tests fail and the old ones still pass**
 
 Run: `npx jest src/services/__tests__/dispatchManager.test.js`
-Expected: the 5 new tests FAIL (payload has no `tier`, `setStage` never called); the 63 pre-existing tests still PASS.
+Expected: the new tests FAIL (payload has no `tier`, `setStage` never called, no `superseded` event); the 63 pre-existing tests still PASS.
 
 - [ ] **Step 4: Edit `dispatchManager.js` - imports**
 
@@ -1171,6 +1223,22 @@ After the line `await recordModel1Outcome(riderId, packageId, "miss");` (inside 
           await tierPenalty.onMiss({ orderId, riderId, event: "skipped", stage: state.stage || null, fcmToken: driver.fcm_token });
 ```
 
+- [ ] **Step 9b: Edit `stopDispatch` - superseded events**
+
+In `stopDispatch`, directly after the line `const newRequestStatus = reason === "accepted_by_other" ? "auto_rejected" : "timeout";` add:
+
+```js
+  // Tiered dispatch: drivers whose popup was still live when someone else took the order are not penalised and
+  // are excluded from the Driver Performance rates, so they get a "superseded" event instead of a skip/reject.
+  // (The accepting rider's own lock was already released by finalizeAcceptedOrder, so it is not in riderIds.)
+  if (reason === "accepted_by_other") {
+    const supersededTier = state?.stage || tierRules.TIER.NORMAL;
+    for (const riderId of riderIds) {
+      driverOrderEvents.logEvent({ riderId, orderId, tier: supersededTier, event: driverOrderEvents.EVENTS.SUPERSEDED });
+    }
+  }
+```
+
 - [ ] **Step 10: Edit `checkCascadeTermination` - advance the stage**
 
 Inside `if (order && order.rid === 0 && order.order_status === 0) {` and BEFORE the `// Free Booking Offer: the pool is exhausted ...` comment, add:
@@ -1201,9 +1269,9 @@ Inside `if (order && order.rid === 0 && order.order_status === 0) {` and BEFORE 
 - [ ] **Step 11: Run the dispatch suite**
 
 Run: `npx jest src/services/__tests__/dispatchManager.test.js`
-Expected: PASS - all pre-existing tests plus the 5 new ones.
+Expected: PASS - all 63 pre-existing tests plus the 8 new ones (71).
 
-Verified while writing this plan: with exactly these edits all 68 tests in the file pass (63 existing + 5 new). If the "free -> daily -> normal" test shows only two stages, check the loop uses `advanceTimersByTimeAsync(1)`; do not change production code to satisfy a timing guess.
+Verified while writing this plan: with the edits of steps 4-10 the file ran 68 tests green (63 existing + the first 5 new cases); the batch-size and the two superseded tests were added afterwards together with step 9b, so run the whole file and expect 71 passing. If the "free -> daily -> normal" test shows only two stages, check the loop uses `advanceTimersByTimeAsync(1)`; do not change production code to satisfy a timing guess.
 
 - [ ] **Step 12: Commit**
 
@@ -1225,7 +1293,7 @@ git commit -m "feat(tiered-dispatch): stage-aware dispatch, offer tier/penalty p
 - Consumes: `tierPenaltyRules`, `tieredDispatchSettings.getTierSettings`, `driverOrderEventService`, `walletNotifier.notifyDriverWalletTransaction(riderId,{type,amount,remark})`, `pushNotifier.notifyDriverTierPenalty(fcmToken, {orderId, amount, pct, nextPct, deferred})`.
 - Produces:
   - `previewForOffer({riderId, stage, order}) -> {pct, amount}` (never throws; zeros for normal / penalties off)
-  - `onMiss({orderId, riderId, event, stage, fcmToken}) -> {applied, duplicate?, penalty?, missNo?, pct?, amount?, status?}` (never throws; also logs the `rejected`/`skipped` event)
+  - `onMiss({orderId, riderId, event, stage, fcmToken}) -> {applied, duplicate?, ignored?, penalty?, missNo?, pct?, amount?, status?}` (never throws; logs the `rejected`/`skipped` event, or `superseded` and `{applied:false, ignored:true}` when the order is no longer open)
   - `applyCancelPenalty({orderId, riderId, tier}) -> same shape` (kind `"cancel"`, uses `cancelPenaltyPct`, no counter)
   - `waive({penaltyId, adminId}) -> {waived:true}|{alreadyWaived:true}` (throws `Error` with `statusCode` 404 if missing)
   - `resetCounter({riderId, tier, adminId}) -> void`
@@ -1272,12 +1340,13 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   driver_tier_penalty_counter: { upsert: jest.fn(), findUnique: jest.fn() },
   driver_tier_penalty: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+  pkg_order: { findUnique: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock("../../utils/istTime", () => ({ istNow: () => new Date("2026-10-11T10:00:00Z") }));
 jest.mock("../tieredDispatchSettings", () => ({ getTierSettings: jest.fn() }));
 jest.mock("../driverOrderEventService", () => ({
-  EVENTS: { REJECTED: "rejected", SKIPPED: "skipped", PENALTY: "penalty", PENALTY_WAIVED: "penalty_waived", COUNTER_RESET: "counter_reset" },
+  EVENTS: { REJECTED: "rejected", SKIPPED: "skipped", SUPERSEDED: "superseded", PENALTY: "penalty", PENALTY_WAIVED: "penalty_waived", COUNTER_RESET: "counter_reset" },
   logEvent: jest.fn().mockResolvedValue(null),
 }));
 jest.mock("../walletNotifier", () => ({ notifyDriverWalletTransaction: jest.fn().mockResolvedValue() }));
@@ -1293,13 +1362,13 @@ const svc = require("../tierPenaltyService");
 
 const ON = { tieredEnabled: true, penaltyEnabled: true, ladder: [5, 10, 20, 50, 100], cancelPenaltyPct: 100 };
 
-function makeTx({ existing = null, misses = 1, total = 500, dutyLog = null, history = null } = {}) {
+function makeTx({ existing = null, misses = 1, total = 500, dutyLog = null, history = null, orderState = {} } = {}) {
   const tx = {
     driver_tier_penalty: {
       findFirst: jest.fn().mockResolvedValue(existing),
       create: jest.fn().mockImplementation(async ({ data }) => ({ id: 70, ...data })),
     },
-    pkg_order: { findUnique: jest.fn().mockResolvedValue({ total_dcharge: total }) },
+    pkg_order: { findUnique: jest.fn().mockResolvedValue({ total_dcharge: total, rid: 0, order_status: 0, o_status: "Pending", ...orderState }) },
     driver_tier_penalty_counter: { upsert: jest.fn().mockResolvedValue({ misses }) },
     daily_driver_duty_log: { findFirst: jest.fn().mockResolvedValue(dutyLog) },
     tbl_rider: { update: jest.fn().mockResolvedValue({}) },
@@ -1313,9 +1382,35 @@ beforeEach(() => {
   jest.clearAllMocks();
   settings.getTierSettings.mockResolvedValue(ON);
   prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: "tok" });
+  // The order is still open (unassigned, pending) unless a test says otherwise.
+  prisma.pkg_order.findUnique.mockResolvedValue({ rid: 0, order_status: 0, o_status: "Pending" });
 });
 
 describe("onMiss", () => {
+  it("an order someone else already took: no penalty, counter untouched, logged as superseded and not as a skip", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ rid: 14, order_status: 1, o_status: "Processing" });
+    const res = await svc.onMiss({ orderId: 50, riderId: 9, event: "skipped", stage: "free" });
+    expect(res).toEqual({ applied: false, ignored: true });
+    expect(events.logEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "superseded", tier: "free" }));
+    expect(events.logEvent).not.toHaveBeenCalledWith(expect.objectContaining({ event: "skipped" }));
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("an order the customer cancelled is ignored the same way", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ rid: 0, order_status: 4, o_status: "Cancelled" });
+    const res = await svc.onMiss({ orderId: 50, riderId: 9, event: "rejected", stage: "daily" });
+    expect(res).toEqual({ applied: false, ignored: true });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("if the order is taken between the pre-check and the penalty transaction the counter still does not move", async () => {
+    const tx = makeTx({ orderState: { rid: 14, order_status: 1, o_status: "Processing" } });
+    const res = await svc.onMiss({ orderId: 50, riderId: 9, event: "rejected", stage: "free" });
+    expect(res).toMatchObject({ applied: false, ignored: true });
+    expect(tx.driver_tier_penalty_counter.upsert).not.toHaveBeenCalled();
+    expect(tx.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
   it("normal tier: logs the event, never penalises", async () => {
     const res = await svc.onMiss({ orderId: 50, riderId: 9, event: "skipped", stage: null });
     expect(res.applied).toBe(false);
@@ -1537,6 +1632,14 @@ async function previewForOffer({ riderId, stage, order }) {
   }
 }
 
+/** Still waiting for a driver: unassigned, not accepted, not cancelled. */
+const isOpenOrder = (o) => Boolean(o) && Number(o.rid) === 0 && Number(o.order_status) === 0 && o.o_status !== "Cancelled";
+
+async function isOrderOpen(orderId) {
+  const order = await prisma.pkg_order.findUnique({ where: { id: Number(orderId) }, select: { rid: true, order_status: true, o_status: true } });
+  return isOpenOrder(order);
+}
+
 async function openEnrollmentId(tx, riderId) {
   const log = await tx.daily_driver_duty_log.findFirst({
     where: { rider_id: riderId, status: "in_progress" },
@@ -1565,7 +1668,9 @@ async function createPenalty({ orderId, riderId, tier, kind, event, s }) {
       const existing = await tx.driver_tier_penalty.findFirst({ where: { order_id: oid, rider_id: rid, kind } });
       if (existing) return { applied: false, duplicate: true };
 
-      const order = await tx.pkg_order.findUnique({ where: { id: oid }, select: { total_dcharge: true } });
+      const order = await tx.pkg_order.findUnique({ where: { id: oid }, select: { total_dcharge: true, rid: true, order_status: true, o_status: true } });
+      // Taken by someone else (or cancelled) after the pre-check in onMiss: nothing is charged or counted.
+      if (kind === "miss" && !isOpenOrder(order)) return { applied: false, ignored: true };
       const base = rules.round2(order?.total_dcharge || 0);
       let missNo = null;
       let pct;
@@ -1634,6 +1739,12 @@ async function afterPenalty(result, { orderId, riderId, tier, event, s, fcmToken
 async function onMiss({ orderId, riderId, event, stage = null, fcmToken = null }) {
   const tier = stage || rules.TIER.NORMAL;
   try {
+    // Someone else took the order, or the customer cancelled, while this driver still had the popup: the offer
+    // does not count (no penalty, counter untouched, excluded from the report rates).
+    if (!(await isOrderOpen(orderId))) {
+      await events.logEvent({ riderId, orderId, tier, event: events.EVENTS.SUPERSEDED });
+      return { applied: false, ignored: true };
+    }
     await events.logEvent({ riderId, orderId, tier, event });
     if (!rules.isPenaltyTier(tier)) return { applied: false };
     const s = await settings.getTierSettings();
@@ -1746,7 +1857,7 @@ Note: `waive` for a `kind="cancel"` row uses the same path; its original ledger 
 - [ ] **Step 5: Run it to verify it passes**
 
 Run: `npx jest src/services/__tests__/tierPenaltyService.test.js`
-Expected: PASS (17 tests). Then run `npx jest src/services/__tests__/dispatchManager.test.js` (still PASS, it mocks this module).
+Expected: PASS (20 tests). Then run `npx jest src/services/__tests__/dispatchManager.test.js` (still PASS, it mocks this module).
 
 - [ ] **Step 6: Commit**
 

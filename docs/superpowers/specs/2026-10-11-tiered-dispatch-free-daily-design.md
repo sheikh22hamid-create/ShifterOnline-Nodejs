@@ -26,6 +26,8 @@ This spec covers three deliverables, each gets its own implementation plan, in t
 - Free Driver tier applies only to **premium Free Booking customers** (existing rules unchanged: active customer premium plan, offer ON for the city, instant booking only, user not locked, no other open free booking).
 - Daily tier applies to **every** order (this is a behaviour change for all orders, so the whole feature sits behind a setting, default OFF).
 - Free/Daily drivers get a **popup offer with Accept / Reject and continuous ringing** until they respond or the timer expires. No force-assign.
+- **Simultaneous popups (manager, 2026-10-11):** inside the Free and Daily stages the popup goes to several drivers at the same time and **whoever accepts first gets the order** (the existing atomic claim). At most `MAX_DRIVERS_PER_BATCH` drivers hold a popup per batch: that constant is **4** (`backend/src/config/constants.js`, verified). The normal stage behaves exactly as today.
+- **Superseded offers are not counted:** a driver whose popup was still live when someone else accepted gets no penalty, the ladder counter does not move, and the offer is excluded from the Driver Performance rates (event `superseded`).
 - **Skip = the offer timer expiring** (`tbl_order_requests.status = 'timeout'`). **Reject = explicit reject** (status `'10'`). There is no separate Skip button.
 - Accepting a Free/Daily order makes completing it mandatory.
 - Normal drivers: no penalty for accept/reject/skip.
@@ -46,7 +48,8 @@ New table `order_dispatch_stage` (`order_id` unique, `stage` in free|daily|norma
   - `normal`: everyone, excluding riders already offered this order in an earlier stage.
   All other existing filters stay (online, fresh location, radius, no active order, wallet due limit, blocked driver, settlement block).
 - A stage ends when all its eligible drivers have been offered (or none is eligible, then immediately). The order then moves to the next stage by restarting dispatch for the order, the same mechanism `checkCascadeTermination` uses today for the free-booking fallback (`startDispatch`). The "No driver found" path and Booking Guarantee run only after the `normal` stage is exhausted, as today.
-- Within a stage every eligible driver is offered in turn (existing batch/lock/expiry logic); a reject or skip penalises that driver only, it does not end the stage.
+- Within a stage the existing batch cascade runs unchanged: up to `MAX_DRIVERS_PER_BATCH` (4) drivers get the popup at once, later batches follow as today, and the first accept wins. A reject or skip penalises that driver only (and only if the order was still open, see section 4); it does not end the stage.
+- A stage with no eligible driver hands over to the next stage at once, without waiting for any timer.
 - A driver who was offered in an earlier stage is not offered the same order again in the `normal` stage.
 - Daily driver rejects/skips: penalty, next Daily driver, then `normal`. Daily driver accepts a Free Booking order: no refund, payer returns to normal rules (receiver pays the full amount to the driver, sender is charged nothing extra).
 
@@ -64,6 +67,7 @@ Tables
 - `driver_tier_penalty_counter` (`rider_id`, `tier` in free|daily, `misses`, `updated_at`; unique on rider+tier).
 
 Rules
+- A miss counts only while the order is still open (unassigned, not cancelled). If someone else accepted first, or the customer cancelled, there is no penalty, the counter does not move, and the offer is logged as `superseded` and left out of the report rates.
 - On reject or skip by a Free/Daily driver: `misses += 1` for that tier, `pct = ladder[min(misses, len) - 1]`, `amount = round2(order total fare * pct / 100)`. Debit the driver wallet with a ledger row (`wallet_type = 'driver'`) and reason text; idempotency key `tier_penalty:<order>:<rider>` so one driver is penalised at most once per order. The first event wins: a skip (timeout) is penalised once, and a late reject on the same offer (the app can upgrade `timeout` to `'10'`) adds no second penalty.
 - Order total fare = the order's total as shown in the offer (`tripTotal`), at offer time.
 - Cancel penalty (an admin-approved cancel request, section 3.1): `amount = round2(order total * cancel_penalty_pct / 100)`; not counted on the ladder. The percentage is admin-set (default 100, to be confirmed by the manager).
@@ -83,21 +87,21 @@ Rules
 ## 6. Free-driver money flow
 
 - When a pool driver accepts a Free Booking order, the order's payer becomes the receiver (existing receiver-pay / `order_settlement` with `payer = 'receiver'`): the receiver pays the driver the full invoice (cash or online), as today.
-- Refund to the sender = the sender's **net spend on that order** computed from `tbl_wallet_history` for the order (debits such as `advance_apply` and wallet prepayment minus credits already returned). A receiver-paid order's advance stays in the wallet and is not a spend, so it is not refunded twice. Booker commission is paid exactly as today and is not part of the refund.
+- Refund to the sender = the order's **full amount** (the final invoice total), exactly what `freeBookingService.tryCredit` already credits today (manager decision 2026-10-11, replacing the earlier "net spend" idea). Booker commission is paid exactly as today and is not part of the refund. Note for the business: when the receiver pays the driver the full fare and the sender also receives the full invoice, the sender ends up better off than before by the amount of any advance that stays in their wallet; this is accepted.
 - The refund is credited once the settlement is `paid_online` or `cash_received` (the existing `tryCredit` / settlement hook, idempotent). Receiver refusal, waived settlement or a vehicle change keep voiding it (existing rules).
-- A zero net spend still sends the completion popup, with no credit line.
 - After the credit the backend emits a socket event and a push (`free_booking:refunded`, order id, amount). The customer app shows: "Your order was completed by our Free Driver. The order amount has been refunded to your wallet."
 - The existing premium lock (until N referrals) is unchanged.
-- `freeBookingService.tryCredit` replaces its `decision.amount = actual_fare` with the net-spend figure; the rest of its transaction is unchanged.
+- No change to the credit amount: `tryCredit` keeps `decision.amount = actual_fare`. Plan 2 only adds the refund popup/push and the receiver-pays payer switch.
 
 ## 7. Event log and Driver Performance report
 
-Table `driver_order_event`: `id`, `rider_id`, `order_id`, `tier`, `event` (offered | accepted | rejected | skipped | completed | cancel_requested | cancelled | cancel_rejected | penalty | penalty_waived), `at`, `reason`, `penalty_pct`, `penalty_amount`, `miss_no`, `meta` JSON. Index on `(rider_id, at)` and `(tier, at)`.
+Table `driver_order_event`: `id`, `rider_id`, `order_id`, `tier`, `event` (offered | accepted | rejected | skipped | superseded | completed | cancel_requested | cancelled | cancel_rejected | penalty | penalty_waived | counter_reset), `at`, `reason`, `penalty_pct`, `penalty_amount`, `miss_no`, `meta` JSON. Index on `(rider_id, at)` and `(tier, at)`.
 
 Write hooks (all best-effort: a failed log write must never fail dispatch or a trip):
 - offered: `dispatchManager.insertOrderRequest`.
 - accepted: `tripLifecycle` accept (after the claim succeeds).
 - rejected: `tripLifecycle.rejectOrder` (when the row flips to `'10'`).
+- superseded: `dispatchManager.stopDispatch(orderId, "accepted_by_other")`, one event per driver whose popup was still live. The report excludes an `offered` row that has a `superseded` event from every rate.
 - skipped: `dispatchManager.scheduleExpiry` timeout path.
 - completed: `tripLifecycle` completion. cancel_requested / cancelled / cancel_rejected: the cancel-request create and admin decision paths (a Normal-stage cancel logs `cancelled` directly).
 - penalty / penalty_waived: the penalty service.
@@ -129,11 +133,10 @@ Admin page "Driver Performance" (React, new route, `scopeFilter` city scoping li
 
 ## 10. Assumptions to confirm at review
 
-Manager answers (2026-10-11), already applied above: Daily driver gets the first chance on every order; penalty may take the wallet negative and a Daily driver's penalty is first adjusted against what the company owes them; Free/Daily orders cannot be cancelled without admin approval; after pickup the driver and customer complete the order together.
+Manager answers (2026-10-11), already applied above: simultaneous popups in the Free/Daily stages (first accept wins, batch limit 4); empty stage moves on at once; refund is the full order amount; a superseded driver is never penalised or counted; Daily driver gets the first chance on every order; penalty may take the wallet negative and a Daily driver's penalty is first adjusted against what the company owes them; Free/Daily orders cannot be cancelled without admin approval; after pickup the driver and customer complete the order together.
 
 Still open:
 - The cancel penalty % (`cancel_penalty_pct`): spec default is 100, the manager has not given a number.
-- A stage offers every eligible driver in turn before moving on (a single driver's reject does not skip the stage).
 - Score formula and status bands in section 7 (the manager did not comment, so they stay as proposed).
 
 ## 11. Out of scope / open
