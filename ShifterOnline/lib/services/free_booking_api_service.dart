@@ -32,11 +32,20 @@ class FreeBookingApiService {
     required String category,
     required int radiusKm,
     required int bookingType,
+    double? amount,
+    double? distanceKm,
   }) async {
-    final json = await _post('api/order/free-booking/check', {
-      'uid': uid, 'plat': plat, 'plong': plong, 'category': category,
-      'radius_km': radiusKm, 'booking_type': bookingType,
-    });
+    final Map<String, dynamic> body = {
+      'uid': uid,
+      'plat': plat,
+      'plong': plong,
+      'category': category,
+      'radius_km': radiusKm,
+      'booking_type': bookingType,
+    };
+    if (amount != null) body['amount'] = amount;
+    if (distanceKm != null) body['distance_km'] = distanceKm;
+    final json = await _post('api/order/free-booking/check', body);
     final ok = json['Result'] == true || json['Result'] == 'true';
     return {
       'outcome': ok ? (json['outcome']?.toString() ?? 'offer_off') : 'offer_off',
