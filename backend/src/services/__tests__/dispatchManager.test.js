@@ -36,12 +36,29 @@ jest.mock("../freeBookingService", () => ({
 jest.mock("../bookingGuaranteeService", () => ({
   openForExhaustedOrder: jest.fn().mockResolvedValue(false),
 }));
+jest.mock("../orderStageService", () => ({
+  decideStartStage: jest.fn().mockResolvedValue(null), // feature off: the whole existing suite keeps its old behaviour
+  setStage: jest.fn().mockResolvedValue(undefined),
+  riderIdsForStage: jest.fn().mockResolvedValue(null),
+  offeredRiderIds: jest.fn().mockResolvedValue([]),
+}));
+jest.mock("../tierPenaltyService", () => ({
+  previewForOffer: jest.fn().mockResolvedValue({ pct: 0, amount: 0 }),
+  onMiss: jest.fn().mockResolvedValue({ applied: false }),
+}));
+jest.mock("../driverOrderEventService", () => ({
+  EVENTS: { OFFERED: "offered", SUPERSEDED: "superseded" },
+  logEvent: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("../pushNotifier");
 jest.mock("../walletPrepaymentRefund");
 
 const prisma = require("../../config/db");
 const freeBookingService = require("../freeBookingService");
 const bookingGuaranteeService = require("../bookingGuaranteeService");
+const orderStage = require("../orderStageService");
+const tierPenalty = require("../tierPenaltyService");
+const driverOrderEvents = require("../driverOrderEventService");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
 const pushNotifier = require("../pushNotifier");
@@ -1869,6 +1886,140 @@ describe("dispatchManager overlapping batch cascade", () => {
       } finally {
         lockManager.releaseLock(6);
       }
+    });
+  });
+
+  describe("tiered dispatch stages", () => {
+    // jest.clearAllMocks (in the parent beforeEach) keeps implementations, so reset the ones these tests set.
+    afterEach(() => {
+      orderStage.riderIdsForStage.mockReset().mockResolvedValue(null);
+      orderStage.offeredRiderIds.mockReset().mockResolvedValue([]);
+      tierPenalty.previewForOffer.mockReset().mockResolvedValue({ pct: 0, amount: 0 });
+      tierPenalty.onMiss.mockReset().mockResolvedValue({ applied: false });
+    });
+
+    it("with the feature off, offers carry tier=normal and no restriction is passed to the stage service", async () => {
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      const request = emitted.find((e) => e.event === "order:request");
+      expect(request.payload.tier).toBe("normal");
+      expect(orderStage.riderIdsForStage).not.toHaveBeenCalled();
+      expect(orderStage.setStage).not.toHaveBeenCalled();
+    });
+
+    it("restricts selection to the stage's riders and tags the offer with the stage and the penalty preview", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("daily");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2]);
+      tierPenalty.previewForOffer.mockResolvedValue({ pct: 10, amount: 55 });
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      expect(orderStage.setStage).toHaveBeenCalledWith(297, "daily");
+      expect(orderStage.riderIdsForStage).toHaveBeenCalledWith("daily", expect.objectContaining({ id: 297 }));
+      const request = emitted.find((e) => e.event === "order:request");
+      expect(request.payload).toMatchObject({ tier: "daily", penalty_pct: "10", penalty_amount: "55" });
+      expect(driverOrderEvents.logEvent).toHaveBeenCalledWith(expect.objectContaining({ orderId: 297, tier: "daily", event: "offered" }));
+    });
+
+    it("a stage with no eligible driver hands the order on free -> daily -> normal without waiting for any popup timer", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("free");
+      orderStage.riderIdsForStage.mockResolvedValue([]); // empty pool / nobody punched in
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await dispatchManager.startDispatch(order);
+      // 1 ms, not 0: a setTimeout(fn, 0) scheduled from inside a fake-timer tick fires 1 ms later.
+      for (let i = 0; i < 12; i++) {
+        await flush();
+        await jest.advanceTimersByTimeAsync(1);
+      }
+
+      const stages = orderStage.setStage.mock.calls.map((c) => c[1]);
+      expect(stages).toEqual(["free", "daily", "normal"]);
+      // Nobody was ever offered, so no timer needed to fire: only zero-delay turns ran.
+      expect(emitted.filter((e) => e.event === "order:request")).toHaveLength(0);
+    });
+
+    it("never re-offers a rider who was offered in an earlier stage", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("free");
+      orderStage.riderIdsForStage.mockResolvedValue([]);
+      orderStage.offeredRiderIds.mockResolvedValue([1, 2]);
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await dispatchManager.startDispatch(order);
+      // 1 ms, not 0: a setTimeout(fn, 0) scheduled from inside a fake-timer tick fires 1 ms later.
+      for (let i = 0; i < 12; i++) {
+        await flush();
+        await jest.advanceTimersByTimeAsync(1);
+      }
+
+      // The later stages' selection SQL must carry riders 1 and 2 in its NOT IN list. The list is a
+      // Prisma.join(...) Sql object, so unwrap the `.values` of every interpolated value.
+      const interpolated = prisma.$queryRaw.mock.calls
+        .flatMap((c) => c.slice(1))
+        .flatMap((v) => (v && Array.isArray(v.values) ? v.values : [v]));
+      expect(interpolated).toEqual(expect.arrayContaining([1, 2]));
+    });
+
+    it("a skip (offer timeout) at a stage is reported to the penalty service with that stage", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("daily");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+      await jest.advanceTimersByTimeAsync(POPUP_TIMEOUT_MS);
+      await flush();
+
+      expect(tierPenalty.onMiss).toHaveBeenCalledWith(
+        expect.objectContaining({ orderId: 297, event: "skipped", stage: "daily" })
+      );
+    });
+
+    it("a Free/Daily stage offers the popup to up to MAX_DRIVERS_PER_BATCH drivers at the same time", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("free");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4, 5, 6]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      const first = emitted.filter((e) => e.event === "order:request");
+      expect(first.map((e) => e.room).sort()).toEqual(["driver_1", "driver_2", "driver_3", "driver_4"]);
+      expect(first).toHaveLength(MAX_DRIVERS_PER_BATCH);
+      expect(first.every((e) => e.payload.tier === "free")).toBe(true);
+    });
+
+    it("when someone else accepts, drivers whose popup was still live get a superseded event and no penalty", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("daily");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+
+      // Rider 1 won: finalizeAcceptedOrder releases that rider's own lock before it stops the dispatch.
+      lockManager.releaseLock(1);
+      dispatchManager.stopDispatch(297, "accepted_by_other");
+      await flush();
+
+      const superseded = driverOrderEvents.logEvent.mock.calls.map((c) => c[0]).filter((a) => a.event === "superseded");
+      expect(superseded.map((a) => a.riderId).sort()).toEqual([2, 3, 4]);
+      expect(superseded.every((a) => a.tier === "daily" && a.orderId === 297)).toBe(true);
+      expect(tierPenalty.onMiss).not.toHaveBeenCalled();
+    });
+
+    it("a customer cancel does not log superseded events", async () => {
+      orderStage.decideStartStage.mockResolvedValueOnce("daily");
+      orderStage.riderIdsForStage.mockResolvedValue([1, 2, 3, 4]);
+
+      await dispatchManager.startDispatch(order);
+      await flush();
+      dispatchManager.stopDispatch(297, "cancelled_by_user");
+      await flush();
+
+      const superseded = driverOrderEvents.logEvent.mock.calls.map((c) => c[0]).filter((a) => a.event === "superseded");
+      expect(superseded).toHaveLength(0);
     });
   });
 });

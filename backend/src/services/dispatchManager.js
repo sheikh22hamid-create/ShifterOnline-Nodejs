@@ -23,6 +23,10 @@ const {
   SCHEDULED_ORDER_PRIORITY_POPUP_MS,
 } = require("../config/constants");
 const { getModel1MissLimit, getModel1SuspensionHours } = require("./model1SuspensionSettings");
+const orderStage = require("./orderStageService");
+const tierRules = require("./tierPenaltyRules");
+const tierPenalty = require("./tierPenaltyService");
+const driverOrderEvents = require("./driverOrderEventService");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
 const activeDispatches = new Map();
@@ -94,7 +98,7 @@ async function getRejectedRiderIds(orderId) {
  * earlier offer on this order simply timed out is free to reappear here
  * once their lock has lapsed.
  */
-async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = MAX_DRIVERS_PER_BATCH + 1) {
+async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = MAX_DRIVERS_PER_BATCH + 1, stage = null) {
   const favoriteRoutes = require('./favoriteRouteService');
   const routeConfig = process.env.FAVORITE_ROUTES_ENABLED === 'true' ? await favoriteRoutes.settings(order.city_id) : {enabled:false};
   const excludeSet = new Set(excludeRiderIds.map(Number));
@@ -116,9 +120,11 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       )`
     : Prisma.empty;
 
-  // Free Booking Offer: a CONFIRMED free booking is only offered to the city's pool drivers.
-  // getDispatchPoolFilter never throws; null means a normal order (no filter).
-  const poolIds = await require("./freeBookingService").getDispatchPoolFilter(order);
+  // Tiered dispatch: the stage decides the candidate set. Without a stage (feature off) keep today's
+  // free-booking pool filter exactly as it was.
+  const poolIds = stage
+    ? await orderStage.riderIdsForStage(stage, order)
+    : await require("./freeBookingService").getDispatchPoolFilter(order);
   const poolBlock = poolIds
     ? Prisma.sql`AND r.id IN (${Prisma.join(poolIds.length ? poolIds : [0])})`
     : Prisma.empty;
@@ -415,6 +421,27 @@ async function checkCascadeTermination(orderId) {
 
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (order && order.rid === 0 && order.order_status === 0) {
+    // Tiered dispatch: a Free/Daily stage that ran out of drivers hands the order to the next stage
+    // (the same restart the free-booking fallback below uses). Normal is the last stage, so it falls
+    // through to the free-booking / guarantee / no-driver-found handling unchanged.
+    if (state.stage && state.stage !== tierRules.TIER.NORMAL) {
+      const nextStage = tierRules.nextStage(state.stage);
+      if (nextStage) {
+        if (state.stage === tierRules.TIER.FREE) {
+          // Leaving the free stage ends the free booking (no refund); notifies the customer.
+          await require("./freeBookingService")
+            .fallbackToNormalDispatch(orderId)
+            .catch((err) => logger.error(`dispatchManager: free-booking fallback failed for order ${orderId}:`, err));
+        }
+        const offeredSoFar = await orderStage.offeredRiderIds(orderId);
+        for (const t of state.timers) clearTimeout(t);
+        state.timers.clear();
+        activeDispatches.delete(orderId);
+        await startDispatch(order, null, { stage: nextStage, earlierStageRiderIds: offeredSoFar });
+        return;
+      }
+    }
+
     // Free Booking Offer: the pool is exhausted, so continue as a normal booking (no refund)
     // instead of cancelling. The audit row is flipped atomically, so this happens once.
     let continueAsNormal = false;
@@ -685,8 +712,10 @@ async function runBatchInner(orderId) {
     // check above.
     if (!activeDispatches.has(orderId)) break;
 
-    const excludeRiderIds = [...new Set([...lockManager.getAllLockedRiderIds(), ...rejectedRiderIds, ...consideredThisBatch])];
-    const candidates = await selectEligibleDrivers(currentOrder, packageId, excludeRiderIds, MAX_DRIVERS_PER_BATCH + 1);
+    const excludeRiderIds = [...new Set([
+      ...lockManager.getAllLockedRiderIds(), ...rejectedRiderIds, ...consideredThisBatch, ...state.earlierStageRiderIds,
+    ])];
+    const candidates = await selectEligibleDrivers(currentOrder, packageId, excludeRiderIds, MAX_DRIVERS_PER_BATCH + 1, state.stage);
 
     if (candidates.length > (MAX_DRIVERS_PER_BATCH - lockedRiderIds.length)) {
       hasMoreInCurrentTier = true;
@@ -809,6 +838,15 @@ async function runBatchInner(orderId) {
             state.customerStats?.customerOrders
           );
 
+          // Tiered dispatch: tell the driver which tier this offer is, and what a reject/skip would cost them now.
+          const offerTier = state.stage || tierRules.TIER.NORMAL;
+          const penaltyPreview = await tierPenalty.previewForOffer({ riderId, stage: state.stage, order: currentOrder });
+          payload.tier = offerTier;
+          payload.order_amount = String(Number(currentOrder.total_dcharge) || 0);
+          payload.penalty_pct = String(penaltyPreview.pct);
+          payload.penalty_amount = String(penaltyPreview.amount);
+          driverOrderEvents.logEvent({ riderId, orderId, tier: offerTier, event: driverOrderEvents.EVENTS.OFFERED });
+
           if (driver.favorite_route_match?.matched) {
             payload.favorite_route_match = JSON.stringify(driver.favorite_route_match);
             payload.order_details += `\nYour route match · drops within ${driver.favorite_route_match.distance_km.toFixed(1)} km of route`;
@@ -889,8 +927,9 @@ async function runBatchInner(orderId) {
       ...rejectedRiderIds,
       ...consideredThisBatch,
       ...(state.offeredRiderIdsByTier.get(packageId) || []),
+      ...state.earlierStageRiderIds,
     ])];
-    const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringLocks, 1);
+    const wouldBeCandidates = await selectEligibleDrivers(currentOrder, packageId, excludeIgnoringLocks, 1, state.stage);
     if (wouldBeCandidates.length > 0) {
       lockBlocking = true;
       const candidateRiderId = Number(wouldBeCandidates[0].rider_id);
@@ -1058,6 +1097,9 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
           });
           if (result.count === 0) return;
           await recordModel1Outcome(riderId, packageId, "miss");
+          // Tiered dispatch: a timed-out offer is a "skip" - logged for the report and, for a Free/Daily
+          // stage, penalised. Never throws (see tierPenaltyService.onMiss).
+          await tierPenalty.onMiss({ orderId, riderId, event: "skipped", stage: state.stage || null, fcmToken: driver.fcm_token });
           requireIo().to(`driver_${riderId}`).emit("order:dismiss", {
             order_id: String(orderId),
             reason: "timeout",
@@ -1183,7 +1225,12 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
  * drawing from one tier, and the cascade only moves to the next tier once
  * the current one has no eligible candidates left to offer.
  */
-async function startDispatch(order, tier0Pricing) {
+async function startDispatch(order, tier0Pricing, opts = {}) {
+  // null = tiered dispatch off (old behaviour). Resolved before the duplicate guard so the guard and the
+  // map insert below stay adjacent (no await between them).
+  const stage = opts.stage !== undefined ? opts.stage : await orderStage.decideStartStage(order);
+  if (stage) await orderStage.setStage(order.id, stage);
+
   if (activeDispatches.has(order.id)) {
     logger.warn(`dispatchManager: startDispatch called again for order ${order.id} while a cascade is already active — ignoring`);
     return;
@@ -1219,6 +1266,10 @@ async function startDispatch(order, tier0Pricing) {
     // Guards against two concurrent runBatchInner executions for this order
     // racing each other — see the runBatch wrapper.
     batchInFlight: false,
+    // Tiered dispatch (spec 2026-10-11): which driver set this cascade offers to; null when the feature is off.
+    stage,
+    // Riders offered this order in an earlier stage: never offered again.
+    earlierStageRiderIds: Array.isArray(opts.earlierStageRiderIds) ? opts.earlierStageRiderIds.map(Number) : [],
   };
   activeDispatches.set(order.id, state);
 
@@ -1241,6 +1292,16 @@ function stopDispatch(orderId, reason) {
 
   const riderIds = lockManager.getLockedRidersForOrder(orderId);
   const newRequestStatus = reason === "accepted_by_other" ? "auto_rejected" : "timeout";
+
+  // Tiered dispatch: drivers whose popup was still live when someone else took the order are not penalised and
+  // are excluded from the Driver Performance rates, so they get a "superseded" event instead of a skip/reject.
+  // (The accepting rider's own lock was already released by finalizeAcceptedOrder, so it is not in riderIds.)
+  if (reason === "accepted_by_other") {
+    const supersededTier = state?.stage || tierRules.TIER.NORMAL;
+    for (const riderId of riderIds) {
+      driverOrderEvents.logEvent({ riderId, orderId, tier: supersededTier, event: driverOrderEvents.EVENTS.SUPERSEDED });
+    }
+  }
 
   for (const riderId of riderIds) {
     lockManager.releaseLock(riderId);
