@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const tierPenalty = require("./tierPenaltyService");
 
 function istNow() {
   return new Date(Date.now() + 330 * 60 * 1000);
@@ -151,6 +152,10 @@ async function settleEnrollment(enrollmentId) {
     if (overtimePay > 0) {
       await tx.tbl_rider.update({ where: { id: enrollment.rider_id }, data: { wallet_balance: { increment: overtimePay } } });
     }
+
+    // Tiered dispatch: penalties deferred to this enrollment are netted against the payout credited above.
+    // A penalty larger than the payout leaves the wallet negative (a due), as the manager decided.
+    await tierPenalty.settlePendingForEnrollment(tx, { enrollmentId: enrollment.id, riderId: enrollment.rider_id });
 
     await tx.daily_driver_enrollment.update({ where: { id: enrollment.id }, data: { status: "settlement_completed" } });
 
