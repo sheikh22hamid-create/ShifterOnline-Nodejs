@@ -72,13 +72,28 @@ function resumeChat(chatId) {
 function isStopCommand(text) {
   if (!text) return false;
   const cleaned = String(text).trim().toLowerCase().replace(/^[\/!#.]+\s*/, "").trim();
-  return /^(stop|stop\s*bot|bot\s*stop|pause|pause\s*bot|bot\s*pause|off|bot\s*off|stop_bot|pause_bot)$/i.test(cleaned);
+  return /^(stop|stop\s*bot|bot\s*stop|pause|pause\s*bot|bot\s*pause|off|bot\s*off|stop_bot|pause_bot|roko|band)$/i.test(cleaned);
 }
 
 function isStartCommand(text) {
   if (!text) return false;
   const cleaned = String(text).trim().toLowerCase().replace(/^[\/!#.]+\s*/, "").trim();
-  return /^(start|start\s*bot|bot\s*start|resume|resume\s*bot|bot\s*resume|on|bot\s*on|start_bot|resume_bot)$/i.test(cleaned);
+  return /^(start|start\s*bot|bot\s*start|resume|resume\s*bot|bot\s*resume|on|bot\s*on|start_bot|resume_bot|shuru)$/i.test(cleaned);
+}
+
+function getStopMessage() {
+  return (
+    `⏸️ *बॉट सेवा रोक दी गई है (Bot Service Paused)*\n\n` +
+    `आपको अब कोई स्वचालित संदेश (automated reply) नहीं भेजा जाएगा।\n\n` +
+    `─────────────────────\n` +
+    `▶️ *बॉट पुनः शुरू करने के लिए:*\n` +
+    `किसी भी समय *START* या */start* लिखकर भेजें।\n` +
+    `_(Reply with *START* anytime to resume)_`
+  );
+}
+
+function getResumeMessage() {
+  return `▶️ *बॉट पुनः सक्रिय हो गया है (Bot Resumed!)*\n\n`;
 }
 
 function getAllPausedChats() {
@@ -91,5 +106,7 @@ module.exports = {
   resumeChat,
   isStopCommand,
   isStartCommand,
+  getStopMessage,
+  getResumeMessage,
   getAllPausedChats,
 };

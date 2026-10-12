@@ -232,15 +232,16 @@ async function initWhatsAppBot() {
               sessionManager.clearSession(senderPhone, true);
               logger.info(`⏸️ [OWNER] Bot PAUSED for personal chat ${senderPhone || remoteJid} (command: "${textMessage}")`);
               await sock.sendMessage(remoteJid, {
-                text: "⏸️ *Bot paused for this chat.*\nAap manually chat continue kar sakte hain. Wapas start karne ke liye */start* type karein.",
+                text: chatControl.getStopMessage(),
               });
             } else if (chatControl.isStartCommand(textMessage)) {
               chatControl.resumeChat(senderPhone || remoteJid);
               sessionManager.clearSession(senderPhone, true);
               sessionManager.updateSession(senderPhone, botMenuEngine.STEPS.AWAITING_LANGUAGE, {});
               logger.info(`▶️ [OWNER] Bot RESUMED for personal chat ${senderPhone || remoteJid} (command: "${textMessage}")`);
+              const initialMenu = await botMenuEngine.processMenuMessage(senderPhone, "start");
               await sock.sendMessage(remoteJid, {
-                text: "▶️ *Bot resumed for this chat.*\nAutomated menu active hai.",
+                text: `${chatControl.getResumeMessage()}${initialMenu}`,
               });
             } else {
               logger.debug(`Skipping outbound self message to ${remoteJid}`);
@@ -256,7 +257,10 @@ async function initWhatsAppBot() {
               sessionManager.clearSession(senderPhone, true);
               sessionManager.updateSession(senderPhone, botMenuEngine.STEPS.AWAITING_LANGUAGE, {});
               logger.info(`▶️ [CONTACT] Bot RESUMED for personal chat ${senderPhone} (command: "${textMessage}")`);
-              await sock.sendMessage(remoteJid, { text: botMenuEngine.TEXTS.LANGUAGE_MENU });
+              const initialMenu = await botMenuEngine.processMenuMessage(senderPhone, "start");
+              await sock.sendMessage(remoteJid, {
+                text: `${chatControl.getResumeMessage()}${initialMenu}`,
+              });
               continue;
             }
 
@@ -270,7 +274,7 @@ async function initWhatsAppBot() {
             chatControl.pauseChat(senderPhone || remoteJid);
             sessionManager.clearSession(senderPhone, true);
             await sock.sendMessage(remoteJid, {
-              text: "⏸️ Bot service has been paused for this chat. Type */start* anytime to resume.",
+              text: chatControl.getStopMessage(),
             });
             continue;
           }

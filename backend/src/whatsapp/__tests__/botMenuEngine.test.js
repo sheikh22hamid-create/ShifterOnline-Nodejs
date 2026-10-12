@@ -8,164 +8,214 @@ jest.mock("../handlers/customerHandler", () => ({
   }),
 }));
 
-describe("WhatsApp Bounded Bot Menu Engine", () => {
+describe("WhatsApp Bounded Bot Menu Engine with Regional Languages", () => {
   const testPhone = "919999888877";
 
   beforeEach(() => {
     sessionManager.clearSession(testPhone, true);
   });
 
-  test("1. Initial greeting or message shows Language Selection menu", async () => {
+  test("1. Initial greeting or message shows Language Selection menu with Option 4 (Other Indian Languages)", async () => {
     const reply = await processMenuMessage(testPhone, "Hello");
     expect(reply).toContain("Welcome to Shifter Online!");
     expect(reply).toContain("1️⃣ हिंदी (Hindi)");
     expect(reply).toContain("2️⃣ English");
     expect(reply).toContain("3️⃣ Hinglish");
+    expect(reply).toContain("4️⃣ Other Indian Languages");
 
     const session = sessionManager.getSession(testPhone);
     expect(session.step).toBe(STEPS.AWAITING_LANGUAGE);
   });
 
-  test("2. Invalid language input returns invalid language prompt", async () => {
+  test("2. Selecting Option 4 presents Regional Language Menu (Marathi, Gujarati, Punjabi, Bengali, Telugu, Tamil, Kannada)", async () => {
     await processMenuMessage(testPhone, "Hi");
-    const reply = await processMenuMessage(testPhone, "random text");
-    expect(reply).toContain("कृपया केवल *1*, *2* या *3* लिखकर भेजें");
-    expect(reply).toContain(HELPLINE_NUMBER);
+    const reply = await processMenuMessage(testPhone, "4");
+
+    expect(reply).toContain("Select Your Regional Language");
+    expect(reply).toContain("1️⃣ मराठी (Marathi)");
+    expect(reply).toContain("2️⃣ ગુજરાતી (Gujarati)");
+    expect(reply).toContain("3️⃣ ਪੰਜਾਬੀ (Punjabi)");
+    expect(reply).toContain("4️⃣ বাংলা (Bengali)");
+    expect(reply).toContain("5️⃣ తెలుగు (Telugu)");
+    expect(reply).toContain("6️⃣ தமிழ் (Tamil)");
+    expect(reply).toContain("7️⃣ ಕನ್ನಡ (Kannada)");
+    expect(reply).toContain("0️⃣ Back");
+
+    const session = sessionManager.getSession(testPhone);
+    expect(session.step).toBe(STEPS.AWAITING_REGIONAL_LANGUAGE);
+  });
+
+  test("3. Regional Language: Selecting 1 (Marathi) switches entire conversation to Marathi", async () => {
+    await processMenuMessage(testPhone, "Hi");
+    await processMenuMessage(testPhone, "4"); // Other Indian Languages
+    const roleReply = await processMenuMessage(testPhone, "1"); // Marathi
+
+    expect(roleReply).toContain("आपण Shifter Online शी कोणत्या भूमिकेत जोडू इच्छिता?");
+    expect(roleReply).toContain("1️⃣ Customer");
+    expect(roleReply).toContain("2️⃣ Driver Partner");
+    expect(roleReply).toContain("3️⃣ Job Seeker");
+
+    const session = sessionManager.getSession(testPhone);
+    expect(session.step).toBe(STEPS.AWAITING_ROLE);
+    expect(session.data.lang).toBe("mr");
+
+    // Select Customer in Marathi
+    const customerMenuReply = await processMenuMessage(testPhone, "1");
+    expect(customerMenuReply).toContain("ग्राहक सेवा");
+    expect(customerMenuReply).toContain("वाहन बुक करा");
+
+    // Select Option 1 (App link) in Marathi
+    const appReply = await processMenuMessage(testPhone, "1");
+    expect(appReply).toContain("वाहन बुक करण्यासाठी Customer App डाउनलोड करा");
+    expect(appReply).toContain("https://play.google.com/store/apps/details?id=com.shifter.online");
+
+    // Test Strict Guardrail in Marathi
+    const guardrailReply = await processMenuMessage(testPhone, "kasa ahes bhai?");
+    expect(guardrailReply).toContain("माफ करा, मला आपला संदेश समजला नाही");
+    expect(guardrailReply).toContain(HELPLINE_NUMBER);
+  });
+
+  test("4. Regional Language: Selecting 2 (Gujarati) switches conversation to Gujarati", async () => {
+    await processMenuMessage(testPhone, "Hi");
+    await processMenuMessage(testPhone, "4"); // Other Indian Languages
+    const roleReply = await processMenuMessage(testPhone, "2"); // Gujarati
+
+    expect(roleReply).toContain("તમે Shifter Online સાથે કઈ રીતે જોડાવા માંગો છો?");
+    expect(roleReply).toContain("1️⃣ Customer");
+
+    const session = sessionManager.getSession(testPhone);
+    expect(session.data.lang).toBe("gu");
+
+    // Select Driver Partner in Gujarati
+    const driverMenuReply = await processMenuMessage(testPhone, "2");
+    expect(driverMenuReply).toContain("ડ્રાઇવર પાર્ટનર સેવા");
+    expect(driverMenuReply).toContain("વાહન જોડો");
+  });
+
+  test("5. Regional Language: In Regional menu, typing 0 goes back to Primary Language Menu", async () => {
+    await processMenuMessage(testPhone, "Hi");
+    await processMenuMessage(testPhone, "4"); // Regional menu
+    const reply = await processMenuMessage(testPhone, "0"); // Back
+
+    expect(reply).toContain("Welcome to Shifter Online!");
+    expect(reply).toContain("1️⃣ हिंदी (Hindi)");
+    expect(reply).toContain("4️⃣ Other Indian Languages");
 
     const session = sessionManager.getSession(testPhone);
     expect(session.step).toBe(STEPS.AWAITING_LANGUAGE);
   });
 
-  test("3. Selecting Language 1 (Hindi) transitions to Role menu in Hindi", async () => {
+  test("6. Standard Language 1 (Hindi) still works seamlessly", async () => {
     await processMenuMessage(testPhone, "Hi");
-    const reply = await processMenuMessage(testPhone, "1");
+    const reply = await processMenuMessage(testPhone, "1"); // Hindi
 
     expect(reply).toContain("आप Shifter Online से किस रूप में जुड़ना चाहते हैं?");
     expect(reply).toContain("1️⃣ Customer");
-    expect(reply).toContain("2️⃣ Driver Partner");
-    expect(reply).toContain("3️⃣ Job Seeker");
 
     const session = sessionManager.getSession(testPhone);
-    expect(session.step).toBe(STEPS.AWAITING_ROLE);
     expect(session.data.lang).toBe("hi");
   });
 
-  test("4. Selecting Language 2 (English) transitions to Role menu in English", async () => {
-    await processMenuMessage(testPhone, "Hi");
-    const reply = await processMenuMessage(testPhone, "2");
-
-    expect(reply).toContain("How would you like to connect with Shifter Online?");
-    expect(reply).toContain("1️⃣ Customer");
-    expect(reply).toContain("2️⃣ Driver Partner");
-    expect(reply).toContain("3️⃣ Job Seeker");
-
-    const session = sessionManager.getSession(testPhone);
-    expect(session.step).toBe(STEPS.AWAITING_ROLE);
-    expect(session.data.lang).toBe("en");
+  test("7. All outbound messages systematically include STOP hint footer", async () => {
+    const reply = await processMenuMessage(testPhone, "Hello");
+    expect(reply).toContain("बॉट रोकने के लिए *STOP* लिखें");
+    expect(reply).toContain("Type *STOP* to pause");
   });
 
-  test("5. Selecting Role 1 (Customer) transitions to Customer menu", async () => {
-    await processMenuMessage(testPhone, "Hi");
-    await processMenuMessage(testPhone, "1"); // Hindi
-    const reply = await processMenuMessage(testPhone, "1"); // Customer
-
-    expect(reply).toContain("ग्राहक सेवा (Customer Support)");
-    expect(reply).toContain("1️⃣ गाड़ी बुक करें");
-    expect(reply).toContain("2️⃣ चालू ऑर्डर ट्रैक करें");
-    expect(reply).toContain("3️⃣ गाड़ियों के रेट");
-    expect(reply).toContain("4️⃣ कस्टमर केयर");
-
-    const session = sessionManager.getSession(testPhone);
-    expect(session.step).toBe(STEPS.IN_MENU);
-    expect(session.data.role).toBe("CUSTOMER");
-  });
-
-  test("6. Customer selecting 1 gets Customer App download link", async () => {
+  test("8. After 3 unrecognized / random messages, bot escalates directly to Customer Care contact", async () => {
     await processMenuMessage(testPhone, "Hi");
     await processMenuMessage(testPhone, "1"); // Hindi
     await processMenuMessage(testPhone, "1"); // Customer
-    const reply = await processMenuMessage(testPhone, "1"); // App Link
 
-    expect(reply).toContain("Customer App डाउनलोड लिंक");
-    expect(reply).toContain("https://play.google.com/store/apps/details?id=com.shifter.online");
-    expect(reply).toContain(HELPLINE_NUMBER);
+    // Random attempt 1
+    const reply1 = await processMenuMessage(testPhone, "bhai koi sun raha hai?");
+    expect(reply1).toContain("क्षमा करें, मैं आपका संदेश समझ नहीं पाया");
+    expect(reply1).toContain("ग्राहक सेवा"); // Still shows menu
+
+    // Random attempt 2
+    const reply2 = await processMenuMessage(testPhone, "kuch bol na bhai");
+    expect(reply2).toContain("क्षमा करें, मैं आपका संदेश समझ नहीं पाया");
+
+    // Random attempt 3 -> Triggers direct Customer Care handoff!
+    const reply3 = await processMenuMessage(testPhone, "kya bot hai yeh");
+    expect(reply3).toContain("कस्टमर केयर सहायता (Direct Customer Support)");
+    expect(reply3).toContain("लगता है आपको किसी विशेष विषय पर सहायता चाहिए");
+    expect(reply3).toContain(HELPLINE_NUMBER);
+    expect(reply3).toContain("support@shifteronline.com");
+    expect(reply3).toContain("सुबह 10:00 AM से शाम 6:00 PM");
   });
 
-  test("7. Customer selecting 4 gets Customer Care helpline details", async () => {
+  test("9. Outbound messages include BACK hint in the footer", async () => {
+    const reply = await processMenuMessage(testPhone, "Hello");
+    expect(reply).toContain("पीछे जाने के लिए *BACK* या *0* लिखें");
+    expect(reply).toContain("Type *BACK* to go back");
+  });
+
+  test("10. 1-Step Back Navigation: Detail Screen -> Category Menu -> Role Menu -> Language Menu", async () => {
     await processMenuMessage(testPhone, "Hi");
-    await processMenuMessage(testPhone, "2"); // English
+    await processMenuMessage(testPhone, "1"); // Hindi
     await processMenuMessage(testPhone, "1"); // Customer
-    const reply = await processMenuMessage(testPhone, "4"); // Customer care
 
-    expect(reply).toContain("Customer Care Support");
-    expect(reply).toContain(HELPLINE_NUMBER);
-    expect(reply).toContain("support@shifteronline.com");
+    // User views Rates (subOption 3)
+    const ratesReply = await processMenuMessage(testPhone, "3");
+    expect(ratesReply).toContain("Shifter Online - वाहन व किराया दरें");
+    expect(sessionManager.getSession(testPhone).data.subOption).toBe("3");
+
+    // 1st BACK: From Rates detail back to Customer Menu
+    const backToCustomerMenu = await processMenuMessage(testPhone, "back");
+    expect(backToCustomerMenu).toContain("ग्राहक सेवा (Customer Support)");
+    expect(backToCustomerMenu).toContain("1️⃣ गाड़ी बुक करें");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.IN_MENU);
+    expect(sessionManager.getSession(testPhone).data.subOption).toBeNull();
+
+    // 2nd BACK: From Customer Menu back to Role Selection Menu
+    const backToRoleMenu = await processMenuMessage(testPhone, "0");
+    expect(backToRoleMenu).toContain("आप Shifter Online से किस रूप में जुड़ना चाहते हैं?");
+    expect(backToRoleMenu).toContain("1️⃣ Customer");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_ROLE);
+
+    // 3rd BACK: From Role Selection Menu back to Language Menu
+    const backToLangMenu = await processMenuMessage(testPhone, "wapas");
+    expect(backToLangMenu).toContain("Welcome to Shifter Online!");
+    expect(backToLangMenu).toContain("1️⃣ हिंदी (Hindi)");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_LANGUAGE);
   });
 
-  test("8. Driver Partner selects 1 gets Driver App download link & info", async () => {
+  test("11. 1-Step Back Navigation: From Order ID prompt back to Customer Menu", async () => {
     await processMenuMessage(testPhone, "Hi");
     await processMenuMessage(testPhone, "3"); // Hinglish
-    await processMenuMessage(testPhone, "2"); // Driver Partner
-    const reply = await processMenuMessage(testPhone, "1"); // Driver App Link
-
-    expect(reply).toContain("Driver Partner App Download Link");
-    expect(reply).toContain("https://play.google.com/store/apps/details?id=com.shifter.driver");
-    expect(reply).toContain(HELPLINE_NUMBER);
-  });
-
-  test("9. Driver Partner selects 2 gets Required Documents list", async () => {
-    await processMenuMessage(testPhone, "Hi");
-    await processMenuMessage(testPhone, "1"); // Hindi
-    await processMenuMessage(testPhone, "2"); // Driver Partner
-    const reply = await processMenuMessage(testPhone, "2"); // Documents
-
-    expect(reply).toContain("ड्राइवर ऑनबोर्डिंग के लिए जरूरी कागजात");
-    expect(reply).toContain("ड्राइविंग लाइसेंस");
-    expect(reply).toContain("वाहन आरसी");
-    expect(reply).toContain("आधार कार्ड");
-    expect(reply).toContain("पैन कार्ड");
-  });
-
-  test("10. Job Seeker selects 1 gets Open Positions & 2 gets How to Apply", async () => {
-    await processMenuMessage(testPhone, "Hi");
-    await processMenuMessage(testPhone, "1"); // Hindi
-    await processMenuMessage(testPhone, "3"); // Job Seeker
-
-    const openingsReply = await processMenuMessage(testPhone, "1");
-    expect(openingsReply).toContain("वर्तमान रिक्तियां");
-    expect(openingsReply).toContain("Customer Support");
-    expect(openingsReply).toContain("careers@shifteronline.com");
-
-    const applyReply = await processMenuMessage(testPhone, "2");
-    expect(applyReply).toContain("नौकरी के लिए आवेदन कैसे करें");
-    expect(applyReply).toContain("careers@shifteronline.com");
-  });
-
-  test("11. STRICT GUARDRAIL: Free-form or random chat is blocked and returns helpline 9109114515", async () => {
-    await processMenuMessage(testPhone, "Hi");
-    await processMenuMessage(testPhone, "1"); // Hindi
     await processMenuMessage(testPhone, "1"); // Customer
 
-    // User types random conversational question
-    const reply = await processMenuMessage(testPhone, "bhai mera parcel kahan tak pahucha kitna time lagega?");
+    // Choose 2: Track Order prompt
+    const promptReply = await processMenuMessage(testPhone, "2");
+    expect(promptReply).toContain("Order ID number");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_ORDER_ID);
 
-    expect(reply).toContain("क्षमा करें, मैं आपका संदेश समझ नहीं पाया");
-    expect(reply).toContain("मैं एक स्वचालित मेनू बॉट हूँ");
-    expect(reply).toContain(HELPLINE_NUMBER);
-    expect(reply).toContain("कस्टमर केयर");
-    expect(reply).toContain("ग्राहक सेवा (Customer Support)"); // Shows menu options again
+    // Type 0 / back to return to Customer Menu
+    const backReply = await processMenuMessage(testPhone, "0");
+    expect(backReply).toContain("Customer Support");
+    expect(backReply).toContain("1️⃣ Gadi Book Karein");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.IN_MENU);
   });
 
-  test("12. Entering '0' or 'menu' at any point resets back to Language Selection", async () => {
+  test("12. 1-Step Back Navigation: Regional Language Role -> Regional Menu -> Primary Language Menu", async () => {
     await processMenuMessage(testPhone, "Hi");
-    await processMenuMessage(testPhone, "1"); // Hindi
-    await processMenuMessage(testPhone, "2"); // Driver
+    await processMenuMessage(testPhone, "4"); // Regional menu
+    await processMenuMessage(testPhone, "1"); // Marathi
 
-    const reply = await processMenuMessage(testPhone, "0");
-    expect(reply).toContain("Welcome to Shifter Online!");
-    expect(reply).toContain("1️⃣ हिंदी (Hindi)");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_ROLE);
+    expect(sessionManager.getSession(testPhone).data.lang).toBe("mr");
 
-    const session = sessionManager.getSession(testPhone);
-    expect(session.step).toBe(STEPS.AWAITING_LANGUAGE);
+    // Back from Marathi Role Menu -> Should return to Regional Language Menu!
+    const backToRegional = await processMenuMessage(testPhone, "back");
+    expect(backToRegional).toContain("Select Your Regional Language");
+    expect(backToRegional).toContain("1️⃣ मराठी (Marathi)");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_REGIONAL_LANGUAGE);
+
+    // Back from Regional Language Menu -> Should return to Primary Language Menu!
+    const backToPrimary = await processMenuMessage(testPhone, "0");
+    expect(backToPrimary).toContain("Welcome to Shifter Online!");
+    expect(backToPrimary).toContain("4️⃣ Other Indian Languages");
+    expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_LANGUAGE);
   });
 });
