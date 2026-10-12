@@ -55,6 +55,10 @@ async function awardReferralReward({ referral, referredId, referredType, orderId
       require("./freeBookingService").unlockForReferral(referral.referrer_id).catch((err) => {
         logger.error(`unlockForReferral failed for user ${referral.referrer_id}:`, err);
       });
+      // Booking Guarantee has its own lock and its own per-city referral count.
+      require("./bookingGuaranteeService").unlockForReferral(referral.referrer_id).catch((err) => {
+        logger.error(`guarantee unlockForReferral failed for user ${referral.referrer_id}:`, err);
+      });
     }
 
     const referrerModel = referral.referrer_type === "DRIVER" ? prisma.tbl_rider : prisma.tbl_user;

@@ -16,6 +16,8 @@ jest.mock("../../config/db", () => ({
 
 jest.mock("../freeBookingService", () => ({ unlockForReferral: jest.fn().mockResolvedValue(true) }));
 const freeBookingService = require("../freeBookingService");
+jest.mock("../bookingGuaranteeService", () => ({ unlockForReferral: jest.fn().mockResolvedValue(false) }));
+const bookingGuaranteeService = require("../bookingGuaranteeService");
 
 const prisma = require("../../config/db");
 const { processReferralRewardsForCompletedOrder } = require("../referralRewardService");
@@ -196,6 +198,28 @@ describe("referralRewardService.processReferralRewardsForCompletedOrder", () => 
     prisma.pkg_order.count.mockResolvedValue(0);
     await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
     expect(freeBookingService.unlockForReferral).not.toHaveBeenCalled();
+  });
+
+  it("also asks Booking Guarantee to unlock a USER referrer when the referral becomes successful", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
+    prisma.pkg_order.count.mockResolvedValue(1);
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(bookingGuaranteeService.unlockForReferral).toHaveBeenCalledWith(10);
+  });
+
+  it("does not ask Booking Guarantee to unlock for a DRIVER referrer", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral({ referrer_type: "DRIVER" }));
+    prisma.pkg_order.count.mockResolvedValue(1);
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(bookingGuaranteeService.unlockForReferral).not.toHaveBeenCalled();
+  });
+
+  it("does not ask Booking Guarantee to unlock when the referral was already claimed by another process", async () => {
+    prisma.tbl_referral.findFirst.mockResolvedValue(baseReferral());
+    prisma.pkg_order.count.mockResolvedValue(1);
+    prisma.tbl_referral.updateMany.mockResolvedValue({ count: 0 });
+    await processReferralRewardsForCompletedOrder({ uid: 20, riderId: null, orderId: 999 });
+    expect(bookingGuaranteeService.unlockForReferral).not.toHaveBeenCalled();
   });
 });
 
