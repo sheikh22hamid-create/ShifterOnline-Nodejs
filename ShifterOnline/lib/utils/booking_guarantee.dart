@@ -15,3 +15,9 @@ String? guaranteeLine(double amount) =>
 String noDriverMessage(double compensation) => compensation > 0
     ? 'No driver found. ${_rupees(compensation)} has been added to your wallet.'
     : 'No driver found. Please try again.';
+
+/// System 2 (Vehicle Category First): the search window ended with nobody found and no guarantee compensation.
+const String driverNotAvailableMessage = 'Driver is not available.';
+
+/// Shown while a locked customer waits: the guarantee will not apply to this order.
+const String guaranteeLockedLine = 'Booking Guarantee is locked. Complete your referrals to unlock it.';

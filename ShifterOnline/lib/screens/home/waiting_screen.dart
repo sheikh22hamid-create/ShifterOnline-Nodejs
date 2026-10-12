@@ -37,6 +37,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
   bool _recoveringOrder = false;
   double _guaranteeAmount = 0;
   bool _guaranteePending = false;
+  bool _searchSystem2 = false;
+  bool _guaranteeLocked = false;
   NodeSocketSubscription? _socketSubscription;
 
   static void clearPersistedWaitingOrder() {
@@ -166,6 +168,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
     final remaining = ((expiry - now) / 1000).ceil();
     _persistWaitingOrder(expiry);
     _startTimeout(remaining);
+    // Learn the real search window (System 2) as soon as the screen opens.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recoverActiveOrder());
   }
 
   @override
@@ -214,6 +218,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
           return;
         }
       }
+      final search = order['search'];
+      if (search is Map) _applySearchWindow(Map<String, dynamic>.from(search));
       if (riderId > 0 || (flow != null && flow >= 1 && flow <= 3)) {
         _handedOffToTracking = true;
         clearPersistedWaitingOrder();
@@ -259,7 +265,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
       clearPersistedWaitingOrder();
       _timeoutTimer?.cancel();
       _countdownTicker?.cancel();
-      ApiWrapper.showToastMessage(noDriverMessage(parseGuaranteeAmount(data['compensation_amount'])).tr);
+      final notAvailable = data['reason']?.toString() == 'driver_not_available';
+      ApiWrapper.showToastMessage(
+        (notAvailable ? driverNotAvailableMessage : noDriverMessage(parseGuaranteeAmount(data['compensation_amount']))).tr,
+      );
       Get.offAll(() => const Bottombar());
     }, onGuaranteePending: (data) {
       if (data['order_id']?.toString() != widget.orderId) return;
@@ -278,6 +287,29 @@ class _WaitingScreenState extends State<WaitingScreen> {
       _guaranteePending = true;
       _guaranteeAmount = amount;
     });
+  }
+
+  // Extra seconds past the search deadline before the safety timer gives up, so the server's own
+  // guarantee / "Driver is not available" event always arrives first.
+  static const int _searchGraceSeconds = 30;
+
+  /// System 2: replace the fixed 130 s safety timer with the order's real search deadline.
+  void _applySearchWindow(Map<String, dynamic> search) {
+    if (_isDisposed || _guaranteePending) return;
+    if (search['system']?.toString() != '2') return;
+    final deadline = DateTime.tryParse(search['deadline_at']?.toString() ?? '');
+    if (deadline == null) return;
+    final seconds = deadline.difference(DateTime.now()).inSeconds + _searchGraceSeconds;
+    if (seconds <= 0) return;
+    _timeoutTimer?.cancel();
+    _countdownTicker?.cancel();
+    _timeoutSet = false;
+    _persistWaitingOrder(DateTime.now().millisecondsSinceEpoch + seconds * 1000);
+    setState(() {
+      _searchSystem2 = true;
+      _guaranteeLocked = search['guarantee']?.toString() == 'locked';
+    });
+    _startTimeout(seconds);
   }
 
   /// Auto-close safety net — normally superseded by a socket event above.
@@ -480,7 +512,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
                         Column(
                           children: [
                             Text(
-                              "Auto-closing in".tr,
+                              (_searchSystem2 ? "Searching for a driver".tr : "Auto-closing in".tr),
                               style: const TextStyle(
                                 fontFamily: 'Gilroy_Medium',
                                 fontSize: 14,
@@ -520,6 +552,14 @@ class _WaitingScreenState extends State<WaitingScreen> {
                             ),
                           ],
                         ),
+                        if (_guaranteeLocked && !_guaranteePending) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            guaranteeLockedLine.tr,
+                            style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
 
                         const SizedBox(height: 20),
 
