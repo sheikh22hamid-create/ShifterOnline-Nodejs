@@ -9,6 +9,11 @@ jest.mock("../../config/db", () => ({
   tbl_wallet_history: { findFirst: jest.fn(), create: jest.fn() },
 }));
 jest.mock("../bookingGuaranteeSettings", () => ({ getAssignWindowMinutes: jest.fn().mockResolvedValue(15) }));
+jest.mock("../orderSearchSettings", () => ({
+  getCitySettings: jest.fn().mockResolvedValue({
+    searchSystem: 1, searchRadiusKm: null, driverSearchSeconds: 60, guaranteeEnabled: true, adminWindowMinutes: null, guaranteeReferralsRequired: 1,
+  }),
+}));
 jest.mock("../dispatchManager", () => ({ emitCustomerEvent: jest.fn() }));
 jest.mock("../walletPrepaymentRefund", () => ({ refundIfWalletPaid: jest.fn().mockResolvedValue(null) }));
 jest.mock("../referralPointsRefund", () => ({ refundReferralPointsForOrder: jest.fn().mockResolvedValue(0) }));
@@ -146,7 +151,10 @@ describe("expireCase", () => {
       where: { id: 500, rid: 0, order_status: 0, o_status: { notIn: ["Cancelled", "Completed"] } },
       data: { o_status: "Cancelled", cancel_reason: "No driver found", order_status: 4 },
     });
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 100 } } });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { wallet: { increment: 100 }, guarantee_locked: true, guarantee_locked_at: expect.any(Date) },
+    });
     expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ user_id: 7, amount: 100, type: "credit", wallet_type: "user", order_id: 500, payment_id: "booking_guarantee_credit:500" }),
     });
@@ -227,7 +235,10 @@ describe("expireCase", () => {
     setupExpiry({ amount: "100.00" });
     prisma.tbl_package.findMany.mockResolvedValue([{ id: 20, sort_order: 2, no_driver_compensation: "9999.00" }]);
     await svc.expireCase(1);
-    expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 100 } } });
+    expect(prisma.tbl_user.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: { wallet: { increment: 100 }, guarantee_locked: true, guarantee_locked_at: expect.any(Date) },
+    });
     expect(prisma.tbl_package.findMany).not.toHaveBeenCalled();
   });
 });

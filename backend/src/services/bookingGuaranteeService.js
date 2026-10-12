@@ -8,6 +8,7 @@ const walletPrepayment = require("./walletPrepaymentRefund");
 const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const rules = require("./bookingGuaranteeRules");
 const settings = require("./bookingGuaranteeSettings");
+const orderSearchSettings = require("./orderSearchSettings");
 
 // Booking Guarantee (spec 2026-10-07). dispatchManager requires this module, so it is required lazily
 // here (same reason dispatchManager lazy-requires freeBookingService).
@@ -35,10 +36,17 @@ async function openForExhaustedOrder(order, selectedIds) {
   const existing = await prisma.booking_guarantee_case.findUnique({ where: { order_id: order.id } });
   if (existing) return existing.status === STATUS.OPEN;
 
+  // City-wise switch (spec 2026-10-12): the guarantee exists only where the city admin turned it on, and a
+  // customer who already received a compensation stays locked out until their referrals are done.
+  const city = await orderSearchSettings.getCitySettings(order.city_id);
+  if (!city.guaranteeEnabled) return false;
+  const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { guarantee_locked: true } });
+  if (customer?.guarantee_locked) return false;
+
   const ids = toIds(selectedIds);
   const packages = ids.length ? await prisma.tbl_package.findMany({ where: { id: { in: ids } }, select: PACKAGE_SELECT }) : [];
   const { packageId, amount } = rules.computeGuaranteeCompensation(packages);
-  const minutes = await settings.getAssignWindowMinutes();
+  const minutes = city.adminWindowMinutes ?? (await settings.getAssignWindowMinutes());
   const deadline = new Date(Date.now() + minutes * 60 * 1000);
 
   let row;
@@ -171,7 +179,11 @@ async function expireCase(caseId) {
         await tx.booking_guarantee_case.update({ where: { id: caseId }, data: { wallet_history_id: duplicate.id } });
       } else {
         const remark = `Booking Guarantee compensation for order #${row.order_id}`;
-        await tx.tbl_user.update({ where: { id: row.uid }, data: { wallet: { increment: amount } } });
+        // The compensation also locks the guarantee for this customer until their referrals are done.
+        await tx.tbl_user.update({
+          where: { id: row.uid },
+          data: { wallet: { increment: amount }, guarantee_locked: true, guarantee_locked_at: new Date() },
+        });
         const history = await tx.tbl_wallet_history.create({
           data: { user_id: row.uid, amount, type: "credit", remark, wallet_type: "user", order_id: row.order_id, payment_id: key, created_at: istNow() },
         });
@@ -248,6 +260,41 @@ async function getView(order) {
   }
 }
 
+/**
+ * A referral by this user just became successful. Unlocks a guarantee-locked customer once they have the
+ * city's required number of successful referrals made since the lock (earlier ones never count).
+ * True if the user was unlocked.
+ */
+async function unlockForReferral(userId) {
+  const id = Number(userId);
+  const user = await prisma.tbl_user.findUnique({
+    where: { id },
+    select: { city_id: true, guarantee_locked: true, guarantee_locked_at: true },
+  });
+  if (!user?.guarantee_locked) return false;
+  const city = await orderSearchSettings.getCitySettings(user.city_id);
+  const done = await prisma.tbl_referral.count({
+    where: {
+      referrer_id: id,
+      referrer_type: "USER",
+      status: "completed",
+      ...(user.guarantee_locked_at ? { verified_at: { gte: user.guarantee_locked_at } } : {}),
+    },
+  });
+  if (done < city.guaranteeReferralsRequired) return false;
+  const res = await prisma.tbl_user.updateMany({ where: { id, guarantee_locked: true }, data: { guarantee_locked: false } });
+  return res.count === 1;
+}
+
+/** Admin override: lock or unlock a customer's Booking Guarantee. */
+async function setUserLock(userId, locked) {
+  await prisma.tbl_user.update({
+    where: { id: Number(userId) },
+    data: locked ? { guarantee_locked: true, guarantee_locked_at: new Date() } : { guarantee_locked: false },
+  });
+}
+
 module.exports = {
   STATUS, ALERT_MESSAGE, openForExhaustedOrder, closeOnAssign, closeOnCancel, expireCase, expireDue, quote, getView,
+  unlockForReferral, setUserLock,
 };
