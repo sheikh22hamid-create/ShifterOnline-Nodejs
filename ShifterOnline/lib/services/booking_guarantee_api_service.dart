@@ -9,13 +9,21 @@ import '../utils/booking_guarantee.dart';
 class BookingGuaranteeApiService {
   BookingGuaranteeApiService._();
 
-  static Future<double> quote(List<int> packageIds) async {
+  /// [uid] and the pickup coordinates let the server judge the guarantee by the pickup's city (its switch)
+  /// and the customer's lock; without them the server fails closed and quotes 0.
+  static Future<double> quote(List<int> packageIds, {Object? uid, double? pickupLat, double? pickupLng}) async {
     if (packageIds.isEmpty) return 0;
     try {
+      final body = <String, dynamic>{'package_ids': packageIds};
+      if (uid != null) body['uid'] = int.tryParse(uid.toString()) ?? uid;
+      if (pickupLat != null && pickupLng != null) {
+        body['pickup_lat'] = pickupLat;
+        body['pickup_lng'] = pickupLng;
+      }
       final response = await http.post(
         Uri.parse('${Config.nodeBaseUrl}/${Config.nodeGuaranteeQuote}'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'package_ids': packageIds}),
+        body: jsonEncode(body),
       );
       final json = jsonDecode(response.body);
       if (json is Map && (json['Result'] == true || json['Result'] == 'true')) {

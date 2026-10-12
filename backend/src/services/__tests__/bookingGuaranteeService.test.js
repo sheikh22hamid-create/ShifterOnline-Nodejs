@@ -272,26 +272,64 @@ describe("expireDue", () => {
 });
 
 describe("quote / getView", () => {
-  it("quote returns the highest selected model's amount from enabled packages", async () => {
+  const orderSearchSettings = require("../orderSearchSettings");
+  const cityOn = { searchSystem: 1, searchRadiusKm: null, driverSearchSeconds: 60, guaranteeEnabled: true, adminWindowMinutes: null, guaranteeReferralsRequired: 1 };
+  beforeEach(() => {
+    orderSearchSettings.getCitySettings.mockResolvedValue(cityOn);
+    prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: false });
     prisma.tbl_package.findMany.mockResolvedValue([
       { id: 10, sort_order: 1, no_driver_compensation: "0" },
       { id: 20, sort_order: 2, no_driver_compensation: "100" },
     ]);
-    expect(await svc.quote(["10", 20, 20, "x", -1])).toEqual({ packageId: 20, amount: 100 });
+  });
+
+  it("quote returns the highest selected model's amount from enabled packages when the city has the guarantee and the user is unlocked", async () => {
+    expect(await svc.quote(["10", 20, 20, "x", -1], { cityId: 3, uid: 7 })).toEqual({ packageId: 20, amount: 100 });
     expect(prisma.tbl_package.findMany.mock.calls[0][0].where).toEqual({ id: { in: [10, 20] }, status: 1 });
+    expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(3);
+    expect(prisma.tbl_user.findUnique).toHaveBeenCalledWith({ where: { id: 7 }, select: { guarantee_locked: true } });
+  });
+  it("quote with a city but no uid skips the lock check", async () => {
+    expect(await svc.quote([20], { cityId: 3 })).toEqual({ packageId: 20, amount: 100 });
+    expect(prisma.tbl_user.findUnique).not.toHaveBeenCalled();
+  });
+  it("quote is 0 when the city switch is off", async () => {
+    orderSearchSettings.getCitySettings.mockResolvedValue({ ...cityOn, guaranteeEnabled: false });
+    expect((await svc.quote([20], { cityId: 3, uid: 7 })).amount).toBe(0);
+  });
+  it("quote is 0 when the customer is guarantee-locked", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: true });
+    expect((await svc.quote([20], { cityId: 3, uid: 7 })).amount).toBe(0);
+  });
+  it("quote is 0 with no city (fails closed)", async () => {
+    expect((await svc.quote([20])).amount).toBe(0);
+    expect((await svc.quote([20], { uid: 7 })).amount).toBe(0);
+    expect(orderSearchSettings.getCitySettings).not.toHaveBeenCalled();
   });
   it("quote with no valid ids is 0 and never queries", async () => {
-    expect(await svc.quote([])).toEqual({ packageId: null, amount: 0 });
+    expect(await svc.quote([], { cityId: 3, uid: 7 })).toEqual({ packageId: null, amount: 0 });
     expect(prisma.tbl_package.findMany).not.toHaveBeenCalled();
   });
   it("getView of an open case is pending with its deadline", async () => {
     prisma.booking_guarantee_case.findUnique.mockResolvedValue(caseRow());
     expect(await svc.getView({ id: 500 })).toEqual({ state: "pending", amount: 100, deadline_at: "2026-10-07T10:00:00.000Z" });
   });
-  it("getView of a still-searching order (no case) previews the amount", async () => {
+  it("getView of a still-searching order (no case) previews the amount for its city and customer", async () => {
     prisma.booking_guarantee_case.findUnique.mockResolvedValue(null);
     prisma.tbl_package.findMany.mockResolvedValue([{ id: 20, sort_order: 2, no_driver_compensation: "100" }]);
-    expect(await svc.getView({ id: 500, rid: 0, order_status: 0, allowed_delivery_types: "[20]" })).toEqual({ state: "none", amount: 100, deadline_at: null });
+    expect(await svc.getView({ id: 500, uid: 7, city_id: 3, rid: 0, order_status: 0, allowed_delivery_types: "[20]" })).toEqual({ state: "none", amount: 100, deadline_at: null });
+    expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(3);
+    expect(prisma.tbl_user.findUnique).toHaveBeenCalledWith({ where: { id: 7 }, select: { guarantee_locked: true } });
+  });
+  it("getView none-state previews 0 when the order's city has the guarantee off", async () => {
+    prisma.booking_guarantee_case.findUnique.mockResolvedValue(null);
+    orderSearchSettings.getCitySettings.mockResolvedValue({ ...cityOn, guaranteeEnabled: false });
+    expect(await svc.getView({ id: 500, uid: 7, city_id: 3, rid: 0, order_status: 0, allowed_delivery_types: "[20]" })).toEqual({ state: "none", amount: 0, deadline_at: null });
+  });
+  it("getView none-state previews 0 when the customer is locked", async () => {
+    prisma.booking_guarantee_case.findUnique.mockResolvedValue(null);
+    prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: true });
+    expect(await svc.getView({ id: 500, uid: 7, city_id: 3, rid: 0, order_status: 0, allowed_delivery_types: "[20]" })).toEqual({ state: "none", amount: 0, deadline_at: null });
   });
   it("getView never throws", async () => {
     prisma.booking_guarantee_case.findUnique.mockRejectedValue(new Error("table missing"));

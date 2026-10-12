@@ -230,12 +230,31 @@ async function expireDue(now = new Date()) {
   }
 }
 
-/** Display amount for a set of package ids (the live "if no driver is found" line). */
-async function quote(packageIds) {
+/** Whether the guarantee applies: the city turned it on and the customer (when known) is not locked. */
+async function guaranteeApplies(cityId, uid) {
+  const city = Number(cityId);
+  if (!Number.isInteger(city) || city <= 0) return false; // no city: fail closed
+  const settings = await orderSearchSettings.getCitySettings(city);
+  if (!settings?.guaranteeEnabled) return false;
+  const userId = Number(uid);
+  if (Number.isInteger(userId) && userId > 0) {
+    const customer = await prisma.tbl_user.findUnique({ where: { id: userId }, select: { guarantee_locked: true } });
+    if (customer?.guarantee_locked) return false;
+  }
+  return true;
+}
+
+/**
+ * Display amount for a set of package ids (the live "if no driver is found" line). The amount is 0 unless
+ * the city has the guarantee on and the customer is not locked, so nobody is promised money that is never paid.
+ */
+async function quote(packageIds, { cityId, uid } = {}) {
   const ids = toIds(packageIds);
   if (!ids.length) return { packageId: null, amount: 0 };
   const packages = await prisma.tbl_package.findMany({ where: { id: { in: ids }, status: 1 }, select: PACKAGE_SELECT });
-  return rules.computeGuaranteeCompensation(packages);
+  const result = rules.computeGuaranteeCompensation(packages);
+  if (!(await guaranteeApplies(cityId, uid))) return { packageId: result.packageId, amount: 0 };
+  return result;
 }
 
 /** The `guarantee` block of the customer order-details response. Never throws. */
@@ -251,7 +270,7 @@ async function getView(order) {
     }
     let amount = 0;
     if (Number(order.rid) === 0 && Number(order.order_status) === 0 && order.allowed_delivery_types) {
-      amount = (await quote(JSON.parse(order.allowed_delivery_types))).amount;
+      amount = (await quote(JSON.parse(order.allowed_delivery_types), { cityId: order.city_id, uid: order.uid })).amount;
     }
     return { state: "none", amount, deadline_at: null };
   } catch (err) {

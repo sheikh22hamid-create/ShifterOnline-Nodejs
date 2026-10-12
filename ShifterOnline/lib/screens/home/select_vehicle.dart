@@ -675,7 +675,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (mounted) setState(() => _guaranteeAmount = 0);
       return;
     }
-    final amount = await BookingGuaranteeApiService.quote(_bookingDeliveryTypeIds(model));
+    final amount = await BookingGuaranteeApiService.quote(
+      _bookingDeliveryTypeIds(model),
+      uid: _storage.read('Uid'),
+      pickupLat: _pickup.latitude,
+      pickupLng: _pickup.longitude,
+    );
     if (!mounted || seq != _guaranteeRequestSeq) return;
     setState(() => _guaranteeAmount = amount);
   }
