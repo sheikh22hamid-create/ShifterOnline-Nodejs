@@ -301,7 +301,11 @@ async function unlockForReferral(userId) {
     },
   });
   if (done < city.guaranteeReferralsRequired) return false;
-  const res = await prisma.tbl_user.updateMany({ where: { id, guarantee_locked: true }, data: { guarantee_locked: false } });
+  // Conditional on the lock we counted against: a re-lock between the read and this write is not undone.
+  const res = await prisma.tbl_user.updateMany({
+    where: { id, guarantee_locked: true, guarantee_locked_at: user.guarantee_locked_at },
+    data: { guarantee_locked: false },
+  });
   return res.count === 1;
 }
 

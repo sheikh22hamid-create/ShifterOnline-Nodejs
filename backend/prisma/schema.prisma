@@ -336,6 +336,7 @@ model pkg_order {
   pickup_otp_mismatch_flag Boolean           @default(false)
 
   @@index([rid, order_status], map: "idx_rid_status")
+  @@index([search_system, o_status, search_deadline_at], map: "idx_order_search")
 }
 
 // Server-owned driver milestones. Global order_status=4 still means cancelled.

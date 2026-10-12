@@ -134,7 +134,21 @@ describe("unlockForReferral", () => {
     expect(prisma.tbl_referral.count).toHaveBeenCalledWith({
       where: { referrer_id: 7, referrer_type: "USER", status: "completed", verified_at: { gte: lockedAt } },
     });
-    expect(prisma.tbl_user.updateMany).toHaveBeenCalledWith({ where: { id: 7, guarantee_locked: true }, data: { guarantee_locked: false } });
+    // Conditional on the lock timestamp read above, so a re-lock in between is not undone.
+    expect(prisma.tbl_user.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, guarantee_locked: true, guarantee_locked_at: lockedAt }, data: { guarantee_locked: false },
+    });
+  });
+
+  it("a lock with no timestamp (legacy / admin) still unlocks", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, guarantee_locked: true, guarantee_locked_at: null });
+    orderSearchSettings.getCitySettings.mockResolvedValue(city({ guaranteeReferralsRequired: 1 }));
+    prisma.tbl_referral.count.mockResolvedValue(1);
+    expect(await svc.unlockForReferral(7)).toBe(true);
+    expect(prisma.tbl_referral.count).toHaveBeenCalledWith({ where: { referrer_id: 7, referrer_type: "USER", status: "completed" } });
+    expect(prisma.tbl_user.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, guarantee_locked: true, guarantee_locked_at: null }, data: { guarantee_locked: false },
+    });
   });
 
   it("stays locked while the count is below the city's requirement", async () => {

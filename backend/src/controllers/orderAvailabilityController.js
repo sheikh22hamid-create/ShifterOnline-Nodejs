@@ -180,7 +180,8 @@ async function availableVehicles(req, res) {
     // the driver search happens after the order is confirmed. Instant bookings only; fails closed to System 1.
     const citySearch = await orderSearchSettings.getCitySettings(matchedCityId);
     const system2 = citySearch.searchSystem === 2 && isInstantBookingType(bookingType);
-    if (system2 && citySearch.searchRadiusKm) radiusKm = citySearch.searchRadiusKm;
+    // A System 2 city without its own radius uses the default, never the client's radius (same as createOrderCore).
+    if (system2) radiusKm = citySearch.searchRadiusKm ?? SEARCH_RADIUS_KM;
 
     // Premium plan discount (same query as customerContentController.homeData)
     let hasPlanDiscount = false;

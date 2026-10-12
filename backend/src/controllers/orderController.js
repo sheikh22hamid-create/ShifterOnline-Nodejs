@@ -369,7 +369,8 @@ async function createOrderCore({
   }
   const citySearch = Number(bookingType) === 1 ? await orderSearchSettings.getCitySettings(searchCityId) : null;
   const system2 = citySearch?.searchSystem === orderSearchRules.SYSTEM.VEHICLE_FIRST;
-  const dispatchRadiusKm = system2 && citySearch.searchRadiusKm ? citySearch.searchRadiusKm : resolvedRadiusKm;
+  // System 2 searches the city's radius; a city without one uses the default, never the client's radius.
+  const dispatchRadiusKm = system2 ? (citySearch.searchRadiusKm ?? SEARCH_RADIUS_KM) : resolvedRadiusKm;
   // A System 2 order belongs to the city whose switch decided it (guarantee gate + admin city scoping).
   const orderCityId = system2 ? searchCityId : resolvedCityId;
 

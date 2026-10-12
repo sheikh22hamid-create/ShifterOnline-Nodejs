@@ -82,10 +82,10 @@ describe("createOrderCore - System 2 snapshot", () => {
     expect(data.radius_range).toBe(7); // client sent radiusKm 10; the city radius wins
   });
 
-  it("keeps the client radius when the System 2 city has no radius of its own", async () => {
+  it("uses SEARCH_RADIUS_KM (not the client radius) when the System 2 city has no radius of its own", async () => {
     orderSearchSettings.getCitySettings.mockResolvedValue({ ...system2, searchRadiusKm: null });
-    await createOrderCore({ ...input });
-    expect(createdData().radius_range).toBe(10);
+    await createOrderCore({ ...input, radiusKm: 15 });
+    expect(createdData().radius_range).toBe(require("../../config/constants").SEARCH_RADIUS_KM);
   });
 
   it("a System 1 city gets no snapshot", async () => {

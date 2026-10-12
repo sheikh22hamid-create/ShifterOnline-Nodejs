@@ -72,6 +72,16 @@ describe("availableVehicles in a System 2 city", () => {
     expect(v.estimated_pickup_minutes).toBeGreaterThan(0);
   });
 
+  it("uses SEARCH_RADIUS_KM (not the client radius) when the System 2 city has no radius of its own", async () => {
+    orderSearchSettings.getCitySettings.mockResolvedValue({ ...system2, searchRadiusKm: null });
+    prisma.$queryRaw.mockResolvedValue([]);
+    const res = makeRes();
+    await availableVehicles(body(), res);
+    const p = res.json.mock.calls[0][0];
+    expect(p.search_system).toBe(2);
+    expect(p.search_radius_km).toBe(require("../../config/constants").SEARCH_RADIUS_KM);
+  });
+
   it("a scheduled booking in a System 2 city behaves as before (no forced availability, no city radius)", async () => {
     orderSearchSettings.getCitySettings.mockResolvedValue(system2);
     prisma.$queryRaw.mockResolvedValue([]);
