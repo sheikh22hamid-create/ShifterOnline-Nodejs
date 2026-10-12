@@ -2,6 +2,8 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { isInsideZone } = require("../services/geofenceService");
 const { calculateRadiusCharge } = require("../services/pricingEngine");
+const orderSearchSettings = require("../services/orderSearchSettings");
+const { isInstantBookingType } = require("../services/orderSearchRules");
 const { SEARCH_RADIUS_KM, RIDER_LOCATION_FRESHNESS_MS, RADIUS_SUGGESTION_MAX_KM } = require("../config/constants");
 
 // Node port of cust_api/available_vehicles.php - THE endpoint every current
@@ -197,6 +199,12 @@ async function availableVehicles(req, res) {
 
     const pickupArea = { city_id: matchedCityId, city_name: matchedCityName, zone_id: matchedZoneId, zone_name: matchedZoneName };
 
+    // System 2 (spec 2026-10-12): in a city that chose "Vehicle Category First" every category is bookable and
+    // the driver search happens after the order is confirmed. Instant bookings only; fails closed to System 1.
+    const citySearch = await orderSearchSettings.getCitySettings(matchedCityId);
+    const system2 = citySearch.searchSystem === 2 && isInstantBookingType(bookingType);
+    if (system2 && citySearch.searchRadiusKm) radiusKm = citySearch.searchRadiusKm;
+
     // Premium plan discount (same query as customerContentController.homeData)
     let hasPlanDiscount = false;
     let planDiscountPercent = 0;
@@ -284,6 +292,10 @@ async function availableVehicles(req, res) {
         if (count >= 1) {
           liveSupply = "good";
           estimatedPickupMinutes = Math.round(Math.max(4, Math.min(10, nearestKm * 1.2 + 2)));
+          available = true;
+          reasonUnavailable = null;
+        } else if (system2) {
+          // No driver right now, but System 2 still lets the customer book and searches afterwards.
           available = true;
           reasonUnavailable = null;
         }
@@ -397,6 +409,8 @@ async function availableVehicles(req, res) {
       success: true,
       serviceable: true,
       search_radius_km: radiusKm,
+      search_system: system2 ? 2 : 1,
+      driver_search_seconds: citySearch.driverSearchSeconds,
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "Available vehicles fetched successfully",
@@ -411,6 +425,8 @@ async function availableVehicles(req, res) {
       data: {
         serviceable: true,
         search_radius_km: radiusKm,
+        search_system: system2 ? 2 : 1,
+        driver_search_seconds: citySearch.driverSearchSeconds,
         pickup_area: pickupArea,
         vehicles,
         categories: categoriesSummary,
