@@ -66,6 +66,7 @@ export const NAV_GROUPS = [
       { to: '/daily-drivers', label: 'Daily Drivers', icon: Timer, roles: ALL_STAFF, built: true },
       { to: '/free-booking', label: 'Free Booking Offer', icon: Gift, roles: ALL_STAFF, built: true },
       { to: '/booking-guarantee', label: 'Booking Guarantee', icon: ShieldCheck, roles: ALL_STAFF, built: true },
+      { to: '/order-search', label: 'Order Search System', icon: Radar, roles: ALL_STAFF, built: true },
       { to: '/tiered-dispatch', label: 'Tiered Dispatch & Penalties', icon: Layers, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/trip-feedback', label: 'Trip Feedback', icon: MessageSquareText, roles: ALL_STAFF, built: true },

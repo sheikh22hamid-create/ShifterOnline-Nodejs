@@ -56,6 +56,7 @@ const MonthlyDrivers = lazy(() => import('./pages/MonthlyDrivers'))
 const DailyDrivers = lazy(() => import('./pages/DailyDrivers'))
 const FreeBookingOffer = lazy(() => import('./pages/FreeBookingOffer'))
 const BookingGuarantee = lazy(() => import('./pages/BookingGuarantee'))
+const OrderSearchSettings = lazy(() => import('./pages/OrderSearchSettings'))
 const TieredDispatch = lazy(() => import('./pages/TieredDispatch'))
 const MonthlyAttendanceReports = lazy(() => import('./pages/MonthlyAttendanceReports'))
 const ProfitAndRevenue = lazy(() => import('./pages/ProfitAndRevenue'))
@@ -99,6 +100,7 @@ function App() {
             <Route path="/daily-drivers" element={<DailyDrivers />} />
             <Route path="/free-booking" element={<FreeBookingOffer />} />
             <Route path="/booking-guarantee" element={<BookingGuarantee />} />
+            <Route path="/order-search" element={<OrderSearchSettings />} />
             <Route path="/tiered-dispatch" element={<TieredDispatch />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />
             <Route path="/trip-feedback" element={<TripFeedback />} />

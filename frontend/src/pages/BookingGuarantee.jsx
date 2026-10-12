@@ -29,6 +29,9 @@ export default function BookingGuarantee() {
   useEffect(() => { toastRef.current = toast })
   const { hasRole } = useAuth()
   const canWrite = hasRole('superadmin', 'admin')
+  const isSuper = hasRole('superadmin')
+  const [lockUserId, setLockUserId] = useState('')
+  const [lockBusy, setLockBusy] = useState(false)
 
   const [minutes, setMinutes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -59,6 +62,23 @@ export default function BookingGuarantee() {
     }
   }
 
+  async function setLock(locked) {
+    const id = lockUserId.trim()
+    if (!/^\d+$/.test(id) || Number(id) <= 0) {
+      toastRef.current.error('Enter a valid customer id')
+      return
+    }
+    setLockBusy(true)
+    try {
+      const res = await api.post(`/booking-guarantee/users/${id}/${locked ? 'lock' : 'unlock'}`)
+      toastRef.current.success(res.data?.message || (locked ? 'Customer locked' : 'Customer unlocked'))
+    } catch (err) {
+      toastRef.current.error(errMsg(err, 'Could not update the customer'))
+    } finally {
+      setLockBusy(false)
+    }
+  }
+
   async function openAudit(orderId) {
     setAuditFor(orderId)
     setAudit([])
@@ -80,7 +100,7 @@ export default function BookingGuarantee() {
       </p>
 
       <div className="surface-card mt-4 rounded-xl p-4">
-        <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="assign_minutes">Admin assignment time (minutes)</label>
+        <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="assign_minutes">Default admin assignment time (minutes)</label>
         <div className="mt-1 flex items-center gap-2">
           <input
             id="assign_minutes"
@@ -88,19 +108,31 @@ export default function BookingGuarantee() {
             min="1"
             max="1440"
             value={minutes}
-            disabled={!canWrite}
+            disabled={!isSuper}
             onChange={(e) => setMinutes(e.target.value)}
             className="w-32 rounded-xl border px-3.5 py-2.5 text-sm outline-none"
             style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
           />
-          {canWrite && (
+          {isSuper && (
             <button type="button" onClick={save} disabled={saving} className="rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>
               {saving ? 'Saving…' : 'Save'}
             </button>
           )}
         </div>
-        <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>Applies to new cases only; cases already open keep their own deadline.</p>
+        <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>Used by cities that do not set their own time in Order Search System. Applies to new cases only; cases already open keep their own deadline.</p>
       </div>
+
+      {canWrite && (
+        <div className="surface-card mt-4 rounded-xl p-4">
+          <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="lock_user_id">Customer id</label>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <input id="lock_user_id" value={lockUserId} onChange={(e) => setLockUserId(e.target.value)} className="w-40 rounded-xl border px-3.5 py-2.5 text-sm outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }} />
+            <button type="button" disabled={lockBusy} onClick={() => setLock(true)} className="rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Lock guarantee</button>
+            <button type="button" disabled={lockBusy} onClick={() => setLock(false)} className="rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>Unlock guarantee</button>
+          </div>
+          <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>A customer is locked automatically after a compensation and unlocked by the referrals set for the city. Use this only to override.</p>
+        </div>
+      )}
 
       <div className="surface-card mt-4 overflow-hidden rounded-xl">
         <div className="overflow-x-auto">
