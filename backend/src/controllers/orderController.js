@@ -22,6 +22,8 @@ const settlementService = require("../services/settlementService");
 const receiverPayService = require("../services/receiverPayService");
 const freeBookingService = require("../services/freeBookingService");
 const bookingGuaranteeService = require("../services/bookingGuaranteeService");
+const orderSearchSettings = require("../services/orderSearchSettings");
+const orderSearchRules = require("../services/orderSearchRules");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -353,6 +355,12 @@ async function createOrderCore({
     100
   );
 
+  // System 2 (spec 2026-10-12): an instant booking in a "Vehicle Category First" city is searched for
+  // `driverSearchSeconds` after confirmation, within the city's own radius. Fails closed to System 1.
+  const citySearch = Number(bookingType) === 1 ? await orderSearchSettings.getCitySettings(resolvedCityId) : null;
+  const system2 = citySearch?.searchSystem === orderSearchRules.SYSTEM.VEHICLE_FIRST;
+  const dispatchRadiusKm = system2 && citySearch.searchRadiusKm ? citySearch.searchRadiusKm : resolvedRadiusKm;
+
   let firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
     slabPricingConfig?.slabRates,
     firstPkg?.cat_id || firstPkg?.category || firstPkg?.category_id
@@ -557,7 +565,9 @@ async function createOrderCore({
       package_cost: Number(packageCost) || 0,
       cou_id: coupon.cou_id,
       cou_amt: coupon.cou_amt,
-      radius_range: Math.round(resolvedRadiusKm),
+      radius_range: Math.round(dispatchRadiusKm),
+      search_system: system2 ? orderSearchRules.SYSTEM.VEHICLE_FIRST : null,
+      search_deadline_at: system2 ? orderSearchRules.searchDeadline(new Date(), citySearch.driverSearchSeconds) : null,
       radius_charge: 0,
       booking_type: Number(bookingType) || 1,
       schedule_date_time: finalScheduleDateTime,
@@ -954,6 +964,8 @@ async function getOrderDetails(req, res) {
           receiver_pay: await getReceiverPaySummary(order.id),
           // Booking Guarantee: none | pending | paid | not_paid, the amount, and the admin-window deadline.
           guarantee: await bookingGuaranteeService.getView(order),
+          // System 2: search window state so the waiting screen can show the right countdown and guarantee note.
+          search: await orderSearchSettings.getSearchView(order),
           // Free Booking Chance view (is_free, badge_text, message)
           free_booking: await freeBookingService.getViewForOrder(order.id),
           // Admin-configured wait for the pickup OTP; the app shows it in the "share OTP within N mins" hint.
