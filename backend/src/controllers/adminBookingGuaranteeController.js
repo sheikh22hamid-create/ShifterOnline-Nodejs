@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const settings = require("../services/bookingGuaranteeSettings");
+const bookingGuarantee = require("../services/bookingGuaranteeService");
 
 const MAX_LIMIT = 200;
 const fail = (res, err, label) => {
@@ -73,4 +74,25 @@ async function caseAudit(req, res) {
   }
 }
 
-module.exports = { getSettings, saveSettings, listCases, caseAudit };
+async function setLock(req, res, locked) {
+  try {
+    const { cityId } = scopeOf(req);
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ success: false, message: "userId must be a valid id" });
+    }
+    const user = await prisma.tbl_user.findUnique({ where: { id: userId }, select: { id: true, city_id: true } });
+    if (!user) return res.status(404).json({ success: false, message: "Customer not found" });
+    if (cityId !== null && Number(user.city_id) !== cityId) {
+      return res.status(403).json({ success: false, message: "This customer belongs to another city" });
+    }
+    await bookingGuarantee.setUserLock(userId, locked);
+    return res.json({ success: true, message: locked ? "Customer locked" : "Customer unlocked" });
+  } catch (e) {
+    return fail(res, e, locked ? "lockUser" : "unlockUser");
+  }
+}
+const lockUser = (req, res) => setLock(req, res, true);
+const unlockUser = (req, res) => setLock(req, res, false);
+
+module.exports = { getSettings, saveSettings, listCases, caseAudit, lockUser, unlockUser };

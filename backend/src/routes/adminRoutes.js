@@ -91,6 +91,7 @@ router.delete("/monthly-drivers/queue/:queue_id", auth, authorize("superadmin", 
 const adminDailyDriverController = require("../controllers/adminDailyDriverController");
 const adminFreeBookingController = require("../controllers/adminFreeBookingController");
 const adminBookingGuaranteeController = require("../controllers/adminBookingGuaranteeController");
+const adminOrderSearchController = require("../controllers/adminOrderSearchController");
 const tierDispatch = require("../controllers/adminTierDispatchController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
@@ -128,7 +129,14 @@ router.post("/tier-dispatch/cancel-requests/:id/reject", auth, authorize("supera
 
 // Booking Guarantee (spec 2026-10-07)
 router.get("/booking-guarantee/settings", auth, authorize(...RIDER_ROLES), adminBookingGuaranteeController.getSettings);
-router.put("/booking-guarantee/settings", auth, authorize("superadmin", "admin"), adminBookingGuaranteeController.saveSettings);
+// The global fallback window affects every city: superadmin only. A city sets its own in /order-search/settings.
+router.put("/booking-guarantee/settings", auth, authorize("superadmin"), adminBookingGuaranteeController.saveSettings);
+router.post("/booking-guarantee/users/:userId/lock", auth, authorize("superadmin", "admin"), scopeFilter, adminBookingGuaranteeController.lockUser);
+router.post("/booking-guarantee/users/:userId/unlock", auth, authorize("superadmin", "admin"), scopeFilter, adminBookingGuaranteeController.unlockUser);
+
+// System 2 / city-wise Booking Guarantee settings (spec 2026-10-12): city admins edit their own city only.
+router.get("/order-search/settings", auth, authorize(...RIDER_ROLES), adminOrderSearchController.getSettings);
+router.put("/order-search/settings", auth, authorize("superadmin", "admin"), adminOrderSearchController.saveSettings);
 router.get("/booking-guarantee/cases", auth, authorize(...RIDER_ROLES), scopeFilter, adminBookingGuaranteeController.listCases);
 router.get("/booking-guarantee/cases/:orderId/audit", auth, authorize(...RIDER_ROLES), scopeFilter, adminBookingGuaranteeController.caseAudit);
 
