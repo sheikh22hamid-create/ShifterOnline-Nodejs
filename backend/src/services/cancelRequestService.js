@@ -6,6 +6,8 @@ const orderStage = require("./orderStageService");
 const tierPenalty = require("./tierPenaltyService");
 const events = require("./driverOrderEventService");
 const pushNotifier = require("./pushNotifier");
+const orderSearchRules = require("./orderSearchRules");
+const orderSearchSettings = require("./orderSearchSettings");
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
@@ -86,12 +88,23 @@ async function approve({ requestId, adminId }) {
   }
   await events.logEvent({ riderId, orderId, tier: request.tier, event: events.EVENTS.CANCELLED, reason: "admin approved cancel request" });
 
-  const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  let order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   const dispatchManager = require("./dispatchManager");
   dispatchManager.emitCustomerEvent(order?.uid, "order:driver_unassigned", { order_id: String(orderId) });
 
   const nextStage = rules.nextStage(request.tier);
   const earlierStageRiderIds = await orderStage.offeredRiderIds(orderId);
+  if (orderSearchRules.isSystem2Order(order)) {
+    // System 2: the driver cancelled after the first window ended, so the order gets a fresh search window.
+    try {
+      const city = await orderSearchSettings.getCitySettings(order.city_id);
+      const deadline = orderSearchRules.searchDeadline(new Date(), city.driverSearchSeconds);
+      await prisma.pkg_order.update({ where: { id: orderId }, data: { search_deadline_at: deadline } });
+      order = { ...order, search_deadline_at: deadline };
+    } catch (err) {
+      logger.error(`cancelRequestService.approve: could not refresh the search window for order ${orderId}:`, err);
+    }
+  }
   await dispatchManager.startDispatch(order, null, { stage: nextStage, earlierStageRiderIds });
 
   const token = await fcmTokenOf(riderId);

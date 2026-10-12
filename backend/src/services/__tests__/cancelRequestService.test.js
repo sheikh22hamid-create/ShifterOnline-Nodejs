@@ -1,7 +1,7 @@
 jest.mock("../../config/db", () => ({
   $queryRaw: jest.fn(),
   $executeRaw: jest.fn(),
-  pkg_order: { findUnique: jest.fn() },
+  pkg_order: { findUnique: jest.fn(), update: jest.fn() },
   order_cancel_request: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
   driver_trip_progress: { deleteMany: jest.fn() },
   tbl_order_requests: { updateMany: jest.fn() },
@@ -16,7 +16,8 @@ jest.mock("../driverOrderEventService", () => ({
   EVENTS: { CANCEL_REQUESTED: "cancel_requested", CANCELLED: "cancelled", CANCEL_REJECTED: "cancel_rejected" },
   logEvent: jest.fn().mockResolvedValue(null),
 }));
-jest.mock("../dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(), emitCustomerEvent: jest.fn() }));
+jest.mock("../orderSearchSettings", () => ({ getCitySettings: jest.fn() }));
+jest.mock("../dispatchManager",() => ({ startDispatch: jest.fn().mockResolvedValue(), emitCustomerEvent: jest.fn() }));
 jest.mock("../pushNotifier", () => ({ notifyDriverCancelDecision: jest.fn().mockResolvedValue() }));
 
 const prisma = require("../../config/db");
@@ -24,6 +25,7 @@ const settings = require("../tieredDispatchSettings");
 const orderStage = require("../orderStageService");
 const tierPenalty = require("../tierPenaltyService");
 const events = require("../driverOrderEventService");
+const orderSearchSettings = require("../orderSearchSettings");
 const dispatchManager = require("../dispatchManager");
 const svc = require("../cancelRequestService");
 
@@ -145,6 +147,43 @@ describe("approve", () => {
     prisma.order_cancel_request.updateMany.mockResolvedValue({ count: 0 });
     await expect(svc.approve({ requestId: 12, adminId: 1 })).rejects.toMatchObject({ statusCode: 409 });
     expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+  });
+
+  describe("System 2 orders", () => {
+    const system2 = { id: 50, uid: 7, rid: 0, order_status: 0, allowed_delivery_types: "[6]", city_id: 3, search_system: 2, search_deadline_at: new Date(Date.now() - 60_000) };
+
+    beforeEach(() => {
+      prisma.pkg_order.update.mockResolvedValue({});
+      orderSearchSettings.getCitySettings.mockResolvedValue({ searchSystem: 2, driverSearchSeconds: 90 });
+    });
+
+    it("gives the re-dispatch a fresh search window, saved before dispatch starts", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(system2);
+      const res = await svc.approve({ requestId: 12, adminId: 1 });
+      expect(res.ok).toBe(true);
+      expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(3);
+      const [{ where, data }] = prisma.pkg_order.update.mock.calls[0];
+      expect(where).toEqual({ id: 50 });
+      expect(data.search_deadline_at).toBeInstanceOf(Date);
+      expect(data.search_deadline_at.getTime()).toBeGreaterThan(Date.now());
+      expect(prisma.pkg_order.update.mock.invocationCallOrder[0]).toBeLessThan(dispatchManager.startDispatch.mock.invocationCallOrder[0]);
+      const passed = dispatchManager.startDispatch.mock.calls[0][0];
+      expect(passed.search_deadline_at).toBe(data.search_deadline_at);
+    });
+
+    it("a non-System-2 order is left alone", async () => {
+      await svc.approve({ requestId: 12, adminId: 1 });
+      expect(prisma.pkg_order.update).not.toHaveBeenCalled();
+      expect(orderSearchSettings.getCitySettings).not.toHaveBeenCalled();
+    });
+
+    it("still restarts dispatch if the window cannot be refreshed", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(system2);
+      orderSearchSettings.getCitySettings.mockRejectedValue(new Error("boom"));
+      const res = await svc.approve({ requestId: 12, adminId: 1 });
+      expect(res.ok).toBe(true);
+      expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
