@@ -8,6 +8,7 @@ const chatControl = require("./chatControl");
 const customerHandler = require("./handlers/customerHandler");
 const driverHandler = require("./handlers/driverHandler");
 const notifications = require("./notifications");
+const botMenuEngine = require("./botMenuEngine");
 
 let sock = null;
 let latestQrCode = null;
@@ -236,9 +237,10 @@ async function initWhatsAppBot() {
             } else if (chatControl.isStartCommand(textMessage)) {
               chatControl.resumeChat(senderPhone || remoteJid);
               sessionManager.clearSession(senderPhone, true);
+              sessionManager.updateSession(senderPhone, botMenuEngine.STEPS.AWAITING_LANGUAGE, {});
               logger.info(`▶️ [OWNER] Bot RESUMED for personal chat ${senderPhone || remoteJid} (command: "${textMessage}")`);
               await sock.sendMessage(remoteJid, {
-                text: "▶️ *Bot resumed for this chat.*\nAutomated assistant active hai.",
+                text: "▶️ *Bot resumed for this chat.*\nAutomated menu active hai.",
               });
             } else {
               logger.debug(`Skipping outbound self message to ${remoteJid}`);
@@ -252,10 +254,9 @@ async function initWhatsAppBot() {
             if (chatControl.isStartCommand(textMessage)) {
               chatControl.resumeChat(senderPhone || remoteJid);
               sessionManager.clearSession(senderPhone, true);
+              sessionManager.updateSession(senderPhone, botMenuEngine.STEPS.AWAITING_LANGUAGE, {});
               logger.info(`▶️ [CONTACT] Bot RESUMED for personal chat ${senderPhone} (command: "${textMessage}")`);
-              const welcomeText =
-                "Hello ji! Main Shifter Online Bot hoon. Aap logistics, driver onboarding ya customer support se judi koi bhi query poochh sakte hain.";
-              await sock.sendMessage(remoteJid, { text: welcomeText });
+              await sock.sendMessage(remoteJid, { text: botMenuEngine.TEXTS.LANGUAGE_MENU });
               continue;
             }
 
@@ -297,346 +298,28 @@ async function initWhatsAppBot() {
 }
 
 /**
- * Detects if incoming message contains a high-priority global intent switch
- */
-function detectGlobalIntent(text, sessionStep) {
-  const t = (text || "").toLowerCase().trim();
-  if (!t) return { isGlobalSwitch: false, intent: null };
-
-  // 1. CANCEL / RESET / REJECT / NAHI
-  if (
-    /^(nhi|nahi|nah|no|cancel|stop|reset|exit|band|galat|wrong|menu)(?:\s+yrr|\s+bhai|\s+please)?$/i.test(t) ||
-    t === "nhi" ||
-    t === "nahi"
-  ) {
-    return { isGlobalSwitch: true, intent: "CANCEL_RESET" };
-  }
-
-  // 2. DRIVER SUPPORT NUMBER (Check BEFORE general driver)
-  if (
-    t.includes("driver support") ||
-    t.includes("driver helpline") ||
-    t.includes("driver care") ||
-    (t.includes("driver") && (t.includes("support") || t.includes("helpline") || t.includes("number") || t.includes("phone") || t.includes("contact") || t.includes("care")))
-  ) {
-    return { isGlobalSwitch: true, intent: "DRIVER_SUPPORT" };
-  }
-
-  // 3. CUSTOMER CARE / CONTACT SUPPORT (Check BEFORE general driver)
-  if (
-    t.includes("customer care") ||
-    t.includes("costumer care") ||
-    t.includes("customer support") ||
-    t.includes("costumer support") ||
-    t.includes("helpline") ||
-    t.includes("contact") ||
-    t.includes("call center") ||
-    t.includes("support number") ||
-    t.includes("care number") ||
-    t.includes("number do") ||
-    t.includes("phone number") ||
-    (t.includes("baat") && t.includes("karna")) ||
-    (t.includes("baat") && t.includes("karni"))
-  ) {
-    return { isGlobalSwitch: true, intent: "CUSTOMER_SUPPORT" };
-  }
-
-  // 4. DRIVER ONBOARDING (Registration / Partner App / Joining)
-  if (
-    t.includes("registration") ||
-    t.includes("register") ||
-    t.includes("onboarding") ||
-    t.includes("join") ||
-    t.includes("attach") ||
-    t.includes("partner") ||
-    t.includes("kyc") ||
-    t.includes("driver banna") ||
-    t === "driver"
-  ) {
-    return { isGlobalSwitch: true, intent: "DRIVER_ONBOARDING" };
-  }
-
-  // 5. TRACK ORDER
-  if (t.startsWith("track") || t.includes("order status") || t.match(/^#?\d+$/)) {
-    return { isGlobalSwitch: true, intent: "TRACK_ORDER" };
-  }
-
-  // 6. START NEW FARE / BOOKING OR APP LINK
-  if (t.startsWith("fare") || t.startsWith("book") || t === "app" || (t.includes("pickup") && t.includes("drop"))) {
-    return { isGlobalSwitch: true, intent: "CALCULATE_FARE" };
-  }
-
-  // 7. JOB / RECRUITER / HIRING INQUIRY
-  if (
-    t.includes("jobhai") ||
-    t.includes("naukri") ||
-    t.includes("workindia") ||
-    t.includes("recruiter") ||
-    t.includes("vacancy") ||
-    t.includes("hiring") ||
-    t.includes("office job") ||
-    t.includes("telecaller") ||
-    t.includes("resume") ||
-    t.includes("cv") ||
-    (t.includes("job") && !t.includes("driver"))
-  ) {
-    return { isGlobalSwitch: true, intent: "JOB_INQUIRY" };
-  }
-
-  return { isGlobalSwitch: false, intent: null };
-}
-
-/**
- * Message Processing Engine
+ * Bounded WhatsApp Message Processing Engine
+ * Routes all customer, driver, and job seeker messages through a structured, numbered state machine.
+ * Any random / free-form questions are strictly guarded and answered with the Helpline (9109114515).
  */
 async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullMsg) {
   try {
-    const session = sessionManager.getSession(senderPhone);
-    let replyText = "";
     const cleanText = (text || "").trim();
 
     // Record incoming user message into rolling conversation history
     sessionManager.addHistory(senderPhone, "user", cleanText);
 
-    // Check for high-priority global intent switch (e.g. Support, Driver Reg, Track, Cancel, etc.)
-    const globalCheck = detectGlobalIntent(cleanText, session.step);
-
-    if (globalCheck.isGlobalSwitch) {
-      logger.info(`🔄 Global Intent Switch triggered: ${globalCheck.intent} (Previous step was: ${session.step})`);
-      sessionManager.clearSession(senderPhone);
-
-      // Handle the global intent immediately
-      switch (globalCheck.intent) {
-        case "CANCEL_RESET":
-          replyText =
-            `Bilkul! Aapka current process cancel kar diya gaya hai.\n\n` +
-            `Aap kya help chahte hain?\n\n` +
-            `• *App* — Delivery booking ke liye Customer App link\n` +
-            `• *Track <OrderId>* — Order tracking status check karein\n` +
-            `• *Driver* — Driver partner registration & app link\n` +
-            `• *Support* — Customer care & driver helpline numbers`;
-          break;
-
-        case "DRIVER_SUPPORT":
-          replyText =
-            `📞 *Shifter Online Driver Support*\n\n` +
-            `Driver Partners ke liye dedicated helpline details:\n` +
-            `📱 *Driver Support Phone*: 9109114515\n` +
-            `📱 *Customer Care*: 9109114515\n` +
-            `📧 *Support Email*: support@shifteronline.com\n\n` +
-            `📲 *Driver App Download Link*:\nhttps://play.google.com/store/apps/details?id=com.shifter.driver`;
-          break;
-
-        case "CUSTOMER_SUPPORT":
-          replyText =
-            `📞 *Shifter Online Customer Care*\n\n` +
-            `Hamari support team se sampark karne ke liye details:\n` +
-            `📱 *Customer Care Number*: 9109114515\n` +
-            `📱 *Driver Helpline*: 9109114515\n` +
-            `📧 *Support Email*: support@shifteronline.com\n` +
-            `🌐 *Website*: https://shifteronline.com\n\n` +
-            `🏢 *Company*: Movigo Logistic Aggregator Private Limited`;
-          break;
-
-        case "DRIVER_ONBOARDING":
-          replyText =
-            `🚚 *Shifter Online Driver Partner Program*\n\n` +
-            `Aap Shifter Online ke saath judein aur apni gadi (Bike, 3-Wheeler, 4-Wheeler, E-Loader) se daily achhi kamai karein!\n\n` +
-            `📋 *Required Documents*:\n` +
-            `1️⃣ Driving License (DL)\n` +
-            `2️⃣ Aadhaar Card / Govt ID Proof\n` +
-            `3️⃣ Vehicle RC Book\n` +
-            `4️⃣ Bank Account / UPI Details\n` +
-            `5️⃣ Live Face verification\n` +
-            `6️⃣ PAN Card\n\n` +
-            `📲 *Registration Kaise Karein?*\n` +
-            `Direct humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n` +
-            `🔗 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n` +
-            `📞 *Driver Support*: 9109114515`;
-          break;
-
-        case "TRACK_ORDER": {
-          const orderId = cleanText.match(/\d+/)?.[0];
-          if (orderId) {
-            replyText = await customerHandler.handleTrackingQuery(orderId, senderPhone);
-          } else {
-            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 244*).";
-          }
-          break;
-        }
-
-        case "CALCULATE_FARE":
-        case "BOOK_TRIP": {
-          sessionManager.clearSession(senderPhone);
-          replyText =
-            `📦 *Shifter Online Booking*\n\n` +
-            `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
-            `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
-            `📲 *Download Shifter App*:\n` +
-            `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-            `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
-            `📞 *Customer Care*: 9109114515`;
-          break;
-        }
-
-        case "JOB_INQUIRY":
-          replyText =
-            `Hello ji! Haan, Shifter Online mein current hiring chal rahi hai.\n\n` +
-            `💼 *Office / Staff Jobs & Recruiter Inquiries*:\n` +
-            `Agar aap job search kar rahe hain ya recruiter hain, to kripya apna updated resume (CV) ya proposal hamari official careers email par bhejein:\n` +
-            `📧 *Email*: careers@shifteronline.com\n` +
-            `📞 *Helpline*: 9109114515\n\n` +
-            `🚚 *Driver Partner*: Agar aap apni gadi (Bike, 3-Wheeler, Tata Ace) ke saath delivery driver banne ke liye judna chahte hain, to kripya hamara Driver Partner App download karein:\n` +
-            `👉 https://play.google.com/store/apps/details?id=com.shifter.driver`;
-          break;
-
-        default:
-          break;
-      }
-    } else if (cleanText.startsWith("LOCATION_PIN:")) {
+    let replyText = "";
+    if (cleanText.startsWith("LOCATION_PIN:")) {
       replyText =
         `📍 *Location Received*\n\n` +
-        `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
-        `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
+        `WhatsApp par direct booking ya fare calculation uplabdh nahi hai. Delivery booking aur live fare dekhne ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
         `📲 *Download Shifter App*:\n` +
         `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-        `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
-        `📞 *Customer Care*: 9109114515`;
+        `📞 *Customer Care*: 9109114515\n\n` +
+        `_(Main Menu ke liye '0' likhkar bhejein)_`;
     } else {
-      // Session is IDLE - parse intent using Gemini AI / Groq AI / Fallback parser
-      const aiAnalysis = await groqService.parseMessageWithAI(cleanText, session);
-      const { intent, entities, aiResponse } = aiAnalysis;
-
-      logger.info(`AI Classified Intent: ${intent}`);
-
-      switch (intent) {
-        case "DRIVER_SUPPORT":
-          replyText =
-            `📞 *Shifter Online Driver Support*\n\n` +
-            `Driver Partners ke liye dedicated helpline details:\n` +
-            `📱 *Driver Support Phone*: 9109114515\n` +
-            `📱 *Customer Care*: 9109114515\n` +
-            `📧 *Support Email*: support@shifteronline.com\n\n` +
-            `📲 *Driver App*: https://play.google.com/store/apps/details?id=com.shifter.driver`;
-          break;
-
-        case "CUSTOMER_SUPPORT":
-          replyText =
-            `📞 *Shifter Online Customer Care*\n\n` +
-            `Hamari support team se sampark karne ke liye details:\n` +
-            `📱 *Customer Care Number*: 9109114515\n` +
-            `📱 *Driver Helpline*: 9109114515\n` +
-            `📧 *Support Email*: support@shifteronline.com\n` +
-            `🌐 *Website*: https://shifteronline.com\n\n` +
-            `🏢 *Company*: Movigo Logistic Aggregator Private Limited`;
-          break;
-
-        case "CANCEL_RESET":
-          replyText =
-            `Bilkul! Aapka current process cancel kar diya gaya hai.\n\n` +
-            `Aap kya help chahte hain?\n\n` +
-            `• *App* — Delivery booking ke liye Customer App link\n` +
-            `• *Track <OrderId>* — Order tracking status check karein\n` +
-            `• *Driver* — Driver partner registration & app link\n` +
-            `• *Support* — Customer care & driver helpline numbers`;
-          break;
-
-        case "CALCULATE_FARE":
-        case "BOOK_TRIP": {
-          sessionManager.clearSession(senderPhone);
-          replyText =
-            `📦 *Shifter Online Booking*\n\n` +
-            `WhatsApp par direct booking ya fare calculation uplabdh nahi hai.\n` +
-            `Goods delivery ya vehicle booking ke liye kripya hamari official *Shifter Online Customer App* download karein:\n\n` +
-            `📲 *Download Shifter App*:\n` +
-            `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-            `App me aap exact pickup-drop daalkar transparent live fare dekh sakte hain aur turant driver book kar sakte hain!\n\n` +
-            `📞 *Customer Care*: 9109114515`;
-          break;
-        }
-
-        case "TRACK_ORDER": {
-          const orderId = entities?.orderId || cleanText.match(/\d+/)?.[0];
-          if (orderId) {
-            replyText = await customerHandler.handleTrackingQuery(orderId, senderPhone);
-          } else {
-            replyText = "📦 Order tracking ke liye kripya apna Order ID bhejein (e.g. *Track 244*).";
-          }
-          break;
-        }
-
-        case "DRIVER_ONBOARDING": {
-          if (aiResponse && !cleanText.match(/^driver$/i)) {
-            replyText = aiResponse;
-          } else {
-            replyText =
-              `🚚 *Shifter Online Driver Partner Program*\n\n` +
-              `Aap Shifter Online ke saath judein aur apni gadi (Bike, 3-Wheeler, 4-Wheeler, E-Loader) se daily achhi kamai karein!\n\n` +
-              `📋 *Required Documents*:\n` +
-              `1️⃣ Driving License (DL)\n` +
-              `2️⃣ Aadhaar Card / Govt ID Proof\n` +
-              `3️⃣ Vehicle RC Book\n` +
-              `4️⃣ Bank Account / UPI Details\n` +
-              `5️⃣ Live Face verification\n` +
-              `6️⃣ PAN Card\n\n` +
-              `📲 *Registration Kaise Karein?*\n` +
-              `Direct humari *Shifter Driver Partner App* download karke 5 min me aasan registration complete karein:\n` +
-              `🔗 https://play.google.com/store/apps/details?id=com.shifter.driver\n\n` +
-              `📞 *Driver Support*: 9109114515`;
-          }
-          break;
-        }
-
-        case "CHECK_WALLET":
-          replyText = await driverHandler.checkDriverStatus(senderPhone);
-          break;
-
-        case "JOB_INQUIRY":
-          if (aiResponse) {
-            replyText = aiResponse;
-          } else {
-            replyText =
-              `Hello ji! Haan, Shifter Online mein current hiring chal rahi hai.\n\n` +
-              `💼 *Office / Staff Jobs & Recruiter Inquiries*:\n` +
-              `Agar aap job search kar rahe hain ya recruiter hain, to kripya apna updated resume (CV) ya proposal hamari official careers email par bhejein:\n` +
-              `📧 *Email*: careers@shifteronline.com\n` +
-              `📞 *Helpline*: 9109114515\n\n` +
-              `🚚 *Driver Jobs*: Agar aap gadi chalane ke liye judna chahte hain, to hamara Shifter Driver Partner App download karein:\n` +
-              `👉 https://play.google.com/store/apps/details?id=com.shifter.driver`;
-          }
-          break;
-
-        case "CONVERSATIONAL_FILLER":
-          if (aiResponse) {
-            replyText = aiResponse;
-          } else {
-            replyText = "Ji batayein, Shifter Online ke regarding aapki kya sahayata kar sakta hoon?";
-          }
-          break;
-
-        case "FAQ_QUERY":
-          if (aiResponse) {
-            replyText = aiResponse;
-          } else {
-            replyText =
-              "Main Shifter Online Bot hoon! Main abhi training phase mein hoon. Hamari technical team aapki sahayata Se mujhe develop aur advance banaa rahi hai\n" +
-              "Aap mujhse koi bhi sawal poochh sakte hain\n" +
-              "Aapke sawal ka hamari team uchit jawab degi.";
-          }
-          break;
-
-        default:
-          const isGreeting = /^(hi|hello|hey|menu|help|options|start|hola)$/i.test(cleanText);
-          if (!isGreeting && aiResponse) {
-            replyText = aiResponse;
-          } else {
-            replyText =
-              "Main Shifter Online Bot hoon! Main abhi training phase mein hoon. Hamari technical team aapki sahayata Se mujhe develop aur advance banaa rahi hai\n" +
-              "Aap mujhse koi bhi sawal poochh sakte hain\n" +
-              "Aapke sawal ka hamari team uchit jawab degi.";
-          }
-          break;
-      }
+      replyText = await botMenuEngine.processMenuMessage(senderPhone, cleanText);
     }
 
     if (replyText && sock) {
@@ -647,7 +330,7 @@ async function handleIncomingWhatsAppMessage(remoteJid, senderPhone, text, fullM
     logger.error(`Error handling WhatsApp message from ${senderPhone}:`, err);
     if (sock) {
       await sock.sendMessage(remoteJid, {
-        text: "⚠️ Samajh nahi aaya. Kripya punah prayaas karein ya type *Help* karein.",
+        text: "⚠️ Samajh nahi aaya. Kripya punah prayaas karein ya helpline 9109114515 par call karein. (Main Menu ke liye '0' likhein)",
       });
     }
   }
