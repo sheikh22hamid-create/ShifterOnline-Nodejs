@@ -21,7 +21,9 @@ const {
   RIDER_LOCATION_FRESHNESS_MS,
   SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
   SCHEDULED_ORDER_PRIORITY_POPUP_MS,
+  SEARCH_RETRY_MS,
 } = require("../config/constants");
+const orderSearchRules = require("./orderSearchRules");
 const { getModel1MissLimit, getModel1SuspensionHours } = require("./model1SuspensionSettings");
 const orderStage = require("./orderStageService");
 const tierRules = require("./tierPenaltyRules");
@@ -394,6 +396,88 @@ async function insertOrderRequest({ orderId, riderId, packageId, lat, lng, ttlMs
   `;
 }
 
+function parseTiers(order) {
+  try {
+    const parsed = JSON.parse(order.allowed_delivery_types);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : [order.delivery_type];
+  } catch {
+    return [order.delivery_type];
+  }
+}
+
+// System 2 (spec 2026-10-12): the pause between two driver-search laps. Held outside activeDispatches so a
+// customer cancel / accept (stopDispatch) can clear it.
+const searchRelapTimers = new Map(); // orderId -> Timeout
+
+function clearSearchRelap(orderId) {
+  const timer = searchRelapTimers.get(orderId);
+  if (timer) clearTimeout(timer);
+  searchRelapTimers.delete(orderId);
+}
+
+function scheduleSearchRelap(order, stage, earlierRiderIds) {
+  clearSearchRelap(order.id);
+  const timer = setTimeout(async () => {
+    searchRelapTimers.delete(order.id);
+    try {
+      const fresh = await prisma.pkg_order.findUnique({ where: { id: order.id } });
+      // Accepted, assigned or cancelled while we were paused: nothing left to search for.
+      if (!fresh || fresh.rid !== 0 || fresh.order_status !== 0 || fresh.o_status === "Cancelled") return;
+      if (!orderSearchRules.hasSearchTimeLeft(fresh)) {
+        await finishSearchWindow(fresh);
+        return;
+      }
+      await startDispatch(fresh, null, { stage, earlierStageRiderIds: earlierRiderIds });
+    } catch (err) {
+      logger.error(`dispatchManager: search re-lap failed for order ${order.id}:`, err);
+    }
+  }, SEARCH_RETRY_MS);
+  searchRelapTimers.set(order.id, timer);
+}
+
+/**
+ * The search is over and nobody accepted: hold the order for the Booking Guarantee admin window if the
+ * city enabled it (and the customer is not locked), otherwise cancel it. Used by the cascade ending and by
+ * the System 2 deadline and the startup resume. { held: true } = the guarantee case owns the order now.
+ */
+async function finishSearchWindow(order, tiers) {
+  const orderId = order.id;
+  const system2 = orderSearchRules.isSystem2Order(order);
+  const tierList = Array.isArray(tiers) && tiers.length > 0 ? tiers : parseTiers(order);
+
+  // Booking Guarantee (spec 2026-10-07): a failure here falls through to the cancel below, so a missing
+  // table or an outage can never strand an order.
+  let heldForGuarantee = false;
+  try {
+    heldForGuarantee = await require("./bookingGuaranteeService").openForExhaustedOrder(order, tierList);
+  } catch (err) {
+    logger.error(`dispatchManager: booking guarantee open failed for order ${orderId}:`, err);
+  }
+  if (heldForGuarantee) return { held: true };
+
+  try {
+    adminSocket.notifyDispatchAlert(orderId, order.city_id);
+  } catch (adminErr) {
+    logger.error(`dispatchManager: admin socket notify failed for order ${orderId}:`, adminErr);
+  }
+
+  await prisma.pkg_order.update({
+    where: { id: orderId },
+    data: { o_status: "Cancelled", cancel_reason: system2 ? "Driver is not available" : "No driver found", order_status: 4 },
+  });
+  // The customer never got a ride: give back a wallet-prepaid fare.
+  await walletPrepayment.refundIfWalletPaid(order, { note: "no driver found" });
+  await refundReferralPointsForOrder(orderId);
+  requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
+    order_id: String(orderId),
+    ...(system2 ? { reason: "driver_not_available" } : {}),
+  });
+
+  const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
+  await pushNotifier.notifyCustomerNoDriverFound(customer?.fcm_token, orderId);
+  return { held: false };
+}
+
 async function checkCascadeTermination(orderId) {
   const state = activeDispatches.get(orderId);
   if (!state) return;
@@ -406,7 +490,7 @@ async function checkCascadeTermination(orderId) {
   // and, either way, nobody is still holding an active popup that could yet
   // accept/reject.
   const isExhausted =
-    (state.consecutiveEmptyTurns >= state.tiers.length || (state.staleLaps || 0) >= 1) &&
+    (state.searchExpired || state.consecutiveEmptyTurns >= state.tiers.length || (state.staleLaps || 0) >= 1) &&
     (state.activeExpiryTimers || 0) === 0;
   if (!isExhausted) return;
 
@@ -458,41 +542,25 @@ async function checkCascadeTermination(orderId) {
       return;
     }
 
-    // Booking Guarantee (spec 2026-10-07): instead of cancelling, hold the order for the admin
-    // assignment window. A failure here falls through to the normal cancel below, so a missing
-    // table/outage can never strand an order.
-    let heldForGuarantee = false;
-    try {
-      heldForGuarantee = await require("./bookingGuaranteeService").openForExhaustedOrder(order, state.tiers);
-    } catch (err) {
-      logger.error(`dispatchManager: booking guarantee open failed for order ${orderId}:`, err);
+    // System 2 (spec 2026-10-12): keep searching until the city's driver-search window closes. The next
+    // lap only offers riders this order has not been offered to yet (so someone who came online meanwhile
+    // is caught, and nobody is asked twice).
+    if (!state.searchExpired && state.searchDeadlineAt && Date.now() < state.searchDeadlineAt.getTime()) {
+      const offeredSoFar = await orderStage.offeredRiderIds(orderId);
+      for (const t of state.timers) clearTimeout(t);
+      state.timers.clear();
+      activeDispatches.delete(orderId);
+      scheduleSearchRelap(order, state.stage, offeredSoFar);
+      return;
     }
-    if (heldForGuarantee) {
+
+    const { held } = await finishSearchWindow(order, state.tiers);
+    if (held) {
       for (const t of state.timers) clearTimeout(t);
       state.timers.clear();
       activeDispatches.delete(orderId);
       return;
     }
-
-    try {
-      adminSocket.notifyDispatchAlert(orderId, order.city_id);
-    } catch (adminErr) {
-      logger.error(`dispatchManager: admin socket notify failed for order ${orderId}:`, adminErr);
-    }
-
-    await prisma.pkg_order.update({
-      where: { id: orderId },
-      data: { o_status: "Cancelled", cancel_reason: "No driver found", order_status: 4 },
-    });
-    // The customer never got a ride: give back a wallet-prepaid fare.
-    await walletPrepayment.refundIfWalletPaid(order, { note: "no driver found" });
-    await refundReferralPointsForOrder(orderId);
-    requireIo().to(`customer_${order.uid}`).emit("order:no_driver_found", {
-      order_id: String(orderId),
-    });
-
-    const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
-    await pushNotifier.notifyCustomerNoDriverFound(customer?.fcm_token, orderId);
   }
 
   // Once a cascade is exhausted there is nothing left for it to do — release
@@ -531,6 +599,14 @@ async function checkCascadeTermination(orderId) {
 async function runBatchInner(orderId) {
   const state = activeDispatches.get(orderId);
   if (!state) return; // stopDispatch already ran (accepted/cancelled)
+
+  // System 2: the search window is over, so no new offers; popups already live finish on their own and
+  // the last one to resolve ends the cascade through checkCascadeTermination.
+  if (state.searchDeadlineAt && Date.now() >= state.searchDeadlineAt.getTime()) {
+    state.searchExpired = true;
+    if ((state.activeExpiryTimers || 0) === 0) await checkCascadeTermination(orderId);
+    return;
+  }
 
   const tierIndex = state.tierCursor % state.tiers.length;
   const packageId = state.tiers[tierIndex];
@@ -1236,13 +1312,7 @@ async function startDispatch(order, tier0Pricing, opts = {}) {
     return;
   }
 
-  let tiers;
-  try {
-    const parsed = JSON.parse(order.allowed_delivery_types);
-    tiers = Array.isArray(parsed) && parsed.length > 0 ? parsed : [order.delivery_type];
-  } catch {
-    tiers = [order.delivery_type];
-  }
+  const tiers = parseTiers(order);
 
   const state = {
     timers: new Set(),
@@ -1270,8 +1340,21 @@ async function startDispatch(order, tier0Pricing, opts = {}) {
     stage,
     // Riders offered this order in an earlier stage: never offered again.
     earlierStageRiderIds: Array.isArray(opts.earlierStageRiderIds) ? opts.earlierStageRiderIds.map(Number) : [],
+    // System 2 (spec 2026-10-12): the driver-search window; null for every other order.
+    searchDeadlineAt: orderSearchRules.isSystem2Order(order) && order.search_deadline_at ? new Date(order.search_deadline_at) : null,
+    searchExpired: false,
   };
   activeDispatches.set(order.id, state);
+
+  clearSearchRelap(order.id);
+  if (state.searchDeadlineAt) {
+    // Wake the cascade at the deadline even if nothing else is scheduled by then.
+    const wake = setTimeout(() => {
+      state.timers.delete(wake);
+      runBatch(order.id).catch((err) => logger.error(`dispatchManager: deadline wake failed for order ${order.id}:`, err));
+    }, Math.max(0, state.searchDeadlineAt.getTime() - Date.now()));
+    state.timers.add(wake);
+  }
 
   runBatch(order.id).catch((err) =>
     logger.error(`dispatchManager: batch 0 failed for order ${order.id}:`, err)
@@ -1284,6 +1367,7 @@ async function startDispatch(order, tier0Pricing, opts = {}) {
  * 'cancelled_by_user'.
  */
 function stopDispatch(orderId, reason) {
+  clearSearchRelap(orderId);
   const state = activeDispatches.get(orderId);
   if (state) {
     for (const timer of state.timers) clearTimeout(timer);
@@ -1512,6 +1596,8 @@ function _resetForTests() {
   for (const [id, state] of activeDispatches.entries()) {
     for (const t of state.timers) clearTimeout(t);
   }
+  for (const timer of searchRelapTimers.values()) clearTimeout(timer);
+  searchRelapTimers.clear();
   activeDispatches.clear();
 }
 
@@ -1528,6 +1614,7 @@ module.exports = {
   selectEligibleDrivers,
   recordModel1Outcome,
   reconcileStaleOffersOnStartup,
+  finishSearchWindow,
   _resetForTests,
   // Test-only: lets a test invoke the guarded runBatch entry point directly,
   // including concurrently, to exercise the batchInFlight/rerunRequested
