@@ -42,6 +42,8 @@ module.exports = {
   // Booking Guarantee (spec 2026-10-07): default admin assignment window and how often overdue cases are swept.
   BOOKING_GUARANTEE_DEFAULT_ASSIGN_MINUTES: 10,
   BOOKING_GUARANTEE_SWEEP_INTERVAL_MS: 15 * 1000,
+  // System 2 (spec 2026-10-12): pause between two driver-search laps while the city's search window is open.
+  SEARCH_RETRY_MS: 10 * 1000,
   MODEL1_MISS_LIMIT: 5,
   MODEL1_SUSPENSION_HOURS: 24,
 

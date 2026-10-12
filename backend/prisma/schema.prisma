@@ -290,6 +290,8 @@ model pkg_order {
   driver_earning         Decimal?           @db.Decimal(10, 2)
   booking_type           Int?
   city_id                Int?
+  search_system      Int?      @db.TinyInt
+  search_deadline_at DateTime? @db.DateTime(0)
   schedule_date_time     String?            @db.VarChar(255)
   allowed_delivery_types String?            @db.Text
   user_reminder_sent     Boolean?           @default(false)
@@ -1225,6 +1227,8 @@ model tbl_user {
   referral_points  Int                 @default(0)
   free_booking_locked        Boolean   @default(false)
   free_booking_locked_at     DateTime? @db.DateTime(0)
+  guarantee_locked           Boolean   @default(false)
+  guarantee_locked_at        DateTime? @db.DateTime(0)
   free_booking_just_unlocked Boolean   @default(false)
 }
 
@@ -1998,6 +2002,19 @@ model free_booking_setting {
   max_km             Decimal?  @db.Decimal(6, 2)
   updated_by  Int?
   updated_at  DateTime  @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// System 2 (spec 2026-10-12): per-city search system, search window and guarantee settings. No row = defaults.
+model city_order_settings {
+  city_id                     Int      @id
+  search_system               Int      @default(1) @db.TinyInt
+  search_radius_km            Decimal? @db.Decimal(5, 2)
+  driver_search_seconds       Int?
+  guarantee_enabled           Boolean  @default(false)
+  admin_window_minutes        Int?
+  guarantee_referrals_required Int     @default(1)
+  updated_by                  Int?
+  updated_at                  DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
 
 // Vehicles (riders) the admin put in the offer pool, with a validity window.
