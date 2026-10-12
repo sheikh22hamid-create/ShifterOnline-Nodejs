@@ -44,6 +44,8 @@ module.exports = {
   BOOKING_GUARANTEE_SWEEP_INTERVAL_MS: 15 * 1000,
   // System 2 (spec 2026-10-12): pause between two driver-search laps while the city's search window is open.
   SEARCH_RETRY_MS: 10 * 1000,
+  // How often dispatchManager.sweepOverdueSystem2Searches finishes System 2 orders a transient error stranded.
+  SYSTEM2_SWEEP_INTERVAL_MS: 30 * 1000,
   MODEL1_MISS_LIMIT: 5,
   MODEL1_SUSPENSION_HOURS: 24,
 

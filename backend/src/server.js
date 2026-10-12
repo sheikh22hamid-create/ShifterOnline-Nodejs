@@ -29,6 +29,7 @@ const {
   LEAD_EXPIRY_SWEEP_INTERVAL_MS,
   DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS,
   BOOKING_GUARANTEE_SWEEP_INTERVAL_MS,
+  SYSTEM2_SWEEP_INTERVAL_MS,
 } = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
@@ -61,6 +62,12 @@ const sweepBookingGuarantee = () =>
   bookingGuaranteeService.expireDue().catch((err) => logger.error("bookingGuarantee sweep failed:", err));
 setTimeout(sweepBookingGuarantee, 5000);
 setInterval(sweepBookingGuarantee, BOOKING_GUARANTEE_SWEEP_INTERVAL_MS);
+
+// System 2: finish searches whose re-lap / finish step threw (DB blip) instead of leaving them Pending until
+// the next restart. Skips orders this process is still searching for.
+setInterval(() => {
+  dispatchManager.sweepOverdueSystem2Searches().catch((err) => logger.error("System 2 overdue-search sweep failed:", err));
+}, SYSTEM2_SWEEP_INTERVAL_MS);
 
 // Customer no-show auto-cancel — see tripLifecycle.sweepOverduePickups doc
 // comment for why this is a periodic DB-anchored sweep rather than a

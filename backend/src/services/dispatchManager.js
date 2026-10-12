@@ -1494,6 +1494,45 @@ async function resumeSystem2Searches() {
   }
 }
 
+let system2SweepRunning = false;
+
+/**
+ * Periodic safety net (spec 2026-10-12, final review I3): a System 2 order whose re-lap step or
+ * finishSearchWindow threw once would otherwise stay Pending until the next restart. Finishes every
+ * overdue, unheld System 2 order this process is not already handling (no live dispatch, no pending re-lap).
+ */
+async function sweepOverdueSystem2Searches() {
+  if (system2SweepRunning) return; // a slow previous sweep is still finishing orders
+  system2SweepRunning = true;
+  try {
+    // 90 s grace after the deadline: last popup (15 s) + one re-lap pause (10 s) + margin, so a search that
+    // is merely finishing on time is never raced.
+    const rows = await prisma.$queryRaw`
+      SELECT id FROM pkg_order
+      WHERE search_system = 2 AND o_status = 'Pending' AND rid = 0 AND order_status = 0
+        AND booking_type NOT IN (2, 3)
+        AND search_deadline_at < (NOW() - INTERVAL 90 SECOND)
+        AND id NOT IN (SELECT order_id FROM booking_guarantee_case)
+    `;
+    const isBusy = (orderId) => activeDispatches.has(orderId) || searchRelapTimers.has(orderId);
+    for (const { id } of rows || []) {
+      const orderId = Number(id);
+      if (isBusy(orderId)) continue;
+      try {
+        const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+        if (!order || order.rid !== 0 || order.order_status !== 0 || order.o_status === "Cancelled") continue;
+        if (isBusy(orderId)) continue; // a dispatch started while we were reading
+        logger.warn(`dispatchManager: finishing overdue System 2 search for order ${orderId}`);
+        await finishSearchWindow(order);
+      } catch (err) {
+        logger.error(`dispatchManager: sweeping overdue System 2 search for order ${id} failed:`, err);
+      }
+    }
+  } finally {
+    system2SweepRunning = false;
+  }
+}
+
 /**
  * One-shot startup cleanup — not a recovery system, just closes out the
  * mess a crash/restart leaves behind: 'sent' offers whose in-memory expiry
@@ -1646,7 +1685,10 @@ module.exports = {
   recordModel1Outcome,
   reconcileStaleOffersOnStartup,
   finishSearchWindow,
+  sweepOverdueSystem2Searches,
   _resetForTests,
+  // Test-only: whether this process is handling a System 2 order's search (live cascade / pending re-lap).
+  _system2SearchStateForTests: (orderId) => ({ active: activeDispatches.has(orderId), relap: searchRelapTimers.has(orderId) }),
   // Test-only: lets a test invoke the guarded runBatch entry point directly,
   // including concurrently, to exercise the batchInFlight/rerunRequested
   // serialization without needing to fight fake-timer scheduling.

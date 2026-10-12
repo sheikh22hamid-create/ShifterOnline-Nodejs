@@ -223,3 +223,76 @@ describe("startup recovery of System 2 orders", () => {
     expect(cancelledWith()).toBeUndefined();
   });
 });
+
+describe("periodic sweep of overdue System 2 searches", () => {
+  const sqlText = (call) => (Array.isArray(call[0]) ? call[0].join("?") : String(call[0]));
+  const isSweepSql = (strings) => sqlText([strings]).includes("search_deadline_at");
+  const sweepReturns = (rows) => prisma.$queryRaw.mockImplementation(async (strings) => (isSweepSql(strings) ? rows : []));
+  const cancels = () => prisma.pkg_order.update.mock.calls.map(([a]) => a.data).filter((d) => d && d.o_status === "Cancelled");
+
+  it("selects only overdue, unheld, Pending System 2 instant orders past a grace period", async () => {
+    sweepReturns([]);
+    await dispatchManager.sweepOverdueSystem2Searches();
+    const sql = prisma.$queryRaw.mock.calls.map(sqlText).find((s) => s.includes("search_deadline_at"));
+    expect(sql).toContain("search_system = 2");
+    expect(sql).toContain("o_status = 'Pending'");
+    expect(sql).toContain("rid = 0");
+    expect(sql).toContain("order_status = 0");
+    expect(sql).toContain("booking_type NOT IN (2, 3)");
+    expect(sql).toContain("INTERVAL 90 SECOND");
+    expect(sql).toContain("booking_guarantee_case");
+  });
+
+  it("finishes an overdue order exactly once", async () => {
+    sweepReturns([{ id: 601 }]);
+    prisma.pkg_order.findUnique.mockResolvedValue(system2Order(-120_000));
+    await dispatchManager.sweepOverdueSystem2Searches();
+    expect(bookingGuaranteeService.openForExhaustedOrder).toHaveBeenCalledTimes(1);
+    expect(cancels()).toHaveLength(1);
+    expect(cancels()[0].cancel_reason).toBe("Driver is not available");
+  });
+
+  it("skips an order whose dispatch is still live in this process", async () => {
+    const order = system2Order(60_000);
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...order });
+    await dispatchManager.startDispatch(order);
+    expect(dispatchManager._system2SearchStateForTests(601)).toEqual({ active: true, relap: false });
+    sweepReturns([{ id: 601 }]);
+    prisma.pkg_order.findUnique.mockResolvedValue(system2Order(-120_000));
+    await dispatchManager.sweepOverdueSystem2Searches();
+    expect(bookingGuaranteeService.openForExhaustedOrder).not.toHaveBeenCalled();
+    expect(cancels()).toHaveLength(0);
+  });
+
+  it("skips an order that has a pending re-lap", async () => {
+    const order = system2Order(120_000);
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...order });
+    await dispatchManager.startDispatch(order);
+    await jest.advanceTimersByTimeAsync(10_000);
+    await flush();
+    expect(dispatchManager._system2SearchStateForTests(601)).toEqual({ active: false, relap: true });
+    sweepReturns([{ id: 601 }]);
+    prisma.pkg_order.findUnique.mockResolvedValue(system2Order(-120_000));
+    await dispatchManager.sweepOverdueSystem2Searches();
+    expect(bookingGuaranteeService.openForExhaustedOrder).not.toHaveBeenCalled();
+    expect(cancels()).toHaveLength(0);
+  });
+
+  it("leaves alone an order that was closed after the select (rid != 0)", async () => {
+    sweepReturns([{ id: 601 }]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...system2Order(-120_000), rid: 9, order_status: 1 });
+    await dispatchManager.sweepOverdueSystem2Searches();
+    expect(bookingGuaranteeService.openForExhaustedOrder).not.toHaveBeenCalled();
+    expect(cancels()).toHaveLength(0);
+  });
+
+  it("one order failing does not stop the others", async () => {
+    sweepReturns([{ id: 601 }, { id: 602 }]);
+    prisma.pkg_order.findUnique
+      .mockRejectedValueOnce(new Error("db blip"))
+      .mockResolvedValue({ ...system2Order(-120_000), id: 602 });
+    await dispatchManager.sweepOverdueSystem2Searches();
+    expect(bookingGuaranteeService.openForExhaustedOrder).toHaveBeenCalledTimes(1);
+    expect(bookingGuaranteeService.openForExhaustedOrder.mock.calls[0][0].id).toBe(602);
+  });
+});
