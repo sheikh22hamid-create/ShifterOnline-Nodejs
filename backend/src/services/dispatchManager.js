@@ -1467,6 +1467,34 @@ async function dismissUnlockedLiveOffers(orderId, reason, newRequestStatus, alre
 }
 
 /**
+ * System 2 orders are owned by their search window, not by the stale-order sweep. After a restart: an order
+ * still inside its window continues its search (never re-offering riders it already asked), and one whose
+ * window ended while we were down is finished now (guarantee window or cancel), exactly once.
+ */
+async function resumeSystem2Searches() {
+  const rows = await prisma.$queryRaw`
+    SELECT id FROM pkg_order
+    WHERE search_system = 2 AND o_status = 'Pending' AND rid = 0 AND order_status = 0
+      AND booking_type NOT IN (2, 3)
+      AND id NOT IN (SELECT order_id FROM booking_guarantee_case)
+  `;
+  for (const { id } of rows || []) {
+    try {
+      const order = await prisma.pkg_order.findUnique({ where: { id: Number(id) } });
+      if (!order || order.rid !== 0 || order.order_status !== 0 || order.o_status === "Cancelled") continue;
+      if (orderSearchRules.hasSearchTimeLeft(order)) {
+        const offered = await orderStage.offeredRiderIds(order.id);
+        await startDispatch(order, null, { earlierStageRiderIds: offered });
+      } else {
+        await finishSearchWindow(order);
+      }
+    } catch (err) {
+      logger.error(`dispatchManager: resuming System 2 search for order ${id} failed:`, err);
+    }
+  }
+}
+
+/**
  * One-shot startup cleanup — not a recovery system, just closes out the
  * mess a crash/restart leaves behind: 'sent' offers whose in-memory expiry
  * timer died with the old process (acceptance is already safe against these
@@ -1514,6 +1542,7 @@ async function reconcileStaleOffersOnStartup() {
       SELECT id, uid, p_method_id, trans_id FROM pkg_order
       WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
         AND booking_type NOT IN (2, 3)
+        AND (search_system IS NULL OR search_system <> 2)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
         AND id NOT IN (SELECT order_id FROM booking_guarantee_case WHERE status = 'open')
         AND (p_method_id = -2 OR trans_id LIKE 'wallet%' OR referral_points_used > 0)
@@ -1523,6 +1552,7 @@ async function reconcileStaleOffersOnStartup() {
       SET o_status = 'Cancelled', cancel_reason = 'No driver found (recovered after restart)'
       WHERE o_status = 'Pending' AND rid = 0 AND order_status = 0
         AND booking_type NOT IN (2, 3)
+        AND (search_system IS NULL OR search_system <> 2)
         AND odate <= (NOW() - INTERVAL ${STARTUP_RECOVERY_BUFFER_SECONDS} SECOND)
         AND id NOT IN (SELECT order_id FROM booking_guarantee_case WHERE status = 'open')
     `;
@@ -1533,6 +1563,7 @@ async function reconcileStaleOffersOnStartup() {
     if (staleOrders > 0) {
       logger.warn(`dispatchManager: startup reconciliation cancelled ${staleOrders} orphaned Pending order(s)`);
     }
+    await resumeSystem2Searches();
   } catch (err) {
     logger.error("dispatchManager: startup reconciliation failed:", err);
   }

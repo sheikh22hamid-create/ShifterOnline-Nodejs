@@ -180,3 +180,46 @@ describe("finishSearchWindow", () => {
     expect(cancelledWith()).toMatchObject({ cancel_reason: "Driver is not available" });
   });
 });
+
+describe("startup recovery of System 2 orders", () => {
+  const sqlText = (call) => (Array.isArray(call[0]) ? call[0].join("?") : String(call[0]));
+
+  it("the stale-order cancel and its refund select both skip System 2 orders", async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.$executeRaw.mockResolvedValue(0);
+    await dispatchManager.reconcileStaleOffersOnStartup();
+    const cancelSql = prisma.$executeRaw.mock.calls.map(sqlText).find((s) => s.includes("No driver found (recovered after restart)"));
+    const selectSql = prisma.$queryRaw.mock.calls.map(sqlText).find((s) => s.includes("p_method_id = -2"));
+    expect(cancelSql).toContain("search_system");
+    expect(selectSql).toContain("search_system");
+  });
+
+  it("resumes the search for an order whose deadline is still ahead", async () => {
+    prisma.$executeRaw.mockResolvedValue(0);
+    prisma.$queryRaw.mockImplementation(async (strings) => (sqlText([strings]).includes("search_system = 2") ? [{ id: 601 }] : []));
+    prisma.pkg_order.findUnique.mockResolvedValue(system2Order(60_000));
+    await dispatchManager.reconcileStaleOffersOnStartup();
+    await flush();
+    expect(cancelledWith()).toBeUndefined();
+    expect(bookingGuaranteeService.openForExhaustedOrder).not.toHaveBeenCalled();
+    expect(require("../orderStageService").offeredRiderIds).toHaveBeenCalledWith(601);
+  });
+
+  it("finishes an order whose deadline passed while the server was down", async () => {
+    prisma.$executeRaw.mockResolvedValue(0);
+    prisma.$queryRaw.mockImplementation(async (strings) => (sqlText([strings]).includes("search_system = 2") ? [{ id: 601 }] : []));
+    prisma.pkg_order.findUnique.mockResolvedValue(system2Order(-5_000));
+    await dispatchManager.reconcileStaleOffersOnStartup();
+    await flush();
+    expect(cancelledWith()).toMatchObject({ cancel_reason: "Driver is not available" });
+  });
+
+  it("an order the customer or a driver already closed is left alone", async () => {
+    prisma.$executeRaw.mockResolvedValue(0);
+    prisma.$queryRaw.mockImplementation(async (strings) => (sqlText([strings]).includes("search_system = 2") ? [{ id: 601 }] : []));
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...system2Order(-5_000), rid: 9, order_status: 1 });
+    await dispatchManager.reconcileStaleOffersOnStartup();
+    await flush();
+    expect(cancelledWith()).toBeUndefined();
+  });
+});
