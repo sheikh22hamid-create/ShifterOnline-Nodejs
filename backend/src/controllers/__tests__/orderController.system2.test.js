@@ -31,6 +31,7 @@ jest.mock("../../services/orderStopsService", () => ({ previewAddStop: jest.fn()
 jest.mock("../../services/receiverPayService", () => ({ validateBooking: jest.fn(), createForOrder: jest.fn() }));
 jest.mock("../../services/freeBookingService", () => ({ checkEligibility: jest.fn(), createForOrder: jest.fn() }));
 jest.mock("../../services/orderSearchSettings", () => ({ getCitySettings: jest.fn(), getSearchView: jest.fn() }));
+jest.mock("../../services/pickupCityService", () => ({ resolvePickupCityId: jest.fn() }));
 
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
@@ -38,6 +39,7 @@ const receiverPayService = require("../../services/receiverPayService");
 const freeBookingService = require("../../services/freeBookingService");
 const orderSearchSettings = require("../../services/orderSearchSettings");
 const { getRoadDistanceKm } = require("../../utils/geoDistance");
+const { resolvePickupCityId } = require("../../services/pickupCityService");
 const { createOrderCore } = require("../orderController");
 
 const input = {
@@ -57,6 +59,7 @@ beforeEach(() => {
   prisma.pkg_order.create.mockResolvedValue({ id: 777, booking_type: 1 });
   receiverPayService.validateBooking.mockResolvedValue({ ok: true, value: null });
   freeBookingService.createForOrder.mockResolvedValue({ id: 1 });
+  resolvePickupCityId.mockResolvedValue(null);
 });
 
 const system2 = { searchSystem: 2, searchRadiusKm: 7, driverSearchSeconds: 90, guaranteeEnabled: false, adminWindowMinutes: null, guaranteeReferralsRequired: 1 };
@@ -101,5 +104,53 @@ describe("createOrderCore - System 2 snapshot", () => {
     expect(createdData().search_system).toBeNull();
     expect(createdData().search_deadline_at).toBeNull();
     expect(orderSearchSettings.getCitySettings).not.toHaveBeenCalled();
+    expect(resolvePickupCityId).not.toHaveBeenCalled();
+  });
+});
+
+describe("createOrderCore - System 2 decided by the pickup city", () => {
+  const createdData = () => prisma.pkg_order.create.mock.calls[0][0].data;
+  const byCity = (map) => (cityId) => Promise.resolve(map[cityId] || { ...system2, searchSystem: 1 });
+
+  it("customer city 2 (System 1) booking from a pickup in city 5 (System 2) gets System 2 and city_id 5", async () => {
+    orderSearchSettings.getCitySettings.mockImplementation(byCity({ 2: { ...system2, searchSystem: 1 }, 5: system2 }));
+    resolvePickupCityId.mockResolvedValue(5);
+    const result = await createOrderCore({ ...input, cityId: undefined });
+    expect(result.ok).toBe(true);
+    expect(resolvePickupCityId).toHaveBeenCalledWith(input.plat, input.plong);
+    expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(5);
+    expect(createdData().search_system).toBe(2);
+    expect(createdData().city_id).toBe(5);
+  });
+
+  it("customer city 5 (System 2) booking from a pickup in city 2 (System 1) gets System 1 and keeps its city_id", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 5 });
+    orderSearchSettings.getCitySettings.mockImplementation(byCity({ 2: { ...system2, searchSystem: 1 }, 5: system2 }));
+    resolvePickupCityId.mockResolvedValue(2);
+    await createOrderCore({ ...input, cityId: undefined });
+    expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(2);
+    expect(createdData().search_system).toBeNull();
+    expect(createdData().search_deadline_at).toBeNull();
+    expect(createdData().city_id).toBe(5);
+  });
+
+  it("falls back to the customer's city when the pickup city cannot be resolved", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 5 });
+    orderSearchSettings.getCitySettings.mockImplementation(byCity({ 5: system2 }));
+    resolvePickupCityId.mockResolvedValue(null);
+    await createOrderCore({ ...input, cityId: undefined });
+    expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(5);
+    expect(createdData().search_system).toBe(2);
+    expect(createdData().city_id).toBe(5);
+  });
+
+  it("falls back to the customer's city when resolving the pickup city throws", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 5 });
+    orderSearchSettings.getCitySettings.mockImplementation(byCity({ 5: system2 }));
+    resolvePickupCityId.mockRejectedValue(new Error("db blip"));
+    const result = await createOrderCore({ ...input, cityId: undefined });
+    expect(result.ok).toBe(true);
+    expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(5);
+    expect(createdData().city_id).toBe(5);
   });
 });

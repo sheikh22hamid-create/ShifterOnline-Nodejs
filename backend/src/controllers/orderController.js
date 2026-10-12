@@ -24,6 +24,7 @@ const freeBookingService = require("../services/freeBookingService");
 const bookingGuaranteeService = require("../services/bookingGuaranteeService");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
+const { resolvePickupCityId } = require("../services/pickupCityService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
@@ -357,9 +358,20 @@ async function createOrderCore({
 
   // System 2 (spec 2026-10-12): an instant booking in a "Vehicle Category First" city is searched for
   // `driverSearchSeconds` after confirmation, within the city's own radius. Fails closed to System 1.
-  const citySearch = Number(bookingType) === 1 ? await orderSearchSettings.getCitySettings(resolvedCityId) : null;
+  // The city is the PICKUP's (same resolution as the vehicle list), falling back to the customer's city.
+  let searchCityId = resolvedCityId;
+  if (Number(bookingType) === 1) {
+    const pickupCityId = await resolvePickupCityId(plat, plong).catch((err) => {
+      logger.error("createOrderCore: resolvePickupCityId failed, using the customer's city:", err);
+      return null;
+    });
+    searchCityId = pickupCityId ?? resolvedCityId;
+  }
+  const citySearch = Number(bookingType) === 1 ? await orderSearchSettings.getCitySettings(searchCityId) : null;
   const system2 = citySearch?.searchSystem === orderSearchRules.SYSTEM.VEHICLE_FIRST;
   const dispatchRadiusKm = system2 && citySearch.searchRadiusKm ? citySearch.searchRadiusKm : resolvedRadiusKm;
+  // A System 2 order belongs to the city whose switch decided it (guarantee gate + admin city scoping).
+  const orderCityId = system2 ? searchCityId : resolvedCityId;
 
   let firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
     slabPricingConfig?.slabRates,
@@ -571,7 +583,7 @@ async function createOrderCore({
       radius_charge: 0,
       booking_type: Number(bookingType) || 1,
       schedule_date_time: finalScheduleDateTime,
-      city_id: resolvedCityId,
+      city_id: orderCityId,
       delivery_type: firstTierPackageId,
       allowed_delivery_types: JSON.stringify(orderedPackageIds),
       trans_id: transactionId || null,

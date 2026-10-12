@@ -1,6 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
-const { isInsideZone } = require("../services/geofenceService");
+const { resolvePickupArea } = require("../services/pickupCityService");
 const { calculateRadiusCharge } = require("../services/pricingEngine");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const { isInstantBookingType } = require("../services/orderSearchRules");
@@ -151,37 +151,14 @@ async function availableVehicles(req, res) {
       radiusKm = requested;
     }
 
-    // City/zone match
-    let matchedCityId = 0;
-    let matchedCityName = "";
-    let matchedZoneId = 0;
-    let matchedZoneName = "";
-    let serviceable = false;
-
-    const zones = await prisma.service_zone.findMany({ where: { status: 1 } });
-    for (const zone of zones) {
-      if (isInsideZone(pickupLat, pickupLng, zone)) {
-        serviceable = true;
-        matchedZoneId = zone.id;
-        matchedZoneName = zone.name;
-        matchedCityId = zone.city_id || 0;
-        break;
-      }
-    }
-    if (matchedCityId) {
-      const city = await prisma.tbl_city.findUnique({ where: { id: matchedCityId } });
-      matchedCityName = city?.title || "";
-    }
-    if (!serviceable) {
-      const firstCity = await prisma.tbl_city.findFirst({ where: { status: 1 }, orderBy: { id: "asc" } });
-      if (firstCity) {
-        serviceable = true;
-        matchedCityId = firstCity.id;
-        matchedCityName = firstCity.title;
-        matchedZoneId = 1;
-        matchedZoneName = `${firstCity.title} Main Zone`;
-      }
-    }
+    // City/zone match (shared with createOrderCore so the list and the order decide System 2 from the same city)
+    const {
+      serviceable,
+      cityId: matchedCityId,
+      cityName: matchedCityName,
+      zoneId: matchedZoneId,
+      zoneName: matchedZoneName,
+    } = await resolvePickupArea(pickupLat, pickupLng);
 
     if (!serviceable) {
       return res.status(200).json({
