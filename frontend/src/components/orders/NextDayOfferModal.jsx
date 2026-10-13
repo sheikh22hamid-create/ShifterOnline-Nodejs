@@ -17,21 +17,32 @@ export default function NextDayOfferModal({ open, order, onClose, onChanged }) {
   const [offers, setOffers] = useState([])
   const [loading, setLoading] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const reqRef = useRef(0) // latest request id; responses from older requests / other orders are ignored
+  const failedRef = useRef(false) // true while in a failure streak, so only the first failure toasts
+  const timerRef = useRef(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isFirst = false) => {
     if (!orderId) return
-    setLoading(true)
+    const id = ++reqRef.current
+    if (isFirst) setLoading(true) // only the first load after open shows "Loading…"; polls stay silent
     try {
       const [d, o] = await Promise.all([
         api.get(`/orders/next-day/${orderId}/daily-drivers`),
         api.get(`/orders/next-day/${orderId}/offers`),
       ])
+      if (id !== reqRef.current) return
       setDrivers(d.data?.data ?? [])
       setOffers(o.data?.data ?? [])
+      failedRef.current = false
     } catch (err) {
-      toastRef.current.error(errMsg(err, 'Could not load Daily Drivers'))
+      if (id !== reqRef.current) return
+      if (!failedRef.current) toastRef.current.error(errMsg(err, 'Could not load Daily Drivers'))
+      failedRef.current = true
+      const status = err?.response?.status
+      // 4xx (order went live / was assigned / city mismatch): retrying will not help, stop polling
+      if (status >= 400 && status < 500) clearInterval(timerRef.current)
     } finally {
-      setLoading(false)
+      if (id === reqRef.current) setLoading(false)
     }
   }, [orderId])
 
@@ -39,9 +50,14 @@ export default function NextDayOfferModal({ open, order, onClose, onChanged }) {
     if (!open) return undefined
     setDrivers([])
     setOffers([])
-    load()
-    const t = setInterval(load, 5000) // follow the cascade while the modal is open
-    return () => clearInterval(t)
+    failedRef.current = false
+    load(true)
+    const t = setInterval(() => load(), 5000) // follow the cascade while the modal is open
+    timerRef.current = t
+    return () => {
+      clearInterval(t)
+      reqRef.current += 1 // invalidate any in-flight request
+    }
   }, [open, load])
 
   const openOffer = offers.find((o) => o.status === 'offered')
