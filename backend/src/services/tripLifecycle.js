@@ -443,14 +443,26 @@ async function rejectOrder(orderId, riderId, packageId = null) {
     data: { status: "10" },
   });
   if (result.count > 0) {
-    await dispatchManager.recordModel1Outcome(riderId, resolvedPackageId, "miss");
-    // Tiered dispatch: log the reject and penalise it when it happened in a Free/Daily stage. A reject that
-    // arrives after the same offer's timeout was already penalised as a skip is a no-op in the penalty service.
+    // Rejecting a next-day Daily Driver offer is an explicit part of that flow: no Model-1 miss, no tier penalty.
+    let nextDayOffer = null;
     try {
-      const stage = await orderStage.getStage(orderId);
-      await tierPenalty.onMiss({ orderId, riderId, event: "rejected", stage });
-    } catch (err) {
-      logger.error(`rejectOrder: tier penalty hook failed for order ${orderId}:`, err);
+      nextDayOffer = await prisma.next_day_daily_offer.findFirst({
+        where: { order_id: orderId, rider_id: riderId, status: "offered" },
+        select: { id: true },
+      });
+    } catch (_err) {
+      nextDayOffer = null;
+    }
+    if (!nextDayOffer) {
+      await dispatchManager.recordModel1Outcome(riderId, resolvedPackageId, "miss");
+      // Tiered dispatch: log the reject and penalise it when it happened in a Free/Daily stage. A reject that
+      // arrives after the same offer's timeout was already penalised as a skip is a no-op in the penalty service.
+      try {
+        const stage = await orderStage.getStage(orderId);
+        await tierPenalty.onMiss({ orderId, riderId, event: "rejected", stage });
+      } catch (err) {
+        logger.error(`rejectOrder: tier penalty hook failed for order ${orderId}:`, err);
+      }
     }
     // Next-day Daily Driver offer (spec 2026-10-13): a reject passes the order to the next Daily Driver at once.
     // The sweeper would catch it within ~10 s anyway; this just makes it instant. Never blocks the reject.
@@ -684,11 +696,15 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // 10% lower; the difference is recorded for admin to settle (spec 2026-10-13). An order that already went
     // live (Normal Driver dispatch) pays 100%.
     if (isDailyDriverExempt && Number(order.booking_type) === 3 && order.next_day_stage === "arranging") {
-      const split = nextDayRules.splitDailyDriverFare(finalTotal);
-      await prisma.pkg_order.update({
-        where: { id: orderId },
-        data: { driver_earning: split.driverEarning, next_day_discount_amount: split.discount },
-      });
+      try {
+        const split = nextDayRules.splitDailyDriverFare(finalTotal);
+        await prisma.pkg_order.update({
+          where: { id: orderId },
+          data: { driver_earning: split.driverEarning, next_day_discount_amount: split.discount },
+        });
+      } catch (err) {
+        logger.error(`updateStatus: next-day 90% earning write failed for order ${orderId}:`, err);
+      }
     }
 
     const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;

@@ -70,6 +70,7 @@ const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
 const freeBookingService = require("../freeBookingService");
 const logger = require("../../utils/logger");
+const tierPenalty = require("../tierPenaltyService");
 const { SCHEDULED_ORDER_PRIORITY_WINDOW_MS } = require("../../config/constants");
 const { haversineKm } = require("../../utils/geoDistance");
 const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
@@ -510,7 +511,58 @@ describe("tripLifecycle.rejectOrder", () => {
     prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
     nextDayOfferService.onRejected.mockRejectedValueOnce(new Error("boom"));
 
+    const logSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+
     await expect(tripLifecycle.rejectOrder(297, 1)).resolves.toEqual({ success: true });
+    await new Promise((r) => setImmediate(r));
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("next-day cascade failed for order 297"), expect.any(Error));
+    logSpy.mockRestore();
+  });
+
+  describe("next-day Daily Driver offer reject is not a miss", () => {
+    let onMiss;
+    beforeEach(() => {
+      onMiss = jest.spyOn(tierPenalty, "onMiss").mockResolvedValue(undefined);
+      lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+      prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+    });
+    afterEach(() => {
+      onMiss.mockRestore();
+      delete prisma.next_day_daily_offer;
+    });
+
+    it("open next-day offer: no Model-1 miss, no tier penalty, cascade still runs", async () => {
+      prisma.next_day_daily_offer = { findFirst: jest.fn().mockResolvedValue({ id: 3 }) };
+
+      await tripLifecycle.rejectOrder(297, 1);
+
+      expect(prisma.next_day_daily_offer.findFirst).toHaveBeenCalledWith({
+        where: { order_id: 297, rider_id: 1, status: "offered" },
+        select: { id: true },
+      });
+      expect(dispatchManager.recordModel1Outcome).not.toHaveBeenCalled();
+      expect(onMiss).not.toHaveBeenCalled();
+      expect(nextDayOfferService.onRejected).toHaveBeenCalledWith(297, 1);
+    });
+
+    it("no open offer: miss and penalty recorded as before", async () => {
+      prisma.next_day_daily_offer = { findFirst: jest.fn().mockResolvedValue(null) };
+
+      await tripLifecycle.rejectOrder(297, 1);
+
+      expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+      expect(onMiss).toHaveBeenCalled();
+    });
+
+    it("lookup failure (or missing delegate) falls back to the normal miss path", async () => {
+      prisma.next_day_daily_offer = { findFirst: jest.fn().mockRejectedValue(new Error("db")) };
+
+      await tripLifecycle.rejectOrder(297, 1);
+
+      expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+      expect(onMiss).toHaveBeenCalled();
+    });
   });
 });
 
@@ -1505,6 +1557,24 @@ describe("tripLifecycle.updateStatus('complete') — next-day Daily Driver earni
       where: { id: 310 },
       data: { driver_earning: 90, next_day_discount_amount: 10 },
     });
+    // Must land AFTER the main completion write (which sets driver_earning = gross fare).
+    const earningWrites = prisma.pkg_order.update.mock.calls.filter(([arg]) => arg.data && "driver_earning" in arg.data);
+    expect(earningWrites[earningWrites.length - 1][0].data).toEqual({ driver_earning: 90, next_day_discount_amount: 10 });
+  });
+
+  it("a failing earning write never fails the completed trip", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+    prisma.pkg_order.update.mockImplementation(async (arg) => {
+      if (arg.data && "next_day_discount_amount" in arg.data) throw new Error("db down");
+      return {};
+    });
+    const logSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+
+    const result = await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("order 310"), expect.any(Error));
+    logSpy.mockRestore();
   });
 
   it("an order that already went live (Normal Driver dispatch) pays 100%", async () => {

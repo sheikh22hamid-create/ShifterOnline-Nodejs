@@ -35,6 +35,7 @@ jest.mock("../../services/pickupCityService", () => ({ resolvePickupCityId: jest
 jest.mock("../../services/nextDaySettings", () => ({ getLiveTime: jest.fn().mockResolvedValue("07:00") }));
 
 const prisma = require("../../config/db");
+const nextDaySettings = require("../../services/nextDaySettings");
 const pricingEngine = require("../../services/pricingEngine");
 const receiverPayService = require("../../services/receiverPayService");
 const freeBookingService = require("../../services/freeBookingService");
@@ -76,6 +77,14 @@ describe("createOrderCore - next-day arranging fields", () => {
     expect(data.next_day_stage).toBe("arranging");
     expect(data.next_day_live_at).toBeInstanceOf(Date);
     expect(data.next_day_live_at.toISOString()).toBe(`${data.schedule_date_time}T01:30:00.000Z`); // 07:00 IST
+  });
+
+  it("a failing live-time settings read falls back to 14:00 IST and the order is still created", async () => {
+    nextDaySettings.getLiveTime.mockRejectedValueOnce(new Error("db down"));
+    const result = await createOrderCore({ ...input, bookingType: 3 });
+    expect(result.ok).toBe(true);
+    const data = createdData();
+    expect(data.next_day_live_at.toISOString()).toBe(`${data.schedule_date_time}T08:30:00.000Z`); // 14:00 IST
   });
 
   it.each([1, 2])("booking_type %i gets neither next-day key", async (bookingType) => {

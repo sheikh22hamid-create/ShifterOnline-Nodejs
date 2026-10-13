@@ -547,7 +547,7 @@ async function createOrderCore({
   const nextDayFields = Number(bookingType) === 3
     ? {
         next_day_stage: nextDayRules.STAGE.ARRANGING,
-        next_day_live_at: nextDayRules.liveAtFor(finalScheduleDateTime, await nextDaySettings.getLiveTime()),
+        next_day_live_at: nextDayRules.liveAtFor(finalScheduleDateTime, await nextDaySettings.getLiveTime().catch(() => nextDayRules.DEFAULT_LIVE_TIME)),
       }
     : {};
 
