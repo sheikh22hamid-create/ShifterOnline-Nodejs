@@ -4,6 +4,7 @@ const adminSocket = require("../sockets/adminSocket");
 const pricingEngine = require("./pricingEngine");
 const settings = require("./nextDaySettings");
 const rules = require("./nextDayRules");
+const lockManager = require("./lockManager");
 
 // dispatchManager requires many modules; load it lazily like bookingGuaranteeService does.
 const dispatchManager = () => require("./dispatchManager");
@@ -12,7 +13,9 @@ const { OFFER, STAGE, DAILY_DRIVER_SHARE } = rules;
 const ALERT = "NEXT-DAY ORDER";
 const LIVE_ALERT_THROTTLE_MS = 10 * 60 * 1000;
 const STUCK_OFFER_GRACE_MS = 30 * 1000;
+const BUSY_RETRY_MS = 20 * 1000;
 const liveFailAlertAt = new Map(); // orderId -> last go-live-failed alert time (ms)
+const busyRetryTimers = new Map(); // orderId -> pending cascade retry (all candidates were busy)
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 const isArranging = (order) =>
@@ -46,6 +49,8 @@ async function offerToDriver({ order, riderId, adminId = null, now = new Date() 
   if (open) throw httpError(409, "An offer for this order is already open");
   const available = await listAvailableDailyDrivers(order);
   if (!available.some((r) => Number(r.id) === Number(riderId))) throw httpError(400, "This driver is not an available Daily Driver for this order");
+  // A driver holding another popup would be refused by the send; refuse before writing a row so they stay eligible.
+  if (lockManager.isLocked(Number(riderId))) throw Object.assign(httpError(409, "Driver is busy with another request"), { busy: true });
 
   const seconds = await settings.getOfferSeconds();
   const expiresAt = new Date(now.getTime() + seconds * 1000);
@@ -90,14 +95,20 @@ async function cascade(orderId, now = new Date()) {
   if (open) return "skipped";
 
   const available = await listAvailableDailyDrivers(order);
+  let sawBusy = false;
   for (const rider of available) {
     try {
       await offerToDriver({ order, riderId: rider.id, adminId: null, now });
       return "offered";
     } catch (err) {
+      if (err.busy) { sawBusy = true; continue; } // busy elsewhere: still eligible, try the next one
       if (err.statusCode === 409 || err.statusCode === 400) continue; // unreachable / raced: try the next one
       throw err;
     }
+  }
+  if (sawBusy) {
+    scheduleBusyRetry(order.id);
+    return "busy";
   }
   try {
     adminSocket.notifyDispatchAlert(order.id, order.city_id, `${ALERT} – NO DAILY DRIVER LEFT, ARRANGE MANUALLY`, { kind: "next_day_none_left" });
@@ -105,6 +116,17 @@ async function cascade(orderId, now = new Date()) {
     logger.error(`nextDayOffer: none-left alert failed for order ${order.id}:`, err);
   }
   return "none_left";
+}
+
+/** One best-effort in-memory retry per order (lost on restart; admin can still Offer, go-live still happens). */
+function scheduleBusyRetry(orderId) {
+  if (busyRetryTimers.has(orderId)) return;
+  const timer = setTimeout(() => {
+    busyRetryTimers.delete(orderId);
+    cascade(orderId).catch((err) => logger.error(`nextDayOffer: busy retry cascade failed for order ${orderId}:`, err));
+  }, BUSY_RETRY_MS);
+  if (typeof timer.unref === "function") timer.unref();
+  busyRetryTimers.set(orderId, timer);
 }
 
 async function closeOffer(offer, status, now) {

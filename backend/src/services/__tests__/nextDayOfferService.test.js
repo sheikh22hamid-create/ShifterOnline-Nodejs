@@ -11,6 +11,7 @@ jest.mock("../pricingEngine", () => ({ getFirstTierPricingContext: jest.fn().moc
 jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(), startDispatch: jest.fn().mockResolvedValue(undefined), emitDriverEvent: jest.fn(),
 }));
+jest.mock("../lockManager", () => ({ isLocked: jest.fn(() => false) }));
 jest.mock("../tieredDispatchSettings", () => ({ isTieredEnabled: jest.fn().mockResolvedValue(false) }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
@@ -20,6 +21,7 @@ const dispatchManager = require("../dispatchManager");
 const adminSocket = require("../../sockets/adminSocket");
 const tieredSettings = require("../tieredDispatchSettings");
 const pricingEngine = require("../pricingEngine");
+const lockManager = require("../lockManager");
 const svc = require("../nextDayOfferService");
 
 const NOW = new Date("2026-10-13T05:00:00Z");
@@ -40,6 +42,7 @@ beforeEach(() => {
   prisma.next_day_daily_offer.update.mockResolvedValue({});
   prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
   tieredSettings.isTieredEnabled.mockResolvedValue(false);
+  lockManager.isLocked.mockImplementation(() => false);
   prisma.tbl_rider.findMany.mockResolvedValue([rider(1), rider(2), rider(3)]);
   dispatchManager.offerToInterestedRiders.mockImplementation(async (o, ids) => ({ offeredRiderIds: ids }));
 });
@@ -122,6 +125,45 @@ describe("cascade", () => {
   it("does nothing while another offer is open", async () => {
     prisma.next_day_daily_offer.findFirst.mockResolvedValue({ id: 5 });
     expect(await svc.cascade(10, NOW)).toBe("skipped");
+  });
+  it("skips a busy (locked) driver without writing a row and offers the next one", async () => {
+    lockManager.isLocked.mockImplementation((id) => Number(id) === 1);
+    expect(await svc.cascade(10, NOW)).toBe("offered");
+    expect(prisma.next_day_daily_offer.create).toHaveBeenCalledTimes(1);
+    expect(prisma.next_day_daily_offer.create.mock.calls[0][0].data.rider_id).not.toBe(1);
+  });
+  describe("when every candidate is busy", () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+    it("returns 'busy' without the none-left alert and schedules ONE retry after 20 s", async () => {
+      lockManager.isLocked.mockImplementation(() => true);
+      expect(await svc.cascade(10, NOW)).toBe("busy");
+      expect(await svc.cascade(10, NOW)).toBe("busy"); // a second busy pass must not stack a second timer
+      expect(prisma.next_day_daily_offer.create).not.toHaveBeenCalled();
+      expect(adminSocket.notifyDispatchAlert).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(1);
+      lockManager.isLocked.mockImplementation(() => false);
+      await jest.advanceTimersByTimeAsync(19999);
+      expect(prisma.next_day_daily_offer.create).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(prisma.next_day_daily_offer.create).toHaveBeenCalledTimes(1);
+    });
+    it("mixed busy + unreachable with nobody offered is still 'busy' (no alert)", async () => {
+      lockManager.isLocked.mockImplementation((id) => Number(id) === 1);
+      dispatchManager.offerToInterestedRiders.mockResolvedValue({ offeredRiderIds: [] });
+      expect(await svc.cascade(10, NOW)).toBe("busy");
+      expect(adminSocket.notifyDispatchAlert).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("offerToDriver busy driver", () => {
+  it("throws 409 'busy' and writes no row when the driver holds another popup", async () => {
+    lockManager.isLocked.mockImplementation(() => true);
+    await expect(svc.offerToDriver({ order: order(), riderId: 1, adminId: 9, now: NOW }))
+      .rejects.toMatchObject({ statusCode: 409, message: "Driver is busy with another request" });
+    expect(prisma.next_day_daily_offer.create).not.toHaveBeenCalled();
+    expect(lockManager.isLocked).toHaveBeenCalledWith(1);
   });
 });
 
