@@ -218,4 +218,47 @@ describe("WhatsApp Bounded Bot Menu Engine with Regional Languages", () => {
     expect(backToPrimary).toContain("4️⃣ Other Indian Languages");
     expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_LANGUAGE);
   });
+
+  test("13. Driver Partner: Menu has option 3 as Helpline (no plans option), option 1 Easy registration, option 2 Compulsory/Optional docs", async () => {
+    await processMenuMessage(testPhone, "Hi");
+    await processMenuMessage(testPhone, "3"); // Hinglish
+    const driverMenu = await processMenuMessage(testPhone, "2"); // Driver Partner
+
+    expect(driverMenu).toContain("Driver Partner Support");
+    expect(driverMenu).toContain("1️⃣ Gadi Jodein");
+    expect(driverMenu).toContain("2️⃣ Jaruri Documents");
+    expect(driverMenu).toContain("3️⃣ Driver Helpline Number");
+    expect(driverMenu).toContain("0️⃣ Main Menu par wapas jayein");
+    expect(driverMenu).toContain("1, 2, 3 ya 0");
+    expect(driverMenu).not.toContain("Kamai, Commission aur Plans");
+
+    // Option 1: Attach Vehicle
+    const opt1Reply = await processMenuMessage(testPhone, "1");
+    expect(opt1Reply).toContain("Easy registration");
+    expect(opt1Reply).not.toContain("Daily direct UPI / Bank payout");
+    expect(opt1Reply).not.toContain("5 minute me aasan registration");
+
+    // Option 2: Documents
+    const opt2Reply = await processMenuMessage(testPhone, "2");
+    expect(opt2Reply).toContain("Required Documents (Compulsory)");
+    expect(opt2Reply).toContain("Aadhaar Card");
+    expect(opt2Reply).toContain("Driving License");
+    expect(opt2Reply).toContain("Vehicle RC");
+    expect(opt2Reply).toContain("Optional Documents");
+    expect(opt2Reply).toContain("PAN Card");
+    expect(opt2Reply).toContain("Bank Details");
+    expect(opt2Reply).toContain("PUC");
+    expect(opt2Reply).toContain("Insurance (Bima)");
+
+    // Option 3: Helpline
+    const opt3Reply = await processMenuMessage(testPhone, "3");
+    expect(opt3Reply).toContain("Driver Support Helpline");
+    expect(opt3Reply).toContain(HELPLINE_NUMBER);
+
+    // Option 4: Also returns Helpline for backward compatibility
+    const opt4Reply = await processMenuMessage(testPhone, "4");
+    expect(opt4Reply).toContain("Driver Support Helpline");
+    expect(opt4Reply).toContain(HELPLINE_NUMBER);
+  });
 });
+

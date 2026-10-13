@@ -239,92 +239,83 @@ const TEXTS = {
         `कृपया नीचे दिए गए विकल्पों में से नंबर चुनें:\n\n` +
         `1️⃣ गाड़ी जोड़ें (Driver Partner App डाउनलोड लिंक)\n` +
         `2️⃣ जरूरी कागजात (Required Documents)\n` +
-        `3️⃣ कमाई, कमीशन और सब्सक्रिप्शन प्लान्स\n` +
-        `4️⃣ ड्राइवर हेल्पलाइन नंबर (Driver Support)\n` +
+        `3️⃣ ड्राइवर हेल्पलाइन नंबर (Driver Support)\n` +
         `0️⃣ मुख्य मेन्यू पर वापस जाएं (Main Menu)\n\n` +
-        `👉 कृपया *1, 2, 3, 4 या 0* लिखकर भेजें।`,
+        `👉 कृपया *1, 2, 3 या 0* लिखकर भेजें।`,
       en:
         `🚚 *Shifter Online - Driver Partner Support*\n\n` +
         `Please choose an option by replying with a number:\n\n` +
         `1️⃣ Attach Vehicle (Download Driver Partner App)\n` +
         `2️⃣ Required Documents for Onboarding\n` +
-        `3️⃣ Earnings, Commission & Plans\n` +
-        `4️⃣ Driver Helpline & Support\n` +
+        `3️⃣ Driver Helpline & Support\n` +
         `0️⃣ Back to Main Menu\n\n` +
-        `👉 Please reply with *1, 2, 3, 4 or 0*.`,
+        `👉 Please reply with *1, 2, 3 or 0*.`,
       hinglish:
         `🚚 *Shifter Online - Driver Partner Support*\n\n` +
         `Kripya neeche diye gaye options me se number chunein:\n\n` +
         `1️⃣ Gadi Jodein (Driver Partner App download link)\n` +
         `2️⃣ Jaruri Documents (DL, RC, Aadhaar, PAN)\n` +
-        `3️⃣ Kamai, Commission aur Plans ki jankari\n` +
-        `4️⃣ Driver Helpline Number\n` +
+        `3️⃣ Driver Helpline Number\n` +
         `0️⃣ Main Menu par wapas jayein\n\n` +
-        `👉 Kripya *1, 2, 3, 4 ya 0* likhkar bhejein.`,
+        `👉 Kripya *1, 2, 3 ya 0* likhkar bhejein.`,
       mr:
         `🚚 *Shifter Online - चालक सेवा (Driver Partner)*\n\n` +
         `कृपया खालील पर्यायांमधून नंबर निवडा:\n\n` +
         `1️⃣ वाहन जोडा (Driver App डाउनलोड लिंक)\n` +
         `2️⃣ आवश्यक कागदपत्रे (Required Documents)\n` +
-        `3️⃣ कमाई, कमिशन आणि प्लॅन्स\n` +
-        `4️⃣ चालक हेल्पलाइन (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ चालक हेल्पलाइन (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ मुख्य मेनूवर परत जा\n\n` +
-        `👉 कृपया *1, 2, 3, 4 किंवा 0* लिहून पाठवा.`,
+        `👉 कृपया *1, 2, 3 किंवा 0* लिहून पाठवा.`,
       gu:
         `🚚 *Shifter Online - ડ્રાઇવર પાર્ટનર સેવા*\n\n` +
         `કૃપા કરીને નીચેના વિકલ્પોમાંથી નંબર પસંદ કરો:\n\n` +
         `1️⃣ વાહન જોડો (Driver App ડાઉનલોડ લિંક)\n` +
         `2️⃣ જરૂરી દસ્તાવેજો (Required Documents)\n` +
-        `3️⃣ કમાણી, કમિશન અને પ્લાન્સની માહિતી\n` +
-        `4️⃣ ડ્રાઇવર હેલ્પલાઇન (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ ડ્રાઇવર હેલ્પલાઇન (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ મુખ્ય મેનુ પર પાછા જાઓ\n\n` +
-        `👉 કૃપા કરીને *1, 2, 3, 4 અથવા 0* લખીને મોકલો.`,
+        `👉 કૃપા કરીને *1, 2, 3 અથવા 0* લખીને મોકલો.`,
       pa:
         `🚚 *Shifter Online - ਡਰਾਈਵਰ ਪਾਰਟਨਰ ਸੇਵਾ*\n\n` +
         `ਕਿਰਪਾ ਕਰਕੇ ਹੇਠਾਂ ਦਿੱਤੇ ਵਿਕਲਪਾਂ ਵਿੱਚੋਂ ਨੰਬਰ ਚੁਣੋ:\n\n` +
         `1️⃣ ਗੱਡੀ ਜੋੜੋ (Driver App ਡਾਊਨਲੋਡ ਲਿੰਕ)\n` +
         `2️⃣ ਜ਼ਰੂਰੀ ਦਸਤਾਵੇਜ਼ (Required Documents)\n` +
-        `3️⃣ ਕਮਾਈ, ਕਮਿਸ਼ਨ ਅਤੇ ਪਲਾਨਾਂ ਦੀ ਜਾਣਕਾਰੀ\n` +
-        `4️⃣ ਡਰਾਈਵਰ ਹੈਲਪਲਾਈਨ (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ ਡਰਾਈਵਰ ਹੈਲਪਲਾਈਨ (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ ਮੇਨ ਮੈਨੂ 'ਤੇ ਵਾਪਸ ਜਾਓ\n\n` +
-        `👉 ਕਿਰਪਾ ਕਰਕੇ *1, 2, 3, 4 ਜਾਂ 0* ਲਿਖ ਕੇ ਭੇਜੋ।`,
+        `👉 ਕਿਰਪਾ ਕਰਕੇ *1, 2, 3 ਜਾਂ 0* ਲਿਖ ਕੇ ਭੇਜੋ।`,
       bn:
         `🚚 *Shifter Online - ড্রাইভার পার্টনার সেবা*\n\n` +
         `দয়া করে নিচের বিকল্পগুলি থেকে নম্বর নির্বাচন করুন:\n\n` +
         `1️⃣ গাড়ি যুক্ত করুন (Driver App ডাউনলোড লিংক)\n` +
         `2️⃣ প্রয়োজনীয় ডকুমেন্টস (Required Documents)\n` +
-        `3️⃣ উপার্জন ও সাবস্ক্রিপশন প্ল্যান\n` +
-        `4️⃣ ড্রাইভার হেল্পলাইন (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ ড্রাইভার হেল্পলাইন (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ প্রধান মেনুতে ফিরে যান\n\n` +
-        `👉 দয়া করে *1, 2, 3, 4 অথবা 0* লিখে পাঠান।`,
+        `👉 দয়া করে *1, 2, 3 অথবা 0* লিখে পাঠান।`,
       te:
         `🚚 *Shifter Online - డ్రైవర్ భాగస్వామి సేవలు*\n\n` +
         `దయచేసి క్రింది ఎంపికల నుండి సంఖ్యను ఎంచుకోండి:\n\n` +
         `1️⃣ వాహనం జోడించండి (Driver App డౌన్‌లోడ్ లింక్)\n` +
         `2️⃣ అవసరమైన పత్రాలు (Required Documents)\n` +
-        `3️⃣ ఆదాయం మరియు ప్లాన్స్ వివరాలు\n` +
-        `4️⃣ డ్రైవర్ హెల్ప్‌లైన్ (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ డ్రైవర్ హెల్ప్‌లైన్ (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ మెయిన్ మెనూకి తిరిగి వెళ్లండి\n\n` +
-        `👉 దయచేసి *1, 2, 3, 4 లేదా 0* అని పంపండి.`,
+        `👉 దయచేసి *1, 2, 3 లేదా 0* అని పంపండి.`,
       ta:
         `🚚 *Shifter Online - ஓட்டுநர் சேவை*\n\n` +
         `தயவுசெய்து கீழேயுள்ள விருப்பங்களில் இருந்து எண்ணைத் தேர்ந்தெடுக்கவும்:\n\n` +
         `1️⃣ வாகனம் இணைக்கவும் (Driver App பதிவிறக்க இணைப்பு)\n` +
         `2️⃣ தேவையான ஆவணங்கள் (Required Documents)\n` +
-        `3️⃣ வருமானம் மற்றும் திட்டங்கள்\n` +
-        `4️⃣ ஓட்டுநர் உதவி எண் (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ ஓட்டுநர் உதவி எண் (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ முதன்மை மெனுவிற்கு செல்ல\n\n` +
-        `👉 தயவுசெய்து *1, 2, 3, 4 அல்லது 0* என பதிலளிக்கவும்.`,
+        `👉 தயவுசெய்து *1, 2, 3 அல்லது 0* என பதிலளிக்கவும்.`,
       kn:
         `🚚 *Shifter Online - ಚಾಲಕ ಸೇವೆ (Driver Partner)*\n\n` +
         `ದಯವಿಟ್ಟು ಕೆಳಗಿನ ಆಯ್ಕೆಗಳಿಂದ ಸಂಖ್ಯೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ:\n\n` +
         `1️⃣ ವಾಹನ ಜೋಡಿಸಿ (Driver App ಡೌನ್‌ಲೋಡ್ ಲಿಂಕ್)\n` +
         `2️⃣ ಅಗತ್ಯ ದಾಖಲೆಗಳು (Required Documents)\n` +
-        `3️⃣ ಗಳಿಕೆ ಮತ್ತು ಯೋಜನೆಗಳ ಮಾಹಿತಿ\n` +
-        `4️⃣ ಚಾಲಕ ಸಹಾಯವಾಣಿ (Driver Support: ${HELPLINE_NUMBER})\n` +
+        `3️⃣ ಚಾಲಕ ಸಹಾಯವಾಣಿ (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ ಮುಖ್ಯ ಮೆನುಗೆ ಹಿಂತಿರುಗಿ\n\n` +
-        `👉 ದಯವಿಟ್ಟು *1, 2, 3, 4 ಅಥವಾ 0* ಎಂದು ಉತ್ತರಿಸಿ.`,
+        `👉 ದಯವಿಟ್ಟು *1, 2, 3 ಅಥವಾ 0* ಎಂದು ಉತ್ತರಿಸಿ.`,
     },
+
 
     JOB_SEEKER: {
       hi:
@@ -678,261 +669,233 @@ const TEXTS = {
           `🚚 *Shifter Online में गाड़ी जोड़ें और रोज़ाना कमाएं*\n\n` +
           `अपनी गाड़ी (Bike, 3-Wheeler, Tata Ace, Pickup) जोड़कर आज ही ट्रिप शुरू करें।\n\n` +
           `📲 *Driver Partner App डाउनलोड लिंक*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 मिनट में आसान रजिस्ट्रेशन\n` +
-          `✅ तुरंत आईडी वेरिफिकेशन\n` +
-          `✅ रोज़ाना बैंक / UPI में सीधा पेमेंट\n\n` +
+          `✅ आसान रजिस्ट्रेशन (Easy registration)\n` +
+          `✅ तुरंत आईडी वेरिफिकेशन\n\n` +
           `📞 ड्राइवर सपोर्ट: ${HELPLINE_NUMBER}\n\n` +
           `_(अन्य विकल्प के लिए नंबर चुनें या '0' लिखकर मुख्य मेन्यू पर जाएं)_`,
         en:
           `🚚 *Attach Your Vehicle & Earn Daily with Shifter*\n\n` +
           `Attach your Bike, 3-Wheeler, Tata Ace, or Pickup truck and start receiving orders today.\n\n` +
           `📲 *Download Driver Partner App*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ Quick 5-minute onboarding\n` +
-          `✅ Fast document verification\n` +
-          `✅ Daily direct bank/UPI payouts\n\n` +
+          `✅ Easy registration\n` +
+          `✅ Fast document verification\n\n` +
           `📞 Driver Support: ${HELPLINE_NUMBER}\n\n` +
           `_(Reply with another number or '0' for Main Menu)_`,
         hinglish:
           `🚚 *Shifter me Gadi Jodein aur Daily Kamayein*\n\n` +
           `Apni gadi (Bike, Auto, Tata Ace, Pickup) attach karke aaj hi kamai shuru karein.\n\n` +
           `📲 *Driver Partner App Download Link*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 minute me aasan registration\n` +
-          `✅ Instant document verification\n` +
-          `✅ Daily direct UPI / Bank payout\n\n` +
+          `✅ Easy registration\n` +
+          `✅ Instant document verification\n\n` +
           `📞 Driver Helpline: ${HELPLINE_NUMBER}\n\n` +
           `_(Doosre option ke liye number chunein ya '0' likhkar Main Menu par jayein)_`,
         mr:
           `🚚 *Shifter Online मध्ये वाहन जोडा आणि दररोज कमवा*\n\n` +
           `आपले वाहन (Bike, 3-Wheeler, Tata Ace, Pickup) जोडून आजच कमाई सुरू करा.\n\n` +
           `📲 *Driver Partner App डाउनलोड लिंक*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ ५ मिनिटांत सोपी नोंदणी\n` +
-          `✅ थेट बँक / UPI मध्ये दररोज पेमेंट\n\n` +
+          `✅ सोपी नोंदणी (Easy registration)\n\n` +
           `📞 चालक मदत: ${HELPLINE_NUMBER}`,
         gu:
           `🚚 *Shifter Online માં વાહન જોડો અને રોજેરોજ કમાઓ*\n\n` +
           `તમારું વાહન જોડીને આજે જ ઓર્ડર મેળવવાનું શરૂ કરો.\n\n` +
           `📲 *Driver Partner App ડાઉનલોડ લિંક*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 મિનિટમાં સરળ રજીસ્ટ્રેશન\n` +
-          `✅ રોજ સીધું બેંક/UPI પેમેન્ટ\n\n` +
+          `✅ સરળ રજીસ્ટ્રેશન (Easy registration)\n\n` +
           `📞 ડ્રાઇવર સહાય: ${HELPLINE_NUMBER}`,
         pa:
           `🚚 *Shifter Online ਵਿੱਚ ਗੱਡੀ ਜੋੜੋ ਅਤੇ ਰੋਜ਼ਾਨਾ ਕਮਾਓ*\n\n` +
           `ਆਪਣੀ ਗੱਡੀ ਜੋੜ ਕੇ ਅੱਜ ਹੀ ਆਰਡਰ ਪ੍ਰਾਪਤ ਕਰਨਾ ਸ਼ੁਰੂ ਕਰੋ।\n\n` +
           `📲 *Driver Partner App ਡਾਊਨਲੋਡ ਲਿੰਕ*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 ਮਿੰਟ ਵਿੱਚ ਆਸਾਨ ਰਜਿਸਟ੍ਰੇਸ਼ਨ\n` +
-          `✅ ਰੋਜ਼ਾਨਾ ਸਿੱਧਾ ਬੈਂਕ/UPI ਪੇਮੈਂਟ\n\n` +
+          `✅ ਆਸਾਨ ਰਜਿਸਟ੍ਰੇਸ਼ਨ (Easy registration)\n\n` +
           `📞 ਡਰਾਈਵਰ ਹੈਲਪਲਾਈਨ: ${HELPLINE_NUMBER}`,
         bn:
           `🚚 *Shifter Online-এ গাড়ি যুক্ত করুন এবং প্রতিদিন উপার্জন করুন*\n\n` +
           `আপনার গাড়ি যুক্ত করে আজই ট্রিপ শুরু করুন।\n\n` +
           `📲 *Driver Partner App ডাউনলোড লিংক*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ ৫ মিনিটে সহজ রেজিস্ট্রেশন\n` +
-          `✅ প্রতিদিন সরাসরি ব্যাংক/UPI পেমেন্ট\n\n` +
+          `✅ সহজ রেজিস্ট্রেশন (Easy registration)\n\n` +
           `📞 ড্রাইভার সহায়তা: ${HELPLINE_NUMBER}`,
         te:
           `🚚 *Shifter Online లో మీ వాహనాన్ని జతచేసి రోజూ సంపాదించండి*\n\n` +
           `మీ వాహనాన్ని జోడించి ఈరోజే ట్రిప్పులు ప్రారంభించండి.\n\n` +
           `📲 *Driver Partner App డౌన్‌లోడ్ లింక్*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 నిమిషాల్లో సులభమైన రిజిస్ట్రేషన్\n` +
-          `✅ రోజూ నేరుగా బ్యాంక్/UPI చెల్లింపులు\n\n` +
+          `✅ సులభమైన రిజిస్ట్రేషన్ (Easy registration)\n\n` +
           `📞 డ్రైవర్ హెల్ప్‌లైన్: ${HELPLINE_NUMBER}`,
         ta:
           `🚚 *Shifter Online-ல் வாகனம் இணைத்து தினசரி சம்பாதியுங்கள்*\n\n` +
           `உங்கள் வாகனத்தை இணைத்து இன்றே ஆர்டர்களை பெறத் தொடங்குங்கள்.\n\n` +
           `📲 *Driver Partner App பதிவிறக்க இணைப்பு*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 நிமிடங்களில் எளிய பதிவு\n` +
-          `✅ தினசரி நேரடி வங்கி/UPI வருமானம்\n\n` +
+          `✅ எளிய பதிவு (Easy registration)\n\n` +
           `📞 ஓட்டுநர் உதவி எண்: ${HELPLINE_NUMBER}`,
         kn:
           `🚚 *Shifter Online ನಲ್ಲಿ ವಾಹನ ಜೋಡಿಸಿ ದೈನಂದಿನ ಗಳಿಕೆ ಮಾಡಿ*\n\n` +
           `ನಿಮ್ಮ ವಾಹನವನ್ನು ಜೋಡಿಸಿ ಇಂದೇ ಆರ್ಡರ್ ಸ್ವೀಕರಿಸಲು ಪ್ರಾರಂಭಿಸಿ.\n\n` +
           `📲 *Driver Partner App ಡೌನ್‌ಲೋಡ್ ಲಿಂಕ್*:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `✅ 5 ನಿಮಿಷಗಳಲ್ಲಿ ಸುಲಭ ನೋಂದಣಿ\n` +
-          `✅ ದೈನಂದಿನ ನೇರ ಬ್ಯಾಂಕ್/UPI ಪಾವತಿ\n\n` +
+          `✅ ಸುಲಭ ನೋಂದಣಿ (Easy registration)\n\n` +
           `📞 ಚಾಲಕ ಸಹಾಯವಾಣಿ: ${HELPLINE_NUMBER}`,
       },
       "2": {
         hi:
           `📋 *ड्राइवर ऑनबोर्डिंग के लिए जरूरी कागजात*\n\n` +
-          `1️⃣ ड्राइविंग लाइसेंस (Driving License - DL)\n` +
-          `2️⃣ वाहन आरसी (Vehicle RC Book)\n` +
-          `3️⃣ आधार कार्ड (Aadhaar Card)\n` +
-          `4️⃣ पैन कार्ड (PAN Card)\n` +
-          `5️⃣ बैंक खाता या UPI विवरण (Bank Account / UPI)\n` +
-          `6️⃣ ड्राइवर की लाइव सेल्फी फोटो\n\n` +
+          `*Required Documents (अनिवार्य / Compulsory):*\n` +
+          `1️⃣ आधार कार्ड (Aadhaar Card)\n` +
+          `2️⃣ ड्राइविंग लाइसेंस (Driving License - DL)\n` +
+          `3️⃣ वाहन आरसी (Vehicle RC)\n\n` +
+          `*Optional Documents (वैकल्पिक):*\n` +
+          `🔹 पैन कार्ड (PAN Card)\n` +
+          `🔹 बैंक डिटेल (Bank Details)\n` +
+          `🔹 पीयूसी (PUC)\n` +
+          `🔹 बीमा (Insurance / Bima)\n\n` +
           `📲 कागजात अपलोड करने के लिए Shifter Driver App डाउनलोड करें:\n` +
           `👉 ${DRIVER_APP_URL}\n\n` +
           `📞 सहायता: ${HELPLINE_NUMBER}\n\n` +
           `_(अन्य विकल्प के लिए नंबर चुनें या '0' लिखकर मुख्य मेन्यू पर जाएं)_`,
         en:
           `📋 *Required Documents for Driver Onboarding*\n\n` +
-          `1️⃣ Driving License (DL)\n` +
-          `2️⃣ Vehicle RC Book\n` +
-          `3️⃣ Aadhaar Card / Govt ID\n` +
-          `4️⃣ PAN Card\n` +
-          `5️⃣ Bank Account or UPI Details\n` +
-          `6️⃣ Driver Selfie Photo\n\n` +
+          `*Required Documents (Compulsory):*\n` +
+          `1️⃣ Aadhaar Card\n` +
+          `2️⃣ Driving License (DL)\n` +
+          `3️⃣ Vehicle RC\n\n` +
+          `*Optional Documents:*\n` +
+          `🔹 PAN Card\n` +
+          `🔹 Bank Details\n` +
+          `🔹 PUC\n` +
+          `🔹 Insurance (Bima)\n\n` +
           `📲 Upload documents via Shifter Driver App:\n` +
           `👉 ${DRIVER_APP_URL}\n\n` +
           `📞 Support: ${HELPLINE_NUMBER}\n\n` +
           `_(Reply with another number or '0' for Main Menu)_`,
         hinglish:
           `📋 *Driver Onboarding ke liye Jaruri Documents*\n\n` +
-          `1️⃣ Driving License (DL)\n` +
-          `2️⃣ Vehicle RC Book\n` +
-          `3️⃣ Aadhaar Card\n` +
-          `4️⃣ PAN Card\n` +
-          `5️⃣ Bank Account ya UPI ID\n` +
-          `6️⃣ Driver ki photo\n\n` +
+          `*Required Documents (Compulsory):*\n` +
+          `1️⃣ Aadhaar Card\n` +
+          `2️⃣ Driving License (DL)\n` +
+          `3️⃣ Vehicle RC\n\n` +
+          `*Optional Documents:*\n` +
+          `🔹 PAN Card\n` +
+          `🔹 Bank Details\n` +
+          `🔹 PUC\n` +
+          `🔹 Insurance (Bima)\n\n` +
           `📲 Documents upload karne ke liye Driver App download karein:\n` +
           `👉 ${DRIVER_APP_URL}\n\n` +
           `📞 Helpline: ${HELPLINE_NUMBER}\n\n` +
           `_(Doosre option ke liye number chunein ya '0' likhkar Main Menu par jayein)_`,
         mr:
           `📋 *चालक ऑनबोर्डिंगसाठी आवश्यक कागदपत्रे*\n\n` +
-          `1️⃣ ड्रायव्हिंग लायસन्स (DL)\n` +
-          `2️⃣ वाहन आरसी (RC Book)\n` +
-          `3️⃣ आधार कार्ड (Aadhaar Card)\n` +
-          `4️⃣ पॅन कार्ड (PAN Card)\n` +
-          `5️⃣ बँक खाते किंवा UPI तपशील\n` +
-          `6️⃣ सेल्फी फोटो\n\n` +
+          `*अनिवार्य कागदपत्रे (Compulsory):*\n` +
+          `1️⃣ आधार कार्ड (Aadhaar Card)\n` +
+          `2️⃣ ड्रायव्हिंग लायसन्स (DL)\n` +
+          `3️⃣ वाहन आरसी (Vehicle RC)\n\n` +
+          `*ऐच्छिक कागदपत्रे (Optional):*\n` +
+          `🔹 पॅन कार्ड (PAN Card)\n` +
+          `🔹 बँक तपशील (Bank Details)\n` +
+          `🔹 पीयूसी (PUC)\n` +
+          `🔹 विमा (Insurance / Bima)\n\n` +
           `📲 ॲपद्वारे कागदपत्रे अपलोड करा:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 मदत: ${HELPLINE_NUMBER}`,
         gu:
           `📋 *ડ્રાઇવર ઓનબોર્ડિંગ માટે જરૂરી દસ્તાવેજો*\n\n` +
-          `1️⃣ ડ્રાઇવિંગ લાઇસન્સ (DL)\n` +
-          `2️⃣ વાહન આરસી બુક (RC Book)\n` +
-          `3️⃣ આધાર કાર્ડ (Aadhaar Card)\n` +
-          `4️⃣ પાન કાર્ડ (PAN Card)\n` +
-          `5️⃣ બેંક ખાતું અથવા UPI વિગત\n` +
-          `6️⃣ સેલ્ફી ફોટો\n\n` +
+          `*જરૂરી દસ્તાવેજો (Compulsory):*\n` +
+          `1️⃣ આધાર કાર્ડ (Aadhaar Card)\n` +
+          `2️⃣ ડ્રાઇવિંગ લાઇસન્સ (DL)\n` +
+          `3️⃣ વાહન આરસી (Vehicle RC)\n\n` +
+          `*વૈકલ્પિક દસ્તાવેજો (Optional):*\n` +
+          `🔹 પાન કાર્ડ (PAN Card)\n` +
+          `🔹 બેંક વિગતો (Bank Details)\n` +
+          `🔹 પીયુસી (PUC)\n` +
+          `🔹 વીમો (Insurance / Bima)\n\n` +
           `📲 એપ પર ડોક્યુમેન્ટ અપલોડ કરો:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 સહાય: ${HELPLINE_NUMBER}`,
         pa:
           `📋 *ਡਰਾਈਵਰ ਔਨਬੋਰਡਿੰਗ ਲਈ ਜ਼ਰੂਰੀ ਦਸਤਾਵੇਜ਼*\n\n` +
-          `1️⃣ ਡਰਾਈਵਿੰਗ ਲਾਇਸੈਂਸ (DL)\n` +
-          `2️⃣ ਗੱਡੀ ਦੀ ਆਰਸੀ (RC Book)\n` +
-          `3️⃣ ਆਧਾਰ ਕਾਰਡ\n` +
-          `4️⃣ ਪੈਨ ਕਾਰਡ\n` +
-          `5️⃣ ਬੈਂਕ ਖਾਤਾ ਜਾਂ UPI\n` +
-          `6️⃣ ਸੈਲਫੀ ਫੋਟੋ\n\n` +
+          `*ਜ਼ਰੂਰੀ ਦਸਤਾਵੇਜ਼ (Compulsory):*\n` +
+          `1️⃣ ਆਧਾਰ ਕਾਰਡ (Aadhaar Card)\n` +
+          `2️⃣ ਡਰਾਈਵਿੰਗ ਲਾਇਸੈਂਸ (DL)\n` +
+          `3️⃣ ਗੱਡੀ ਦੀ ਆਰਸੀ (Vehicle RC)\n\n` +
+          `*ਚੋਣਵੇਂ ਦਸਤਾਵੇਜ਼ (Optional):*\n` +
+          `🔹 ਪੈਨ ਕਾਰਡ (PAN Card)\n` +
+          `🔹 ਬੈਂਕ ਵੇਰਵੇ (Bank Details)\n` +
+          `🔹 ਪੀਯੂਸੀ (PUC)\n` +
+          `🔹 ਬੀਮਾ (Insurance / Bima)\n\n` +
           `📲 ਐਪ ਰਾਹੀਂ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਕਰੋ:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 ਹੈਲਪਲਾਈਨ: ${HELPLINE_NUMBER}`,
         bn:
           `📋 *ড্রাইভার অনবোর্ডিংয়ের জন্য প্রয়োজনীয় ডকুমেন্টস*\n\n` +
-          `1️⃣ ড্রাইভিং লাইসেন্স (DL)\n` +
-          `2️⃣ গাড়ির আরসি (RC Book)\n` +
-          `3️⃣ আধার কার্ড\n` +
-          `4️⃣ প্যান কার্ড\n` +
-          `5️⃣ ব্যাংক একাউন্ট বা UPI\n` +
-          `6️⃣ সেলফি ফটো\n\n` +
+          `*বাধ্যতামূলক ডকুমেন্টস (Compulsory):*\n` +
+          `1️⃣ আধার কার্ড (Aadhaar Card)\n` +
+          `2️⃣ ড্রাইভিং লাইসেন্স (DL)\n` +
+          `3️⃣ গাড়ির আরসি (Vehicle RC)\n\n` +
+          `*ঐচ্ছিক ডকুমেন্টস (Optional):*\n` +
+          `🔹 প্যান কার্ড (PAN Card)\n` +
+          `🔹 ব্যাংক বিবরণ (Bank Details)\n` +
+          `🔹 পিইউসি (PUC)\n` +
+          `🔹 বীমা (Insurance / Bima)\n\n` +
           `📲 ডকুমেন্টস আপলোড করতে অ্যাপ ডাউনলোড করুন:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 সহায়তা: ${HELPLINE_NUMBER}`,
         te:
           `📋 *డ్రైవర్ ఆన్‌బోర్డింగ్ కోసం అవసరమైన పత్రాలు*\n\n` +
-          `1️⃣ డ్రైవింగ్ లైసెన్స్ (DL)\n` +
-          `2️⃣ వెహికల్ ఆర్సీ (RC Book)\n` +
-          `3️⃣ ఆధార్ కార్డు\n` +
-          `4️⃣ పాన్ కార్డు\n` +
-          `5️⃣ బ్యాంక్ ఖాతా లేదా UPI\n` +
-          `6️⃣ డ్రైవర్ సెల్ఫీ ఫోటో\n\n` +
+          `*తప్పనిసరి పత్రాలు (Compulsory):*\n` +
+          `1️⃣ ఆధార్ కార్డు (Aadhaar Card)\n` +
+          `2️⃣ డ్రైవింగ్ లైసెన్స్ (DL)\n` +
+          `3️⃣ వెహికల్ ఆర్సీ (Vehicle RC)\n\n` +
+          `*ఐచ్ఛిక పత్రాలు (Optional):*\n` +
+          `🔹 పాన్ కార్డు (PAN Card)\n` +
+          `🔹 బ్యాంక్ వివరాలు (Bank Details)\n` +
+          `🔹 పీయూసీ (PUC)\n` +
+          `🔹 బీమా (Insurance / Bima)\n\n` +
           `📲 డాక్యుమెంట్లు అప్‌లోడ్ చేయడానికి Driver App చూడండి:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 హెల్ప్‌లైన్: ${HELPLINE_NUMBER}`,
         ta:
           `📋 *ஓட்டுநர் இணைப்பிற்கு தேவையான ஆவணங்கள்*\n\n` +
-          `1️⃣ ஓட்டுநர் உரிமம் (DL)\n` +
-          `2️⃣ வாகன ஆர்.சி புத்தகம் (RC Book)\n` +
-          `3️⃣ ஆதார் அட்டை\n` +
-          `4️⃣ பான் கார்டு\n` +
-          `5️⃣ வங்கி கணக்கு அல்லது UPI\n` +
-          `6️⃣ நேரடி செல்ஃபி புகைப்படம்\n\n` +
+          `*கட்டாய ஆவணங்கள் (Compulsory):*\n` +
+          `1️⃣ ஆதார் அட்டை (Aadhaar Card)\n` +
+          `2️⃣ ஓட்டுநர் உரிமம் (DL)\n` +
+          `3️⃣ வாகன ஆர்சி (Vehicle RC)\n\n` +
+          `*விருப்ப ஆவணங்கள் (Optional):*\n` +
+          `🔹 பான் கார்டு (PAN Card)\n` +
+          `🔹 வங்கி விவரங்கள் (Bank Details)\n` +
+          `🔹 பியூசி (PUC)\n` +
+          `🔹 காப்பீடு (Insurance / Bima)\n\n` +
           `📲 ஆவணங்களை பதிவேற்ற Driver App பதிவிறக்கவும்:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 உதவி எண்: ${HELPLINE_NUMBER}`,
         kn:
           `📋 *ಚಾಲಕರ ನೋಂದಣಿಗೆ ಅಗತ್ಯವಿರುವ ದಾಖಲೆಗಳು*\n\n` +
-          `1️⃣ ಚಾಲನಾ ಪರವಾನಗಿ (DL)\n` +
-          `2️⃣ ವಾಹನ ಆರ್‌ಸಿ (RC Book)\n` +
-          `3️⃣ ಆಧಾರ್ ಕಾರ್ಡ್\n` +
-          `4️⃣ ಪ್ಯಾನ್ ಕಾರ್ಡ್\n` +
-          `5️⃣ ಬ್ಯಾಂಕ್ ಖಾತೆ ಅಥವಾ UPI ವಿವರ\n` +
-          `6️⃣ ಲೈವ್ ಸೆಲ್ಫಿ ಫೋಟೋ\n\n` +
+          `*ಕಡ್ಡಾಯ ದಾಖಲೆಗಳು (Compulsory):*\n` +
+          `1️⃣ ಆಧಾರ್ ಕಾರ್ಡ್ (Aadhaar Card)\n` +
+          `2️⃣ ಚಾಲನಾ ಪರವಾನಗಿ (DL)\n` +
+          `3️⃣ ವಾಹನ ಆರ್‌ಸಿ (Vehicle RC)\n\n` +
+          `*ಐಚ್ಛಿಕ ದಾಖಲೆಗಳು (Optional):*\n` +
+          `🔹 ಪ್ಯಾನ್ ಕಾರ್ಡ್ (PAN Card)\n` +
+          `🔹 ಬ್ಯಾಂಕ್ ವಿವರ (Bank Details)\n` +
+          `🔹 ಪಿಯುಸಿ (PUC)\n` +
+          `🔹 ವಿಮೆ (Insurance / Bima)\n\n` +
           `📲 ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಲು App ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 ಸಹಾಯವಾಣಿ: ${HELPLINE_NUMBER}`,
       },
       "3": {
         hi:
-          `💰 *कमाई, कमीशन व सब्सक्रिप्शन प्लान्स*\n\n` +
-          `Shifter Online ड्राइवर्स को अधिकतम कमाई का अवसर देता है:\n` +
-          `⭐ *ज़ीरो कमीशन मॉडल*: अपने मेहनत की पूरी कमाई अपनी जेब में रखें\n` +
-          `⭐ *डेली ड्राइवर प्लान्स*: हर दिन गारंटीड ऑर्डर्स और बोनस\n` +
-          `⭐ *त्वरित विड्रॉल*: अपनी कमाई जब चाहें तुरंत UPI / बैंक खाते में ट्रांसफर करें\n\n` +
-          `📲 प्लान्स की विस्तृत जानकारी Driver App में उपलब्ध है:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 ड्राइवर हेल्पलाइन: ${HELPLINE_NUMBER}`,
+          `📞 *Shifter Online ड्राइवर हेल्पलाइन*\n\n` +
+          `ड्राइवर पार्टनर्स किसी भी समस्या या पूछताछ के लिए सीधे कॉल कर सकते हैं:\n` +
+          `📱 *ड्राइवर हेल्पलाइन*: ${HELPLINE_NUMBER}\n` +
+          `📧 *ईमेल*: ${SUPPORT_EMAIL}\n` +
+          `📲 *Driver App*: ${DRIVER_APP_URL}`,
         en:
-          `💰 *Earnings, Commission & Subscription Plans*\n\n` +
-          `Maximize your daily earnings with Shifter Online:\n` +
-          `⭐ *Zero Commission Model*: Keep 100% of your trip fare\n` +
-          `⭐ *Daily Driver Plans*: Dedicated local orders & daily bonuses\n` +
-          `⭐ *Instant Payouts*: Withdraw your earnings to bank/UPI anytime\n\n` +
-          `📲 View active plans in the Driver App:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 Helpline: ${HELPLINE_NUMBER}`,
+          `📞 *Shifter Online Driver Support Helpline*\n\n` +
+          `For onboarding, account, or ride issues:\n` +
+          `📱 *Driver Support*: ${HELPLINE_NUMBER}\n` +
+          `📧 *Email*: ${SUPPORT_EMAIL}\n` +
+          `📲 *Driver App*: ${DRIVER_APP_URL}`,
         hinglish:
-          `💰 *Kamai, Commission aur Plans ki Jankari*\n\n` +
-          `Shifter Online drivers ke liye best earning model laya hai:\n` +
-          `⭐ *Zero Commission*: Har trip ki poori kamai aapki\n` +
-          `⭐ *Daily Driver Plans*: Local regular orders aur performance bonus\n` +
-          `⭐ *Instant Payout*: Jab chahein apni kamai UPI/Bank me nikaalein\n\n` +
-          `📲 Poori details Driver App me dekhein:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 Driver Helpline: ${HELPLINE_NUMBER}`,
-        mr:
-          `💰 *कमाई, कमिशन आणि प्लॅन्सची माहिती*\n\n` +
-          `⭐ *शून्य कमिशन मॉडेल*: १००% कमाई थेट आपल्या खिशात\n` +
-          `⭐ *डेली ड्रायव्हर प्लॅन्स*: दररोज नियमित ऑर्डर्स व बोनस\n` +
-          `⭐ *त्वरित विड्रॉल*: कधीही UPI/बँकेत पैसे ट्रान्सफर करा\n\n` +
-          `📲 Driver App मध्ये सविस्तर माहिती पहा:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 मदत: ${HELPLINE_NUMBER}`,
-        gu:
-          `💰 *કમાણી, કમિશન અને પ્લાન્સ*\n\n` +
-          `⭐ *ઝીરો કમિશન મોડલ*: તમારી મહેનતની પૂરી કમાણી તમારી પાસે\n` +
-          `⭐ *ડેઇલી ડ્રાઇવર પ્લાન્સ*: દરરોજ ઓર્ડર્સ અને બોનસ\n` +
-          `⭐ *ઇન્સ્ટન્ટ વિથડ્રોલ*: ગમે ત્યારે UPI/બેંકમાં નાણાં મેળવો\n\n` +
-          `📲 Driver App માં વધુ જુઓ:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 હેલ્પલાઇન: ${HELPLINE_NUMBER}`,
-        pa:
-          `💰 *ਕਮਾਈ, ਕਮਿਸ਼ਨ ਅਤੇ ਪਲਾਨਾਂ ਦੀ ਜਾਣਕਾਰੀ*\n\n` +
-          `⭐ *ਜ਼ੀਰੋ ਕਮਿਸ਼ਨ ਮਾਡਲ*: ਪੂਰੀ ਕਮਾਈ ਤੁਹਾਡੀ ਜੇਬ ਵਿੱਚ\n` +
-          `⭐ *ਡੇਲੀ ਡਰਾਈਵਰ ਪਲਾਨ*: ਰੋਜ਼ਾਨਾ ਰੈਗੂਲਰ ਆਰਡਰ ਅਤੇ ਬੋਨਸ\n` +
-          `⭐ *ਤੁਰੰਤ ਪੇਮੈਂਟ*: ਕਿਸੇ ਵੀ ਵੇਲੇ UPI/ਬੈਂਕ ਵਿੱਚ ਟਰਾਂਸਫਰ ਕਰੋ\n\n` +
-          `📲 Driver App ਵਿੱਚ ਪੂਰੀ ਜਾਣਕਾਰੀ ਦੇਖੋ:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 ਹੈਲਪਲਾਈਨ: ${HELPLINE_NUMBER}`,
-        bn:
-          `💰 *উপার্জন ও সাবস্ক্রিপশন প্ল্যান*\n\n` +
-          `⭐ *জিরো কমিশন মডেল*: আপনার উপার্জনের ১০০% আপনার কাছে\n` +
-          `⭐ *দৈনিক ড্রাইভার প্ল্যান*: নিয়মিত ট্রিপ ও বোনাস\n` +
-          `⭐ *ইনস্ট্যান্ট পে-আউট*: যেকোনো সময় ব্যাংক/UPI-তে টাকা তুলুন\n\n` +
-          `📲 Driver App-এ বিস্তারিত দেখুন:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 সহায়তা: ${HELPLINE_NUMBER}`,
-        te:
-          `💰 *ఆదాయం, కమీషన్ మరియు ప్లాన్స్*\n\n` +
-          `⭐ *జీరో కమీషన్ మోడల్*: మీ కష్టార్జితం 100% మీకే\n` +
-          `⭐ *డైలీ డ్రైవర్ ప్లాన్స్*: గ్యారెంటీడ్ ఆర్డర్లు మరియు బోనస్‌లు\n` +
-          `⭐ *ఇన్‌స్టంట్ పేఅవుట్*: ఎప్పుడైనా UPI/బ్యాంకుకి విత్‌డ్రా చేసుకోండి\n\n` +
-          `📲 పూర్తి వివరాలు Driver App లో చూడండి:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 హెల్ప్‌లైన్: ${HELPLINE_NUMBER}`,
-        ta:
-          `💰 *வருமானம் மற்றும் திட்டங்களின் விவரங்கள்*\n\n` +
-          `⭐ *பூஜ்ஜிய கமிஷன் முறை*: உங்கள் முழு வருமானமும் உங்களுக்கே\n` +
-          `⭐ *தினசரி ஓட்டுநர் திட்டங்கள்*: வழக்கமான ஆர்டர்கள் மற்றும் போனஸ்\n` +
-          `⭐ *உடனடி பணம் எடுக்கும் வசதி*: எப்போது வேண்டுமானாலும் வங்கிக்கு மாற்றலாம்\n\n` +
-          `📲 மேலும் அறிய Driver App பார்க்கவும்:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 உதவி எண்: ${HELPLINE_NUMBER}`,
-        kn:
-          `💰 *ಗಳಿಕೆ, ಕಮಿಷನ್ ಮತ್ತು ಚಂದಾದಾರಿಕೆ ಯೋಜನೆಗಳು*\n\n` +
-          `⭐ *ಶೂನ್ಯ ಕಮಿಷನ್ ಮಾದರಿ*: ನಿಮ್ಮ ಶ್ರಮದ ಸಂಪೂರ್ಣ ಗಳಿಕೆ ನಿಮ್ಮದೇ\n` +
-          `⭐ *ದೈನಂದಿನ ಚಾಲಕ ಯೋಜನೆಗಳು*: ಖಚಿತ ಆರ್ಡರ್‌ಗಳು ಮತ್ತು ಬೋನಸ್\n` +
-          `⭐ *ತಕ್ಷಣದ ವಿತ್‌ಡ್ರಾ*: ಯಾವಾಗ ಬೇಕಾದರೂ UPI/ಬ್ಯಾಂಕ್‌ಗೆ ಹಣ ವರ್ಗಾವಣೆ\n\n` +
-          `📲 Driver App ನಲ್ಲಿ ವಿವರಗಳನ್ನು ನೋಡಿ:\n👉 ${DRIVER_APP_URL}\n\n` +
-          `📞 ಸಹಾಯವಾಣಿ: ${HELPLINE_NUMBER}`,
+          `📞 *Shifter Online Driver Support Helpline*\n\n` +
+          `Onboarding, account ya ride se judi sahayata ke liye:\n` +
+          `📱 *Driver Support Phone*: ${HELPLINE_NUMBER}\n` +
+          `📧 *Email*: ${SUPPORT_EMAIL}\n` +
+          `📲 *Driver App*: ${DRIVER_APP_URL}`,
+        mr: `📞 *चालक हेल्पलाइन*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
+        gu: `📞 *ડ્રાઇવર હેલ્પલાઇન*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
+        pa: `📞 *ਡਰਾਈਵਰ ਹੈਲਪਲਾਈਨ*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
+        bn: `📞 *ড্রাইভার হেল্পলাইন*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
+        te: `📞 *డ్రైవర్ హెల్ప్‌లైన్*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
+        ta: `📞 *ஓட்டுநர் உதவி எண்*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
+        kn: `📞 *ಚಾಲಕ ಸಹಾಯವಾಣಿ*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
       },
       "4": {
         hi:
@@ -962,6 +925,7 @@ const TEXTS = {
         kn: `📞 *ಚಾಲಕ ಸಹಾಯವಾಣಿ*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
       },
     },
+
 
     JOB_SEEKER: {
       "1": {
