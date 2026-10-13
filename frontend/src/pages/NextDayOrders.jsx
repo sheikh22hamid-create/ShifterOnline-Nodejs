@@ -6,6 +6,7 @@ import useApiQuery from '../hooks/useApiQuery'
 import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import NextDaySequenceModal from '../components/orders/NextDaySequenceModal'
+import NextDayOfferModal from '../components/orders/NextDayOfferModal'
 import { orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
 import { formatCurrency, truncate } from '../utils/format'
 
@@ -13,6 +14,7 @@ export default function NextDayOrders() {
   const toast = useToast()
   const [selectedIds, setSelectedIds] = useState([])
   const [assigning, setAssigning] = useState(false)
+  const [offerOrder, setOfferOrder] = useState(null)
 
   const fetcher = useCallback(() => api.get('/orders/next-day').then((res) => res.data), [])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
@@ -42,7 +44,7 @@ export default function NextDayOrders() {
         Next Day Orders
       </h1>
       <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Next-day bookings, priced at Model 1 with no fixed pickup time (10 AM–8 PM) — never auto-dispatched, assign manually to a driver.
+        Next-day bookings are priced at Model 1. Offer each one to a Daily Driver; if none accepts, it goes live to Normal Drivers at the live time.
       </p>
 
       {selectedOrders.length > 0 && (
@@ -64,7 +66,7 @@ export default function NextDayOrders() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['', 'Order', 'Category', 'Pickup', 'For date', 'Fare', 'Status', 'Driver'].map((h) => (
+                {['', 'Order', 'Category', 'Pickup', 'For date', 'Fare', 'Status', 'Live at', 'Driver', ''].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -75,21 +77,21 @@ export default function NextDayOrders() {
               {loading &&
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={8} className="px-4 py-3">
+                    <td colSpan={10} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={10} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
               )}
               {!loading && !error && orders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-14 text-center">
+                  <td colSpan={10} className="px-4 py-14 text-center">
                     <Sunrise size={20} className="mx-auto mb-2" style={{ color: 'var(--ink-faint)' }} />
                     <p className="text-[13px]" style={{ color: 'var(--ink-faint)' }}>No next-day bookings yet.</p>
                   </td>
@@ -118,8 +120,18 @@ export default function NextDayOrders() {
                     <td className="whitespace-nowrap px-4 py-2.5">
                       <Badge tone={orderStatusTone(o.o_status)}>{orderStatusLabel(o.o_status)}</Badge>
                     </td>
+                    <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
+                      {o.next_day_stage === 'live' ? 'Live' : o.next_day_live_at ? new Date(o.next_day_live_at).toLocaleString() : '—'}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: o.rid ? 'var(--success)' : 'var(--ink-faint)' }}>
                       {o.rid ? `Driver #${o.rid}${o.next_day_sequence ? ` (stop ${o.next_day_sequence})` : ''}` : 'Unassigned'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5">
+                      {!o.rid && o.next_day_stage === 'arranging' && (
+                        <button type="button" onClick={() => setOfferOrder(o)} className="rounded-lg border px-2.5 py-1 text-[12px] font-semibold" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>
+                          Offer to Daily Driver
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -139,6 +151,8 @@ export default function NextDayOrders() {
           refetch()
         }}
       />
+
+      <NextDayOfferModal open={Boolean(offerOrder)} order={offerOrder} onClose={() => setOfferOrder(null)} onChanged={refetch} />
     </div>
   )
 }
