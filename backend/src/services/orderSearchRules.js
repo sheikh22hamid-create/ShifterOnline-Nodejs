@@ -21,7 +21,29 @@ function defaultSettings() {
     guaranteeEnabled: false,
     adminWindowMinutes: null,
     guaranteeReferralsRequired: 1,
+    guaranteeStartTime: null,
+    guaranteeEndTime: null,
   };
+}
+
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+const cleanTime = (v) => (typeof v === "string" && TIME_RE.test(v.trim()) ? v.trim() : null);
+
+/**
+ * Whether `now` falls inside the city's daily compensation window (IST "HH:MM", end exclusive; a window like
+ * 22:00-06:00 wraps past midnight). No window set (either side missing) = all day, as before.
+ */
+function isWithinGuaranteeWindow(settings, now = new Date()) {
+  const start = cleanTime(settings?.guaranteeStartTime);
+  const end = cleanTime(settings?.guaranteeEndTime);
+  if (!start || !end) return true;
+  const ist = new Date(now.getTime() + 330 * 60 * 1000);
+  const cur = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+  const s = toMinutes(start);
+  const e = toMinutes(end);
+  if (s === e) return true;
+  return s < e ? cur >= s && cur < e : cur >= s || cur < e;
 }
 
 /** A city_order_settings row (snake_case DB columns) as the camelCase settings object; bad values fall back per field. */
@@ -32,6 +54,8 @@ function normalizeRow(row) {
   const seconds = blank(row.driver_search_seconds) ? d.driverSearchSeconds : Number(row.driver_search_seconds);
   const windowMin = blank(row.admin_window_minutes) ? null : Number(row.admin_window_minutes);
   const refs = Number(row.guarantee_referrals_required);
+  const startTime = cleanTime(row.guarantee_start_time);
+  const endTime = cleanTime(row.guarantee_end_time);
   return {
     searchSystem: Number(row.search_system) === SYSTEM.VEHICLE_FIRST ? SYSTEM.VEHICLE_FIRST : SYSTEM.DRIVER_AVAILABILITY,
     searchRadiusKm: radius !== null && inRange(radius, LIMITS.radiusKm) ? radius : null,
@@ -39,6 +63,9 @@ function normalizeRow(row) {
     guaranteeEnabled: Boolean(row.guarantee_enabled),
     adminWindowMinutes: windowMin !== null && inRange(windowMin, LIMITS.adminWindowMinutes) ? Math.round(windowMin) : null,
     guaranteeReferralsRequired: Number.isInteger(refs) && refs >= 1 ? refs : 1,
+    // Both or neither: a half-set window is ignored (all day) rather than guessed at.
+    guaranteeStartTime: startTime && endTime ? startTime : null,
+    guaranteeEndTime: startTime && endTime ? endTime : null,
   };
 }
 
@@ -83,6 +110,22 @@ function validateSettingsInput(input = {}) {
     if (!Number.isInteger(n) || n < 1) throw badRequest("guarantee_referrals_required must be a whole number of at least 1");
     out.guaranteeReferralsRequired = n;
   }
+  const hasStart = input.guaranteeStartTime !== undefined;
+  const hasEnd = input.guaranteeEndTime !== undefined;
+  if (hasStart || hasEnd) {
+    const start = hasStart && !blank(input.guaranteeStartTime) ? String(input.guaranteeStartTime).trim() : null;
+    const end = hasEnd && !blank(input.guaranteeEndTime) ? String(input.guaranteeEndTime).trim() : null;
+    if (!start && !end) {
+      out.guaranteeStartTime = null;
+      out.guaranteeEndTime = null;
+    } else {
+      if (!start || !end) throw badRequest("guarantee_start_time and guarantee_end_time must be set together");
+      if (!TIME_RE.test(start) || !TIME_RE.test(end)) throw badRequest("guarantee times must be in HH:MM (24-hour) format");
+      if (start === end) throw badRequest("guarantee start and end time cannot be the same");
+      out.guaranteeStartTime = start;
+      out.guaranteeEndTime = end;
+    }
+  }
   return out;
 }
 
@@ -101,6 +144,6 @@ const isInstantBookingType = (value) => !FUTURE_BOOKING_TYPES.has(String(value ?
 
 module.exports = {
   SYSTEM, DEFAULT_SEARCH_SECONDS, LIMITS,
-  defaultSettings, normalizeRow, validateSettingsInput,
+  defaultSettings, normalizeRow, validateSettingsInput, isWithinGuaranteeWindow,
   searchDeadline, isSystem2Order, hasSearchTimeLeft, isInstantBookingType,
 };

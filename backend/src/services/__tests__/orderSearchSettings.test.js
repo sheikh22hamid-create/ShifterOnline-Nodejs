@@ -28,6 +28,7 @@ describe("getCitySettings", () => {
     });
     expect(await svc.getCitySettings(3)).toEqual({
       searchSystem: 2, searchRadiusKm: 8, driverSearchSeconds: 90, guaranteeEnabled: true, adminWindowMinutes: 20, guaranteeReferralsRequired: 2,
+      guaranteeStartTime: null, guaranteeEndTime: null,
     });
   });
 

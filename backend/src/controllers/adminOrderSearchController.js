@@ -27,6 +27,8 @@ const toApi = (s) => ({
   guarantee_enabled: s.guaranteeEnabled,
   admin_window_minutes: s.adminWindowMinutes,
   guarantee_referrals_required: s.guaranteeReferralsRequired,
+  guarantee_start_time: s.guaranteeStartTime,
+  guarantee_end_time: s.guaranteeEndTime,
 });
 
 const fromBody = (b = {}) => ({
@@ -36,6 +38,8 @@ const fromBody = (b = {}) => ({
   guaranteeEnabled: b.guarantee_enabled,
   adminWindowMinutes: b.admin_window_minutes,
   guaranteeReferralsRequired: b.guarantee_referrals_required,
+  guaranteeStartTime: b.guarantee_start_time,
+  guaranteeEndTime: b.guarantee_end_time,
 });
 
 async function getSettings(req, res) {

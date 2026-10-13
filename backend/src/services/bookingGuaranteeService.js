@@ -9,6 +9,7 @@ const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const rules = require("./bookingGuaranteeRules");
 const settings = require("./bookingGuaranteeSettings");
 const orderSearchSettings = require("./orderSearchSettings");
+const orderSearchRules = require("./orderSearchRules");
 
 // Booking Guarantee (spec 2026-10-07). dispatchManager requires this module, so it is required lazily
 // here (same reason dispatchManager lazy-requires freeBookingService).
@@ -40,6 +41,8 @@ async function openForExhaustedOrder(order, selectedIds) {
   // customer who already received a compensation stays locked out until their referrals are done.
   const city = await orderSearchSettings.getCitySettings(order.city_id);
   if (!city.guaranteeEnabled) return false;
+  // Admin-set daily compensation window (IST): outside it the order is cancelled as before, no hold, no payout.
+  if (!orderSearchRules.isWithinGuaranteeWindow(city)) return false;
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { guarantee_locked: true } });
   if (customer?.guarantee_locked) return false;
 
@@ -235,7 +238,7 @@ async function guaranteeApplies(cityId, uid) {
   const city = Number(cityId);
   if (!Number.isInteger(city) || city <= 0) return false; // no city: fail closed
   const settings = await orderSearchSettings.getCitySettings(city);
-  if (!settings?.guaranteeEnabled) return false;
+  if (!settings?.guaranteeEnabled || !orderSearchRules.isWithinGuaranteeWindow(settings)) return false;
   const userId = Number(uid);
   if (Number.isInteger(userId) && userId > 0) {
     const customer = await prisma.tbl_user.findUnique({ where: { id: userId }, select: { guarantee_locked: true } });

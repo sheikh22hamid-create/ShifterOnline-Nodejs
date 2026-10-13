@@ -56,6 +56,29 @@ describe("openForExhaustedOrder: city gating", () => {
     expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(3);
   });
 
+  // A daily window that starts an hour from now (IST) and lasts an hour: "now" is outside it.
+  const hhmm = (offsetMin) => {
+    const d = new Date(Date.now() + 330 * 60 * 1000 + offsetMin * 60 * 1000);
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  };
+
+  it("does not open a case outside the city's compensation time window", async () => {
+    orderSearchSettings.getCitySettings.mockResolvedValue(city({ guaranteeStartTime: hhmm(60), guaranteeEndTime: hhmm(120) }));
+    expect(await svc.openForExhaustedOrder(order, [10])).toBe(false);
+    expect(prisma.booking_guarantee_case.create).not.toHaveBeenCalled();
+  });
+
+  it("opens a case inside the city's compensation time window", async () => {
+    orderSearchSettings.getCitySettings.mockResolvedValue(city({ guaranteeStartTime: hhmm(-60), guaranteeEndTime: hhmm(60) }));
+    expect(await svc.openForExhaustedOrder(order, [10])).toBe(true);
+    expect(prisma.booking_guarantee_case.create).toHaveBeenCalled();
+  });
+
+  it("quotes 0 outside the window", async () => {
+    orderSearchSettings.getCitySettings.mockResolvedValue(city({ guaranteeStartTime: hhmm(60), guaranteeEndTime: hhmm(120) }));
+    expect((await svc.quote([10], { cityId: 3, uid: 7 })).amount).toBe(0);
+  });
+
   it("does not open a case for a guarantee-locked customer", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: true });
     expect(await svc.openForExhaustedOrder(order, [10])).toBe(false);

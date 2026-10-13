@@ -5,6 +5,7 @@ describe("defaultSettings / normalizeRow", () => {
     expect(rules.normalizeRow(null)).toEqual({
       searchSystem: 1, searchRadiusKm: null, driverSearchSeconds: 60,
       guaranteeEnabled: false, adminWindowMinutes: null, guaranteeReferralsRequired: 1,
+      guaranteeStartTime: null, guaranteeEndTime: null,
     });
   });
 
@@ -15,6 +16,7 @@ describe("defaultSettings / normalizeRow", () => {
     })).toEqual({
       searchSystem: 2, searchRadiusKm: 7.5, driverSearchSeconds: 120,
       guaranteeEnabled: true, adminWindowMinutes: 15, guaranteeReferralsRequired: 2,
+      guaranteeStartTime: null, guaranteeEndTime: null,
     });
   });
 
@@ -93,6 +95,39 @@ describe("deadline helpers", () => {
     expect(rules.hasSearchTimeLeft({ search_system: 2, search_deadline_at: "2026-10-12T10:00:00.000Z" }, now)).toBe(false);
     expect(rules.hasSearchTimeLeft({ search_system: 2, search_deadline_at: null }, now)).toBe(false);
     expect(rules.hasSearchTimeLeft({ search_system: 1, search_deadline_at: "2026-10-12T11:00:00.000Z" }, now)).toBe(false);
+  });
+
+  describe("guarantee time window", () => {
+    // IST = UTC + 5:30, so 10:00 IST is 04:30 UTC.
+    const at = (hh, mm) => new Date(Date.UTC(2026, 9, 13, hh, mm) - 330 * 60 * 1000);
+    const win = (s, e) => ({ guaranteeStartTime: s, guaranteeEndTime: e });
+
+    it("no window (or a half-set one) means all day", () => {
+      expect(rules.isWithinGuaranteeWindow(win(null, null), at(3, 0))).toBe(true);
+      expect(rules.isWithinGuaranteeWindow(win("09:00", null), at(3, 0))).toBe(true);
+    });
+    it("same-day window: start inclusive, end exclusive", () => {
+      expect(rules.isWithinGuaranteeWindow(win("09:00", "18:00"), at(9, 0))).toBe(true);
+      expect(rules.isWithinGuaranteeWindow(win("09:00", "18:00"), at(17, 59))).toBe(true);
+      expect(rules.isWithinGuaranteeWindow(win("09:00", "18:00"), at(18, 0))).toBe(false);
+      expect(rules.isWithinGuaranteeWindow(win("09:00", "18:00"), at(8, 59))).toBe(false);
+    });
+    it("overnight window wraps past midnight", () => {
+      expect(rules.isWithinGuaranteeWindow(win("22:00", "06:00"), at(23, 30))).toBe(true);
+      expect(rules.isWithinGuaranteeWindow(win("22:00", "06:00"), at(2, 0))).toBe(true);
+      expect(rules.isWithinGuaranteeWindow(win("22:00", "06:00"), at(12, 0))).toBe(false);
+    });
+    it("normalizeRow keeps a full window and drops a half-set one", () => {
+      expect(rules.normalizeRow({ guarantee_start_time: "09:00", guarantee_end_time: "18:00" })).toMatchObject(win("09:00", "18:00"));
+      expect(rules.normalizeRow({ guarantee_start_time: "09:00" })).toMatchObject(win(null, null));
+    });
+    it("validateSettingsInput requires both, valid HH:MM, and different values; blank clears", () => {
+      expect(rules.validateSettingsInput({ guaranteeStartTime: "09:00", guaranteeEndTime: "18:00" })).toEqual(win("09:00", "18:00"));
+      expect(rules.validateSettingsInput({ guaranteeStartTime: "", guaranteeEndTime: "" })).toEqual(win(null, null));
+      expect(() => rules.validateSettingsInput({ guaranteeStartTime: "09:00", guaranteeEndTime: "" })).toThrow(/together/);
+      expect(() => rules.validateSettingsInput({ guaranteeStartTime: "9am", guaranteeEndTime: "18:00" })).toThrow(/HH:MM/);
+      expect(() => rules.validateSettingsInput({ guaranteeStartTime: "09:00", guaranteeEndTime: "09:00" })).toThrow(/same/);
+    });
   });
 
   it("isInstantBookingType treats scheduled and next-day values as not instant", () => {

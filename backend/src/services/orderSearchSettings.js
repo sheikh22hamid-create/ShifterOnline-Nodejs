@@ -12,6 +12,8 @@ const COLUMN = {
   guaranteeEnabled: "guarantee_enabled",
   adminWindowMinutes: "admin_window_minutes",
   guaranteeReferralsRequired: "guarantee_referrals_required",
+  guaranteeStartTime: "guarantee_start_time",
+  guaranteeEndTime: "guarantee_end_time",
 };
 
 /**
@@ -64,7 +66,7 @@ async function getSearchView(order) {
   if (!system2) return view;
   try {
     const city = await getCitySettings(order.city_id);
-    if (!city.guaranteeEnabled) return view;
+    if (!city.guaranteeEnabled || !rules.isWithinGuaranteeWindow(city)) return view;
     view.guarantee = "on";
     const user = await prisma.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { guarantee_locked: true } });
     if (user?.guarantee_locked) view.guarantee = "locked";

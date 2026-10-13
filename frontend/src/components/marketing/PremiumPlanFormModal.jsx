@@ -728,7 +728,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
                 checked={form.min_ride_guarantee_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, min_ride_guarantee_enabled: e.target.checked }))}
               />{' '}
-              Minimum ride guarantee
+              Ride-Based Plan Limit
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -757,7 +757,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
             <div className="space-y-2 rounded-lg border p-3" style={{ borderColor: 'var(--brand-soft-border)', background: 'var(--brand-soft)' }}>
               <div>
                 <p className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>
-                  Minimum Ride Guarantee
+                  Ride-Based Plan Limit
                 </p>
                 <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                   Plan will NOT expire until driver receives this many completed rides (even after validity duration passes).
@@ -765,7 +765,7 @@ export default function PremiumPlanFormModal({ open, plan, onClose, onSaved }) {
               </div>
               <div className="w-56">
                 <label className="block text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>
-                  Guaranteed Rides (Count)
+                  Total Rides (Count)
                   <input
                     type="number"
                     min="1"

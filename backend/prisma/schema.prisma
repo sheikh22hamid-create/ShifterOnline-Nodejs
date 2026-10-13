@@ -2018,6 +2018,8 @@ model city_order_settings {
   guarantee_enabled           Boolean  @default(false)
   admin_window_minutes        Int?
   guarantee_referrals_required Int     @default(1)
+  guarantee_start_time        String?  @db.VarChar(5)
+  guarantee_end_time          String?  @db.VarChar(5)
   updated_by                  Int?
   updated_at                  DateTime @default(now()) @updatedAt @db.DateTime(0)
 }

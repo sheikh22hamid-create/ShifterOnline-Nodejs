@@ -116,12 +116,15 @@ describe("driver plan minimum ride guarantee", () => {
     const payload = __private.buildPlanPayload(plan, [activeSub], 0);
     expect(payload.min_ride_guarantee).toEqual({
       enabled: true,
+      label: "Ride-Based Plan Limit",
       target_rides: 20,
       rides_completed: 16,
       rides_remaining: 4,
+      progress_percent: 80,
+      plan_status: "Active",
       is_extended: true,
     });
-    expect(payload.ui_tags).toContain("Min 20 rides guaranteed");
+    expect(payload.ui_tags).toContain("Ride-Based Plan Limit: 20 rides");
     expect(payload.validity_label).toBe("Extended (4 rides left)");
   });
 
@@ -131,7 +134,7 @@ describe("driver plan minimum ride guarantee", () => {
     const mockCreateLog = jest.fn().mockResolvedValue({});
     const mockClient = {
       tbl_user_plan_subscription: { update: mockUpdate },
-      tbl_plan_benefit_log: { create: mockCreateLog },
+      tbl_plan_benefit_log: { create: mockCreateLog, findFirst: jest.fn().mockResolvedValue(null) },
       tbl_rider: { update: jest.fn() },
       tbl_wallet_history: { create: jest.fn() },
     };
@@ -173,13 +176,13 @@ describe("driver plan minimum ride guarantee", () => {
     );
   });
 
-  it("does NOT expire subscription upon completing target ride if still within validity duration", async () => {
+  it("does NOT expire a non-limit subscription upon completing target ride if still within validity duration", async () => {
     const driverPlanService = require("../driverPlanService");
     const mockUpdate = jest.fn().mockResolvedValue({});
     const mockCreateLog = jest.fn().mockResolvedValue({});
     const mockClient = {
       tbl_user_plan_subscription: { update: mockUpdate },
-      tbl_plan_benefit_log: { create: mockCreateLog },
+      tbl_plan_benefit_log: { create: mockCreateLog, findFirst: jest.fn().mockResolvedValue(null) },
       tbl_rider: { update: jest.fn() },
       tbl_wallet_history: { create: jest.fn() },
     };
@@ -218,6 +221,50 @@ describe("driver plan minimum ride guarantee", () => {
         }),
       })
     );
+  });
+
+  describe("Ride-Based Plan Limit", () => {
+    const limitClient = (alreadyCounted = null) => ({
+      tbl_user_plan_subscription: { update: jest.fn().mockResolvedValue({}) },
+      tbl_plan_benefit_log: { create: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue(alreadyCounted) },
+      tbl_rider: { update: jest.fn() },
+      tbl_wallet_history: { create: jest.fn() },
+    });
+    const limitBenefit = (ridesCompleted) => ({
+      benefit: 5, incentive: 0, planType: "DRIVER_PREMIUM", commissionPercent: 5,
+      subscription: {
+        id: 90, end_date: future, guaranteed_target: 20, rides_completed: ridesCompleted,
+        plan_snapshot: JSON.stringify({ min_ride_guarantee_enabled: true, min_ride_guarantee: 20 }),
+      },
+      plan: { id: 5, plan_name: "20 Ride Plan" },
+    });
+
+    it("expires the plan on the ride that reaches the limit, even inside the validity period", async () => {
+      const driverPlanService = require("../driverPlanService");
+      const client = limitClient();
+      await driverPlanService.recordCompletedRide({ driverId: 1, orderId: 2001, fare: 100, baseCommissionPercent: 10, chosenBenefit: limitBenefit(19), client });
+      expect(client.tbl_user_plan_subscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 90 }, data: expect.objectContaining({ rides_completed: { increment: 1 }, status: "expired" }) })
+      );
+    });
+
+    it("keeps the plan active before the limit is reached", async () => {
+      const driverPlanService = require("../driverPlanService");
+      const client = limitClient();
+      await driverPlanService.recordCompletedRide({ driverId: 1, orderId: 2002, fare: 100, baseCommissionPercent: 10, chosenBenefit: limitBenefit(10), client });
+      expect(client.tbl_user_plan_subscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.not.objectContaining({ status: "expired" }) })
+      );
+    });
+
+    it("counts a ride only once per subscription", async () => {
+      const driverPlanService = require("../driverPlanService");
+      const client = limitClient({ id: 1 });
+      const res = await driverPlanService.recordCompletedRide({ driverId: 1, orderId: 2003, fare: 100, baseCommissionPercent: 10, chosenBenefit: limitBenefit(10), client });
+      expect(res).toBeNull();
+      expect(client.tbl_user_plan_subscription.update).not.toHaveBeenCalled();
+      expect(client.tbl_plan_benefit_log.create).not.toHaveBeenCalled();
+    });
   });
 });
 

@@ -193,12 +193,16 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
     const isExtended = Boolean(active && active.end_date < todayRange().start && completed < target);
     payload.min_ride_guarantee = {
       enabled: true,
+      label: "Ride-Based Plan Limit",
       target_rides: target,
       rides_completed: completed,
       rides_remaining: remaining,
+      progress_percent: Math.min(100, Math.round((completed / target) * 100)),
+      // Only a driver's own subscription has a status; an unpurchased plan card shows the limit alone.
+      plan_status: active ? "Active" : null,
       is_extended: isExtended,
     };
-    tags.push(`Min ${target} rides guaranteed`);
+    tags.push(`Ride-Based Plan Limit: ${target} rides`);
     if (isExtended) {
       payload.validity_label = `Extended (${remaining} rides left)`;
     }
@@ -411,6 +415,15 @@ async function recordCompletedRide({ driverId, orderId, fare, baseCommissionPerc
   const chosen = chosenBenefit || await resolveBestBenefit(driverId, fare, baseCommissionPercent, basePerTripCharge, client);
   if (!chosen || chosen.benefit <= 0) return null;
   const { subscription, plan } = chosen;
+
+  // One ride counts once per subscription: a retried or concurrent completion of the same order must not
+  // advance the ride count (or pay the incentive) a second time.
+  const alreadyCounted = await client.tbl_plan_benefit_log.findFirst({
+    where: { subscription_id: subscription.id, ride_id: Number(orderId) },
+    select: { id: true },
+  });
+  if (alreadyCounted) return null;
+
   const today = todayRange().start;
   const newRidesCompleted = (Number(subscription.rides_completed) || 0) + 1;
   const target = Number(subscription.guaranteed_target) || 0;
@@ -420,7 +433,11 @@ async function recordCompletedRide({ driverId, orderId, fare, baseCommissionPerc
   const guaranteeFulfilledInExtendedPeriod = target > 0
     && newRidesCompleted >= target
     && subscription.end_date < today;
-  const shouldExpire = secondPlanIsComplete || guaranteeFulfilledInExtendedPeriod;
+  // Ride-Based Plan Limit: the plan ends the moment its configured ride count is reached, even inside the
+  // validity period; later rides then settle on the normal rate-card commission.
+  const limitEnabled = Boolean(subscriptionSnapshot(subscription).min_ride_guarantee_enabled ?? plan.min_ride_guarantee_enabled);
+  const rideLimitReached = limitEnabled && target > 0 && newRidesCompleted >= target;
+  const shouldExpire = secondPlanIsComplete || guaranteeFulfilledInExtendedPeriod || rideLimitReached;
 
   await client.tbl_user_plan_subscription.update({
     where: { id: subscription.id },

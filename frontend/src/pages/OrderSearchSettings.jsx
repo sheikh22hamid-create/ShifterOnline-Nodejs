@@ -16,6 +16,8 @@ const EMPTY = {
   guarantee_enabled: false,
   admin_window_minutes: '',
   guarantee_referrals_required: '1',
+  guarantee_start_time: '',
+  guarantee_end_time: '',
 }
 
 const fromApi = (d) => ({
@@ -25,6 +27,8 @@ const fromApi = (d) => ({
   guarantee_enabled: Boolean(d.guarantee_enabled),
   admin_window_minutes: d.admin_window_minutes != null ? String(d.admin_window_minutes) : '',
   guarantee_referrals_required: String(d.guarantee_referrals_required ?? 1),
+  guarantee_start_time: d.guarantee_start_time || '',
+  guarantee_end_time: d.guarantee_end_time || '',
 })
 
 export default function OrderSearchSettings() {
@@ -156,7 +160,18 @@ export default function OrderSearchSettings() {
                 <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="guarantee_referrals_required">Referrals needed to unlock</label>
                 <input id="guarantee_referrals_required" type="number" min="1" step="1" value={form.guarantee_referrals_required} onChange={set('guarantee_referrals_required')} disabled={disabled || !form.guarantee_enabled} className={inputClass} style={inputStyle} />
               </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="guarantee_start_time">Compensation from (time, IST)</label>
+                <input id="guarantee_start_time" type="time" value={form.guarantee_start_time} onChange={set('guarantee_start_time')} disabled={disabled || !form.guarantee_enabled} className={inputClass} style={inputStyle} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="guarantee_end_time">Compensation until (time, IST)</label>
+                <input id="guarantee_end_time" type="time" value={form.guarantee_end_time} onChange={set('guarantee_end_time')} disabled={disabled || !form.guarantee_enabled} className={inputClass} style={inputStyle} />
+              </div>
             </div>
+            <p className="mt-2 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+              Compensation is given only for orders in this daily window (e.g. 22:00 to 06:00 also works across midnight). Outside it the order is cancelled with no compensation. Leave both empty for all day.
+            </p>
           </div>
 
           {canWrite && (
