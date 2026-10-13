@@ -313,7 +313,11 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // timeout then auto-cancelled these orders ~2 min after accept. Treat the
   // advance as already covered by that prepayment.
   const isWalletPaid = Number(order.p_method_id) === -2 || String(order.trans_id || "").toLowerCase().startsWith("wallet");
-  if ((customerPlan && customerPlan.noAdvancePayment) || isWalletPaid) {
+  // Next-day orders (booking_type 3) never take an advance: assignNextDayBatch
+  // writes payment_status 1 / advance_payment 0 for them, and an unpaid
+  // advance here would let sweepExpiredAdvancePayments cancel the order.
+  const isNextDay = Number(order.booking_type) === 3;
+  if ((customerPlan && customerPlan.noAdvancePayment) || isWalletPaid || isNextDay) {
     advancePayment = 0;
     paymentStatus = 1;
   }

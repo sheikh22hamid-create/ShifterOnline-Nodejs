@@ -336,6 +336,38 @@ describe("tripLifecycle.acceptOrder", () => {
       297
     );
   });
+
+  describe("next-day orders (booking_type 3) never ask for an advance payment", () => {
+    function setup(orderExtra) {
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 297, uid: 7, distance: 15.4, extra_mile_charge: 0, plat: 22.7, plong: 75.8,
+        p_method_id: 2, trans_id: "cash_1700000000000", payment_status: 0, ...orderExtra,
+      });
+      prisma.tbl_rider.findUnique.mockResolvedValue({
+        id: 1, first_name: "John", last_name: "Doe", fmobile: "9999999999", rlats: 22.8, rlongs: 75.9,
+      });
+      pricingEngine.priceForPackageId.mockResolvedValueOnce({
+        pkg: { cancellation_charge_customer: 15 }, fare: 50, driverEarning: 45, commission: 5, radiusCharge: 10,
+      });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+    }
+
+    it("type 3 accept (customer without a no-advance plan): advance_payment 0 and payment_status 1, like assignNextDayBatch", async () => {
+      setup({ booking_type: 3, next_day_stage: "live" });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      expect(result.order.advance_payment).toBe("0");
+      expect(result.order.payment_status).toBe(1);
+      expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), "0", 1, 297);
+    });
+
+    it("type 1 accept is unchanged: the advance is still charged", async () => {
+      setup({ booking_type: 1 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      expect(result.order.advance_payment).toBe("25");
+      expect(result.order.payment_status).toBe(0);
+      expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), "25", 0, 297);
+    });
+  });
 });
 
 describe("claimOrderForRider freshness check reads expires_at, not a hardcoded 15s window", () => {
