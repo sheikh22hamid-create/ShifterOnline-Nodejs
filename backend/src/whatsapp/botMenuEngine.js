@@ -254,7 +254,7 @@ const TEXTS = {
         `🚚 *Shifter Online - Driver Partner Support*\n\n` +
         `Kripya neeche diye gaye options me se number chunein:\n\n` +
         `1️⃣ Gadi Jodein (Driver Partner App download link)\n` +
-        `2️⃣ Jaruri Documents (DL, RC, Aadhaar, PAN)\n` +
+        `2️⃣ Jaruri Documents (DL, RC, Aadhaar)\n` +
         `3️⃣ Driver Helpline Number\n` +
         `0️⃣ Main Menu par wapas jayein\n\n` +
         `👉 Kripya *1, 2, 3 ya 0* likhkar bhejein.`,
