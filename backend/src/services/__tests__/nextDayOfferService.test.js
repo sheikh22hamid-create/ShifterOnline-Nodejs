@@ -11,12 +11,15 @@ jest.mock("../pricingEngine", () => ({ getFirstTierPricingContext: jest.fn().moc
 jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(), startDispatch: jest.fn().mockResolvedValue(undefined), emitDriverEvent: jest.fn(),
 }));
+jest.mock("../tieredDispatchSettings", () => ({ isTieredEnabled: jest.fn().mockResolvedValue(false) }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const adminSocket = require("../../sockets/adminSocket");
+const tieredSettings = require("../tieredDispatchSettings");
+const pricingEngine = require("../pricingEngine");
 const svc = require("../nextDayOfferService");
 
 const NOW = new Date("2026-10-13T05:00:00Z");
@@ -35,6 +38,8 @@ beforeEach(() => {
   prisma.next_day_daily_offer.create.mockImplementation(async ({ data }) => ({ id: 1, ...data }));
   prisma.next_day_daily_offer.updateMany.mockResolvedValue({ count: 1 });
   prisma.next_day_daily_offer.update.mockResolvedValue({});
+  prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+  tieredSettings.isTieredEnabled.mockResolvedValue(false);
   prisma.tbl_rider.findMany.mockResolvedValue([rider(1), rider(2), rider(3)]);
   dispatchManager.offerToInterestedRiders.mockImplementation(async (o, ids) => ({ offeredRiderIds: ids }));
 });
@@ -73,6 +78,18 @@ describe("offerToDriver", () => {
   it("cancels the row and reports 409 when the driver could not be reached", async () => {
     dispatchManager.offerToInterestedRiders.mockResolvedValue({ offeredRiderIds: [] });
     await expect(svc.offerToDriver({ order: order(), riderId: 1, adminId: 9, now: NOW })).rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.next_day_daily_offer.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled" }) }));
+  });
+});
+
+describe("offerToDriver failure handling", () => {
+  it("maps a unique-constraint race (P2002) to 409", async () => {
+    prisma.next_day_daily_offer.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+    await expect(svc.offerToDriver({ order: order(), riderId: 1, adminId: 9, now: NOW })).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it("cancels the created row and rethrows when pricing/sending throws", async () => {
+    pricingEngine.getFirstTierPricingContext.mockRejectedValueOnce(new Error("pricing down"));
+    await expect(svc.offerToDriver({ order: order(), riderId: 1, adminId: 9, now: NOW })).rejects.toThrow("pricing down");
     expect(prisma.next_day_daily_offer.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled" }) }));
   });
 });
@@ -139,6 +156,8 @@ describe("reconcileOffers", () => {
     prisma.pkg_order.findUnique.mockResolvedValue(order({ rid: 1, o_status: "Processing" }));
     await svc.reconcileOffers(NOW);
     expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "accepted" }) }));
+    expect(prisma.next_day_daily_offer.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "expired" }) }));
+    expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
   });
   it("cancels the offer and dismisses the popup when someone else got the order or it was cancelled", async () => {
     prisma.next_day_daily_offer.findMany.mockResolvedValue([open()]);
@@ -146,13 +165,34 @@ describe("reconcileOffers", () => {
     await svc.reconcileOffers(NOW);
     expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled" }) }));
     expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(1, "order:dismiss", expect.objectContaining({ order_id: "10" }));
+    expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({ where: { order_id: 10, rider_id: 1, status: "sent" }, data: { status: "timeout" } });
     expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
   });
   it("expires an overdue offer and cascades", async () => {
     prisma.next_day_daily_offer.findMany.mockResolvedValue([open({ expires_at: new Date(NOW.getTime() - 1000) })]);
     await svc.reconcileOffers(NOW);
     expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "expired" }) }));
+    expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({ where: { order_id: 10, rider_id: 1, status: "sent" }, data: { status: "timeout" } });
+    expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(1, "order:dismiss", expect.objectContaining({ order_id: "10" }));
     expect(dispatchManager.offerToInterestedRiders).toHaveBeenCalledTimes(1);
+  });
+  it("does not expire or cascade when the request row was already answered; settles accepted if the order is theirs", async () => {
+    prisma.next_day_daily_offer.findMany.mockResolvedValue([open({ expires_at: new Date(NOW.getTime() - 1000) })]);
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 0 });
+    prisma.pkg_order.findUnique
+      .mockResolvedValueOnce(order())
+      .mockResolvedValueOnce(order({ rid: 1, o_status: "Processing" }));
+    await svc.reconcileOffers(NOW);
+    expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "accepted" }) }));
+    expect(prisma.next_day_daily_offer.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "expired" }) }));
+    expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
+    expect(dispatchManager.emitDriverEvent).not.toHaveBeenCalled();
+  });
+  it("a throwing offer does not block the next one", async () => {
+    prisma.next_day_daily_offer.findMany.mockResolvedValue([open({ id: 1, order_id: 11 }), open({ id: 2, order_id: 10 })]);
+    prisma.pkg_order.findUnique.mockRejectedValueOnce(new Error("db blip")).mockResolvedValue(order({ rid: 1, o_status: "Processing" }));
+    await svc.reconcileOffers(NOW);
+    expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith({ where: { id: 2, status: "offered" }, data: expect.objectContaining({ status: "accepted" }) });
   });
   it("treats a reject recorded on the request row as a reject and cascades", async () => {
     prisma.next_day_daily_offer.findMany.mockResolvedValue([open()]);
@@ -194,11 +234,56 @@ describe("goLiveDue", () => {
     expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled" }) }));
     expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(4, "order:dismiss", expect.any(Object));
   });
+  it("also kills the request row of the cancelled open offer", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([order({ next_day_live_at: new Date(NOW.getTime() - 1000) })]);
+    prisma.pkg_order.updateMany.mockResolvedValue({ count: 1 });
+    prisma.next_day_daily_offer.findMany.mockResolvedValue([{ id: 1, order_id: 10, rider_id: 4, status: "offered" }]);
+    await svc.goLiveDue(NOW);
+    expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({ where: { order_id: 10, rider_id: 4, status: "sent" }, data: { status: "timeout" } });
+  });
+  it("on startDispatch failure alerts admin, reverts to arranging, does not count it, and still processes the next order", async () => {
+    const due = (id) => order({ id, next_day_live_at: new Date(NOW.getTime() - 1000) });
+    prisma.pkg_order.findMany.mockResolvedValue([due(10), due(11)]);
+    prisma.pkg_order.updateMany.mockResolvedValue({ count: 1 });
+    dispatchManager.startDispatch.mockRejectedValueOnce(new Error("boom"));
+    expect(await svc.goLiveDue(NOW)).toBe(1);
+    expect(prisma.pkg_order.updateMany).toHaveBeenCalledWith({
+      where: { id: 10, next_day_stage: "live", rid: 0, o_status: "Pending" }, data: { next_day_stage: "arranging" },
+    });
+    expect(adminSocket.notifyDispatchAlert).toHaveBeenCalledWith(10, 1, expect.stringContaining("GO-LIVE FAILED"), expect.objectContaining({ kind: "next_day_live_failed" }));
+    expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(2);
+  });
+  it("starts the normal stage when tiered dispatch is on, no stage when off", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([order({ next_day_live_at: new Date(NOW.getTime() - 1000) })]);
+    prisma.pkg_order.updateMany.mockResolvedValue({ count: 1 });
+    tieredSettings.isTieredEnabled.mockResolvedValue(true);
+    await svc.goLiveDue(NOW);
+    expect(dispatchManager.startDispatch.mock.calls[0][2]).toEqual({ stage: "normal" });
+    dispatchManager.startDispatch.mockClear();
+    tieredSettings.isTieredEnabled.mockResolvedValue(false);
+    await svc.goLiveDue(NOW);
+    expect(dispatchManager.startDispatch.mock.calls[0][2]).toEqual({});
+  });
+  it("a throwing order does not block the next one", async () => {
+    const due = (id) => order({ id, next_day_live_at: new Date(NOW.getTime() - 1000) });
+    prisma.pkg_order.findMany.mockResolvedValue([due(10), due(11)]);
+    prisma.pkg_order.updateMany.mockRejectedValueOnce(new Error("db blip")).mockResolvedValue({ count: 1 });
+    expect(await svc.goLiveDue(NOW)).toBe(1);
+  });
   it("selects only arranging, unassigned, pending next-day orders that are due", async () => {
     prisma.pkg_order.findMany.mockResolvedValue([]);
     await svc.goLiveDue(NOW);
     expect(prisma.pkg_order.findMany.mock.calls[0][0].where).toEqual({
       booking_type: 3, next_day_stage: "arranging", rid: 0, o_status: "Pending", next_day_live_at: { lte: NOW },
     });
+  });
+});
+
+describe("sweep", () => {
+  it("still runs go-live when reconcile fails", async () => {
+    prisma.next_day_daily_offer.findMany.mockRejectedValueOnce(new Error("db down"));
+    prisma.pkg_order.findMany.mockResolvedValue([]);
+    await expect(svc.sweep(NOW)).resolves.toBeUndefined();
+    expect(prisma.pkg_order.findMany).toHaveBeenCalled();
   });
 });

@@ -56,14 +56,22 @@ async function offerToDriver({ order, riderId, adminId = null, now = new Date() 
     throw err;
   }
 
-  const { pkg, discount } = await pricingEngine.getFirstTierPricingContext(order);
-  const sent = await dispatchManager().offerToInterestedRiders(order, [Number(riderId)], pkg, discount, {
-    ttlMs: seconds * 1000,
-    popupMs: seconds * 1000,
-    requireOnline: false,
-    fareScale: DAILY_DRIVER_SHARE,
-    payloadExtras: { next_day_daily_offer: "1", schedule_date_time: String(order.schedule_date_time || "") },
-  });
+  let sent;
+  try {
+    const { pkg, discount } = await pricingEngine.getFirstTierPricingContext(order);
+    sent = await dispatchManager().offerToInterestedRiders(order, [Number(riderId)], pkg, discount, {
+      ttlMs: seconds * 1000,
+      popupMs: seconds * 1000,
+      requireOnline: false,
+      fareScale: DAILY_DRIVER_SHARE,
+      payloadExtras: { next_day_daily_offer: "1", schedule_date_time: String(order.schedule_date_time || "") },
+    });
+  } catch (err) {
+    // Never leave a ghost 'offered' row behind a failed send.
+    try { await prisma.next_day_daily_offer.update({ where: { id: row.id }, data: { status: OFFER.CANCELLED, responded_at: now } }); }
+    catch (e2) { logger.error(`nextDayOffer: could not cancel failed offer ${row.id}:`, e2); }
+    throw err;
+  }
   if (!(sent?.offeredRiderIds || []).map(Number).includes(Number(riderId))) {
     await prisma.next_day_daily_offer.update({ where: { id: row.id }, data: { status: OFFER.CANCELLED, responded_at: now } });
     throw httpError(409, "Could not reach this driver right now");
@@ -103,6 +111,14 @@ async function closeOffer(offer, status, now) {
   return res.count === 1;
 }
 
+/** Flips the rider's request row so the popup can no longer be accepted. Returns how many rows changed. */
+async function closeRequest(offer) {
+  const res = await prisma.tbl_order_requests.updateMany({
+    where: { order_id: offer.order_id, rider_id: offer.rider_id, status: "sent" }, data: { status: "timeout" },
+  });
+  return res?.count ?? 0;
+}
+
 async function onRejected(orderId, riderId, now = new Date()) {
   const res = await prisma.next_day_daily_offer.updateMany({
     where: { order_id: Number(orderId), rider_id: Number(riderId), status: OFFER.OFFERED },
@@ -115,6 +131,14 @@ const dismiss = (riderId, orderId, reason) => {
   try { dispatchManager().emitDriverEvent(Number(riderId), "order:dismiss", { order_id: String(orderId), reason }); } catch (_) { /* best effort */ }
 };
 
+/** Cancels an open offer, kills its request row and dismisses the popup. */
+async function cancelOffer(offer, reason, now) {
+  if (!(await closeOffer(offer, OFFER.CANCELLED, now))) return false;
+  try { await closeRequest(offer); } catch (err) { logger.error(`nextDayOffer: closing request for offer ${offer.id} failed:`, err); }
+  dismiss(offer.rider_id, offer.order_id, reason);
+  return true;
+}
+
 /** Settles every open offer from the DB: accepted, cancelled, rejected or expired (cascading where needed). */
 async function reconcileOffers(now = new Date()) {
   const open = await prisma.next_day_daily_offer.findMany({ where: { status: OFFER.OFFERED }, take: 100 });
@@ -126,7 +150,7 @@ async function reconcileOffers(now = new Date()) {
         continue;
       }
       if (!isArranging(order)) {
-        if (await closeOffer(offer, OFFER.CANCELLED, now)) dismiss(offer.rider_id, offer.order_id, "next_day_closed");
+        await cancelOffer(offer, "next_day_closed", now);
         continue;
       }
       const request = await prisma.tbl_order_requests.findFirst({
@@ -137,10 +161,17 @@ async function reconcileOffers(now = new Date()) {
         continue;
       }
       if (new Date(offer.expires_at).getTime() <= now.getTime()) {
-        if (await closeOffer(offer, OFFER.EXPIRED, now)) {
-          await prisma.tbl_order_requests.updateMany({ where: { order_id: offer.order_id, rider_id: offer.rider_id, status: "sent" }, data: { status: "timeout" } });
-          dismiss(offer.rider_id, offer.order_id, "timeout");
-          await cascade(offer.order_id, now);
+        // Flip the request row first: if the driver accepted meanwhile it is no longer 'sent'.
+        if ((await closeRequest(offer)) === 1) {
+          if (await closeOffer(offer, OFFER.EXPIRED, now)) {
+            dismiss(offer.rider_id, offer.order_id, "timeout");
+            await cascade(offer.order_id, now);
+          }
+        } else {
+          const fresh = await prisma.pkg_order.findUnique({ where: { id: offer.order_id } });
+          if (fresh && Number(fresh.rid) === Number(offer.rider_id) && fresh.o_status !== "Cancelled") {
+            await closeOffer(offer, OFFER.ACCEPTED, now);
+          }
         }
       }
     } catch (err) {
@@ -163,9 +194,22 @@ async function goLiveDue(now = new Date()) {
       if (flipped.count !== 1) continue; // another worker won
       const openOffers = await prisma.next_day_daily_offer.findMany({ where: { order_id: order.id, status: OFFER.OFFERED } });
       for (const offer of openOffers) {
-        if (await closeOffer(offer, OFFER.CANCELLED, now)) dismiss(offer.rider_id, order.id, "next_day_live");
+        await cancelOffer(offer, "next_day_live", now);
       }
-      await dispatchManager().startDispatch({ ...order, next_day_stage: STAGE.LIVE });
+      try {
+        const tiered = await require("./tieredDispatchSettings").isTieredEnabled();
+        const opts = tiered ? { stage: require("./tierPenaltyRules").TIER.NORMAL } : {};
+        await dispatchManager().startDispatch({ ...order, next_day_stage: STAGE.LIVE }, null, opts);
+      } catch (err) {
+        logger.error(`nextDayOffer: dispatch at go-live failed for order ${order.id}, reverting to retry:`, err);
+        try {
+          adminSocket.notifyDispatchAlert(order.id, order.city_id, `${ALERT} – GO-LIVE FAILED, WILL RETRY`, { kind: "next_day_live_failed" });
+        } catch (e2) { logger.error(`nextDayOffer: go-live-failed alert failed for order ${order.id}:`, e2); }
+        await prisma.pkg_order.updateMany({
+          where: { id: order.id, next_day_stage: STAGE.LIVE, rid: 0, o_status: "Pending" }, data: { next_day_stage: STAGE.ARRANGING },
+        });
+        continue;
+      }
       try {
         adminSocket.notifyDispatchAlert(order.id, order.city_id, `${ALERT} WENT LIVE – DISPATCHING TO NORMAL DRIVERS`, { kind: "next_day_live" });
       } catch (err) {
@@ -180,8 +224,8 @@ async function goLiveDue(now = new Date()) {
 }
 
 async function sweep(now = new Date()) {
-  await reconcileOffers(now);
-  await goLiveDue(now);
+  try { await reconcileOffers(now); } catch (err) { logger.error("nextDayOffer: reconcile failed:", err); }
+  try { await goLiveDue(now); } catch (err) { logger.error("nextDayOffer: go-live pass failed:", err); }
 }
 
 const listOffers = (orderId) => prisma.next_day_daily_offer.findMany({ where: { order_id: Number(orderId) }, orderBy: { id: "asc" } });
