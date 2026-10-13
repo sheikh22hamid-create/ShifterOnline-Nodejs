@@ -215,7 +215,7 @@ router.get("/orders/next-day", auth, authorize(...RIDER_ROLES), scopeFilter, adm
 router.post("/orders/next-day/suggest-sequence", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.suggestNextDaySequence);
 router.post("/orders/next-day/assign-batch", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignNextDayBatch);
 router.get("/orders/next-day/settings", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.getSettings);
-router.put("/orders/next-day/settings", auth, authorize("superadmin", "admin"), scopeFilter, adminNextDayOfferController.saveSettings);
+router.put("/orders/next-day/settings", auth, authorize("superadmin"), scopeFilter, adminNextDayOfferController.saveSettings);
 router.get("/orders/next-day/:id/daily-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.listDailyDrivers);
 router.post("/orders/next-day/:id/offer", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.offer);
 router.get("/orders/next-day/:id/offers", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.listOffers);

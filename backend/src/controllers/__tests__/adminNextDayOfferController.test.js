@@ -122,3 +122,10 @@ it.each(["abc", -1])("400s offer with rider_id %p", async (rid) => {
   expect(r.status).toHaveBeenCalledWith(400);
   expect(offers.offerToDriver).not.toHaveBeenCalled();
 });
+
+it("PUT /orders/next-day/settings is superadmin-only (the settings are global across cities)", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../../routes/adminRoutes.js"), "utf8");
+  const line = src.split(/\r?\n/).find((l) => l.includes('router.put("/orders/next-day/settings"'));
+  expect(line).toBeDefined();
+  expect(line).toContain('authorize("superadmin")');
+});
