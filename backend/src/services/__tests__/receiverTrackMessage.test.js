@@ -11,7 +11,7 @@ const prisma = require("../../config/db");
 const settings = require("../receiverTrackSettings");
 const links = require("../trackLinkService");
 const { sendWhatsAppNotification } = require("../../whatsapp/notifications");
-const { trackLine, syncReceiverPhone } = require("../receiverTrackMessage");
+const { trackLine, syncReceiverPhone, urlForBooker } = require("../receiverTrackMessage");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -71,5 +71,33 @@ describe("syncReceiverPhone", () => {
   it("never throws", async () => {
     prisma.order_track_link.findUnique.mockRejectedValue(new Error("db"));
     expect(await syncReceiverPhone(50, "9000000000")).toEqual({ rotated: false });
+  });
+});
+
+describe("urlForBooker", () => {
+  const order = (o = {}) => ({ id: 50, uid: 7, rid: 9, dmobile: "9876543210", order_status: 2, ...o });
+  it("returns the tracking url for the booker's own in-progress order", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    expect(await urlForBooker({ orderId: 50, uid: 7 })).toEqual({ ok: true, url: "https://api.example.com/track/tok" });
+    expect(links.getOrCreate).toHaveBeenCalledWith(50, "9876543210");
+  });
+  it("refuses another customer's order", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ uid: 8 }));
+    expect(await urlForBooker({ orderId: 50, uid: 7 })).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    expect(links.getOrCreate).not.toHaveBeenCalled();
+  });
+  it("refuses a missing order", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(null);
+    expect(await urlForBooker({ orderId: 50, uid: 7 })).toMatchObject({ ok: false, code: "NOT_FOUND" });
+  });
+  it("says tracking is unavailable when it is off, there is no driver yet, or the order is finished", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    settings.isTrackingEnabled.mockResolvedValue(false);
+    expect(await urlForBooker({ orderId: 50, uid: 7 })).toMatchObject({ ok: false, code: "NOT_AVAILABLE" });
+    settings.isTrackingEnabled.mockResolvedValue(true);
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ rid: 0 }));
+    expect(await urlForBooker({ orderId: 50, uid: 7 })).toMatchObject({ ok: false, code: "NOT_AVAILABLE" });
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ order_status: 5 }));
+    expect(await urlForBooker({ orderId: 50, uid: 7 })).toMatchObject({ ok: false, code: "NOT_AVAILABLE" });
   });
 });

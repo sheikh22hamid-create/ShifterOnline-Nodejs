@@ -1,6 +1,9 @@
+jest.mock("../../services/receiverTrackMessage", () => ({ trackUrl: jest.fn(), trackLine: jest.fn(), syncReceiverPhone: jest.fn() }));
+
 const { handleTrackingQuery } = require("../handlers/customerHandler");
 const notifications = require("../notifications");
 const prisma = require("../../config/db");
+const { trackUrl, trackLine } = require("../../services/receiverTrackMessage");
 
 describe("WhatsApp Order Tracking & Privacy Security", () => {
   const mockOrder = {
@@ -87,6 +90,8 @@ describe("Automated WhatsApp Lifecycle Notifications", () => {
   beforeEach(() => {
     sentMessages = [];
     notifications.setWhatsAppClient(mockClient);
+    trackUrl.mockResolvedValue("");
+    trackLine.mockResolvedValue("");
 
     jest.spyOn(prisma.pkg_order, "findUnique").mockResolvedValue({
       id: 8881,
@@ -126,55 +131,111 @@ describe("Automated WhatsApp Lifecycle Notifications", () => {
     jest.restoreAllMocks();
   });
 
-  it("notifyOrderBooked sends confirmation to both Sender and Receiver", async () => {
-    await notifications.notifyOrderBooked(8881);
+  const orderRow = (o = {}) => ({
+    id: 8881, uid: 201, rid: 601, category: 1, pmobile: "9811111111", dmobile: "9822222222",
+    pick_name: "Amit Sharma", drop_name: "Rahul Verma", paddress: "Vijay Nagar, Indore",
+    daddress: "Bhawarkua, Indore", total_dcharge: 350, otp: 4321, send_sender_whatsapp: false, ...o,
+  });
+  const to = (digits) => sentMessages.filter((m) => m.jid.includes(digits));
+  let seq = 8900; // the milestone de-duplication cache is per order id
+  const useOrder = (o) => {
+    seq += 1;
+    prisma.pkg_order.findUnique.mockResolvedValue(orderRow({ id: seq, ...o }));
+    return seq;
+  };
 
-    expect(sentMessages.length).toBe(2);
-    // Sender message
-    const sender = sentMessages.find((m) => m.jid.includes("9811111111"));
-    expect(sender).toBeDefined();
-    expect(sender.text).toContain("Your booking has been confirmed");
-    expect(sender.text).toContain("Tata Ace");
-    expect(sender.text).toContain("Order ID*: #8881");
-    expect(sender.text).toContain("Vijay Nagar, Indore");
-    expect(sender.text).toContain("Bhawarkua, Indore");
-
-    // Receiver message
-    const receiver = sentMessages.find((m) => m.jid.includes("9822222222"));
-    expect(receiver).toBeDefined();
-    expect(receiver.text).toContain("Aapke liye ek parcel/delivery book ki gayi hai");
-    expect(receiver.text).toContain("Order ID*: #8881");
+  describe("sender opted OUT (default)", () => {
+    it("sends the sender nothing at any milestone", async () => {
+      const id = useOrder({});
+      for (const fn of ["notifyOrderBooked", "notifyDriverAssigned", "notifyDriverArrived", "notifyTripStarted", "notifyDriverArrivedDrop", "notifyTripCompleted", "notifyOrderCancelled"]) {
+        await notifications[fn](id);
+      }
+      expect(to("9811111111")).toHaveLength(0);
+      expect(to("9822222222").length).toBeGreaterThan(0); // receiver messages are unaffected
+    });
   });
 
-  it("notifyDriverArrived sends arrival notification to both Sender and Receiver", async () => {
-    await notifications.notifyDriverArrived(8881);
+  describe("sender opted IN", () => {
+    it("driver assigned: message 1 has driver, vehicle number, OTP, pickup, drop and receiver", async () => {
+      const id = useOrder({ send_sender_whatsapp: true });
+      await notifications.notifyDriverAssigned(id);
+      const [msg] = to("9811111111");
+      expect(msg.text).toContain("Your Shifter Online delivery has been confirmed");
+      expect(msg.text).toContain("Suresh Patel");
+      expect(msg.text).toContain("MP09CD5678");
+      expect(msg.text).toContain("Pickup OTP*: *4321*");
+      expect(msg.text).toContain("Vijay Nagar, Indore");
+      expect(msg.text).toContain("Bhawarkua, Indore");
+      expect(msg.text).toContain("Rahul Verma");
+      expect(msg.text).toContain("Tata Ace");
+    });
 
-    expect(sentMessages.length).toBe(2);
-    const sender = sentMessages.find((m) => m.jid.includes("9811111111"));
-    expect(sender.text).toContain("Driver Arrived at Pickup Location");
-    expect(sender.text).toContain("Suresh Patel");
-    expect(sender.text).toContain("Pickup OTP*: *4321*");
+    it("driver assigned: includes the live tracking link when there is one", async () => {
+      trackUrl.mockResolvedValue("https://api.example.com/track/tok");
+      const id = useOrder({ send_sender_whatsapp: true });
+      await notifications.notifyDriverAssigned(id);
+      expect(to("9811111111")[0].text).toContain("https://api.example.com/track/tok");
+    });
 
-    const receiver = sentMessages.find((m) => m.jid.includes("9822222222"));
-    expect(receiver.text).toContain("Driver Arrived at Pickup Point");
-    expect(receiver.text).toContain("Suresh Patel");
+    it("a reassigned driver re-sends message 1 with the new driver", async () => {
+      const id = useOrder({ send_sender_whatsapp: true });
+      await notifications.notifyDriverAssigned(id);
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 602, first_name: "Dinesh", last_name: "Rao", fmobile: "9000000000", vehicle_no: "MP09ZZ0001" });
+      await notifications.notifyDriverAssigned(id);
+      expect(to("9811111111")).toHaveLength(2);
+      expect(to("9811111111")[1].text).toContain("Dinesh Rao");
+    });
+
+    it("sends no sender message for arrived, pickup, drop-arrived, booked or cancelled", async () => {
+      const id = useOrder({ send_sender_whatsapp: true });
+      for (const fn of ["notifyOrderBooked", "notifyDriverArrived", "notifyTripStarted", "notifyDriverArrivedDrop", "notifyOrderCancelled"]) {
+        await notifications[fn](id);
+      }
+      expect(to("9811111111")).toHaveLength(0);
+    });
+
+    it("trip completed (sender pays): message 2 has fare, payment note and the app link", async () => {
+      jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue(null);
+      const id = useOrder({ send_sender_whatsapp: true });
+      await notifications.notifyTripCompleted(id);
+      const [msg] = to("9811111111");
+      expect(msg.text).toContain(`Your delivery for Order #${id} has been successfully completed`);
+      expect(msg.text).toContain("₹350");
+      expect(msg.text).toContain("Shifter Online app");
+      expect(msg.text).toContain("play.google.com/store/apps/details?id=com.shifter.online");
+      expect(msg.text).not.toContain("sent to the Receiver");
+    });
+
+    it("trip completed (receiver pays): sender is told the link went to the receiver, receiver gets no generic note", async () => {
+      jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue({ status: "active" });
+      const id = useOrder({ send_sender_whatsapp: true });
+      await notifications.notifyTripCompleted(id);
+      expect(to("9811111111")[0].text).toContain("Payment link has been sent to the Receiver");
+      expect(to("9822222222")).toHaveLength(0);
+    });
+
+    it("trip completed twice sends the sender only one message", async () => {
+      jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue(null);
+      const id = useOrder({ send_sender_whatsapp: true });
+      await notifications.notifyTripCompleted(id);
+      await notifications.notifyTripCompleted(id);
+      expect(to("9811111111")).toHaveLength(1);
+    });
   });
 
-  it("notifyTripStarted sends in-transit notification to both Sender and Receiver", async () => {
-    await notifications.notifyTripStarted(8881);
-
-    expect(sentMessages.length).toBe(2);
-    const sender = sentMessages.find((m) => m.jid.includes("9811111111"));
-    expect(sender.text).toContain("Pickup Completed — Parcel In Transit");
-    expect(sender.text).toContain("Order ID*: #8881");
-  });
-
-  it("notifyTripCompleted sends delivery completed notification to both Sender and Receiver", async () => {
-    await notifications.notifyTripCompleted(8881);
-
-    expect(sentMessages.length).toBe(2);
-    const sender = sentMessages.find((m) => m.jid.includes("9811111111"));
-    expect(sender.text).toContain("Order Delivered Successfully");
-    expect(sender.text).toContain("₹350");
+  describe("receiver messages", () => {
+    it("booked / arrived / pickup / completed still reach the receiver", async () => {
+      jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue(null);
+      const id = useOrder({});
+      await notifications.notifyOrderBooked(id);
+      await notifications.notifyDriverArrived(id);
+      await notifications.notifyTripStarted(id);
+      await notifications.notifyTripCompleted(id);
+      const texts = to("9822222222").map((m) => m.text);
+      expect(texts).toHaveLength(4);
+      expect(texts[0]).toContain("Aapke liye ek parcel/delivery book ki gayi hai");
+      expect(texts[1]).toContain("Driver Arrived at Pickup Point");
+      expect(texts[3]).toContain("Order Delivered Successfully");
+    });
   });
 });

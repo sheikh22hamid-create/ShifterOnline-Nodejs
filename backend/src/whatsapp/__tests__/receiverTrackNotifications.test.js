@@ -1,4 +1,4 @@
-jest.mock("../../services/receiverTrackMessage", () => ({ trackLine: jest.fn(), syncReceiverPhone: jest.fn() }));
+jest.mock("../../services/receiverTrackMessage", () => ({ trackUrl: jest.fn(), trackLine: jest.fn(), syncReceiverPhone: jest.fn() }));
 
 const notifications = require("../notifications");
 const { handleTrackingQuery } = require("../handlers/customerHandler");
@@ -33,36 +33,34 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("receiver tracking link in the receiver's messages only", () => {
-  it("driver assigned: the receiver gets a new message with the link, the sender's message is unchanged", async () => {
+  it("driver assigned: the receiver gets the message with the link; a sender who did not opt in gets nothing", async () => {
     await notifications.notifyDriverAssigned(oid);
-    expect(sent).toHaveLength(2);
+    expect(sent).toHaveLength(1);
     expect(to("9822222222").text).toContain(LINE.trim());
     expect(to("9822222222").text).toContain("Suresh Patel");
-    expect(to("9811111111").text).not.toContain("Live track");
+    expect(to("9811111111")).toBeUndefined();
   });
   it("driver assigned: no extra message when there is no link (flag off, no base URL, error)", async () => {
     trackLine.mockResolvedValue("");
     await notifications.notifyDriverAssigned(oid);
-    expect(sent).toHaveLength(1);
-    expect(to("9811111111")).toBeDefined();
+    expect(sent).toHaveLength(0);
   });
   it("reached pickup, trip started and reached drop: link only for the receiver", async () => {
     for (const fn of ["notifyDriverArrived", "notifyTripStarted", "notifyDriverArrivedDrop"]) {
       sent = [];
       await notifications[fn](oid);
       expect(to("9822222222").text).toContain(LINE.trim());
-      expect(to("9811111111").text).not.toContain("Live track");
+      expect(to("9811111111")).toBeUndefined();
     }
   });
   it("delivery complete carries no tracking link", async () => {
     await notifications.notifyTripCompleted(oid);
     for (const m of sent) expect(m.text).not.toContain("Live track");
   });
-  it("same number for sender and receiver: no link and no duplicate message", async () => {
+  it("same number for sender and receiver: one person is both parties and did not opt in: no messages", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue(order({ dmobile: "9811111111" }));
     await notifications.notifyDriverAssigned(oid);
-    expect(sent).toHaveLength(1);
-    expect(sent[0].text).not.toContain("Live track");
+    expect(sent).toHaveLength(0);
   });
 });
 

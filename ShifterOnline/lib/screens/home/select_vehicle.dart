@@ -948,6 +948,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
       'extra_mile_charge': 0, 'cou_id': _appliedCoupon == null ? 0 : (int.tryParse(_appliedCoupon!['id'].toString()) ?? 0), 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
+      'send_sender_whatsapp': _pickupData['send_whatsapp'] == true,
       if (receiverOn) 'receiver_pays': true,
       if (_freeBookingRequested) 'free_booking': true,
       if (receiverOn) 'receiver_commission_percent': receiverPay.percent,

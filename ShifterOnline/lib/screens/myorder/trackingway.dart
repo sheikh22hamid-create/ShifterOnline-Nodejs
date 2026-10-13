@@ -2660,8 +2660,125 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           _buildOtpCard(otp),
           const SizedBox(height: 14),
         ],
+        if (!isFinished) ...[
+          _buildShareTrackingCard(),
+          const SizedBox(height: 14),
+        ],
         _buildRiderDetailsCard(),
       ],
+    );
+  }
+
+  // Short area label for the share message: the first two comma-separated parts of an address.
+  String _shortArea(String address) {
+    final parts = address.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return parts.take(2).join(', ');
+  }
+
+  bool _sharingTracking = false;
+
+  /// Opens WhatsApp with a ready-to-send message holding the receiver's live tracking link.
+  /// Needs no device permission: whatsapp:// first, then the api.whatsapp.com web fallback.
+  Future<void> _shareTrackingOnWhatsApp() async {
+    if (_sharingTracking) return;
+    final uidInt = int.tryParse(uid) ?? 0;
+    final orderIdInt = int.tryParse(orderid) ?? 0;
+    if (uidInt <= 0 || orderIdInt <= 0) return;
+    setState(() => _sharingTracking = true);
+    try {
+      final url = await SettlementApiService.getTrackLink(uid: uidInt, orderId: orderIdInt);
+      if (url == null) {
+        ApiWrapper.showToastMessage("Live tracking link is not available yet. Please try again once a driver is assigned.".tr);
+        return;
+      }
+      final vehicle = (orderProduc?["category"] ?? "").toString().trim();
+      final pickup = _shortArea((orderProduc?['customer_paddress'] ?? orderProduc?['store_paddress'] ?? '').toString());
+      final drop = _shortArea((orderProduc?['customer_daddress'] ?? '').toString());
+      final message = [
+        "Hello! 👋",
+        "I have dispatched a parcel for you via Shifter Online. 🚚",
+        "",
+        "📦 Order ID: #$orderid",
+        if (vehicle.isNotEmpty) "🛵 Vehicle: $vehicle",
+        if (pickup.isNotEmpty) "📍 Pickup: $pickup",
+        if (drop.isNotEmpty) "🎯 Drop: $drop",
+        "",
+        "You can track the live map location and driver arrival in real time here:",
+        "👉 $url",
+        "",
+        "(No app download required — click the link to view the live map in any mobile browser.)",
+        "",
+        "— Shifter Online Delivery",
+        "📞 Helpline: 9109114515",
+      ].join("\n");
+      final encoded = Uri.encodeComponent(message);
+      var launched = false;
+      try {
+        launched = await launchUrl(Uri.parse("whatsapp://send?text=$encoded"), mode: LaunchMode.externalApplication);
+      } catch (_) {}
+      if (!launched) {
+        launched = await launchUrl(Uri.parse("https://api.whatsapp.com/send?text=$encoded"), mode: LaunchMode.externalApplication);
+      }
+      if (!launched) ApiWrapper.showToastMessage("Could not open WhatsApp".tr);
+    } catch (e) {
+      debugPrint("Share tracking failed: $e");
+      ApiWrapper.showToastMessage("Could not open WhatsApp".tr);
+    } finally {
+      if (mounted) setState(() => _sharingTracking = false);
+    }
+  }
+
+  Widget _buildShareTrackingCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(color: const Color(0xFF25D366), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.chat_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Share Live Tracking with Receiver".tr,
+                  style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 14, color: Colors.black87),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Send live driver map & status via WhatsApp".tr,
+                  style: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 11.5, color: greaycolor),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 38,
+                  child: ElevatedButton.icon(
+                    onPressed: _sharingTracking ? null : _shareTrackingOnWhatsApp,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                    label: Text("Share on WhatsApp".tr, style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 13)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -66,6 +66,7 @@ router.post("/settlement/take-over", settlementController.customerTakeOver);
 router.post("/settlement/resend-link", settlementController.customerResendLink);
 router.post("/settlement/receiver-phone", settlementController.customerChangeReceiverPhone);
 router.get("/receiver-pay/config", settlementController.receiverPayConfig);
+router.post("/track-link", require("../controllers/trackShareController").customerTrackLink);
 router.get("/goods-types", require("../controllers/goodsTypeController").listActiveGoodsTypes);
 router.get("/restricted-items", require("../controllers/restrictedItemController").listActiveRestrictedItems);
 router.get("/booking-guidelines", require("../controllers/bookingGuidelineController").listActiveBookingGuidelines);

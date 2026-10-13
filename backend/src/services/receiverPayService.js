@@ -86,15 +86,32 @@ function buildPayLink(token) {
 function buildLinkMessage({ orderId, amountDue, markup, total, link }) {
   const money = (n) => Number(n).toFixed(2);
   const breakup = markup > 0
-    ? `Fare (discount ke baad): ₹${money(amountDue)}\nService fee: ₹${money(markup)}\n*Total: ₹${money(total)}*`
-    : `*Total: ₹${money(total)}*`;
+    ? `• Delivery Fare: ₹${money(amountDue)}
+• Service Fee: ₹${money(markup)}
+-----------------------------------
+*Total Due: ₹${money(total)}*`
+    : `• Delivery Fare: ₹${money(amountDue)}
+-----------------------------------
+*Total Due: ₹${money(total)}*`;
   return (
-    `Hello! 👋\n` +
-    `Order *#${orderId}* ki delivery complete ho gayi hai. Is order ka payment aapko karna hai. 💳\n\n` +
-    `${breakup}\n\n` +
-    `Secure payment link (app ki zaroorat nahi):\n${link}\n\n` +
-    `Agar aap pay nahi karna chahte, to link me *Decline* dabayein.\n\n` +
-    `— *Team Shifter Online*\n📞 Customer Care: 9109114515`
+    `Hello! 👋
+` +
+    `Order #${orderId} has been successfully delivered to your location. 🚚
+
+` +
+    `💰 *Payable Amount*:
+${breakup}
+
+` +
+    `📲 Complete payment securely via UPI / Cards (no app required):
+👉 ${link}
+
+` +
+    `(If you are not the designated payer, tap the link and select "Decline".)
+
+` +
+    `— *Team Shifter Online*
+📞 Customer Care: 9109114515`
   );
 }
 

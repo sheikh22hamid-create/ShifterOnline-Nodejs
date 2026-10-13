@@ -262,7 +262,7 @@ async function createOrderCore({
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
   stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
   receiverPays = false, receiverCommissionPercent,
-  freeBooking = false,
+  freeBooking = false, sendSenderWhatsapp = false,
 }) {
   if (
     !uid ||
@@ -559,6 +559,7 @@ async function createOrderCore({
       paddress: paddress || null,
       daddress: daddress || null,
       pmobile: pmobile || null,
+      send_sender_whatsapp: sendSenderWhatsapp === true,
       dmobile: dmobile || null,
       pick_type: pickType || "",
       drop_type: dropType || "",
@@ -771,7 +772,7 @@ async function createOrder(req, res) {
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
-      receiver_pays, receiver_commission_percent, free_booking,
+      receiver_pays, receiver_commission_percent, free_booking, send_sender_whatsapp,
     } = req.body;
 
     const result = await createOrderCore({
@@ -785,6 +786,7 @@ async function createOrder(req, res) {
       body_type: body_type || bodyType,
       goodsTypeId: goods_type_id, goodsTypeOther: goods_type_other,
       receiverPays: receiver_pays === true || receiver_pays === "true" || receiver_pays === 1 || receiver_pays === "1", receiverCommissionPercent: receiver_commission_percent,
+      sendSenderWhatsapp: send_sender_whatsapp === true || send_sender_whatsapp === "true" || send_sender_whatsapp === 1 || send_sender_whatsapp === "1",
       freeBooking: free_booking === true || free_booking === "true" || free_booking === 1 || free_booking === "1",
     });
 

@@ -57,6 +57,8 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
   final TextEditingController _mobileController = TextEditingController();
 
   bool _useMyNumber = false;
+  // Sender opt-in for WhatsApp booking info + OTP. Off unless the customer ticks it.
+  bool _sendWhatsapp = false;
   String _myMobile = "";
   String _myName = "";
   String _selectedTag = "Home"; // 'Home', 'Shop', 'Other'
@@ -75,6 +77,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
     _currentLng = widget.initialLng != 0.0 ? widget.initialLng : 75.7873;
     _currentAddress = widget.initialAddress;
     _currentPlaceName = widget.initialPlaceName;
+    _sendWhatsapp = widget.initialData?['send_whatsapp'] == true;
 
     _loadUserData();
 
@@ -333,6 +336,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
       "long_map": _currentLng,
       "landmark": "",
       "type": _selectedTag,
+      if (_isPickup) "send_whatsapp": _sendWhatsapp,
     };
 
     if (_isAddress) {
@@ -750,6 +754,51 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                               ),
                             ),
                           ),
+
+                          // Optional WhatsApp opt-in (sender only, default unchecked)
+                          if (_isPickup) ...[
+                            const SizedBox(height: 8),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => setState(() => _sendWhatsapp = !_sendWhatsapp),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: themeColor.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: themeColor.withOpacity(0.25)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: Checkbox(
+                                        value: _sendWhatsapp,
+                                        activeColor: themeColor,
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                        onChanged: (val) => setState(() => _sendWhatsapp = val ?? false),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.chat_rounded, color: Color(0xff25D366), size: 22),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        "Send booking info & OTP on this WhatsApp number".tr,
+                                        style: TextStyle(
+                                          fontFamily: 'Gilroy_Medium',
+                                          fontSize: 12.5,
+                                          color: notifier.text,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
 
                           // "Use my mobile number" Checkbox
                           if (_myMobile.isNotEmpty) ...[

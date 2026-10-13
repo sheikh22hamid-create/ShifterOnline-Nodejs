@@ -201,6 +201,14 @@ class SettlementApiService {
   }) =>
       _post(_endpointReceiverPhone, {'uid': uid, 'order_id': orderId, 'mobile': mobile});
 
+  /// Public live-tracking url for the booker to share with the receiver. Null when it is unavailable.
+  static Future<String?> getTrackLink({required int uid, required int orderId}) async {
+    final res = await _post("api/order/track-link", {'uid': uid, 'order_id': orderId});
+    final ok = res['Result'] == true || res['Result'] == 'true';
+    final url = res['tracking_url']?.toString() ?? '';
+    return ok && url.isNotEmpty ? url : null;
+  }
+
   /// Never throws: any failure yields ReceiverPayConfig.disabled so booking works exactly as before.
   static Future<ReceiverPayConfig> getReceiverPayConfig() async {
     try {

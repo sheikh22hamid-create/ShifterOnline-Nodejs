@@ -1,6 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
-const { trackLine } = require("../services/receiverTrackMessage");
+const { trackLine, trackUrl } = require("../services/receiverTrackMessage");
 
 let whatsappClientRef = null;
 
@@ -140,8 +140,12 @@ async function getOrderDetailsWithParticipants(orderId) {
     const senderName = order.pick_name || user?.name || "Customer";
     const receiverName = order.drop_name || "Receiver";
 
+    // The sender gets WhatsApp only when they ticked the opt-in at booking (default off).
+    const sendSender = order.send_sender_whatsapp === true;
+
     return {
       order,
+      sendSender,
       user,
       rider,
       categoryTitle,
@@ -158,7 +162,7 @@ async function getOrderDetailsWithParticipants(orderId) {
 
 /**
  * 1. Booking Confirm Notification
- * Sent to both Sender and Receiver when order is placed
+ * Receiver only: the sender sees the booking in the app (sender WhatsApp is limited to two messages)
  */
 async function notifyOrderBooked(orderId) {
   const data = await getOrderDetailsWithParticipants(orderId);
@@ -182,20 +186,6 @@ async function notifyOrderBooked(orderId) {
     logger.warn(`notifyOrderBooked: receiver-pay lookup failed for order ${order.id}: ${err.message}`);
   }
 
-  const senderMsg =
-    `Hello! 👋\n` +
-    `*Your booking has been confirmed.* 🚚\n\n` +
-    `📦 *Order ID*: #${order.id}\n` +
-    `🚗 *Vehicle*: ${categoryTitle}\n` +
-    `💰 *Estimated Fare*: ₹${order.total_dcharge}\n\n` +
-    `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
-    `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
-    `👤 *Receiver*: ${receiverName}${receiverPhone ? ` (📞 ${receiverPhone})` : ""}\n\n` +
-    `Aapko jaldi hi driver assign ho jayega!\n` +
-    `Live status ke liye is chat me *Track ${order.id}* likhkar bhejein.\n\n` +
-    `— *Team Shifter Online*\n` +
-    `📞 Customer Care: 9109114515`;
-
   const receiverMsg =
     `Hello! 👋\n` +
     `Aapke liye ek parcel/delivery book ki gayi hai! 🚚\n` +
@@ -209,11 +199,6 @@ async function notifyOrderBooked(orderId) {
     `Parcel live status check karne ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Customer Care: 9109114515`;
-
-  if (senderPhone && !wasMilestoneSent(order.id, "booked", senderPhone)) {
-    markMilestoneSent(order.id, "booked", senderPhone);
-    await sendWhatsAppNotification(senderPhone, senderMsg);
-  }
 
   if (receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "booked", receiverPhone)) {
     markMilestoneSent(order.id, "booked", receiverPhone);
@@ -238,18 +223,6 @@ async function notifyDriverArrived(orderId) {
 
   const trackLineText = receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "";
 
-  const senderMsg =
-    `Hello! 👋\n` +
-    `🚚 *Driver Arrived at Pickup Location!*\n\n` +
-    `Driver aapke pickup point par pahunch chuka hai. Kripya parcel handover karein.\n\n` +
-    `📦 *Order ID*: #${order.id}\n` +
-    `🛵 *Driver*: *${riderName}* ${riderVehicle} — 📞 ${riderPhone}\n` +
-    (order.otp ? `🔑 *Pickup OTP*: *${order.otp}* (Driver ko saman dete waqt yeh OTP batayein)\n\n` : `\n`) +
-    `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
-    `🎯 *Drop*: ${order.daddress || "N/A"}\n\n` +
-    `— *Team Shifter Online*\n` +
-    `📞 Helpline: 9109114515`;
-
   const receiverMsg =
     `Hello! 👋\n` +
     `🚚 *Driver Arrived at Pickup Point!*\n\n` +
@@ -262,11 +235,6 @@ async function notifyDriverArrived(orderId) {
     `Live status ke liye chat me *Track ${order.id}* likhein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
-
-  if (senderPhone && !wasMilestoneSent(order.id, "arrived", senderPhone)) {
-    markMilestoneSent(order.id, "arrived", senderPhone);
-    await sendWhatsAppNotification(senderPhone, senderMsg);
-  }
 
   if (receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "arrived", receiverPhone)) {
     markMilestoneSent(order.id, "arrived", receiverPhone);
@@ -302,13 +270,7 @@ async function notifyTripStarted(orderId) {
     `Live status check karne ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
-  const senderMsg = buildMsg("");
   const receiverMsg = buildMsg(receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "");
-
-  if (senderPhone && !wasMilestoneSent(order.id, "pickup", senderPhone)) {
-    markMilestoneSent(order.id, "pickup", senderPhone);
-    await sendWhatsAppNotification(senderPhone, senderMsg);
-  }
 
   if (receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "pickup", receiverPhone)) {
     markMilestoneSent(order.id, "pickup", receiverPhone);
@@ -342,7 +304,6 @@ async function notifyDriverArrivedDrop(orderId) {
     extra +
     `— *Team Shifter Online*\n` +
     `📞 Helpline: 9109114515`;
-  const senderMsg = buildMsg("");
   const receiverMsg = buildMsg(receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "");
 
   if (receiverPhone && !wasMilestoneSent(order.id, "arrived_drop", receiverPhone)) {
@@ -350,45 +311,66 @@ async function notifyDriverArrivedDrop(orderId) {
     await sendWhatsAppNotification(receiverPhone, receiverMsg);
   }
 
-  if (senderPhone && senderPhone !== receiverPhone && !wasMilestoneSent(order.id, "arrived_drop", senderPhone)) {
-    markMilestoneSent(order.id, "arrived_drop", senderPhone);
-    await sendWhatsAppNotification(senderPhone, senderMsg);
-  }
-
   return true;
 }
 
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.shifter.online";
+
 /**
- * 4b. Drop / Delivery Complete Hone Par
- * Sent when order is marked completed
+ * 4b. Delivery complete.
+ * Sender: message 2 of 2, only when they opted in. Receiver: the plain "delivered" note, except when
+ * they are the payer, who instead get the payment message from receiverPayService.issueLink.
  */
 async function notifyTripCompleted(orderId) {
   const data = await getOrderDetailsWithParticipants(orderId);
   if (!data) return false;
 
-  const { order, senderPhone, receiverPhone } = data;
+  const { order, sendSender, senderPhone, receiverPhone, receiverName } = data;
 
-  const msg =
-    `Hello! 👋\n` +
-    `✅ *Order Delivered Successfully!*\n\n` +
-    `Aapka parcel successfully deliver ho chuka hai. Shifter Online choose karne ke liye shukriya! 🙏\n\n` +
-    `📦 *Order ID*: #${order.id}\n` +
-    `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
-    `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
-    `💰 *Total Fare*: ₹${order.total_dcharge}\n\n` +
-    `Agli delivery booking ke liye Shifter Online App use karein:\n` +
-    `👉 https://play.google.com/store/apps/details?id=com.shifter.online\n\n` +
-    `— *Team Shifter Online*\n` +
-    `📞 Customer Care: 9109114515`;
-
-  if (senderPhone && !wasMilestoneSent(order.id, "complete", senderPhone)) {
-    markMilestoneSent(order.id, "complete", senderPhone);
-    await sendWhatsAppNotification(senderPhone, msg);
+  let receiverPays = false;
+  try {
+    const rp = await prisma.order_receiver_pay.findFirst({ where: { order_id: order.id } });
+    receiverPays = Boolean(rp) && rp.status !== "closed";
+  } catch (err) {
+    logger.warn(`notifyTripCompleted: receiver-pay lookup failed for order ${order.id}: ${err.message}`);
   }
 
-  if (receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "complete", receiverPhone)) {
+  if (sendSender && senderPhone && !wasMilestoneSent(order.id, "complete", senderPhone)) {
+    markMilestoneSent(order.id, "complete", senderPhone);
+    const paymentBlock = receiverPays
+      ? `💳 *Payment*:\nPayment link has been sent to the Receiver${receiverName ? ` (${receiverName})` : ""} on WhatsApp.\n\n`
+      : `💳 *Payment*:\nIf any payment is still pending, please clear it in the Shifter Online app (UPI / Cards / Wallet) or pay the driver directly.\n\n`;
+    await sendWhatsAppNotification(
+      senderPhone,
+      `Hello! 👋\n` +
+        `Your delivery for Order #${order.id} has been successfully completed! 🎉\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `✅ *Delivery Status*: Delivered\n` +
+        `💰 *Total Fare*: ₹${order.total_dcharge}\n\n` +
+        paymentBlock +
+        `Thank you for choosing Shifter Online!\n` +
+        `📲 Download the official Shifter Online Customer App for future bookings:\n` +
+        `👉 ${PLAY_STORE_URL}\n\n` +
+        `— *Team Shifter Online*\n` +
+        `📞 Customer Care: 9109114515`
+    );
+  }
+
+  if (receiverPhone && receiverPhone !== senderPhone && !receiverPays && !wasMilestoneSent(order.id, "complete", receiverPhone)) {
     markMilestoneSent(order.id, "complete", receiverPhone);
-    await sendWhatsAppNotification(receiverPhone, msg);
+    await sendWhatsAppNotification(
+      receiverPhone,
+      `Hello! 👋\n` +
+        `✅ *Order Delivered Successfully!*\n\n` +
+        `Aapka parcel successfully deliver ho chuka hai. Shifter Online choose karne ke liye shukriya! 🙏\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
+        `🎯 *Drop*: ${order.daddress || "N/A"}\n\n` +
+        `Agli delivery booking ke liye Shifter Online App use karein:\n` +
+        `👉 ${PLAY_STORE_URL}\n\n` +
+        `— *Team Shifter Online*\n` +
+        `📞 Customer Care: 9109114515`
+    );
   }
 
   return true;
@@ -408,18 +390,32 @@ async function notifyDriverAssigned(orderId) {
   const riderPhone = rider.fmobile || "9109114515";
   const riderVehicle = rider.vehicle_no ? `(${rider.vehicle_no})` : "";
 
-  const msg =
-    `Hello! 👋\n` +
-    `🛵 *Driver Assigned to Your Order #${order.id}!*\n\n` +
-    `*Driver*: ${riderName} ${riderVehicle}\n` +
-    `📱 *Phone*: ${riderPhone}\n\n` +
-    `Driver jald hi aapke pickup point par pahunchenge.\n` +
-    `Live status ke liye is chat me *Track ${order.id}* bhejein.\n\n` +
-    `— *Team Shifter Online*`;
-
-  if (senderPhone && !wasMilestoneSent(order.id, "assigned", senderPhone)) {
-    markMilestoneSent(order.id, "assigned", senderPhone);
-    await sendWhatsAppNotification(senderPhone, msg);
+  // Sender message 1 of 2 (opt-in only). Keyed by driver so a reassignment re-sends the new driver's
+  // details and OTP.
+  const senderKey = `assigned_${rider.id}`;
+  if (data.sendSender && senderPhone && !wasMilestoneSent(order.id, senderKey, senderPhone)) {
+    markMilestoneSent(order.id, senderKey, senderPhone);
+    const url = await trackUrl(order, receiverPhone);
+    await sendWhatsAppNotification(
+      senderPhone,
+      `Hello! 👋\n` +
+        `Your Shifter Online delivery has been confirmed! 🚚\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `🚗 *Vehicle*: ${data.categoryTitle}\n\n` +
+        `🛵 *Assigned Driver Details*:\n` +
+        `• Driver: ${riderName}\n` +
+        (rider.vehicle_no ? `• Vehicle Number: ${rider.vehicle_no}\n` : "") +
+        `• Phone: 📞 ${riderPhone}\n\n` +
+        (order.otp
+          ? `🔑 *Pickup OTP*: *${order.otp}*\n(Please share this OTP with the driver after loading your goods to start the trip.)\n\n`
+          : "") +
+        `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
+        `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
+        `👤 *Receiver*: ${receiverName}${receiverPhone ? ` (📞 ${receiverPhone})` : ""}\n\n` +
+        (url ? `📍 *Live Tracking Link*:\n👉 ${url}\n\n` : "") +
+        `— *Team Shifter Online*\n` +
+        `📞 Customer Care: 9109114515`
+    );
   }
 
   const receiverLine = receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "";
@@ -460,11 +456,6 @@ async function notifyOrderCancelled(orderId, reason = "") {
     (reason ? `\n*Reason*: ${reason}\n\n` : `\n\n`) +
     `Kisi bhi sahayata ke liye hamare Customer Care 9109114515 par sampark karein.\n\n` +
     `— *Team Shifter Online*`;
-
-  if (senderPhone && !wasMilestoneSent(order.id, "cancelled", senderPhone)) {
-    markMilestoneSent(order.id, "cancelled", senderPhone);
-    await sendWhatsAppNotification(senderPhone, msg);
-  }
 
   if (receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "cancelled", receiverPhone)) {
     markMilestoneSent(order.id, "cancelled", receiverPhone);
