@@ -727,6 +727,7 @@ function EnrollmentsTab({ enrollments, loading, riderName, statusPill, onOpenLed
             <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Status</th>
             <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Rides</th>
             <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>Eligible / Final</th>
+            <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }} title="Next-day discount recorded on this driver's completed next-day orders in the duty window. Admin deducts it at settlement.">Next-day discount to deduct</th>
             <th className="px-3.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}></th>
           </tr>
         </thead>
@@ -739,6 +740,9 @@ function EnrollmentsTab({ enrollments, loading, riderName, statusPill, onOpenLed
               <td className="px-3.5 py-2.5" style={{ color: 'var(--ink-muted)' }}>{e.duty_log?.rides_completed ?? '-'}</td>
               <td className="px-3.5 py-2.5" style={{ color: 'var(--ink-muted)' }}>
                 {e.duty_log ? `₹${Number(e.duty_log.eligible_plan_amount).toLocaleString()} / ₹${Number(e.duty_log.final_settlement_amount).toLocaleString()}` : '-'}
+              </td>
+              <td className="px-3.5 py-2.5 font-semibold" style={{ color: Number(e.next_day_discount_total) > 0 ? 'var(--warning, #a16207)' : 'var(--ink-muted)' }}>
+                {e.next_day_discount_total == null ? '-' : `₹${Number(e.next_day_discount_total).toLocaleString()}`}
               </td>
               <td className="px-3.5 py-2.5">
                 <button onClick={() => onOpenLedger(e.rider_id)} className="text-emerald-600 font-semibold hover:underline">

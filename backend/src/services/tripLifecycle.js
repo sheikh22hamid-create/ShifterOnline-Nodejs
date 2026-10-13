@@ -5,6 +5,7 @@ const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
 const dailyDriverEnrollmentQuery = require("./dailyDriverCommissionExemption");
 const nextDayRules = require("./nextDayRules");
+const nextDaySettings = require("./nextDaySettings");
 const referralRewardService = require("./referralRewardService");
 const trialOrderTracker = require("../utils/trialOrderTracker");
 const rewardPlanService = require("./rewardPlanService");
@@ -712,7 +713,8 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // live (Normal Driver dispatch) pays 100%.
     if (isDailyDriverExempt && Number(order.booking_type) === 3 && order.next_day_stage === "arranging") {
       try {
-        const split = nextDayRules.splitDailyDriverFare(finalTotal);
+        const discountPercent = await nextDaySettings.getDiscountPercent().catch(() => nextDayRules.DEFAULT_DISCOUNT_PERCENT);
+        const split = nextDayRules.splitDailyDriverFare(finalTotal, discountPercent);
         await prisma.pkg_order.update({
           where: { id: orderId },
           data: { driver_earning: split.driverEarning, next_day_discount_amount: split.discount },

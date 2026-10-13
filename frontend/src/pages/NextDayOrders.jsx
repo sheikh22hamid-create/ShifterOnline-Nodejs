@@ -7,6 +7,7 @@ import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import NextDaySequenceModal from '../components/orders/NextDaySequenceModal'
 import NextDayOfferModal from '../components/orders/NextDayOfferModal'
+import NextDaySettingsCard from '../components/orders/NextDaySettingsCard'
 import { orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
 import { formatCurrency, truncate } from '../utils/format'
 
@@ -47,6 +48,8 @@ export default function NextDayOrders() {
         Next-day bookings are priced at Model 1. Offer each one to a Daily Driver; if none accepts, it goes live to Normal Drivers at the live time.
       </p>
 
+      <NextDaySettingsCard />
+
       {selectedOrders.length > 0 && (
         <div className="mt-3 flex items-center justify-between rounded-xl px-4 py-2.5" style={{ background: 'var(--brand-soft)' }}>
           <span className="text-[13px]" style={{ color: 'var(--brand)' }}>{selectedOrders.length} order(s) selected</span>
@@ -66,7 +69,7 @@ export default function NextDayOrders() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['', 'Order', 'Category', 'Pickup', 'For date', 'Fare', 'Status', 'Live at', 'Driver', ''].map((h) => (
+                {['', 'Order', 'Category', 'Pickup', 'For date', 'Fare', 'Status', 'Live at', 'Driver', 'Driver discount', ''].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -77,21 +80,21 @@ export default function NextDayOrders() {
               {loading &&
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={10} className="px-4 py-3">
+                    <td colSpan={11} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={11} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
               )}
               {!loading && !error && orders.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-14 text-center">
+                  <td colSpan={11} className="px-4 py-14 text-center">
                     <Sunrise size={20} className="mx-auto mb-2" style={{ color: 'var(--ink-faint)' }} />
                     <p className="text-[13px]" style={{ color: 'var(--ink-faint)' }}>No next-day bookings yet.</p>
                   </td>
@@ -125,6 +128,9 @@ export default function NextDayOrders() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: o.rid ? 'var(--success)' : 'var(--ink-faint)' }}>
                       {o.rid ? `Driver #${o.rid}${o.next_day_sequence ? ` (stop ${o.next_day_sequence})` : ''}` : 'Unassigned'}
+                    </td>
+                    <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
+                      {o.next_day_discount_amount != null ? formatCurrency(o.next_day_discount_amount) : '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       {!o.rid && o.next_day_stage === 'arranging' && (

@@ -1,7 +1,8 @@
 // Pure rules for the Next-Day Daily Driver offer flow (spec 2026-10-13). No I/O.
 const { haversineKm } = require("../utils/geoDistance");
 
-const DAILY_DRIVER_SHARE = 0.9;
+const DEFAULT_DISCOUNT_PERCENT = 10; // admin-editable (nextDaySettings); the share a Daily Driver keeps is 100 - this
+const MAX_DISCOUNT_PERCENT = 50;
 const DEFAULT_LIVE_TIME = "14:00";
 const STAGE = Object.freeze({ ARRANGING: "arranging", LIVE: "live" });
 const OFFER = Object.freeze({ OFFERED: "offered", ACCEPTED: "accepted", REJECTED: "rejected", EXPIRED: "expired", CANCELLED: "cancelled" });
@@ -9,10 +10,21 @@ const OFFER = Object.freeze({ OFFERED: "offered", ACCEPTED: "accepted", REJECTED
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-/** The Daily Driver's earning for a next-day order and the 10% difference admin settles. */
-function splitDailyDriverFare(fare) {
+/** A usable discount percent (0..50), else the default; never throws. */
+function normalizeDiscountPercent(percent) {
+  const n = typeof percent === "string" && percent.trim() === "" ? NaN : Number(percent);
+  return percent !== null && percent !== undefined && Number.isFinite(n) && n >= 0 && n <= MAX_DISCOUNT_PERCENT
+    ? n
+    : DEFAULT_DISCOUNT_PERCENT;
+}
+
+/** Fraction of the fare a Daily Driver keeps, e.g. 0.9 for a 10% discount. */
+const driverShare = (percent) => Math.round((100 - normalizeDiscountPercent(percent)) * 100) / 10000;
+
+/** The Daily Driver's earning for a next-day order and the discount difference admin settles. */
+function splitDailyDriverFare(fare, percent = DEFAULT_DISCOUNT_PERCENT) {
   const total = round2(fare);
-  const driverEarning = round2(total * DAILY_DRIVER_SHARE);
+  const driverEarning = round2(total * (100 - normalizeDiscountPercent(percent)) / 100);
   return { driverEarning, discount: round2(total - driverEarning) };
 }
 
@@ -42,4 +54,4 @@ function rankByPickupDistance(order, riders) {
   return keyed.map((k) => k.rider);
 }
 
-module.exports = { DAILY_DRIVER_SHARE, DEFAULT_LIVE_TIME, STAGE, OFFER, splitDailyDriverFare, parseLiveTime, liveAtFor, rankByPickupDistance };
+module.exports = { DEFAULT_DISCOUNT_PERCENT, MAX_DISCOUNT_PERCENT, normalizeDiscountPercent, driverShare, DEFAULT_LIVE_TIME, STAGE, OFFER, splitDailyDriverFare, parseLiveTime, liveAtFor, rankByPickupDistance };

@@ -3,6 +3,7 @@ const rules = require("./nextDayRules");
 
 const OFFER_SECONDS_KEY = "next_day_offer_seconds";
 const LIVE_TIME_KEY = "next_day_live_time";
+const DISCOUNT_PERCENT_KEY = "next_day_daily_discount_percent";
 const DEFAULT_OFFER_SECONDS = 60;
 const OFFER_SECONDS_RANGE = [15, 600];
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -38,6 +39,24 @@ async function setOfferSeconds(value) {
   return n;
 }
 
+async function getDiscountPercent() {
+  const raw = await read(DISCOUNT_PERCENT_KEY);
+  const n = raw === null || raw.trim() === "" ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= rules.MAX_DISCOUNT_PERCENT ? n : rules.DEFAULT_DISCOUNT_PERCENT;
+}
+function validateDiscountPercent(value) {
+  const n = typeof value === "string" ? (/^\d+(\.\d{1,2})?$/.test(value.trim()) ? Number(value) : NaN) : value;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > rules.MAX_DISCOUNT_PERCENT) {
+    throw badRequest(`discount_percent must be a number between 0 and ${rules.MAX_DISCOUNT_PERCENT}`);
+  }
+  return n;
+}
+async function setDiscountPercent(value) {
+  const n = validateDiscountPercent(value);
+  await write(DISCOUNT_PERCENT_KEY, n);
+  return n;
+}
+
 async function getLiveTime() {
   return rules.parseLiveTime(await read(LIVE_TIME_KEY));
 }
@@ -52,4 +71,8 @@ async function setLiveTime(value) {
   return v;
 }
 
-module.exports = { getOfferSeconds, setOfferSeconds, validateOfferSeconds, getLiveTime, setLiveTime, validateLiveTime };
+module.exports = {
+  getOfferSeconds, setOfferSeconds, validateOfferSeconds,
+  getLiveTime, setLiveTime, validateLiveTime,
+  getDiscountPercent, setDiscountPercent, validateDiscountPercent,
+};

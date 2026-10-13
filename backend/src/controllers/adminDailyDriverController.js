@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const planService = require("../services/dailyDriverPlanService");
 const forceAssignService = require("../services/forceAssignService");
+const { dutyWindow } = require("../services/dailyDriverSettlementService");
 const logger = require("../utils/logger");
 
 async function listPlans(req, res) {
@@ -74,6 +75,34 @@ async function rejectEnrollment(req, res) {
   }
 }
 
+/**
+ * Next-day orders taken by a Daily Driver record a discount (spec 2026-10-13) that admin deducts at settlement.
+ * Sums it per enrollment over the same duty window settlement uses. Returns Map(enrollmentId -> total), or null
+ * when the lookup fails so the list still loads.
+ */
+async function nextDayDiscountTotals(enrollments) {
+  if (!enrollments.length) return new Map();
+  try {
+    const riderIds = [...new Set(enrollments.map((e) => e.rider_id))];
+    const orders = await prisma.pkg_order.findMany({
+      where: { rid: { in: riderIds }, o_status: "Completed", next_day_discount_amount: { not: null } },
+      select: { rid: true, ddate: true, next_day_discount_amount: true },
+    });
+    const totals = new Map();
+    for (const e of enrollments) {
+      const { start, end } = dutyWindow(e.enrollment_date, e.plan);
+      const sum = orders
+        .filter((o) => o.rid === e.rider_id && o.ddate && o.ddate >= start && o.ddate <= end)
+        .reduce((acc, o) => acc + (Number(o.next_day_discount_amount) || 0), 0);
+      totals.set(e.id, Math.round(sum * 100) / 100);
+    }
+    return totals;
+  } catch (err) {
+    logger.error("adminDailyDriver.listEnrollments: next-day discount lookup failed:", err);
+    return null;
+  }
+}
+
 async function listEnrollments(req, res) {
   try {
     const { date, plan_id, status } = req.query;
@@ -95,9 +124,14 @@ async function listEnrollments(req, res) {
     });
     const riderMap = new Map(riders.map((r) => [r.id, r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || `Driver #${r.id}`]));
 
+    const discountTotals = await nextDayDiscountTotals(enrollments);
     return res.json({
       success: true,
-      data: enrollments.map((e) => ({ ...e, rider_name: riderMap.get(e.rider_id) || `Driver #${e.rider_id}` })),
+      data: enrollments.map((e) => ({
+        ...e,
+        rider_name: riderMap.get(e.rider_id) || `Driver #${e.rider_id}`,
+        next_day_discount_total: discountTotals ? discountTotals.get(e.id) ?? 0 : null,
+      })),
     });
   } catch (err) {
     logger.error("adminDailyDriver.listEnrollments failed:", err);

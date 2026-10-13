@@ -1634,6 +1634,34 @@ describe("tripLifecycle.updateStatus('complete') — next-day Daily Driver earni
     expect(earningWrites[earningWrites.length - 1][0].data).toEqual({ driver_earning: 90, next_day_discount_amount: 10 });
   });
 
+  it("uses the admin-set discount percent for the split", async () => {
+    const originalAppSettings = prisma.app_settings;
+    prisma.app_settings = { findFirst: jest.fn().mockResolvedValue({ setting_value: "20" }) };
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 310 },
+      data: { driver_earning: 80, next_day_discount_amount: 20 },
+    });
+    prisma.app_settings = originalAppSettings;
+  });
+
+  it("falls back to 10% when the discount setting cannot be read", async () => {
+    const originalAppSettings = prisma.app_settings;
+    prisma.app_settings = { findFirst: jest.fn().mockRejectedValue(new Error("db down")) };
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 310 },
+      data: { driver_earning: 90, next_day_discount_amount: 10 },
+    });
+    prisma.app_settings = originalAppSettings;
+  });
+
   it("a failing earning write never fails the completed trip", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
     prisma.pkg_order.update.mockImplementation(async (arg) => {

@@ -7,7 +7,11 @@ jest.mock("../../config/db", () => ({
   booking_guarantee_case: { findUnique: jest.fn() },
   next_day_daily_offer: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
 }));
-jest.mock("../nextDaySettings", () => ({ getOfferSeconds: jest.fn().mockResolvedValue(60), getLiveTime: jest.fn().mockResolvedValue("14:00") }));
+jest.mock("../nextDaySettings", () => ({
+  getOfferSeconds: jest.fn().mockResolvedValue(60),
+  getLiveTime: jest.fn().mockResolvedValue("14:00"),
+  getDiscountPercent: jest.fn().mockResolvedValue(10),
+}));
 jest.mock("../pricingEngine", () => ({ getFirstTierPricingContext: jest.fn().mockResolvedValue({ pkg: { id: 1 }, discount: null }) }));
 jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(), startDispatch: jest.fn().mockResolvedValue(undefined), emitDriverEvent: jest.fn(),
@@ -69,6 +73,16 @@ describe("offerToDriver", () => {
     const opts = dispatchManager.offerToInterestedRiders.mock.calls[0][4];
     expect(opts).toMatchObject({ ttlMs: 60000, requireOnline: false, fareScale: 0.9 });
     expect(opts.payloadExtras.next_day_daily_offer).toBe("1");
+  });
+  it("scales the popup fare by the admin-set discount percent", async () => {
+    require("../nextDaySettings").getDiscountPercent.mockResolvedValueOnce(20);
+    await svc.offerToDriver({ order: order(), riderId: 1, adminId: 9, now: NOW });
+    expect(dispatchManager.offerToInterestedRiders.mock.calls[0][4].fareScale).toBe(0.8);
+  });
+  it("falls back to the default 10% when the discount setting cannot be read", async () => {
+    require("../nextDaySettings").getDiscountPercent.mockRejectedValueOnce(new Error("db"));
+    await svc.offerToDriver({ order: order(), riderId: 1, adminId: 9, now: NOW });
+    expect(dispatchManager.offerToInterestedRiders.mock.calls[0][4].fareScale).toBe(0.9);
   });
   it("refuses when an offer is already open", async () => {
     prisma.next_day_daily_offer.findFirst.mockResolvedValue({ id: 5 });

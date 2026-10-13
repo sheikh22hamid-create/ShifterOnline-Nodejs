@@ -9,7 +9,7 @@ const lockManager = require("./lockManager");
 // dispatchManager requires many modules; load it lazily like bookingGuaranteeService does.
 const dispatchManager = () => require("./dispatchManager");
 
-const { OFFER, STAGE, DAILY_DRIVER_SHARE } = rules;
+const { OFFER, STAGE } = rules;
 const ALERT = "NEXT-DAY ORDER";
 const LIVE_ALERT_THROTTLE_MS = 10 * 60 * 1000;
 const STUCK_OFFER_GRACE_MS = 30 * 1000;
@@ -70,12 +70,14 @@ async function offerToDriver({ order, riderId, adminId = null, now = new Date() 
 
   let sent;
   try {
+    // The popup shows what the Daily Driver will earn; an unreadable setting falls back to the default percent.
+    const discountPercent = await settings.getDiscountPercent().catch(() => rules.DEFAULT_DISCOUNT_PERCENT);
     const { pkg, discount } = await pricingEngine.getFirstTierPricingContext(order);
     sent = await dispatchManager().offerToInterestedRiders(order, [Number(riderId)], pkg, discount, {
       ttlMs: seconds * 1000,
       popupMs: seconds * 1000,
       requireOnline: false,
-      fareScale: DAILY_DRIVER_SHARE,
+      fareScale: rules.driverShare(discountPercent),
       payloadExtras: { next_day_daily_offer: "1", schedule_date_time: String(order.schedule_date_time || "") },
     });
   } catch (err) {

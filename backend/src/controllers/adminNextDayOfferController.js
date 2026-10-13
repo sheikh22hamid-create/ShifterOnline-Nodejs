@@ -55,9 +55,17 @@ async function listOffers(req, res) {
   } catch (e) { return fail(res, e, "listOffers"); }
 }
 
+async function currentSettings() {
+  return {
+    offer_seconds: await settings.getOfferSeconds(),
+    live_time: await settings.getLiveTime(),
+    discount_percent: await settings.getDiscountPercent(),
+  };
+}
+
 async function getSettings(req, res) {
   try {
-    return res.json({ success: true, data: { offer_seconds: await settings.getOfferSeconds(), live_time: await settings.getLiveTime() } });
+    return res.json({ success: true, data: await currentSettings() });
   } catch (e) { return fail(res, e, "getSettings"); }
 }
 
@@ -68,11 +76,18 @@ async function saveSettings(req, res) {
     const hasLive = req.body?.live_time !== undefined;
     const offerSeconds = hasOffer ? settings.validateOfferSeconds(req.body.offer_seconds) : undefined;
     const liveTime = hasLive ? settings.validateLiveTime(req.body.live_time) : undefined;
+    const hasDiscount = req.body?.discount_percent !== undefined;
+    const discountPercent = hasDiscount ? settings.validateDiscountPercent(req.body.discount_percent) : undefined;
     const savedOffer = hasOffer ? await settings.setOfferSeconds(offerSeconds) : undefined;
     const savedLive = hasLive ? await settings.setLiveTime(liveTime) : undefined;
+    const savedDiscount = hasDiscount ? await settings.setDiscountPercent(discountPercent) : undefined;
     return res.json({
       success: true,
-      data: { offer_seconds: savedOffer ?? await settings.getOfferSeconds(), live_time: savedLive ?? await settings.getLiveTime() },
+      data: {
+        offer_seconds: savedOffer ?? await settings.getOfferSeconds(),
+        live_time: savedLive ?? await settings.getLiveTime(),
+        discount_percent: savedDiscount ?? await settings.getDiscountPercent(),
+      },
     });
   } catch (e) { return fail(res, e, "saveSettings"); }
 }

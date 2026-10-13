@@ -4,8 +4,10 @@ jest.mock("../../services/nextDayOfferService", () => ({
 }));
 jest.mock("../../services/nextDaySettings", () => ({
   getOfferSeconds: jest.fn().mockResolvedValue(60), getLiveTime: jest.fn().mockResolvedValue("14:00"),
-  setOfferSeconds: jest.fn(), setLiveTime: jest.fn(),
+  getDiscountPercent: jest.fn().mockResolvedValue(10),
+  setOfferSeconds: jest.fn(), setLiveTime: jest.fn(), setDiscountPercent: jest.fn(),
   validateOfferSeconds: jest.fn((v) => Number(v)), validateLiveTime: jest.fn((v) => v),
+  validateDiscountPercent: jest.fn((v) => Number(v)),
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
@@ -57,7 +59,7 @@ it("saves settings", async () => {
   const r = res();
   await ctrl.saveSettings({ body: { offer_seconds: 90 }, user: { id: 9, role: "admin" } }, r);
   expect(s.setOfferSeconds).toHaveBeenCalledWith(90);
-  expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 90, live_time: "14:00" } });
+  expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 90, live_time: "14:00", discount_percent: 10 } });
 });
 
 describe("city scoping fails closed", () => {
@@ -85,7 +87,21 @@ describe("settings", () => {
     settings.setLiveTime.mockResolvedValue("15:30");
     const r = res(); await ctrl.saveSettings({ body: { live_time: "15:30" } }, r);
     expect(settings.setOfferSeconds).not.toHaveBeenCalled();
-    expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 60, live_time: "15:30" } });
+    expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 60, live_time: "15:30", discount_percent: 10 } });
+  });
+  it("saves discount_percent alone", async () => {
+    settings.setDiscountPercent.mockResolvedValue(15);
+    const r = res(); await ctrl.saveSettings({ body: { discount_percent: 15 } }, r);
+    expect(settings.setDiscountPercent).toHaveBeenCalledWith(15);
+    expect(settings.setOfferSeconds).not.toHaveBeenCalled();
+    expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 60, live_time: "14:00", discount_percent: 15 } });
+  });
+  it("does not half-apply: invalid discount_percent blocks the valid offer_seconds write", async () => {
+    settings.validateDiscountPercent.mockImplementationOnce(() => { throw Object.assign(new Error("discount_percent must be between 0 and 50"), { statusCode: 400 }); });
+    const r = res(); await ctrl.saveSettings({ body: { offer_seconds: 90, discount_percent: 99 } }, r);
+    expect(r.status).toHaveBeenCalledWith(400);
+    expect(settings.setOfferSeconds).not.toHaveBeenCalled();
+    expect(settings.setDiscountPercent).not.toHaveBeenCalled();
   });
   it("does not half-apply: invalid live_time blocks the valid offer_seconds write", async () => {
     settings.validateLiveTime.mockImplementationOnce(() => { throw Object.assign(new Error("live_time must be HH:MM (24-hour)"), { statusCode: 400 }); });
@@ -96,7 +112,7 @@ describe("settings", () => {
   });
   it("gets settings", async () => {
     const r = res(); await ctrl.getSettings({}, r);
-    expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 60, live_time: "14:00" } });
+    expect(r.json).toHaveBeenCalledWith({ success: true, data: { offer_seconds: 60, live_time: "14:00", discount_percent: 10 } });
   });
 });
 

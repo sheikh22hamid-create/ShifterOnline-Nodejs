@@ -9,6 +9,14 @@ describe("splitDailyDriverFare", () => {
     expect(driverEarning).toBe(120.03);
     expect(Math.round((driverEarning + discount) * 100) / 100).toBe(133.37);
   });
+  it("uses the admin-set discount percent when given", () => {
+    expect(rules.splitDailyDriverFare(100, 20)).toEqual({ driverEarning: 80, discount: 20 });
+    expect(rules.splitDailyDriverFare(100, 0)).toEqual({ driverEarning: 100, discount: 0 });
+    expect(rules.splitDailyDriverFare(200, 7.5)).toEqual({ driverEarning: 185, discount: 15 });
+  });
+  it("falls back to the default 10% for a missing or invalid percent", () => {
+    for (const p of [undefined, null, "abc", -5, 80]) expect(rules.splitDailyDriverFare(100, p)).toEqual({ driverEarning: 90, discount: 10 });
+  });
   it("treats a bad fare as zero", () => {
     expect(rules.splitDailyDriverFare("abc")).toEqual({ driverEarning: 0, discount: 0 });
   });
