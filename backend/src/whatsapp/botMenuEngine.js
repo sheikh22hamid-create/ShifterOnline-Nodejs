@@ -254,7 +254,7 @@ const TEXTS = {
         `🚚 *Shifter Online - Driver Partner Support*\n\n` +
         `Kripya neeche diye gaye options me se number chunein:\n\n` +
         `1️⃣ Gadi Jodein (Driver Partner App download link)\n` +
-        `2️⃣ Jaruri Documents (DL, RC, Aadhaar)\n` +
+        `2️⃣ Jaruri Documents (Compulsory & Optional Docs)\n` +
         `3️⃣ Driver Helpline Number\n` +
         `0️⃣ Main Menu par wapas jayein\n\n` +
         `👉 Kripya *1, 2, 3 ya 0* likhkar bhejein.`,
@@ -289,7 +289,7 @@ const TEXTS = {
         `2️⃣ প্রয়োজনীয় ডকুমেন্টস (Required Documents)\n` +
         `3️⃣ ড্রাইভার হেল্পলাইন (Driver Support: ${HELPLINE_NUMBER})\n` +
         `0️⃣ প্রধান মেনুতে ফিরে যান\n\n` +
-        `👉 দয়া করে *1, 2, 3 অথবা 0* লিখে পাঠান।`,
+        `👉 দয়া করে *1, 2, 3 अथवा 0* লিখে পাঠান।`,
       te:
         `🚚 *Shifter Online - డ్రైవర్ భాగస్వామి సేవలు*\n\n` +
         `దయచేసి క్రింది ఎంపికల నుండి సంఖ్యను ఎంచుకోండి:\n\n` +
@@ -315,7 +315,6 @@ const TEXTS = {
         `0️⃣ ಮುಖ್ಯ ಮೆನುಗೆ ಹಿಂತಿರುಗಿ\n\n` +
         `👉 ದಯವಿಟ್ಟು *1, 2, 3 ಅಥವಾ 0* ಎಂದು ಉತ್ತರಿಸಿ.`,
     },
-
 
     JOB_SEEKER: {
       hi:
@@ -735,138 +734,138 @@ const TEXTS = {
       "2": {
         hi:
           `📋 *ड्राइवर ऑनबोर्डिंग के लिए जरूरी कागजात*\n\n` +
-          `*Required Documents (अनिवार्य / Compulsory):*\n` +
-          `1️⃣ आधार कार्ड (Aadhaar Card)\n` +
+          `🔴 *Compulsory (अनिवार्य दस्तावेज)*:\n` +
+          `1️⃣ आधार कार्ड (Aadhar Card)\n` +
           `2️⃣ ड्राइविंग लाइसेंस (Driving License - DL)\n` +
           `3️⃣ वाहन आरसी (Vehicle RC)\n\n` +
-          `*Optional Documents (वैकल्पिक):*\n` +
+          `🟡 *Optional (वैकल्पिक दस्तावेज)*:\n` +
           `🔹 पैन कार्ड (PAN Card)\n` +
-          `🔹 बैंक डिटेल (Bank Details)\n` +
+          `🔹 बैंक डिटेल या UPI (Bank Details)\n` +
           `🔹 पीयूसी (PUC)\n` +
-          `🔹 बीमा (Insurance / Bima)\n\n` +
+          `🔹 बीमा (Vehicle Insurance)\n\n` +
           `📲 कागजात अपलोड करने के लिए Shifter Driver App डाउनलोड करें:\n` +
           `👉 ${DRIVER_APP_URL}\n\n` +
           `📞 सहायता: ${HELPLINE_NUMBER}\n\n` +
           `_(अन्य विकल्प के लिए नंबर चुनें या '0' लिखकर मुख्य मेन्यू पर जाएं)_`,
         en:
           `📋 *Required Documents for Driver Onboarding*\n\n` +
-          `*Required Documents (Compulsory):*\n` +
-          `1️⃣ Aadhaar Card\n` +
+          `🔴 *Compulsory Documents*:\n` +
+          `1️⃣ Aadhar Card\n` +
           `2️⃣ Driving License (DL)\n` +
-          `3️⃣ Vehicle RC\n\n` +
-          `*Optional Documents:*\n` +
+          `3️⃣ Vehicle RC Book\n\n` +
+          `🟡 *Optional Documents*:\n` +
           `🔹 PAN Card\n` +
-          `🔹 Bank Details\n` +
-          `🔹 PUC\n` +
-          `🔹 Insurance (Bima)\n\n` +
+          `🔹 Bank Details (or UPI)\n` +
+          `🔹 PUC Certificate\n` +
+          `🔹 Vehicle Insurance (Bima)\n\n` +
           `📲 Upload documents via Shifter Driver App:\n` +
           `👉 ${DRIVER_APP_URL}\n\n` +
           `📞 Support: ${HELPLINE_NUMBER}\n\n` +
           `_(Reply with another number or '0' for Main Menu)_`,
         hinglish:
           `📋 *Driver Onboarding ke liye Jaruri Documents*\n\n` +
-          `*Required Documents (Compulsory):*\n` +
-          `1️⃣ Aadhaar Card\n` +
+          `🔴 *Compulsory (जरूरी दस्तावेज)*:\n` +
+          `1️⃣ Aadhar Card\n` +
           `2️⃣ Driving License (DL)\n` +
-          `3️⃣ Vehicle RC\n\n` +
-          `*Optional Documents:*\n` +
+          `3️⃣ Vehicle RC Book\n\n` +
+          `🟡 *Optional (वैकल्पिक दस्तावेज)*:\n` +
           `🔹 PAN Card\n` +
-          `🔹 Bank Details\n` +
-          `🔹 PUC\n` +
-          `🔹 Insurance (Bima)\n\n` +
+          `🔹 Bank Details (ya UPI)\n` +
+          `🔹 PUC Certificate\n` +
+          `🔹 Bima (Vehicle Insurance)\n\n` +
           `📲 Documents upload karne ke liye Driver App download karein:\n` +
           `👉 ${DRIVER_APP_URL}\n\n` +
           `📞 Helpline: ${HELPLINE_NUMBER}\n\n` +
           `_(Doosre option ke liye number chunein ya '0' likhkar Main Menu par jayein)_`,
         mr:
           `📋 *चालक ऑनबोर्डिंगसाठी आवश्यक कागदपत्रे*\n\n` +
-          `*अनिवार्य कागदपत्रे (Compulsory):*\n` +
-          `1️⃣ आधार कार्ड (Aadhaar Card)\n` +
+          `🔴 *Compulsory (अनिवार्य कागदपत्रे)*:\n` +
+          `1️⃣ आधार कार्ड (Aadhar Card)\n` +
           `2️⃣ ड्रायव्हिंग लायसन्स (DL)\n` +
           `3️⃣ वाहन आरसी (Vehicle RC)\n\n` +
-          `*ऐच्छिक कागदपत्रे (Optional):*\n` +
+          `🟡 *Optional (पर्यायी कागदपत्रे)*:\n` +
           `🔹 पॅन कार्ड (PAN Card)\n` +
-          `🔹 बँक तपशील (Bank Details)\n` +
+          `🔹 बँक तपशील / UPI (Bank Details)\n` +
           `🔹 पीयूसी (PUC)\n` +
-          `🔹 विमा (Insurance / Bima)\n\n` +
+          `🔹 वाहन विमा (Bima / Insurance)\n\n` +
           `📲 ॲपद्वारे कागदपत्रे अपलोड करा:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 मदत: ${HELPLINE_NUMBER}`,
         gu:
           `📋 *ડ્રાઇવર ઓનબોર્ડિંગ માટે જરૂરી દસ્તાવેજો*\n\n` +
-          `*જરૂરી દસ્તાવેજો (Compulsory):*\n` +
-          `1️⃣ આધાર કાર્ડ (Aadhaar Card)\n` +
+          `🔴 *Compulsory (ફરજિયાત દસ્તાવેજો)*:\n` +
+          `1️⃣ આધાર કાર્ડ (Aadhar Card)\n` +
           `2️⃣ ડ્રાઇવિંગ લાઇસન્સ (DL)\n` +
           `3️⃣ વાહન આરસી (Vehicle RC)\n\n` +
-          `*વૈકલ્પિક દસ્તાવેજો (Optional):*\n` +
+          `🟡 *Optional (વૈકલ્પિક દસ્તાવેજો)*:\n` +
           `🔹 પાન કાર્ડ (PAN Card)\n` +
-          `🔹 બેંક વિગતો (Bank Details)\n` +
+          `🔹 બેંક વિગત / UPI (Bank Details)\n` +
           `🔹 પીયુસી (PUC)\n` +
-          `🔹 વીમો (Insurance / Bima)\n\n` +
+          `🔹 વીમો (Bima / Insurance)\n\n` +
           `📲 એપ પર ડોક્યુમેન્ટ અપલોડ કરો:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 સહાય: ${HELPLINE_NUMBER}`,
         pa:
           `📋 *ਡਰਾਈਵਰ ਔਨਬੋਰਡਿੰਗ ਲਈ ਜ਼ਰੂਰੀ ਦਸਤਾਵੇਜ਼*\n\n` +
-          `*ਜ਼ਰੂਰੀ ਦਸਤਾਵੇਜ਼ (Compulsory):*\n` +
-          `1️⃣ ਆਧਾਰ ਕਾਰਡ (Aadhaar Card)\n` +
+          `🔴 *Compulsory (ਲਾਜ਼ਮੀ ਦਸਤਾਵੇਜ਼)*:\n` +
+          `1️⃣ ਆਧਾਰ ਕਾਰਡ (Aadhar Card)\n` +
           `2️⃣ ਡਰਾਈਵਿੰਗ ਲਾਇਸੈਂਸ (DL)\n` +
           `3️⃣ ਗੱਡੀ ਦੀ ਆਰਸੀ (Vehicle RC)\n\n` +
-          `*ਚੋਣਵੇਂ ਦਸਤਾਵੇਜ਼ (Optional):*\n` +
+          `🟡 *Optional (ਵਿਕਲਪਿਕ ਦਸਤਾਵੇਜ਼)*:\n` +
           `🔹 ਪੈਨ ਕਾਰਡ (PAN Card)\n` +
-          `🔹 ਬੈਂਕ ਵੇਰਵੇ (Bank Details)\n` +
+          `🔹 ਬੈਂਕ ਵੇਰਵੇ / UPI (Bank Details)\n` +
           `🔹 ਪੀਯੂਸੀ (PUC)\n` +
-          `🔹 ਬੀਮਾ (Insurance / Bima)\n\n` +
+          `🔹 ਬੀਮਾ (Bima / Insurance)\n\n` +
           `📲 ਐਪ ਰਾਹੀਂ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਕਰੋ:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 ਹੈਲਪਲਾਈਨ: ${HELPLINE_NUMBER}`,
         bn:
           `📋 *ড্রাইভার অনবোর্ডিংয়ের জন্য প্রয়োজনীয় ডকুমেন্টস*\n\n` +
-          `*বাধ্যতামূলক ডকুমেন্টস (Compulsory):*\n` +
-          `1️⃣ আধার কার্ড (Aadhaar Card)\n` +
+          `🔴 *Compulsory (বাধ্যতামূলক ডকুমেন্টস)*:\n` +
+          `1️⃣ আধার কার্ড (Aadhar Card)\n` +
           `2️⃣ ড্রাইভিং লাইসেন্স (DL)\n` +
           `3️⃣ গাড়ির আরসি (Vehicle RC)\n\n` +
-          `*ঐচ্ছিক ডকুমেন্টস (Optional):*\n` +
+          `🟡 *Optional (ঐচ্ছিক ডকুমেন্টস)*:\n` +
           `🔹 প্যান কার্ড (PAN Card)\n` +
-          `🔹 ব্যাংক বিবরণ (Bank Details)\n` +
+          `🔹 ব্যাংক বিবরণ / UPI (Bank Details)\n` +
           `🔹 পিইউসি (PUC)\n` +
-          `🔹 বীমা (Insurance / Bima)\n\n` +
+          `🔹 বীমা (Bima / Insurance)\n\n` +
           `📲 ডকুমেন্টস আপলোড করতে অ্যাপ ডাউনলোড করুন:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 সহায়তা: ${HELPLINE_NUMBER}`,
         te:
           `📋 *డ్రైవర్ ఆన్‌బోర్డింగ్ కోసం అవసరమైన పత్రాలు*\n\n` +
-          `*తప్పనిసరి పత్రాలు (Compulsory):*\n` +
-          `1️⃣ ఆధార్ కార్డు (Aadhaar Card)\n` +
+          `🔴 *Compulsory (తప్పనిసరి పత్రాలు)*:\n` +
+          `1️⃣ ఆధార్ కార్డు (Aadhar Card)\n` +
           `2️⃣ డ్రైవింగ్ లైసెన్స్ (DL)\n` +
           `3️⃣ వెహికల్ ఆర్సీ (Vehicle RC)\n\n` +
-          `*ఐచ్ఛిక పత్రాలు (Optional):*\n` +
+          `🟡 *Optional (ఐచ్ఛిక పత్రాలు)*:\n` +
           `🔹 పాన్ కార్డు (PAN Card)\n` +
-          `🔹 బ్యాంక్ వివరాలు (Bank Details)\n` +
-          `🔹 పీయూసీ (PUC)\n` +
-          `🔹 బీమా (Insurance / Bima)\n\n` +
+          `🔹 బ్యాంక్ వివరాలు / UPI (Bank Details)\n` +
+          `🔹 పియుసి (PUC)\n` +
+          `🔹 బీమా (Bima / Insurance)\n\n` +
           `📲 డాక్యుమెంట్లు అప్‌లోడ్ చేయడానికి Driver App చూడండి:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 హెల్ప్‌లైన్: ${HELPLINE_NUMBER}`,
         ta:
           `📋 *ஓட்டுநர் இணைப்பிற்கு தேவையான ஆவணங்கள்*\n\n` +
-          `*கட்டாய ஆவணங்கள் (Compulsory):*\n` +
-          `1️⃣ ஆதார் அட்டை (Aadhaar Card)\n` +
+          `🔴 *Compulsory (கட்டாய ஆவணங்கள்)*:\n` +
+          `1️⃣ ஆதார் அட்டை (Aadhar Card)\n` +
           `2️⃣ ஓட்டுநர் உரிமம் (DL)\n` +
-          `3️⃣ வாகன ஆர்சி (Vehicle RC)\n\n` +
-          `*விருப்ப ஆவணங்கள் (Optional):*\n` +
+          `3️⃣ வாகன ஆர்.சி (Vehicle RC)\n\n` +
+          `🟡 *Optional (விருப்ப ஆவணங்கள்)*:\n` +
           `🔹 பான் கார்டு (PAN Card)\n` +
-          `🔹 வங்கி விவரங்கள் (Bank Details)\n` +
-          `🔹 பியூசி (PUC)\n` +
-          `🔹 காப்பீடு (Insurance / Bima)\n\n` +
+          `🔹 வங்கி விவரங்கள் / UPI (Bank Details)\n` +
+          `🔹 பி.யு.சி (PUC)\n` +
+          `🔹 காப்பீடு (Bima / Insurance)\n\n` +
           `📲 ஆவணங்களை பதிவேற்ற Driver App பதிவிறக்கவும்:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 உதவி எண்: ${HELPLINE_NUMBER}`,
         kn:
           `📋 *ಚಾಲಕರ ನೋಂದಣಿಗೆ ಅಗತ್ಯವಿರುವ ದಾಖಲೆಗಳು*\n\n` +
-          `*ಕಡ್ಡಾಯ ದಾಖಲೆಗಳು (Compulsory):*\n` +
-          `1️⃣ ಆಧಾರ್ ಕಾರ್ಡ್ (Aadhaar Card)\n` +
+          `🔴 *Compulsory (ಕಡ್ಡಾಯ ದಾಖಲೆಗಳು)*:\n` +
+          `1️⃣ ಆಧಾರ್ ಕಾರ್ಡ್ (Aadhar Card)\n` +
           `2️⃣ ಚಾಲನಾ ಪರವಾನಗಿ (DL)\n` +
           `3️⃣ ವಾಹನ ಆರ್‌ಸಿ (Vehicle RC)\n\n` +
-          `*ಐಚ್ಛಿಕ ದಾಖಲೆಗಳು (Optional):*\n` +
+          `🟡 *Optional (ಐಚ್ಛಿಕ ದಾಖಲೆಗಳು)*:\n` +
           `🔹 ಪ್ಯಾನ್ ಕಾರ್ಡ್ (PAN Card)\n` +
-          `🔹 ಬ್ಯಾಂಕ್ ವಿವರ (Bank Details)\n` +
+          `🔹 ಬ್ಯಾಂಕ್ ವಿವರಗಳು / UPI (Bank Details)\n` +
           `🔹 ಪಿಯುಸಿ (PUC)\n` +
-          `🔹 ವಿಮೆ (Insurance / Bima)\n\n` +
+          `🔹 ವಿಮೆ (Bima / Insurance)\n\n` +
           `📲 ದಾಖಲೆಗಳನ್ನು ಅಪ್‌ಲೋಡ್ ಮಾಡಲು App ಡೌನ್‌ಲೋಡ್ ಮಾಡಿ:\n👉 ${DRIVER_APP_URL}\n\n` +
           `📞 ಸಹಾಯವಾಣಿ: ${HELPLINE_NUMBER}`,
       },
@@ -925,7 +924,6 @@ const TEXTS = {
         kn: `📞 *ಚಾಲಕ ಸಹಾಯವಾಣಿ*: ${HELPLINE_NUMBER} | 📧 ${SUPPORT_EMAIL}\n📲 ${DRIVER_APP_URL}`,
       },
     },
-
 
     JOB_SEEKER: {
       "1": {

@@ -219,7 +219,7 @@ describe("WhatsApp Bounded Bot Menu Engine with Regional Languages", () => {
     expect(sessionManager.getSession(testPhone).step).toBe(STEPS.AWAITING_LANGUAGE);
   });
 
-  test("13. Driver Partner: Menu has option 3 as Helpline (no plans option), option 1 Easy registration, option 2 Compulsory/Optional docs", async () => {
+  test("13. Driver Partner: Menu has option 1 Easy registration, option 2 Compulsory/Optional docs, option 3 Helpline", async () => {
     await processMenuMessage(testPhone, "Hi");
     await processMenuMessage(testPhone, "3"); // Hinglish
     const driverMenu = await processMenuMessage(testPhone, "2"); // Driver Partner
@@ -240,15 +240,15 @@ describe("WhatsApp Bounded Bot Menu Engine with Regional Languages", () => {
 
     // Option 2: Documents
     const opt2Reply = await processMenuMessage(testPhone, "2");
-    expect(opt2Reply).toContain("Required Documents (Compulsory)");
-    expect(opt2Reply).toContain("Aadhaar Card");
+    expect(opt2Reply).toContain("Compulsory");
+    expect(opt2Reply).toContain("Aadhar Card");
     expect(opt2Reply).toContain("Driving License");
     expect(opt2Reply).toContain("Vehicle RC");
-    expect(opt2Reply).toContain("Optional Documents");
+    expect(opt2Reply).toContain("Optional");
     expect(opt2Reply).toContain("PAN Card");
     expect(opt2Reply).toContain("Bank Details");
     expect(opt2Reply).toContain("PUC");
-    expect(opt2Reply).toContain("Insurance (Bima)");
+    expect(opt2Reply).toContain("Bima");
 
     // Option 3: Helpline
     const opt3Reply = await processMenuMessage(testPhone, "3");
