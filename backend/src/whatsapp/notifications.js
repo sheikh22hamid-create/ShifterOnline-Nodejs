@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { trackLine, trackUrl } = require("../services/receiverTrackMessage");
+const senderPayService = require("../services/senderPayService");
 
 let whatsappClientRef = null;
 
@@ -337,9 +338,19 @@ async function notifyTripCompleted(orderId) {
 
   if (sendSender && senderPhone && !wasMilestoneSent(order.id, "complete", senderPhone)) {
     markMilestoneSent(order.id, "complete", senderPhone);
-    const paymentBlock = receiverPays
-      ? `💳 *Payment*:\nPayment link has been sent to the Receiver${receiverName ? ` (${receiverName})` : ""} on WhatsApp.\n\n`
-      : `💳 *Payment*:\nIf any payment is still pending, please clear it in the Shifter Online app (UPI / Cards / Wallet) or pay the driver directly.\n\n`;
+    // Browser pay link for the sender (UPI / cards, no app). When the receiver is the payer it is the
+    // backup: it only becomes payable if the receiver declines and the order falls back to the sender.
+    const payLink = senderPayService.buildLink(order.id);
+    let paymentBlock;
+    if (receiverPays) {
+      paymentBlock =
+        `💳 *Payment Link*:\nPayment link has been sent to the Receiver${receiverName ? ` (${receiverName})` : ""}.` +
+        (payLink ? ` If you wish to clear it yourself, tap:\n👉 ${payLink}\n\n` : `\n\n`);
+    } else {
+      paymentBlock = payLink
+        ? `💳 *Payment Link*:\nPlease complete your payment online using UPI / Cards (no app required):\n👉 ${payLink}\n\n`
+        : `💳 *Payment*:\nIf any payment is still pending, please clear it in the Shifter Online app or pay the driver directly.\n\n`;
+    }
     await sendWhatsAppNotification(
       senderPhone,
       `Hello! 👋\n` +

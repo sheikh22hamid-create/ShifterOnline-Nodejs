@@ -194,24 +194,47 @@ describe("Automated WhatsApp Lifecycle Notifications", () => {
       expect(to("9811111111")).toHaveLength(0);
     });
 
-    it("trip completed (sender pays): message 2 has fare, payment note and the app link", async () => {
-      jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue(null);
-      const id = useOrder({ send_sender_whatsapp: true });
-      await notifications.notifyTripCompleted(id);
-      const [msg] = to("9811111111");
-      expect(msg.text).toContain(`Your delivery for Order #${id} has been successfully completed`);
-      expect(msg.text).toContain("₹350");
-      expect(msg.text).toContain("Shifter Online app");
-      expect(msg.text).toContain("play.google.com/store/apps/details?id=com.shifter.online");
-      expect(msg.text).not.toContain("sent to the Receiver");
-    });
+    describe("trip completed", () => {
+      const OLD_ENV = process.env;
+      afterEach(() => { process.env = OLD_ENV; });
+      const withPayLinks = () => { process.env = { ...OLD_ENV, JWT_SECRET: "test-secret", PUBLIC_BASE_URL: "https://api.example.com" }; };
+      const payLink = (text) => (text.match(/https:\/\/api\.example\.com\/pay\/s\/\S+/) || [])[0];
 
-    it("trip completed (receiver pays): sender is told the link went to the receiver, receiver gets no generic note", async () => {
-      jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue({ status: "active" });
-      const id = useOrder({ send_sender_whatsapp: true });
-      await notifications.notifyTripCompleted(id);
-      expect(to("9811111111")[0].text).toContain("Payment link has been sent to the Receiver");
-      expect(to("9822222222")).toHaveLength(0);
+      it("sender pays: message 2 has fare, a direct browser payment link and the app link", async () => {
+        withPayLinks();
+        jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue(null);
+        const id = useOrder({ send_sender_whatsapp: true });
+        await notifications.notifyTripCompleted(id);
+        const [msg] = to("9811111111");
+        expect(msg.text).toContain(`Your delivery for Order #${id} has been successfully completed`);
+        expect(msg.text).toContain("₹350");
+        expect(msg.text).toContain("complete your payment online using UPI / Cards");
+        expect(payLink(msg.text)).toMatch(new RegExp(`/pay/s/${id}\\.`));
+        expect(msg.text).toContain("play.google.com/store/apps/details?id=com.shifter.online");
+        expect(msg.text).not.toContain("sent to the Receiver");
+      });
+
+      it("sender pays without a public base url: points to the app instead of a dead link", async () => {
+        process.env = { ...OLD_ENV, JWT_SECRET: "test-secret", PUBLIC_BASE_URL: "" };
+        jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue(null);
+        const id = useOrder({ send_sender_whatsapp: true });
+        await notifications.notifyTripCompleted(id);
+        const [msg] = to("9811111111");
+        expect(msg.text).toContain("Shifter Online app");
+        expect(payLink(msg.text)).toBeUndefined();
+      });
+
+      it("receiver pays: sender is told the link went to the receiver and gets the backup link; receiver gets no generic note", async () => {
+        withPayLinks();
+        jest.spyOn(prisma.order_receiver_pay, "findFirst").mockResolvedValue({ status: "active" });
+        const id = useOrder({ send_sender_whatsapp: true });
+        await notifications.notifyTripCompleted(id);
+        const [msg] = to("9811111111");
+        expect(msg.text).toContain("Payment link has been sent to the Receiver");
+        expect(msg.text).toContain("If you wish to clear it yourself");
+        expect(payLink(msg.text)).toBeDefined();
+        expect(to("9822222222")).toHaveLength(0);
+      });
     });
 
     it("trip completed twice sends the sender only one message", async () => {

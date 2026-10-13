@@ -61,6 +61,7 @@ const PAGE_HTML = `<!doctype html>
       b.hidden = false; $("pay").hidden = false; $("decline").hidden = false;
       $("pay").disabled = $("decline").disabled = locked;
       say(locked ? UNCONFIRMED : "");
+    } else if (s.state === "receiver_pending") { $("sub").textContent = "The receiver has been asked to pay for this order."; say("If they decline, open this link again to pay it yourself.");
     } else if (s.state === "paid") { $("sub").textContent = "Payment received. Thank you!"; say("");
     } else if (s.state === "expired") { $("sub").textContent = "This payment link has expired."; say("Please ask the sender or driver to resend it.");
     } else { $("sub").textContent = "No payment is needed for this order."; say(""); }
@@ -138,4 +139,13 @@ const PAGE_HTML = `<!doctype html>
 </body>
 </html>`;
 
-module.exports = { PAGE_HTML };
+// The sender's version of the page: same checkout, its own API prefix, and no Decline button.
+function swap(html, from, to) {
+  if (!html.includes(from)) throw new Error("receiverPayPage template changed: " + from);
+  return html.replace(from, to);
+}
+let SENDER_PAGE_HTML = swap(PAGE_HTML, 'var api = "/api/pay/"', 'var api = "/api/pay/s/"');
+SENDER_PAGE_HTML = swap(SENDER_PAGE_HTML, 'var skey = "rcvpay:"', 'var skey = "sndpay:"');
+SENDER_PAGE_HTML = swap(SENDER_PAGE_HTML, '$("pay").hidden = false; $("decline").hidden = false;', '$("pay").hidden = false;');
+
+module.exports = { PAGE_HTML, SENDER_PAGE_HTML };
