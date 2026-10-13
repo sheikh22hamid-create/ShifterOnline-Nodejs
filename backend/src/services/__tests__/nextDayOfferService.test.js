@@ -188,6 +188,21 @@ describe("reconcileOffers", () => {
     expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
     expect(dispatchManager.emitDriverEvent).not.toHaveBeenCalled();
   });
+  it("expires a stuck offer anyway once it is more than 30 s overdue and the request row cannot be flipped", async () => {
+    prisma.next_day_daily_offer.findMany.mockResolvedValue([open({ expires_at: new Date(NOW.getTime() - 31000) })]);
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 0 });
+    await svc.reconcileOffers(NOW);
+    expect(prisma.next_day_daily_offer.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "expired" }) }));
+    expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(1, "order:dismiss", expect.objectContaining({ order_id: "10" }));
+    expect(dispatchManager.offerToInterestedRiders).toHaveBeenCalledTimes(1);
+  });
+  it("leaves an unflippable overdue offer alone within the 30 s grace", async () => {
+    prisma.next_day_daily_offer.findMany.mockResolvedValue([open({ expires_at: new Date(NOW.getTime() - 29000) })]);
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 0 });
+    await svc.reconcileOffers(NOW);
+    expect(prisma.next_day_daily_offer.updateMany).not.toHaveBeenCalled();
+    expect(dispatchManager.offerToInterestedRiders).not.toHaveBeenCalled();
+  });
   it("a throwing offer does not block the next one", async () => {
     prisma.next_day_daily_offer.findMany.mockResolvedValue([open({ id: 1, order_id: 11 }), open({ id: 2, order_id: 10 })]);
     prisma.pkg_order.findUnique.mockRejectedValueOnce(new Error("db blip")).mockResolvedValue(order({ rid: 1, o_status: "Processing" }));
@@ -252,6 +267,22 @@ describe("goLiveDue", () => {
     });
     expect(adminSocket.notifyDispatchAlert).toHaveBeenCalledWith(10, 1, expect.stringContaining("GO-LIVE FAILED"), expect.objectContaining({ kind: "next_day_live_failed" }));
     expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(2);
+  });
+  it("throttles the go-live-failed alert to once per 10 minutes per order but reverts every tick", async () => {
+    const o = order({ id: 30, next_day_live_at: new Date(NOW.getTime() - 1000) });
+    prisma.pkg_order.findMany.mockResolvedValue([o]);
+    prisma.pkg_order.updateMany.mockResolvedValue({ count: 1 });
+    dispatchManager.startDispatch.mockRejectedValue(new Error("boom"));
+    const failedAlerts = () => adminSocket.notifyDispatchAlert.mock.calls.filter((c) => c[3].kind === "next_day_live_failed").length;
+    const reverts = () => prisma.pkg_order.updateMany.mock.calls.filter((c) => c[0].data.next_day_stage === "arranging").length;
+    await svc.goLiveDue(NOW);
+    await svc.goLiveDue(new Date(NOW.getTime() + 60000));
+    expect(failedAlerts()).toBe(1);
+    expect(reverts()).toBe(2);
+    await svc.goLiveDue(new Date(NOW.getTime() + 11 * 60000));
+    expect(failedAlerts()).toBe(2);
+    expect(reverts()).toBe(3);
+    dispatchManager.startDispatch.mockResolvedValue(undefined);
   });
   it("starts the normal stage when tiered dispatch is on, no stage when off", async () => {
     prisma.pkg_order.findMany.mockResolvedValue([order({ next_day_live_at: new Date(NOW.getTime() - 1000) })]);

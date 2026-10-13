@@ -10,6 +10,9 @@ const dispatchManager = () => require("./dispatchManager");
 
 const { OFFER, STAGE, DAILY_DRIVER_SHARE } = rules;
 const ALERT = "NEXT-DAY ORDER";
+const LIVE_ALERT_THROTTLE_MS = 10 * 60 * 1000;
+const STUCK_OFFER_GRACE_MS = 30 * 1000;
+const liveFailAlertAt = new Map(); // orderId -> last go-live-failed alert time (ms)
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 const isArranging = (order) =>
@@ -171,6 +174,12 @@ async function reconcileOffers(now = new Date()) {
           const fresh = await prisma.pkg_order.findUnique({ where: { id: offer.order_id } });
           if (fresh && Number(fresh.rid) === Number(offer.rider_id) && fresh.o_status !== "Cancelled") {
             await closeOffer(offer, OFFER.ACCEPTED, now);
+          } else if (now.getTime() - new Date(offer.expires_at).getTime() > STUCK_OFFER_GRACE_MS) {
+            // Never leave an offer 'offered' forever.
+            if (await closeOffer(offer, OFFER.EXPIRED, now)) {
+              dismiss(offer.rider_id, offer.order_id, "timeout");
+              await cascade(offer.order_id, now);
+            }
           }
         }
       }
@@ -202,9 +211,13 @@ async function goLiveDue(now = new Date()) {
         await dispatchManager().startDispatch({ ...order, next_day_stage: STAGE.LIVE }, null, opts);
       } catch (err) {
         logger.error(`nextDayOffer: dispatch at go-live failed for order ${order.id}, reverting to retry:`, err);
-        try {
-          adminSocket.notifyDispatchAlert(order.id, order.city_id, `${ALERT} – GO-LIVE FAILED, WILL RETRY`, { kind: "next_day_live_failed" });
-        } catch (e2) { logger.error(`nextDayOffer: go-live-failed alert failed for order ${order.id}:`, e2); }
+        const last = liveFailAlertAt.get(order.id);
+        if (last === undefined || now.getTime() - last >= LIVE_ALERT_THROTTLE_MS) {
+          liveFailAlertAt.set(order.id, now.getTime());
+          try {
+            adminSocket.notifyDispatchAlert(order.id, order.city_id, `${ALERT} – GO-LIVE FAILED, WILL RETRY`, { kind: "next_day_live_failed" });
+          } catch (e2) { logger.error(`nextDayOffer: go-live-failed alert failed for order ${order.id}:`, e2); }
+        }
         await prisma.pkg_order.updateMany({
           where: { id: order.id, next_day_stage: STAGE.LIVE, rid: 0, o_status: "Pending" }, data: { next_day_stage: STAGE.ARRANGING },
         });
@@ -215,6 +228,7 @@ async function goLiveDue(now = new Date()) {
       } catch (err) {
         logger.error(`nextDayOffer: live alert failed for order ${order.id}:`, err);
       }
+      liveFailAlertAt.delete(order.id);
       released += 1;
     } catch (err) {
       logger.error(`nextDayOffer: going live failed for order ${order.id}:`, err);
