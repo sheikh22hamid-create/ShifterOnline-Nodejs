@@ -14,8 +14,12 @@ const ALERT = "NEXT-DAY ORDER";
 const LIVE_ALERT_THROTTLE_MS = 10 * 60 * 1000;
 const STUCK_OFFER_GRACE_MS = 30 * 1000;
 const BUSY_RETRY_MS = 20 * 1000;
+const STRANDED_AFTER_MS = 2 * 60 * 1000;
+const CASCADE_ALIVE_MS = 3 * 60 * 1000;
+const STRANDED_RETRY_MS = 5 * 60 * 1000;
 const liveFailAlertAt = new Map(); // orderId -> last go-live-failed alert time (ms)
 const busyRetryTimers = new Map(); // orderId -> pending cascade retry (all candidates were busy)
+const strandedRetryAt = new Map(); // orderId -> last stranded-live restart time (ms)
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 
 const isArranging = (order) =>
@@ -211,6 +215,13 @@ async function reconcileOffers(now = new Date()) {
   }
 }
 
+/** Starts normal dispatch for a live next-day order (Normal stage when tiered dispatch is on). */
+async function startLiveDispatch(order) {
+  const tiered = await require("./tieredDispatchSettings").isTieredEnabled();
+  const opts = tiered ? { stage: require("./tierPenaltyRules").TIER.NORMAL } : {};
+  await dispatchManager().startDispatch({ ...order, next_day_stage: STAGE.LIVE }, null, opts);
+}
+
 /** At the live time, release unassigned orders to Normal Drivers through the normal dispatch engine. */
 async function goLiveDue(now = new Date()) {
   const due = await prisma.pkg_order.findMany({
@@ -228,9 +239,7 @@ async function goLiveDue(now = new Date()) {
         await cancelOffer(offer, "next_day_live", now);
       }
       try {
-        const tiered = await require("./tieredDispatchSettings").isTieredEnabled();
-        const opts = tiered ? { stage: require("./tierPenaltyRules").TIER.NORMAL } : {};
-        await dispatchManager().startDispatch({ ...order, next_day_stage: STAGE.LIVE }, null, opts);
+        await startLiveDispatch(order);
       } catch (err) {
         logger.error(`nextDayOffer: dispatch at go-live failed for order ${order.id}, reverting to retry:`, err);
         const last = liveFailAlertAt.get(order.id);
@@ -259,11 +268,43 @@ async function goLiveDue(now = new Date()) {
   return released;
 }
 
+/**
+ * A live order whose in-memory cascade was lost (e.g. a restart) sits Pending forever. Restart dispatch
+ * for it unless a guarantee case owns it, a cascade is visibly alive (recent request row), or this
+ * process already retried it within 5 min. startDispatch ignores a call while a cascade is active.
+ */
+async function resumeStrandedLive(now = new Date()) {
+  const stranded = await prisma.pkg_order.findMany({
+    where: {
+      booking_type: 3, next_day_stage: STAGE.LIVE, rid: 0, o_status: "Pending", order_status: 0,
+      next_day_live_at: { lte: new Date(now.getTime() - STRANDED_AFTER_MS) },
+    },
+  });
+  for (const order of stranded) {
+    try {
+      const last = strandedRetryAt.get(order.id);
+      if (last !== undefined && now.getTime() - last < STRANDED_RETRY_MS) continue;
+      const guaranteeCase = await prisma.booking_guarantee_case.findUnique({ where: { order_id: order.id } });
+      if (guaranteeCase) continue;
+      const recentRequest = await prisma.tbl_order_requests.findFirst({
+        where: { order_id: order.id, created_at: { gte: new Date(now.getTime() - CASCADE_ALIVE_MS) } }, select: { id: true },
+      });
+      if (recentRequest) continue;
+      strandedRetryAt.set(order.id, now.getTime());
+      logger.warn(`nextDayOffer: live order ${order.id} has no active dispatch, restarting it`);
+      await startLiveDispatch(order);
+    } catch (err) {
+      logger.error(`nextDayOffer: restarting stranded live order ${order.id} failed:`, err);
+    }
+  }
+}
+
 async function sweep(now = new Date()) {
   try { await reconcileOffers(now); } catch (err) { logger.error("nextDayOffer: reconcile failed:", err); }
   try { await goLiveDue(now); } catch (err) { logger.error("nextDayOffer: go-live pass failed:", err); }
+  try { await resumeStrandedLive(now); } catch (err) { logger.error("nextDayOffer: stranded-live pass failed:", err); }
 }
 
 const listOffers = (orderId) => prisma.next_day_daily_offer.findMany({ where: { order_id: Number(orderId) }, orderBy: { id: "asc" } });
 
-module.exports = { listAvailableDailyDrivers, offerToDriver, cascade, onRejected, reconcileOffers, goLiveDue, sweep, listOffers };
+module.exports = { listAvailableDailyDrivers, offerToDriver, cascade, onRejected, reconcileOffers, goLiveDue, resumeStrandedLive, sweep, listOffers };

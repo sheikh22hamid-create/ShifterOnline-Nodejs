@@ -4,6 +4,7 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findMany: jest.fn() },
   tbl_order_requests: { findFirst: jest.fn(), updateMany: jest.fn() },
   daily_driver_enrollment: { findMany: jest.fn() },
+  booking_guarantee_case: { findUnique: jest.fn() },
   next_day_daily_offer: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
 }));
 jest.mock("../nextDaySettings", () => ({ getOfferSeconds: jest.fn().mockResolvedValue(60), getLiveTime: jest.fn().mockResolvedValue("14:00") }));
@@ -43,6 +44,8 @@ beforeEach(() => {
   prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
   tieredSettings.isTieredEnabled.mockResolvedValue(false);
   lockManager.isLocked.mockImplementation(() => false);
+  prisma.booking_guarantee_case.findUnique.mockResolvedValue(null);
+  prisma.tbl_order_requests.findFirst.mockResolvedValue(null);
   prisma.tbl_rider.findMany.mockResolvedValue([rider(1), rider(2), rider(3)]);
   dispatchManager.offerToInterestedRiders.mockImplementation(async (o, ids) => ({ offeredRiderIds: ids }));
 });
@@ -352,7 +355,64 @@ describe("goLiveDue", () => {
   });
 });
 
+describe("resumeStrandedLive", () => {
+  const stranded = (id, extra = {}) => order({ id, next_day_stage: "live", order_status: 0, next_day_live_at: new Date(NOW.getTime() - 10 * 60000), ...extra });
+  const logger = require("../../utils/logger");
+
+  it("selects only live, unassigned, pending type-3 orders whose live time is over 2 min old", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([]);
+    await svc.resumeStrandedLive(NOW);
+    expect(prisma.pkg_order.findMany).toHaveBeenCalledWith({
+      where: { booking_type: 3, next_day_stage: "live", rid: 0, o_status: "Pending", order_status: 0, next_day_live_at: { lte: new Date(NOW.getTime() - 120000) } },
+    });
+  });
+  it("restarts dispatch once for a stranded order (normal stage when tiered) and logs a warning", async () => {
+    tieredSettings.isTieredEnabled.mockResolvedValue(true);
+    prisma.pkg_order.findMany.mockResolvedValue([stranded(101)]);
+    await svc.resumeStrandedLive(NOW);
+    expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(1);
+    expect(dispatchManager.startDispatch).toHaveBeenCalledWith(expect.objectContaining({ id: 101, next_day_stage: "live" }), null, { stage: "normal" });
+    expect(prisma.tbl_order_requests.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { order_id: 101, created_at: { gte: new Date(NOW.getTime() - 180000) } },
+    }));
+    expect(logger.warn).toHaveBeenCalled();
+  });
+  it("skips an order with a booking guarantee case", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([stranded(102)]);
+    prisma.booking_guarantee_case.findUnique.mockResolvedValue({ id: 1, order_id: 102 });
+    await svc.resumeStrandedLive(NOW);
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+  });
+  it("skips an order with a request row created in the last 3 minutes (cascade alive)", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([stranded(103)]);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 9 });
+    await svc.resumeStrandedLive(NOW);
+    expect(dispatchManager.startDispatch).not.toHaveBeenCalled();
+  });
+  it("retries the same order at most once per 5 minutes", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([stranded(104)]);
+    await svc.resumeStrandedLive(NOW);
+    await svc.resumeStrandedLive(new Date(NOW.getTime() + 4 * 60000));
+    expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(1);
+    await svc.resumeStrandedLive(new Date(NOW.getTime() + 5 * 60000));
+    expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(2);
+  });
+  it("a throwing restart does not block the other orders", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([stranded(105), stranded(106)]);
+    dispatchManager.startDispatch.mockRejectedValueOnce(new Error("boom"));
+    await expect(svc.resumeStrandedLive(NOW)).resolves.toBeUndefined();
+    expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(2);
+    expect(dispatchManager.startDispatch).toHaveBeenLastCalledWith(expect.objectContaining({ id: 106 }), null, {});
+  });
+});
+
 describe("sweep", () => {
+  it("runs the stranded-live pass even when go-live fails", async () => {
+    prisma.pkg_order.findMany.mockRejectedValueOnce(new Error("db down")).mockResolvedValueOnce([]);
+    await expect(svc.sweep(NOW)).resolves.toBeUndefined();
+    expect(prisma.pkg_order.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.pkg_order.findMany.mock.calls[1][0].where.next_day_stage).toBe("live");
+  });
   it("still runs go-live when reconcile fails", async () => {
     prisma.next_day_daily_offer.findMany.mockRejectedValueOnce(new Error("db down"));
     prisma.pkg_order.findMany.mockResolvedValue([]);
