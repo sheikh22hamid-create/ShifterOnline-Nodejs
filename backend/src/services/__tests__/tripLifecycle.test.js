@@ -368,6 +368,46 @@ describe("tripLifecycle.acceptOrder", () => {
       expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), "25", 0, 297);
     });
   });
+
+  describe("next-day orders (booking_type 3) keep their booked fare at accept", () => {
+    const { reconcileRideDiscountToFare } = require("../referralPointsRefund");
+    function setup(orderExtra) {
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 297, uid: 7, distance: 15.4, extra_mile_charge: 0, plat: 22.7, plong: 75.8,
+        d_charge: "300", total_dcharge: "300", ...orderExtra,
+      });
+      prisma.tbl_rider.findUnique.mockResolvedValue({
+        id: 1, first_name: "John", last_name: "Doe", fmobile: "9999999999", rlats: 22.8, rlongs: 75.9,
+      });
+      pricingEngine.priceForPackageId.mockResolvedValueOnce({
+        pkg: { cancellation_charge_customer: 15, waiting_charge: "2.00", free_waiting_time: 5 }, fare: 345, driverEarning: 300, commission: 5, radiusCharge: 45,
+      });
+      reconcileRideDiscountToFare.mockClear();
+    }
+
+    it("type 3: d_charge/total_dcharge are not rewritten from the accepting driver's distance", async () => {
+      setup({ booking_type: 3, next_day_stage: "live" });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      const data = prisma.pkg_order.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty("d_charge");
+      expect(data).not.toHaveProperty("total_dcharge");
+      expect(data).toEqual(expect.objectContaining({ delivery_type: 6, driver_earning: "300", commission: 5, wating_charge: "2.00", free_waiting_time: "5" }));
+      expect(reconcileRideDiscountToFare).not.toHaveBeenCalled();
+      expect(result.order.total_dcharge).toBe("300");
+      expect(result.order.d_charge).toBe("300");
+    });
+
+    it("type 1: the fare is still re-priced off the driver's real distance", async () => {
+      setup({ booking_type: 1 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      const data = prisma.pkg_order.update.mock.calls[0][0].data;
+      expect(data).toEqual(expect.objectContaining({ d_charge: 345, total_dcharge: 345, driver_earning: 345 }));
+      expect(reconcileRideDiscountToFare).toHaveBeenCalledWith(297, 345);
+      expect(result.order.total_dcharge).toBe(345);
+    });
+  });
 });
 
 describe("claimOrderForRider freshness check reads expires_at, not a hardcoded 15s window", () => {

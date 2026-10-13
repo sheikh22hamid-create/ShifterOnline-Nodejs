@@ -263,15 +263,26 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // however long the driver was kept waiting. Copied here from the
   // ACCEPTED package (not the first-tier package priced at order creation -
   // the driver may have accepted a different tier with a different rate).
-  const priced = {
-    d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission,
-    wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
-  };
+  //
+  // Next-day orders (booking_type 3) keep the fare booked the day before
+  // (spec D3/§3: the customer's fare never changes; next-day is no-radius):
+  // d_charge/total_dcharge are left alone and driver_earning is the booked
+  // fare, same as assignNextDayBatch. Package bookkeeping is still written.
+  const keepBookedFare = Number(order.booking_type) === 3;
+  const priced = keepBookedFare
+    ? {
+      delivery_type: Number(acceptedPackageId), driver_earning: order.total_dcharge, commission,
+      wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
+    }
+    : {
+      d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission,
+      wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
+    };
   await prisma.pkg_order.update({ where: { id: orderId }, data: priced });
   // The booking-time fare (and so the points cap) came from the client's own
   // total_dcharge; the fare is now re-priced server-side off the real driver
   // distance. If it came out lower, hand back points above the cap for it.
-  await reconcileRideDiscountToFare(orderId, fare);
+  if (!keepBookedFare) await reconcileRideDiscountToFare(orderId, fare);
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
   // still holding a popup for this order and cancel remaining timers.
