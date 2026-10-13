@@ -28,6 +28,7 @@ jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
+jest.mock("../nextDayOfferService", () => ({ onRejected: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../bookingGuaranteeService", () => ({
   closeOnAssign: jest.fn().mockResolvedValue(true),
   closeOnCancel: jest.fn().mockResolvedValue(true),
@@ -63,6 +64,7 @@ jest.mock("../../utils/pickupRelocateSettings", () => ({
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
+const nextDayOfferService = require("../nextDayOfferService");
 const pricingEngine = require("../pricingEngine");
 const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
@@ -483,6 +485,32 @@ describe("tripLifecycle.rejectOrder", () => {
     expect(result).toEqual({ success: true });
     expect(prisma.tbl_order_requests.updateMany).not.toHaveBeenCalled();
     expect(lockManager.releaseLock).not.toHaveBeenCalled();
+  });
+
+  it("hands a recorded reject to the next-day offer cascade", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    await tripLifecycle.rejectOrder(297, 1);
+
+    expect(nextDayOfferService.onRejected).toHaveBeenCalledWith(297, 1);
+  });
+
+  it("does not call the next-day cascade when no request row was updated", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 0 });
+
+    await tripLifecycle.rejectOrder(297, 1);
+
+    expect(nextDayOfferService.onRejected).not.toHaveBeenCalled();
+  });
+
+  it("a failing next-day cascade never blocks the reject", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+    nextDayOfferService.onRejected.mockRejectedValueOnce(new Error("boom"));
+
+    await expect(tripLifecycle.rejectOrder(297, 1)).resolves.toEqual({ success: true });
   });
 });
 
@@ -1435,6 +1463,73 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
 
     expect(result.success).toBe(true);
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("tripLifecycle.updateStatus('complete') — next-day Daily Driver earning (90%)", () => {
+  const nextDayOrder = (overrides = {}) => ({
+    id: 310,
+    rid: 1,
+    city_id: 1,
+    d_charge: 100,
+    total_dcharge: 100,
+    commission: 0,
+    trans_id: "cash_payment",
+    free_waiting_time: "0",
+    wating_charge: "0",
+    booking_type: 3,
+    next_day_stage: "arranging",
+    ...overrides,
+  });
+  const nextDayUpdate = () =>
+    prisma.pkg_order.update.mock.calls.find(([arg]) => arg.data && "next_day_discount_amount" in arg.data);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue(null);
+    prisma.pkg_order.update.mockResolvedValue({});
+    prisma.$queryRaw.mockResolvedValue([{ advance_payment: 0 }]);
+    prisma.daily_driver_enrollment = { findFirst: jest.fn().mockResolvedValue({ id: 5 }) };
+  });
+  afterEach(() => {
+    delete prisma.daily_driver_enrollment;
+  });
+
+  it("a Daily Driver completing a next-day order still being arranged earns 90 and records the 10 discount", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+
+    const result = await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 310 },
+      data: { driver_earning: 90, next_day_discount_amount: 10 },
+    });
+  });
+
+  it("an order that already went live (Normal Driver dispatch) pays 100%", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder({ next_day_stage: "live" }));
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(nextDayUpdate()).toBeUndefined();
+  });
+
+  it("a Current Booking (booking_type 1) is untouched", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder({ booking_type: 1 }));
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(nextDayUpdate()).toBeUndefined();
+  });
+
+  it("a non-Daily Driver on a next-day arranging order pays 100%", async () => {
+    prisma.daily_driver_enrollment.findFirst.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(nextDayUpdate()).toBeUndefined();
   });
 });
 

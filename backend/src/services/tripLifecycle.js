@@ -4,6 +4,7 @@ const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
 const dailyDriverEnrollmentQuery = require("./dailyDriverCommissionExemption");
+const nextDayRules = require("./nextDayRules");
 const referralRewardService = require("./referralRewardService");
 const trialOrderTracker = require("../utils/trialOrderTracker");
 const rewardPlanService = require("./rewardPlanService");
@@ -451,6 +452,11 @@ async function rejectOrder(orderId, riderId, packageId = null) {
     } catch (err) {
       logger.error(`rejectOrder: tier penalty hook failed for order ${orderId}:`, err);
     }
+    // Next-day Daily Driver offer (spec 2026-10-13): a reject passes the order to the next Daily Driver at once.
+    // The sweeper would catch it within ~10 s anyway; this just makes it instant. Never blocks the reject.
+    require("./nextDayOfferService")
+      .onRejected(orderId, riderId)
+      .catch((err) => logger.error(`rejectOrder: next-day cascade failed for order ${orderId}:`, err));
   }
 
   // Only release the lock if it's actually the one for this exact tier.
@@ -673,6 +679,17 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // both can be commission-exempt in parallel during the transition
     // (existing monthly_driver_contract rows are left alone, not migrated).
     const isDailyDriverExempt = await dailyDriverEnrollmentQuery.hasActiveDailyDriverEnrollmentToday(riderId);
+
+    // Next-day booking taken by a Daily Driver while it was still being arranged: the driver's order value is
+    // 10% lower; the difference is recorded for admin to settle (spec 2026-10-13). An order that already went
+    // live (Normal Driver dispatch) pays 100%.
+    if (isDailyDriverExempt && Number(order.booking_type) === 3 && order.next_day_stage === "arranging") {
+      const split = nextDayRules.splitDailyDriverFare(finalTotal);
+      await prisma.pkg_order.update({
+        where: { id: orderId },
+        data: { driver_earning: split.driverEarning, next_day_discount_amount: split.discount },
+      });
+    }
 
     const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
     const cashCollected = isCashOrder ? Math.max(0, finalTotal - prepaidTotal) : 0;

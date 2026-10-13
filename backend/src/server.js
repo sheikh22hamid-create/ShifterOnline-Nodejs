@@ -30,6 +30,7 @@ const {
   DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS,
   BOOKING_GUARANTEE_SWEEP_INTERVAL_MS,
   SYSTEM2_SWEEP_INTERVAL_MS,
+  NEXT_DAY_SWEEP_INTERVAL_MS,
 } = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
@@ -68,6 +69,19 @@ setInterval(sweepBookingGuarantee, BOOKING_GUARANTEE_SWEEP_INTERVAL_MS);
 setInterval(() => {
   dispatchManager.sweepOverdueSystem2Searches().catch((err) => logger.error("System 2 overdue-search sweep failed:", err));
 }, SYSTEM2_SWEEP_INTERVAL_MS);
+
+// Next-day Daily Driver offers: settle open offers (accepted / rejected / expired) and release orders that reached
+// their live time to Normal Drivers. DB-backed, so restart-safe.
+const nextDayOfferService = require("./services/nextDayOfferService");
+let nextDaySweepRunning = false;
+setInterval(() => {
+  if (nextDaySweepRunning) return;
+  nextDaySweepRunning = true;
+  nextDayOfferService
+    .sweep()
+    .catch((err) => logger.error("next-day offer sweep failed:", err))
+    .finally(() => { nextDaySweepRunning = false; });
+}, NEXT_DAY_SWEEP_INTERVAL_MS);
 
 // Customer no-show auto-cancel — see tripLifecycle.sweepOverduePickups doc
 // comment for why this is a periodic DB-anchored sweep rather than a

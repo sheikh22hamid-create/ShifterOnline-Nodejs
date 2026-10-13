@@ -1,3 +1,4 @@
+jest.mock("../../services/nextDaySettings", () => ({ getLiveTime: jest.fn().mockResolvedValue("07:00") }));
 jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { findUnique: jest.fn().mockResolvedValue(null) },
   driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
