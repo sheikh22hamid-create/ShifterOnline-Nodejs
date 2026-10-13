@@ -1226,13 +1226,17 @@ function scheduleExpiry(orderId, tierIndex, drivers, packageId, armedAt) {
  * own (no per-driver lock, no batching, per above), but it must still not
  * hand a second, competing popup to someone already holding one elsewhere.
  */
-async function offerToInterestedRiders(order, riderIds, pkg, discount) {
+async function offerToInterestedRiders(order, riderIds, pkg, discount, opts = {}) {
   if (!riderIds || riderIds.length === 0) return { offeredRiderIds: [] };
+
+  const ttlMs = opts.ttlMs ?? SCHEDULED_ORDER_PRIORITY_WINDOW_MS;
+  const popupMs = opts.popupMs ?? SCHEDULED_ORDER_PRIORITY_POPUP_MS;
+  const fareScale = opts.fareScale ?? 1;
 
   const riders = await prisma.tbl_rider.findMany({
     where: {
       id: { in: riderIds.map(Number) },
-      a_status: 1,
+      ...(opts.requireOnline === false ? {} : { a_status: 1 }),
       status: 1,
       vehicle: order.category,
     },
@@ -1244,7 +1248,7 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
   // than the normal 15s (POPUP_TIMEOUT_MS) cascade window — these riders
   // already expressed interest ahead of time. This is NOT how long the
   // driver's popup stays on screen; see the popup_duration override below.
-  const expiresAt = armedAt + SCHEDULED_ORDER_PRIORITY_WINDOW_MS;
+  const expiresAt = armedAt + ttlMs;
 
   const offeredRiderIds = [];
   await Promise.all(
@@ -1261,7 +1265,7 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
         packageId: Number(pkg.id),
         lat: driver.rlats ? String(driver.rlats) : null,
         lng: driver.rlongs ? String(driver.rlongs) : null,
-        ttlMs: SCHEDULED_ORDER_PRIORITY_WINDOW_MS,
+        ttlMs,
       });
 
       const { fare, driverTitle } = pricingEngine.priceForPackage(
@@ -1270,8 +1274,10 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
         0, discount
       );
 
+      const shownFare = fareScale === 1 ? fare : Math.round(fare * fareScale * 100) / 100;
+
       const payload = buildOrderRequestPayload(
-        order, pkg.id, distanceKm.toFixed(1), fare, pkg.title, expiresAt, driverTitle
+        order, pkg.id, distanceKm.toFixed(1), shownFare, pkg.title, expiresAt, driverTitle
       );
       payload.schedule_date_time = order.schedule_date_time;
       // The popup's own on-screen lifetime, decoupled from the offer's
@@ -1284,7 +1290,8 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount) {
       // OrderDialogHelper/OrderOverlayService — so the popup closes itself
       // after SCHEDULED_ORDER_PRIORITY_POPUP_MS while the offer underneath it
       // stays acceptable, rather than falsely telling the driver it expired.
-      payload.popup_duration = String(Math.round(SCHEDULED_ORDER_PRIORITY_POPUP_MS / 1000));
+      payload.popup_duration = String(Math.round(popupMs / 1000));
+      if (opts.payloadExtras) Object.assign(payload, opts.payloadExtras);
 
       requireIo().to(`driver_${riderId}`).emit("order:request", payload);
       await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);

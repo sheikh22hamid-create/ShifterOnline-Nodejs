@@ -1887,6 +1887,45 @@ describe("dispatchManager overlapping batch cascade", () => {
         lockManager.releaseLock(6);
       }
     });
+
+    describe("opts (next-day daily offer)", () => {
+      const pkg = { id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 };
+      const rider = () => ({ id: 7, rlats: "28.70", rlongs: "77.10", fcm_token: "tok7", a_status: 0, vehicle: scheduledOrder.category });
+
+      it("honours ttlMs/popupMs/requireOnline/fareScale/payloadExtras, and defaults stay unchanged with no opts", async () => {
+        mockRidersById({ 7: rider() });
+
+        // Baseline: no opts -> online-only filter, default ttl/popup, unscaled fare, no extras.
+        await dispatchManager.offerToInterestedRiders(scheduledOrder, [7], pkg, null);
+        expect(prisma.tbl_rider.findMany.mock.calls[0][0].where.a_status).toBe(1);
+        const base = emitted.find((e) => e.event === "order:request").payload;
+        expect(base.next_day_daily_offer).toBeUndefined();
+        expect(base.popup_duration).toBe(String(Math.round(SCHEDULED_ORDER_PRIORITY_POPUP_MS / 1000)));
+        expect(prisma.$executeRaw.mock.calls[0][6]).toBe(SCHEDULED_ORDER_PRIORITY_WINDOW_MS / 1000);
+        const baseFare = Number(base.trip_total);
+        expect(baseFare).toBeGreaterThan(0);
+
+        jest.clearAllMocks();
+        emitted = [];
+        orderRequestsStore = [];
+        dispatchManager._resetForTests();
+        mockRidersById({ 7: rider() });
+
+        const result = await dispatchManager.offerToInterestedRiders(scheduledOrder, [7], pkg, null, {
+          ttlMs: 60000, popupMs: 45000, requireOnline: false, fareScale: 0.9,
+          payloadExtras: { next_day_daily_offer: "1" },
+        });
+
+        expect(result.offeredRiderIds).toEqual([7]);
+        expect(prisma.tbl_rider.findMany.mock.calls[0][0].where).not.toHaveProperty("a_status");
+        expect(prisma.$executeRaw.mock.calls[0][6]).toBe(60);
+        const payload = emitted.find((e) => e.event === "order:request").payload;
+        expect(payload.next_day_daily_offer).toBe("1");
+        expect(payload.popup_duration).toBe("45");
+        expect(Number(payload.trip_total)).toBe(Math.round(baseFare * 0.9 * 100) / 100);
+        expect(Number(payload.expires_at) - Date.now()).toBeLessThanOrEqual(60000);
+      });
+    });
   });
 
   describe("tiered dispatch stages", () => {
