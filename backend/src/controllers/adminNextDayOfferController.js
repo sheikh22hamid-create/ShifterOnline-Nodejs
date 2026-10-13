@@ -9,11 +9,15 @@ const fail = (res, err, label) => {
   return res.status(500).json({ success: false, message: "Internal server error" });
 };
 
-function scopedOut(req, cityId) {
-  const role = String(req.user?.role || "").toLowerCase();
-  if (role === "superadmin" || role === "super_admin") return false;
-  if (!cityId || !req.user?.city_id) return false;
-  return Number(cityId) !== parseInt(req.user.city_id, 10);
+// Fail closed: scopeFilter yields NaN for a non-superadmin without a city; never treat that as unscoped.
+function assertCityAccess(req, order) {
+  if (req.user?.role === "superadmin") return;
+  if (!Number.isInteger(req.scopedCityId)) {
+    throw Object.assign(new Error("Your account is not assigned to a city"), { statusCode: 403 });
+  }
+  if (Number(order.city_id) !== req.scopedCityId) {
+    throw Object.assign(new Error("Forbidden: order is outside your assigned city"), { statusCode: 403 });
+  }
 }
 
 // Loads the order and enforces: exists, is a next-day order, inside the admin's city.
@@ -23,7 +27,7 @@ async function loadOrder(req) {
   const order = await prisma.pkg_order.findUnique({ where: { id } });
   if (!order) throw Object.assign(new Error("Order not found"), { statusCode: 404 });
   if (Number(order.booking_type) !== 3) throw Object.assign(new Error("Not a next-day order"), { statusCode: 400 });
-  if (scopedOut(req, order.city_id)) throw Object.assign(new Error("Forbidden: order is outside your assigned city"), { statusCode: 403 });
+  assertCityAccess(req, order);
   return order;
 }
 
@@ -59,14 +63,16 @@ async function getSettings(req, res) {
 
 async function saveSettings(req, res) {
   try {
-    // Setters return the saved value; fall back to a read for fields not supplied.
-    let offerSeconds;
-    let liveTime;
-    if (req.body?.offer_seconds !== undefined) offerSeconds = await settings.setOfferSeconds(req.body.offer_seconds);
-    if (req.body?.live_time !== undefined) liveTime = await settings.setLiveTime(req.body.live_time);
+    // Validate everything supplied before writing anything (no half-apply).
+    const hasOffer = req.body?.offer_seconds !== undefined;
+    const hasLive = req.body?.live_time !== undefined;
+    const offerSeconds = hasOffer ? settings.validateOfferSeconds(req.body.offer_seconds) : undefined;
+    const liveTime = hasLive ? settings.validateLiveTime(req.body.live_time) : undefined;
+    const savedOffer = hasOffer ? await settings.setOfferSeconds(offerSeconds) : undefined;
+    const savedLive = hasLive ? await settings.setLiveTime(liveTime) : undefined;
     return res.json({
       success: true,
-      data: { offer_seconds: offerSeconds ?? await settings.getOfferSeconds(), live_time: liveTime ?? await settings.getLiveTime() },
+      data: { offer_seconds: savedOffer ?? await settings.getOfferSeconds(), live_time: savedLive ?? await settings.getLiveTime() },
     });
   } catch (e) { return fail(res, e, "saveSettings"); }
 }

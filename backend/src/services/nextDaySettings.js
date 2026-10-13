@@ -25,11 +25,15 @@ async function getOfferSeconds() {
   const n = parseInt(await read(OFFER_SECONDS_KEY), 10);
   return Number.isInteger(n) && n >= OFFER_SECONDS_RANGE[0] && n <= OFFER_SECONDS_RANGE[1] ? n : DEFAULT_OFFER_SECONDS;
 }
-async function setOfferSeconds(value) {
+function validateOfferSeconds(value) {
   const n = typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : value;
   if (!Number.isInteger(n) || n < OFFER_SECONDS_RANGE[0] || n > OFFER_SECONDS_RANGE[1]) {
     throw badRequest(`offer_seconds must be a whole number between ${OFFER_SECONDS_RANGE[0]} and ${OFFER_SECONDS_RANGE[1]}`);
   }
+  return n;
+}
+async function setOfferSeconds(value) {
+  const n = validateOfferSeconds(value);
   await write(OFFER_SECONDS_KEY, n);
   return n;
 }
@@ -37,11 +41,15 @@ async function setOfferSeconds(value) {
 async function getLiveTime() {
   return rules.parseLiveTime(await read(LIVE_TIME_KEY));
 }
-async function setLiveTime(value) {
+function validateLiveTime(value) {
   const v = typeof value === "string" ? value.trim() : "";
   if (!TIME_RE.test(v)) throw badRequest("live_time must be HH:MM (24-hour)");
+  return v;
+}
+async function setLiveTime(value) {
+  const v = validateLiveTime(value);
   await write(LIVE_TIME_KEY, v);
   return v;
 }
 
-module.exports = { getOfferSeconds, setOfferSeconds, getLiveTime, setLiveTime };
+module.exports = { getOfferSeconds, setOfferSeconds, validateOfferSeconds, getLiveTime, setLiveTime, validateLiveTime };
