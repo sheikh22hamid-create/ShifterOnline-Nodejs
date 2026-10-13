@@ -47,4 +47,13 @@ describe("WhatsApp Chat Pause/Resume Control", () => {
     expect(chatControl.isChatPaused(testPhone)).toBe(false);
     expect(chatControl.isChatPaused(otherPhone)).toBe(false);
   });
+
+  test("should provide informative stop and resume messages with instructions", () => {
+    const stopMsg = chatControl.getStopMessage();
+    expect(stopMsg).toContain("बॉट सेवा रोक दी गई है");
+    expect(stopMsg).toContain("START");
+
+    const resumeMsg = chatControl.getResumeMessage();
+    expect(resumeMsg).toContain("बॉट पुनः सक्रिय हो गया है");
+  });
 });
