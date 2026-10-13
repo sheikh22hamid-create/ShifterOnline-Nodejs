@@ -336,6 +336,9 @@ model pkg_order {
   // happened without an explicit customer pickup-change confirmation.
   pickup_otp_mismatch_flag Boolean           @default(false)
 
+  next_day_live_at         DateTime? @db.DateTime(0)
+  next_day_stage           String?   @db.VarChar(10)
+  next_day_discount_amount Decimal?  @db.Decimal(10, 2)
   @@index([rid, order_status], map: "idx_rid_status")
   @@index([search_system, o_status, search_deadline_at], map: "idx_order_search")
 }
@@ -2164,3 +2167,19 @@ model order_cancel_request {
   @@index([order_id], map: "idx_ocr_order")
 }
 
+
+// Next-day order offers to Daily Drivers (spec 2026-10-13). One row per (order, driver) offer.
+model next_day_daily_offer {
+  id               Int       @id @default(autoincrement())
+  order_id         Int
+  rider_id         Int
+  status           String    @default("offered") @db.VarChar(12)
+  offered_by_admin Int?
+  offered_at       DateTime  @default(now()) @db.DateTime(0)
+  expires_at       DateTime  @db.DateTime(0)
+  responded_at     DateTime? @db.DateTime(0)
+
+  @@unique([order_id, rider_id], map: "uniq_ndo_order_rider")
+  @@index([order_id, status], map: "idx_ndo_order_status")
+  @@index([status, expires_at], map: "idx_ndo_status_expires")
+}
