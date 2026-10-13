@@ -92,6 +92,7 @@ const adminDailyDriverController = require("../controllers/adminDailyDriverContr
 const adminFreeBookingController = require("../controllers/adminFreeBookingController");
 const adminBookingGuaranteeController = require("../controllers/adminBookingGuaranteeController");
 const adminOrderSearchController = require("../controllers/adminOrderSearchController");
+const adminNextDayOfferController = require("../controllers/adminNextDayOfferController");
 const tierDispatch = require("../controllers/adminTierDispatchController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
@@ -213,6 +214,11 @@ router.post("/orders/scheduled/:id/assign-driver", auth, authorize(...RIDER_ROLE
 router.get("/orders/next-day", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.listNextDay);
 router.post("/orders/next-day/suggest-sequence", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.suggestNextDaySequence);
 router.post("/orders/next-day/assign-batch", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignNextDayBatch);
+router.get("/orders/next-day/settings", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.getSettings);
+router.put("/orders/next-day/settings", auth, authorize("superadmin"), scopeFilter, adminNextDayOfferController.saveSettings);
+router.get("/orders/next-day/:id/daily-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.listDailyDrivers);
+router.post("/orders/next-day/:id/offer", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.offer);
+router.get("/orders/next-day/:id/offers", auth, authorize(...RIDER_ROLES), scopeFilter, adminNextDayOfferController.listOffers);
 
 router.get("/orders", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.list);
 router.get("/orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.getOne);

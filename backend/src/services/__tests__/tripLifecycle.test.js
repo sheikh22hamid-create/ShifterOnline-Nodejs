@@ -28,6 +28,7 @@ jest.mock("../dispatchManager", () => ({
   offerToInterestedRiders: jest.fn(),
 }));
 jest.mock("../lockManager", () => ({ releaseLock: jest.fn(), peekLock: jest.fn() }));
+jest.mock("../nextDayOfferService", () => ({ onRejected: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../bookingGuaranteeService", () => ({
   closeOnAssign: jest.fn().mockResolvedValue(true),
   closeOnCancel: jest.fn().mockResolvedValue(true),
@@ -63,11 +64,13 @@ jest.mock("../../utils/pickupRelocateSettings", () => ({
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const lockManager = require("../lockManager");
+const nextDayOfferService = require("../nextDayOfferService");
 const pricingEngine = require("../pricingEngine");
 const pushNotifier = require("../pushNotifier");
 const tripLifecycle = require("../tripLifecycle");
 const freeBookingService = require("../freeBookingService");
 const logger = require("../../utils/logger");
+const tierPenalty = require("../tierPenaltyService");
 const { SCHEDULED_ORDER_PRIORITY_WINDOW_MS } = require("../../config/constants");
 const { haversineKm } = require("../../utils/geoDistance");
 const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
@@ -333,6 +336,78 @@ describe("tripLifecycle.acceptOrder", () => {
       297
     );
   });
+
+  describe("next-day orders (booking_type 3) never ask for an advance payment", () => {
+    function setup(orderExtra) {
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 297, uid: 7, distance: 15.4, extra_mile_charge: 0, plat: 22.7, plong: 75.8,
+        p_method_id: 2, trans_id: "cash_1700000000000", payment_status: 0, ...orderExtra,
+      });
+      prisma.tbl_rider.findUnique.mockResolvedValue({
+        id: 1, first_name: "John", last_name: "Doe", fmobile: "9999999999", rlats: 22.8, rlongs: 75.9,
+      });
+      pricingEngine.priceForPackageId.mockResolvedValueOnce({
+        pkg: { cancellation_charge_customer: 15 }, fare: 50, driverEarning: 45, commission: 5, radiusCharge: 10,
+      });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+    }
+
+    it("type 3 accept (customer without a no-advance plan): advance_payment 0 and payment_status 1, like assignNextDayBatch", async () => {
+      setup({ booking_type: 3, next_day_stage: "live" });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      expect(result.order.advance_payment).toBe("0");
+      expect(result.order.payment_status).toBe(1);
+      expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), "0", 1, 297);
+    });
+
+    it("type 1 accept is unchanged: the advance is still charged", async () => {
+      setup({ booking_type: 1 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      expect(result.order.advance_payment).toBe("25");
+      expect(result.order.payment_status).toBe(0);
+      expect(prisma.$executeRaw).toHaveBeenCalledWith(expect.anything(), "25", 0, 297);
+    });
+  });
+
+  describe("next-day orders (booking_type 3) keep their booked fare at accept", () => {
+    const { reconcileRideDiscountToFare } = require("../referralPointsRefund");
+    function setup(orderExtra) {
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+      prisma.pkg_order.findUnique.mockResolvedValue({
+        id: 297, uid: 7, distance: 15.4, extra_mile_charge: 0, plat: 22.7, plong: 75.8,
+        d_charge: "300", total_dcharge: "300", ...orderExtra,
+      });
+      prisma.tbl_rider.findUnique.mockResolvedValue({
+        id: 1, first_name: "John", last_name: "Doe", fmobile: "9999999999", rlats: 22.8, rlongs: 75.9,
+      });
+      pricingEngine.priceForPackageId.mockResolvedValueOnce({
+        pkg: { cancellation_charge_customer: 15, waiting_charge: "2.00", free_waiting_time: 5 }, fare: 345, driverEarning: 300, commission: 5, radiusCharge: 45,
+      });
+      reconcileRideDiscountToFare.mockClear();
+    }
+
+    it("type 3: d_charge/total_dcharge are not rewritten from the accepting driver's distance", async () => {
+      setup({ booking_type: 3, next_day_stage: "live" });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      const data = prisma.pkg_order.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty("d_charge");
+      expect(data).not.toHaveProperty("total_dcharge");
+      expect(data).toEqual(expect.objectContaining({ delivery_type: 6, driver_earning: "300", commission: 5, wating_charge: "2.00", free_waiting_time: "5" }));
+      expect(reconcileRideDiscountToFare).not.toHaveBeenCalled();
+      expect(result.order.total_dcharge).toBe("300");
+      expect(result.order.d_charge).toBe("300");
+    });
+
+    it("type 1: the fare is still re-priced off the driver's real distance", async () => {
+      setup({ booking_type: 1 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      const data = prisma.pkg_order.update.mock.calls[0][0].data;
+      expect(data).toEqual(expect.objectContaining({ d_charge: 345, total_dcharge: 345, driver_earning: 345 }));
+      expect(reconcileRideDiscountToFare).toHaveBeenCalledWith(297, 345);
+      expect(result.order.total_dcharge).toBe(345);
+    });
+  });
 });
 
 describe("claimOrderForRider freshness check reads expires_at, not a hardcoded 15s window", () => {
@@ -483,6 +558,83 @@ describe("tripLifecycle.rejectOrder", () => {
     expect(result).toEqual({ success: true });
     expect(prisma.tbl_order_requests.updateMany).not.toHaveBeenCalled();
     expect(lockManager.releaseLock).not.toHaveBeenCalled();
+  });
+
+  it("hands a recorded reject to the next-day offer cascade", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    await tripLifecycle.rejectOrder(297, 1);
+
+    expect(nextDayOfferService.onRejected).toHaveBeenCalledWith(297, 1);
+  });
+
+  it("does not call the next-day cascade when no request row was updated", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 0 });
+
+    await tripLifecycle.rejectOrder(297, 1);
+
+    expect(nextDayOfferService.onRejected).not.toHaveBeenCalled();
+  });
+
+  it("a failing next-day cascade never blocks the reject", async () => {
+    lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+    prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+    nextDayOfferService.onRejected.mockRejectedValueOnce(new Error("boom"));
+
+    const logSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+
+    await expect(tripLifecycle.rejectOrder(297, 1)).resolves.toEqual({ success: true });
+    await new Promise((r) => setImmediate(r));
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("next-day cascade failed for order 297"), expect.any(Error));
+    logSpy.mockRestore();
+  });
+
+  describe("next-day Daily Driver offer reject is not a miss", () => {
+    let onMiss;
+    beforeEach(() => {
+      onMiss = jest.spyOn(tierPenalty, "onMiss").mockResolvedValue(undefined);
+      lockManager.peekLock.mockReturnValue({ orderId: 297, packageId: 7 });
+      prisma.tbl_order_requests.updateMany.mockResolvedValue({ count: 1 });
+    });
+    afterEach(() => {
+      onMiss.mockRestore();
+      delete prisma.next_day_daily_offer;
+    });
+
+    it("open next-day offer: no Model-1 miss, no tier penalty, cascade still runs", async () => {
+      prisma.next_day_daily_offer = { findFirst: jest.fn().mockResolvedValue({ id: 3 }) };
+
+      await tripLifecycle.rejectOrder(297, 1);
+
+      expect(prisma.next_day_daily_offer.findFirst).toHaveBeenCalledWith({
+        where: { order_id: 297, rider_id: 1, status: "offered" },
+        select: { id: true },
+      });
+      expect(dispatchManager.recordModel1Outcome).not.toHaveBeenCalled();
+      expect(onMiss).not.toHaveBeenCalled();
+      expect(nextDayOfferService.onRejected).toHaveBeenCalledWith(297, 1);
+    });
+
+    it("no open offer: miss and penalty recorded as before", async () => {
+      prisma.next_day_daily_offer = { findFirst: jest.fn().mockResolvedValue(null) };
+
+      await tripLifecycle.rejectOrder(297, 1);
+
+      expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+      expect(onMiss).toHaveBeenCalled();
+    });
+
+    it("lookup failure (or missing delegate) falls back to the normal miss path", async () => {
+      prisma.next_day_daily_offer = { findFirst: jest.fn().mockRejectedValue(new Error("db")) };
+
+      await tripLifecycle.rejectOrder(297, 1);
+
+      expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 7, "miss");
+      expect(onMiss).toHaveBeenCalled();
+    });
   });
 });
 
@@ -1435,6 +1587,91 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
 
     expect(result.success).toBe(true);
     expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("tripLifecycle.updateStatus('complete') — next-day Daily Driver earning (90%)", () => {
+  const nextDayOrder = (overrides = {}) => ({
+    id: 310,
+    rid: 1,
+    city_id: 1,
+    d_charge: 100,
+    total_dcharge: 100,
+    commission: 0,
+    trans_id: "cash_payment",
+    free_waiting_time: "0",
+    wating_charge: "0",
+    booking_type: 3,
+    next_day_stage: "arranging",
+    ...overrides,
+  });
+  const nextDayUpdate = () =>
+    prisma.pkg_order.update.mock.calls.find(([arg]) => arg.data && "next_day_discount_amount" in arg.data);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue(null);
+    prisma.pkg_order.update.mockResolvedValue({});
+    prisma.$queryRaw.mockResolvedValue([{ advance_payment: 0 }]);
+    prisma.daily_driver_enrollment = { findFirst: jest.fn().mockResolvedValue({ id: 5 }) };
+  });
+  afterEach(() => {
+    delete prisma.daily_driver_enrollment;
+  });
+
+  it("a Daily Driver completing a next-day order still being arranged earns 90 and records the 10 discount", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+
+    const result = await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 310 },
+      data: { driver_earning: 90, next_day_discount_amount: 10 },
+    });
+    // Must land AFTER the main completion write (which sets driver_earning = gross fare).
+    const earningWrites = prisma.pkg_order.update.mock.calls.filter(([arg]) => arg.data && "driver_earning" in arg.data);
+    expect(earningWrites[earningWrites.length - 1][0].data).toEqual({ driver_earning: 90, next_day_discount_amount: 10 });
+  });
+
+  it("a failing earning write never fails the completed trip", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+    prisma.pkg_order.update.mockImplementation(async (arg) => {
+      if (arg.data && "next_day_discount_amount" in arg.data) throw new Error("db down");
+      return {};
+    });
+    const logSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
+
+    const result = await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(result.success).toBe(true);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("order 310"), expect.any(Error));
+    logSpy.mockRestore();
+  });
+
+  it("an order that already went live (Normal Driver dispatch) pays 100%", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder({ next_day_stage: "live" }));
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(nextDayUpdate()).toBeUndefined();
+  });
+
+  it("a Current Booking (booking_type 1) is untouched", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder({ booking_type: 1 }));
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(nextDayUpdate()).toBeUndefined();
+  });
+
+  it("a non-Daily Driver on a next-day arranging order pays 100%", async () => {
+    prisma.daily_driver_enrollment.findFirst.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue(nextDayOrder());
+
+    await tripLifecycle.updateStatus(310, 1, "complete");
+
+    expect(nextDayUpdate()).toBeUndefined();
   });
 });
 

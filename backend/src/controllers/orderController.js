@@ -22,6 +22,8 @@ const settlementService = require("../services/settlementService");
 const receiverPayService = require("../services/receiverPayService");
 const freeBookingService = require("../services/freeBookingService");
 const bookingGuaranteeService = require("../services/bookingGuaranteeService");
+const nextDaySettings = require("../services/nextDaySettings");
+const nextDayRules = require("../services/nextDayRules");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
@@ -541,6 +543,14 @@ async function createOrderCore({
     ? nextDayScheduleDateIST()
     : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
+  // Next-day (spec 2026-10-13): arranged through Daily Drivers until the live time on the trip day.
+  const nextDayFields = Number(bookingType) === 3
+    ? {
+        next_day_stage: nextDayRules.STAGE.ARRANGING,
+        next_day_live_at: nextDayRules.liveAtFor(finalScheduleDateTime, await nextDaySettings.getLiveTime().catch(() => nextDayRules.DEFAULT_LIVE_TIME)),
+      }
+    : {};
+
 
   const stopCharge = validStops.length * stopSettings.extraStopCharge;
   let order;
@@ -585,6 +595,7 @@ async function createOrderCore({
       radius_charge: 0,
       booking_type: Number(bookingType) || 1,
       schedule_date_time: finalScheduleDateTime,
+      ...nextDayFields,
       city_id: orderCityId,
       delivery_type: firstTierPackageId,
       allowed_delivery_types: JSON.stringify(orderedPackageIds),

@@ -46,6 +46,7 @@ module.exports = {
   SEARCH_RETRY_MS: 10 * 1000,
   // How often dispatchManager.sweepOverdueSystem2Searches finishes System 2 orders a transient error stranded.
   SYSTEM2_SWEEP_INTERVAL_MS: 30 * 1000,
+  NEXT_DAY_SWEEP_INTERVAL_MS: 10 * 1000,
   MODEL1_MISS_LIMIT: 5,
   MODEL1_SUSPENSION_HOURS: 24,
 

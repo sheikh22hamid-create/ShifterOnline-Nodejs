@@ -4,6 +4,7 @@ const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
 const driverPlanService = require("./driverPlanService");
 const dailyDriverEnrollmentQuery = require("./dailyDriverCommissionExemption");
+const nextDayRules = require("./nextDayRules");
 const referralRewardService = require("./referralRewardService");
 const trialOrderTracker = require("../utils/trialOrderTracker");
 const rewardPlanService = require("./rewardPlanService");
@@ -262,15 +263,26 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // however long the driver was kept waiting. Copied here from the
   // ACCEPTED package (not the first-tier package priced at order creation -
   // the driver may have accepted a different tier with a different rate).
-  const priced = {
-    d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission,
-    wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
-  };
+  //
+  // Next-day orders (booking_type 3) keep the fare booked the day before
+  // (spec D3/§3: the customer's fare never changes; next-day is no-radius):
+  // d_charge/total_dcharge are left alone and driver_earning is the booked
+  // fare, same as assignNextDayBatch. Package bookkeeping is still written.
+  const keepBookedFare = Number(order.booking_type) === 3;
+  const priced = keepBookedFare
+    ? {
+      delivery_type: Number(acceptedPackageId), driver_earning: order.total_dcharge, commission,
+      wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
+    }
+    : {
+      d_charge: fare, total_dcharge: fare, delivery_type: Number(acceptedPackageId), driver_earning: fare, commission,
+      wating_charge: pkg.waiting_charge, free_waiting_time: String(pkg.free_waiting_time ?? ""),
+    };
   await prisma.pkg_order.update({ where: { id: orderId }, data: priced });
   // The booking-time fare (and so the points cap) came from the client's own
   // total_dcharge; the fare is now re-priced server-side off the real driver
   // distance. If it came out lower, hand back points above the cap for it.
-  await reconcileRideDiscountToFare(orderId, fare);
+  if (!keepBookedFare) await reconcileRideDiscountToFare(orderId, fare);
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
   // still holding a popup for this order and cancel remaining timers.
@@ -312,7 +324,11 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // timeout then auto-cancelled these orders ~2 min after accept. Treat the
   // advance as already covered by that prepayment.
   const isWalletPaid = Number(order.p_method_id) === -2 || String(order.trans_id || "").toLowerCase().startsWith("wallet");
-  if ((customerPlan && customerPlan.noAdvancePayment) || isWalletPaid) {
+  // Next-day orders (booking_type 3) never take an advance: assignNextDayBatch
+  // writes payment_status 1 / advance_payment 0 for them, and an unpaid
+  // advance here would let sweepExpiredAdvancePayments cancel the order.
+  const isNextDay = Number(order.booking_type) === 3;
+  if ((customerPlan && customerPlan.noAdvancePayment) || isWalletPaid || isNextDay) {
     advancePayment = 0;
     paymentStatus = 1;
   }
@@ -442,15 +458,32 @@ async function rejectOrder(orderId, riderId, packageId = null) {
     data: { status: "10" },
   });
   if (result.count > 0) {
-    await dispatchManager.recordModel1Outcome(riderId, resolvedPackageId, "miss");
-    // Tiered dispatch: log the reject and penalise it when it happened in a Free/Daily stage. A reject that
-    // arrives after the same offer's timeout was already penalised as a skip is a no-op in the penalty service.
+    // Rejecting a next-day Daily Driver offer is an explicit part of that flow: no Model-1 miss, no tier penalty.
+    let nextDayOffer = null;
     try {
-      const stage = await orderStage.getStage(orderId);
-      await tierPenalty.onMiss({ orderId, riderId, event: "rejected", stage });
-    } catch (err) {
-      logger.error(`rejectOrder: tier penalty hook failed for order ${orderId}:`, err);
+      nextDayOffer = await prisma.next_day_daily_offer.findFirst({
+        where: { order_id: orderId, rider_id: riderId, status: "offered" },
+        select: { id: true },
+      });
+    } catch (_err) {
+      nextDayOffer = null;
     }
+    if (!nextDayOffer) {
+      await dispatchManager.recordModel1Outcome(riderId, resolvedPackageId, "miss");
+      // Tiered dispatch: log the reject and penalise it when it happened in a Free/Daily stage. A reject that
+      // arrives after the same offer's timeout was already penalised as a skip is a no-op in the penalty service.
+      try {
+        const stage = await orderStage.getStage(orderId);
+        await tierPenalty.onMiss({ orderId, riderId, event: "rejected", stage });
+      } catch (err) {
+        logger.error(`rejectOrder: tier penalty hook failed for order ${orderId}:`, err);
+      }
+    }
+    // Next-day Daily Driver offer (spec 2026-10-13): a reject passes the order to the next Daily Driver at once.
+    // The sweeper would catch it within ~10 s anyway; this just makes it instant. Never blocks the reject.
+    require("./nextDayOfferService")
+      .onRejected(orderId, riderId)
+      .catch((err) => logger.error(`rejectOrder: next-day cascade failed for order ${orderId}:`, err));
   }
 
   // Only release the lock if it's actually the one for this exact tier.
@@ -673,6 +706,21 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // both can be commission-exempt in parallel during the transition
     // (existing monthly_driver_contract rows are left alone, not migrated).
     const isDailyDriverExempt = await dailyDriverEnrollmentQuery.hasActiveDailyDriverEnrollmentToday(riderId);
+
+    // Next-day booking taken by a Daily Driver while it was still being arranged: the driver's order value is
+    // 10% lower; the difference is recorded for admin to settle (spec 2026-10-13). An order that already went
+    // live (Normal Driver dispatch) pays 100%.
+    if (isDailyDriverExempt && Number(order.booking_type) === 3 && order.next_day_stage === "arranging") {
+      try {
+        const split = nextDayRules.splitDailyDriverFare(finalTotal);
+        await prisma.pkg_order.update({
+          where: { id: orderId },
+          data: { driver_earning: split.driverEarning, next_day_discount_amount: split.discount },
+        });
+      } catch (err) {
+        logger.error(`updateStatus: next-day 90% earning write failed for order ${orderId}:`, err);
+      }
+    }
 
     const isCashOrder = (order.trans_id || "").toLowerCase().startsWith("cash") || Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0;
     const cashCollected = isCashOrder ? Math.max(0, finalTotal - prepaidTotal) : 0;
