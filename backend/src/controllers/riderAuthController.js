@@ -124,7 +124,7 @@ async function verifyOtp(req, res) {
       let paymentComplete = Number(driver.payment_complete) === 1;
       let verificationCharge = { charge: 0, chargeOld: 0, msg: "" };
       if (!paymentComplete) {
-        verificationCharge = await getAutoVerificationSettings();
+        verificationCharge = await getAutoVerificationSettings({ vehicle: driver.vehicle });
 
         // The charge that was owed at registration time may have since been
         // lowered to 0 / disabled by the admin. Nothing is actually due
@@ -530,7 +530,8 @@ async function registerHandler(req, res) {
     // registration time - a driver with no charge due is marked paid
     // immediately, otherwise approval stays gated until the verification
     // payment actually clears (see evaluateDriverApproval).
-    const { charge: autoVerificationCharge } = await getAutoVerificationSettings();
+    // The charge is per vehicle type: the type picked on this form decides it.
+    const { charge: autoVerificationCharge, chargeOld: autoVerificationChargeOld, msg: autoVerificationMsg } = await getAutoVerificationSettings({ vehicle });
     const initialPaymentComplete = autoVerificationCharge > 0 ? 0 : 1;
 
     // Validation is done - spend the OTP proof now so it can't be replayed.
@@ -788,6 +789,8 @@ async function registerHandler(req, res) {
       is_all_verified: isAllVerified,
       payment_complete: paymentComplete ? 1 : 0,
       auto_verification_charge: autoVerificationCharge,
+      auto_verification_charge_old: autoVerificationChargeOld,
+      auto_verification_msg: autoVerificationMsg,
       reffer_code: riderData.reffer_code || refferCode,
       rider_data: {
         ...riderData,

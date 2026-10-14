@@ -40,7 +40,7 @@ async function createOrder(req, res) {
     if (!rider) return fail(res, "Driver not found");
     if (Number(rider.payment_complete) === 1) {
       const { isAllVerified } = await evaluateDriverApproval(riderId);
-      const { charge } = await getAutoVerificationSettings();
+      const { charge } = await getAutoVerificationSettings({ vehicle: rider.vehicle });
       return res.status(200).json({
         ResponseCode: "200",
         Result: "true",
@@ -63,7 +63,7 @@ async function createOrder(req, res) {
       });
     }
 
-    const { charge } = await getAutoVerificationSettings();
+    const { charge } = await getAutoVerificationSettings({ vehicle: rider.vehicle });
     if (!charge || charge <= 0) {
       return fail(res, "No verification charge is due for this account");
     }
@@ -126,7 +126,7 @@ async function verifyPayment(req, res) {
     if (!rider) return fail(res, "Driver not found");
     if (Number(rider.payment_complete) === 1) {
       const { isAllVerified } = await evaluateDriverApproval(riderId);
-      const { charge } = await getAutoVerificationSettings();
+      const { charge } = await getAutoVerificationSettings({ vehicle: rider.vehicle });
       return res.status(200).json({
         ResponseCode: "200",
         Result: "true",
@@ -167,7 +167,7 @@ async function verifyPayment(req, res) {
       return fail(res, "Payment Verification Failed!");
     }
 
-    const { charge } = await getAutoVerificationSettings();
+    const { charge } = await getAutoVerificationSettings({ vehicle: rider.vehicle });
 
     let verification;
     try {

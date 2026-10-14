@@ -102,6 +102,54 @@ const HANDLED_FLAG_KEYS = [
   'receiver_tracking_enabled',
 ]
 
+// Per-vehicle-type verification fee, stored as flags.auto_verification_charge_vehicle_<slug>.
+// The slug rule must match backend/src/utils/driverVerificationSettings.js.
+const VEHICLE_CHARGE_PREFIX = 'auto_verification_charge_vehicle_'
+const isHandledFlag = (key) => HANDLED_FLAG_KEYS.includes(key) || key.startsWith(VEHICLE_CHARGE_PREFIX)
+const vehicleSlug = (name) => String(name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
+
+function VehicleChargeFields({ flags, setFlags }) {
+  const fetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
+  const { data: categories, loading } = useApiQuery(fetcher)
+  const names = [...new Set((categories ?? []).filter((c) => c.cat_status === 1).map((c) => c.cat_name))]
+  const defaultCharge = flags.auto_verification_charge ?? '0'
+
+  return (
+    <div>
+      <Label>Charge by vehicle type (₹)</Label>
+      {loading ? (
+        <p className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>Loading vehicle types…</p>
+      ) : names.length === 0 ? (
+        <p className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>No active vehicle types found.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {names.map((name) => {
+            const slug = vehicleSlug(name)
+            if (!slug) return null
+            const key = `${VEHICLE_CHARGE_PREFIX}${slug}`
+            return (
+              <div key={key}>
+                <label className="mb-1 block text-[11px]" style={{ color: 'var(--ink-muted)' }} htmlFor={`flag-${key}`}>{name}</label>
+                <Input
+                  id={`flag-${key}`}
+                  type="number"
+                  min="0"
+                  placeholder={`Default (₹${defaultCharge})`}
+                  value={flags[key] ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+        A driver pays only the fee of the vehicle type they register with. Leave blank to use the default charge above; <strong>0</strong> makes that vehicle type free.
+      </p>
+    </div>
+  )
+}
+
 function PaymentGateways() {
   const fetcher = useCallback(() => api.get('/settings/payment-gateways').then((res) => res.data.data), [])
   const { data: gateways, loading } = useApiQuery(fetcher)
@@ -1009,7 +1057,7 @@ function SettingsForm({ data, onSaved }) {
 
               {/* Charge */}
               <div>
-                <Label htmlFor="flag-auto_verification_charge">Verification Charge (₹)</Label>
+                <Label htmlFor="flag-auto_verification_charge">Default Verification Charge (₹)</Label>
                 <Input
                   id="flag-auto_verification_charge"
                   type="number"
@@ -1022,6 +1070,8 @@ function SettingsForm({ data, onSaved }) {
                   Amount driver pays via Razorpay. Set to <strong>0</strong> to skip payment screen entirely.
                 </p>
               </div>
+
+              <VehicleChargeFields flags={flags} setFlags={setFlags} />
 
               {/* Old / strikethrough price */}
               <div>
@@ -1497,14 +1547,14 @@ function SettingsForm({ data, onSaved }) {
             </button>
           </div>
 
-          {Object.keys(flags).filter((k) => !HANDLED_FLAG_KEYS.includes(k)).length === 0 ? (
+          {Object.keys(flags).filter((k) => !isHandledFlag(k)).length === 0 ? (
             <p className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
               No other settings yet — add one above.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Object.entries(flags)
-                .filter(([key]) => !HANDLED_FLAG_KEYS.includes(key))
+                .filter(([key]) => !isHandledFlag(key))
                 .map(([key, value]) => (
                   <div key={key}>
                     <div className="mb-1.5 flex items-center justify-between">

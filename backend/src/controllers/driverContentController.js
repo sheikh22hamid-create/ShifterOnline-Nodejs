@@ -6,6 +6,7 @@ const { formatPkgOrderForDriver } = require("./driverOrderHistoryController");
 const { formatBuyOrderForDriver } = require("./legacyOrderController");
 const deviceSessionService = require("../services/deviceSessionService");
 const { uniqueRefferCode } = require("./riderAuthController");
+const { getAutoVerificationSettings, vehicleSlug } = require("../utils/driverVerificationSettings");
 
 // Node port of several rider_api/*.php endpoints confirmed still called by
 // the native Android driver app (ShifterDriver/app/src/main/java/.../UserService.java):
@@ -385,20 +386,36 @@ async function registrationSettings(req, res) {
 
     let pendingPayment = false;
     const rider = mobile
-      ? await prisma.tbl_rider.findFirst({ where: { fmobile: mobile }, select: { payment_complete: true } })
+      ? await prisma.tbl_rider.findFirst({ where: { fmobile: mobile }, select: { payment_complete: true, vehicle: true } })
       : rid
-        ? await prisma.tbl_rider.findUnique({ where: { id: rid }, select: { payment_complete: true } })
+        ? await prisma.tbl_rider.findUnique({ where: { id: rid }, select: { payment_complete: true, vehicle: true } })
         : null;
     if (rider) pendingPayment = Number(rider.payment_complete) !== 1;
+
+    // The charge depends on the vehicle type. A returning driver already has
+    // one on file; a brand-new one hasn't picked it yet, so the app also gets
+    // `vehicle_charges` (type name -> charge) to show the right fee as soon as
+    // the type is selected on the form.
+    const vehicle = rider?.vehicle || String(req.body?.vehicle || "").trim();
+    const verification = await getAutoVerificationSettings({ vehicle });
+    const categories = await prisma.pkg_category.findMany({ where: { cat_status: 1 }, select: { cat_name: true } });
+    const vehicleCharges = {};
+    for (const { cat_name: name } of categories) {
+      const slug = vehicleSlug(name);
+      vehicleCharges[name] = slug && Object.prototype.hasOwnProperty.call(verification.vehicleCharges, slug)
+        ? verification.vehicleCharges[slug]
+        : verification.defaultCharge;
+    }
 
     return res.status(200).json({
       ResponseCode: "200",
       Result: "true",
       ResponseMsg: "Success",
       manual_registration: num("manual_registration", 0),
-      auto_verification_msg: rawMap.auto_verification_msg || "",
-      auto_verification_charge: num("auto_verification_charge", 0),
-      auto_verification_charge_old: num("auto_verification_charge_old", 0),
+      auto_verification_msg: verification.msg,
+      auto_verification_charge: verification.charge,
+      auto_verification_charge_old: verification.chargeOld,
+      vehicle_charges: vehicleCharges,
       pending_payment: pendingPayment,
       auto_verification: num("auto_verification", 0),
       digilocker_verification: num("digilocker_verification", 0),
