@@ -14,9 +14,10 @@ const filled = (v) => String(v ?? "").trim() !== "";
 
 // done | under_review (submitted, admin has not approved) | pending (optional,
 // skipped) | not_uploaded (optional image never sent) | required_pending
-function docItem(key, label, { required, hasValue, approved, image = false }) {
+function docItem(key, label, { required, hasValue, approved, rejected = false, image = false }) {
   let status;
-  if (!hasValue) status = required ? "required_pending" : image ? "not_uploaded" : "pending";
+  // A rejected document counts as missing so the driver can submit it again.
+  if (!hasValue || rejected) status = required ? "required_pending" : image ? "not_uploaded" : "pending";
   else if (approved === false) status = "under_review";
   else status = "done";
   return { key, label, required, status };
@@ -31,7 +32,7 @@ function buildRegistrationStatus(rider, doc) {
     ...(isBicycle ? [] : [docItem("dl", "Driving Licence", { required: true, hasValue: filled(doc?.lic_id), approved: doc?.lic_status === 1 })]),
     docItem("rc", "Vehicle RC", { required: true, hasValue: filled(doc?.residence_id), approved: doc?.residence_status === 1 }),
     docItem("photo", "Profile Photo", { required: true, hasValue: filled(rider.profile_picture) }),
-    docItem("pan", "PAN Card", { required: false, hasValue: filled(doc?.pan_id), approved: doc?.pan_status === 1 }),
+    docItem("pan", "PAN Card", { required: false, hasValue: filled(doc?.pan_id), approved: doc?.pan_status === 1, rejected: doc?.pan_status === 2 }),
     docItem("insurance", "Insurance", { required: false, hasValue: filled(doc?.bima_image), image: true }),
     docItem("puc", "PUC Certificate", { required: false, hasValue: filled(doc?.puc_image), image: true }),
     docItem("bank", "Bank Details", { required: false, hasValue: filled(rider.account_number) && filled(rider.ifsc) }),

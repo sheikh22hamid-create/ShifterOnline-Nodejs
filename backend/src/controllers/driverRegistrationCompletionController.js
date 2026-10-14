@@ -6,6 +6,7 @@ const logger = require("../utils/logger");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const { evaluateDriverApproval } = require("../utils/driverApproval");
 const { getRegistrationStatus } = require("../services/registrationCompletionService");
+const adminSocket = require("../sockets/adminSocket");
 
 // POST /rider/registration/complete - an already-registered NORMAL driver adds
 // what registration let them skip (PAN, insurance, PUC, bank details, email).
@@ -114,6 +115,11 @@ async function handler(req, res) {
       await prisma.tbl_personal_doc.update({ where: { id: docRow.id }, data: docUpdate });
     }
     await evaluateDriverApproval(riderId);
+
+    // A submitted PAN waits for an admin decision: let open admin panels refresh.
+    if (docUpdate.pan_id) {
+      try { adminSocket.notifyDriverKycSubmitted(rider); } catch (e) { logger.warn("registration complete: admin notify failed:", e.message); }
+    }
 
     const registration = await getRegistrationStatus(riderId);
     return res.status(200).json({

@@ -37,6 +37,11 @@ describe("buildRegistrationStatus", () => {
     expect(byKey(s).pan).toBe("under_review");
   });
 
+  it("asks for a PAN again once admin rejected it", () => {
+    const s = buildRegistrationStatus(normalRider, { ...fullDoc, pan_id: "ABCDE1234F", pan_status: 2 });
+    expect(byKey(s).pan).toBe("pending");
+  });
+
   it("treats an admin-created trial driver as needing the full registration flow", () => {
     const s = buildRegistrationStatus({ trial_status: "active", verification_status: "pending", profile_picture: "", email: "", account_number: "", ifsc: "" }, null);
     expect(s.is_trial).toBe(true);

@@ -113,7 +113,7 @@ function DocThumbnail({ label, src, onPreview }) {
   )
 }
 
-function DocumentCard({ title, docNumber, status, photos = [], onPreview, note }) {
+function DocumentCard({ title, docNumber, status, photos = [], onPreview, note, actions }) {
   const statusTone = status === 1 ? 'success' : status === 2 ? 'danger' : status === 0 ? 'warning' : 'neutral'
   const statusText = status === 1 ? 'Approved' : status === 2 ? 'Rejected' : status === 0 ? 'Pending' : 'Not submitted'
 
@@ -140,6 +140,8 @@ function DocumentCard({ title, docNumber, status, photos = [], onPreview, note }
         copyable={Boolean(docNumber)}
         rawCopyValue={docNumber}
       />
+
+      {actions}
 
       {note && (
         <div
@@ -293,6 +295,22 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
       toast.error(err.response?.data?.message || 'Could not update model status.')
     } finally {
       setTogglingModelId(null)
+    }
+  }
+
+  // PAN is optional and the driver can add it after registration, so it has no
+  // queue on the KYC page - the admin reviews it right here.
+  async function handlePanDecision(isApprove) {
+    setBusy(true)
+    try {
+      await api.post(`/riders/${riderId}/kyc-decision`, { document_type: 'pan', is_approve: isApprove ? 1 : 0 })
+      toast.success(isApprove ? 'PAN approved.' : 'PAN rejected.')
+      refetch()
+      onChanged?.()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not record this decision.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -723,6 +741,30 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
                 title="PAN Card"
                 docNumber={rider.personal_doc?.pan_id}
                 status={rider.personal_doc?.pan_status}
+                actions={
+                  canModerate && rider.personal_doc?.pan_id && rider.personal_doc?.pan_status === 0 ? (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handlePanDecision(true)}
+                        className="flex-1 rounded-lg py-1.5 text-center text-[12px] font-semibold disabled:opacity-50"
+                        style={{ background: 'var(--success)', color: '#fff' }}
+                      >
+                        Approve PAN
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => handlePanDecision(false)}
+                        className="flex-1 rounded-lg border py-1.5 text-center text-[12px] font-semibold disabled:opacity-50"
+                        style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : null
+                }
                 photos={[
                   { label: 'Front Photo', src: rider.personal_doc?.pan_front },
                   { label: 'Back Photo', src: rider.personal_doc?.pan_back },

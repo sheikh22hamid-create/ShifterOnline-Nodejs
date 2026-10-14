@@ -6,11 +6,13 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../utils/cloudinaryStorage", () => ({ uploadBuffer: jest.fn().mockResolvedValue("images/rider_docs/x.jpg") }));
 jest.mock("../../utils/driverApproval", () => ({ evaluateDriverApproval: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+jest.mock("../../sockets/adminSocket", () => ({ notifyDriverKycSubmitted: jest.fn() }));
 const mockStatus = jest.fn();
 jest.mock("../../services/registrationCompletionService", () => ({ getRegistrationStatus: (...a) => mockStatus(...a) }));
 
 const prisma = require("../../config/db");
 const { evaluateDriverApproval } = require("../../utils/driverApproval");
+const adminSocket = require("../../sockets/adminSocket");
 const { complete } = require("../driverRegistrationCompletionController");
 
 const res = () => { const r = {}; r.status = jest.fn().mockReturnValue(r); r.json = jest.fn().mockReturnValue(r); return r; };
@@ -64,6 +66,7 @@ describe("POST /rider/registration/complete", () => {
     prisma.tbl_personal_doc.findFirst.mockResolvedValueOnce({ id: 9, pan_status: 0, pan_id: "" }).mockResolvedValueOnce(null);
     await run({ rider_id: "5", device_id: "dev1", pan_number: "ABCDE1234F", pan_verified: "true" });
     expect(prisma.tbl_personal_doc.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { pan_id: "ABCDE1234F", pan_status: 0 } });
+    expect(adminSocket.notifyDriverKycSubmitted).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a PAN already used by another driver", async () => {
