@@ -88,8 +88,10 @@ async function handler(req, res) {
         const clash = await prisma.tbl_personal_doc.findFirst({ where: { pan_id: panNumber, rider_id: { not: riderId } } });
         if (clash) return fail(res, `PAN Number (${panNumber}) is already registered with another driver account!`);
         docUpdate.pan_id = panNumber;
-        // The app only flags it verified after its own PAN eKYC check; otherwise admin reviews it.
-        docUpdate.pan_status = ["true", "1"].includes(String(body.pan_verified).toLowerCase()) ? 1 : 0;
+        // Always pending admin review: the PAN eKYC runs in the app against the Income Tax
+        // portal, so the server has no record of it and must not trust a client-sent
+        // "verified" flag. (PAN is optional and does not gate approval.)
+        docUpdate.pan_status = 0;
       }
     }
 

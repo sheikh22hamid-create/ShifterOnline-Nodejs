@@ -130,7 +130,6 @@ public interface NodeService {
             @Part("rider_id") RequestBody riderId,
             @Part("device_id") RequestBody deviceId,
             @Part("pan_number") RequestBody panNumber,
-            @Part("pan_verified") RequestBody panVerified,
             @Part("email") RequestBody email,
             @Part("account_name") RequestBody accountName,
             @Part("account_number") RequestBody accountNumber,

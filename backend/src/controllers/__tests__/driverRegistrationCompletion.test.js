@@ -54,16 +54,16 @@ describe("POST /rider/registration/complete", () => {
     expect(out(r).Result).toBe("true");
   });
 
-  it("stores a PAN as pending admin review unless the app verified it", async () => {
+  it("stores a PAN as pending admin review", async () => {
     prisma.tbl_personal_doc.findFirst.mockResolvedValueOnce({ id: 9, pan_status: 0, pan_id: "" }).mockResolvedValueOnce(null);
     await run({ rider_id: "5", device_id: "dev1", pan_number: "abcde1234f" });
     expect(prisma.tbl_personal_doc.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { pan_id: "ABCDE1234F", pan_status: 0 } });
   });
 
-  it("marks the PAN verified when the app's eKYC check passed", async () => {
+  it("never trusts a client-sent pan_verified flag", async () => {
     prisma.tbl_personal_doc.findFirst.mockResolvedValueOnce({ id: 9, pan_status: 0, pan_id: "" }).mockResolvedValueOnce(null);
     await run({ rider_id: "5", device_id: "dev1", pan_number: "ABCDE1234F", pan_verified: "true" });
-    expect(prisma.tbl_personal_doc.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { pan_id: "ABCDE1234F", pan_status: 1 } });
+    expect(prisma.tbl_personal_doc.update).toHaveBeenCalledWith({ where: { id: 9 }, data: { pan_id: "ABCDE1234F", pan_status: 0 } });
   });
 
   it("rejects a PAN already used by another driver", async () => {

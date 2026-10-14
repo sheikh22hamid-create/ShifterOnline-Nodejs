@@ -111,7 +111,8 @@ public class CompleteRegistrationActivity extends LocaleAwareActivity {
             if (!"pan".equals(docType)) return;
             panVerified = true;
             panNumber = docNumber;
-            tvPanStatus.setText("Verified ✓ (" + docNumber + ")");
+            // The app's check only proves the number is genuine; admin still reviews it server-side.
+            tvPanStatus.setText("Ready to submit ✓ (" + docNumber + ")");
             tvPanStatus.setTextColor(COLOR_DONE);
             btnPan.setText("Verified");
             btnPan.setEnabled(false);
@@ -270,7 +271,6 @@ public class CompleteRegistrationActivity extends LocaleAwareActivity {
                 text(String.valueOf(riderData.getId())),
                 text(Utility.getDeviceId(this)),
                 text(panVerified ? panNumber : ""),
-                text(panVerified ? "true" : "false"),
                 text(email),
                 text(accName),
                 text(accNumber),
