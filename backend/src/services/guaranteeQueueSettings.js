@@ -7,6 +7,7 @@ const cache = new Map(); // cityId -> { at, value }
 
 const COLUMN = {
   execQueueEnabled: "exec_queue_enabled",
+  recoverOnDriverCancel: "guarantee_recover_on_cancel",
   execDefaultCapacity: "exec_default_capacity",
   reminderPct: "reminder_pct",
   escalatePct: "escalate_pct",

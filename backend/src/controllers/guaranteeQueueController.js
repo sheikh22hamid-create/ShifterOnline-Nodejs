@@ -77,7 +77,7 @@ function cityOf(req) {
 }
 
 const settingsToApi = (s) => ({
-  exec_queue_enabled: s.execQueueEnabled, exec_default_capacity: s.execDefaultCapacity,
+  exec_queue_enabled: s.execQueueEnabled, guarantee_recover_on_cancel: s.recoverOnDriverCancel, exec_default_capacity: s.execDefaultCapacity,
   reminder_pct: s.reminderPct, escalate_pct: s.escalatePct, auto_reassign_idle_minutes: s.autoReassignIdleMinutes,
 });
 
@@ -185,7 +185,7 @@ async function saveSettings(req, res) {
     const saved = await queueSettings.saveQueueSettings({
       cityId: cityOf(req), adminId: req.user?.id,
       input: {
-        execQueueEnabled: b.exec_queue_enabled, execDefaultCapacity: b.exec_default_capacity, reminderPct: b.reminder_pct,
+        execQueueEnabled: b.exec_queue_enabled, recoverOnDriverCancel: b.guarantee_recover_on_cancel, execDefaultCapacity: b.exec_default_capacity, reminderPct: b.reminder_pct,
         escalatePct: b.escalate_pct, autoReassignIdleMinutes: b.auto_reassign_idle_minutes,
       },
     });

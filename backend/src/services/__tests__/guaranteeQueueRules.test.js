@@ -5,13 +5,13 @@ const at = (iso) => new Date(iso);
 
 describe("normalizeQueueRow", () => {
   it("returns the defaults (OFF, 5, 50, 75, no idle reassign) for a missing row", () => {
-    expect(r.normalizeQueueRow(null)).toEqual({ execQueueEnabled: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
+    expect(r.normalizeQueueRow(null)).toEqual({ execQueueEnabled: false, recoverOnDriverCancel: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
   });
   it("reads a stored row and falls back per field on bad values", () => {
     expect(r.normalizeQueueRow({ exec_queue_enabled: 1, exec_default_capacity: 8, reminder_pct: 40, escalate_pct: 80, auto_reassign_idle_minutes: 7 }))
-      .toEqual({ execQueueEnabled: true, execDefaultCapacity: 8, reminderPct: 40, escalatePct: 80, autoReassignIdleMinutes: 7 });
+      .toEqual({ execQueueEnabled: true, recoverOnDriverCancel: false, execDefaultCapacity: 8, reminderPct: 40, escalatePct: 80, autoReassignIdleMinutes: 7 });
     expect(r.normalizeQueueRow({ exec_queue_enabled: 1, exec_default_capacity: 0, reminder_pct: 90, escalate_pct: 10, auto_reassign_idle_minutes: -3 }))
-      .toEqual({ execQueueEnabled: true, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
+      .toEqual({ execQueueEnabled: true, recoverOnDriverCancel: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
   });
 });
 
@@ -102,5 +102,19 @@ describe("action classification", () => {
     expect(r.isMeaningful("note", "ok")).toBe(false);
     expect(r.isMeaningful("note", "Called three drivers in Sector 5, none free")).toBe(true);
     expect(r.ACTION_TYPES).toContain("escalated");
+  });
+});
+
+describe("recoverOnDriverCancel setting", () => {
+  it("defaults to OFF and reads the column", () => {
+    expect(r.DEFAULTS.recoverOnDriverCancel).toBe(false);
+    expect(r.normalizeQueueRow(null).recoverOnDriverCancel).toBe(false);
+    expect(r.normalizeQueueRow({ guarantee_recover_on_cancel: 1 }).recoverOnDriverCancel).toBe(true);
+    expect(r.normalizeQueueRow({ guarantee_recover_on_cancel: 0 }).recoverOnDriverCancel).toBe(false);
+  });
+  it("validates input as a boolean and returns it only when sent", () => {
+    expect(r.validateQueueInput({ recoverOnDriverCancel: true })).toEqual({ recoverOnDriverCancel: true });
+    expect(r.validateQueueInput({ recoverOnDriverCancel: "false" })).toEqual({ recoverOnDriverCancel: false });
+    expect(r.validateQueueInput({})).toEqual({});
   });
 });

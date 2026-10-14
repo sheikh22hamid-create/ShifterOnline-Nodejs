@@ -51,4 +51,13 @@ describe("saveQueueSettings", () => {
     expect(arg.update).not.toHaveProperty("reminder_pct");
     expect(arg.create).toMatchObject({ city_id: 3, exec_queue_enabled: true, exec_default_capacity: 6 });
   });
+  it("persists the recovery switch as guarantee_recover_on_cancel", async () => {
+    prisma.tbl_city.findUnique.mockResolvedValue({ id: 3 });
+    prisma.city_order_settings.findUnique.mockResolvedValue({ exec_queue_enabled: 0, exec_default_capacity: 5, reminder_pct: 50, escalate_pct: 75 });
+    prisma.city_order_settings.upsert.mockResolvedValue({});
+    await settings.saveQueueSettings({ cityId: 3, input: { recoverOnDriverCancel: true }, adminId: 12 });
+    const arg = prisma.city_order_settings.upsert.mock.calls[0][0];
+    expect(arg.update).toMatchObject({ guarantee_recover_on_cancel: true, updated_by: 12 });
+    expect(arg.update).not.toHaveProperty("exec_queue_enabled");
+  });
 });

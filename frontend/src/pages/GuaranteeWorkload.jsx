@@ -32,6 +32,7 @@ const SETTING_FIELDS = [
 
 const settingsToForm = (d) => ({
   exec_queue_enabled: Boolean(d?.exec_queue_enabled),
+  guarantee_recover_on_cancel: Boolean(d?.guarantee_recover_on_cancel),
   exec_default_capacity: d?.exec_default_capacity != null ? String(d.exec_default_capacity) : '',
   reminder_pct: d?.reminder_pct != null ? String(d.reminder_pct) : '',
   escalate_pct: d?.escalate_pct != null ? String(d.escalate_pct) : '',
@@ -325,6 +326,10 @@ export default function GuaranteeWorkload() {
             <label className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink)' }}>
               <input type="checkbox" disabled={busy} checked={form.exec_queue_enabled} onChange={setField('exec_queue_enabled')} />
               Executive queue active (OFF keeps today's behaviour: any admin may assign)
+            </label>
+            <label className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink)' }}>
+              <input type="checkbox" disabled={busy} checked={form.guarantee_recover_on_cancel} onChange={setField('guarantee_recover_on_cancel')} />
+              Recover orders when an assigned driver cancels before pickup (OFF keeps today's behaviour: the cancel is final)
             </label>
             {SETTING_FIELDS.map(([k, label]) => (
               <label key={k} className="grid gap-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{label}

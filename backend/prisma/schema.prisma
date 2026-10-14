@@ -2021,6 +2021,7 @@ model city_order_settings {
   guarantee_start_time        String?  @db.VarChar(5)
   guarantee_end_time          String?  @db.VarChar(5)
   exec_queue_enabled          Boolean  @default(false)
+  guarantee_recover_on_cancel Boolean  @default(false)
   exec_default_capacity       Int      @default(5)
   reminder_pct                Int      @default(50)
   escalate_pct                Int      @default(75)
