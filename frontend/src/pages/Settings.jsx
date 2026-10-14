@@ -539,7 +539,7 @@ function SettingsForm({ data, onSaved }) {
               onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_buffer_minutes: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              After a driver accepts, the customer sees Google's driver-to-pickup travel time plus this buffer (Google 20 min + 10 min buffer = 30 min ETA). That moment is also the driver's deadline to reach the pickup.
+              After a driver accepts, the customer and the driver see a live countdown of Google's driver-to-pickup travel time plus this buffer (Google 20 min + 10 min buffer = 30 min). Nothing is auto-cancelled: once it reaches 0 and the driver has not arrived, the customer can cancel for free (no charge to the customer, no payment to or penalty on the driver). If the driver clicks Arrived before it ends, a later customer cancellation pays the driver the normal cancellation charge.
             </p>
           </div>
           <div>
@@ -553,23 +553,7 @@ function SettingsForm({ data, onSaved }) {
               onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_geofence_m: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              A driver who is inside this radius of the pickup when the ETA deadline passes is not auto-cancelled.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="flag-pickup_eta_auto_cancel_enabled">Auto-cancel when driver misses the ETA</Label>
-            <select
-              id="flag-pickup_eta_auto_cancel_enabled"
-              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
-              style={{ background: 'var(--surface)', borderColor: 'var(--line)', color: 'var(--ink)' }}
-              value={flags.pickup_eta_auto_cancel_enabled ?? '1'}
-              onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_auto_cancel_enabled: e.target.value }))}
-            >
-              <option value="1">Enabled</option>
-              <option value="0">Disabled</option>
-            </select>
-            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              When enabled, an order whose driver has not reached the pickup by the deadline is cancelled on the driver's side and the package's driver cancellation charge is applied.
+              A driver who is inside this radius of the pickup (by a fresh GPS fix) when the countdown ends counts as on time, so the customer does not get the free cancel.
             </p>
           </div>
           <div>

@@ -739,6 +739,23 @@ describe("tripLifecycle.customerCancel", () => {
       expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled(); // no customer debit, no driver compensation
     });
 
+    it("pays the driver the cancellation charge once they have clicked Arrived, even past the deadline", async () => {
+      // Arrived moves the order to status 2, so the missed-ETA free cancel no longer applies.
+      const arrived = { ...order, order_status: 2 };
+      prisma.pkg_order.findFirst.mockResolvedValue(arrived);
+      prisma.$executeRaw.mockResolvedValueOnce(1);
+      prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: null });
+      const expiredSpy = jest.spyOn(pickupEtaService, "isPickupEtaExpired").mockResolvedValue(true);
+      pricingEngine.getPackageById.mockResolvedValueOnce({ cancellation_charge_customer: 25, driver_earning: 40 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValueOnce(null);
+
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+
+      expect(expiredSpy).not.toHaveBeenCalled();
+      expect(refundIfWalletPaid).toHaveBeenCalledWith(arrived, { deduct: 25 });
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_balance: { increment: 40 } } });
+    });
+
     it("still charges the normal cancellation fee while the ETA has not expired", async () => {
       prisma.pkg_order.findFirst.mockResolvedValue(order);
       prisma.$executeRaw.mockResolvedValueOnce(1);

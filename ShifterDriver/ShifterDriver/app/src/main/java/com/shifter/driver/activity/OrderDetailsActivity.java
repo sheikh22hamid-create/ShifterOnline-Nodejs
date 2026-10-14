@@ -130,8 +130,45 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
     };
 
+    // Live pickup countdown (Google ETA + buffer): repaints each second, off the server's
+    // seconds-left snapshot + time since it arrived, so a wrong phone clock cannot skew it.
+    private final android.os.Handler etaHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable etaTick = new Runnable() {
+        @Override public void run() {
+            updatePickupCountdown();
+            etaHandler.postDelayed(this, 1000);
+        }
+    };
+
+    private void updatePickupCountdown() {
+        if (binding == null) return;
+        long left = -1;
+        if (orderItem != null && "1".equals(orderItem.getOrderFlowId())) {
+            JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
+            if (cached != null && cached.has("pickup_eta_remaining_seconds") && !cached.get("pickup_eta_remaining_seconds").isJsonNull()
+                    && cached.has("received_at") && cached.get("received_at").getAsLong() > 0) {
+                long snapshot = cached.get("pickup_eta_remaining_seconds").getAsLong();
+                // No deadline on the order (or none stored) means no countdown to show.
+                boolean hasDeadline = cached.has("pickup_deadline_ms") && cached.get("pickup_deadline_ms").getAsLong() > 0;
+                if (hasDeadline) left = Math.max(0, snapshot - (System.currentTimeMillis() - cached.get("received_at").getAsLong()) / 1000);
+            }
+        }
+        if (left < 0) { binding.cardPickupEta.setVisibility(View.GONE); return; }
+        binding.cardPickupEta.setVisibility(View.VISIBLE);
+        if (left == 0) {
+            binding.txtPickupEtaValue.setText(R.string.pickup_countdown_time_over);
+            binding.txtPickupEtaMsg.setText(R.string.pickup_countdown_over_msg);
+        } else {
+            // 11 min -> 10 -> 9 ..., and seconds only in the final minute.
+            binding.txtPickupEtaValue.setText(left < 60 ? left + " sec" : ((left + 59) / 60) + " min");
+            binding.txtPickupEtaMsg.setText(R.string.pickup_countdown_driver_msg);
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
+        etaHandler.removeCallbacks(etaTick);
+        etaHandler.post(etaTick);
         tripHandler.removeCallbacks(tripPoll);
         tripHandler.post(tripPoll);
         if (binding != null && !isWaitingForPayment) requestFreshLocationAndUpdateMap();
@@ -139,6 +176,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
     @Override protected void onPause() {
         super.onPause();
+        etaHandler.removeCallbacks(etaTick);
         tripHandler.removeCallbacks(tripPoll);
     }
 
@@ -267,6 +305,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             paymentCountDownTimer = null;
         }
         tripHandler.removeCallbacksAndMessages(null);
+        etaHandler.removeCallbacksAndMessages(null);
         if (pickupWaitingTimerHandler != null) pickupWaitingTimerHandler.removeCallbacksAndMessages(null);
         if (tripProgressReceiver != null) unregisterReceiver(tripProgressReceiver);
         if (locationReceiver != null) {
@@ -1982,18 +2021,6 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         } else { driverAccuracyCircle.setCenter(position); driverAccuracyCircle.setRadius(fix.getAccuracy()); }
     }
 
-    /** " • Reach pickup by 03:45 PM (12 min left) or the order auto-cancels" while heading to pickup; "" otherwise. */
-    private String pickupDeadlineHint() {
-        if (orderItem == null || !"1".equals(orderItem.getOrderFlowId())) return "";
-        JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
-        if (cached == null || !cached.has("pickup_deadline_ms") || cached.get("pickup_deadline_ms").isJsonNull()) return "";
-        long deadline = cached.get("pickup_deadline_ms").getAsLong();
-        if (deadline <= 0) return "";
-        long leftMin = Math.max(0, (deadline - System.currentTimeMillis() + 59999) / 60000);
-        String at = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(new java.util.Date(deadline));
-        return " • Reach pickup by " + at + " (" + leftMin + " min left) or the order auto-cancels";
-    }
-
     private void updateArrivalHint() {
         if (binding == null || orderItem == null || isWaitingForPayment) return;
         String flow = orderItem.getOrderFlowId();
@@ -2003,13 +2030,13 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             binding.txtTripLocationStatus.setText("Stop reached. Complete this stop to continue."); return;
         }
         String error = com.shifter.driver.utility.TripProgressClient.syncError(this, orderItem.getId());
-        if (!error.isEmpty()) { binding.txtTripLocationStatus.setText(error + pickupDeadlineHint()); return; }
+        if (!error.isEmpty()) { binding.txtTripLocationStatus.setText(error); return; }
         if (androidx.core.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            binding.txtTripLocationStatus.setText("Auto-arrival needs precise location. Enable it in app permissions." + pickupDeadlineHint()); return;
+            binding.txtTripLocationStatus.setText("Auto-arrival needs precise location. Enable it in app permissions."); return;
         }
         android.location.Location fix = LocationUpdateService.getLocation();
-        if (!fix.hasAccuracy()) { binding.txtTripLocationStatus.setText("Auto-arrival: acquiring fresh GPS… Tap to retry." + pickupDeadlineHint()); return; }
+        if (!fix.hasAccuracy()) { binding.txtTripLocationStatus.setText("Auto-arrival: acquiring fresh GPS… Tap to retry."); return; }
         double lat = orderItem.getPlat(), lng = orderItem.getPlong();
         if ("3".equals(flow)) {
             List<com.shifter.driver.model.OrderStop> stops = orderItem.getStops();
@@ -2029,7 +2056,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 ? distanceText + " • " + quality + " • Waiting for accurate GPS"
                 : distance[0] + fix.getAccuracy() <= 100
                     ? distanceText + " • " + quality + " • Hold position for auto-arrival"
-                    : distanceText + " • " + quality) + pickupDeadlineHint());
+                    : distanceText + " • " + quality));
     }
 
     @Override

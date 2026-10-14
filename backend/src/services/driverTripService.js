@@ -39,8 +39,9 @@ async function snapshot(order, progress, timer, stopCount) {
       + (Number(timer.pickup_wait_banked_seconds) || 0) * 1000;
     pickupOtpRemainingSeconds = Math.max(0, Math.round(timeoutMinutes * 60 - elapsedMs / 1000));
   }
-  // Pickup-ETA countdown (driver must reach the pickup by this deadline or the
-  // order auto-cancels with a penalty) - only while still heading to pickup.
+  // Pickup-ETA countdown (Google ETA + buffer) the driver app shows live. Nothing
+  // auto-cancels: past the deadline without Arrived, the customer may cancel free
+  // (no driver payment, no penalty). Only while still heading to pickup.
   let pickupDeadlineMs = 0;
   if (order.order_status === 1) {
     const etaRow = await getPickupEtaRow(order.id);

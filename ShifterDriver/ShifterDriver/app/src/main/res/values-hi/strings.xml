@@ -702,4 +702,8 @@
     <string name="reg_remaining_title">बाकी विवरण</string>
     <string name="reg_remaining_subtitle">सिर्फ वही भरें जो बाकी है। आपका अकाउंट और जानकारी वैसी ही रहेगी।</string>
     <string name="reg_nothing_pending">कुछ भी बाकी नहीं है। आपका रजिस्ट्रेशन पूरा है।</string>
+    <string name="pickup_countdown_title">पिकअप तक पहुंचने का समय</string>
+    <string name="pickup_countdown_driver_msg">काउंटडाउन पूरा होने से पहले पिकअप लोकेशन पर पहुंचकर \u2018Arrived\u2019 क्लिक करें। अगर आप समय पर नहीं पहुंचते और कस्टमर कैंसिल करता है, तो कैंसिलेशन चार्ज नहीं मिलेगा। अगर आप लेट हो रहे हैं, तो कस्टमर से संपर्क करके उन्हें समझाएं कि बुकिंग कैंसिल न करें और बताएं कि आप पिकअप लोकेशन पर आ रहे हैं।</string>
+    <string name="pickup_countdown_over_msg">काउंटडाउन पूरा हो गया। अब कस्टमर कैंसिल कर सकता है और आपको कैंसिलेशन चार्ज नहीं मिलेगा। जल्दी पिकअप पर पहुंचकर \u2018Arrived\u2019 क्लिक करें, या कस्टमर से संपर्क करके बताएं कि आप आ रहे हैं।</string>
+    <string name="pickup_countdown_time_over">समय समाप्त</string>
 </resources>

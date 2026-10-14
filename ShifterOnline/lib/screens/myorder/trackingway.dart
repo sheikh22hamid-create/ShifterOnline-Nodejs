@@ -123,6 +123,48 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   bool _mapFitted = false;
 
   Timer? _etaExpiryTimer;
+  Timer? _etaTicker;
+  // Server-side seconds left to the pickup deadline at the moment the order was fetched; the
+  // live countdown runs off this snapshot (not the phone clock, so a wrong clock can't skew it).
+  int _etaRemainingAtFetch = 0;
+  DateTime? _etaFetchedAt;
+  String _etaShown = "";
+
+  /// Seconds left on the live pickup countdown (Google ETA + buffer).
+  int _etaRemainingSeconds() {
+    final at = _etaFetchedAt;
+    if (at == null || _etaRemainingAtFetch <= 0) return 0;
+    final left = _etaRemainingAtFetch - DateTime.now().difference(at).inSeconds;
+    return left < 0 ? 0 : left;
+  }
+
+  /// "11 min" counting down 10, 9, 8... and "45 sec" in the final minute.
+  String _fmtEtaCountdown(int seconds) {
+    if (seconds <= 0) return "0 ${"min".tr}";
+    if (seconds < 60) return "$seconds ${"sec".tr}";
+    return "${(seconds / 60).ceil()} ${"min".tr}";
+  }
+
+  void _startEtaTicker() {
+    _etaTicker?.cancel();
+    _etaTicker = null;
+    if (_etaRemainingSeconds() <= 0) return;
+    _etaShown = _fmtEtaCountdown(_etaRemainingSeconds());
+    _etaTicker = Timer.periodic(const Duration(seconds: 1), (t) {
+      final left = _etaRemainingSeconds();
+      if (!mounted || left <= 0) {
+        t.cancel();
+        if (mounted) setState(() {});
+        return;
+      }
+      // Only repaint when the visible text changes (once a minute, then every second in the last one).
+      final shown = _fmtEtaCountdown(left);
+      if (shown != _etaShown) {
+        _etaShown = shown;
+        setState(() {});
+      }
+    });
+  }
 
   /// The backend only flips `pickup_eta_expired` when the order is read, and nothing
   /// else refreshes this screen when a quiet (stuck) driver runs past the deadline -
@@ -131,8 +173,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   void _scheduleEtaExpiryRefresh() {
     _etaExpiryTimer?.cancel();
     _etaExpiryTimer = null;
-    if (_pickupEtaExpired) return;
-    final remaining = int.tryParse(orderProduc?["pickup_eta_remaining_seconds"]?.toString() ?? "") ?? 0;
+    final remaining = _pickupEtaExpired ? 0 : (int.tryParse(orderProduc?["pickup_eta_remaining_seconds"]?.toString() ?? "") ?? 0);
+    _etaRemainingAtFetch = remaining;
+    _etaFetchedAt = DateTime.now();
+    _startEtaTicker();
     if (remaining <= 0) return;
     _etaExpiryTimer = Timer(Duration(seconds: remaining + 2), () {
       if (mounted) pageRefresh();
@@ -142,6 +186,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   @override
   void dispose() {
     _etaExpiryTimer?.cancel();
+    _etaTicker?.cancel();
     _advanceTimer?.cancel();
     _settlementPollTimer?.cancel();
     _waitingTicker?.cancel();
@@ -2165,7 +2210,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final status = (orderProduc?['Order_Status'] ?? '').toString();
 
     // "Driver is 3 min away" / "0.4 km • ETA 3 min" chip over the map.
-    final eta = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
+    final staticEta = int.tryParse(orderProduc?["pickup_eta_minutes"]?.toString() ?? "") ?? 0;
+    final liveLeft = _etaRemainingSeconds();
+    final eta = liveLeft > 0 ? (liveLeft / 60).ceil() : staticEta;
     final km = double.tryParse(orderProduc?["pickup_distance_km"]?.toString() ?? "") ?? 0;
     final chipTitle = eta > 0 ? "${"Driver is".tr} $eta ${"min away".tr}" : "Rider is on the way".tr;
     final chipSub = [
@@ -4636,7 +4683,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       return _HeroState(
         lead: "Driver is ".tr,
         accent: "running late".tr,
-        sub: "Driver missed the ETA. You can cancel for free.".tr,
+        sub: "Countdown complete ho gaya. Aap ab cancel kar sakte hain, aap par koi cancellation charge nahi lagega.".tr,
         color: const Color(0xFFFF9100),
         headerSub: "Driver missed the pickup ETA".tr,
       );
@@ -4649,11 +4696,18 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         color: linercolor,
         headerSub: "Driver is on the way to pickup".tr,
         etaCaption: eta > 0 ? "Arriving at pickup in".tr : "",
-        etaValue: eta > 0 ? "$eta ${"min".tr}" : "",
+        // Counts down live from the server's deadline (11 min -> 10 -> 9 ...); falls back to the
+        // static ETA only when the server sent no deadline.
+        etaValue: _etaRemainingAtFetch > 0 || pickupDeadline != null
+            ? _fmtEtaCountdown(_etaRemainingSeconds())
+            : (eta > 0 ? "$eta ${"min".tr}" : ""),
         etaFoot: [
           if (km > 0) "${km.toStringAsFixed(1)} km ${"away".tr}",
           if (pickupDeadlineLabel.isNotEmpty) "${"by".tr} $pickupDeadlineLabel",
         ].join(" · "),
+        etaNote: (_etaRemainingAtFetch > 0 || pickupDeadline != null)
+            ? "Countdown complete hone ke baad aap cancel kar sakte hain. Aap par koi cancellation charge nahi lagega.".tr
+            : "",
       );
     }
     return _HeroState(
@@ -4724,6 +4778,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       Text(
                         h.etaFoot,
                         style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
+                      ),
+                    if (h.etaNote.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          h.etaNote,
+                          style: TextStyle(color: h.color, fontFamily: "Gilroy_Medium", fontSize: 12, height: 1.3),
+                        ),
                       ),
                   ],
                 ),
@@ -8663,6 +8725,7 @@ class _HeroState {
   final String etaCaption;
   final String etaValue;
   final String etaFoot;
+  final String etaNote;
 
   const _HeroState({
     required this.lead,
@@ -8673,5 +8736,6 @@ class _HeroState {
     this.etaCaption = "",
     this.etaValue = "",
     this.etaFoot = "",
+    this.etaNote = "",
   });
 }

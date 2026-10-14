@@ -27,18 +27,17 @@ describe("buildEtaPlan", () => {
 describe("getPickupEtaSettings", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("defaults to a 10 minute buffer, 200 m geofence and auto-cancel on", async () => {
+  it("defaults to a 10 minute buffer and a 200 m geofence", async () => {
     prisma.app_settings.findMany.mockResolvedValue([]);
-    expect(await svc.getPickupEtaSettings()).toEqual({ bufferMinutes: 10, geofenceM: 200, autoCancelEnabled: true });
+    expect(await svc.getPickupEtaSettings()).toEqual({ bufferMinutes: 10, geofenceM: 200 });
   });
 
-  it("reads the admin values, including switching auto-cancel off", async () => {
+  it("reads the admin values", async () => {
     prisma.app_settings.findMany.mockResolvedValue([
       { setting_key: "pickup_eta_buffer_minutes", setting_value: "15" },
       { setting_key: "pickup_eta_geofence_m", setting_value: "120" },
-      { setting_key: "pickup_eta_auto_cancel_enabled", setting_value: "0" },
     ]);
-    expect(await svc.getPickupEtaSettings()).toEqual({ bufferMinutes: 15, geofenceM: 120, autoCancelEnabled: false });
+    expect(await svc.getPickupEtaSettings()).toEqual({ bufferMinutes: 15, geofenceM: 120 });
   });
 });
 

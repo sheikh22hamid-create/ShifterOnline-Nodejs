@@ -667,4 +667,8 @@
     <string name="reg_remaining_title">Remaining Details</string>
     <string name="reg_remaining_subtitle">Fill only what is still pending. Your account and details stay the same.</string>
     <string name="reg_nothing_pending">Nothing is pending. Your registration is complete.</string>
+    <string name="pickup_countdown_title">Reach pickup in</string>
+    <string name="pickup_countdown_driver_msg">Countdown complete hone se pehle pickup location par pahunchkar \u2018Arrived\u2019 click karein. Agar aap time par nahi pahunchte aur customer cancel karta hai, to cancellation charge nahi milega. Agar aap late ho rahe hain, to customer se contact karke unhe convince karein ki booking cancel na karein aur batayein ki aap pickup location par aa rahe hain.</string>
+    <string name="pickup_countdown_over_msg">Countdown complete ho gaya. Ab customer cancel kar sakta hai aur aapko cancellation charge nahi milega. Jaldi pickup par pahunchkar \u2018Arrived\u2019 click karein, ya customer se contact karke batayein ki aap aa rahe hain.</string>
+    <string name="pickup_countdown_time_over">Time over</string>
 </resources>

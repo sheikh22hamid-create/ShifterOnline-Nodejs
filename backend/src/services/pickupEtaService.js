@@ -28,10 +28,10 @@ function parseNonNegative(value, fallback) {
 }
 
 // Same convention as pickupOtpTimeout / pickupRelocateSettings: no caching, an
-// admin change applies on the very next accept / sweep tick.
+// admin change applies on the very next accept.
 async function getPickupEtaSettings() {
-  const keys = ["pickup_eta_buffer_minutes", "pickup_eta_geofence_m", "pickup_eta_auto_cancel_enabled"];
-  const settings = { bufferMinutes: DEFAULT_BUFFER_MIN, geofenceM: DEFAULT_GEOFENCE_M, autoCancelEnabled: true };
+  const keys = ["pickup_eta_buffer_minutes", "pickup_eta_geofence_m"];
+  const settings = { bufferMinutes: DEFAULT_BUFFER_MIN, geofenceM: DEFAULT_GEOFENCE_M };
   try {
     const rows = await prisma.app_settings.findMany({ where: { setting_key: { in: keys } } });
     for (const row of rows) {
@@ -39,9 +39,6 @@ async function getPickupEtaSettings() {
       if (row.setting_key === "pickup_eta_geofence_m") {
         const m = parseNonNegative(row.setting_value, DEFAULT_GEOFENCE_M);
         settings.geofenceM = m > 0 ? m : DEFAULT_GEOFENCE_M;
-      }
-      if (row.setting_key === "pickup_eta_auto_cancel_enabled") {
-        settings.autoCancelEnabled = !["0", "false", "off", "no"].includes(String(row.setting_value ?? "").trim().toLowerCase());
       }
     }
   } catch (err) {
