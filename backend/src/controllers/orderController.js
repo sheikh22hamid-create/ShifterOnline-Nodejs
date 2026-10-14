@@ -1316,7 +1316,7 @@ async function driverCancel(req, res) {
     }
     return res.status(200).json({
       success: true,
-      message: "Ride cancelled and advance refunded where applicable",
+      message: result.recovered ? "Ride cancelled. The order is being offered to other drivers." : "Ride cancelled and advance refunded where applicable",
       data: {
         order_id: Number(order_id),
         refund_amount: result.refund_amount,

@@ -3,7 +3,7 @@ jest.mock("../referralPointsRefund", () => ({
   reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../config/db", () => ({
-  driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null) },
+  driver_trip_progress: { findUnique: jest.fn().mockResolvedValue(null), deleteMany: jest.fn() },
   $executeRaw: jest.fn(),
   $transaction: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
@@ -32,6 +32,11 @@ jest.mock("../nextDayOfferService", () => ({ onRejected: jest.fn().mockResolvedV
 jest.mock("../bookingGuaranteeService", () => ({
   closeOnAssign: jest.fn().mockResolvedValue(true),
   closeOnCancel: jest.fn().mockResolvedValue(true),
+}));
+jest.mock("../guaranteeRecoveryService", () => ({
+  recoveryCityFor: jest.fn().mockResolvedValue(null),
+  reopenAfterDriverCancel: jest.fn(),
+  afterReopen: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../walletPrepaymentRefund", () => ({
   isWalletPaidOrder: jest.fn(() => false),
@@ -71,6 +76,7 @@ const tripLifecycle = require("../tripLifecycle");
 const freeBookingService = require("../freeBookingService");
 const logger = require("../../utils/logger");
 const tierPenalty = require("../tierPenaltyService");
+const recovery = require("../guaranteeRecoveryService");
 const { SCHEDULED_ORDER_PRIORITY_WINDOW_MS } = require("../../config/constants");
 const { haversineKm } = require("../../utils/geoDistance");
 const { getPickupRelocateSettings } = require("../../utils/pickupRelocateSettings");
@@ -1051,6 +1057,7 @@ describe("tripLifecycle.driverCancel", () => {
     prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
     prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" });
     prisma.tbl_user.update.mockResolvedValue({ id: 7, wallet: 250 });
+    recovery.recoveryCityFor.mockResolvedValue(null);
   });
 
   it("does not re-credit a captured advance already sitting in the wallet", async () => {
@@ -1164,6 +1171,75 @@ describe("tripLifecycle.driverCancel", () => {
     expect(prisma.tbl_user.update).toHaveBeenCalledWith({
       where: { id: 7 },
       data: { referral_points: { increment: 5 } },
+    });
+  });
+
+  describe("guarantee recovery", () => {
+    const caseRow = { id: 1, order_id: 297, deadline_at: new Date(Date.now() + 600000) };
+
+    it("switch off: terminal cancel exactly as before, recovery never attempted", async () => {
+      const result = await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(recovery.reopenAfterDriverCancel).not.toHaveBeenCalled();
+      expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "driver_cancelled");
+      expect(result.recovered).toBeUndefined();
+    });
+
+    it("eligible: reopens instead of cancelling (no terminal cancel, no refunds, no stopDispatch)", async () => {
+      const { refundIfWalletPaid } = require("../walletPrepaymentRefund");
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterDriverCancel.mockResolvedValue({ reopened: true, caseRow, order: { id: 297, uid: 7, rid: 11, order_status: 1, delivery_type: 6 } });
+
+      const result = await tripLifecycle.driverCancel(297, 11, "breakdown");
+
+      expect(result).toMatchObject({ success: true, recovered: true, refund_amount: 0, refund_status: "order_reopened" });
+      expect(recovery.reopenAfterDriverCancel).toHaveBeenCalledWith(expect.objectContaining({ orderId: 297, riderId: 11, cityId: 3, inTx: expect.any(Function) }));
+      expect(recovery.afterReopen).toHaveBeenCalledWith({ orderId: 297, caseRow, cityId: 3 });
+      expect(prisma.$executeRaw).not.toHaveBeenCalled();
+      expect(refundIfWalletPaid).not.toHaveBeenCalled();
+      expect(dispatchManager.stopDispatch).not.toHaveBeenCalled();
+    });
+
+    it("recovery declined (deadline passed, wrong stage...): falls through to the unchanged terminal cancel", async () => {
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterDriverCancel.mockResolvedValue({ reopened: false, reason: "case_not_reopenable" });
+      const result = await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(result.recovered).toBeUndefined();
+      expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "driver_cancelled");
+      expect(recovery.afterReopen).not.toHaveBeenCalled();
+    });
+
+    it("automated cancels (requireOrderStatus) never attempt recovery", async () => {
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      await tripLifecycle.driverCancel(297, 11, "auto", { requireOrderStatus: 1 });
+      expect(recovery.recoveryCityFor).not.toHaveBeenCalled();
+    });
+
+    it("the in-transaction hook penalises the driver once, blocks re-offers and clears trip progress", async () => {
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterDriverCancel.mockResolvedValue({ reopened: true, caseRow, order: {} });
+      pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_driver: 50, driver_cancel_user_earning: 20 });
+      prisma.tbl_rider.update.mockResolvedValue({});
+      await tripLifecycle.driverCancel(297, 11, "breakdown");
+
+      const { inTx } = recovery.reopenAfterDriverCancel.mock.calls[0][0];
+      await inTx(prisma, { id: 297, uid: 7, rid: 11, order_status: 1, delivery_type: 6 });
+
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 11 }, data: { wallet_balance: { decrement: 50 } } });
+      expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ payment_id: "driver_cancel_fee:297:11", type: "debit" }) }));
+      expect(prisma.tbl_wallet_history.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ payment_id: "driver_cancel_comp:297:11", type: "credit" }) }));
+      expect(prisma.tbl_order_requests.updateMany).toHaveBeenCalledWith({ where: { order_id: 297, rider_id: 11, status: { in: ["sent", "accepted"] } }, data: { status: "10" } });
+      expect(prisma.driver_trip_progress.deleteMany).toHaveBeenCalledWith({ where: { order_id: 297 } });
+      expect(prisma.order_status_history.create).toHaveBeenCalledWith({ data: expect.objectContaining({ order_id: 297, rider_id: 11, status: "Driver Cancelled" }) });
+    });
+
+    it("the hook charges no fee for a still-pending order (same rule as the terminal path)", async () => {
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterDriverCancel.mockResolvedValue({ reopened: true, caseRow, order: {} });
+      pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_driver: 50, driver_cancel_user_earning: 20 });
+      await tripLifecycle.driverCancel(297, 11, "x");
+      const { inTx } = recovery.reopenAfterDriverCancel.mock.calls[0][0];
+      await inTx(prisma, { id: 297, uid: 7, rid: 11, order_status: 0, delivery_type: 6 });
+      expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
     });
   });
 });

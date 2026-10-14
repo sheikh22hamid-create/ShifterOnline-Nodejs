@@ -1436,6 +1436,105 @@ async function customerCancel(uid, orderId, comment) {
 }
 
 /**
+ * The driver's cancellation fee and the customer's `driver_cancel_user_earning` credit, each behind its own
+ * idempotency key. Runs inside the caller's transaction; shared by the terminal cancel and guarantee recovery.
+ */
+async function applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications }) {
+  if (!order.delivery_type) return;
+  const pkg = await pricingEngine.getPackageById(order.delivery_type);
+  const driverFee = Number(pkg?.cancellation_charge_driver) || 0;
+  if (driverFee > 0) {
+    const driverFeeKey = `driver_cancel_fee:${orderId}:${riderId}`;
+    const alreadyDebited = await tx.tbl_wallet_history.findFirst({
+      where: { payment_id: driverFeeKey, type: "debit", wallet_type: "driver" },
+    });
+    if (!alreadyDebited) {
+      const feeRemark = `Cancellation fee for cancelling order #${orderId}`;
+      await tx.tbl_rider.update({
+        where: { id: Number(riderId) },
+        data: { wallet_balance: { decrement: driverFee } },
+      });
+      await tx.tbl_wallet_history.create({
+        data: {
+          user_id: Number(riderId),
+          amount: driverFee,
+          type: "debit",
+          wallet_type: "driver",
+          order_id: orderId,
+          payment_id: driverFeeKey,
+          remark: feeRemark,
+          created_at: istNow(),
+        },
+      });
+      walletNotifications.push({ riderId: Number(riderId), type: "debit", amount: driverFee, remark: feeRemark });
+
+      const userComp = Number(pkg?.driver_cancel_user_earning) || 0;
+      if (userComp > 0) {
+        await tx.tbl_user.update({
+          where: { id: Number(order.uid) },
+          data: { wallet: { increment: userComp } },
+        });
+        await tx.tbl_wallet_history.create({
+          data: {
+            user_id: Number(order.uid),
+            amount: userComp,
+            type: "credit",
+            wallet_type: "user",
+            order_id: orderId,
+            payment_id: `driver_cancel_comp:${orderId}:${riderId}`,
+            remark: `Compensation for driver cancelling order #${orderId}`,
+            created_at: istNow(),
+          },
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Booking Guarantee recovery (spec 2026-10-14): a guarantee order whose assigned driver cancels before pickup goes
+ * back to the held state under the SAME case and original deadline, instead of being cancelled. Returns the
+ * driverCancel result, or null to take the normal terminal path (switch off, ineligible, or any failure).
+ */
+async function recoverGuaranteeOrder(orderId, riderId, reason) {
+  const recovery = require("./guaranteeRecoveryService");
+  const cityId = await recovery.recoveryCityFor(orderId);
+  if (cityId === null) return null;
+
+  const walletNotifications = [];
+  const outcome = await recovery.reopenAfterDriverCancel({
+    orderId, riderId, cityId,
+    inTx: async (tx, order) => {
+      if (Number(order.order_status) !== 0) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications });
+      // Marked as a reject so the cascade never offers this order to the same driver again.
+      await tx.tbl_order_requests.updateMany({
+        where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
+        data: { status: "10" },
+      });
+      await tx.driver_trip_progress.deleteMany({ where: { order_id: orderId } });
+      await tx.order_status_history.create({
+        data: { order_id: orderId, rider_id: riderId, status: "Driver Cancelled", remark: reason || "No reason provided", created_at: new Date() },
+      });
+    },
+  });
+  if (!outcome.reopened) return null;
+
+  for (const n of walletNotifications) {
+    walletNotifier
+      .notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark })
+      .catch((err) => logger.error(`driverCancel: wallet notify failed for rider ${n.riderId}:`, err));
+  }
+  await recovery.afterReopen({ orderId, caseRow: outcome.caseRow, cityId });
+  return {
+    success: true,
+    recovered: true,
+    order: { ...outcome.order, rid: 0, order_status: 0, o_status: "Pending" },
+    refund_amount: 0,
+    refund_status: "order_reopened",
+  };
+}
+
+/**
  * Driver cancellation after acceptance.
  *
  * This is deliberately a single transaction.  The order row is locked before
@@ -1451,6 +1550,10 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
     if (gate.mode === "requested") {
       return { refund_amount: 0, refund_status: "cancel_requested", requires_admin_approval: true, cancel_request_id: gate.requestId };
     }
+  }
+  if (opts.requireOrderStatus == null) {
+    const recovered = await recoverGuaranteeOrder(orderId, riderId, reason);
+    if (recovered) return recovered;
   }
 
   let cancelledOrder = null;
@@ -1540,56 +1643,7 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
       refundStatus = "payment_not_captured";
     }
 
-    if (order.delivery_type && !isPending) {
-      const pkg = await pricingEngine.getPackageById(order.delivery_type);
-      const driverFee = Number(pkg?.cancellation_charge_driver) || 0;
-      if (driverFee > 0) {
-        const driverFeeKey = `driver_cancel_fee:${orderId}:${riderId}`;
-        const alreadyDebited = await tx.tbl_wallet_history.findFirst({
-          where: { payment_id: driverFeeKey, type: "debit", wallet_type: "driver" },
-        });
-        if (!alreadyDebited) {
-          const feeRemark = `Cancellation fee for cancelling order #${orderId}`;
-          await tx.tbl_rider.update({
-            where: { id: Number(riderId) },
-            data: { wallet_balance: { decrement: driverFee } },
-          });
-          await tx.tbl_wallet_history.create({
-            data: {
-              user_id: Number(riderId),
-              amount: driverFee,
-              type: "debit",
-              wallet_type: "driver",
-              order_id: orderId,
-              payment_id: driverFeeKey,
-              remark: feeRemark,
-              created_at: istNow(),
-            },
-          });
-          walletNotifications.push({ riderId: Number(riderId), type: "debit", amount: driverFee, remark: feeRemark });
-
-          const userComp = Number(pkg?.driver_cancel_user_earning) || 0;
-          if (userComp > 0) {
-            await tx.tbl_user.update({
-              where: { id: Number(order.uid) },
-              data: { wallet: { increment: userComp } },
-            });
-            await tx.tbl_wallet_history.create({
-              data: {
-                user_id: Number(order.uid),
-                amount: userComp,
-                type: "credit",
-                wallet_type: "user",
-                order_id: orderId,
-                payment_id: `driver_cancel_comp:${orderId}:${riderId}`,
-                remark: `Compensation for driver cancelling order #${orderId}`,
-                created_at: istNow(),
-              },
-            });
-          }
-        }
-      }
-    }
+    if (!isPending) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications });
 
     await tx.tbl_order_requests.updateMany({
       where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
