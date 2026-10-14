@@ -132,6 +132,7 @@ router.post("/tier-dispatch/cancel-requests/:id/reject", auth, authorize("supera
 router.get("/booking-guarantee/settings", auth, authorize(...RIDER_ROLES), adminBookingGuaranteeController.getSettings);
 // The global fallback window affects every city: superadmin only. A city sets its own in /order-search/settings.
 router.put("/booking-guarantee/settings", auth, authorize("superadmin"), adminBookingGuaranteeController.saveSettings);
+router.get("/booking-guarantee/customers", auth, authorize("superadmin", "admin"), scopeFilter, adminBookingGuaranteeController.searchCustomers);
 router.post("/booking-guarantee/users/:userId/lock", auth, authorize("superadmin", "admin"), scopeFilter, adminBookingGuaranteeController.lockUser);
 router.post("/booking-guarantee/users/:userId/unlock", auth, authorize("superadmin", "admin"), scopeFilter, adminBookingGuaranteeController.unlockUser);
 

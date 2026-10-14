@@ -74,6 +74,28 @@ async function caseAudit(req, res) {
   }
 }
 
+// Name / mobile typeahead for the lock panel. Own query (not /customers) so the city scope fails closed and mobile matches partially.
+async function searchCustomers(req, res) {
+  try {
+    const { cityId } = scopeOf(req);
+    const q = String(req.query?.q ?? "").trim().slice(0, 50);
+    if (q.length < 2) return res.json({ success: true, data: [] });
+    const like = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+    const rows = await prisma.$queryRaw(Prisma.sql`
+      SELECT u.id, u.name, CAST(CAST(u.mobile AS UNSIGNED) AS CHAR) AS mobile, u.city_id, u.guarantee_locked
+      FROM tbl_user u
+      WHERE (u.name LIKE ${like} OR CAST(CAST(u.mobile AS UNSIGNED) AS CHAR) LIKE ${like})
+      ${cityId !== null ? Prisma.sql`AND u.city_id = ${cityId}` : Prisma.empty}
+      ORDER BY u.name ASC LIMIT 10`);
+    return res.json({
+      success: true,
+      data: rows.map((r) => ({ id: Number(r.id), name: r.name, mobile: r.mobile, city_id: r.city_id, guarantee_locked: !!r.guarantee_locked })),
+    });
+  } catch (e) {
+    return fail(res, e, "searchCustomers");
+  }
+}
+
 async function setLock(req, res, locked) {
   try {
     const { cityId } = scopeOf(req);
@@ -95,4 +117,4 @@ async function setLock(req, res, locked) {
 const lockUser = (req, res) => setLock(req, res, true);
 const unlockUser = (req, res) => setLock(req, res, false);
 
-module.exports = { getSettings, saveSettings, listCases, caseAudit, lockUser, unlockUser };
+module.exports = { getSettings, saveSettings, listCases, caseAudit, searchCustomers, lockUser, unlockUser };

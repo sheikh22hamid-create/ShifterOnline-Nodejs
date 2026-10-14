@@ -30,7 +30,10 @@ export default function BookingGuarantee() {
   const { hasRole } = useAuth()
   const canWrite = hasRole('superadmin', 'admin')
   const isSuper = hasRole('superadmin')
-  const [lockUserId, setLockUserId] = useState('')
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [customerResults, setCustomerResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [lockBusy, setLockBusy] = useState(false)
 
   const [minutes, setMinutes] = useState('')
@@ -49,6 +52,31 @@ export default function BookingGuarantee() {
       .catch((err) => toastRef.current.error(errMsg(err, 'Could not load settings')))
   }, [])
 
+  // Debounced name / mobile search; the server scopes results to the admin's city.
+  useEffect(() => {
+    const q = customerQuery.trim()
+    if (selectedCustomer || q.length < 2) {
+      setCustomerResults([])
+      setSearching(false)
+      return undefined
+    }
+    let stale = false
+    setSearching(true)
+    const timer = setTimeout(() => {
+      api.get('/booking-guarantee/customers', { params: { q } })
+        .then((res) => { if (!stale) setCustomerResults(res.data?.data ?? []) })
+        .catch((err) => { if (!stale) toastRef.current.error(errMsg(err, 'Could not search customers')) })
+        .finally(() => { if (!stale) setSearching(false) })
+    }, 300)
+    return () => { stale = true; clearTimeout(timer) }
+  }, [customerQuery, selectedCustomer])
+
+  function pickCustomer(c) {
+    setSelectedCustomer(c)
+    setCustomerQuery('')
+    setCustomerResults([])
+  }
+
   async function save() {
     setSaving(true)
     try {
@@ -63,14 +91,14 @@ export default function BookingGuarantee() {
   }
 
   async function setLock(locked) {
-    const id = lockUserId.trim()
-    if (!/^\d+$/.test(id) || Number(id) <= 0) {
-      toastRef.current.error('Enter a valid customer id')
+    if (!selectedCustomer) {
+      toastRef.current.error('Search and select a customer first')
       return
     }
     setLockBusy(true)
     try {
-      const res = await api.post(`/booking-guarantee/users/${id}/${locked ? 'lock' : 'unlock'}`)
+      const res = await api.post(`/booking-guarantee/users/${selectedCustomer.id}/${locked ? 'lock' : 'unlock'}`)
+      setSelectedCustomer((c) => (c ? { ...c, guarantee_locked: locked } : c))
       toastRef.current.success(res.data?.message || (locked ? 'Customer locked' : 'Customer unlocked'))
     } catch (err) {
       toastRef.current.error(errMsg(err, 'Could not update the customer'))
@@ -124,11 +152,47 @@ export default function BookingGuarantee() {
 
       {canWrite && (
         <div className="surface-card mt-4 rounded-xl p-4">
-          <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="lock_user_id">Customer id</label>
+          <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="lock_customer">Customer name</label>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <input id="lock_user_id" value={lockUserId} onChange={(e) => setLockUserId(e.target.value)} className="w-40 rounded-xl border px-3.5 py-2.5 text-sm outline-none" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }} />
-            <button type="button" disabled={lockBusy} onClick={() => setLock(true)} className="rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Lock guarantee</button>
-            <button type="button" disabled={lockBusy} onClick={() => setLock(false)} className="rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>Unlock guarantee</button>
+            <div className="relative w-72 max-w-full">
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-sm" style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}>
+                  <span className="truncate">
+                    {selectedCustomer.name} · {selectedCustomer.mobile}
+                    {' '}<Badge tone={selectedCustomer.guarantee_locked ? 'danger' : 'success'}>{selectedCustomer.guarantee_locked ? 'Locked' : 'Unlocked'}</Badge>
+                  </span>
+                  <button type="button" onClick={() => setSelectedCustomer(null)} className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }} aria-label="Change customer">Change</button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    id="lock_customer"
+                    value={customerQuery}
+                    onChange={(e) => setCustomerQuery(e.target.value)}
+                    placeholder="Search by name or mobile number"
+                    autoComplete="off"
+                    className="w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none"
+                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+                  />
+                  {customerQuery.trim().length >= 2 && (
+                    <ul className="absolute left-0 right-0 z-10 mt-1 max-h-60 overflow-auto rounded-xl border text-[13px] shadow-lg" style={{ background: 'var(--surface, var(--bg))', borderColor: 'var(--border)', color: 'var(--ink)' }}>
+                      {searching && <li className="px-3.5 py-2.5" style={{ color: 'var(--ink-faint)' }}>Searching…</li>}
+                      {!searching && customerResults.length === 0 && <li className="px-3.5 py-2.5" style={{ color: 'var(--ink-faint)' }}>No customers found.</li>}
+                      {!searching && customerResults.map((c) => (
+                        <li key={c.id}>
+                          <button type="button" onClick={() => pickCustomer(c)} className="flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left hover:opacity-80">
+                            <span className="truncate">{c.name}</span>
+                            <span className="font-mono-data shrink-0" style={{ color: 'var(--ink-muted)' }}>{c.mobile}{c.guarantee_locked ? ' · Locked' : ''}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+            <button type="button" disabled={lockBusy || !selectedCustomer} onClick={() => setLock(true)} className="rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Lock guarantee</button>
+            <button type="button" disabled={lockBusy || !selectedCustomer} onClick={() => setLock(false)} className="rounded-lg border px-3 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>Unlock guarantee</button>
           </div>
           <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>A customer is locked automatically after a compensation and unlocked by the referrals set for the city. Use this only to override.</p>
         </div>
