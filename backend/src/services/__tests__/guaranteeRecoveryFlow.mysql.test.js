@@ -24,8 +24,11 @@ describeMysql("driver-cancel recovery, end to end (real MySQL)", () => {
     const orderId = await makeOrder(prisma, { uid });
     const c = await makeAssignedCase(prisma, orderId, CITY, { uid, deadline_at: new Date(Date.now() + 2000) });
 
+    const before = await prisma.booking_guarantee_case.findUnique({ where: { id: c.id } });
     expect((await recovery.reopenAfterDriverCancel({ orderId, riderId: 11, cityId: CITY })).reopened).toBe(true);
-    await new Promise((r) => setTimeout(r, 2200));
+    const reopened = await prisma.booking_guarantee_case.findUnique({ where: { id: c.id } });
+    expect(reopened.status).toBe("open");
+    expect(reopened.deadline_at.getTime()).toBe(before.deadline_at.getTime()); // the ORIGINAL deadline is kept
     await prisma.booking_guarantee_case.update({ where: { id: c.id }, data: { deadline_at: new Date(Date.now() - 1000) } }); // deadline_at only moved EARLIER by the test
 
     expect(await guarantee.expireCase(c.id)).toBe(true);
@@ -60,7 +63,7 @@ describeMysql("driver-cancel recovery, end to end (real MySQL)", () => {
     expect(await wallet(uid)).toBe(0);
   });
 
-  it("a cancel racing the expiry sweep never double-pays and never leaves an assigned order with an expired case", async () => {
+  it("two concurrent expiry sweeps plus a late cancel never double-pay and never reopen an expired case", async () => {
     const uid = await makeUser(prisma);
     const orderId = await makeOrder(prisma, { uid });
     const c = await makeAssignedCase(prisma, orderId, CITY, { uid });
@@ -76,5 +79,7 @@ describeMysql("driver-cancel recovery, end to end (real MySQL)", () => {
     expect(results[2].reopened).toBe(false);
     expect(await credits(orderId)).toBe(1);
     expect(await wallet(uid)).toBe(100);
+    expect((await prisma.booking_guarantee_case.findUnique({ where: { id: c.id } })).status).toBe("expired_compensated");
+    expect(await orderRow(orderId)).toMatchObject({ rid: 0, order_status: 4, o_status: "Cancelled" });
   });
 });
