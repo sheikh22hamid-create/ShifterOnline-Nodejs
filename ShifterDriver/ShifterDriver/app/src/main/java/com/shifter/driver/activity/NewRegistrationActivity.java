@@ -102,6 +102,8 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
     private String pucImagePath = "";
     private String bimaImagePath = "";
     private String fcmTokenStr = "";
+    // Vehicle of the existing account when a trial/registered driver completes this form.
+    private String presetVehicle = "";
     // RC front/back picked via the "Upload RC Images Instead" fallback
     // before the driver account exists - vehicle_detail_save can't be
     // called yet (no rider_id), so these are uploaded right after
@@ -308,6 +310,37 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
         getFCMToken();
 
         btnNextDetails.setOnClickListener(v -> validateAndRegister());
+        setupRegisteredDriverOptions();
+    }
+
+    /**
+     * A driver who already has an account (an admin-created trial driver, or one
+     * finishing a half-done registration) is completing this form, not starting
+     * from scratch: carry over what the account already has and let them leave
+     * for Home without registering - their existing account stays usable.
+     */
+    private void setupRegisteredDriverOptions() {
+        RiderData existing = sessionManager.getUserDetails();
+        if (existing == null || existing.getId() <= 0) return;
+
+        if (edFullName != null && edFullName.getText().toString().trim().isEmpty()
+                && existing.getFullName() != null && !existing.getFullName().trim().isEmpty()) {
+            edFullName.setText(existing.getFullName().trim());
+        }
+        presetVehicle = existing.getVehicle() != null ? existing.getVehicle().trim() : "";
+
+        View btnGoHome = findViewById(R.id.btn_go_home);
+        if (btnGoHome != null) {
+            btnGoHome.setVisibility(View.VISIBLE);
+            btnGoHome.setOnClickListener(v -> goHome());
+        }
+    }
+
+    private void goHome() {
+        Intent intent = new Intent(this, HomeActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(intent);
+        finish();
     }
 
     private void getFCMToken() {
@@ -563,7 +596,10 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
                             ArrayAdapter<String> adapter = new ArrayAdapter<>(NewRegistrationActivity.this,
                                     android.R.layout.simple_spinner_dropdown_item, typeNames);
                             spinnerVehicleType.setAdapter(adapter);
-                            spinnerVehicleType.setSelection(0);
+                            // Position 0 is the blank placeholder; an existing (trial) driver's
+                            // vehicle is preselected so they don't have to re-pick it.
+                            int preset = presetVehicle.isEmpty() ? -1 : typeNames.indexOf(presetVehicle);
+                            spinnerVehicleType.setSelection(Math.max(preset, 0));
                         }
                     }
                 }

@@ -657,4 +657,14 @@
     <string name="pause_timer">Pause Timer</string>
     <string name="pause_timer_hint">Going to a new pickup point? Pause the timer so the order is not auto-cancelled.</string>
     <string name="pause_timer_done">Timer paused. Tap REACHED PICKUP when you reach the pickup point.</string>
+    <string name="reg_incomplete_title">Registration Incomplete</string>
+    <string name="reg_status_pending">Pending</string>
+    <string name="reg_status_not_uploaded">Not Uploaded</string>
+    <string name="reg_status_under_review">Under review</string>
+    <string name="reg_status_required">Required</string>
+    <string name="reg_go_to_home">Go to Home</string>
+    <string name="reg_submit">Submit</string>
+    <string name="reg_remaining_title">Remaining Details</string>
+    <string name="reg_remaining_subtitle">Fill only what is still pending. Your account and details stay the same.</string>
+    <string name="reg_nothing_pending">Nothing is pending. Your registration is complete.</string>
 </resources>

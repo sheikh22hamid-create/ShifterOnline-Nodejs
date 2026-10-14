@@ -152,6 +152,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name="com.shifter.driver.activity.CompleteRegistrationActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name="com.shifter.driver.activity.TrialEndedActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

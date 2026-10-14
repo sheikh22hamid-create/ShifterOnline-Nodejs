@@ -463,10 +463,13 @@ async function getProfile(req, res) {
       }
     }
 
+    const registration = await require("../services/registrationCompletionService").getRegistrationStatus(riderId);
+
     return res.status(200).json({
       Result: "true",
       ResponseCode: "200",
       ResponseMsg: "Profile fetched successfully",
+      registration,
       rider_data: {
         ...rider,
         allowed_body_types: allowedBodyTypes,

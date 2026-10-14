@@ -122,6 +122,23 @@ public interface NodeService {
             @Part("otp_token") RequestBody otpToken
     );
 
+    // Already-registered driver adds the optional details/documents registration
+    // skipped (PAN, insurance, PUC, bank, email). Updates the existing account only.
+    @Multipart
+    @POST("api/rider/registration/complete")
+    Call<ResponseBody> completeRegistration(
+            @Part("rider_id") RequestBody riderId,
+            @Part("device_id") RequestBody deviceId,
+            @Part("pan_number") RequestBody panNumber,
+            @Part("pan_verified") RequestBody panVerified,
+            @Part("email") RequestBody email,
+            @Part("account_name") RequestBody accountName,
+            @Part("account_number") RequestBody accountNumber,
+            @Part("ifsc") RequestBody ifsc,
+            @Part MultipartBody.Part pucImage,
+            @Part MultipartBody.Part bimaImage
+    );
+
     // --- KYC manual-upload endpoints (Node port of rider_api/bank_account.php,
     // vehicle_detail_save.php, eme_contact.php, kit_details.php - see
     // driverKycController.js / driverContentController.js). All three require

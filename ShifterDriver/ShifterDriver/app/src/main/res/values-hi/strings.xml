@@ -692,4 +692,14 @@
     <string name="pause_timer">टाइमर रोकें</string>
     <string name="pause_timer_hint">नए पिकअप पॉइंट पर जा रहे हैं? टाइमर रोकें ताकि ऑर्डर अपने आप रद्द न हो।</string>
     <string name="pause_timer_done">टाइमर रुक गया। पिकअप पॉइंट पर पहुँचकर REACHED PICKUP दबाएँ।</string>
+    <string name="reg_incomplete_title">रजिस्ट्रेशन अधूरा है</string>
+    <string name="reg_status_pending">बाकी है</string>
+    <string name="reg_status_not_uploaded">अपलोड नहीं किया</string>
+    <string name="reg_status_under_review">समीक्षा में</string>
+    <string name="reg_status_required">ज़रूरी</string>
+    <string name="reg_go_to_home">होम पर जाएं</string>
+    <string name="reg_submit">जमा करें</string>
+    <string name="reg_remaining_title">बाकी विवरण</string>
+    <string name="reg_remaining_subtitle">सिर्फ वही भरें जो बाकी है। आपका अकाउंट और जानकारी वैसी ही रहेगी।</string>
+    <string name="reg_nothing_pending">कुछ भी बाकी नहीं है। आपका रजिस्ट्रेशन पूरा है।</string>
 </resources>

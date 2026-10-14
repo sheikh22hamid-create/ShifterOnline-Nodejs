@@ -30,6 +30,9 @@ router.post("/auth/login", riderAuthController.login);
 router.post("/auth/register", riderAuthController.register);
 router.post("/auth/logout", riderAuthController.logout);
 
+// Already-registered (normal) driver adds the optional docs/details registration skipped
+router.post("/registration/complete", require("../controllers/driverRegistrationCompletionController").complete);
+
 // Driver-registration auto-verification charge (Razorpay order + verify)
 router.post("/verification-payment/create-order", driverVerificationPaymentController.createOrder);
 router.post("/verification-payment/verify", driverVerificationPaymentController.verifyPayment);

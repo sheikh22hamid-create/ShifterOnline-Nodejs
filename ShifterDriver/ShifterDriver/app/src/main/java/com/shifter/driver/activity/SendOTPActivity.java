@@ -455,8 +455,10 @@ public class SendOTPActivity extends LocaleAwareActivity implements GetResult.My
 
             boolean trialOver = "exhausted".equalsIgnoreCase(trialStatus) || "blocked".equalsIgnoreCase(trialStatus);
             if (getIntent().getBooleanExtra("trial_kyc", false)
-                    && !"approved".equalsIgnoreCase(allVerify) && trialOver) {
-                // OTP just verified from Trial Ended: continue straight into KYC.
+                    && !"approved".equalsIgnoreCase(allVerify)
+                    && (trialOver || "active".equalsIgnoreCase(trialStatus))) {
+                // OTP just verified from Trial Ended, or from Profile > Complete Registration
+                // on a still-active trial: continue straight into KYC.
                 openChooseVerificationMethod();
             } else if (allVerify != null && "approved".equalsIgnoreCase(allVerify)) {
                 checkTrainingGateAndProceed(riderData.getId());
