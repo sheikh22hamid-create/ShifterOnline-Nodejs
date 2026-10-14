@@ -314,7 +314,6 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
         FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
             if (task.isSuccessful()) {
                 fcmTokenStr = task.getResult();
-                Log.e("REG_DEBUG", "FCM Token: " + fcmTokenStr);
             }
         });
     }
@@ -939,7 +938,7 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
                 .enqueue(new Callback<JsonObject>() {
                     @Override
                     public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
-                        Log.d("REG_DEBUG", "Manual RC photos uploaded post-registration: " + (response.body() != null ? response.body().toString() : "empty"));
+                        Log.d("REG_DEBUG", "Manual RC photos uploaded post-registration, http " + response.code());
                     }
 
                     @Override
@@ -1064,8 +1063,6 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
             e.printStackTrace();
         }
 
-        Log.e("REG_DEBUG", "Automatic Reg Payload: " + reqJson.toString());
-
         RequestBody documents = RequestBody.create(MediaType.parse("text/plain"), reqJson.optString("documents", "[]"));
         Call<ResponseBody> call = NodeApiClient.getInterface().registerAutomatic(
                 textPart(mobileNumber), textPart(reqJson.optString("full_name")),
@@ -1087,7 +1084,6 @@ public class NewRegistrationActivity extends LocaleAwareActivity {
                 if (response.isSuccessful() && response.body() != null) {
                     try {
                         String respString = response.body().string();
-                        Log.e("REG_DEBUG", "Automatic Reg Response: " + respString);
 
                         JSONObject jsonObject = new JSONObject(respString);
                         String resultStr = jsonObject.optString("Result", "false");
