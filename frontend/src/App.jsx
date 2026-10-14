@@ -126,7 +126,7 @@ function App() {
             <Route path="/marketing/banners" element={<Banners />} />
             <Route path="/marketing/push-notifications" element={<Gated roles={['superadmin', 'admin']}><PushNotifications /></Gated>} />
             <Route path="/referrals" element={<Referrals />} />
-            <Route path="/ride-milestones" element={<RideMilestones />} />
+            <Route path="/ride-milestones" element={<Gated roles={['superadmin', 'admin']}><RideMilestones /></Gated>} />
             <Route path="/driver-leads" element={<DriverLeads />} />
             <Route path="/registration-leads" element={<RegistrationLeads />} />
             <Route path="/user-leads" element={<UserLeads />} />

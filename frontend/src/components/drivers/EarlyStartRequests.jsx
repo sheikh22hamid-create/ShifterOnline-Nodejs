@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext'
 import useApiQuery from '../../hooks/useApiQuery'
 
 // Monthly drivers who tried to start duty before their contract shift start.
-export default function EarlyStartRequests() {
+export default function EarlyStartRequests({ canDecide = false }) {
   const toast = useToast()
   const fetcher = useCallback(() => api.get('/monthly-drivers/early-start-requests?status=pending').then((res) => res.data), [])
   const { data, refetch } = useApiQuery(fetcher)
@@ -43,6 +43,7 @@ export default function EarlyStartRequests() {
                 Wants to start before the {r.shift_start_time ? String(r.shift_start_time).slice(0, 5) : 'shift start'} shift start
               </div>
             </div>
+            {canDecide && (
             <div className="flex shrink-0 gap-1.5">
               <button
                 type="button"
@@ -63,6 +64,7 @@ export default function EarlyStartRequests() {
                 <X size={13} /> Decline
               </button>
             </div>
+            )}
           </div>
         ))}
       </div>

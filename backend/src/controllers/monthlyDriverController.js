@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const dutyTrackingService = require("../services/dutyTrackingService");
 const logger = require("../utils/logger");
 const pushNotifier = require("../services/pushNotifier");
+const cityScope = require("../utils/cityScope");
 
 /**
  * Lists all Monthly Drivers with their contracts, assigned zones, and current status.
@@ -232,6 +233,8 @@ async function getDutyStatus(req, res) {
     if (!riderId) {
       return res.status(400).json({ success: false, message: "riderId required" });
     }
+    // Also served to the driver app (no req.user) - the check only binds admin-panel callers.
+    if (!(await cityScope.assertRiderInScope(req, res, riderId))) return;
 
     const status = await dutyTrackingService.getDriverDutyStatus(riderId);
     return res.json({ success: true, data: status });
@@ -337,6 +340,7 @@ async function getMonthlyDriverLedger(req, res) {
     if (!riderId) {
       return res.status(400).json({ success: false, message: "riderId is required" });
     }
+    if (!(await cityScope.assertRiderInScope(req, res, riderId))) return;
 
     const { start_date, end_date } = req.query;
     const where = { rider_id: riderId };
@@ -432,6 +436,7 @@ async function addLedgerAdjustment(req, res) {
     if (!riderId || !amount || !entry_type || !balance_effect) {
       return res.status(400).json({ success: false, message: "rider_id, amount, entry_type, balance_effect are required" });
     }
+    if (!(await cityScope.assertRiderInScope(req, res, riderId))) return;
 
     const todayDate = new Date(new Date(Date.now() + 330 * 60 * 1000).toISOString().split("T")[0]);
     const entry = await prisma.monthly_driver_ledger.create({
@@ -460,11 +465,12 @@ async function addLedgerAdjustment(req, res) {
 async function listEarlyStartRequests(req, res) {
   try {
     const status = String(req.query?.status || "pending");
-    const rows = await prisma.duty_early_start_request.findMany({
+    const allRows = await prisma.duty_early_start_request.findMany({
       where: status === "all" ? {} : { status },
       orderBy: { id: "desc" },
       take: 100,
     });
+    const rows = await cityScope.filterByRider(req, allRows);
     const riders = await prisma.tbl_rider.findMany({
       where: { id: { in: rows.map((r) => r.rider_id) } },
       select: { id: true, first_name: true, last_name: true, fmobile: true },
@@ -497,6 +503,7 @@ async function decideEarlyStartRequest(req, res) {
     }
     const existing = await prisma.duty_early_start_request.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ success: false, message: "Request not found" });
+    if (!(await cityScope.assertRiderInScope(req, res, existing.rider_id))) return;
     if (existing.status !== "pending") {
       return res.status(409).json({ success: false, message: `Request was already ${existing.status}` });
     }

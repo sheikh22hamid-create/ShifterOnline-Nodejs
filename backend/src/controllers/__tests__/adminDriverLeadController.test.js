@@ -28,7 +28,7 @@ describe("adminDriverLeadController", () => {
     prisma.tbl_driver_lead.update.mockResolvedValue({ id: 5, status: "verified" });
     const res = mockRes();
 
-    await verifyLead({ params: { id: "5" }, user: { id: 77 } }, res);
+    await verifyLead({ params: { id: "5" }, user: { id: 77, role: "superadmin" } }, res);
 
     const call = prisma.tbl_driver_lead.update.mock.calls[0][0];
     expect(call.where).toEqual({ id: 5 });
@@ -42,14 +42,14 @@ describe("adminDriverLeadController", () => {
   it("verifyLead 404s on unknown id", async () => {
     prisma.tbl_driver_lead.findUnique.mockResolvedValue(null);
     const res = mockRes();
-    await verifyLead({ params: { id: "999" }, user: { id: 77 } }, res);
+    await verifyLead({ params: { id: "999" }, user: { id: 77, role: "superadmin" } }, res);
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
   it("verifyLead rejects a lead that isn't pending", async () => {
     prisma.tbl_driver_lead.findUnique.mockResolvedValue({ id: 5, status: "converted" });
     const res = mockRes();
-    await verifyLead({ params: { id: "5" }, user: { id: 77 } }, res);
+    await verifyLead({ params: { id: "5" }, user: { id: 77, role: "superadmin" } }, res);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(prisma.tbl_driver_lead.update).not.toHaveBeenCalled();
   });
@@ -59,7 +59,7 @@ describe("adminDriverLeadController", () => {
     prisma.tbl_driver_lead.update.mockResolvedValue({ id: 5, status: "rejected" });
     const res = mockRes();
 
-    await rejectLead({ params: { id: "5" }, user: { id: 77 } }, res);
+    await rejectLead({ params: { id: "5" }, user: { id: 77, role: "superadmin" } }, res);
 
     expect(prisma.tbl_driver_lead.update).toHaveBeenCalledWith({
       where: { id: 5 },

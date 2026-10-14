@@ -3,6 +3,18 @@ const planService = require("../services/dailyDriverPlanService");
 const forceAssignService = require("../services/forceAssignService");
 const { dutyWindow } = require("../services/dailyDriverSettlementService");
 const logger = require("../utils/logger");
+const cityScope = require("../utils/cityScope");
+
+// An enrollment belongs to a driver, so a city admin may only decide requests of their own city's drivers.
+async function enrollmentInScope(req, res, enrollmentId) {
+  if (cityScope.callerCity(req) === null) return true;
+  const enrollment = await prisma.daily_driver_enrollment.findUnique({ where: { id: Number(enrollmentId) }, select: { rider_id: true } });
+  if (!enrollment) {
+    res.status(404).json({ success: false, message: "Enrollment request not found" });
+    return false;
+  }
+  return cityScope.assertRiderInScope(req, res, enrollment.rider_id);
+}
 
 async function listPlans(req, res) {
   try {
@@ -47,7 +59,7 @@ async function setPlanStatus(req, res) {
 
 async function listPendingRequests(req, res) {
   try {
-    const rows = await planService.listPendingRequests(req.query.plan_id);
+    const rows = await cityScope.filterByRider(req, await planService.listPendingRequests(req.query.plan_id));
     return res.json({ success: true, data: rows });
   } catch (err) {
     logger.error("adminDailyDriver.listPendingRequests failed:", err);
@@ -57,6 +69,7 @@ async function listPendingRequests(req, res) {
 
 async function approveEnrollment(req, res) {
   try {
+    if (!(await enrollmentInScope(req, res, req.params.enrollmentId))) return;
     const row = await planService.approveEnrollment({ enrollmentId: req.params.enrollmentId, adminId: req.user?.id });
     return res.json({ success: true, message: "Enrollment approved", data: row });
   } catch (err) {
@@ -67,6 +80,7 @@ async function approveEnrollment(req, res) {
 
 async function rejectEnrollment(req, res) {
   try {
+    if (!(await enrollmentInScope(req, res, req.params.enrollmentId))) return;
     const row = await planService.rejectEnrollment({ enrollmentId: req.params.enrollmentId, adminId: req.user?.id });
     return res.json({ success: true, message: "Enrollment rejected", data: row });
   } catch (err) {
@@ -111,11 +125,12 @@ async function listEnrollments(req, res) {
     if (plan_id) where.plan_id = Number(plan_id);
     if (status) where.status = status;
 
-    const enrollments = await prisma.daily_driver_enrollment.findMany({
+    const allEnrollments = await prisma.daily_driver_enrollment.findMany({
       where,
       include: { plan: true, duty_log: true },
       orderBy: { id: "desc" },
     });
+    const enrollments = await cityScope.filterByRider(req, allEnrollments);
 
     const riderIds = [...new Set(enrollments.map((e) => e.rider_id))];
     const riders = await prisma.tbl_rider.findMany({
@@ -143,6 +158,7 @@ async function getLedger(req, res) {
   try {
     const riderId = Number(req.params.riderId);
     if (!riderId) return res.status(400).json({ success: false, message: "riderId is required" });
+    if (!(await cityScope.assertRiderInScope(req, res, riderId))) return;
 
     const { start_date, end_date } = req.query;
     const where = { rider_id: riderId };

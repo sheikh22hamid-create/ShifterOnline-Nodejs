@@ -47,7 +47,9 @@ async function login(req, res) {
     if (!admin) {
       return res.status(401).json({ success: false, message: "Invalid username or password" });
     }
-    if (admin.status === 0) {
+    // status is a Boolean column (false when deactivated); `=== 0` never matched it, so a
+    // deactivated admin could still log in.
+    if (!admin.status) {
       return res.status(403).json({ success: false, message: "This account has been deactivated" });
     }
 
@@ -94,6 +96,14 @@ async function me(req, res) {
     const admin = await prisma.admin.findUnique({ where: { id: req.user.id } });
     if (!admin) {
       return res.status(404).json({ success: false, message: "Admin account not found" });
+    }
+    // The panel re-reads this on every page load. Deactivated accounts must not keep a session, and a
+    // token minted under an older role/city would act with that old access while the UI shows the new one.
+    if (!admin.status) {
+      return res.status(403).json({ success: false, message: "This account has been deactivated" });
+    }
+    if (admin.role !== req.user.role || Number(admin.city_id || 0) !== Number(req.user.city_id || 0)) {
+      return res.status(401).json({ success: false, message: "Your access was changed. Please log in again." });
     }
     const cityName = await getCityName(admin.city_id);
     return res.status(200).json({ success: true, data: toPublicAdmin(admin, cityName) });

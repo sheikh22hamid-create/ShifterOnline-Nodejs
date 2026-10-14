@@ -1,5 +1,7 @@
 const rewardPlanService = require("../services/rewardPlanService");
 const logger = require("../utils/logger");
+const prisma = require("../config/db");
+const cityScope = require("../utils/cityScope");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -14,6 +16,8 @@ async function assignNow(req, res) {
     if (!user_id || !plan_id) {
       return res.status(400).json({ success: false, message: "user_id and plan_id are required" });
     }
+    const allowed = planFor === "DRIVER" ? await cityScope.assertRiderInScope(req, res, user_id) : await cityScope.assertUserInScope(req, res, user_id);
+    if (!allowed) return;
     const result = await rewardPlanService.assignPlanNow({ userId: user_id, planFor, planId: plan_id });
     return res.status(200).json({
       success: true,
@@ -32,6 +36,7 @@ async function setPending(req, res) {
     if (!user_id || !plan_id) {
       return res.status(400).json({ success: false, message: "user_id and plan_id are required" });
     }
+    if (!(await cityScope.assertUserInScope(req, res, user_id))) return;
     const pending = await rewardPlanService.setPendingRewardPlan({ userId: user_id, planId: plan_id, adminId: req.user.id });
     return res.status(200).json({ success: true, message: "Reward plan will be given on this customer's next completed ride.", data: pending });
   } catch (err) {
@@ -41,6 +46,12 @@ async function setPending(req, res) {
 
 async function cancelPending(req, res) {
   try {
+    if (cityScope.callerCity(req) !== null) {
+      const row = await prisma.tbl_pending_reward_plan.findUnique({ where: { id: Number(req.params.id) }, select: { user_id: true, plan_for: true } });
+      if (!row) return res.status(404).json({ success: false, message: "Pending reward plan not found or already resolved." });
+      const allowed = row.plan_for === "DRIVER" ? await cityScope.assertRiderInScope(req, res, row.user_id) : await cityScope.assertUserInScope(req, res, row.user_id);
+      if (!allowed) return;
+    }
     await rewardPlanService.cancelPendingRewardPlan({ id: req.params.id });
     return res.status(200).json({ success: true, message: "Pending reward plan cancelled." });
   } catch (err) {
@@ -50,6 +61,7 @@ async function cancelPending(req, res) {
 
 async function getPending(req, res) {
   try {
+    if (!(await cityScope.assertUserInScope(req, res, req.params.userId))) return;
     const pending = await rewardPlanService.getPendingRewardPlan({ userId: req.params.userId, planFor: "USER" });
     return res.status(200).json({ success: true, data: pending });
   } catch (err) {

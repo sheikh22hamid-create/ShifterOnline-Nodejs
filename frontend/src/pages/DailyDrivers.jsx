@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 
 const TABS = [
   { id: 'plans', label: 'Plans' },
@@ -42,6 +43,9 @@ const EMPTY_PLAN_FORM = {
 
 export default function DailyDrivers() {
   const toast = useToast()
+  // The API lets admins manage plans, decide requests and force-assign; executives are view-only.
+  const { hasRole } = useAuth()
+  const canManage = hasRole('superadmin', 'admin')
   const [tab, setTab] = useState('plans')
 
   const [plans, setPlans] = useState([])
@@ -285,7 +289,7 @@ export default function DailyDrivers() {
           </p>
         </div>
 
-        {tab === 'plans' && (
+        {tab === 'plans' && canManage && (
           <button
             onClick={openCreatePlan}
             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 transition"
@@ -297,7 +301,7 @@ export default function DailyDrivers() {
       </div>
 
       <div className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
-        {TABS.map((t) => (
+        {TABS.filter((t) => canManage || t.id !== 'force-assign').map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -318,7 +322,7 @@ export default function DailyDrivers() {
       </div>
 
       {tab === 'plans' && (
-        <PlansTab plans={plans} loading={plansLoading} onEdit={openEditPlan} onToggleStatus={togglePlanStatus} zones={zones} />
+        <PlansTab plans={plans} loading={plansLoading} onEdit={openEditPlan} onToggleStatus={togglePlanStatus} zones={zones} canManage={canManage} />
       )}
 
       {tab === 'requests' && (
@@ -328,6 +332,7 @@ export default function DailyDrivers() {
           riderName={riderName}
           onApprove={approveRequest}
           onReject={rejectRequest}
+          canManage={canManage}
         />
       )}
 
@@ -341,7 +346,7 @@ export default function DailyDrivers() {
         />
       )}
 
-      {tab === 'force-assign' && (
+      {tab === 'force-assign' && canManage && (
         <ForceAssignTab
           scheduledOrders={scheduledOrders}
           nextDayOrders={nextDayOrders}
@@ -584,7 +589,7 @@ function SummaryCard({ label, value, tone }) {
   )
 }
 
-function PlansTab({ plans, loading, onEdit, onToggleStatus, zones }) {
+function PlansTab({ plans, loading, onEdit, onToggleStatus, zones, canManage }) {
   if (loading) {
     return (
       <div className="flex justify-center p-12">
@@ -628,6 +633,7 @@ function PlansTab({ plans, loading, onEdit, onToggleStatus, zones }) {
               </div>
             </div>
 
+            {canManage && (
             <div className="mt-5 pt-4 border-t flex items-center justify-between gap-2" style={{ borderColor: 'var(--border)' }}>
               <button onClick={() => onEdit(p)} className="rounded-xl px-3 py-1.5 text-xs font-semibold hover:opacity-80 transition" style={{ background: 'var(--info-soft, #eff4ff)', color: '#1d4ed8' }}>
                 Edit
@@ -641,6 +647,7 @@ function PlansTab({ plans, loading, onEdit, onToggleStatus, zones }) {
                 {p.status ? 'Deactivate' : 'Activate'}
               </button>
             </div>
+            )}
           </div>
         )
       })}
@@ -657,7 +664,7 @@ function Row({ icon, label, value }) {
   )
 }
 
-function RequestsTab({ requests, loading, riderName, onApprove, onReject }) {
+function RequestsTab({ requests, loading, riderName, onApprove, onReject, canManage }) {
   if (loading) {
     return (
       <div className="flex justify-center p-12">
@@ -688,6 +695,7 @@ function RequestsTab({ requests, loading, riderName, onApprove, onReject }) {
               </p>
             )}
           </div>
+          {canManage && (
           <div className="flex items-center gap-2">
             <button onClick={() => onApprove(r.id)} className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition">
               <Check size={14} /> Approve
@@ -696,6 +704,7 @@ function RequestsTab({ requests, loading, riderName, onApprove, onReject }) {
               <Ban size={14} /> Reject
             </button>
           </div>
+          )}
         </div>
       ))}
     </div>

@@ -1,6 +1,16 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const leadInviteNotifier = require("../services/leadInviteNotifier");
+const cityScope = require("../utils/cityScope");
+
+// A lead belongs to the city of the driver (or, for a customer referral, the customer) who referred it.
+async function leadInScope(req, res, lead) {
+  if (cityScope.callerCity(req) === null) return true;
+  if (lead.driver_id) return cityScope.assertRiderInScope(req, res, lead.driver_id);
+  if (lead.user_id) return cityScope.assertUserInScope(req, res, lead.user_id);
+  res.status(403).json({ success: false, message: "This lead belongs to another city" });
+  return false;
+}
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -16,10 +26,18 @@ async function listLeads(req, res) {
     if (status && status !== "all") where.status = status;
     if (leadType && leadType !== "all") where.lead_type = leadType;
 
-    const leads = await prisma.tbl_driver_lead.findMany({
+    const allLeads = await prisma.tbl_driver_lead.findMany({
       where,
       orderBy: { submitted_at: "desc" },
     });
+    // City-bound callers only see leads referred by their own city's drivers / customers.
+    const city = cityScope.callerCity(req);
+    let leads = allLeads;
+    if (city !== null) {
+      const byDriver = new Set((await cityScope.filterByRider(req, allLeads.filter((l) => l.driver_id), (l) => l.driver_id)).map((l) => l.id));
+      const byUser = new Set((await cityScope.filterByUser(req, allLeads.filter((l) => !l.driver_id && l.user_id), (l) => l.user_id)).map((l) => l.id));
+      leads = allLeads.filter((l) => byDriver.has(l.id) || byUser.has(l.id));
+    }
 
     const driverIds = [...new Set((leads || []).map((l) => l.driver_id).filter(Boolean))];
     let driverMap = new Map();
@@ -76,6 +94,7 @@ async function verifyLead(req, res) {
     const id = parseInt(req.params.id, 10);
     const lead = await prisma.tbl_driver_lead.findUnique({ where: { id } });
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+    if (!(await leadInScope(req, res, lead))) return;
     if (lead.status !== "pending") return res.status(400).json({ success: false, message: `Lead is already ${lead.status}` });
 
     const settings = await prisma.tbl_referral_setting.findFirst();
@@ -108,6 +127,7 @@ async function rejectLead(req, res) {
     const id = parseInt(req.params.id, 10);
     const lead = await prisma.tbl_driver_lead.findUnique({ where: { id } });
     if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+    if (!(await leadInScope(req, res, lead))) return;
     if (lead.status !== "pending") return res.status(400).json({ success: false, message: `Lead is already ${lead.status}` });
 
     const updated = await prisma.tbl_driver_lead.update({
@@ -124,6 +144,9 @@ async function rejectLead(req, res) {
 async function sendInvite(req, res) {
   try {
     const id = parseInt(req.params.id, 10);
+    const lead = await prisma.tbl_driver_lead.findUnique({ where: { id } });
+    if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+    if (!(await leadInScope(req, res, lead))) return;
     const result = await leadInviteNotifier.sendLeadInvite(id);
     return res.status(200).json({ success: true, data: result, message: result.message });
   } catch (err) {

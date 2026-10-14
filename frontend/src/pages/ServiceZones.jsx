@@ -17,10 +17,15 @@ import {
   Sparkles,
 } from 'lucide-react'
 import api from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import ZoneMapDrawer from '../components/zones/ZoneMapDrawer'
 import AllZonesOverviewMap from '../components/zones/AllZonesOverviewMap'
 
 export default function ServiceZones() {
+  // The API lets admins create/edit zones but only a superadmin delete them; executives are view-only.
+  const { hasRole } = useAuth()
+  const canEdit = hasRole('superadmin', 'admin')
+  const canDelete = hasRole('superadmin')
   const [zones, setZones] = useState([])
   const [cities, setCities] = useState([])
   const [loading, setLoading] = useState(true)
@@ -200,13 +205,15 @@ export default function ServiceZones() {
             </button>
           </div>
 
-          <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition"
-          >
-            <Plus size={18} />
-            Mark Zone on Map
-          </button>
+          {canEdit && (
+            <button
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition"
+            >
+              <Plus size={18} />
+              Mark Zone on Map
+            </button>
+          )}
         </div>
       </div>
 
@@ -323,22 +330,26 @@ export default function ServiceZones() {
                   className="mt-5 pt-4 border-t flex items-center justify-end gap-2"
                   style={{ borderColor: 'var(--border)' }}
                 >
-                  <button
-                    onClick={() => openEdit(z)}
-                    className="p-2 rounded-lg transition hover:opacity-80"
-                    style={{ color: 'var(--info, #1d4ed8)', background: 'var(--info-soft, #eff4ff)' }}
-                    title="Edit Zone on Map"
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(z.id)}
-                    className="p-2 rounded-lg transition hover:opacity-80"
-                    style={{ color: 'var(--danger, #b91c1c)', background: 'var(--danger-soft, #fef2f2)' }}
-                    title="Delete Zone"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => openEdit(z)}
+                      className="p-2 rounded-lg transition hover:opacity-80"
+                      style={{ color: 'var(--info, #1d4ed8)', background: 'var(--info-soft, #eff4ff)' }}
+                      title="Edit Zone on Map"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(z.id)}
+                      className="p-2 rounded-lg transition hover:opacity-80"
+                      style={{ color: 'var(--danger, #b91c1c)', background: 'var(--danger-soft, #fef2f2)' }}
+                      title="Delete Zone"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             )

@@ -102,7 +102,7 @@ export const NAV_GROUPS = [
       { to: '/marketing/banners', label: 'App Banners', icon: Image, roles: ALL_STAFF, built: true },
       { to: '/marketing/push-notifications', label: 'Push Notifications', icon: Megaphone, roles: MANAGERS, built: true },
       { to: '/referrals', label: 'Referral Network', icon: Share2, roles: ALL_STAFF, built: true },
-      { to: '/ride-milestones', label: 'Ride Milestones', icon: Milestone, roles: ALL_STAFF, built: true },
+      { to: '/ride-milestones', label: 'Ride Milestones', icon: Milestone, roles: MANAGERS, built: true },
     ],
   },
   {

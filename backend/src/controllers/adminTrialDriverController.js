@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { assignDefaultDeliveryTypes } = require("../utils/assignDefaultDeliveryTypes");
+const cityScope = require("../utils/cityScope");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -15,8 +16,9 @@ function riderName(r) {
 // "none" - includes exhausted/blocked/upgraded so admin retains history). ---
 async function list(req, res) {
   try {
+    const city = cityScope.callerCity(req);
     const rows = await prisma.tbl_rider.findMany({
-      where: { trial_status: { not: "none" } },
+      where: { trial_status: { not: "none" }, ...(city !== null ? { city_id: city } : {}) },
       orderBy: { id: "desc" },
     });
     const data = rows.map((r) => ({
@@ -55,6 +57,12 @@ async function create(req, res) {
 
     const existing = await prisma.tbl_rider.findFirst({ where: { fmobile: trimmedMobile } });
 
+    // A city admin can only put drivers of their own city on trial; they must not take over another city's.
+    const callerCity = cityScope.callerCity(req);
+    if (existing && callerCity !== null && Number(existing.city_id) !== callerCity) {
+      return res.status(403).json({ success: false, message: "This driver belongs to another city" });
+    }
+
     if (existing && existing.trial_status === "active") {
       return res.status(400).json({
         success: false,
@@ -81,7 +89,8 @@ async function create(req, res) {
       });
     }
 
-    const targetCityId = parseInt(city_id || req.scopedCityId || req.user?.city_id, 10) || 1;
+    // A city-bound caller's driver always lands in their own city, whatever city_id the request says.
+    const targetCityId = callerCity !== null ? callerCity : parseInt(city_id || req.scopedCityId || req.user?.city_id, 10) || 1;
     const created = await prisma.tbl_rider.create({
       data: {
         full_name: trimmedName,
@@ -121,6 +130,11 @@ async function findRiderOr404(req, res) {
   const rider = await prisma.tbl_rider.findUnique({ where: { id } });
   if (!rider) {
     res.status(404).json({ success: false, message: "Driver not found" });
+    return null;
+  }
+  const city = cityScope.callerCity(req);
+  if (city !== null && Number(rider.city_id) !== city) {
+    res.status(403).json({ success: false, message: "This driver belongs to another city" });
     return null;
   }
   return rider;

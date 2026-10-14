@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const dispatchManager = require("../services/dispatchManager");
 const logger = require("../utils/logger");
 const bookingGuarantee = require("../services/bookingGuaranteeService");
+const cityScope = require("../utils/cityScope");
 
 /**
  * Gets the order queue for a driver (both active trip and pending queue).
@@ -12,6 +13,8 @@ async function getDriverQueue(req, res) {
     if (!riderId) {
       return res.status(400).json({ success: false, message: "riderId required" });
     }
+    // Also served to the driver app (no req.user) - the check only binds admin-panel callers.
+    if (!(await cityScope.assertRiderInScope(req, res, Number(riderId)))) return;
 
     const queueItems = await prisma.driver_order_queue.findMany({
       where: {

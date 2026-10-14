@@ -17,9 +17,13 @@ import {
 } from 'lucide-react'
 import api from '../services/api'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 import EarlyStartRequests from '../components/drivers/EarlyStartRequests'
 
 export default function MonthlyDrivers() {
+  // The API lets admins change monthly drivers; executives are view-only.
+  const { hasRole } = useAuth()
+  const canManage = hasRole('superadmin', 'admin')
   const toast = useToast()
   const [drivers, setDrivers] = useState([])
   const [allRiders, setAllRiders] = useState([])
@@ -209,7 +213,7 @@ export default function MonthlyDrivers() {
 
   return (
     <div className="space-y-6">
-      <EarlyStartRequests />
+      <EarlyStartRequests canDecide={canManage} />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[19px] font-semibold tracking-tight flex items-center gap-2" style={{ color: 'var(--ink)' }}>
@@ -221,6 +225,7 @@ export default function MonthlyDrivers() {
           </p>
         </div>
 
+        {canManage && (
         <button
           onClick={() => {
             setPromoteForm({
@@ -240,6 +245,7 @@ export default function MonthlyDrivers() {
           <Plus size={18} />
           Promote Driver to Monthly
         </button>
+        )}
       </div>
 
       <div
@@ -357,6 +363,7 @@ export default function MonthlyDrivers() {
                   </button>
                 </div>
 
+                {canManage && (
                 <button
                   onClick={() => setDemoteConfirmModal({ open: true, driver: d, busy: false })}
                   className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold hover:opacity-85 transition"
@@ -369,6 +376,7 @@ export default function MonthlyDrivers() {
                   <UserMinus size={13} />
                   Shift to Normal
                 </button>
+                )}
               </div>
             </div>
           ))}
@@ -533,6 +541,7 @@ export default function MonthlyDrivers() {
               </div>
 
               {/* Assign New Order to Queue */}
+              {canManage && (
               <form onSubmit={handleAssignOrderToQueue} className="flex gap-2 mb-4">
                 <select
                   value={assignOrderId}
@@ -555,6 +564,7 @@ export default function MonthlyDrivers() {
                   Add to Queue
                 </button>
               </form>
+              )}
 
               {/* Current Queue List */}
               <div className="space-y-2.5 overflow-y-auto max-h-[50vh] pr-1">
@@ -582,7 +592,7 @@ export default function MonthlyDrivers() {
                         </p>
                       </div>
 
-                      {item.status !== 'active' && (
+                      {canManage && item.status !== 'active' && (
                         <button
                           onClick={() => handleRemoveFromQueue(item.id)}
                           className="p-1.5 text-rose-500 hover:text-rose-700 rounded-lg transition"
@@ -710,6 +720,7 @@ export default function MonthlyDrivers() {
                   </button>
                 </div>
 
+                {canManage && (
                 <button
                   onClick={() => setShowAdjForm(!showAdjForm)}
                   className="rounded-xl bg-emerald-600 text-white px-3.5 py-1.5 text-xs font-semibold hover:bg-emerald-700 transition flex items-center gap-1.5"
@@ -717,10 +728,11 @@ export default function MonthlyDrivers() {
                   <Plus size={14} />
                   {showAdjForm ? 'Close Entry Form' : 'Record Deposit / Payout'}
                 </button>
+                )}
               </div>
 
               {/* Add Adjustment Entry Form */}
-              {showAdjForm && (
+              {canManage && showAdjForm && (
                 <form
                   onSubmit={handleAddAdjustment}
                   className="p-4 rounded-xl border space-y-3"

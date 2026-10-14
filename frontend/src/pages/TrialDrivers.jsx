@@ -3,6 +3,7 @@ import { UserPlus, Ban, XCircle, ShieldCheck, RefreshCw, Users, ChevronDown } fr
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 import Badge from '../components/common/Badge'
 import Modal from '../components/common/Modal'
 
@@ -15,6 +16,9 @@ const STATUS_BADGE = {
 
 export default function TrialDrivers() {
   const toast = useToast()
+  // Executives can look at the trial roster but the API only lets admins change it.
+  const { hasRole } = useAuth()
+  const canManage = hasRole('superadmin', 'admin')
   const [addOpen, setAddOpen] = useState(false)
   const [form, setForm] = useState({ full_name: '', fmobile: '', vehicle: 'Bike', trial_orders_allowed: '5' })
   const [busy, setBusy] = useState(false)
@@ -98,15 +102,17 @@ export default function TrialDrivers() {
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold text-white"
-            style={{ background: 'var(--brand)' }}
-          >
-            <UserPlus size={13} />
-            Add Trial Driver
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold text-white"
+              style={{ background: 'var(--brand)' }}
+            >
+              <UserPlus size={13} />
+              Add Trial Driver
+            </button>
+          )}
         </div>
       </div>
 
@@ -115,7 +121,7 @@ export default function TrialDrivers() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['Driver', 'Mobile', 'Vehicle', 'Status', 'Orders Used', 'Actions'].map((h) => (
+                {['Driver', 'Mobile', 'Vehicle', 'Status', 'Orders Used', ...(canManage ? ['Actions'] : [])].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -125,7 +131,7 @@ export default function TrialDrivers() {
             <tbody>
               {!loading && !error && drivers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+                  <td colSpan={canManage ? 6 : 5} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                     <Users size={28} className="mx-auto mb-2 opacity-40" />
                     No trial drivers yet.
                   </td>
@@ -133,7 +139,7 @@ export default function TrialDrivers() {
               )}
               {error && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>{error}</td>
+                  <td colSpan={canManage ? 6 : 5} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>{error}</td>
                 </tr>
               )}
               {drivers.map((d) => {
@@ -145,6 +151,7 @@ export default function TrialDrivers() {
                     <td className="px-4 py-3">{d.vehicle}</td>
                     <td className="px-4 py-3"><Badge tone={badge.tone}>{badge.label}</Badge></td>
                     <td className="px-4 py-3">{d.trial_orders_completed} / {d.trial_orders_allowed ?? '—'}</td>
+                    {canManage && (
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <button
@@ -176,6 +183,7 @@ export default function TrialDrivers() {
                         </button>
                       </div>
                     </td>
+                    )}
                   </tr>
                 )
               })}

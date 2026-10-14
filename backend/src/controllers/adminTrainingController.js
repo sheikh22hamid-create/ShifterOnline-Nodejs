@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const cityScope = require("../utils/cityScope");
 
 let tableEnsured = false;
 
@@ -110,7 +111,9 @@ async function listProgress(req, res) {
     const search = req.query.search?.trim();
 
     // Query all drivers correctly
+    const city = cityScope.callerCity(req);
     const rows = await prisma.tbl_rider.findMany({
+      where: city !== null ? { city_id: city } : undefined,
       orderBy: { id: "desc" },
     });
 
@@ -198,6 +201,7 @@ async function resetProgress(req, res) {
     if (!rawRiderId || isNaN(riderId) || riderId <= 0) {
       return res.status(400).json({ success: false, message: "Invalid riderId" });
     }
+    if (!(await cityScope.assertRiderInScope(req, res, riderId))) return;
 
     await prisma.driver_training_progress.deleteMany({
       where: { rider_id: riderId },
