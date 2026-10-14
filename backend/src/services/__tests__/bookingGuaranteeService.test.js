@@ -14,7 +14,8 @@ jest.mock("../orderSearchSettings", () => ({
     searchSystem: 1, searchRadiusKm: null, driverSearchSeconds: 60, guaranteeEnabled: true, adminWindowMinutes: null, guaranteeReferralsRequired: 1,
   }),
 }));
-jest.mock("../dispatchManager", () => ({ emitCustomerEvent: jest.fn() }));
+jest.mock("../dispatchManager", () => ({ emitCustomerEvent: jest.fn(), stopDispatch: jest.fn() }));
+jest.mock("../walletAdvanceService", () => ({ refundWalletAdvanceIfAny: jest.fn().mockResolvedValue(0) }));
 jest.mock("../walletPrepaymentRefund", () => ({ refundIfWalletPaid: jest.fn().mockResolvedValue(null) }));
 jest.mock("../referralPointsRefund", () => ({ refundReferralPointsForOrder: jest.fn().mockResolvedValue(0) }));
 jest.mock("../walletNotifier", () => ({ notifyCustomerWalletTransaction: jest.fn().mockResolvedValue(undefined) }));
@@ -26,6 +27,7 @@ const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const adminSocket = require("../../sockets/adminSocket");
 const walletPrepayment = require("../walletPrepaymentRefund");
+const walletAdvance = require("../walletAdvanceService");
 const { refundReferralPointsForOrder } = require("../referralPointsRefund");
 const walletNotifier = require("../walletNotifier");
 const pushNotifier = require("../pushNotifier");
@@ -240,6 +242,51 @@ describe("expireCase", () => {
       data: { wallet: { increment: 100 }, guarantee_locked: true, guarantee_locked_at: expect.any(Date) },
     });
     expect(prisma.tbl_package.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("announceOpened", () => {
+  it("alerts admins, tells the customer and audits admin_alerted, from the case row alone", async () => {
+    await svc.announceOpened(caseRow({ deadline_at: new Date("2026-10-07T10:00:00Z") }), 3);
+    expect(adminSocket.notifyDispatchAlert).toHaveBeenCalledWith(500, 3, svc.ALERT_MESSAGE, expect.objectContaining({
+      kind: "booking_guarantee", amount: 100, deadline_at: "2026-10-07T10:00:00.000Z",
+    }));
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:guarantee_pending", expect.objectContaining({ order_id: "500", amount: 100 }));
+    expect(auditEvents()).toEqual(["admin_alerted"]);
+  });
+  it("never throws when the alert fails", async () => {
+    adminSocket.notifyDispatchAlert.mockImplementationOnce(() => { throw new Error("socket down"); });
+    await expect(svc.announceOpened(caseRow(), 3)).resolves.toBeUndefined();
+  });
+});
+
+describe("expiry of a recovered order", () => {
+  const arrange = (flipCount = 1) => {
+    prisma.booking_guarantee_case.updateMany.mockResolvedValue({ count: flipCount });
+    prisma.booking_guarantee_case.findUnique.mockResolvedValue(caseRow({ compensation_amount: "100.00", status: "expired_compensated" }));
+    prisma.pkg_order.updateMany.mockResolvedValue({ count: 1 });
+    prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
+    prisma.tbl_wallet_history.create.mockResolvedValue({ id: 777 });
+    prisma.tbl_user.update.mockResolvedValue({});
+    prisma.booking_guarantee_case.update.mockResolvedValue({});
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 500, uid: 7, city_id: 3, p_method_id: -2 });
+    prisma.tbl_user.findUnique.mockResolvedValue({ id: 7, fcm_token: "tok" });
+    prisma.order_status_history.create.mockResolvedValue({});
+  };
+  it("stops a still-running auto-search after a successful expiry", async () => {
+    arrange();
+    expect(await svc.expireCase(1)).toBe(true);
+    expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(500, "guarantee_expired");
+  });
+  it("does not stop dispatch when another worker already expired the case", async () => {
+    arrange(0);
+    expect(await svc.expireCase(1)).toBe(false);
+    expect(dispatchManager.stopDispatch).not.toHaveBeenCalled();
+  });
+  it("refunds a wallet-paid advance as part of the expiry refunds (idempotent helper)", async () => {
+    arrange();
+    expect(await svc.expireCase(1)).toBe(true);
+    expect(walletAdvance.refundWalletAdvanceIfAny).toHaveBeenCalledWith(500);
   });
 });
 

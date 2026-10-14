@@ -10,6 +10,7 @@ const rules = require("./bookingGuaranteeRules");
 const settings = require("./bookingGuaranteeSettings");
 const orderSearchSettings = require("./orderSearchSettings");
 const orderSearchRules = require("./orderSearchRules");
+const walletAdvance = require("./walletAdvanceService");
 const guaranteeQueue = require("./guaranteeQueueService");
 const queueSettings = require("./guaranteeQueueSettings");
 
@@ -29,6 +30,37 @@ async function writeAudit(client, caseRow, event, { adminId = null, meta = null 
   await client.booking_guarantee_audit.create({
     data: { case_id: caseRow.id, order_id: caseRow.order_id, event, admin_id: adminId, meta: meta ? JSON.stringify(meta) : null },
   });
+}
+
+/**
+ * Announces an OPEN case: admin alert (flagged when the city's executive queue owns it), customer notice and the
+ * executive-queue hook. Used when a case opens and when driver-cancel recovery reopens it. Best-effort, never throws.
+ */
+async function announceOpened(row, cityId) {
+  const amount = Number(row.compensation_amount) || 0;
+  const deadline = new Date(row.deadline_at);
+  // Tells the admin UI whether this city's executive queue owns the case (executives then skip the broadcast banner).
+  const queueOn = (await queueSettings.getQueueSettings(cityId)).execQueueEnabled;
+  try {
+    adminSocket.notifyDispatchAlert(row.order_id, cityId, ALERT_MESSAGE, {
+      kind: "booking_guarantee", amount, deadline_at: deadline.toISOString(), queue: queueOn,
+    });
+    await writeAudit(prisma, row, "admin_alerted");
+  } catch (err) {
+    logger.error(`bookingGuarantee: admin alert failed for order ${row.order_id}:`, err);
+  }
+  try {
+    dispatchManager().emitCustomerEvent(row.uid, "order:guarantee_pending", {
+      order_id: String(row.order_id), amount, deadline_at: deadline.toISOString(),
+    });
+  } catch (err) {
+    logger.error(`bookingGuarantee: customer notify failed for order ${row.order_id}:`, err);
+  }
+  try {
+    await guaranteeQueue.onCaseOpened(row, cityId);
+  } catch (err) {
+    logger.error(`bookingGuarantee: executive queue hook failed for order ${row.order_id}:`, err);
+  }
 }
 
 /**
@@ -68,28 +100,7 @@ async function openForExhaustedOrder(order, selectedIds) {
   }
   await writeAudit(prisma, row, "opened", { meta: { amount, packageId, minutes, selected: ids } });
 
-  // Tells the admin UI whether this city's executive queue owns the case (executives then skip the broadcast banner).
-  const queueOn = (await queueSettings.getQueueSettings(order.city_id)).execQueueEnabled;
-  try {
-    adminSocket.notifyDispatchAlert(order.id, order.city_id, ALERT_MESSAGE, {
-      kind: "booking_guarantee", amount, deadline_at: deadline.toISOString(), queue: queueOn,
-    });
-    await writeAudit(prisma, row, "admin_alerted");
-  } catch (err) {
-    logger.error(`bookingGuarantee: admin alert failed for order ${order.id}:`, err);
-  }
-  try {
-    dispatchManager().emitCustomerEvent(order.uid, "order:guarantee_pending", {
-      order_id: String(order.id), amount, deadline_at: deadline.toISOString(),
-    });
-  } catch (err) {
-    logger.error(`bookingGuarantee: customer notify failed for order ${order.id}:`, err);
-  }
-  try {
-    await guaranteeQueue.onCaseOpened(row, order.city_id);
-  } catch (err) {
-    logger.error(`bookingGuarantee: executive queue hook failed for order ${order.id}:`, err);
-  }
+  await announceOpened(row, order.city_id);
   return true;
 }
 
@@ -137,6 +148,7 @@ async function finishExpiry(row) {
   const order = await prisma.pkg_order.findUnique({ where: { id: row.order_id } });
   if (order) {
     await walletPrepayment.refundIfWalletPaid(order, { note: "no driver found" });
+    await walletAdvance.refundWalletAdvanceIfAny(order.id);
     await refundReferralPointsForOrder(order.id);
   }
   await writeAudit(prisma, row, "refunds_processed");
@@ -223,6 +235,12 @@ async function expireCase(caseId) {
   });
   if (!claimed) return false;
   await endOwnership(claimed.row, STATUS.EXPIRED);
+  // A recovered order may still have an auto-search running; the order is cancelled now, so stop it.
+  try {
+    dispatchManager().stopDispatch(claimed.row.order_id, "guarantee_expired");
+  } catch (err) {
+    logger.error(`bookingGuarantee: stopping search for order ${claimed.row.order_id} failed:`, err);
+  }
 
   if (claimed.credit) {
     Promise.resolve(walletNotifier.notifyCustomerWalletTransaction(claimed.row.uid, { type: "credit", amount: claimed.credit.amount, remark: claimed.credit.remark }))
@@ -345,6 +363,6 @@ async function setUserLock(userId, locked) {
 }
 
 module.exports = {
-  STATUS, ALERT_MESSAGE, openForExhaustedOrder, closeOnAssign, closeOnCancel, expireCase, expireDue, quote, getView,
+  STATUS, ALERT_MESSAGE, openForExhaustedOrder, announceOpened, closeOnAssign, closeOnCancel, expireCase, expireDue, quote, getView,
   unlockForReferral, setUserLock,
 };
