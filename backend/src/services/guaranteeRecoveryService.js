@@ -105,11 +105,20 @@ async function reopenAfterDriverCancel({ orderId, riderId, cityId, inTx = null }
   }
 }
 
-/** Case-only variant for cancelRequestService.approve, which already un-assigned the order itself. Never throws. */
+/**
+ * Case-only variant for cancelRequestService.approve, which already un-assigned the order itself. The order must
+ * still be held (a customer cancel or a new accept may have landed since the un-assign); it is locked first, then
+ * the case, the same lock order as reopenAfterDriverCancel. Never throws.
+ */
 async function reopenAfterApprovedCancel({ orderId, riderId, cityId }) {
   orderId = Number(orderId);
   try {
     return await prisma.$transaction(async (tx) => {
+      const held = await tx.$queryRaw`
+        SELECT id FROM pkg_order
+        WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status = 'Pending'
+        FOR UPDATE`;
+      if (held.length === 0) throw new NotReopenable("order_changed");
       const caseRow = await reopenCase(tx, { orderId, cityId, source: "admin_approved_cancel", riderId: Number(riderId) });
       return { reopened: true, caseRow };
     });

@@ -15,7 +15,8 @@ jest.mock("../../config/db", () => ({
   tbl_wallet_history: { create: jest.fn(), findFirst: jest.fn() },
   tbl_referral_point_log: { create: jest.fn().mockResolvedValue({}) },
   order_status_history: { create: jest.fn() },
-  pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+  pkg_order_wait_timer: { upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
+  driver_trip_event: { deleteMany: jest.fn() },
   app_settings: { findFirst: jest.fn().mockResolvedValue(null) },
 }));
 
@@ -1240,6 +1241,63 @@ describe("tripLifecycle.driverCancel", () => {
       const { inTx } = recovery.reopenAfterDriverCancel.mock.calls[0][0];
       await inTx(prisma, { id: 297, uid: 7, rid: 11, order_status: 0, delivery_type: 6 });
       expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    });
+
+    it("the hook stops the cancelling driver's pickup wait clock and drops their arrival milestone", async () => {
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterDriverCancel.mockResolvedValue({ reopened: true, caseRow, order: {} });
+      pricingEngine.getPackageById.mockResolvedValue(null);
+      await tripLifecycle.driverCancel(297, 11, "x");
+      const { inTx } = recovery.reopenAfterDriverCancel.mock.calls[0][0];
+      await inTx(prisma, { id: 297, uid: 7, rid: 11, order_status: 2, o_status: "Pickup", delivery_type: 6 });
+
+      expect(prisma.pkg_order_wait_timer.deleteMany).toHaveBeenCalledWith({ where: { order_id: 297, rid: 11 } });
+      expect(prisma.driver_trip_event.deleteMany).toHaveBeenCalledWith({ where: { order_id: 297, milestone: "arrived" } });
+    });
+
+    describe("a retry after a successful recovery (double tap / socket retry)", () => {
+      beforeEach(() => {
+        recovery.recoveryCityFor.mockResolvedValue(3);
+        recovery.reopenAfterDriverCancel.mockResolvedValue({ reopened: false, reason: "not_assigned_driver" });
+      });
+      afterEach(() => prisma.tbl_order_requests.findFirst.mockReset());
+
+      it("returns the same recovered answer with no side effects when this driver's cancel already reopened the order", async () => {
+        prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 5, order_id: 297, rider_id: 11, status: "10" });
+        prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" });
+        // What the terminal path's locked re-read would see: the order is held, no longer this driver's.
+        prisma.$queryRaw.mockResolvedValue([{ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" }]);
+
+        const result = await tripLifecycle.driverCancel(297, 11, "breakdown");
+
+        expect(result).toMatchObject({ success: true, recovered: true, refund_amount: 0, refund_status: "order_reopened" });
+        expect(result.order).toMatchObject({ id: 297, rid: 0, order_status: 0, o_status: "Pending" });
+        expect(prisma.tbl_order_requests.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+          where: expect.objectContaining({ order_id: 297, rider_id: 11, status: "10" }),
+        }));
+        expect(recovery.afterReopen).not.toHaveBeenCalled();
+        expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+        expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+        expect(prisma.$queryRaw).not.toHaveBeenCalled();
+        expect(prisma.$executeRaw).not.toHaveBeenCalled();
+        expect(dispatchManager.stopDispatch).not.toHaveBeenCalled();
+      });
+
+      it("falls through to the unchanged terminal path when another driver now holds the order", async () => {
+        prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 5, order_id: 297, rider_id: 11, status: "10" });
+        prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 7, rid: 12, order_status: 1, o_status: "Processing" });
+        prisma.$queryRaw.mockResolvedValue([{ id: 297, uid: 7, rid: 12, order_status: 1, o_status: "Processing" }]);
+
+        await expect(tripLifecycle.driverCancel(297, 11, "breakdown")).rejects.toThrow("NOT_ASSIGNED_DRIVER");
+        expect(recovery.afterReopen).not.toHaveBeenCalled();
+      });
+
+      it("falls through to the terminal path when this driver never had a recovered cancel on the order", async () => {
+        prisma.tbl_order_requests.findFirst.mockResolvedValue(null);
+        prisma.$queryRaw.mockResolvedValue([{ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" }]);
+
+        await expect(tripLifecycle.driverCancel(297, 11, "breakdown")).rejects.toThrow("NOT_ASSIGNED_DRIVER");
+      });
     });
   });
 });

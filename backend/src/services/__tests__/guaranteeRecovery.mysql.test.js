@@ -97,4 +97,19 @@ describeMysql("guaranteeRecoveryService (real MySQL)", () => {
     await makeAssignedCase(prisma, lateOrder, CITY, { deadline_at: new Date(Date.now() - 1000) });
     expect((await svc.reopenAfterApprovedCancel({ orderId: lateOrder, riderId: 11, cityId: CITY })).reopened).toBe(false);
   });
+
+  it.each([
+    ["cancelled by the customer after the un-assign", { rid: 0, order_status: 4, o_status: "Cancelled" }],
+    ["already taken by another driver", { rid: 12, order_status: 1, o_status: "Processing" }],
+  ])("case-only reopen (approved cancel) does nothing when the order is %s", async (_label, orderState) => {
+    const orderId = await makeOrder(prisma, orderState);
+    const before = await makeAssignedCase(prisma, orderId, CITY);
+    const out = await svc.reopenAfterApprovedCancel({ orderId, riderId: 11, cityId: CITY });
+    expect(out).toMatchObject({ reopened: false, reason: "order_changed" });
+    const after = await caseOf(orderId);
+    expect(after.status).toBe("resolved_assigned");
+    expect(after.owner_admin_id).toBe(before.owner_admin_id);
+    expect(await events(prisma, before.id)).not.toContain("reopened_after_driver_cancel");
+    expect(await orderRow(orderId)).toMatchObject(orderState);
+  });
 });

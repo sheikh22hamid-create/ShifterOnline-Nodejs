@@ -1492,6 +1492,25 @@ async function applyDriverCancelFee(tx, { order, orderId, riderId, walletNotific
 }
 
 /**
+ * The held order when this rider's cancel already reopened it (their request row was marked "10" by the recovery
+ * hook and the order is still unassigned and Pending), else null. Fails closed (null) on any read error.
+ */
+async function heldAfterOwnRecovery(orderId, riderId) {
+  try {
+    const [request, order] = await Promise.all([
+      prisma.tbl_order_requests.findFirst({ where: { order_id: orderId, rider_id: riderId, status: "10" }, select: { id: true } }),
+      prisma.pkg_order.findUnique({ where: { id: orderId } }),
+    ]);
+    const held = Boolean(request && order && Number(order.rid) === 0 && Number(order.order_status) === 0
+      && String(order.o_status || "").trim().toLowerCase() === "pending");
+    return held ? order : null;
+  } catch (err) {
+    logger.error(`driverCancel: recovery retry check failed for order ${orderId}:`, err);
+    return null;
+  }
+}
+
+/**
  * Booking Guarantee recovery (spec 2026-10-14): a guarantee order whose assigned driver cancels before pickup goes
  * back to the held state under the SAME case and original deadline, instead of being cancelled. Returns the
  * driverCancel result, or null to take the normal terminal path (switch off, ineligible, or any failure).
@@ -1512,12 +1531,25 @@ async function recoverGuaranteeOrder(orderId, riderId, reason) {
         data: { status: "10" },
       });
       await tx.driver_trip_progress.deleteMany({ where: { order_id: orderId } });
+      // This driver may already have arrived (Pickup): their pickup wait clock must not keep running into the
+      // next driver's trip, or sweepOverduePickups / sweepPickupRelocationCeiling would cancel THAT trip as a
+      // customer no-show. Same cleanup as the pickup pause / relocation paths (driverTripService,
+      // orderPickupService): drop the stale "arrived" milestone so the next driver's arrival is recorded fresh,
+      // and the spent pickup-ETA deadline.
+      await tx.pkg_order_wait_timer.deleteMany({ where: { order_id: orderId, rid: riderId } });
+      await tx.driver_trip_event.deleteMany({ where: { order_id: orderId, milestone: "arrived" } });
+      try { await tx.$executeRaw`UPDATE pkg_order SET pickup_deadline_at = NULL WHERE id = ${orderId}`; } catch (_) { /* column not on this DB yet */ }
       await tx.order_status_history.create({
         data: { order_id: orderId, rider_id: riderId, status: "Driver Cancelled", remark: reason || "No reason provided", created_at: new Date() },
       });
     },
   });
-  if (!outcome.reopened) return null;
+  if (!outcome.reopened) {
+    // A retry of a cancel that already recovered this order (double tap / socket retry) must get the same
+    // answer, not NOT_ASSIGNED_DRIVER: the terminal path answers its own retries idempotently too. No side effects.
+    const held = outcome.reason === "not_assigned_driver" ? await heldAfterOwnRecovery(orderId, riderId) : null;
+    return held ? { success: true, recovered: true, order: held, refund_amount: 0, refund_status: "order_reopened" } : null;
+  }
 
   for (const n of walletNotifications) {
     walletNotifier
