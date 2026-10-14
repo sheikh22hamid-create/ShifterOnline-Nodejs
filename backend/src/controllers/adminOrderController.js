@@ -15,6 +15,7 @@ const { buildNextDaySequence } = require("../utils/geoDistance");
 const receiverPayService = require("../services/receiverPayService");
 const receiverTrackMessage = require("../services/receiverTrackMessage");
 const bookingGuarantee = require("../services/bookingGuaranteeService");
+const guaranteeQueue = require("../services/guaranteeQueueService");
 const freeBookingService = require("../services/freeBookingService");
 
 const STATUS_MAP = {
@@ -201,6 +202,12 @@ async function assignRider(req, res) {
     if (isScopedOut(req, order.city_id)) {
       return res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
     }
+    try {
+      await guaranteeQueue.assertExecutiveMayAssign(req.user, orderId);
+    } catch (ownerErr) {
+      if (ownerErr.statusCode) return res.status(ownerErr.statusCode).json({ success: false, message: ownerErr.message });
+      throw ownerErr;
+    }
     if (order.rid !== 0 || order.order_status !== 0) {
       return res.status(409).json({ success: false, message: "Order is already assigned, completed, or cancelled" });
     }
@@ -271,6 +278,7 @@ async function assignRider(req, res) {
     await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: fare, commission } });
 
     dispatchManager.stopDispatch(orderId, "accepted_by_other");
+    await guaranteeQueue.recordAssignmentAction({ orderId, adminId: req.user.id, riderId });
     try {
       await bookingGuarantee.closeOnAssign(orderId, req.user.id);
     } catch (guaranteeErr) {
@@ -701,6 +709,14 @@ async function assignNextDayBatch(req, res) {
     }
     if (orders.some((o) => isScopedOut(req, o.city_id))) {
       return res.status(403).json({ success: false, message: "Forbidden: an order is outside your assigned city" });
+    }
+    for (const id of orderIds) {
+      try {
+        await guaranteeQueue.assertExecutiveMayAssign(req.user, id);
+      } catch (ownerErr) {
+        if (ownerErr.statusCode) return res.status(ownerErr.statusCode).json({ success: false, message: ownerErr.message });
+        throw ownerErr;
+      }
     }
     if (orders.some((o) => o.rid !== 0 || ["Cancelled", "Completed"].includes(o.o_status))) {
       return res.status(409).json({ success: false, message: "One or more orders are already assigned, completed, or cancelled" });

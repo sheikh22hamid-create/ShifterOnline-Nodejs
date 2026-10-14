@@ -2020,6 +2020,11 @@ model city_order_settings {
   guarantee_referrals_required Int     @default(1)
   guarantee_start_time        String?  @db.VarChar(5)
   guarantee_end_time          String?  @db.VarChar(5)
+  exec_queue_enabled          Boolean  @default(false)
+  exec_default_capacity       Int      @default(5)
+  reminder_pct                Int      @default(50)
+  escalate_pct                Int      @default(75)
+  auto_reassign_idle_minutes  Int?
   updated_by                  Int?
   updated_at                  DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
@@ -2080,9 +2085,22 @@ model booking_guarantee_case {
   resolved_by_admin_id    Int?
   wallet_history_id       Int?
   refunds_done_at         DateTime? @db.DateTime(0)
+  city_id           Int?
+  owner_admin_id    Int?
+  owner_assigned_at DateTime? @db.DateTime(0)
+  queue_state       String?   @db.VarChar(20)
+  unassigned_reason String?   @db.VarChar(30)
+  first_action_at   DateTime? @db.DateTime(0)
+  last_action_at    DateTime? @db.DateTime(0)
+  reminded_at       DateTime? @db.DateTime(0)
+  escalated_at      DateTime? @db.DateTime(0)
+  last_alerted_at   DateTime? @db.DateTime(0)
 
   @@index([status, deadline_at], map: "idx_bgc_status_deadline")
   @@index([uid], map: "idx_bgc_uid")
+  @@index([queue_state, deadline_at], map: "idx_bgc_queue_deadline")
+  @@index([owner_admin_id, status], map: "idx_bgc_owner_status")
+  @@index([city_id, status], map: "idx_bgc_city_status")
 }
 
 model booking_guarantee_audit {
@@ -2096,6 +2114,50 @@ model booking_guarantee_audit {
 
   @@index([case_id], map: "idx_bga_case")
   @@index([order_id], map: "idx_bga_order")
+}
+
+// Ownership history of a guarantee case (spec 2026-10-14). `active` is 1 while the period is open and NULL once
+// it ends: MySQL unique indexes ignore NULLs, so many ended periods coexist but only one active per case.
+// Never write active = 0.
+model guarantee_assignment {
+  id              Int       @id @default(autoincrement())
+  case_id         Int
+  admin_id        Int
+  assigned_by     Int?
+  source          String    @db.VarChar(15)
+  started_at      DateTime  @default(now()) @db.DateTime(0)
+  ended_at        DateTime? @db.DateTime(0)
+  end_reason      String?   @db.VarChar(25)
+  reassign_reason String?   @db.VarChar(200)
+  active          Int?      @db.TinyInt
+
+  @@unique([case_id, active], map: "uq_ga_one_active")
+  @@index([admin_id, active], map: "idx_ga_admin_active")
+  @@index([case_id], map: "idx_ga_case")
+}
+
+model guarantee_action {
+  id         Int      @id @default(autoincrement())
+  case_id    Int
+  admin_id   Int
+  type       String   @db.VarChar(30)
+  meaningful Int      @default(0) @db.TinyInt
+  result     String?  @db.VarChar(30)
+  driver_id  Int?
+  meta       String?  @db.Text
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@index([case_id, created_at], map: "idx_gact_case_time")
+  @@index([admin_id, created_at], map: "idx_gact_admin_time")
+}
+
+model executive_guarantee_profile {
+  admin_id         Int       @id
+  capacity         Int?
+  available        Int       @default(1) @db.TinyInt
+  last_assigned_at DateTime? @db.DateTime(0)
+  updated_by       Int?
+  updated_at       DateTime  @default(now()) @db.DateTime(0)
 }
 
 model order_dispatch_stage {

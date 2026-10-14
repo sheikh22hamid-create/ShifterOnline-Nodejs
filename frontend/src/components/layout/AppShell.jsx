@@ -3,6 +3,8 @@ import { Outlet } from 'react-router-dom'
 import { Bell, X } from 'lucide-react'
 import { useSocket } from '../../context/SocketContext'
 import { useToast } from '../../context/ToastContext'
+import { useAuth } from '../../context/AuthContext'
+import { queueAlertVisibleTo, QUEUE_ALERT_KINDS } from '../../utils/guaranteeQueueAlerts'
 import { playOrderChime } from '../../utils/sound'
 import { formatCurrency } from '../../utils/format'
 import OrderDetailDrawer from '../orders/OrderDetailDrawer'
@@ -19,6 +21,7 @@ export default function AppShell() {
   const [guaranteeAlerts, setGuaranteeAlerts] = useState([])
   const { socket } = useSocket()
   const toast = useToast()
+  const { user } = useAuth()
 
   // Global Ctrl + K / Cmd + K shortcut to open search modal
   useEffect(() => {
@@ -45,7 +48,17 @@ export default function AppShell() {
     }
 
     function handleDispatchAlert(data) {
+      if (QUEUE_ALERT_KINDS.includes(data?.kind)) {
+        if (queueAlertVisibleTo(data, user)) {
+          playOrderChime()
+          toast.warning(data.message)
+        }
+        return
+      }
       if (data?.kind === 'booking_guarantee') {
+        // With the executive queue ON the case goes to ONE executive (they get a guarantee_assigned alert); the
+        // broadcast banner stays for supervisors only.
+        if (data.queue && user?.role === 'executive') return
         playOrderChime()
         setGuaranteeAlerts((prev) => [
           ...prev.filter((a) => a.order_id !== data.order_id),
@@ -75,7 +88,7 @@ export default function AppShell() {
       socket.off('admin:order_status_update', handleOrderStatusUpdate)
       socket.off('admin:dispatch_alert', handleDispatchAlert)
     }
-  }, [socket, toast])
+  }, [socket, toast, user])
 
   return (
     <div className="flex h-screen" style={{ background: 'var(--bg)' }}>

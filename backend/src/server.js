@@ -59,8 +59,14 @@ dispatchManager.reconcileStaleOffersOnStartup();
 // deadline live in the DB, so this is restart-safe; run once at boot (after the startup reconciliation
 // above, which deliberately skips orders held by an open case) and then on an interval.
 const bookingGuaranteeService = require("./services/bookingGuaranteeService");
+const guaranteeQueueService = require("./services/guaranteeQueueService");
+// expireDue runs FIRST so compensation is always decided before any queue bookkeeping; the queue tick then
+// assigns/reminds/escalates/repairs. Both are idempotent and safe across multiple instances.
 const sweepBookingGuarantee = () =>
-  bookingGuaranteeService.expireDue().catch((err) => logger.error("bookingGuarantee sweep failed:", err));
+  bookingGuaranteeService.expireDue()
+    .catch((err) => logger.error("bookingGuarantee sweep failed:", err))
+    .then(() => guaranteeQueueService.tick())
+    .catch((err) => logger.error("guaranteeQueue tick failed:", err));
 setTimeout(sweepBookingGuarantee, 5000);
 setInterval(sweepBookingGuarantee, BOOKING_GUARANTEE_SWEEP_INTERVAL_MS);
 

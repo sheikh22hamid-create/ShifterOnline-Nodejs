@@ -56,6 +56,8 @@ const MonthlyDrivers = lazy(() => import('./pages/MonthlyDrivers'))
 const DailyDrivers = lazy(() => import('./pages/DailyDrivers'))
 const FreeBookingOffer = lazy(() => import('./pages/FreeBookingOffer'))
 const BookingGuarantee = lazy(() => import('./pages/BookingGuarantee'))
+const ExecutiveWorkspace = lazy(() => import('./pages/ExecutiveWorkspace'))
+const GuaranteeWorkload = lazy(() => import('./pages/GuaranteeWorkload'))
 const OrderSearchSettings = lazy(() => import('./pages/OrderSearchSettings'))
 const TieredDispatch = lazy(() => import('./pages/TieredDispatch'))
 const MonthlyAttendanceReports = lazy(() => import('./pages/MonthlyAttendanceReports'))
@@ -100,6 +102,8 @@ function App() {
             <Route path="/daily-drivers" element={<DailyDrivers />} />
             <Route path="/free-booking" element={<FreeBookingOffer />} />
             <Route path="/booking-guarantee" element={<BookingGuarantee />} />
+            <Route path="/guarantee/my-cases" element={<Gated roles={['executive']}><ExecutiveWorkspace /></Gated>} />
+            <Route path="/guarantee/workload" element={<Gated roles={['superadmin', 'admin']}><GuaranteeWorkload /></Gated>} />
             <Route path="/order-search" element={<OrderSearchSettings />} />
             <Route path="/tiered-dispatch" element={<TieredDispatch />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />

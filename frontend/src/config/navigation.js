@@ -44,6 +44,7 @@ import {
   Receipt,
   Timer,
   MessageSquareText,
+  ClipboardList,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
@@ -66,6 +67,8 @@ export const NAV_GROUPS = [
       { to: '/daily-drivers', label: 'Daily Drivers', icon: Timer, roles: ALL_STAFF, built: true },
       { to: '/free-booking', label: 'Free Booking Offer', icon: Gift, roles: ALL_STAFF, built: true },
       { to: '/booking-guarantee', label: 'Booking Guarantee', icon: ShieldCheck, roles: ALL_STAFF, built: true },
+      { to: '/guarantee/my-cases', label: 'My Guarantee Cases', icon: ClipboardList, roles: ['executive'], built: true },
+      { to: '/guarantee/workload', label: 'Guarantee Queue & Workload', icon: Users, roles: MANAGERS, built: true },
       { to: '/order-search', label: 'Order Search System', icon: Radar, roles: ALL_STAFF, built: true },
       { to: '/tiered-dispatch', label: 'Tiered Dispatch & Penalties', icon: Layers, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },

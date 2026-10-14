@@ -10,6 +10,8 @@ const rules = require("./bookingGuaranteeRules");
 const settings = require("./bookingGuaranteeSettings");
 const orderSearchSettings = require("./orderSearchSettings");
 const orderSearchRules = require("./orderSearchRules");
+const guaranteeQueue = require("./guaranteeQueueService");
+const queueSettings = require("./guaranteeQueueSettings");
 
 // Booking Guarantee (spec 2026-10-07). dispatchManager requires this module, so it is required lazily
 // here (same reason dispatchManager lazy-requires freeBookingService).
@@ -56,7 +58,7 @@ async function openForExhaustedOrder(order, selectedIds) {
   try {
     row = await prisma.booking_guarantee_case.create({
       data: {
-        order_id: order.id, uid: order.uid, status: STATUS.OPEN, selected_package_ids: JSON.stringify(ids),
+        order_id: order.id, uid: order.uid, city_id: order.city_id, status: STATUS.OPEN, selected_package_ids: JSON.stringify(ids),
         compensation_package_id: packageId, compensation_amount: amount, deadline_at: deadline,
       },
     });
@@ -66,9 +68,11 @@ async function openForExhaustedOrder(order, selectedIds) {
   }
   await writeAudit(prisma, row, "opened", { meta: { amount, packageId, minutes, selected: ids } });
 
+  // Tells the admin UI whether this city's executive queue owns the case (executives then skip the broadcast banner).
+  const queueOn = (await queueSettings.getQueueSettings(order.city_id)).execQueueEnabled;
   try {
     adminSocket.notifyDispatchAlert(order.id, order.city_id, ALERT_MESSAGE, {
-      kind: "booking_guarantee", amount, deadline_at: deadline.toISOString(),
+      kind: "booking_guarantee", amount, deadline_at: deadline.toISOString(), queue: queueOn,
     });
     await writeAudit(prisma, row, "admin_alerted");
   } catch (err) {
@@ -81,7 +85,23 @@ async function openForExhaustedOrder(order, selectedIds) {
   } catch (err) {
     logger.error(`bookingGuarantee: customer notify failed for order ${order.id}:`, err);
   }
+  try {
+    await guaranteeQueue.onCaseOpened(row, order.city_id);
+  } catch (err) {
+    logger.error(`bookingGuarantee: executive queue hook failed for order ${order.id}:`, err);
+  }
   return true;
+}
+
+// Ends the executive's ownership period for a queued case. Best-effort: a failure leaves an orphan period that the
+// queue sweeper's repair pass closes; it can never block closing a case or paying compensation.
+async function endOwnership(row, status) {
+  if (!row || !row.queue_state) return;
+  try {
+    await guaranteeQueue.onCaseClosed(row, status);
+  } catch (err) {
+    logger.error(`bookingGuarantee: ending ownership for case ${row.id} failed:`, err);
+  }
 }
 
 async function closeWith(orderId, status, event, adminId, extraData = {}) {
@@ -91,7 +111,10 @@ async function closeWith(orderId, status, event, adminId, extraData = {}) {
   });
   if (res.count === 0) return false;
   const row = await prisma.booking_guarantee_case.findUnique({ where: { order_id: Number(orderId) } });
-  if (row) await writeAudit(prisma, row, event, { adminId });
+  if (row) {
+    await writeAudit(prisma, row, event, { adminId });
+    await endOwnership(row, status);
+  }
   return true;
 }
 
@@ -199,6 +222,7 @@ async function expireCase(caseId) {
     return { row: { ...row, status: STATUS.EXPIRED, wallet_history_id: walletHistoryId }, credit };
   });
   if (!claimed) return false;
+  await endOwnership(claimed.row, STATUS.EXPIRED);
 
   if (claimed.credit) {
     Promise.resolve(walletNotifier.notifyCustomerWalletTransaction(claimed.row.uid, { type: "credit", amount: claimed.credit.amount, remark: claimed.credit.remark }))

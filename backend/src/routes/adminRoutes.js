@@ -142,6 +142,20 @@ router.put("/order-search/settings", auth, authorize("superadmin", "admin"), adm
 router.get("/booking-guarantee/cases", auth, authorize(...RIDER_ROLES), scopeFilter, adminBookingGuaranteeController.listCases);
 router.get("/booking-guarantee/cases/:orderId/audit", auth, authorize(...RIDER_ROLES), scopeFilter, adminBookingGuaranteeController.caseAudit);
 
+// Booking Guarantee executive queue (spec 2026-10-14). Role checks here are the first gate; city scope and
+// executive ownership are enforced again inside the service.
+const guaranteeQueueController = require("../controllers/guaranteeQueueController");
+router.get("/booking-guarantee/exec/my-cases", auth, authorize("executive"), guaranteeQueueController.myCases);
+router.get("/booking-guarantee/exec/cases/:orderId", auth, authorize(...RIDER_ROLES), guaranteeQueueController.caseDetail);
+router.post("/booking-guarantee/exec/cases/:orderId/actions", auth, authorize(...RIDER_ROLES), guaranteeQueueController.recordAction);
+router.post("/booking-guarantee/exec/cases/:orderId/reassign", auth, authorize("superadmin", "admin"), guaranteeQueueController.reassign);
+router.get("/booking-guarantee/exec/queue", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.queue);
+router.get("/booking-guarantee/exec/workload", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.workload);
+router.get("/booking-guarantee/exec/report", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.report);
+router.put("/booking-guarantee/exec/profiles/:adminId", auth, authorize("superadmin", "admin"), guaranteeQueueController.saveProfile);
+router.get("/booking-guarantee/exec/settings", auth, authorize("superadmin", "admin"), guaranteeQueueController.getSettings);
+router.put("/booking-guarantee/exec/settings", auth, authorize("superadmin", "admin"), guaranteeQueueController.saveSettings);
+
 
 // --- Staff & Executive Management -----------------------------------------
 router.get("/staff", auth, authorize("superadmin", "admin"), staffController.list);
