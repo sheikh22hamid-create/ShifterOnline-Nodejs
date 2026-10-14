@@ -20,6 +20,13 @@ jest.mock("../orderSearchSettings", () => ({ getCitySettings: jest.fn() }));
 jest.mock("../dispatchManager",() => ({ startDispatch: jest.fn().mockResolvedValue(), emitCustomerEvent: jest.fn() }));
 jest.mock("../pushNotifier", () => ({ notifyDriverCancelDecision: jest.fn().mockResolvedValue() }));
 
+jest.mock("../guaranteeRecoveryService", () => ({
+  recoveryCityFor: jest.fn().mockResolvedValue(null),
+  reopenAfterApprovedCancel: jest.fn(),
+  clampSearchDeadline: jest.requireActual("../guaranteeRecoveryService").clampSearchDeadline,
+}));
+jest.mock("../bookingGuaranteeService", () => ({ announceOpened: jest.fn().mockResolvedValue(undefined) }));
+
 const prisma = require("../../config/db");
 const settings = require("../tieredDispatchSettings");
 const orderStage = require("../orderStageService");
@@ -27,6 +34,8 @@ const tierPenalty = require("../tierPenaltyService");
 const events = require("../driverOrderEventService");
 const orderSearchSettings = require("../orderSearchSettings");
 const dispatchManager = require("../dispatchManager");
+const recovery = require("../guaranteeRecoveryService");
+const bookingGuarantee = require("../bookingGuaranteeService");
 const svc = require("../cancelRequestService");
 
 const ON = { tieredEnabled: true, penaltyEnabled: true, ladder: [5, 10, 20, 50, 100], cancelPenaltyPct: 100 };
@@ -183,6 +192,51 @@ describe("approve", () => {
       const res = await svc.approve({ requestId: 12, adminId: 1 });
       expect(res.ok).toBe(true);
       expect(dispatchManager.startDispatch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("guarantee recovery", () => {
+    const caseRow = { id: 1, order_id: 50, deadline_at: new Date(Date.now() + 5 * 60 * 1000) };
+
+    beforeEach(() => {
+      // clearAllMocks keeps implementations, so reset what earlier tests in this file may have left behind.
+      recovery.recoveryCityFor.mockReset().mockResolvedValue(null);
+      recovery.reopenAfterApprovedCancel.mockReset();
+      prisma.pkg_order.update.mockResolvedValue({});
+    });
+
+    it("switch off: behaves exactly as before (no case touched)", async () => {
+      await svc.approve({ requestId: 12, adminId: 1 });
+      expect(recovery.reopenAfterApprovedCancel).not.toHaveBeenCalled();
+      expect(bookingGuarantee.announceOpened).not.toHaveBeenCalled();
+    });
+
+    it("eligible: reopens the case and announces it after dispatch restarts", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ id: 50, uid: 7, rid: 0, order_status: 0, city_id: 3, allowed_delivery_types: "[6]" });
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterApprovedCancel.mockResolvedValue({ reopened: true, caseRow });
+      const res = await svc.approve({ requestId: 12, adminId: 1 });
+      expect(res.ok).toBe(true);
+      expect(recovery.reopenAfterApprovedCancel).toHaveBeenCalledWith({ orderId: 50, riderId: 9, cityId: 3 });
+      expect(dispatchManager.startDispatch).toHaveBeenCalled();
+      expect(bookingGuarantee.announceOpened).toHaveBeenCalledWith(caseRow, 3);
+    });
+
+    it("System 2: the refreshed search window never outlives the case deadline", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ id: 50, uid: 7, rid: 0, order_status: 0, city_id: 3, search_system: 2, allowed_delivery_types: "[6]" });
+      orderSearchSettings.getCitySettings.mockResolvedValue({ driverSearchSeconds: 3600 });
+      recovery.recoveryCityFor.mockResolvedValue(3);
+      recovery.reopenAfterApprovedCancel.mockResolvedValue({ reopened: true, caseRow });
+      await svc.approve({ requestId: 12, adminId: 1 });
+      const written = prisma.pkg_order.update.mock.calls.find(([a]) => a.data.search_deadline_at)[0].data.search_deadline_at;
+      expect(written.getTime()).toBe(new Date(caseRow.deadline_at).getTime());
+    });
+
+    it("a recovery failure never blocks the approval", async () => {
+      recovery.recoveryCityFor.mockRejectedValue(new Error("boom"));
+      const res = await svc.approve({ requestId: 12, adminId: 1 });
+      expect(res.ok).toBe(true);
+      expect(dispatchManager.startDispatch).toHaveBeenCalled();
     });
   });
 });

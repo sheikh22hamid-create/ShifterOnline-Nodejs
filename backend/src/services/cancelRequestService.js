@@ -92,13 +92,29 @@ async function approve({ requestId, adminId }) {
   const dispatchManager = require("./dispatchManager");
   dispatchManager.emitCustomerEvent(order?.uid, "order:driver_unassigned", { order_id: String(orderId) });
 
+  // Booking Guarantee recovery (spec 2026-10-14): the order is back to Pending, so a guarantee order goes back
+  // under its case (original deadline). Fail closed: any problem leaves today's behaviour.
+  let reopened = null;
+  try {
+    const recovery = require("./guaranteeRecoveryService");
+    const cityId = await recovery.recoveryCityFor(orderId);
+    if (cityId !== null) {
+      const out = await recovery.reopenAfterApprovedCancel({ orderId, riderId, cityId });
+      if (out.reopened) reopened = { caseRow: out.caseRow, cityId };
+    }
+  } catch (err) {
+    logger.error(`cancelRequestService.approve: guarantee recovery failed for order ${orderId}:`, err);
+  }
+
   const nextStage = rules.nextStage(request.tier);
   const earlierStageRiderIds = await orderStage.offeredRiderIds(orderId);
   if (orderSearchRules.isSystem2Order(order)) {
     // System 2: the driver cancelled after the first window ended, so the order gets a fresh search window.
     try {
       const city = await orderSearchSettings.getCitySettings(order.city_id);
-      const deadline = orderSearchRules.searchDeadline(new Date(), city.driverSearchSeconds);
+      let deadline = orderSearchRules.searchDeadline(new Date(), city.driverSearchSeconds);
+      // A reopened guarantee case keeps its original deadline: the search must not outlive it.
+      if (reopened) deadline = require("./guaranteeRecoveryService").clampSearchDeadline(deadline, reopened.caseRow.deadline_at);
       await prisma.pkg_order.update({ where: { id: orderId }, data: { search_deadline_at: deadline } });
       order = { ...order, search_deadline_at: deadline };
     } catch (err) {
@@ -106,6 +122,14 @@ async function approve({ requestId, adminId }) {
     }
   }
   await dispatchManager.startDispatch(order, null, { stage: nextStage, earlierStageRiderIds });
+
+  if (reopened) {
+    try {
+      await require("./bookingGuaranteeService").announceOpened(reopened.caseRow, reopened.cityId);
+    } catch (err) {
+      logger.error(`cancelRequestService.approve: announcing reopened case for order ${orderId} failed:`, err);
+    }
+  }
 
   const token = await fcmTokenOf(riderId);
   Promise.resolve(pushNotifier.notifyDriverCancelDecision(token, { orderId, approved: true })).catch((err) =>
