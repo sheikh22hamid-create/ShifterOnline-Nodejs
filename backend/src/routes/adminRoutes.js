@@ -239,6 +239,7 @@ router.get("/orders", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderCo
 router.get("/orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.getOne);
 router.get("/orders/:id/invoice", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.invoice);
 router.post("/orders/:id/assign-rider", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignRider);
+router.get("/outside-driver/vehicles", auth, authorize(...RIDER_ROLES), adminOrderController.outsideDriverVehicles);
 router.post("/orders/:id/outside-driver-lookup", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.outsideDriverLookup);
 router.post("/orders/:id/outside-driver/register", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.outsideDriverRegister);
 router.get("/orders/:id/outside-driver/status", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.outsideDriverStatus);

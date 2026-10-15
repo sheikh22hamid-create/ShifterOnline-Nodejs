@@ -28,6 +28,7 @@ const fetchOf = (...texts) => { const f = jest.fn(); texts.forEach((t) => f.mock
 const ORDER = { id: 5, rid: 0, order_status: 0, o_status: "Pending", plat: "22.75", plong: "75.89", dlat: "22.71", dlong: "75.85", pick_name: "A", drop_name: "B" };
 beforeEach(() => {
   jest.clearAllMocks();
+  svc.resetCatalogCache();
   prisma.pkg_order.findUnique.mockResolvedValue(ORDER);
   prisma.booking_guarantee_case.findUnique.mockResolvedValue({ id: 9, status: "open" });
   prisma.booking_guarantee_audit.findMany.mockResolvedValue([]);
@@ -183,5 +184,22 @@ describe("notifyIfAwaited", () => {
   it("never throws when the lookup fails", async () => {
     prisma.$queryRaw.mockRejectedValue(new Error("db"));
     await expect(svc.notifyIfAwaited({ id: 77, city_id: 1 })).resolves.toBeUndefined();
+  });
+});
+
+describe("getVehicles", () => {
+  const okJson = (vehicles) => jest.fn().mockResolvedValue({ ok: true, json: async () => ({ vehicles }) });
+  it("returns the partner's live list, caches it, and lets lookup accept a new id", async () => {
+    const f = okJson([{ id: 133, name: "Bike" }, { id: 555, name: "Car", desc: "4 wheeler" }]);
+    expect(await svc.getVehicles(f)).toEqual([{ id: 133, name: "Bike", desc: undefined }, { id: 555, name: "Car", desc: "4 wheeler" }]);
+    await svc.getVehicles(f);
+    expect(f).toHaveBeenCalledTimes(1);
+    const stream = fetchOf(sse([FOUND]));
+    expect((await svc.lookup({ orderId: 5, vehicleId: 555, fetchImpl: stream })).driver).toBeTruthy();
+    await expect(svc.lookup({ orderId: 5, vehicleId: 1, fetchImpl: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it("falls back to the six known vehicles when the API is down", async () => {
+    const list = await svc.getVehicles(jest.fn().mockRejectedValue(new Error("down")));
+    expect(list.map((v) => v.id)).toEqual([133, 1139, 126, 97, 91, 1]);
   });
 });

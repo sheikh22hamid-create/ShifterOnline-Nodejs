@@ -19,7 +19,33 @@ const REGISTERED_EVENT = "outside_driver_registered";
 const AWAIT_WINDOW_MS = 6 * 60 * 60 * 1000;
 const MAX_TRIAL_ORDERS = 5;
 
-const VEHICLES = Object.freeze([133, 1139, 126, 97, 91, 1]);
+// Fallback catalog used until (or when) the partner's live /api/vehicles list is unavailable.
+const FALLBACK_VEHICLES = Object.freeze([
+  { id: 133, name: "2-Wheeler (Bike)" }, { id: 1139, name: "Mini 3-Wheeler" }, { id: 126, name: "3-Wheeler 500kg" },
+  { id: 97, name: "Tata Ace / 8ft Truck" }, { id: 91, name: "Pickup 8ft" }, { id: 1, name: "Tata 407" },
+]);
+const CATALOG_TTL_MS = 10 * 60 * 1000;
+let catalog = { at: 0, list: null };
+
+/** The partner's vehicle list (cached); falls back to the known six when it cannot be fetched. */
+async function getVehicles(fetchImpl = fetch) {
+  if (catalog.list && Date.now() - catalog.at < CATALOG_TTL_MS) return catalog.list;
+  try {
+    const resp = await fetchImpl(`${BASE_URL}/api/vehicles`, { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const body = await resp.json();
+      const list = (Array.isArray(body?.vehicles) ? body.vehicles : [])
+        .map((v) => ({ id: Number(v.id), name: String(v.name || `Vehicle ${v.id}`), desc: v.desc ? String(v.desc) : undefined }))
+        .filter((v) => Number.isInteger(v.id) && v.id > 0);
+      if (list.length) { catalog = { at: Date.now(), list }; return list; }
+    }
+  } catch (err) {
+    logger.warn(`outsideDriver: vehicle catalog fetch failed: ${err.message}`);
+  }
+  return catalog.list || FALLBACK_VEHICLES;
+}
+const knownVehicleIds = () => (catalog.list || FALLBACK_VEHICLES).map((v) => v.id);
+const resetCatalogCache = () => { catalog = { at: 0, list: null }; };
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const inFlight = new Set();
@@ -94,7 +120,7 @@ async function previousLookups(orderId) {
  */
 async function lookup({ orderId, vehicleId, adminId, fetchImpl }) {
   const vid = Number(vehicleId);
-  if (!VEHICLES.includes(vid)) throw httpError(400, "Unsupported vehicle");
+  if (!knownVehicleIds().includes(vid)) throw httpError(400, "Unsupported vehicle");
   const order = await prisma.pkg_order.findUnique({
     where: { id: orderId },
     select: { id: true, rid: true, order_status: true, o_status: true, plat: true, plong: true, dlat: true, dlong: true, pick_name: true, drop_name: true },
@@ -228,4 +254,4 @@ async function notifyIfAwaited(rider) {
   }
 }
 
-module.exports = { registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, VEHICLES, MAX_LOOKUPS_PER_ORDER };
+module.exports = { getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };

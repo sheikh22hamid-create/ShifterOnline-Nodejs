@@ -217,6 +217,14 @@ function outsideDriverHandler(label, run) {
   };
 }
 
+async function outsideDriverVehicles(req, res) {
+  try {
+    return res.json({ success: true, data: await outsideDriver.getVehicles() });
+  } catch (err) {
+    return internalError(res, err, "orders.outsideDriverVehicles");
+  }
+}
+
 const outsideDriverLookup = outsideDriverHandler("orders.outsideDriverLookup", (orderId, req) =>
   outsideDriver.lookup({ orderId, vehicleId: req.body?.vehicle_id, adminId: req.user?.id }));
 const outsideDriverRegister = outsideDriverHandler("orders.outsideDriverRegister", (orderId, req) =>
@@ -883,6 +891,6 @@ async function assignNextDayBatch(req, res) {
 }
 
 module.exports = {
-  list, getOne, assignRider, outsideDriverLookup, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
+  list, getOne, assignRider, outsideDriverLookup, outsideDriverVehicles, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
   listNextDay, suggestNextDaySequence, assignNextDayBatch,
 };

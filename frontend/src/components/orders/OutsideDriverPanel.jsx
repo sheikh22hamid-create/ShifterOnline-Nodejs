@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { PhoneCall, RefreshCw, UserSearch, Copy, UserPlus, CheckCircle2 } from 'lucide-react'
 import api from '../../services/api'
 
-const VEHICLES = [
+// Shown until the partner's live list loads (or if it cannot be loaded).
+const FALLBACK_VEHICLES = [
   { id: 133, name: '2-Wheeler (Bike)' },
   { id: 1139, name: 'Mini 3-Wheeler' },
   { id: 126, name: '3-Wheeler 500kg' },
@@ -29,6 +30,7 @@ const REASONS = {
 }
 
 export default function OutsideDriverPanel({ order, onAssigned }) {
+  const [vehicles, setVehicles] = useState(FALLBACK_VEHICLES)
   const [vehicleId, setVehicleId] = useState(() => guessVehicle(order?.category))
   const [busy, setBusy] = useState(false)
   const [driver, setDriver] = useState(null)
@@ -40,6 +42,21 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
   const [registering, setRegistering] = useState(false)
   const [onboarded, setOnboarded] = useState(null) // { rider_id, kind, name, online }
   const [assigning, setAssigning] = useState(false)
+
+  // The partner's own catalog, so every vehicle category they support is selectable.
+  useEffect(() => {
+    let cancelled = false
+    api.get('/outside-driver/vehicles')
+      .then((res) => {
+        const list = res.data?.data
+        if (!cancelled && Array.isArray(list) && list.length) {
+          setVehicles(list)
+          setVehicleId((cur) => (list.some((v) => v.id === cur) ? cur : list[0].id))
+        }
+      })
+      .catch(() => { /* keep the fallback list */ })
+    return () => { cancelled = true }
+  }, [])
 
   // After onboarding, poll until the driver opens the app and goes online.
   useEffect(() => {
@@ -122,7 +139,7 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
       </p>
       <div className="flex items-center gap-2">
         <select value={vehicleId} onChange={(e) => setVehicleId(Number(e.target.value))} disabled={busy} className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[12.5px]" style={inputStyle}>
-          {VEHICLES.map((v) => <option key={v.id} value={v.id} style={optionStyle}>{v.name}</option>)}
+          {vehicles.map((v) => <option key={v.id} value={v.id} style={optionStyle}>{v.name}{v.desc ? ` · ${v.desc}` : ''}</option>)}
         </select>
         <button
           type="button"
