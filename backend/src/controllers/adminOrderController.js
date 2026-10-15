@@ -17,6 +17,7 @@ const receiverTrackMessage = require("../services/receiverTrackMessage");
 const bookingGuarantee = require("../services/bookingGuaranteeService");
 const guaranteeQueue = require("../services/guaranteeQueueService");
 const freeBookingService = require("../services/freeBookingService");
+const outsideDriver = require("../services/outsideDriverService");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -186,6 +187,45 @@ async function getOne(req, res) {
     return internalError(res, err, "orders.getOne");
   }
 }
+
+// Shared guard for the outside-driver endpoints: city scope + executive ownership, same rules as assignRider.
+// Returns the order id, or null after sending the error response.
+async function guardOutsideDriver(req, res) {
+  const orderId = parseInt(req.params.id, 10);
+  if (!orderId) { res.status(400).json({ success: false, message: "Invalid order id" }); return null; }
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { city_id: true } });
+  if (!order) { res.status(404).json({ success: false, message: "Order not found" }); return null; }
+  if (isScopedOut(req, order.city_id)) {
+    res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
+    return null;
+  }
+  await guaranteeQueue.assertExecutiveMayAssign(req.user, orderId);
+  return orderId;
+}
+
+function outsideDriverHandler(label, run) {
+  return async (req, res) => {
+    try {
+      const orderId = await guardOutsideDriver(req, res);
+      if (orderId === null) return undefined;
+      const data = await run(orderId, req);
+      return res.json({ success: true, data });
+    } catch (err) {
+      if (err.statusCode) return res.status(err.statusCode).json({ success: false, message: err.message });
+      return internalError(res, err, label);
+    }
+  };
+}
+
+const outsideDriverLookup = outsideDriverHandler("orders.outsideDriverLookup", (orderId, req) =>
+  outsideDriver.lookup({ orderId, vehicleId: req.body?.vehicle_id, adminId: req.user?.id }));
+const outsideDriverRegister = outsideDriverHandler("orders.outsideDriverRegister", (orderId, req) =>
+  outsideDriver.registerTrial({
+    orderId, adminId: req.user?.id, name: req.body?.name, mobile: req.body?.mobile,
+    vehicleNumber: req.body?.vehicle_number, trialOrders: req.body?.trial_orders,
+  }));
+const outsideDriverStatus = outsideDriverHandler("orders.outsideDriverStatus", (orderId, req) =>
+  outsideDriver.onboardStatus({ orderId, riderId: req.query?.rider_id }));
 
 async function assignRider(req, res) {
   try {
@@ -843,6 +883,6 @@ async function assignNextDayBatch(req, res) {
 }
 
 module.exports = {
-  list, getOne, assignRider, update, cancel, invoice, listScheduled, assignScheduledDriver,
+  list, getOne, assignRider, outsideDriverLookup, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
   listNextDay, suggestNextDaySequence, assignNextDayBatch,
 };

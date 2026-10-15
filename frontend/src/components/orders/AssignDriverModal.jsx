@@ -4,6 +4,7 @@ import api from '../../services/api'
 import Modal from '../common/Modal'
 import useApiQuery from '../../hooks/useApiQuery'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
+import OutsideDriverPanel from './OutsideDriverPanel'
 
 export default function AssignDriverModal({ open, order, onClose, onAssigned }) {
   const [search, setSearch] = useState('')
@@ -118,6 +119,8 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
             </button>
           ))}
       </div>
+
+      {order?.o_status === 'Pending' && <OutsideDriverPanel order={order} onAssigned={onAssigned} />}
     </Modal>
   )
 }

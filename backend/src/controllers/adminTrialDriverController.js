@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { assignDefaultDeliveryTypes } = require("../utils/assignDefaultDeliveryTypes");
 const cityScope = require("../utils/cityScope");
+const { newTrialRiderData } = require("../utils/trialRiderData");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -92,26 +93,7 @@ async function create(req, res) {
     // A city-bound caller's driver always lands in their own city, whatever city_id the request says.
     const targetCityId = callerCity !== null ? callerCity : parseInt(city_id || req.scopedCityId || req.user?.city_id, 10) || 1;
     const created = await prisma.tbl_rider.create({
-      data: {
-        full_name: trimmedName,
-        fmobile: trimmedMobile,
-        vehicle: trimmedVehicle,
-        city_id: targetCityId,
-        verification_type: "manual",
-        verification_status: "pending",
-        all_verify: 0,
-        a_status: 0,
-        status: 1,
-        payment_complete: 0,
-        password: "",
-        profile_picture: "",
-        fcm_token: "",
-        device_id: "",
-        rdate: new Date(),
-        trial_status: "active",
-        trial_orders_allowed: allowedCount,
-        trial_orders_completed: 0,
-      },
+      data: newTrialRiderData({ fullName: trimmedName, mobile: trimmedMobile, vehicle: trimmedVehicle, cityId: targetCityId, trialOrdersAllowed: allowedCount }),
     });
     await assignDefaultDeliveryTypes(created.id);
     logger.info(`adminTrialDriverController.create: added trial driver #${created.id} by admin #${req.user?.id || "unknown"}`);
