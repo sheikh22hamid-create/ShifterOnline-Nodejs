@@ -108,7 +108,7 @@ async function create(req, res) {
         mobile: mobile || null,
         role: finalRole,
         city_id: finalCityId,
-        status: 1,
+        status: true,
         created_by: actor.id,
       },
     });
@@ -139,7 +139,7 @@ async function update(req, res) {
     if (name !== undefined) data.name = name;
     if (email !== undefined) data.email = email;
     if (mobile !== undefined) data.mobile = mobile;
-    if (status !== undefined) data.status = status ? 1 : 0;
+    if (status !== undefined) data.status = Boolean(status);
 
     if (actor.role === "superadmin") {
       if (role !== undefined) {
