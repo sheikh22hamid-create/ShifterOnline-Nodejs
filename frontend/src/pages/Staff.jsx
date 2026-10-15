@@ -105,7 +105,7 @@ export default function Staff() {
                       {s.city_name || '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
-                      <Badge tone={s.status === 1 ? 'success' : 'neutral'}>{s.status === 1 ? 'Active' : 'Deactivated'}</Badge>
+                      <Badge tone={s.status ? 'success' : 'neutral'}>{s.status ? 'Active' : 'Deactivated'}</Badge>
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
                       {formatDateTime(s.last_login_at)}

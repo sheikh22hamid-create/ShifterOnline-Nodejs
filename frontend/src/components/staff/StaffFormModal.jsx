@@ -42,7 +42,7 @@ export default function StaffFormModal({ open, staffMember, onClose, onSaved }) 
         mobile: staffMember.mobile || '',
         role: staffMember.role,
         city_id: staffMember.city_id ?? '',
-        status: staffMember.status,
+        status: staffMember.status ? 1 : 0,
       })
     } else {
       setForm({ username: '', password: '', name: '', email: '', mobile: '', role: 'executive', city_id: isSuperadmin ? '' : user.city_id, status: 1 })
