@@ -111,7 +111,8 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
     } catch { /* clipboard blocked; the number is visible anyway */ }
   }
 
-  const inputStyle = { borderColor: 'var(--border)', color: 'var(--ink)', background: 'transparent' }
+  const inputStyle = { borderColor: 'var(--border)', color: 'var(--ink)', background: 'var(--surface)' }
+  const optionStyle = { background: 'var(--surface)', color: 'var(--ink)' }
 
   return (
     <div className="mt-4 rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
@@ -121,7 +122,7 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
       </p>
       <div className="flex items-center gap-2">
         <select value={vehicleId} onChange={(e) => setVehicleId(Number(e.target.value))} disabled={busy} className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[12.5px]" style={inputStyle}>
-          {VEHICLES.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          {VEHICLES.map((v) => <option key={v.id} value={v.id} style={optionStyle}>{v.name}</option>)}
         </select>
         <button
           type="button"
@@ -156,7 +157,7 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
             <div className="mt-2 flex items-center gap-2 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
               <label className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }} htmlFor="trial-orders">Trial orders</label>
               <select id="trial-orders" value={trialOrders} onChange={(e) => setTrialOrders(Number(e.target.value))} disabled={registering} className="rounded-lg border px-2 py-1 text-[12.5px]" style={inputStyle}>
-                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n} style={optionStyle}>{n}</option>)}
               </select>
               <button type="button" onClick={register} disabled={registering} className="ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-60" style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}>
                 <UserPlus size={13} /> {registering ? 'Registering…' : 'Register as trial driver'}
