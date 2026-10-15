@@ -15,7 +15,7 @@ const VEHICLES = [
 function guessVehicle(category) {
   const c = String(category || '').toLowerCase()
   if (/bike|2.?w|scooter/.test(c)) return 133
-  if (/ace|8 ?ft truck/.test(c)) return 97
+  if (/ace|8 ?ft truck|4 ?w|four/.test(c)) return 97
   if (/pickup/.test(c)) return 91
   if (/407/.test(c)) return 1
   if (/500/.test(c)) return 126
