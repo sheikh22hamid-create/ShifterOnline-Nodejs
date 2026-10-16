@@ -336,7 +336,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
       "long_map": _currentLng,
       "landmark": "",
       "type": _selectedTag,
-      if (_isPickup) "send_whatsapp": _sendWhatsapp,
+      if (!_isAddress) "send_whatsapp": _sendWhatsapp,
     };
 
     if (_isAddress) {
@@ -756,7 +756,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                           ),
 
                           // Optional WhatsApp opt-in (sender only, default unchecked)
-                          if (_isPickup) ...[
+                          if (!_isAddress) ...[
                             const SizedBox(height: 8),
                             InkWell(
                               borderRadius: BorderRadius.circular(12),
@@ -786,7 +786,10 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        "Send booking info & OTP on this WhatsApp number".tr,
+                                        // A stop has no OTP of its own, so its label only promises the booking info.
+                                        (_isPickup || _isDrop
+                                            ? "Send booking info & OTP on this WhatsApp number"
+                                            : "Send booking info on this WhatsApp number").tr,
                                         style: TextStyle(
                                           fontFamily: 'Gilroy_Medium',
                                           fontSize: 12.5,

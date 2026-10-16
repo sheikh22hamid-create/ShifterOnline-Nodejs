@@ -270,7 +270,7 @@ async function createOrderCore({
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
   stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
   receiverPays = false, receiverCommissionPercent,
-  freeBooking = false, sendSenderWhatsapp = false,
+  freeBooking = false, sendSenderWhatsapp = false, sendReceiverWhatsapp = false,
 }) {
   if (
     !uid ||
@@ -305,6 +305,7 @@ async function createOrderCore({
   const validStops = normalizedStops.map((stop) => ({
     lat: Number(stop.lat), lng: Number(stop.lng), address: stop.address, hno: stop.hno,
     landmark: stop.landmark, contact_name: stop.contact_name, contact_number: stop.contact_number,
+    send_whatsapp: [true, "true", 1, "1"].includes(stop.send_whatsapp),
   }));
   if (validStops.some((stop) => !Number.isFinite(stop.lat) || !Number.isFinite(stop.lng))) {
     return { ok: false, code: "VALIDATION", msg: "Every stop must have valid coordinates" };
@@ -576,6 +577,7 @@ async function createOrderCore({
       daddress: daddress || null,
       pmobile: pmobile || null,
       send_sender_whatsapp: sendSenderWhatsapp === true,
+      send_receiver_whatsapp: sendReceiverWhatsapp === true,
       dmobile: dmobile || null,
       pick_type: pickType || "",
       drop_type: dropType || "",
@@ -648,7 +650,7 @@ async function createOrderCore({
 
   if (validStops.length > 0) {
     await prisma.pkg_order_stops.createMany({
-      data: validStops.map((stop, index) => ({ order_id: order.id, sequence: index + 1, lat: String(stop.lat), lng: String(stop.lng), address: stop.address || null, hno: stop.hno || null, landmark: stop.landmark || null, contact_name: stop.contact_name || null, contact_number: stop.contact_number || null })),
+      data: validStops.map((stop, index) => ({ order_id: order.id, sequence: index + 1, lat: String(stop.lat), lng: String(stop.lng), address: stop.address || null, hno: stop.hno || null, landmark: stop.landmark || null, contact_name: stop.contact_name || null, contact_number: stop.contact_number || null, send_whatsapp: stop.send_whatsapp === true })),
     });
   }
   order.stops = validStops.map((stop, index) => ({ ...stop, sequence: index + 1 }));
@@ -790,7 +792,7 @@ async function createOrder(req, res) {
       p_method_id, transaction_id, extra_mile_charge, cou_id, cou_amt, radius_km, city_id, photos,
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
-      receiver_pays, receiver_commission_percent, free_booking, send_sender_whatsapp,
+      receiver_pays, receiver_commission_percent, free_booking, send_sender_whatsapp, send_receiver_whatsapp,
     } = req.body;
 
     const result = await createOrderCore({
@@ -805,6 +807,7 @@ async function createOrder(req, res) {
       goodsTypeId: goods_type_id, goodsTypeOther: goods_type_other,
       receiverPays: receiver_pays === true || receiver_pays === "true" || receiver_pays === 1 || receiver_pays === "1", receiverCommissionPercent: receiver_commission_percent,
       sendSenderWhatsapp: send_sender_whatsapp === true || send_sender_whatsapp === "true" || send_sender_whatsapp === 1 || send_sender_whatsapp === "1",
+      sendReceiverWhatsapp: send_receiver_whatsapp === true || send_receiver_whatsapp === "true" || send_receiver_whatsapp === 1 || send_receiver_whatsapp === "1",
       freeBooking: free_booking === true || free_booking === "true" || free_booking === 1 || free_booking === "1",
     });
 

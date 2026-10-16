@@ -162,6 +162,60 @@ async function getOrderDetailsWithParticipants(orderId) {
 }
 
 /**
+ * Drop-contact opt-in (the "Send booking info & OTP on this WhatsApp number" checkbox on the drop screen):
+ * the drop OTP block for that number. Empty unless the booker ticked it AND the order actually has a drop OTP.
+ */
+async function dropOptInOtpBlock(order) {
+  if (order.send_receiver_whatsapp !== true) return "";
+  if (!(await require("../services/dropOtp").isRequired(order))) return "";
+  return `🔐 *Drop OTP*: *${order.drop_otp}*\n(Parcel milne par ye OTP driver ko batayein, tabhi unloading shuru hogi.)\n\n`;
+}
+
+/**
+ * Extra-stop opt-in: every stop whose contact ticked the checkbox gets the booking info (stops have no OTP).
+ * Pass `rider` to send the driver details instead (driver assigned). The receiver is skipped here because
+ * they already get their own booking messages; the same number is never messaged twice.
+ */
+async function notifyStopContacts(data, rider = null) {
+  const { order, categoryTitle, senderPhone, receiverPhone, senderName } = data;
+  let stops = [];
+  try {
+    stops = await prisma.pkg_order_stops.findMany({ where: { order_id: order.id }, orderBy: { sequence: "asc" } });
+  } catch (err) {
+    logger.warn(`notifyStopContacts: stop lookup failed for order ${order.id}: ${err.message}`);
+    return;
+  }
+  const seen = new Set();
+  for (const stop of stops) {
+    if (stop.send_whatsapp !== true) continue;
+    const phone = normalizePhone10(stop.contact_number);
+    if (!phone || phone === receiverPhone || seen.has(phone)) continue;
+    seen.add(phone);
+    const key = rider ? `stop_${stop.sequence}_assigned_${rider.id}` : `stop_${stop.sequence}_booked`;
+    if (wasMilestoneSent(order.id, key, phone)) continue;
+    markMilestoneSent(order.id, key, phone);
+    const riderName = rider ? `${rider.first_name || ""} ${rider.last_name || ""}`.trim() : "";
+    const msg = rider
+      ? `Hello! 👋\n🛵 *Driver assign ho gaya hai!*\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `*Driver*: ${riderName}${rider.vehicle_no ? ` (${rider.vehicle_no})` : ""}\n` +
+        `📱 *Phone*: ${rider.fmobile || "9109114515"}\n` +
+        `📍 *Aapka Stop ${stop.sequence}*: ${stop.address || "N/A"}\n\n` +
+        `— *Team Shifter Online*\n📞 Customer Care: 9109114515`
+      : `Hello! 👋\nAapke location par ek delivery ka stop add kiya gaya hai! 🚚\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `👤 *Sender*: ${senderName}${senderPhone ? ` (📞 ${senderPhone})` : ""}\n` +
+        `🚗 *Vehicle*: ${categoryTitle}\n\n` +
+        `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
+        `📍 *Aapka Stop ${stop.sequence}*: ${stop.address || "N/A"}\n` +
+        `🎯 *Final Drop*: ${order.daddress || "N/A"}\n\n` +
+        `Driver ke assign hone par aapko driver ki details bheji jayengi.\n\n` +
+        `— *Team Shifter Online*\n📞 Customer Care: 9109114515`;
+    await sendWhatsAppNotification(phone, msg);
+  }
+}
+
+/**
  * 1. Booking Confirm Notification
  * Receiver only: the sender sees the booking in the app (sender WhatsApp is limited to two messages)
  */
@@ -205,6 +259,8 @@ async function notifyOrderBooked(orderId) {
     markMilestoneSent(order.id, "booked", receiverPhone);
     await sendWhatsAppNotification(receiverPhone, receiverMsg);
   }
+
+  await notifyStopContacts(data);
 
   return true;
 }
@@ -429,6 +485,7 @@ async function notifyDriverAssigned(orderId) {
         `📍 *Pickup*: ${order.paddress || "N/A"}\n` +
         `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
         `👤 *Receiver*: ${receiverName}${receiverPhone ? ` (📞 ${receiverPhone})` : ""}\n\n` +
+        (receiverPhone === senderPhone ? await dropOptInOtpBlock(order) : "") +
         (url ? `📍 *Live Tracking Link*:\n👉 ${url}\n\n` : "") +
         `— *Team Shifter Online*\n` +
         `📞 Customer Care: 9109114515`
@@ -436,7 +493,10 @@ async function notifyDriverAssigned(orderId) {
   }
 
   const receiverLine = receiverPhone && receiverPhone !== senderPhone ? await trackLine(order, receiverPhone) : "";
-  if (receiverLine && !wasMilestoneSent(order.id, "assigned", receiverPhone)) {
+  // Drop contact ticked "Send booking info & OTP on this WhatsApp number": they also get the drop OTP, even
+  // if there is no tracking link to send.
+  const dropOtpBlock = await dropOptInOtpBlock(order);
+  if ((receiverLine || dropOtpBlock) && receiverPhone && receiverPhone !== senderPhone && !wasMilestoneSent(order.id, "assigned", receiverPhone)) {
     markMilestoneSent(order.id, "assigned", receiverPhone);
     await sendWhatsAppNotification(
       receiverPhone,
@@ -447,12 +507,33 @@ async function notifyDriverAssigned(orderId) {
         `📱 *Phone*: ${riderPhone}\n` +
         `🎯 *Drop*: ${order.daddress || "N/A"}\n` +
         `👤 *Receiver*: ${receiverName}\n\n` +
-        `Parcel pickup hone ke baad aap driver ko live map par dekh sakenge.\n` +
-        receiverLine +
+        dropOtpBlock +
+        (receiverLine ? `Parcel pickup hone ke baad aap driver ko live map par dekh sakenge.\n` + receiverLine : "") +
         `— *Team Shifter Online*\n` +
         `📞 Customer Care: 9109114515`
     );
   }
+
+  // The drop contact is the booker's own number and they opted in for the drop but not as the sender: the
+  // receiver branch above skips a same-number receiver, so send them the drop OTP here (once per driver).
+  const selfKey = `assigned_drop_self_${rider.id}`;
+  if (dropOtpBlock && receiverPhone && receiverPhone === senderPhone && !data.sendSender && !wasMilestoneSent(order.id, selfKey, receiverPhone)) {
+    markMilestoneSent(order.id, selfKey, receiverPhone);
+    await sendWhatsAppNotification(
+      receiverPhone,
+      `Hello! 👋\n` +
+        `🛵 *Driver assign ho gaya hai!*\n\n` +
+        `📦 *Order ID*: #${order.id}\n` +
+        `*Driver*: ${riderName} ${riderVehicle}\n` +
+        `📱 *Phone*: ${riderPhone}\n` +
+        `🎯 *Drop*: ${order.daddress || "N/A"}\n\n` +
+        dropOtpBlock +
+        `— *Team Shifter Online*\n` +
+        `📞 Customer Care: 9109114515`
+    );
+  }
+
+  await notifyStopContacts(data, rider);
 
   return true;
 }

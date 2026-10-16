@@ -949,6 +949,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'extra_mile_charge': 0, 'cou_id': _appliedCoupon == null ? 0 : (int.tryParse(_appliedCoupon!['id'].toString()) ?? 0), 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
       'send_sender_whatsapp': _pickupData['send_whatsapp'] == true,
+      'send_receiver_whatsapp': _dropData['send_whatsapp'] == true,
       if (receiverOn) 'receiver_pays': true,
       if (_freeBookingRequested) 'free_booking': true,
       if (receiverOn) 'receiver_commission_percent': receiverPay.percent,
@@ -958,6 +959,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         'lat': stop['lat_map'], 'lng': stop['long_map'], 'address': stop['address'],
         'hno': stop['hno'], 'landmark': stop['landmark'],
         'contact_name': stop['c_name'], 'contact_number': stop['c_number'],
+        'send_whatsapp': stop['send_whatsapp'] == true,
       }).toList(),
     });
     if (!mounted) return;

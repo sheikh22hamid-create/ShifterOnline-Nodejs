@@ -291,6 +291,7 @@ model pkg_order {
   booking_type           Int?
   city_id                Int?
   send_sender_whatsapp   Boolean            @default(false)
+  send_receiver_whatsapp Boolean            @default(false)
   search_system      Int?      @db.TinyInt
   search_deadline_at DateTime? @db.DateTime(0)
   schedule_date_time     String?            @db.VarChar(255)
@@ -409,6 +410,7 @@ model pkg_order_stops {
   landmark       String?  @db.Text
   contact_name   String?  @db.Text
   contact_number String?  @db.Text
+  send_whatsapp  Boolean  @default(false)
   created_at     DateTime @default(now())
 
   @@index([order_id, sequence], map: "idx_pkg_order_stops_order_sequence")
