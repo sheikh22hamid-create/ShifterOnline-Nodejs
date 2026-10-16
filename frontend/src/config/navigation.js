@@ -71,6 +71,7 @@ export const NAV_GROUPS = [
       { to: '/guarantee/workload', label: 'Guarantee Queue & Workload', icon: Users, roles: MANAGERS, built: true },
       { to: '/order-search', label: 'Order Search System', icon: Radar, roles: ALL_STAFF, built: true },
       { to: '/tiered-dispatch', label: 'Tiered Dispatch & Penalties', icon: Layers, roles: ALL_STAFF, built: true },
+      { to: '/driver-performance', label: 'Driver Performance', icon: BarChart3, roles: ALL_STAFF, built: true },
       { to: '/fleet/driver-activity', label: 'Driver Duty Logs', icon: Activity, roles: ALL_STAFF, built: true },
       { to: '/trip-feedback', label: 'Trip Feedback', icon: MessageSquareText, roles: ALL_STAFF, built: true },
       { to: '/driver-training', label: 'Driver Training', icon: GraduationCap, roles: ALL_STAFF, built: true },

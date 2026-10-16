@@ -94,6 +94,7 @@ const adminBookingGuaranteeController = require("../controllers/adminBookingGuar
 const adminOrderSearchController = require("../controllers/adminOrderSearchController");
 const adminNextDayOfferController = require("../controllers/adminNextDayOfferController");
 const tierDispatch = require("../controllers/adminTierDispatchController");
+const driverPerformance = require("../controllers/adminDriverPerformanceController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
 router.put("/daily-driver/plans/:planId", auth, authorize("superadmin", "admin"), adminDailyDriverController.updatePlan);
@@ -124,6 +125,8 @@ router.put("/tier-dispatch/settings", auth, authorize("superadmin"), tierDispatc
 router.get("/tier-dispatch/penalties", auth, authorize(...RIDER_ROLES), tierDispatch.listPenalties);
 router.post("/tier-dispatch/penalties/:id/waive", auth, authorize("superadmin", "admin"), tierDispatch.waivePenalty);
 router.post("/tier-dispatch/counters/reset", auth, authorize("superadmin", "admin"), tierDispatch.resetCounter);
+router.get("/driver-performance", auth, authorize(...RIDER_ROLES), driverPerformance.listPerformance);
+router.get("/driver-performance/:riderId", auth, authorize(...RIDER_ROLES), driverPerformance.getDriverDetail);
 router.get("/tier-dispatch/cancel-requests", auth, authorize(...RIDER_ROLES), tierDispatch.listCancelRequests);
 router.post("/tier-dispatch/cancel-requests/:id/approve", auth, authorize("superadmin", "admin"), tierDispatch.approveCancel);
 router.post("/tier-dispatch/cancel-requests/:id/reject", auth, authorize("superadmin", "admin"), tierDispatch.rejectCancel);

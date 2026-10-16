@@ -60,6 +60,7 @@ const ExecutiveWorkspace = lazy(() => import('./pages/ExecutiveWorkspace'))
 const GuaranteeWorkload = lazy(() => import('./pages/GuaranteeWorkload'))
 const OrderSearchSettings = lazy(() => import('./pages/OrderSearchSettings'))
 const TieredDispatch = lazy(() => import('./pages/TieredDispatch'))
+const DriverPerformance = lazy(() => import('./pages/DriverPerformance'))
 const MonthlyAttendanceReports = lazy(() => import('./pages/MonthlyAttendanceReports'))
 const ProfitAndRevenue = lazy(() => import('./pages/ProfitAndRevenue'))
 const NotFound = lazy(() => import('./pages/NotFound'))
@@ -106,6 +107,7 @@ function App() {
             <Route path="/guarantee/workload" element={<Gated roles={['superadmin', 'admin']}><GuaranteeWorkload /></Gated>} />
             <Route path="/order-search" element={<OrderSearchSettings />} />
             <Route path="/tiered-dispatch" element={<TieredDispatch />} />
+            <Route path="/driver-performance" element={<DriverPerformance />} />
             <Route path="/fleet/driver-activity" element={<DriverActivity />} />
             <Route path="/trip-feedback" element={<TripFeedback />} />
             <Route path="/driver-training" element={<DriverTraining />} />
