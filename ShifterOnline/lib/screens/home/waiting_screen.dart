@@ -8,6 +8,7 @@ import 'package:goParcel/Api/config.dart';
 import 'package:goParcel/bottombar.dart';
 import 'package:goParcel/screens/home/home.dart';
 import 'package:goParcel/screens/home/trackingpoliyline.dart';
+import 'package:goParcel/screens/home/vehicle_booking_animation.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
 import 'package:goParcel/utils/colors.dart';
@@ -17,7 +18,11 @@ import 'package:lottie/lottie.dart';
 
 class WaitingScreen extends StatefulWidget {
   final String orderId;
-  const WaitingScreen({Key? key, required this.orderId}) : super(key: key);
+
+  /// Name of the vehicle the customer booked (e.g. "3 wheeler"); drives the animation. When it is not passed
+  /// (app reopened on this screen) it is restored from the saved value or the order itself.
+  final String? vehicleName;
+  const WaitingScreen({Key? key, required this.orderId, this.vehicleName}) : super(key: key);
 
   @override
   State<WaitingScreen> createState() => _WaitingScreenState();
@@ -26,6 +31,8 @@ class WaitingScreen extends StatefulWidget {
 class _WaitingScreenState extends State<WaitingScreen> {
   static const _waitingOrderKey = 'active_waiting_order_id';
   static const _waitingExpiryKey = 'active_waiting_expires_at';
+  static const _waitingVehicleKey = 'active_waiting_vehicle';
+  String _vehicleName = '';
   Timer? _timer;
   Timer? _timeoutTimer;
   Timer? _countdownTicker;
@@ -44,11 +51,13 @@ class _WaitingScreenState extends State<WaitingScreen> {
   static void clearPersistedWaitingOrder() {
     getdata.remove(_waitingOrderKey);
     getdata.remove(_waitingExpiryKey);
+    getdata.remove(_waitingVehicleKey);
   }
 
   void _persistWaitingOrder(int expiresAt) {
     getdata.write(_waitingOrderKey, widget.orderId);
     getdata.write(_waitingExpiryKey, expiresAt);
+    if (_vehicleName.isNotEmpty) getdata.write(_waitingVehicleKey, _vehicleName);
   }
 
   void _navigateBackToHome() {
@@ -158,6 +167,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
     NodeSocketManager.instance.connectionState.addListener(_recoverAfterReconnect);
     _listenForAssignment();
     final savedOrderId = getdata.read(_waitingOrderKey)?.toString();
+    _vehicleName = (widget.vehicleName ?? (savedOrderId == widget.orderId ? getdata.read(_waitingVehicleKey)?.toString() : null) ?? '').trim();
     final savedExpiry = int.tryParse(getdata.read(_waitingExpiryKey)?.toString() ?? '');
     final now = DateTime.now().millisecondsSinceEpoch;
     final hasValidSavedTimer = savedOrderId == widget.orderId &&
@@ -207,6 +217,13 @@ class _WaitingScreenState extends State<WaitingScreen> {
           ? Map<String, dynamic>.from(list.first)
           : null;
       if (order == null) return;
+
+      // The order knows its vehicle, so the animation is right even if this screen was reopened cold.
+      final orderVehicle = (order['category'] ?? '').toString().trim();
+      if (orderVehicle.isNotEmpty && orderVehicle != _vehicleName && mounted) {
+        setState(() => _vehicleName = orderVehicle);
+        getdata.write(_waitingVehicleKey, orderVehicle);
+      }
 
       final flow = int.tryParse((order['order_status'] ?? order['Order_flow_id'] ?? '').toString());
       final riderId = int.tryParse((order['rid'] ?? order['rider_id'] ?? '').toString()) ?? 0;
@@ -407,7 +424,11 @@ class _WaitingScreenState extends State<WaitingScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Attractive Lottie Animation with fallback
+                        // The booked vehicle, animated (Bike / E-Loader / 3 Wheeler / 4 Wheeler); the
+                        // generic Lottie below is only the fallback when the vehicle is not known.
+                        if (_vehicleName.isNotEmpty)
+                          VehicleBookingAnimation(vehicleName: _vehicleName, height: 170)
+                        else
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(

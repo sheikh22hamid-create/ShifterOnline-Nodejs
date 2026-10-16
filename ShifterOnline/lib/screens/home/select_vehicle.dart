@@ -19,6 +19,7 @@ import '../../utils/receiver_pay_options.dart';
 import '../../utils/schedule_time.dart';
 import '../../utils/scheduled_order_watch.dart';
 import 'add_stops_screen.dart';
+import 'vehicle_booking_animation.dart';
 import 'confirm_order_map.dart';
 import 'coupon_sheet.dart';
 import 'package:goParcel/services/booking_guarantee_api_service.dart';
@@ -987,7 +988,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               : "Your order #$orderId is scheduled for ${DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!)}. It will go live at exactly that time, and a driver will then be assigned.",
         );
       } else {
-        Get.offAll(() => WaitingScreen(orderId: orderId));
+        Get.offAll(() => WaitingScreen(orderId: orderId, vehicleName: _vehicleName(_selected!)));
       }
     } else {
       final msg = _text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.');
@@ -1097,6 +1098,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     required String badgeText,
     required String message,
   }) {
+    final bookedVehicle = _selected == null ? '' : _vehicleName(_selected!);
     Get.dialog(
       WillPopScope(
         onWillPop: () async {
@@ -1171,6 +1173,21 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                     ],
                   ),
                 ),
+                if (bookedVehicle.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  // The vehicle that was just booked, animated.
+                  VehicleBookingAnimation(
+                    vehicleName: bookedVehicle,
+                    height: 118,
+                    showLabel: false,
+                    backgroundColor: const Color(0xFFFFF3EA),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    bookedVehicle,
+                    style: const TextStyle(fontSize: 13, fontFamily: 'Gilroy_Bold', color: Color(0xff1E293B)),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 Text(
                   message,
