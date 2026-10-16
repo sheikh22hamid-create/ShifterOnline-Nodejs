@@ -63,6 +63,11 @@ const TEMPLATE = `<!doctype html>
       <a class="call" id="call" href="#">Call driver</a>
     </div>
   </div>
+  <div class="card" id="otpCard" hidden>
+    <div class="muted">Drop OTP</div>
+    <div id="dropOtp" style="font-size:30px;font-weight:800;letter-spacing:6px;margin:4px 0"></div>
+    <div class="muted">Tell this OTP to the driver when the parcel reaches you. Unloading starts only after it is verified.</div>
+  </div>
   <div class="card" id="addrCard" hidden>
     <div class="muted">Pickup</div><div id="pickupAddr"></div>
     <div class="muted" style="margin-top:8px">Drop</div><div id="dropAddr"></div>
@@ -325,7 +330,7 @@ const TEMPLATE = `<!doctype html>
 
   function render(s) {
     setText("order", s.order_id ? "Order #" + s.order_id : "");
-    $("driverCard").hidden = true; $("addrCard").hidden = true;
+    $("driverCard").hidden = true; $("addrCard").hidden = true; $("otpCard").hidden = true;
     for (var c = 0; c < DELIVERED_CARDS.length; c++) $(DELIVERED_CARDS[c]).hidden = true;
     setText("eta", ""); setText("stale", "");
     if (s.state === "invalid" || s.state === "expired" || s.state === "cancelled") {
@@ -339,6 +344,7 @@ const TEMPLATE = `<!doctype html>
     renderSteps(step);
     if (s.eta) setText("eta", "Arriving in ~" + s.eta.minutes + " min" + (s.eta.distance_km != null ? " \\u00B7 " + s.eta.distance_km + " km away" : ""));
     if (s.position && s.position.stale) setText("stale", "Waiting for the driver's location");
+    if (s.drop_otp) { $("otpCard").hidden = false; setText("dropOtp", s.drop_otp); }
     if (s.driver && s.driver.first_name) {
       $("driverCard").hidden = false;
       setText("driverName", s.driver.first_name);

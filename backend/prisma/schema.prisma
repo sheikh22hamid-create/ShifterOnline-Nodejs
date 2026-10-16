@@ -309,6 +309,7 @@ model pkg_order {
   radius_charge          Decimal            @db.Decimal(8, 2)
   distance_refund        Decimal?           @db.Decimal(10, 2)
   otp                    Int?
+  drop_otp               Int?
   payment_status         Int?               @default(0)
   razorpay_payment_id    String?            @db.VarChar(255)
   gst_number             String?            @db.VarChar(255)
@@ -445,6 +446,7 @@ model pkg_order_wait_timer {
   // (tripLifecycle.sweepPickupRelocationCeiling) measures against, distinct
   // from pickup_wait_start which DOES get cleared on every pause.
   first_arrival_at    DateTime? @db.DateTime(0)
+  drop_arrived_at     DateTime? @db.DateTime(0)
   // Wait time banked across a pickup-location change while the driver was
   // already parked at the old pickup point — see orderPickupService and
   // sql/20260929_pickup_change_wait_banking.sql.

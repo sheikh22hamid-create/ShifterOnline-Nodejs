@@ -12,6 +12,7 @@ jest.mock("../receiverTrackSettings", () => ({
   getHelpConfig: jest.fn(() => ({ phone: "9109114515", whatsapp: "919109114515" })),
   APP_URL: "https://play.google.com/store/apps/details?id=com.shifter.online",
 }));
+jest.mock("../dropOtp", () => ({ isRequired: jest.fn().mockResolvedValue(false) }));
 jest.mock("../trackEtaService", () => ({ getEta: jest.fn(), getRoute: jest.fn(), clearOrder: jest.fn(), simplify: jest.fn((p) => p) }));
 jest.mock("../tripRouteService", () => ({ buildRoute: jest.fn().mockRejectedValue(new Error("not under test")) }));
 
@@ -19,6 +20,7 @@ const prisma = require("../../config/db");
 const settings = require("../receiverTrackSettings");
 const eta = require("../trackEtaService");
 const live = require("../liveDriverPositions");
+const dropOtp = require("../dropOtp");
 const { buildSnapshot } = require("../trackSnapshotService");
 
 const NOW = Date.UTC(2026, 9, 6, 10, 0, 0);
@@ -94,6 +96,26 @@ describe("privacy: nothing live before pickup", () => {
     prisma.pkg_order.findUnique.mockResolvedValue(order({ otp: 7788, uid: 5, total_dcharge: 450, pmobile: "9811111111" }));
     const text = JSON.stringify(await buildSnapshot(link, { now: NOW }));
     for (const secret of ["7788", "450", "9811111111", "uid", "otp", "total_dcharge"]) expect(text).not.toContain(secret);
+  });
+});
+
+describe("drop OTP for the receiver", () => {
+  it("shows the drop OTP while on route when the order requires one", async () => {
+    dropOtp.isRequired.mockResolvedValueOnce(true);
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ otp: 7788, drop_otp: 4321 }));
+    const s = await buildSnapshot(link, { now: NOW });
+    expect(s.drop_otp).toBe("4321");
+    expect(JSON.stringify(s)).not.toContain("7788"); // the pickup OTP is never exposed
+  });
+  it("omits the key entirely when there is no drop OTP", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ drop_otp: null }));
+    expect(await buildSnapshot(link, { now: NOW })).not.toHaveProperty("drop_otp");
+  });
+  it("never shows it before the goods are picked up", async () => {
+    dropOtp.isRequired.mockResolvedValue(true);
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ order_status: 1, drop_otp: 4321 }));
+    expect(JSON.stringify(await buildSnapshot(link, { now: NOW }))).not.toContain("4321");
+    dropOtp.isRequired.mockResolvedValue(false);
   });
 });
 

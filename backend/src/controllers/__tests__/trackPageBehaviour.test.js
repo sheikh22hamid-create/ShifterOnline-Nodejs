@@ -31,6 +31,17 @@ describe("tracking page script", () => {
     expect(p.els.driverCard.hidden).toBe(true);
   });
 
+  it("shows the drop OTP card (as text) only when the snapshot carries a drop OTP", async () => {
+    const withOtp = boot([{ state: "active", order_id: 7, step: 4, drop_otp: "4321", driver: null }]);
+    await withOtp.flush();
+    expect(withOtp.els.otpCard.hidden).toBe(false);
+    expect(withOtp.els.dropOtp.textContent).toBe("4321");
+
+    const without = boot([{ state: "active", order_id: 7, step: 3, driver: null }]);
+    await without.flush();
+    expect(without.els.otpCard.hidden).toBe(true);
+  });
+
   it("hides the call button when the phone has no digits", async () => {
     const p = boot([{ state: "active", step: 1, driver: { first_name: "A", phone: "n/a" } }]);
     await p.flush();

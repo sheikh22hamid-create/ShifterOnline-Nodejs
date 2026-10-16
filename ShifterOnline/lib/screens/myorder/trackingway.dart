@@ -2868,6 +2868,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final isFinished = status == "completed" || status == "cancelled" || status == "cancel";
     final otp = (orderProduc?["otp"] ?? "").toString();
     final hasOtp = !isFinished && otp.isNotEmpty;
+    // Drop OTP: only sent by the backend while the goods are on the way (and the feature is on).
+    final dropOtp = (orderProduc?["drop_otp"] ?? "").toString();
+    final hasDropOtp = !isFinished && dropOtp.isNotEmpty;
     final isFreeBooking = orderProduc?["free_booking"] is Map &&
         (orderProduc?["free_booking"]?["is_free"] == true || orderProduc?["free_booking"]?["is_free"] == "true");
 
@@ -2880,6 +2883,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         ],
         if (hasOtp) ...[
           _buildOtpCard(otp),
+          const SizedBox(height: 14),
+        ],
+        if (hasDropOtp) ...[
+          _buildDropOtpCard(dropOtp),
           const SizedBox(height: 14),
         ],
         if (!isFinished) ...[
@@ -3044,6 +3051,84 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   style: const TextStyle(fontSize: 12, height: 1.25),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Drop OTP card: the driver asks for it at the drop before unloading starts. The receiver sees the
+  // same OTP on their tracking page, so either person can read it out.
+  Widget _buildDropOtpCard(String otp) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F7FF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFD3E3FF), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2979FF).withOpacity(0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.lock_rounded, color: Color(0xFF2979FF), size: 15),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    "Drop OTP".tr,
+                    style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: otp));
+                  ApiWrapper.showToastMessage("OTP Copied".tr);
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2979FF).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.copy_rounded, color: Color(0xFF2979FF), size: 15),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              otp.split('').join(' '),
+              style: const TextStyle(
+                color: Color(0xFF2979FF),
+                fontFamily: "Gilroy_Bold",
+                fontSize: 26,
+                letterSpacing: 3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Give this OTP to the driver when the goods reach the drop. Unloading starts only after it is verified. The receiver can see it too.".tr,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: greaycolor.withOpacity(0.85),
+              fontFamily: "Gilroy_Medium",
+              fontSize: 10.5,
+              height: 1.25,
             ),
           ),
         ],

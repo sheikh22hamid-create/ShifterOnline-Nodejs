@@ -51,12 +51,12 @@ function assertOrderEditable(order, numericUid) {
   }
 }
 
-// Once the driver has reached the final drop (drop_wait_start stamped) the
-// route is finished - a new stop would sit behind the driver, so block it.
+// Once the driver has reached the final drop (drop_arrived_at, or drop_wait_start on orders
+// without a drop OTP) the route is finished - a new stop would sit behind the driver, so block it.
 async function assertNotAtDrop(client, order) {
   if (order.order_status !== 3) return;
   const timer = await client.pkg_order_wait_timer.findFirst({ where: { order_id: order.id } });
-  if (timer?.drop_wait_start) {
+  if (timer?.drop_wait_start || timer?.drop_arrived_at) {
     throw new Error("ALREADY_AT_DROP");
   }
 }

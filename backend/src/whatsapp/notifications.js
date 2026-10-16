@@ -294,10 +294,16 @@ async function notifyDriverArrivedDrop(orderId) {
   const riderPhone = rider?.fmobile || "9109114515";
   const riderVehicle = rider?.vehicle_no ? `(${rider.vehicle_no})` : "";
 
+  const dropOtpLine = (await require("../services/dropOtp").isRequired(order))
+    ? `🔐 *Drop OTP*: *${order.drop_otp}* — parcel lene se pehle ye OTP driver ko batayein.
+
+`
+    : "";
   const buildMsg = (extra) =>
     `Hello! 👋\n` +
     `🚚 *Driver Arrived at Drop Location!*\n\n` +
     `Driver parcel deliver karne ke liye drop location par pahunch chuka hai. Kripya parcel receive karein.\n\n` +
+    dropOtpLine +
     `📦 *Order ID*: #${order.id}\n` +
     `🛵 *Driver*: *${riderName}* ${riderVehicle} — 📞 ${riderPhone}\n` +
     `🎯 *Drop Location*: ${order.daddress || "N/A"}\n` +

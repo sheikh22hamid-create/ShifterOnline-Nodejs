@@ -18,7 +18,7 @@ const firstName = (full) => String(full || "").trim().split(/\s+/)[0] || null;
 
 const ORDER_SELECT = {
   id: true, rid: true, order_status: true, o_status: true, dmobile: true,
-  plat: true, plong: true, dlat: true, dlong: true, paddress: true, daddress: true, drop_time: true, ddate: true,
+  plat: true, plong: true, dlat: true, dlong: true, paddress: true, daddress: true, drop_time: true, ddate: true, drop_otp: true,
 };
 
 // drop_time / ddate hold IST wall-clock values (see driverOrderHistoryController).
@@ -152,11 +152,11 @@ async function buildSnapshot(link, { now = Date.now() } = {}) {
       ? prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { first_name: true, vehicle_no: true, fmobile: true, rlats: true, rlongs: true, rloc_updated_at: true } })
       : null,
     hasDriver
-      ? prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: order.id, rid: order.rid } }, select: { drop_wait_start: true } })
+      ? prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: order.id, rid: order.rid } }, select: { drop_wait_start: true, drop_arrived_at: true } })
       : null,
   ]);
 
-  const atDrop = status === 3 && Boolean(timer && timer.drop_wait_start);
+  const atDrop = status === 3 && Boolean(timer && (timer.drop_wait_start || timer.drop_arrived_at));
   const step = status < 1 ? 0 : status === 1 ? 1 : status === 2 ? 2 : atDrop ? 4 : 3;
 
   let position = null; let eta = null; let route = null; let pickup = null; let drop = null;
@@ -172,10 +172,14 @@ async function buildSnapshot(link, { now = Date.now() } = {}) {
     if (pickupPt && dropPt) route = await safe("route", () => etaService.getRoute(order.id, pickupPt, dropPt));
   }
 
+  const dropOtpValue = status === 3 && (await require("./dropOtp").isRequired(order)) ? String(order.drop_otp) : null;
   return {
     state: "active", order_id: order.id, step,
     driver: rider ? { first_name: firstName(rider.first_name), vehicle_no: rider.vehicle_no || null, phone: rider.fmobile || null } : null,
     eta, position, route, pickup, drop, delivered_at: null, poll_ms: POLL_ACTIVE_MS,
+    // Drop OTP for the receiver to read out to the driver (on-route onwards). The key is omitted entirely
+    // when the order has none, so the public payload never carries an "otp" field otherwise.
+    ...(dropOtpValue ? { drop_otp: dropOtpValue } : {}),
   };
 }
 

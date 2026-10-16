@@ -38,6 +38,7 @@ const { getScheduledMinAdvanceMinutes, getScheduledConfirmLeadMinutes } = requir
 const SCHEDULE_LEAD_GRACE_MS = 60 * 1000;
 const { getPickupEtaRow, buildEtaView, isPickupEtaExpired } = require("../services/pickupEtaService");
 const { buildCustomerWaitingView } = require("../services/customerWaitingView");
+const dropOtpService = require("../services/dropOtp");
 
 /** Gives referral points back when a booking that already redeemed them failed. Never throws. */
 async function restoreRedeemedPoints(uid, points, reason) {
@@ -66,7 +67,12 @@ async function customerTripProgress(order) {
     prisma.driver_trip_progress.findUnique({ where: { order_id: order.id } }),
     prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: order.id, rid: order.rid } } }),
   ]);
-  return { stop_step: progress?.stop_step || 0, arrived_drop: order.order_status === 3 && !!timer?.drop_wait_start };
+  return {
+    stop_step: progress?.stop_step || 0,
+    arrived_drop: order.order_status === 3 && !!(timer?.drop_wait_start || timer?.drop_arrived_at),
+    // Drop OTP gate: true while the driver is at the drop and the unloading timer is waiting for the OTP.
+    drop_otp_pending: order.order_status === 3 && !!timer?.drop_arrived_at && !timer?.drop_wait_start && (await dropOtpService.isRequired(order)),
+  };
 }
 
 async function customerWaitingFor(order) {
@@ -602,6 +608,7 @@ async function createOrderCore({
       trans_id: transactionId || null,
       photos: photos || null,
       otp: crypto.randomInt(1000, 10000),
+      drop_otp: await require("../services/dropOtp").generateForNewOrder(),
       referral_points_used: referralPointsUsed,
       referral_points_amount: referralPointsAmount,
       body_type: cleanBodyType,
@@ -998,6 +1005,8 @@ async function getOrderDetails(req, res) {
           pickup_otp_timeout_minutes: String(await getPickupOtpTimeoutMinutes()),
           advance_payment_timeout_minutes: String(await getAdvancePaymentTimeoutMinutes()),
           otp: order.otp,
+          // Drop OTP shown to the booker (and the receiver, on their tracking page); "" when the order has none.
+          drop_otp: (await dropOtpService.isRequired(order)) && order.order_status === 3 ? String(order.drop_otp) : "",
           total_Delivery_charge: String(order.total_dcharge),
           grand_total: String(order.total_dcharge),
           Delivery_charge: String(order.d_charge),

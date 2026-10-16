@@ -75,6 +75,7 @@ const HANDLED_FLAG_KEYS = [
   'half_body_charge',
   'advance_payment_timeout_minutes',
   'pickup_otp_timeout_minutes',
+  'drop_otp_enabled',
   'pickup_relocate_ceiling_minutes',
   'pickup_small_move_threshold_m',
   'pickup_otp_mismatch_flag_m',
@@ -442,6 +443,22 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               If the customer doesn't hand over the pickup OTP within this many minutes of the driver arriving, the ride auto-cancels from the customer's side.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-drop_otp_enabled">Drop OTP (drop_otp_enabled)</Label>
+            <select
+              id="flag-drop_otp_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.drop_otp_enabled ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, drop_otp_enabled: e.target.value }))}
+            >
+              <option value="0">Disabled (0 - the unloading timer starts when the driver arrives at the drop)</option>
+              <option value="1">Enabled (1 - the driver must enter the drop OTP before unloading starts)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Applies to new bookings only. The booker and the receiver both see the OTP; a wrong OTP never starts the timer. Needs migration <code>20261016010000_add_drop_otp</code> and the updated driver app. Switching it OFF releases any order stuck at the drop.
             </p>
           </div>
           <div>

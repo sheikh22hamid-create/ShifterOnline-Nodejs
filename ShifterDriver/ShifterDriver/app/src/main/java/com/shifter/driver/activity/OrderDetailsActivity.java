@@ -112,6 +112,10 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // Guards showOtpDialog() from re-popping on every trip-progress poll once
     // the driver has already dismissed it once for this pickup arrival.
     private boolean otpDialogAutoShownForPickup;
+    // Same idea for the drop OTP (the unloading timer waits for it): auto-open it once per arrival,
+    // and keep a handle so it can be closed if the server no longer needs it.
+    private boolean dropOtpDialogAutoShown;
+    private android.app.Dialog activeDropOtpDialog;
     // Currently/last shown OTP dialog, so a large-move pickup change arriving
     // over the socket (onPickupUpdatedFromCustomer) can close it - the server
     // reverts the order to en-route and would reject an OTP entered here.
@@ -267,6 +271,92 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             // off from the pickup) - the OTP prompt no longer applies.
             if (activeOtpDialog != null && activeOtpDialog.isShowing()) activeOtpDialog.dismiss();
         }
+        // Drop OTP: the driver has reached the final drop but the unloading timer is still waiting for the OTP.
+        boolean dropOtpPending = data.has("drop_otp_pending") && data.get("drop_otp_pending").getAsBoolean();
+        if (dropOtpPending && !dropOtpDialogAutoShown) {
+            dropOtpDialogAutoShown = true;
+            showDropOtpDialog();
+        } else if (!dropOtpPending) {
+            dropOtpDialogAutoShown = false;
+            if (activeDropOtpDialog != null && activeDropOtpDialog.isShowing()) activeDropOtpDialog.dismiss();
+        }
+    }
+
+    private boolean isDropOtpPending() {
+        if (orderItem == null) return false;
+        JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
+        return cached != null && cached.has("drop_otp_pending") && cached.get("drop_otp_pending").getAsBoolean();
+    }
+
+    private void showDropOtpDialog() {
+        android.app.Dialog dialog = new android.app.Dialog(this);
+        activeDropOtpDialog = dialog;
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_enter_drop_otp);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        }
+        TextView submit = dialog.findViewById(R.id.txt_submit_otp);
+        // Closing only hides the dialog (the button on the trip screen re-opens it); nothing is sent.
+        dialog.findViewById(R.id.txt_cancel_otp).setOnClickListener(v -> dialog.dismiss());
+
+        EditText[] boxes = {
+                dialog.findViewById(R.id.ed_otp_1), dialog.findViewById(R.id.ed_otp_2),
+                dialog.findViewById(R.id.ed_otp_3), dialog.findViewById(R.id.ed_otp_4)
+        };
+        for (int i = 0; i < boxes.length; i++) {
+            final int index = i;
+            boxes[i].addTextChangedListener(new android.text.TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    for (EditText box : boxes) box.setBackground(getDrawable(R.drawable.bg_input_white));
+                    if (s.length() == 1 && index < boxes.length - 1) boxes[index + 1].requestFocus();
+                    if (otpFromBoxes(boxes).length() == 4 && !tripActionPending) submit.performClick();
+                }
+                @Override public void afterTextChanged(android.text.Editable s) {}
+            });
+            boxes[i].setOnKeyListener((v, keyCode, event) -> {
+                if (keyCode == android.view.KeyEvent.KEYCODE_DEL && event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                        && boxes[index].getText().toString().isEmpty() && index > 0) {
+                    boxes[index - 1].requestFocus();
+                    boxes[index - 1].setText("");
+                }
+                return false;
+            });
+        }
+        boxes[0].requestFocus();
+
+        submit.setOnClickListener(v -> {
+            String otp = otpFromBoxes(boxes);
+            if (!otp.matches("[0-9]{4}")) {
+                for (EditText box : boxes) box.setBackground(getDrawable(R.drawable.bg_input_error));
+                Toast.makeText(this, "Enter the 4-digit drop OTP", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (tripActionPending) return;
+            submit.setEnabled(false);
+            tripActionPending = true;
+            binding.txtConfirm.setEnabled(false);
+            // A wrong OTP is rejected by the server and the unloading timer does not start.
+            com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "verify_drop_otp", otp, (data, error) -> {
+                tripActionPending = false;
+                if (isFinishing() || isDestroyed()) return;
+                submit.setEnabled(true);
+                binding.txtConfirm.setEnabled(true);
+                if (error != null) {
+                    for (EditText box : boxes) { box.setBackground(getDrawable(R.drawable.bg_input_error)); box.setText(""); }
+                    boxes[0].requestFocus();
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                dialog.dismiss();
+                applyTripProgress();
+                updateTripControls();
+            });
+        });
+        dialog.show();
     }
 
     private void sendTripAction(String action, String otp, Runnable success) {
@@ -1748,6 +1838,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             if (tripActionPending) return;
             if ("pickup".equals(status)) {
                 showOtpDialog();
+            } else if ("drop_otp".equals(status)) {
+                showDropOtpDialog();
             } else if ("pickup_complete".equals(status)) {
                 new android.app.AlertDialog.Builder(this)
                         .setTitle("Pickup complete?")
@@ -2106,6 +2198,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         String flow = orderItem.getOrderFlowId();
         if ("2".equals(flow)) { binding.txtTripLocationStatus.setText("Pickup reached. Verify OTP after goods handover."); return; }
         if ("4".equals(flow)) { binding.txtTripLocationStatus.setText("Drop reached. Confirm delivery after goods handover."); return; }
+        if ("3".equals(flow) && isDropOtpPending()) {
+            binding.txtTripLocationStatus.setText("Drop reached. Enter the drop OTP to start unloading."); return;
+        }
         if ("3".equals(flow) && getActiveStopStep() % 2 == 1) {
             binding.txtTripLocationStatus.setText("Stop reached. Complete this stop to continue."); return;
         }
@@ -2210,7 +2305,11 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 binding.txtReject.setVisibility(View.GONE);
                 int numStops = (stops != null) ? stops.size() : 0;
                 int stopStep = getActiveStopStep();
-                if (numStops > 0 && stopStep < numStops * 2) {
+                if (isDropOtpPending()) {
+                    // Reached the drop, unloading timer waiting for the drop OTP.
+                    status = "drop_otp";
+                    binding.txtConfirm.setText("VERIFY DROP OTP");
+                } else if (numStops > 0 && stopStep < numStops * 2) {
                     int stopIndex = stopStep / 2;
                     int stopNumber = stopIndex + 1;
                     if (stopStep % 2 == 0) {

@@ -549,7 +549,10 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     }
     if (progress?.automation_enabled) {
       const arrival = await prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: orderId, rid: riderId } } });
-      if (order.order_status !== 3 || !arrival?.drop_wait_start) return { success: false, msg: "Confirm drop arrival and handover before completing delivery" };
+      if (order.order_status !== 3 || !arrival?.drop_wait_start) {
+        const needsDropOtp = arrival?.drop_arrived_at && (await require('./dropOtp').isRequired(order));
+        return { success: false, msg: needsDropOtp ? "Verify the drop OTP before completing delivery" : "Confirm drop arrival and handover before completing delivery" };
+      }
     }
     // Early Drop: a driver who completes well short of the booked drop (the
     // customer asked to be dropped earlier) ends the trip at their current

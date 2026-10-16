@@ -115,6 +115,15 @@ describe("orderStopsService", () => {
       ).rejects.toThrow("ORDER_NOT_ACTIVE");
     });
 
+    it("also rejects it when the driver has arrived at the drop but the drop OTP is not verified yet", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...baseOrder, order_status: 3, o_status: "On_Route" });
+      prisma.pkg_order_wait_timer.findFirst.mockResolvedValue({ drop_arrived_at: new Date(), drop_wait_start: null });
+
+      await expect(
+        orderStopsService.previewAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" })
+      ).rejects.toThrow("ALREADY_AT_DROP");
+    });
+
     it("rejects adding a stop on-route once the driver has reached the drop", async () => {
       prisma.pkg_order.findUnique.mockResolvedValue({ ...baseOrder, order_status: 3, o_status: "On_Route" });
       prisma.pkg_order_wait_timer.findFirst.mockResolvedValue({ drop_wait_start: new Date() });
