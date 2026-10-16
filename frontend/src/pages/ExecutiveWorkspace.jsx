@@ -6,6 +6,7 @@ import useApiQuery from '../hooks/useApiQuery'
 import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import GuaranteeCountdown from '../components/orders/GuaranteeCountdown'
+import DriverSourceTabs from '../components/orders/DriverSourceTabs'
 import { formatDateTime } from '../utils/format'
 import {
   ACTIONS,
@@ -37,6 +38,8 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
   const [driverId, setDriverId] = useState('')
   const [busy, setBusy] = useState(false)
   const [riders, setRiders] = useState([])
+  const [dailyRiders, setDailyRiders] = useState([])
+  const [riderSource, setRiderSource] = useState('all')
   const [riderQuery, setRiderQuery] = useState('')
   const [confirmRider, setConfirmRider] = useState(null)
   const [unavailable, setUnavailable] = useState(false)
@@ -68,6 +71,15 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
           setRiders(Array.isArray(res.data?.data) ? res.data.data : [])
         } catch (err) {
           toastRef.current.error(errMsg(err, 'Could not load drivers'))
+        }
+        // Available Daily Drivers for this case's order (powers the Daily Drivers filter). Best effort:
+        // if it cannot load, the picker simply stays on all drivers.
+        try {
+          const dailyRes = await api.get(`/orders/${c.order_id}/daily-drivers`)
+          const dailyData = dailyRes.data?.data
+          setDailyRiders(dailyData?.applicable && Array.isArray(dailyData.drivers) ? dailyData.drivers : [])
+        } catch {
+          setDailyRiders([])
         }
       }
     }
@@ -119,9 +131,10 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
 
   const filteredRiders = useMemo(() => {
     const q = riderQuery.trim().toLowerCase()
-    const list = q ? riders.filter((r) => `${r.full_name ?? ''} ${r.fmobile ?? ''} ${r.vehicle_no ?? ''}`.toLowerCase().includes(q)) : riders
+    const pool = riderSource === 'daily' ? dailyRiders : riders
+    const list = q ? pool.filter((r) => `${r.full_name ?? ''} ${r.fmobile ?? ''} ${r.vehicle_no ?? ''}`.toLowerCase().includes(q)) : pool
     return list.slice(0, 8)
-  }, [riders, riderQuery])
+  }, [riders, dailyRiders, riderSource, riderQuery])
 
   const isOpen = c.status === 'open'
   return (
@@ -164,6 +177,9 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
 
               <div className="grid gap-2">
                 <div className="text-[12px] font-semibold" style={{ color: 'var(--ink)' }}>Assign a driver (online, approved, your city)</div>
+                {dailyRiders.length > 0 && (
+                  <DriverSourceTabs value={riderSource} onChange={setRiderSource} dailyCount={dailyRiders.length} />
+                )}
                 <input aria-label="Search drivers" value={riderQuery} onChange={(e) => setRiderQuery(e.target.value)} placeholder="Search name, mobile or vehicle number" className={inputClass} style={inputStyle} />
                 {filteredRiders.map((r) => (
                   <button key={r.id} type="button" disabled={busy} onClick={() => setConfirmRider(r)} className="flex items-center justify-between rounded-lg border px-3 py-2 text-left text-[13px] disabled:opacity-50" style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}>

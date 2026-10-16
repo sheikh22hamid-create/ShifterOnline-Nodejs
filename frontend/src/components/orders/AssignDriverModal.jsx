@@ -5,6 +5,8 @@ import Modal from '../common/Modal'
 import useApiQuery from '../../hooks/useApiQuery'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
 import OutsideDriverPanel from './OutsideDriverPanel'
+import DriverSourceTabs from './DriverSourceTabs'
+import useDailyDriversForOrder from '../../hooks/useDailyDriversForOrder'
 
 export default function AssignDriverModal({ open, order, onClose, onAssigned }) {
   const [search, setSearch] = useState('')
@@ -22,7 +24,17 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
       .then((res) => res.data.data.filter((d) => d.vehicle === order.category))
   }, [open, order, debouncedSearch])
   const { data, loading, error: loadError } = useApiQuery(fetcher)
-  const drivers = data ?? []
+  const allDrivers = data ?? []
+  // Daily Driver filter (scheduled / next-day / Booking Guarantee orders only; hidden otherwise).
+  const [source, setSource] = useState('all')
+  const daily = useDailyDriversForOrder(order?.id, open)
+  const showDaily = source === 'daily' && daily.applicable
+  const dailyMatches = debouncedSearch.trim()
+    ? daily.drivers.filter((d) =>
+        `${d.full_name ?? ''} ${d.fmobile ?? ''}`.toLowerCase().includes(debouncedSearch.trim().toLowerCase()))
+    : daily.drivers
+  const drivers = showDaily ? dailyMatches : allDrivers
+  const listLoading = showDaily ? daily.loading : loading
   const error = submitError || (loadError ? 'Could not load eligible drivers.' : '')
 
   async function handleAssign() {
@@ -68,6 +80,10 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
         </div>
       )}
 
+      {daily.applicable && (
+        <DriverSourceTabs value={source} onChange={setSource} dailyCount={daily.drivers.length} loading={daily.loading} />
+      )}
+
       <div className="mb-3 flex items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
         <Search size={14} style={{ color: 'var(--ink-faint)' }} />
         <input
@@ -80,17 +96,19 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
       </div>
 
       <div className="max-h-72 overflow-y-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
-        {loading && (
+        {listLoading && (
           <p className="px-3 py-6 text-center text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
             Loading eligible drivers…
           </p>
         )}
-        {!loading && drivers.length === 0 && (
+        {!listLoading && drivers.length === 0 && (
           <p className="px-3 py-6 text-center text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>
-            No online, approved {order?.category} drivers found nearby.
+            {showDaily
+              ? `No available Daily Drivers for this ${order?.category} order.`
+              : `No online, approved ${order?.category} drivers found nearby.`}
           </p>
         )}
-        {!loading &&
+        {!listLoading &&
           drivers.map((d) => (
             <button
               key={d.id}

@@ -95,6 +95,7 @@ const adminOrderSearchController = require("../controllers/adminOrderSearchContr
 const adminNextDayOfferController = require("../controllers/adminNextDayOfferController");
 const tierDispatch = require("../controllers/adminTierDispatchController");
 const driverPerformance = require("../controllers/adminDriverPerformanceController");
+const dailyDriverOrder = require("../controllers/adminDailyDriverOrderController");
 router.get("/daily-driver/plans", auth, authorize(...RIDER_ROLES), adminDailyDriverController.listPlans);
 router.post("/daily-driver/plans", auth, authorize("superadmin", "admin"), adminDailyDriverController.createPlan);
 router.put("/daily-driver/plans/:planId", auth, authorize("superadmin", "admin"), adminDailyDriverController.updatePlan);
@@ -241,6 +242,7 @@ router.get("/orders/next-day/:id/offers", auth, authorize(...RIDER_ROLES), scope
 router.get("/orders", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.list);
 router.get("/orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.getOne);
 router.get("/orders/:id/invoice", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.invoice);
+router.get("/orders/:id/daily-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, dailyDriverOrder.listForOrder);
 router.post("/orders/:id/assign-rider", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignRider);
 router.get("/outside-driver/vehicles", auth, authorize(...RIDER_ROLES), adminOrderController.outsideDriverVehicles);
 router.post("/orders/:id/outside-driver-lookup", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.outsideDriverLookup);

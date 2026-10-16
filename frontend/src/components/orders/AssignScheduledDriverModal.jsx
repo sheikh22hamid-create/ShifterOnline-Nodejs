@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import api from '../../services/api'
 import Modal from '../common/Modal'
 import useApiQuery from '../../hooks/useApiQuery'
+import DriverSourceTabs from './DriverSourceTabs'
+import useDailyDriversForOrder from '../../hooks/useDailyDriversForOrder'
 
 export default function AssignScheduledDriverModal({ open, order, onClose, onAssigned }) {
   const [selectedId, setSelectedId] = useState('')
@@ -16,7 +18,13 @@ export default function AssignScheduledDriverModal({ open, order, onClose, onAss
       .then((res) => res.data.data.filter((d) => d.vehicle === order.category))
   }, [open, order])
   const { data, loading } = useApiQuery(fetcher)
-  const drivers = data ?? []
+  const allDrivers = data ?? []
+  // Daily Driver filter: only the Daily Drivers who are available for this order's day.
+  const [source, setSource] = useState('all')
+  const daily = useDailyDriversForOrder(order?.id, open)
+  const showDaily = source === 'daily' && daily.applicable
+  const drivers = showDaily ? daily.drivers : allDrivers
+  const listLoading = showDaily ? daily.loading : loading
 
   async function handleAssign() {
     if (!selectedId) return
@@ -59,6 +67,9 @@ export default function AssignScheduledDriverModal({ open, order, onClose, onAss
           {error}
         </div>
       )}
+      {daily.applicable && (
+        <DriverSourceTabs value={source} onChange={setSource} dailyCount={daily.drivers.length} loading={daily.loading} />
+      )}
       <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="sched-driver">
         Driver
       </label>
@@ -69,7 +80,13 @@ export default function AssignScheduledDriverModal({ open, order, onClose, onAss
         className="mb-3 w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
         style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
       >
-        <option value="">{loading ? 'Loading…' : `Select ${order?.category || ''} driver`}</option>
+        <option value="">
+          {listLoading
+            ? 'Loading…'
+            : showDaily && drivers.length === 0
+              ? 'No available Daily Drivers'
+              : `Select ${showDaily ? 'Daily' : order?.category || ''} driver`}
+        </option>
         {drivers.map((d) => (
           <option key={d.id} value={d.id}>
             {d.full_name || `Driver #${d.id}`} — {d.fmobile}
