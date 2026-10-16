@@ -103,6 +103,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private android.content.BroadcastReceiver orderCancelledReceiver;
     private android.content.BroadcastReceiver destinationUpdatedReceiver;
     private android.content.BroadcastReceiver pickupUpdatedReceiver;
+    private android.content.BroadcastReceiver stopAddedReceiver;
     private final android.os.Handler tripHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private android.content.BroadcastReceiver tripProgressReceiver;
     private boolean tripActionPending;
@@ -332,6 +333,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             } catch (Exception ignored) {}
             pickupUpdatedReceiver = null;
         }
+        if (stopAddedReceiver != null) {
+            try {
+                unregisterReceiver(stopAddedReceiver);
+            } catch (Exception ignored) {}
+            stopAddedReceiver = null;
+        }
     }
 
     private void registerOrderCancelledReceiver() {
@@ -467,6 +474,78 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 this, pickupUpdatedReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
+    private void registerStopAddedReceiver() {
+        stopAddedReceiver = new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context context, Intent intent) {
+                if (intent == null) return;
+                String incomingOrderId = intent.getStringExtra("order_id");
+                if (orderItem == null || incomingOrderId == null || !incomingOrderId.equals(orderItem.getId())) {
+                    return;
+                }
+                String stopsJson = intent.getStringExtra("stops");
+                String stopAddress = intent.getStringExtra("stop_address");
+                String newFare = intent.getStringExtra("fare");
+                String newDistance = intent.getStringExtra("distance");
+                String earning = intent.getStringExtra("driver_earning");
+                String fareDiff = intent.getStringExtra("fare_diff");
+
+                try {
+                    if (stopsJson != null && !stopsJson.isEmpty()) {
+                        com.shifter.driver.model.OrderStop[] parsed =
+                                new com.google.gson.Gson().fromJson(stopsJson, com.shifter.driver.model.OrderStop[].class);
+                        if (parsed != null) {
+                            orderItem.setStops(new java.util.ArrayList<>(java.util.Arrays.asList(parsed)));
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e("OrderDetails", "stop_added: failed to parse stops", e);
+                }
+                if (newFare != null && !newFare.isEmpty()) {
+                    orderItem.setTotal(newFare);
+                }
+                if (newDistance != null && !newDistance.isEmpty()) {
+                    orderItem.setDistance(newDistance);
+                }
+
+                runOnUiThread(() -> onStopAddedFromCustomer(stopAddress, newFare, fareDiff));
+            }
+        };
+        android.content.IntentFilter filter = new android.content.IntentFilter(
+                com.shifter.driver.socket.SocketOrderRouter.ACTION_ORDER_STOP_ADDED);
+        androidx.core.content.ContextCompat.registerReceiver(
+                this, stopAddedReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    private void onStopAddedFromCustomer(String stopAddress, String newFare, String fareDiff) {
+        if (orderItem == null) return;
+
+        // Rebuild the timeline and re-aim navigation: the new stop is appended
+        // after the existing ones, so the active stop step stays valid and the
+        // driver simply has one more stop before the final drop.
+        setupUI();
+        updateLocationPath();
+        updateTripControls();
+
+        String currency = sessionManager != null ? sessionManager.getStringData(com.shifter.driver.utility.SessionManager.currency) : "₹";
+        String message = "Customer added a new stop before the final drop:\n" + (stopAddress != null ? stopAddress : "");
+        if (newFare != null && !newFare.isEmpty()) {
+            message += "\n\nRevised Fare: " + currency + newFare;
+            if (fareDiff != null && !fareDiff.isEmpty() && !fareDiff.equals("0")) {
+                try {
+                    double diff = Double.parseDouble(fareDiff);
+                    message += " (" + (diff > 0 ? "+" : "") + currency + fareDiff + ")";
+                } catch (Exception ignored) {}
+            }
+        }
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("➕ Stop Added")
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+
     private void onDestinationUpdatedFromCustomer(String newAddress, String newFare, String fareDiff) {
         if (orderItem == null) return;
 
@@ -562,6 +641,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         registerOrderCancelledReceiver();
         registerDestinationUpdatedReceiver();
         registerPickupUpdatedReceiver();
+        registerStopAddedReceiver();
         registerTripProgress();
         registerLocationReceiver();
 

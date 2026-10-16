@@ -1251,7 +1251,8 @@ const ADD_STOP_ERROR_MESSAGES = {
   INVALID_COORDINATES: [400, "Valid lat and lng are required"],
   ORDER_NOT_FOUND: [404, "Order not found"],
   FORBIDDEN: [403, "You are not authorized to update this order"],
-  ORDER_NOT_ACTIVE: [409, "Stops can only be added before the goods are picked up"],
+  ORDER_NOT_ACTIVE: [409, "Stops can only be added while the order is active"],
+  ALREADY_AT_DROP: [409, "Driver has already reached the drop location, so a stop can no longer be added"],
   MAX_STOPS_EXCEEDED: [409, "Maximum number of extra stops already reached"],
 };
 

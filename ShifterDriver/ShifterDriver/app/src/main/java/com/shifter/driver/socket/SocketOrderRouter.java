@@ -41,6 +41,31 @@ public class SocketOrderRouter {
     /** order:pickup_updated for an active order — see OrderDetailsActivity's receiver. */
     public static final String ACTION_ORDER_PICKUP_UPDATED = "com.shifter.driver.ORDER_PICKUP_UPDATED";
 
+    /** order:stop_added for an active order — see OrderDetailsActivity's receiver. */
+    public static final String ACTION_ORDER_STOP_ADDED = "com.shifter.driver.ORDER_STOP_ADDED";
+
+    /**
+     * order:stop_added — the customer added a stop to an active trip. Carries the
+     * full ordered stop list (JSON array string) plus the revised distance/fare.
+     */
+    public static void handleOrderStopAdded(Context context, JSONObject data) {
+        String orderId = data.optString("order_id", null);
+        if (orderId == null) return;
+
+        Log.d(TAG, "order:stop_added for order " + orderId);
+
+        Intent updateBroadcast = new Intent(ACTION_ORDER_STOP_ADDED);
+        updateBroadcast.putExtra("order_id", orderId);
+        updateBroadcast.putExtra("stops", data.optJSONArray("stops") != null ? data.optJSONArray("stops").toString() : "");
+        updateBroadcast.putExtra("stop_address", data.optString("stop_address", ""));
+        updateBroadcast.putExtra("distance", data.optString("distance", ""));
+        updateBroadcast.putExtra("fare", data.optString("fare", ""));
+        updateBroadcast.putExtra("driver_earning", data.optString("driver_earning", ""));
+        updateBroadcast.putExtra("fare_diff", data.optString("fare_diff", ""));
+        updateBroadcast.setPackage(context.getPackageName());
+        context.sendBroadcast(updateBroadcast);
+    }
+
     public static void handleOrderRequest(Context context, JSONObject data) {
         Map<String, String> mapped = mapOrderRequestData(data);
         String title = "New Order";

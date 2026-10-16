@@ -7,10 +7,11 @@ const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRout
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 
-// Same window as pickup-change: a stop can be added any time before the
-// goods are actually picked up, never once the trip is on-route (the
-// driver may already have passed some stops by then).
-const STOP_EDITABLE_STATUSES = [0, 1, 2];
+// A stop can be added from booking right through the on-route leg (status 3).
+// It is always appended after the existing stops and before the final drop, so
+// the driver's stop_step counter (2 per stop) stays valid: an already-passed
+// stop keeps its number and the new one simply becomes the next active stop.
+const STOP_EDITABLE_STATUSES = [0, 1, 2, 3];
 
 function isValidCoord(val, min, max) {
   const num = Number(val);
@@ -50,18 +51,49 @@ function assertOrderEditable(order, numericUid) {
   }
 }
 
+// Once the driver has reached the final drop (drop_wait_start stamped) the
+// route is finished - a new stop would sit behind the driver, so block it.
+async function assertNotAtDrop(client, order) {
+  if (order.order_status !== 3) return;
+  const timer = await client.pkg_order_wait_timer.findFirst({ where: { order_id: order.id } });
+  if (timer?.drop_wait_start) {
+    throw new Error("ALREADY_AT_DROP");
+  }
+}
+
 async function priceWithStop(order, existingStops, newStop) {
   const stops = [...existingStops, newStop];
   const newDistanceKm = await computeRouteDistanceKm({
     plat: order.plat, plong: order.plong, stops, dlat: order.dlat, dlong: order.dlong,
   });
-  // Pickup itself hasn't moved — same real driver-to-pickup distance basis
-  // destination/pickup-change use, never radius_range.
-  const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
   const stopSettings = await pricingEngine.getAddStopSettings(order.category);
   const newExtraMileCharge = (Number(order.extra_mile_charge) || 0) + stopSettings.extraStopCharge;
   const packageId = Number(order.delivery_type) || 1;
 
+  if (order.order_status === 3) {
+    // Goods already picked up: the driver-to-pickup radius charge was fixed at
+    // accept time and the driver is now nowhere near the pickup, so repricing
+    // off their live position would wrongly zero it. Recover it from the
+    // current d_charge (whatever sits above a zero-radius fare at the order's
+    // current distance) and carry it onto the new route's zero-radius fare -
+    // same recovery driverTripService uses for an OTP-point relocation.
+    const zeroRadiusOld = await pricingEngine.priceForPackageId(
+      packageId, Number(order.distance) || 0, 1, Number(order.extra_mile_charge) || 0, order.uid);
+    const impliedRadiusAmount = Math.max(0, (Number(order.d_charge) || 0) - zeroRadiusOld.fare);
+    const zeroRadiusNew = await pricingEngine.priceForPackageId(
+      packageId, newDistanceKm, 1, newExtraMileCharge, order.uid);
+    const fare = Math.round(zeroRadiusNew.fare + impliedRadiusAmount);
+    // driver_earning is the gross fare; commission is a percentage - keep this
+    // order's own (same as the relocation path).
+    const commission = order.commission !== null && order.commission !== undefined && Number.isFinite(Number(order.commission))
+      ? Number(order.commission)
+      : zeroRadiusNew.commission;
+    return { newDistanceKm, newExtraMileCharge, stopSettings, fare, driverEarning: fare, commission };
+  }
+
+  // Pickup hasn't moved - same real driver-to-pickup distance basis
+  // destination/pickup-change use, never radius_range.
+  const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
   const priced = await pricingEngine.priceForPackageId(packageId, newDistanceKm, radiusKm, newExtraMileCharge, order.uid);
   return { newDistanceKm, newExtraMileCharge, stopSettings, ...priced };
 }
@@ -75,6 +107,7 @@ async function previewAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
 
   const order = await prisma.pkg_order.findUnique({ where: { id: numericOrderId } });
   assertOrderEditable(order, numericUid);
+  await assertNotAtDrop(prisma, order);
 
   const existingStops = await prisma.pkg_order_stops.findMany({
     where: { order_id: numericOrderId }, orderBy: { sequence: "asc" },
@@ -122,6 +155,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
 
     const order = await tx.pkg_order.findUnique({ where: { id: numericOrderId } });
     assertOrderEditable(order, numericUid);
+    await assertNotAtDrop(tx, order);
 
     const existingStops = await tx.pkg_order_stops.findMany({
       where: { order_id: numericOrderId }, orderBy: { sequence: "asc" },
@@ -141,7 +175,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
     const newDistance = Math.round(newDistanceKm * 100) / 100;
     const fareDiff = newFare - oldFare;
 
-    await tx.pkg_order_stops.create({
+    const createdStop = await tx.pkg_order_stops.create({
       data: {
         order_id: numericOrderId,
         sequence: existingStops.length + 1,
@@ -193,10 +227,17 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
       });
     }
 
-    return { updatedOrder, riderId: order.rid, oldFare, newFare, fareDiff, oldDistance, newDistance };
+    // Full ordered stop list so the driver app can rebuild its route without
+    // an extra fetch (same field names as driverContentController's stops).
+    const stopsPayload = [...existingStops, createdStop].map((st) => ({
+      sequence: st.sequence, address: st.address, hno: st.hno, landmark: st.landmark,
+      lat: st.lat, lng: st.lng, contact_name: st.contact_name, contact_number: st.contact_number,
+    }));
+
+    return { updatedOrder, riderId: order.rid, oldFare, newFare, fareDiff, oldDistance, newDistance, stopsPayload };
   });
 
-  const { updatedOrder, riderId, oldFare, newFare, fareDiff, oldDistance, newDistance } = result;
+  const { updatedOrder, riderId, oldFare, newFare, fareDiff, oldDistance, newDistance, stopsPayload } = result;
 
   const eventPayload = {
     order_id: String(numericOrderId),
@@ -210,6 +251,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
     estimated_earning: String(updatedOrder.driver_earning),
     driver_earning: String(updatedOrder.driver_earning),
     message: `Stop added: ${cleanAddress}`,
+    stops: stopsPayload,
   };
 
   if (riderId && riderId > 0) {

@@ -9,6 +9,9 @@ jest.mock("../../config/db", () => {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 1 }),
     },
+    pkg_order_wait_timer: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     app_settings: {
       findMany: jest.fn().mockResolvedValue([]),
     },
@@ -104,12 +107,62 @@ describe("orderStopsService", () => {
       ).rejects.toThrow("MAX_STOPS_EXCEEDED");
     });
 
-    it("rejects adding a stop once the trip is already on-route (order_status 3)", async () => {
-      prisma.pkg_order.findUnique.mockResolvedValue({ ...baseOrder, order_status: 3, o_status: "On_Route" });
+    it("rejects adding a stop once the trip is completed", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...baseOrder, order_status: 4, o_status: "Completed" });
 
       await expect(
         orderStopsService.previewAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" })
       ).rejects.toThrow("ORDER_NOT_ACTIVE");
+    });
+
+    it("rejects adding a stop on-route once the driver has reached the drop", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...baseOrder, order_status: 3, o_status: "On_Route" });
+      prisma.pkg_order_wait_timer.findFirst.mockResolvedValue({ drop_wait_start: new Date() });
+
+      await expect(
+        orderStopsService.previewAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" })
+      ).rejects.toThrow("ALREADY_AT_DROP");
+    });
+  });
+
+  describe("adding a stop while on route (order_status 3)", () => {
+    const onRoute = { ...baseOrder, order_status: 3, o_status: "On_Route", d_charge: 200, total_dcharge: 200, commission: 15 };
+
+    beforeEach(() => {
+      prisma.pkg_order_wait_timer.findFirst.mockResolvedValue(null);
+      prisma.pkg_order.findUnique.mockResolvedValue(onRoute);
+      // zero-radius fare at the current 10.2km = 150 -> frozen radius amount = 200 - 150 = 50;
+      // zero-radius fare on the new route = 260 -> new fare = 310
+      pricingEngine.priceForPackageId
+        .mockReset()
+        .mockResolvedValueOnce({ fare: 150, commission: 15 })
+        .mockResolvedValueOnce({ fare: 260, commission: 15 });
+    });
+
+    it("carries the frozen radius charge instead of repricing off the driver's live position", async () => {
+      const preview = await orderStopsService.previewAddStop({
+        uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1",
+      });
+
+      expect(preview.new_fare).toBe(310);
+      expect(preview.fare_diff).toBe(110);
+      // radius arg is 1 (zero radius) on both pricing calls
+      expect(pricingEngine.priceForPackageId.mock.calls.every((c) => c[2] === 1)).toBe(true);
+    });
+
+    it("confirm saves the carried fare and appends the stop", async () => {
+      prisma.pkg_order.update.mockResolvedValue({ ...onRoute, d_charge: 310, driver_earning: 310 });
+
+      await orderStopsService.confirmAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" });
+
+      expect(prisma.pkg_order.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ d_charge: 310, total_dcharge: 310, driver_earning: 310, extra_mile_charge: 10 }),
+        })
+      );
+      expect(prisma.pkg_order_stops.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ sequence: 1 }) })
+      );
     });
   });
 

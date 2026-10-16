@@ -79,6 +79,11 @@ public class NodeSocketManager {
         void onOrderPickupUpdated(JSONObject data);
     }
 
+    /** order:stop_added — customer added a stop to an active trip (payload carries the full stop list + revised fare). */
+    public interface OrderStopAddedListener {
+        void onOrderStopAdded(JSONObject data);
+    }
+
     /** settlement:updated — settlement view payload updated for an order. */
     public interface SettlementUpdatedListener {
         void onSettlementUpdated(JSONObject data);
@@ -95,6 +100,7 @@ public class NodeSocketManager {
     private OrderCancelledListener orderCancelledListener;
     private OrderDestinationUpdatedListener orderDestinationUpdatedListener;
     private OrderPickupUpdatedListener orderPickupUpdatedListener;
+    private OrderStopAddedListener orderStopAddedListener;
     private final java.util.Set<SettlementUpdatedListener> settlementUpdatedListeners = new java.util.concurrent.CopyOnWriteArraySet<>();
 
     public void addSettlementUpdatedListener(SettlementUpdatedListener listener) {
@@ -229,6 +235,13 @@ public class NodeSocketManager {
             }
         }));
 
+        socket.on("order:stop_added", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data != null && orderStopAddedListener != null) {
+                orderStopAddedListener.onOrderStopAdded(data);
+            }
+        }));
+
         socket.on("order:pickup_updated", args -> mainHandler.post(() -> {
             JSONObject data = firstArgAsJson(args);
             if (data != null && orderPickupUpdatedListener != null) {
@@ -284,6 +297,10 @@ public class NodeSocketManager {
 
     public void setOrderPickupUpdatedListener(OrderPickupUpdatedListener listener) {
         this.orderPickupUpdatedListener = listener;
+    }
+
+    public void setOrderStopAddedListener(OrderStopAddedListener listener) {
+        this.orderStopAddedListener = listener;
     }
 
     public void emitAccept(JSONObject data, AckListener ackListener) {

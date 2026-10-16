@@ -734,6 +734,181 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     return true;
   }
 
+  // Add Stop: open from booking right through the on-route leg (backend
+  // STOP_EDITABLE_STATUSES 0-3). The backend rejects it once the driver has
+  // reached the drop and returns the reason, so no extra client-side check.
+  bool get _canAddStop {
+    if (orderProduc == null) return false;
+    final orderStatusNum = int.tryParse(
+      (orderProduc?["Order_flow_id"] ?? orderProduc?["order_status"])?.toString() ?? "",
+    );
+    return orderStatusNum != null && orderStatusNum >= 0 && orderStatusNum <= 3;
+  }
+
+  Future<void> _handleAddStop() async {
+    if (!_canAddStop) {
+      ApiWrapper.showToastMessage("Stops cannot be added to this order".tr);
+      return;
+    }
+
+    final selected = await Get.to<Map<String, dynamic>>(
+      () => const LocationSearchScreen(locationType: "Stop"),
+    );
+    if (!mounted || selected == null) return;
+
+    final newLat = double.tryParse(selected["lat_map"]?.toString() ?? selected["lat"]?.toString() ?? "");
+    final newLng = double.tryParse(selected["long_map"]?.toString() ?? selected["lng"]?.toString() ?? "");
+    final newAddress = selected["address"]?.toString() ?? "";
+    if (newLat == null || newLng == null || newAddress.trim().isEmpty) {
+      ApiWrapper.showToastMessage("Please select a valid stop location".tr);
+      return;
+    }
+
+    final targetOrderId = (orderid.isNotEmpty && orderid != "0")
+        ? orderid
+        : (orderProduc?["order_id"] ?? orderProduc?["id"] ?? "").toString();
+    final targetUid = (uid.isNotEmpty && uid != "0")
+        ? uid
+        : (orderProduc?["uid"] ?? getdata.read("Uid") ?? "").toString();
+    final body = {
+      "uid": targetUid,
+      "order_id": targetOrderId,
+      "lat": newLat,
+      "lng": newLng,
+      "address": newAddress.trim(),
+    };
+
+    Get.dialog(
+      const Center(child: CircularProgressIndicator(color: Colors.deepOrange)),
+      barrierDismissible: false,
+    );
+    final previewRes = await ApiWrapper.dataPostNode(Config.nodeStopPreview, body);
+    if (Get.isDialogOpen ?? false) Get.back();
+    if (!mounted) return;
+
+    bool ok(dynamic r) =>
+        r is Map && (r["Result"] == true || r["Result"] == "true" || r["status"] == "success");
+
+    if (!ok(previewRes)) {
+      final errMsg = (previewRes is Map ? (previewRes["ResponseMsg"] ?? previewRes["message"]) : null) ??
+          "Failed to calculate revised route and fare".tr;
+      ApiWrapper.showToastMessage(errMsg.toString());
+      return;
+    }
+
+    final preview = Map<String, dynamic>.from(previewRes);
+    final double fareDiff = double.tryParse((preview["fare_diff"] ?? 0).toString()) ?? 0.0;
+    final double distDiff = double.tryParse((preview["distance_diff"] ?? 0).toString()) ?? 0.0;
+    bool isSubmitting = false;
+
+    Widget row(String label, String value, {bool bold = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 14)),
+              Text(value,
+                  style: TextStyle(
+                      color: notifier.text, fontFamily: bold ? "Gilroy_Bold" : "Gilroy_Medium", fontSize: 14.5)),
+            ],
+          ),
+        );
+
+    Get.bottomSheet(
+      StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
+            decoration: BoxDecoration(
+              color: notifier.getBgColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Add Stop".tr,
+                      style: TextStyle(color: notifier.text, fontFamily: "Gilroy_Bold", fontSize: 18)),
+                  const SizedBox(height: 4),
+                  Text(newAddress.trim(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5)),
+                  const SizedBox(height: 4),
+                  Text("The stop is added before the final drop.".tr,
+                      style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12)),
+                  const SizedBox(height: 14),
+                  row("Distance".tr,
+                      "${preview["old_distance"]} km → ${preview["new_distance"]} km (${distDiff >= 0 ? "+" : ""}${distDiff.toStringAsFixed(1)})"),
+                  row("Fare".tr, "$currency${preview["old_fare"]} → $currency${preview["new_fare"]}"),
+                  row("Extra to pay".tr, "${fareDiff >= 0 ? "+" : "-"}$currency${fareDiff.abs().toStringAsFixed(0)}",
+                      bold: true),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isSubmitting ? null : () => Get.back(),
+                          child: Text("Cancel".tr),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  setSheetState(() => isSubmitting = true);
+                                  try {
+                                    final confirmRes = await ApiWrapper.dataPostNode(Config.nodeStopConfirm, body);
+                                    if (ok(confirmRes)) {
+                                      Get.back();
+                                      ApiWrapper.showToastMessage(
+                                          (confirmRes["ResponseMsg"] ?? "Stop added successfully".tr).toString());
+                                      pageRefresh();
+                                    } else {
+                                      final err = (confirmRes is Map
+                                              ? (confirmRes["ResponseMsg"] ?? confirmRes["message"])
+                                              : null) ??
+                                          "Failed to add stop".tr;
+                                      ApiWrapper.showToastMessage(err.toString());
+                                      setSheetState(() => isSubmitting = false);
+                                    }
+                                  } catch (e) {
+                                    debugPrint("Error confirming stop: $e");
+                                    ApiWrapper.showToastMessage("Error adding stop".tr);
+                                    setSheetState(() => isSubmitting = false);
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: linercolor,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Text("Confirm & Add Stop".tr,
+                                  style: const TextStyle(color: Colors.white, fontFamily: "Gilroy_Bold")),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   Future<void> _handleChangeDropLocation() async {
     if (!_canChangeDestination) {
       ApiWrapper.showToastMessage("Destination cannot be changed for this order".tr);
@@ -4396,6 +4571,36 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 ),
               ),
             ),
+          if (_canAddStop) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _handleAddStop,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    decoration: BoxDecoration(
+                      color: linercolor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: linercolor.withOpacity(0.6), width: 1.2),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_location_alt_rounded, color: linercolor, size: 19),
+                        const SizedBox(width: 8),
+                        Text("Add Stop".tr,
+                            style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 14.5)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           _buildCancelButton(),
         ],
@@ -5491,6 +5696,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               if (_canChangeDestination)
                 option(Icons.edit_location_alt_rounded, const Color(0xFF2979FF), "Change Drop Location".tr,
                     "Change where we deliver".tr, _handleChangeDropLocation),
+              if (_canAddStop)
+                option(Icons.add_location_alt_rounded, linercolor, "Add Stop".tr,
+                    "Add a stop before the final drop".tr, _handleAddStop),
               option(Icons.cancel_outlined, const Color(0xFFFF5252), "Cancel Order".tr,
                   "Cancel this booking".tr, () => dialogShow(cancelOrderId)),
             ],
