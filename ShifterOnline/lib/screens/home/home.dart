@@ -23,7 +23,7 @@ import 'package:goParcel/screens/myorder/myorder.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/screens/notification/notification.dart';
 import 'package:goParcel/screens/profile/AddressList.dart';
-import 'package:goParcel/screens/profile/free_booking_status_card.dart';
+import 'package:goParcel/screens/home/home_option_tiles.dart';
 import 'package:goParcel/screens/profile/premium_plans_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -1421,8 +1421,14 @@ class _HomeState extends State<Home> {
   Widget _buildDeliveryOptionsRow() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
-      child: Row(
+      child: Column(
         children: [
+          Row(
+        children: [
+          // -- Free Ride Chance (Half width) -----------------
+          const Expanded(child: FreeRideChanceTile()),
+          const SizedBox(width: 10),
+
           // -- Next Day Delivery (Half width) ----------------
           Expanded(
             child: InkWell(
@@ -1517,8 +1523,11 @@ class _HomeState extends State<Home> {
             ),
           ),
 
-          if (_scheduleBookingEnabled) const SizedBox(width: 10),
-
+        ],
+      ),
+          const SizedBox(height: 10),
+          Row(
+        children: [
           // -- Schedule Booking (Half width) -----------------
           if (_scheduleBookingEnabled) Expanded(
             child: InkWell(
@@ -1590,6 +1599,13 @@ class _HomeState extends State<Home> {
               ),
             ),
           ),
+
+          if (_scheduleBookingEnabled) const SizedBox(width: 10),
+
+          // -- Custom Order (Half width, coming soon) --------
+          const Expanded(child: CustomOrderComingSoonTile()),
+        ],
+      ),
         ],
       ),
     );
@@ -3288,7 +3304,6 @@ class _HomeState extends State<Home> {
 
                       const SizedBox(height: 4),
                       _buildActiveOrderCard(),
-                      const FreeBookingStatusCard(),
                       _buildRewardMilestoneCard(),
                       _buildDeliveryOptionsRow(),
                       _buildRouteSelectionCard(),

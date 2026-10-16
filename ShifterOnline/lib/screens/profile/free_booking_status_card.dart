@@ -6,6 +6,29 @@ import 'package:share_plus/share_plus.dart';
 import '../../services/free_booking_api_service.dart';
 import 'premium_plans_screen.dart';
 
+/// Opens the share sheet with the customer's referral code and the app link (the "Refer now" action).
+/// Shared by the status card below and the Home page's Free Ride Chance tile.
+Future<void> shareReferralInvite() async {
+  final storage = GetStorage();
+  final code = storage.read('referral_code')?.toString() ??
+      storage.read('UserLogin')?['referral_code']?.toString() ??
+      '';
+  final msg = storage.read('referral_msg')?.toString() ??
+      'Hey! Use my referral code to sign up on Shifter Online and earn rewards!';
+  String? packageName;
+  try {
+    packageName = (await PackageInfo.fromPlatform()).packageName;
+  } catch (_) {}
+  final text = StringBuffer(msg);
+  if (code.isNotEmpty) {
+    text.write('\n\nReferral Code: $code');
+  }
+  if (packageName != null) {
+    text.write('\n\nDownload: https://play.google.com/store/apps/details?id=$packageName');
+  }
+  await Share.share(text.toString(), subject: 'Refer & Earn - Shifter Online');
+}
+
 /// Shows the customer's Free Booking state while the offer is live in their city:
 /// available / unlocked / locked (with a Refer now button) and, for non-premium users,
 /// a Premium upsell (hidden with [showUpsell] = false, e.g. on the Premium Plans screen itself).
@@ -39,26 +62,7 @@ class _FreeBookingStatusCardState extends State<FreeBookingStatusCard> {
     });
   }
 
-  Future<void> _referNow() async {
-    final storage = GetStorage();
-    final code = storage.read('referral_code')?.toString() ??
-        storage.read('UserLogin')?['referral_code']?.toString() ??
-        '';
-    final msg = storage.read('referral_msg')?.toString() ??
-        'Hey! Use my referral code to sign up on Shifter Online and earn rewards!';
-    String? packageName;
-    try {
-      packageName = (await PackageInfo.fromPlatform()).packageName;
-    } catch (_) {}
-    final text = StringBuffer(msg);
-    if (code.isNotEmpty) {
-      text.write('\n\nReferral Code: $code');
-    }
-    if (packageName != null) {
-      text.write('\n\nDownload: https://play.google.com/store/apps/details?id=$packageName');
-    }
-    await Share.share(text.toString(), subject: 'Refer & Earn - Shifter Online');
-  }
+  Future<void> _referNow() => shareReferralInvite();
 
   @override
   Widget build(BuildContext context) {
