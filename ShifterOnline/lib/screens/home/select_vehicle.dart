@@ -23,7 +23,6 @@ import 'confirm_order_map.dart';
 import 'coupon_sheet.dart';
 import 'package:goParcel/services/booking_guarantee_api_service.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
-import 'free_booking_dialogs.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 import '../myorder/trackingway.dart';
@@ -89,11 +88,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _hasPlanDiscount = false;
   double _planDiscountPercent = 0;
   double _planDiscountMaxCap = 0;
-
-  // Next Day Saver Delivery is a Premium Plan (no-advance-payment) perk —
-  // mirrors home.dart's _checkNextDayEligibility gate. Defaults to false so
-  // the banner never flashes for a non-eligible user while the check runs.
-  bool _nextDayEligible = false;
 
   String _selectedBodyType = 'any';
   // Selected vehicle's add-stop cap from fare-estimate (category override, else
@@ -223,7 +217,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
     if (!mounted) return;
     setState(() {
-      _nextDayEligible = eligible;
       if (!eligible && _currentBookingType == 3) _currentBookingType = 1;
     });
   }
@@ -821,22 +814,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     }
   }
 
-  Future<void> _toggleNextDayDelivery() async {
-    if (!_nextDayEligible) return;
-    final nextType = _currentBookingType == 3 ? 1 : 3;
-    setState(() {
-      _currentBookingType = nextType;
-    });
-
-    if (nextType == 3) {
-      ApiWrapper.showToastMessage("Next Day Saver Delivery Selected 🚚");
-    } else {
-      ApiWrapper.showToastMessage("Standard Instant Delivery Selected ⚡");
-    }
-
-    await _refreshAvailability();
-  }
-
   Future<void> _openAddStopsScreen() async {
     final result = await Get.to<Map<String, dynamic>>(
       () => AddStopsScreen(
@@ -1386,8 +1363,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                 children: [
-                  if (_nextDayEligible) _nextDayDeliveryBanner(),
-                  if (_freeRideChanceAvailable) _freeRideChanceBanner(),
                   if (_freeRideChanceLocked) _freeRideChanceLockedBanner(),
                   _routeSummary(),
                   const SizedBox(height: 18),
@@ -1404,20 +1379,33 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                           ],
                         ),
                       ),
+                      // Highlighted so users spot it quickly: orange tint + border, soft glow, filled icon badge.
                       InkWell(
                         onTap: _openSearchAreaSheet,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(30),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                          decoration: BoxDecoration(color: notifier.getBgColor, border: Border.all(color: linercolor), borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+                          decoration: BoxDecoration(
+                            color: linercolor.withOpacity(notifier.isDark ? 0.16 : 0.08),
+                            border: Border.all(color: linercolor, width: 1.6),
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(color: linercolor.withOpacity(0.28), blurRadius: 14, spreadRadius: 1, offset: const Offset(0, 3)),
+                            ],
+                          ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.my_location_rounded, color: linercolor, size: 15),
-                              const SizedBox(width: 5),
-                              Text('Search area: $_selectedRadiusKm km', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 11)),
+                              Container(
+                                height: 30,
+                                width: 30,
+                                decoration: BoxDecoration(color: linercolor, shape: BoxShape.circle),
+                                child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 18),
+                              ),
+                              const SizedBox(width: 8),
+                              Text('Search area: $_selectedRadiusKm km', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13.5)),
                               const SizedBox(width: 2),
-                              Icon(Icons.chevron_right_rounded, color: linercolor, size: 17),
+                              Icon(Icons.chevron_right_rounded, color: linercolor, size: 22),
                             ],
                           ),
                         ),
@@ -1450,72 +1438,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             if (_selected != null && _isAvailable(_selected!['availability']) && _selectedModel != null)
               _bottomCta(),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _freeRideChanceBanner() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: showFreeRideChanceInfoDialog,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xff10b981).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xff10b981).withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xff10b981).withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.card_giftcard_rounded, color: Color(0xff10b981), size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Free Ride Chance Active'.tr,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xff10b981)),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xff10b981),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('PREMIUM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                          ),
-                          const Spacer(),
-                          const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xff10b981)),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Instant booking searches free pool vehicles first. If assigned, 100% fare is credited to your wallet!'.tr,
-                        style: TextStyle(color: notifier.text, fontSize: 11, height: 1.3),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );
@@ -1559,213 +1481,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _nextDayDeliveryBanner() {
-    final isSelected = _currentBookingType == 3;
-    final isDark = notifier.isDark;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _toggleNextDayDelivery,
-          borderRadius: BorderRadius.circular(18),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: isSelected
-                  ? LinearGradient(
-                      colors: isDark
-                          ? [const Color(0xff2A160D), const Color(0xff1A0D07)]
-                          : [const Color(0xffFFF6F0), const Color(0xffFFEFE5)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    )
-                  : null,
-              color: isSelected ? null : notifier.getBgColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isSelected
-                    ? linercolor
-                    : notifier.bordecolor.withOpacity(0.8),
-                width: isSelected ? 1.6 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: isSelected
-                      ? linercolor.withOpacity(isDark ? 0.12 : 0.08)
-                      : Colors.black.withOpacity(0.03),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? linercolor.withOpacity(0.18)
-                            : greaycolor.withOpacity(0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.bolt_rounded,
-                        color: isSelected ? linercolor : greaycolor,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Next Day Saver Delivery 🚚',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: notifier.text,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 1.5),
-                          Text(
-                            isSelected
-                                ? 'Selected · Tap to unselect for Instant'
-                                : 'Save up to 30% · Scheduled tomorrow',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isSelected ? linercolor : greaycolor,
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-
-                    // Toggle Button Badge (Selected / Select)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(horizontal: 8.5, vertical: 4),
-                      decoration: BoxDecoration(
-                        gradient: isSelected
-                            ? LinearGradient(
-                                colors: [linercolor, const Color(0xffFF8533)],
-                              )
-                            : null,
-                        color: isSelected ? null : notifier.lightBgColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: isSelected
-                            ? null
-                            : Border.all(color: linercolor.withOpacity(0.6)),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: linercolor.withOpacity(0.35),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
-                            color: isSelected ? Colors.white : linercolor,
-                            size: 13,
-                          ),
-                          const SizedBox(width: 3.5),
-                          Text(
-                            isSelected ? 'SELECTED' : 'SELECT',
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : linercolor,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 10,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                if (isSelected) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7.5),
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.black.withOpacity(0.25) : Colors.white.withOpacity(0.75),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: notifier.bordecolor.withOpacity(0.4)),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.schedule_rounded, color: linercolor, size: 14),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'Delivery window: Tomorrow (10:00 AM – 8:00 PM)',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 11.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4.5),
-                        Row(
-                          children: [
-                            const Icon(Icons.verified_rounded, color: Color(0xff10B981), size: 14),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'Guaranteed Model 1 base pricing · Zero Advance',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: greaycolor,
-                                  fontFamily: 'Gilroy_Medium',
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
