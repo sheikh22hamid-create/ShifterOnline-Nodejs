@@ -226,7 +226,7 @@ class _MyProfileState extends State<MyProfile> {
                 hasUnreadNotif: hasUnreadNotif,
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
 
               // ── 2. Complete Your Profile Card ────────────────────────────────
               _buildCompleteProfileCard(
@@ -278,363 +278,345 @@ class _MyProfileState extends State<MyProfile> {
     required String tagline,
     required bool hasUnreadNotif,
   }) {
-    final double topSafe = MediaQuery.of(context).padding.top;
+    const radius = BorderRadius.only(
+      bottomLeft: Radius.circular(32),
+      bottomRight: Radius.circular(32),
+    );
+
+    Widget bubble(double size, double opacity) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withOpacity(opacity),
+          ),
+        );
+
+    Widget roundIconButton({required IconData icon, required VoidCallback onTap, bool dot = false}) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.20),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.35)),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 22),
+              if (dot)
+                Positioned(
+                  top: 9,
+                  right: 10,
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFE14D),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFA4500), width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Future<void> openEditProfile() async {
+      await Get.to(() => const EditProfile());
+      fetchProfileOverview();
+    }
 
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
+          colors: [Color(0xFFFF6A2B), Color(0xFFFA4500), Color(0xFFE63E00)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(color: Color(0x40FA4500), blurRadius: 18, offset: Offset(0, 8)),
+        ],
       ),
-      child: Stack(
-        children: [
-          // Background script watermark / ambient graphic
-          Positioned(
-            right: 14,
-            top: topSafe + 36,
-            child: Opacity(
-              opacity: 0.16,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.location_on_rounded, color: Colors.white, size: 24),
-                  const SizedBox(width: 4),
-                  Transform.rotate(
-                    angle: -0.08,
-                    child: const Text(
-                      "Delivering\nA Better\nTomorrow",
-                      style: TextStyle(
-                        fontFamily: "Gilroy_Bold",
-                        fontSize: 18,
-                        color: Colors.white,
-                        height: 1.15,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: Stack(
+          children: [
+            // Soft decorative circles (brand pattern, no text so nothing collides with the content)
+            Positioned(right: -46, top: -34, child: bubble(160, 0.10)),
+            Positioned(right: 60, top: 70, child: bubble(54, 0.07)),
+            Positioned(left: -56, bottom: -70, child: bubble(180, 0.07)),
 
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Top Row: Title + Settings & Notification icons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "My Profile".tr,
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 26,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "Manage your account and preferences".tr,
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 13,
-                              color: Colors.white.withOpacity(0.88),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          // Settings Button
-                          GestureDetector(
-                            onTap: _showSettingsBottomSheet,
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.18),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.settings_outlined,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          // Notification Bell Button with unread indicator
-                          GestureDetector(
-                            onTap: () => Get.to(() => const Notifications()),
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.18),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.notifications_outlined,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
-                                  if (hasUnreadNotif)
-                                    Positioned(
-                                      top: 8,
-                                      right: 9,
-                                      child: Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFFF2E2E),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 22),
-
-                  // User Info Card Row inside Header
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Avatar with edit pen badge
-                      GestureDetector(
-                        onTap: () async {
-                          await Get.to(() => const EditProfile());
-                          fetchProfileOverview();
-                        },
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              height: 74,
-                              width: 74,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 3.5),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.12),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: ClipOval(
-                                child: Config.isValidImageUrl(rImg)
-                                    ? Image.network(
-                                        Config.resolveImageUrl(rImg),
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Image.asset(
-                                            "assets/signin_hero_mascot.jpg",
-                                            fit: BoxFit.cover,
-                                          );
-                                        },
-                                      )
-                                    : Image.asset(
-                                        "assets/signin_hero_mascot.jpg",
-                                        fit: BoxFit.cover,
-                                      ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                height: 26,
-                                width: 26,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFA4500),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                ),
-                                child: const Icon(
-                                  Icons.edit_rounded,
-                                  color: Colors.white,
-                                  size: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(width: 14),
-
-                      // User Details Column
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Name + Blue verified badge
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 20,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF0284C7),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.check,
-                                    color: Colors.white,
-                                    size: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 3),
-
-                            // Mobile number
-                            Text(
-                              "$ccode $mobile",
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 13.5,
-                                color: Colors.white,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-
-                            const SizedBox(height: 5),
-
-                            // "Phone Verified" Pill Tag
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Icon(
-                                    Icons.check_circle_rounded,
-                                    color: Color(0xFF16A34A),
-                                    size: 12,
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    "Phone Verified",
-                                    style: TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 10.5,
-                                      color: Color(0xFF16A34A),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 5),
-
-                            // Dynamic Tagline / Mission statement
-                            Text(
-                              "“$tagline”",
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 11,
-                                color: Colors.white.withOpacity(0.92),
-                                fontStyle: FontStyle.italic,
-                                height: 1.25,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(width: 8),
-
-                      // "Edit Profile ->" Pill Button
-                      GestureDetector(
-                        onTap: () async {
-                          await Get.to(() => const EditProfile());
-                          fetchProfileOverview();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.18),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.85),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top bar: title + actions
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                "Edit Profile",
-                                style: TextStyle(
+                                "My Profile".tr,
+                                style: const TextStyle(
                                   fontFamily: 'Gilroy_Bold',
-                                  fontSize: 12,
+                                  fontSize: 26,
                                   color: Colors.white,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.2,
                                 ),
                               ),
-                              SizedBox(width: 4),
-                              Icon(
-                                Icons.arrow_forward_rounded,
-                                color: Colors.white,
-                                size: 14,
+                              const SizedBox(height: 2),
+                              Text(
+                                "Manage your account and preferences".tr,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Gilroy_Medium',
+                                  fontSize: 12.5,
+                                  color: Colors.white.withOpacity(0.88),
+                                ),
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: 10),
+                        roundIconButton(icon: Icons.settings_outlined, onTap: _showSettingsBottomSheet),
+                        const SizedBox(width: 10),
+                        roundIconButton(
+                          icon: Icons.notifications_outlined,
+                          dot: hasUnreadNotif,
+                          onTap: () => Get.to(() => const Notifications()),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    // Identity: avatar + name / phone / verified. Full width, so a long name is not cut off.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: openEditProfile,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                height: 86,
+                                width: 86,
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.18),
+                                      blurRadius: 14,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipOval(
+                                  child: Config.isValidImageUrl(rImg)
+                                      ? Image.network(
+                                          Config.resolveImageUrl(rImg),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Image.asset(
+                                            "assets/signin_hero_mascot.jpg",
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : Image.asset("assets/signin_hero_mascot.jpg", fit: BoxFit.cover),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  height: 28,
+                                  width: 28,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF111827),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 16),
+
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 22,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.verified_rounded, color: Colors.white, size: 19),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.phone_rounded, color: Colors.white.withOpacity(0.9), size: 14),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    "$ccode $mobile",
+                                    style: const TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 14,
+                                      color: Colors.white,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 13),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      "Phone Verified",
+                                      style: TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 11,
+                                        color: Color(0xFF16A34A),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Tagline (user's own line from the backend), calm and readable instead of squeezed italics.
+                    Text(
+                      tagline,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'Gilroy_Medium',
+                        fontSize: 12.5,
+                        color: Colors.white.withOpacity(0.9),
+                        height: 1.35,
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Edit Profile: full-width white button, clear primary action of the header.
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton.icon(
+                        onPressed: openEditProfile,
+                        icon: const Icon(Icons.edit_rounded, size: 17),
+                        label: Text(
+                          "Edit Profile".tr,
+                          style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, fontWeight: FontWeight.w700),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFFFA4500),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Shared section heading (orange accent bar + title + subtitle)
+  // ─────────────────────────────────────────────────────────────────────────────
+  Widget _sectionHeader(String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 4,
+            height: 32,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFA4500),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title.tr,
+                style: const TextStyle(
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 16.5,
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                subtitle.tr,
+                style: const TextStyle(
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -652,19 +634,19 @@ class _MyProfileState extends State<MyProfile> {
     final double normalizedValue = (percentage / 100.0).clamp(0.0, 1.0);
     final bool isComplete = percentage >= 100;
     final Color accentColor = isComplete ? const Color(0xFF10B981) : const Color(0xFFFA4500);
-    final Color iconBgColor = isComplete ? const Color(0xFFECFDF5) : const Color(0xFFFFF1EB);
-    final IconData cardIcon = isComplete ? Icons.verified_user_rounded : Icons.person_outline_rounded;
+    final Color trackColor = isComplete ? const Color(0xFFD1FAE5) : const Color(0xFFFFE4D6);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -680,28 +662,42 @@ class _MyProfileState extends State<MyProfile> {
             }
             fetchProfileOverview();
           },
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           child: Padding(
             padding: const EdgeInsets.all(15),
             child: Row(
               children: [
-                // Icon in soft rounded container
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: iconBgColor,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(
-                    cardIcon,
-                    color: accentColor,
-                    size: 24,
+                // Circular progress with the percentage inside
+                SizedBox(
+                  width: 54,
+                  height: 54,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 54,
+                        height: 54,
+                        child: CircularProgressIndicator(
+                          value: normalizedValue,
+                          strokeWidth: 5,
+                          backgroundColor: trackColor,
+                          valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                        ),
+                      ),
+                      Text(
+                        "$percentage%",
+                        style: TextStyle(
+                          fontFamily: 'Gilroy_Bold',
+                          fontSize: 12.5,
+                          color: accentColor,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 14),
 
-                // Title + Subtitle + Progress Bar
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,56 +711,31 @@ class _MyProfileState extends State<MyProfile> {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         prompt.tr,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontFamily: 'Gilroy_Medium',
                           fontSize: 11.5,
                           color: Color(0xFF64748B),
+                          height: 1.3,
                         ),
-                      ),
-                      const SizedBox(height: 9),
-
-                      // Progress Bar row with percentage label
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: normalizedValue,
-                                minHeight: 6,
-                                backgroundColor: const Color(0xFFE2E8F0),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  accentColor,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            "$percentage%",
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 12.5,
-                              color: accentColor,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
                 ),
 
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Color(0xFF94A3B8),
-                  size: 22,
+                const SizedBox(width: 6),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.chevron_right_rounded, color: accentColor, size: 20),
                 ),
               ],
             ),
@@ -784,316 +755,175 @@ class _MyProfileState extends State<MyProfile> {
   }) {
     final String premiumTitle = premiumData["title"]?.toString() ?? "Shifter Premium";
     final String premiumBadge = premiumData["badge"]?.toString() ?? "NEW";
-    final String premiumSubtitle = premiumData["subtitle"]?.toString() ??
-        "Save more on every booking\nFaster • Better • More rewards";
+    // The backend sends two-line copy; on a full-width row it reads better on one flowing line.
+    final String premiumSubtitle = (premiumData["subtitle"]?.toString() ??
+            "Save more on every booking\nFaster • Better • More rewards")
+        .replaceAll('\n', ' · ');
 
     final String favTitle = favDriversData["title"]?.toString() ?? "Favorite Drivers";
-    final String favSubtitle =
-        favDriversData["subtitle"]?.toString() ?? "Quickly book your\npreferred drivers";
+    final String favSubtitle = (favDriversData["subtitle"]?.toString() ?? "Quickly book your preferred drivers")
+        .replaceAll('\n', ' ');
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section Title
-          Text(
-            "Quick Access".tr,
-            style: const TextStyle(
-              fontFamily: 'Gilroy_Bold',
-              fontSize: 16.5,
-              color: Color(0xFF0F172A),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            "Everything you need, quickly".tr,
-            style: const TextStyle(
-              fontFamily: 'Gilroy_Medium',
-              fontSize: 12,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 12),
+          _sectionHeader("Quick Access", "Everything you need, quickly"),
 
-          // Two side-by-side cards
-          Row(
-            children: [
-              // Card 1: Shifter Premium
-              Expanded(
-                child: Container(
-                  height: 154,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFF7ED), Color(0xFFFFEDD5)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFFED7AA), width: 1.2),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => Get.to(() => const PremiumPlansScreen()),
-                      borderRadius: BorderRadius.circular(18),
-                      child: Stack(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(13),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Top row: Crown icon + Title + NEW Badge + Arrow
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 28,
-                                      height: 28,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF59E0B),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(
-                                        Icons.workspace_premium_rounded,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Expanded(
-                                      child: Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              premiumTitle,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontFamily: 'Gilroy_Bold',
-                                                fontSize: 12.5,
-                                                color: Color(0xFF0F172A),
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 4, vertical: 1.5),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFEA580C),
-                                              borderRadius: BorderRadius.circular(5),
-                                            ),
-                                            child: Text(
-                                              premiumBadge,
-                                              style: const TextStyle(
-                                                fontFamily: 'Gilroy_Bold',
-                                                fontSize: 8,
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const Icon(
-                                      Icons.chevron_right_rounded,
-                                      color: Color(0xFF94A3B8),
-                                      size: 18,
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 8),
-
-                                // Subtitle
-                                Text(
-                                  premiumSubtitle,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontFamily: 'Gilroy_Medium',
-                                    fontSize: 10.5,
-                                    color: Color(0xFF64748B),
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // Card 2: Favorite Drivers
-              Expanded(
-                child: Container(
-                  height: 154,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.025),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => Get.to(() => const FavoriteDriversScreen()),
-                      borderRadius: BorderRadius.circular(18),
-                      child: Padding(
-                        padding: const EdgeInsets.all(13),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Top row: Heart icon + Title + Arrow
-                            Row(
-                              children: [
-                                Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFFF1F2),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.favorite_rounded,
-                                    color: Color(0xFFF43F5E),
-                                    size: 16,
-                                  ),
-                                ),
-                                const SizedBox(width: 7),
-                                Expanded(
-                                  child: Text(
-                                    favTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 12.5,
-                                      color: Color(0xFF0F172A),
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: Color(0xFF94A3B8),
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            // Subtitle
-                            Text(
-                              favSubtitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 10.5,
-                                color: Color(0xFF64748B),
-                                height: 1.35,
-                              ),
-                            ),
-
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Blocked Drivers
+          // Premium: highlighted row. Height follows its content (no fixed height), so there is no empty space.
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFF7ED), Color(0xFFFFE9D2)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFFED7AA), width: 1.2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.025),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+                  color: const Color(0xFFF59E0B).withOpacity(0.14),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
                 ),
               ],
             ),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () => Get.to(() => const BlockedDriversScreen()),
-                borderRadius: BorderRadius.circular(18),
+                onTap: () => Get.to(() => const PremiumPlansScreen()),
+                borderRadius: BorderRadius.circular(20),
                 child: Padding(
-                  padding: const EdgeInsets.all(13),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   child: Row(
                     children: [
                       Container(
-                        width: 28,
-                        height: 28,
+                        width: 46,
+                        height: 46,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFF59E0B).withOpacity(0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
-                        child: const Icon(
-                          Icons.block_rounded,
-                          color: Color(0xFF475569),
-                          size: 16,
-                        ),
+                        child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 26),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 13),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              "Blocked Drivers".tr,
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 12.5,
-                                color: Color(0xFF0F172A),
-                                fontWeight: FontWeight.w800,
-                              ),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    premiumTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 15,
+                                      color: Color(0xFF0F172A),
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (premiumBadge.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEA580C),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      premiumBadge,
+                                      style: const TextStyle(
+                                        fontFamily: 'Gilroy_Bold',
+                                        fontSize: 9,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 3),
                             Text(
-                              "Drivers you blocked. Unblock them anytime".tr,
+                              premiumSubtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontFamily: 'Gilroy_Medium',
-                                fontSize: 10.5,
-                                color: Color(0xFF64748B),
+                                fontSize: 11.5,
+                                color: Color(0xFF7C5A3A),
+                                height: 1.3,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: Color(0xFF94A3B8),
-                        size: 18,
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        child: const Icon(Icons.chevron_right_rounded, color: Color(0xFFEA580C), size: 21),
                       ),
                     ],
                   ),
                 ),
               ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Favorite + Blocked drivers: one grouped card, same row style as the other sections.
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                _buildMenuItem(
+                  icon: Icons.favorite_rounded,
+                  iconColor: const Color(0xFFF43F5E),
+                  iconBgColor: const Color(0xFFFFF1F2),
+                  title: favTitle,
+                  subtitle: favSubtitle,
+                  onTap: () => Get.to(() => const FavoriteDriversScreen()),
+                ),
+                _buildItemDivider(),
+                _buildMenuItem(
+                  icon: Icons.block_rounded,
+                  iconColor: const Color(0xFF475569),
+                  iconBgColor: const Color(0xFFF1F5F9),
+                  title: "Blocked Drivers",
+                  subtitle: "Drivers you blocked. Unblock them anytime",
+                  onTap: () => Get.to(() => const BlockedDriversScreen()),
+                ),
+              ],
             ),
           ),
         ],
@@ -1110,36 +940,19 @@ class _MyProfileState extends State<MyProfile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "Help & Legal".tr,
-            style: const TextStyle(
-              fontFamily: 'Gilroy_Bold',
-              fontSize: 16.5,
-              color: Color(0xFF0F172A),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            "Get support and learn more".tr,
-            style: const TextStyle(
-              fontFamily: 'Gilroy_Medium',
-              fontSize: 12,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 12),
+          _sectionHeader("Help & Legal", "Get support and learn more"),
 
           // Container with 3 items: FAQ, Privacy Policy, Terms of Use
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.025),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
@@ -1321,35 +1134,18 @@ class _MyProfileState extends State<MyProfile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "More".tr,
-            style: const TextStyle(
-              fontFamily: 'Gilroy_Bold',
-              fontSize: 16.5,
-              color: Color(0xFF0F172A),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            "Additional options".tr,
-            style: const TextStyle(
-              fontFamily: 'Gilroy_Medium',
-              fontSize: 12,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 12),
+          _sectionHeader("More", "Additional options"),
 
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFF1F5F9)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.025),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
