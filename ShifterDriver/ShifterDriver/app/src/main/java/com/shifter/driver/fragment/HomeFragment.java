@@ -292,6 +292,20 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         binding.layoutTrialBanner.setVisibility(View.VISIBLE);
     }
 
+    // Shows the recharge banner only while the driver's wallet balance is below zero.
+    private void updateNegativeWalletBanner() {
+        if (binding == null) return;
+        boolean negative = false;
+        String balance = riderData != null ? riderData.getWalletBalance() : null;
+        if (balance != null) {
+            try {
+                negative = Double.parseDouble(balance.trim()) < 0;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        binding.layoutNegativeWalletBanner.setVisibility(negative ? View.VISIBLE : View.GONE);
+    }
+
     private final android.os.Handler dutyTickerHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable dutyTickerRunnable = new Runnable() {
         @Override
@@ -407,6 +421,8 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         binding.btnQuickOrders.setOnClickListener(v -> {
             startActivity(new Intent(getActivity(), OrderActivity.class));
         });
+
+        binding.btnRechargeWallet.setOnClickListener(v -> startActivity(new Intent(getActivity(), WalletActivity.class)));
 
         // 2. Wallet
         binding.btnQuickWallet.setOnClickListener(v -> {
@@ -926,10 +942,14 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             riderData.setTrialOrdersCompleted(result.get("trial_orders_completed").getAsInt());
                         }
                     }
+                    if (riderData != null && result.has("wallet_balance") && !result.get("wallet_balance").isJsonNull()) {
+                        riderData.setWalletBalance(result.get("wallet_balance").getAsString());
+                    }
                     if (riderData != null && sessionManager != null) {
                         sessionManager.setUserDetails(riderData);
                     }
                     updateTrialBanner();
+                    updateNegativeWalletBanner();
                     if (riderData != null && isAdded()
                             && !"approved".equalsIgnoreCase(riderData.getVerificationStatus())
                             && ("exhausted".equalsIgnoreCase(riderData.getTrialStatus())
@@ -1551,6 +1571,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         if (sessionManager != null) {
             riderData = sessionManager.getUserDetails();
             updateTrialBanner();
+            updateNegativeWalletBanner();
         }
         updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
         if (isUpdateHome) {

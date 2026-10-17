@@ -626,6 +626,10 @@
     <string name="outstanding_dues_cleared_successfully">Your outstanding dues have been cleared successfully.</string>
     <string name="request_processed_wait_approval">Your request is being processed. Please wait for admin approval.</string>
 
+    <!-- Negative wallet banner (Home) -->
+    <string name="negative_wallet_message">Your wallet balance is negative. Please recharge your wallet to continue accepting orders.</string>
+    <string name="recharge_wallet">Recharge Wallet</string>
+
     <!-- Driver Trial Mode -->
     <string name="trial_ended_label">Trial Orders Complete</string>
     <string name="trial_ended_message">You\'ve used all your trial orders. Complete your KYC now to get more rides and withdraw your earnings.</string>

@@ -479,6 +479,43 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- ================= NEGATIVE WALLET BANNER ================= -->
+            <LinearLayout
+                android:id="@+id/layout_negative_wallet_banner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_due_warning_banner"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/negative_wallet_message"
+                    android:textColor="#991B1B"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_recharge_wallet"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_wallet_recharge_button"
+                    android:paddingStart="18dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="18dp"
+                    android:paddingBottom="8dp"
+                    android:text="@string/recharge_wallet"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
             <!-- ================= PENDING SETTLEMENT WARNING BANNER ================= -->
             <androidx.cardview.widget.CardView
                 android:id="@+id/card_pending_settlement"
