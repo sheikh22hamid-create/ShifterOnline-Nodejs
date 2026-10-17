@@ -63,6 +63,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   late List<Map<String, dynamic>> _stopsData;
   late int _currentBookingType;
 
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _vehicleRowKey = GlobalKey();
+  // Set only by a user tap on a vehicle card, so the screen never auto-scrolls on open.
+  bool _autoScrollPending = false;
+
   int _selectedIndex = -1;
   int _selectedRadiusKm = 4;
   DateTime? _scheduledFor;
@@ -157,7 +162,18 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   @override
   void dispose() {
     _goodsOtherController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  // Brings the vehicle row to the top so the selected vehicle's body type and
+  // delivery options are visible right below it.
+  void _scrollToVehicleDetails() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final rowContext = _vehicleRowKey.currentContext;
+      if (!mounted || rowContext == null) return;
+      Scrollable.ensureVisible(rowContext, alignment: 0, duration: const Duration(milliseconds: 450), curve: Curves.easeInOut);
+    });
   }
 
   Future<void> _fetchFreeRideChanceStatus() async {
@@ -701,6 +717,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final availability = selected['availability'];
     final categoryId = category['id'] ?? (availability is Map ? (availability['category_id'] ?? availability['cat_id']) : null);
     if (categoryId == null) {
+      _autoScrollPending = false;
       setState(() { _models = []; _modelsError = 'Delivery options are unavailable for this vehicle.'; });
       return;
     }
@@ -745,6 +762,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       _refreshGuaranteeQuote();
     } else {
       setState(() { _loadingModels = false; _modelsError = _text(response is Map ? response['ResponseMsg'] : null, 'Could not load delivery options.'); });
+    }
+    // The section grows once options arrive; re-align so they are fully visible.
+    if (_autoScrollPending) {
+      _autoScrollPending = false;
+      _scrollToVehicleDetails();
     }
   }
 
@@ -1378,6 +1400,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           children: [
             Expanded(
               child: ListView(
+                controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(15, 8, 15, 120),
                 children: [
                   if (_freeRideChanceLocked) _freeRideChanceLockedBanner(),
@@ -1436,6 +1459,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                     _emptyState()
                   else
                     SizedBox(
+                      key: _vehicleRowKey,
                       height: 142,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
@@ -1826,6 +1850,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                     _selectedBodyType = 'any';
                   }
                 });
+                _autoScrollPending = true;
+                _scrollToVehicleDetails();
                 _loadModelsForSelectedVehicle();
               }
             : () {
