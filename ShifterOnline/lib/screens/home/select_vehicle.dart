@@ -2091,32 +2091,33 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Widget _bodyTypeSelector(List<String> allowed) {
     if (allowed.isEmpty) return const SizedBox.shrink();
+    // (type, label) in display order; only the types this vehicle allows are shown.
+    final options = <MapEntry<String, String>>[
+      if (allowed.length > 1) const MapEntry('any', 'Any body type\n(Flexible)'),
+      if (allowed.contains('half')) const MapEntry('half', 'Half body'),
+      if (allowed.contains('open')) const MapEntry('open', 'Full body open'),
+      if (allowed.contains('covered')) const MapEntry('covered', 'Cover body\n(container)'),
+    ];
     return Container(
       margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
       decoration: BoxDecoration(
-        color: notifier.isDark ? Colors.white.withOpacity(0.04) : const Color(0xffFAFBFD),
+        color: notifier.isDark ? Colors.white.withOpacity(0.04) : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: _selectedBodyType != 'any' ? linercolor.withOpacity(0.4) : notifier.bordecolor,
-          width: _selectedBodyType != 'any' ? 1.4 : 1,
-        ),
+        border: Border.all(color: notifier.isDark ? notifier.bordecolor : const Color(0xffE3E6EA)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.tune_rounded, color: linercolor, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Vehicle Body Type (बॉडी प्रकार)',
-                    style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13.5),
-                  ),
-                ],
+              Icon(Icons.tune_rounded, color: linercolor, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Vehicle Body Type (बॉडी प्रकार)',
+                  style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13.5),
+                ),
               ),
               if (_selectedBodyType == 'covered' || _selectedBodyType == 'half')
                 Container(
@@ -2133,32 +2134,36 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              if (allowed.length > 1) ...[
-                _bodyTypeChip('any', '⚡ Any', 'Flexible'),
-                const SizedBox(width: 6),
-              ],
-              if (allowed.contains('open')) ...[
-                _bodyTypeChip('open', '🛻 Open', 'Open dala'),
-                if (allowed.contains('half') || allowed.contains('covered')) const SizedBox(width: 6),
-              ],
-              if (allowed.contains('half')) ...[
-                _bodyTypeChip('half', '🚚 Half', 'Half dala'),
-                if (allowed.contains('covered')) const SizedBox(width: 6),
-              ],
-              if (allowed.contains('covered'))
-                _bodyTypeChip('covered', '📦 Covered', 'Band / Tirpal'),
-            ],
-          ),
+          // One row of equal-height cards; scrolls horizontally when they would be too narrow.
+          LayoutBuilder(builder: (context, constraints) {
+            const gap = 6.0;
+            const minWidth = 78.0;
+            final fitWidth = (constraints.maxWidth - gap * (options.length - 1)) / options.length;
+            final chipWidth = fitWidth < minWidth ? minWidth : fitWidth;
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < options.length; i++) ...[
+                      if (i > 0) const SizedBox(width: gap),
+                      _bodyTypeChip(options[i].key, options[i].value, chipWidth),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
         ],
       ),
     );
   }
 
-  Widget _bodyTypeChip(String type, String title, String subtitle) {
+  Widget _bodyTypeChip(String type, String label, double width) {
     final isSelected = _selectedBodyType == type;
-    return Expanded(
+    return SizedBox(
+      width: width,
       child: InkWell(
         onTap: () {
           if (_selectedBodyType == type) return;
@@ -2172,40 +2177,28 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
           decoration: BoxDecoration(
-            color: isSelected ? linercolor.withOpacity(0.08) : notifier.getBgColor,
+            color: isSelected
+                ? linercolor.withOpacity(0.10)
+                : (notifier.isDark ? notifier.getBgColor : Colors.white),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? linercolor : notifier.bordecolor,
+              color: isSelected ? linercolor : (notifier.isDark ? notifier.bordecolor : const Color(0xffE3E6EA)),
               width: isSelected ? 1.6 : 1,
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isSelected ? linercolor : notifier.text,
-                  fontFamily: 'Gilroy_Bold',
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isSelected ? linercolor : greaycolor,
-                  fontFamily: 'Gilroy_Medium',
-                  fontSize: 9.5,
-                ),
-              ),
-            ],
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            softWrap: true,
+            style: TextStyle(
+              color: isSelected ? linercolor : notifier.text,
+              fontFamily: 'Gilroy_Bold',
+              fontSize: 12,
+              height: 1.25,
+            ),
           ),
         ),
       ),
