@@ -65,11 +65,11 @@ describe("open hook", () => {
     const extra = adminSocket.notifyDispatchAlert.mock.calls[0][3];
     expect(extra).toEqual(expect.objectContaining({ kind: "booking_guarantee", amount: 100, queue: on }));
   });
-  it("does not call the queue when the guarantee does not apply (city off)", async () => {
+  it("still holds the order and hands it to the queue hook when the city guarantee is off (amount 0)", async () => {
     require("../orderSearchSettings").getCitySettings.mockResolvedValueOnce({ guaranteeEnabled: false });
     prisma.booking_guarantee_case.findUnique.mockResolvedValue(null);
-    expect(await svc.openForExhaustedOrder(order, [10])).toBe(false);
-    expect(queue.onCaseOpened).not.toHaveBeenCalled();
+    expect(await svc.openForExhaustedOrder(order, [10])).toBe(true);
+    expect(queue.onCaseOpened).toHaveBeenCalled();
   });
 });
 

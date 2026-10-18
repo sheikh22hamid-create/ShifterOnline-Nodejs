@@ -65,28 +65,24 @@ async function announceOpened(row, cityId) {
 
 /**
  * Called when the dispatch cascade is exhausted for an unassigned order. true = the order is being held
- * for the admin window (the caller must NOT cancel it); false = no guarantee applies, cancel as before.
+ * for the admin window (the caller must NOT cancel it); false only if a case already exists and is closed.
  */
 async function openForExhaustedOrder(order, selectedIds) {
   const existing = await prisma.booking_guarantee_case.findUnique({ where: { order_id: order.id } });
   if (existing) return existing.status === STATUS.OPEN;
 
-  // City-wise switch (spec 2026-10-12): the guarantee exists only where the city admin turned it on, and a
-  // customer who already received a compensation stays locked out until their referrals are done.
+  // Every unassigned order is held for the admin-assignment window (manager flow 2026-10-18); the payout alone
+  // depends on eligibility: the city switch is on, now is inside the admin-set compensation window (IST), and
+  // the customer is not locked (already compensated, referrals pending). Otherwise amount is 0: no credit.
   const city = await orderSearchSettings.getCitySettings(order.city_id);
-  if (!city.guaranteeEnabled) return false;
-  // Admin-set daily compensation window (IST): outside it the order is cancelled as before, no hold, no payout.
-  if (!orderSearchRules.isWithinGuaranteeWindow(city)) return false;
-  // A locked customer (already compensated, referrals pending) still gets the admin-assignment hold on every
-  // booking; only the payout is withheld (amount 0), so expiry cancels the order without a credit.
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { guarantee_locked: true } });
-  const locked = Boolean(customer?.guarantee_locked);
+  const payable = city.guaranteeEnabled && orderSearchRules.isWithinGuaranteeWindow(city) && !customer?.guarantee_locked;
 
   const ids = toIds(selectedIds);
   const packages = ids.length ? await prisma.tbl_package.findMany({ where: { id: { in: ids } }, select: PACKAGE_SELECT }) : [];
   const computed = rules.computeGuaranteeCompensation(packages);
   const packageId = computed.packageId;
-  const amount = locked ? 0 : computed.amount;
+  const amount = payable ? computed.amount : 0;
   const minutes = city.adminWindowMinutes ?? (await settings.getAssignWindowMinutes());
   const deadline = new Date(Date.now() + minutes * 60 * 1000);
 

@@ -49,10 +49,12 @@ describe("openForExhaustedOrder: city gating", () => {
     prisma.booking_guarantee_case.create.mockImplementation(async ({ data }) => ({ id: 1, ...data }));
   });
 
-  it("does not open a case when the city has the guarantee off", async () => {
+  it("still holds the order (amount 0) when the city has the guarantee off", async () => {
     orderSearchSettings.getCitySettings.mockResolvedValue(city({ guaranteeEnabled: false }));
-    expect(await svc.openForExhaustedOrder(order, [10])).toBe(false);
-    expect(prisma.booking_guarantee_case.create).not.toHaveBeenCalled();
+    expect(await svc.openForExhaustedOrder(order, [10])).toBe(true);
+    expect(prisma.booking_guarantee_case.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ compensation_amount: 0 }) }),
+    );
     expect(orderSearchSettings.getCitySettings).toHaveBeenCalledWith(3);
   });
 
@@ -62,10 +64,12 @@ describe("openForExhaustedOrder: city gating", () => {
     return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
   };
 
-  it("does not open a case outside the city's compensation time window", async () => {
+  it("holds the order with amount 0 outside the city's compensation time window", async () => {
     orderSearchSettings.getCitySettings.mockResolvedValue(city({ guaranteeStartTime: hhmm(60), guaranteeEndTime: hhmm(120) }));
-    expect(await svc.openForExhaustedOrder(order, [10])).toBe(false);
-    expect(prisma.booking_guarantee_case.create).not.toHaveBeenCalled();
+    expect(await svc.openForExhaustedOrder(order, [10])).toBe(true);
+    expect(prisma.booking_guarantee_case.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ compensation_amount: 0 }) }),
+    );
   });
 
   it("opens a case inside the city's compensation time window", async () => {
