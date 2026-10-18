@@ -69,6 +69,15 @@ describe("Slab Pricing Engine", () => {
     expect(m3.fare).toBe(653);
   });
 
+  test("findVehicleSlabConfig never matches a numeric category id against a vehicle name", () => {
+    // Live category ids: E-Loader 3, 3 Wheeler 4, 4 Wheeler 5. "3" is inside "mini 3w" and "4" inside "tata ace / 4w".
+    expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, 3)?.vehicle_key).toBe("e_loader");
+    expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, "4")?.vehicle_key).toBe("three_wheeler");
+    expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, 5)?.vehicle_key).toBe("four_wheeler");
+    expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, 1)?.vehicle_key).toBe("bike");
+    expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, 9)?.vehicle_key).toBe("mini_3w");
+  });
+
   test("findVehicleSlabConfig resolves various category identifiers and names", () => {
     expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, 8)?.vehicle_name).toBe("Bike");
     expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, "Bike")?.vehicle_name).toBe("Bike");

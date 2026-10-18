@@ -382,11 +382,16 @@ function findVehicleSlabConfig(slabRates, catIdOrName) {
 
   const input = String(catIdOrName).toLowerCase().trim();
   if (!input) return null;
+  // A purely numeric input is a category id: it may only match a config's category_id. Matching it as a
+  // substring of the vehicle NAME is wrong ("3" is inside "mini 3w", "4" inside "tata ace / 4w"), which priced
+  // E-Loader (id 3) with Mini 3W rates and 3 Wheeler (id 4) with 4 Wheeler rates.
+  const isNumericId = /^\d+$/.test(input);
   for (const key of Object.keys(slabRates)) {
     const cfg = slabRates[key];
     if (String(cfg.category_id) === input || cfg.vehicle_key.toLowerCase() === input) {
       return cfg;
     }
+    if (isNumericId) continue;
     const vName = (cfg.vehicle_name || "").toLowerCase();
     if (vName && (vName === input || input.includes(vName) || vName.includes(input))) {
       return cfg;
