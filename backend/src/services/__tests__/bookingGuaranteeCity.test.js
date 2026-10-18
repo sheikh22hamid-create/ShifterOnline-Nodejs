@@ -79,11 +79,13 @@ describe("openForExhaustedOrder: city gating", () => {
     expect((await svc.quote([10], { cityId: 3, uid: 7 })).amount).toBe(0);
   });
 
-  it("does not open a case for a guarantee-locked customer", async () => {
+  it("still holds the order and alerts admin for a guarantee-locked customer, with no compensation", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: true });
-    expect(await svc.openForExhaustedOrder(order, [10])).toBe(false);
-    expect(prisma.booking_guarantee_case.create).not.toHaveBeenCalled();
-    expect(adminSocket.notifyDispatchAlert).not.toHaveBeenCalled();
+    expect(await svc.openForExhaustedOrder(order, [10])).toBe(true);
+    expect(prisma.booking_guarantee_case.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ compensation_amount: 0 }) }),
+    );
+    expect(adminSocket.notifyDispatchAlert).toHaveBeenCalled();
   });
 
   it("uses the city's admin window when set", async () => {

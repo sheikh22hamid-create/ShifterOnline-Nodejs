@@ -77,12 +77,16 @@ async function openForExhaustedOrder(order, selectedIds) {
   if (!city.guaranteeEnabled) return false;
   // Admin-set daily compensation window (IST): outside it the order is cancelled as before, no hold, no payout.
   if (!orderSearchRules.isWithinGuaranteeWindow(city)) return false;
+  // A locked customer (already compensated, referrals pending) still gets the admin-assignment hold on every
+  // booking; only the payout is withheld (amount 0), so expiry cancels the order without a credit.
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { guarantee_locked: true } });
-  if (customer?.guarantee_locked) return false;
+  const locked = Boolean(customer?.guarantee_locked);
 
   const ids = toIds(selectedIds);
   const packages = ids.length ? await prisma.tbl_package.findMany({ where: { id: { in: ids } }, select: PACKAGE_SELECT }) : [];
-  const { packageId, amount } = rules.computeGuaranteeCompensation(packages);
+  const computed = rules.computeGuaranteeCompensation(packages);
+  const packageId = computed.packageId;
+  const amount = locked ? 0 : computed.amount;
   const minutes = city.adminWindowMinutes ?? (await settings.getAssignWindowMinutes());
   const deadline = new Date(Date.now() + minutes * 60 * 1000);
 
