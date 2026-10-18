@@ -69,6 +69,15 @@ describe("Slab Pricing Engine", () => {
     expect(m3.fare).toBe(653);
   });
 
+  test("a slab-priced vehicle ignores the rate card's service_charge_percent", () => {
+    const { calculateFareBreakdown } = require("../pricingEngine");
+    const cfg = findVehicleSlabConfig(DEFAULT_SLAB_RATES, 5);
+    const pkg = { title: "Model 3", service_charge_percent: "10", pickup_per_km_charge: 3 };
+    const r = calculateFareBreakdown(pkg, 4, 0, 1, 0, cfg, DEFAULT_MODEL_MULTIPLIERS, 0, 0, 0);
+    expect(r.serviceCharge).toBe(0);
+    expect(r.total).toBe(411);
+  });
+
   test("findVehicleSlabConfig never matches a numeric category id against a vehicle name", () => {
     // Live category ids: E-Loader 3, 3 Wheeler 4, 4 Wheeler 5. "3" is inside "mini 3w" and "4" inside "tata ace / 4w".
     expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, 3)?.vehicle_key).toBe("e_loader");

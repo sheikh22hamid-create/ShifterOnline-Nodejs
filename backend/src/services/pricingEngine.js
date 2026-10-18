@@ -162,7 +162,9 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
     dCharge = minCharge + (perKmCharge * distanceKm) + radiusCharge;
   }
 
-  const servicePercent = parseFloat(pkg.service_charge_percent) || 0;
+  // Slab-priced vehicles are priced exactly as the admin Slab Pricing calculator shows; the rate card's
+  // leftover service_charge_percent (e.g. 10% on 4W Model 3 only) is not part of that and must not add to it.
+  const servicePercent = vehicleConfig && pkg?.use_linear_pricing !== true ? 0 : (parseFloat(pkg.service_charge_percent) || 0);
   const serviceCharge = (dCharge * servicePercent) / 100;
 
   const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
@@ -218,7 +220,7 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
   }
 
   const dCharge = baseFare + distanceCharge + radiusCharge;
-  const servicePercent = parseFloat(pkg.service_charge_percent) || 0;
+  const servicePercent = vehicleConfig && pkg?.use_linear_pricing !== true ? 0 : (parseFloat(pkg.service_charge_percent) || 0);
   const serviceCharge = (dCharge * servicePercent) / 100;
   const nightCharge = isNight ? (parseFloat(pkg.night_charge_percent) || 0) : 0;
   const extraCharge = Number(extraMileCharge) || 0;
