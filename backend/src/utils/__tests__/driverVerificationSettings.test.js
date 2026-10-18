@@ -4,7 +4,7 @@ const prisma = require("../../config/db");
 const { getAutoVerificationSettings, vehicleSlug } = require("../driverVerificationSettings");
 
 const rows = (obj) => Object.entries(obj).map(([setting_key, setting_value]) => ({ setting_key, setting_value }));
-const BASE = { auto_verification: "1", auto_verification_charge: "99", auto_verification_charge_old: "199" };
+const BASE = { auto_verification: "1", auto_verification_charge_old: "199" };
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -26,8 +26,8 @@ describe("getAutoVerificationSettings", () => {
     }));
     expect((await getAutoVerificationSettings({ vehicle: "Bike" })).charge).toBe(49);
     expect((await getAutoVerificationSettings({ vehicle: "Four Wheeler" })).charge).toBe(299);
-    // E-Rickshaw has no override: it must not pick up Bike's or Four Wheeler's fee.
-    expect((await getAutoVerificationSettings({ vehicle: "E-Rickshaw" })).charge).toBe(99);
+    // E-Rickshaw has no fee set: it must not pick up Bike's or Four Wheeler's fee.
+    expect((await getAutoVerificationSettings({ vehicle: "E-Rickshaw" })).charge).toBe(0);
   });
 
   it("treats an explicit 0 as free, not as unset", async () => {
@@ -35,17 +35,17 @@ describe("getAutoVerificationSettings", () => {
     expect((await getAutoVerificationSettings({ vehicle: "Bike" })).charge).toBe(0);
   });
 
-  it("falls back to the global charge for a blank or invalid override and for no vehicle", async () => {
+  it("treats a blank or invalid fee, and no vehicle, as free", async () => {
     prisma.app_settings.findMany.mockResolvedValue(rows({
       ...BASE,
       auto_verification_charge_vehicle_bike: "",
       auto_verification_charge_vehicle_three_wheeler: "abc",
       auto_verification_charge_vehicle_e_rickshaw: "-5",
     }));
-    expect((await getAutoVerificationSettings({ vehicle: "Bike" })).charge).toBe(99);
-    expect((await getAutoVerificationSettings({ vehicle: "Three Wheeler" })).charge).toBe(99);
-    expect((await getAutoVerificationSettings({ vehicle: "E-Rickshaw" })).charge).toBe(99);
-    expect((await getAutoVerificationSettings()).charge).toBe(99);
+    expect((await getAutoVerificationSettings({ vehicle: "Bike" })).charge).toBe(0);
+    expect((await getAutoVerificationSettings({ vehicle: "Three Wheeler" })).charge).toBe(0);
+    expect((await getAutoVerificationSettings({ vehicle: "E-Rickshaw" })).charge).toBe(0);
+    expect((await getAutoVerificationSettings()).charge).toBe(0);
   });
 
   it("hides the global strikethrough price when it is not above the vehicle's charge", async () => {
@@ -56,6 +56,7 @@ describe("getAutoVerificationSettings", () => {
     }));
     expect((await getAutoVerificationSettings({ vehicle: "Bike" })).chargeOld).toBe(199);
     expect((await getAutoVerificationSettings({ vehicle: "Four Wheeler" })).chargeOld).toBe(0);
-    expect((await getAutoVerificationSettings({ vehicle: "Other" })).chargeOld).toBe(199);
+    // A vehicle with no fee set is free, so the strikethrough is hidden for it too.
+    expect((await getAutoVerificationSettings({ vehicle: "Other" })).chargeOld).toBe(0);
   });
 });

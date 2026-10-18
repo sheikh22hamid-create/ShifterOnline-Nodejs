@@ -113,7 +113,6 @@ function VehicleChargeFields({ flags, setFlags }) {
   const fetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
   const { data: categories, loading } = useApiQuery(fetcher)
   const names = [...new Set((categories ?? []).filter((c) => c.cat_status === 1).map((c) => c.cat_name))]
-  const defaultCharge = flags.auto_verification_charge ?? '0'
 
   return (
     <div>
@@ -135,7 +134,7 @@ function VehicleChargeFields({ flags, setFlags }) {
                   id={`flag-${key}`}
                   type="number"
                   min="0"
-                  placeholder={`Default (₹${defaultCharge})`}
+                  placeholder="Free (₹0)"
                   value={flags[key] ?? ''}
                   onChange={(e) => setFlags((f) => ({ ...f, [key]: e.target.value }))}
                 />
@@ -145,7 +144,7 @@ function VehicleChargeFields({ flags, setFlags }) {
         </div>
       )}
       <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-        A driver pays only the fee of the vehicle type they register with. Leave blank to use the default charge above; <strong>0</strong> makes that vehicle type free.
+        A driver pays only the fee of the vehicle type they register with. Leave blank or enter <strong>0</strong> to make that vehicle type free (no payment screen).
       </p>
     </div>
   )
@@ -249,6 +248,10 @@ function SettingsForm({ data, onSaved }) {
   const toast = useToast()
   const [form, setForm] = useState(() => Object.fromEntries(SETTING_FIELDS.map((k) => [k, data[k] ?? ''])))
   const [flags, setFlags] = useState(() => data.flags ?? {})
+  // Preview shows the first vehicle type that has a fee set (there is no global default charge).
+  const previewCharge = Object.entries(flags)
+    .filter(([k, v]) => k.startsWith(VEHICLE_CHARGE_PREFIX) && Number(v) > 0)
+    .map(([, v]) => Number(v))[0] ?? 0
   const [paymentMethods, setPaymentMethods] = useState(() => ({
     payment_cod: data.payment_cod,
     payment_wallet: data.payment_wallet,
@@ -1033,7 +1036,7 @@ function SettingsForm({ data, onSaved }) {
                 Driver Verification Payment
               </h3>
               <p className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-                One-time eKYC verification fee charged to drivers during registration. Set to 0 to make it free.
+                One-time eKYC verification fee charged to drivers during registration. Set a fee per vehicle type below; a vehicle type left blank or 0 is free.
               </p>
             </div>
             {Number(flags.auto_verification ?? 0) === 1 ? (
@@ -1055,22 +1058,6 @@ function SettingsForm({ data, onSaved }) {
                 checked={Number(flags.auto_verification ?? 0) === 1}
                 onChange={(v) => setFlags((f) => ({ ...f, auto_verification: v ? '1' : '0' }))}
               />
-
-              {/* Charge */}
-              <div>
-                <Label htmlFor="flag-auto_verification_charge">Default Verification Charge (₹)</Label>
-                <Input
-                  id="flag-auto_verification_charge"
-                  type="number"
-                  min="0"
-                  placeholder="e.g. 99  (set 0 for free)"
-                  value={flags.auto_verification_charge ?? '0'}
-                  onChange={(e) => setFlags((f) => ({ ...f, auto_verification_charge: e.target.value }))}
-                />
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                  Amount driver pays via Razorpay. Set to <strong>0</strong> to skip payment screen entirely.
-                </p>
-              </div>
 
               <VehicleChargeFields flags={flags} setFlags={setFlags} />
 
@@ -1110,20 +1097,20 @@ function SettingsForm({ data, onSaved }) {
               <div className="text-[11.5px] font-medium mb-3" style={{ color: 'var(--ink-muted)' }}>Live Preview — Driver Payment Screen</div>
               <div className="rounded-xl border p-4 space-y-2 text-center" style={{ borderColor: 'var(--border)', background: 'var(--bg-muted)' }}>
                 <div className="text-[11px] font-medium" style={{ color: 'var(--ink-faint)' }}>Complete Verification Payment</div>
-                {Number(flags.auto_verification_charge_old ?? 0) > 0 && (
+                {previewCharge > 0 && Number(flags.auto_verification_charge_old ?? 0) > previewCharge && (
                   <div className="text-[13px] line-through" style={{ color: 'var(--ink-faint)' }}>₹{flags.auto_verification_charge_old}</div>
                 )}
                 <div className="text-[28px] font-bold" style={{ color: 'var(--success)' }}>
-                  ₹{flags.auto_verification_charge ?? '0'}
+                  ₹{previewCharge}
                 </div>
                 {flags.auto_verification_msg?.trim() && (
                   <div className="text-[11px] italic" style={{ color: 'var(--brand)' }}>{flags.auto_verification_msg}</div>
                 )}
                 <div className="mt-2 rounded-lg px-3 py-2 text-[12px] font-semibold" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>
-                  {Number(flags.auto_verification_charge ?? 0) === 0 ? 'Proceed (Free)' : `Pay ₹${flags.auto_verification_charge} via Razorpay`}
+                  {previewCharge === 0 ? 'Proceed (Free)' : `Pay ₹${previewCharge} via Razorpay`}
                 </div>
               </div>
-              {Number(flags.auto_verification_charge ?? 0) === 0 && (
+              {previewCharge === 0 && (
                 <p className="mt-2 text-[11px] text-center" style={{ color: 'var(--success)' }}>✓ Payment screen will be skipped — driver goes directly to Home.</p>
               )}
             </div>

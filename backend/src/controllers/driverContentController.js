@@ -404,7 +404,7 @@ async function registrationSettings(req, res) {
       const slug = vehicleSlug(name);
       vehicleCharges[name] = slug && Object.prototype.hasOwnProperty.call(verification.vehicleCharges, slug)
         ? verification.vehicleCharges[slug]
-        : verification.defaultCharge;
+        : 0;
     }
 
     return res.status(200).json({

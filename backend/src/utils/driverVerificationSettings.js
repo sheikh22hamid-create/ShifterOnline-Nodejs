@@ -17,14 +17,14 @@ function vehicleSlug(name) {
 // registration-settings endpoint the app reads before showing the form.
 //
 // Pass `vehicle` (the driver's chosen vehicle type) to get the charge for that
-// type. A type with no override set falls back to the global charge; an
-// explicit 0 override means that type is free. One type's fee never applies
-// to another type.
+// type. There is no global default charge: a type with no fee set (or no vehicle
+// given) is free, and an explicit 0 also means free. One type's fee never
+// applies to another type.
 async function getAutoVerificationSettings({ vehicle } = {}) {
   const rows = await prisma.app_settings.findMany({
     where: {
       OR: [
-        { setting_key: { in: ["auto_verification", "auto_verification_charge", "auto_verification_charge_old", "auto_verification_msg"] } },
+        { setting_key: { in: ["auto_verification", "auto_verification_charge_old", "auto_verification_msg"] } },
         { setting_key: { startsWith: VEHICLE_CHARGE_PREFIX } },
       ],
     },
@@ -42,20 +42,17 @@ async function getAutoVerificationSettings({ vehicle } = {}) {
     if (Number.isFinite(v) && v >= 0) vehicleCharges[key.slice(VEHICLE_CHARGE_PREFIX.length)] = v;
   }
 
-  const defaultCharge = num("auto_verification_charge", 0);
   const slug = vehicleSlug(vehicle);
-  const hasOverride = slug !== "" && Object.prototype.hasOwnProperty.call(vehicleCharges, slug);
-  const charge = hasOverride ? vehicleCharges[slug] : defaultCharge;
+  const charge = slug !== "" && Object.prototype.hasOwnProperty.call(vehicleCharges, slug) ? vehicleCharges[slug] : 0;
   let chargeOld = num("auto_verification_charge_old", 0);
-  // The global strikethrough price is meaningless against a different per-type fee.
-  if (hasOverride && chargeOld <= charge) chargeOld = 0;
+  // The global strikethrough price only makes sense above a real (non-free) fee for this vehicle.
+  if (charge <= 0 || chargeOld <= charge) chargeOld = 0;
 
   return {
     enabled: num("auto_verification", 0) === 1,
     charge,
     chargeOld,
     msg: map.auto_verification_msg || "",
-    defaultCharge,
     vehicleCharges,
   };
 }
