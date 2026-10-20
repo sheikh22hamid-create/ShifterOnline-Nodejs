@@ -5,15 +5,15 @@ double parseGuaranteeAmount(dynamic raw) {
   return v == null || v.isNaN || v < 0 ? 0.0 : v;
 }
 
-String _rupees(double amount) =>
+String rupeesText(double amount) =>
     amount == amount.roundToDouble() ? '₹${amount.toInt()}' : '₹${amount.toStringAsFixed(2)}';
 
 /// "If no driver is found, you get ₹X" — null (hide the line) when nothing is owed.
 String? guaranteeLine(double amount) =>
-    amount > 0 ? 'If no driver is found, you get ${_rupees(amount)}' : null;
+    amount > 0 ? 'If no driver is found, you get ${rupeesText(amount)}' : null;
 
 String noDriverMessage(double compensation) => compensation > 0
-    ? 'No driver found. ${_rupees(compensation)} has been added to your wallet.'
+    ? 'No driver found. ${rupeesText(compensation)} has been added to your wallet.'
     : 'No driver found. Please try again.';
 
 /// System 2 (Vehicle Category First): the search window ended with nobody found and no guarantee compensation.

@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const rules = require("./orderSearchRules");
+const bookingGuaranteeSettings = require("./bookingGuaranteeSettings");
 
 const TTL_MS = 5000;
 const cache = new Map(); // cityId -> { at, value }
@@ -66,10 +67,31 @@ async function getSearchView(order) {
   if (!system2) return view;
   try {
     const city = await getCitySettings(order.city_id);
+    // Timer = driver search time + admin arrangement time, both from this city's settings.
+    const adminMinutes = city.adminWindowMinutes ?? (await bookingGuaranteeSettings.getAssignWindowMinutes());
+    view.driver_search_seconds = city.driverSearchSeconds;
+    view.admin_window_seconds = adminMinutes * 60;
+    if (order.search_deadline_at) {
+      view.total_deadline_at = new Date(new Date(order.search_deadline_at).getTime() + view.admin_window_seconds * 1000).toISOString();
+    }
     if (!city.guaranteeEnabled || !rules.isWithinGuaranteeWindow(city)) return view;
     view.guarantee = "on";
-    const user = await prisma.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { guarantee_locked: true } });
-    if (user?.guarantee_locked) view.guarantee = "locked";
+    const user = await prisma.tbl_user.findUnique({
+      where: { id: Number(order.uid) },
+      select: { guarantee_locked: true, guarantee_locked_at: true },
+    });
+    if (user?.guarantee_locked) {
+      view.guarantee = "locked";
+      const done = await prisma.tbl_referral.count({
+        where: {
+          referrer_id: Number(order.uid),
+          referrer_type: "USER",
+          status: "completed",
+          ...(user.guarantee_locked_at ? { verified_at: { gte: user.guarantee_locked_at } } : {}),
+        },
+      });
+      view.referrals_needed = Math.max(1, city.guaranteeReferralsRequired - done);
+    }
   } catch (err) {
     logger.warn(`orderSearchSettings.getSearchView failed for order ${order?.id}: ${err.message}`);
   }

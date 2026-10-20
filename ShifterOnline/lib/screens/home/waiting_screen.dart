@@ -44,8 +44,11 @@ class _WaitingScreenState extends State<WaitingScreen> {
   bool _recoveringOrder = false;
   double _guaranteeAmount = 0;
   bool _guaranteePending = false;
-  bool _searchSystem2 = false;
-  bool _guaranteeLocked = false;
+  // Booking Guarantee state for the line under the timer: 'on' | 'locked' (referrals pending) | 'off'.
+  String _searchGuarantee = 'off';
+  int _referralsNeeded = 0;
+  // The moment the on-screen countdown reaches 0 (driver search time + admin arrangement time, from the city's settings).
+  DateTime? _timerDeadline;
   NodeSocketSubscription? _socketSubscription;
 
   static void clearPersistedWaitingOrder() {
@@ -116,41 +119,128 @@ class _WaitingScreenState extends State<WaitingScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
-            "Cancel Order?".tr,
-            style: const TextStyle(fontFamily: 'Gilroy_Bold'),
-          ),
-          content: Text(
-            "Are you sure you want to cancel this order?".tr,
-            style: const TextStyle(fontFamily: 'Gilroy_Medium'),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                "No".tr,
-                style: const TextStyle(color: Colors.grey, fontFamily: 'Gilroy_Bold'),
-              ),
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 22),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.campaign_rounded, color: Color(0xFFE53935), size: 28),
+                    const SizedBox(width: 8),
+                    Text("Cancel Order?".tr, style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 22, color: Color(0xFF1F2937))),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    "Wait! You Could Still Get Extra Benefits!".tr,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 15, color: Color(0xFFE53935)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text("If you wait a little longer, you may get:".tr,
+                    style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: Color(0xFF4B5563))),
+                const SizedBox(height: 10),
+                _cancelBenefit(
+                  icon: Icons.currency_rupee_rounded,
+                  color: const Color(0xFF2E9E5B),
+                  background: const Color(0xFFE6F6EC),
+                  title: "100% Booking Refund".tr,
+                  body: "Your booking may be confirmed with a full refund.".tr,
+                ),
+                const SizedBox(height: 10),
+                _cancelBenefit(
+                  icon: Icons.verified_user_rounded,
+                  color: const Color(0xFF2563EB),
+                  background: const Color(0xFFE6EFFC),
+                  title: "Get Compensation Benefit".tr,
+                  body: "Don't lose chance for compensation benefit.".tr,
+                ),
+                const SizedBox(height: 14),
+                Text("Do you still want to cancel this order?".tr,
+                    style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: Color(0xFF1F2937))),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE5E7EB),
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: Text("No, Keep Booking".tr,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Color(0xFF374151), fontFamily: 'Gilroy_Bold', fontSize: 14)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFEF2B2D),
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          pksCancleOrder(comment: "Cancelled by user during driver search");
+                        },
+                        child: Text("Yes, Cancel".tr,
+                            style: const TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 14)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-                pksCancleOrder(comment: "Cancelled by user during driver search");
-              },
-              child: Text(
-                "Yes, Cancel".tr,
-                style: const TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold'),
-              ),
-            ),
-          ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _cancelBenefit({
+    required IconData icon,
+    required Color color,
+    required Color background,
+    required String title,
+    required String body,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 15, color: color)),
+                const SizedBox(height: 2),
+                Text(body, style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: Color(0xFF4B5563))),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -228,23 +318,24 @@ class _WaitingScreenState extends State<WaitingScreen> {
       final flow = int.tryParse((order['order_status'] ?? order['Order_flow_id'] ?? '').toString());
       final riderId = int.tryParse((order['rid'] ?? order['rider_id'] ?? '').toString()) ?? 0;
       final guarantee = order['guarantee'];
-      if (guarantee is Map) {
-        final g = Map<String, dynamic>.from(guarantee);
-        if (g['state'] == 'pending') {
-          _enterGuaranteeWait(parseGuaranteeAmount(g['amount']));
-          return;
-        }
-      }
+      final g = guarantee is Map ? Map<String, dynamic>.from(guarantee) : null;
       final search = order['search'];
       if (search is Map) _applySearchWindow(Map<String, dynamic>.from(search));
+      if (g != null) {
+        final amount = parseGuaranteeAmount(g['amount']);
+        if (g['state'] == 'pending') {
+          _enterGuaranteeWait(amount, deadline: DateTime.tryParse(g['deadline_at']?.toString() ?? ''));
+          return;
+        }
+        if (mounted && amount != _guaranteeAmount) setState(() => _guaranteeAmount = amount);
+      }
       if (riderId > 0 || (flow != null && flow >= 1 && flow <= 3)) {
         _handedOffToTracking = true;
         clearPersistedWaitingOrder();
         Get.off(() => TrackingWay(type: "Pickup", initialOrderData: order));
       } else if (flow == 4) {
         clearPersistedWaitingOrder();
-        final g = order['guarantee'];
-        final paid = g is Map && g['state'] == 'paid' ? parseGuaranteeAmount(g['amount']) : 0.0;
+        final paid = g != null && g['state'] == 'paid' ? parseGuaranteeAmount(g['amount']) : 0.0;
         ApiWrapper.showToastMessage(noDriverMessage(paid).tr);
         Get.offAll(() => const Bottombar());
       }
@@ -289,32 +380,42 @@ class _WaitingScreenState extends State<WaitingScreen> {
       Get.offAll(() => const Bottombar());
     }, onGuaranteePending: (data) {
       if (data['order_id']?.toString() != widget.orderId) return;
-      _enterGuaranteeWait(parseGuaranteeAmount(data['amount']));
+      _enterGuaranteeWait(parseGuaranteeAmount(data['amount']), deadline: DateTime.tryParse(data['deadline_at']?.toString() ?? ''));
     });
   }
 
   /// The order is being held for an admin to assign a driver (Booking Guarantee). The 130 s safety timer
   /// would otherwise dump the customer on Home while their order is still alive, so stop it.
-  void _enterGuaranteeWait(double amount) {
+  void _enterGuaranteeWait(double amount, {DateTime? deadline}) {
     if (_isDisposed) return;
     _timeoutTimer?.cancel();
-    _countdownTicker?.cancel();
     clearPersistedWaitingOrder();
     setState(() {
       _guaranteePending = true;
       _guaranteeAmount = amount;
     });
+    _startCountdown(deadline ?? _timerDeadline);
   }
 
   // Extra seconds past the search deadline before the safety timer gives up, so the server's own
   // guarantee / "Driver is not available" event always arrives first.
   static const int _searchGraceSeconds = 30;
 
-  /// System 2: replace the fixed 130 s safety timer with the order's real search deadline.
+  /// Replace the fixed 130 s safety timer with the order's real window: driver search time + admin
+  /// arrangement time, both set per city in the Admin Panel. Also learns the guarantee eligibility state.
   void _applySearchWindow(Map<String, dynamic> search) {
-    if (_isDisposed || _guaranteePending) return;
-    if (search['system']?.toString() != '2') return;
-    final deadline = DateTime.tryParse(search['deadline_at']?.toString() ?? '');
+    if (_isDisposed) return;
+    final guarantee = search['guarantee']?.toString() ?? 'off';
+    final needed = int.tryParse(search['referrals_needed']?.toString() ?? '') ?? 0;
+    if (mounted && (guarantee != _searchGuarantee || needed != _referralsNeeded)) {
+      setState(() {
+        _searchGuarantee = guarantee;
+        _referralsNeeded = needed;
+      });
+    }
+    if (_guaranteePending || search['system']?.toString() != '2') return;
+    final deadline = DateTime.tryParse(search['total_deadline_at']?.toString() ?? '') ??
+        DateTime.tryParse(search['deadline_at']?.toString() ?? '');
     if (deadline == null) return;
     final seconds = deadline.difference(DateTime.now()).inSeconds + _searchGraceSeconds;
     if (seconds <= 0) return;
@@ -322,27 +423,91 @@ class _WaitingScreenState extends State<WaitingScreen> {
     _countdownTicker?.cancel();
     _timeoutSet = false;
     _persistWaitingOrder(DateTime.now().millisecondsSinceEpoch + seconds * 1000);
-    setState(() {
-      _searchSystem2 = true;
-      _guaranteeLocked = search['guarantee']?.toString() == 'locked';
+    _startTimeout(seconds, displayDeadline: deadline);
+  }
+
+  /// Ticks the on-screen countdown once a second toward [deadline].
+  void _startCountdown(DateTime? deadline) {
+    if (deadline != null) _timerDeadline = deadline;
+    _countdownTicker?.cancel();
+    _refreshRemaining();
+    if (mounted) setState(() {});
+    _countdownTicker = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_isDisposed) { t.cancel(); return; }
+      setState(_refreshRemaining);
     });
-    _startTimeout(seconds);
+  }
+
+  void _refreshRemaining() {
+    final d = _timerDeadline;
+    _remainingSeconds = d == null ? 0 : d.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30).toInt();
+  }
+
+  String _formatRemaining() {
+    final m = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
+    final s = (_remainingSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  /// The Booking Guarantee card under the timer: the compensation amount, the referral condition still
+  /// pending, or "no compensation" — all from backend data.
+  Widget _buildGuaranteeCard() {
+    final IconData icon;
+    final Color tone;
+    final Color background;
+    final List<Widget> lines;
+    const bold = TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14.5, color: Color(0xFF1F2937));
+    const soft = TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: Color(0xFF6B7280));
+    if (_searchGuarantee == 'locked') {
+      icon = Icons.hourglass_bottom_rounded;
+      tone = const Color(0xFFF59E0B);
+      background = const Color(0xFFFFF4DC);
+      final n = _referralsNeeded > 0 ? _referralsNeeded : 1;
+      lines = [
+        Text("Complete required referrals to unlock compensation benefit.".tr, style: bold),
+        const SizedBox(height: 2),
+        Text(n == 1 ? "You need 1 more referral to be eligible.".tr : "You need $n more referrals to be eligible.".tr, style: soft),
+      ];
+    } else if (_guaranteeAmount > 0) {
+      icon = Icons.verified_user_rounded;
+      tone = const Color(0xFF2E9E5B);
+      background = const Color(0xFFE6F6EC);
+      lines = [
+        Text("If we can't find a driver, you will receive compensation of".tr, style: bold),
+        Text(rupeesText(_guaranteeAmount), style: bold.copyWith(color: const Color(0xFF2E9E5B), fontSize: 16)),
+      ];
+    } else {
+      icon = Icons.info_rounded;
+      tone = const Color(0xFF6B7280);
+      background = const Color(0xFFF3F4F6);
+      lines = [
+        Text("If we can't find a driver, no compensation is available for this booking.".tr, style: bold),
+      ];
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(16)),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(color: tone.withOpacity(0.18), shape: BoxShape.circle),
+            child: Icon(icon, color: tone, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines)),
+        ],
+      ),
+    );
   }
 
   /// Auto-close safety net — normally superseded by a socket event above.
-  void _startTimeout(int seconds) {
+  void _startTimeout(int seconds, {DateTime? displayDeadline}) {
     if (_timeoutSet || seconds <= 0) return;
     _timeoutSet = true;
 
-    _remainingSeconds = seconds;
-    setState(() {});
-
-    _countdownTicker = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_isDisposed) { t.cancel(); return; }
-      setState(() {
-        _remainingSeconds = (_remainingSeconds - 1).clamp(0, seconds);
-      });
-    });
+    _startCountdown(displayDeadline ?? DateTime.now().add(Duration(seconds: seconds)));
 
     _timeoutTimer = Timer(Duration(seconds: seconds), () {
       if (!_isDisposed) {
@@ -507,80 +672,32 @@ class _WaitingScreenState extends State<WaitingScreen> {
                         const SizedBox(height: 15),
 
                         // ── Waiting Time Countdown
-                        if (_guaranteePending) ...[
-                          Text(
-                            "We're arranging a driver for you. This can take a few minutes.".tr,
-                            style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: Colors.white70),
-                            textAlign: TextAlign.center,
-                          ),
-                          if (guaranteeLine(_guaranteeAmount) != null) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white.withOpacity(0.35)),
-                              ),
-                              child: Text(
-                                guaranteeLine(_guaranteeAmount)!.tr,
-                                style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 15, color: Colors.white),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ] else
-                        Column(
-                          children: [
-                            Text(
-                              (_searchSystem2 ? "Searching for a driver".tr : "Auto-closing in".tr),
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 14,
-                                color: Colors.white60,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(30),
-                                border: Border.all(color: Colors.white.withOpacity(0.35)),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.08),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 5),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.timer_outlined, color: Colors.white, size: 22),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    _timeoutSet ? "${_remainingSeconds}s" : "—",
-                                    style: const TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 22,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        Text(
+                          "Searching for a driver".tr,
+                          style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: Colors.white70),
                         ),
-                        if (_guaranteeLocked && !_guaranteePending) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            guaranteeLockedLine.tr,
-                            style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 13, color: Colors.white70),
-                            textAlign: TextAlign.center,
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: Colors.white.withOpacity(0.35)),
                           ),
-                        ],
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.access_time_rounded, color: Colors.white, size: 22),
+                              const SizedBox(width: 10),
+                              Text(
+                                _timerDeadline != null ? _formatRemaining() : "—",
+                                style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 22, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildGuaranteeCard(),
 
                         const SizedBox(height: 20),
 

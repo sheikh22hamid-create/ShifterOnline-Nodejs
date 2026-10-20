@@ -2,6 +2,8 @@ jest.mock("../../config/db", () => ({
   city_order_settings: { findUnique: jest.fn(), upsert: jest.fn() },
   tbl_city: { findUnique: jest.fn() },
   tbl_user: { findUnique: jest.fn() },
+  tbl_referral: { count: jest.fn() },
+  app_settings: { findFirst: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
@@ -106,6 +108,7 @@ describe("saveCitySettings", () => {
 });
 
 describe("getSearchView", () => {
+  beforeEach(() => prisma.app_settings.findFirst.mockResolvedValue(null)); // default admin window: 10 min
   const order = { id: 5, uid: 7, city_id: 3, search_system: 2, search_deadline_at: new Date("2026-10-12T10:01:30.000Z") };
 
   it("a System 1 order has no deadline and no guarantee", async () => {
@@ -115,12 +118,35 @@ describe("getSearchView", () => {
   it("a System 2 order carries its deadline and the city's guarantee state", async () => {
     prisma.city_order_settings.findUnique.mockResolvedValue({ city_id: 3, search_system: 2, guarantee_enabled: 1 });
     prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: false });
-    expect(await svc.getSearchView(order)).toEqual({ system: 2, deadline_at: "2026-10-12T10:01:30.000Z", guarantee: "on" });
+    expect(await svc.getSearchView(order)).toEqual({
+      system: 2, deadline_at: "2026-10-12T10:01:30.000Z", guarantee: "on",
+      driver_search_seconds: 60, admin_window_seconds: 600, total_deadline_at: "2026-10-12T10:11:30.000Z",
+    });
+  });
+
+  it("total timer = driver search seconds + the city's admin window", async () => {
+    prisma.city_order_settings.findUnique.mockResolvedValue({
+      city_id: 3, search_system: 2, driver_search_seconds: 90, admin_window_minutes: 2, guarantee_enabled: 0,
+    });
+    const v = await svc.getSearchView(order);
+    expect(v.driver_search_seconds).toBe(90);
+    expect(v.admin_window_seconds).toBe(120);
+    expect(v.total_deadline_at).toBe("2026-10-12T10:03:30.000Z");
+  });
+
+  it("locked customers get the number of referrals still needed", async () => {
+    prisma.city_order_settings.findUnique.mockResolvedValue({
+      city_id: 3, search_system: 2, guarantee_enabled: 1, guarantee_referrals_required: 3,
+    });
+    prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: true, guarantee_locked_at: new Date("2026-10-01") });
+    prisma.tbl_referral.count.mockResolvedValue(1);
+    expect((await svc.getSearchView(order)).referrals_needed).toBe(2);
   });
 
   it("reports locked when the customer is guarantee-locked", async () => {
     prisma.city_order_settings.findUnique.mockResolvedValue({ city_id: 3, search_system: 2, guarantee_enabled: 1 });
     prisma.tbl_user.findUnique.mockResolvedValue({ guarantee_locked: true });
+    prisma.tbl_referral.count.mockResolvedValue(0);
     expect((await svc.getSearchView(order)).guarantee).toBe("locked");
   });
 
