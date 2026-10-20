@@ -226,6 +226,24 @@ db.describeMysql("auto trial driver search + executive queue (real MySQL)", () =
     });
   });
 
+  describe("repair", () => {
+    it("supersedes a live candidate that is stuck on a closed case", async () => {
+      const c = await makeCase(3);
+      await addCandidate(c);
+      await prisma.booking_guarantee_case.update({ where: { id: c.id }, data: { status: "cancelled", closed_at: new Date() } });
+      await svc.repairOrphans(new Date());
+      const cands = await prisma.guarantee_outside_candidate.findMany({ where: { case_id: c.id } });
+      expect(cands).toHaveLength(1);
+      expect(cands[0]).toMatchObject({ status: "superseded", active: null });
+    });
+    it("leaves the live candidate of an open case alone", async () => {
+      const c = await makeCase(3);
+      await addCandidate(c);
+      await svc.repairOrphans(new Date());
+      expect((await cands.getLive(c.id)).status).toBe("ready");
+    });
+  });
+
   describe("admin queue view", () => {
     it("shows the offered driver and the search state next to each case", async () => {
       const reports = require("../guaranteeQueueReports");

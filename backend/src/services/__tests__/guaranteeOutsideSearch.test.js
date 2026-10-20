@@ -133,6 +133,33 @@ describe("runSearch", () => {
   });
 });
 
+describe("lease ownership", () => {
+  it("does not register a trial driver or touch the lease when it was taken over during the lookup", async () => {
+    // acquire ok, loop-top renew ok, then the renew after the lookup finds another worker's lease
+    prisma.booking_guarantee_case.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValue({ count: 0 });
+    const out = await svc.runSearch(1, deps);
+    expect(out.outcome).toBe("stopped");
+    expect(deps.registerFn).not.toHaveBeenCalled();
+    expect(candidates.createLive).not.toHaveBeenCalled();
+    expect(audits()).not.toContain("outside_search_exhausted");
+  });
+
+  it("supersedes a just-created candidate when the case closed while the trial driver was being registered", async () => {
+    candidates.supersedeLive = jest.fn().mockResolvedValue(1);
+    prisma.booking_guarantee_case.findUnique
+      .mockResolvedValueOnce(openCase) // after acquire
+      .mockResolvedValueOnce(openCase) // loop top
+      .mockResolvedValue({ ...openCase, status: "cancelled" }); // re-read after createLive
+    const out = await svc.runSearch(1, deps);
+    expect(out.outcome).toBe("stopped");
+    expect(candidates.supersedeLive).toHaveBeenCalledWith(1, "case_closed");
+    expect(queue.dispatchWaiting).not.toHaveBeenCalled();
+  });
+});
+
 describe("acquireLease", () => {
   it("is a compare-and-swap on a free or expired lease and marks the case searching", async () => {
     const now = new Date("2026-10-20T10:00:00Z");
@@ -141,7 +168,7 @@ describe("acquireLease", () => {
     expect(call.where).toMatchObject({ id: 1, status: "open" });
     expect(JSON.stringify(call.where)).toContain("search_lease_until");
     expect(call.data.search_state).toBe("searching");
-    expect(call.data.search_lease_until.getTime()).toBe(now.getTime() + 3 * 60 * 1000);
+    expect(call.data.search_lease_until.getTime()).toBe(now.getTime() + 6 * 60 * 1000); // longer than 3 partner lookups of 70 s
   });
 });
 

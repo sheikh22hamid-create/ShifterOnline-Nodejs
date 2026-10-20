@@ -785,6 +785,16 @@ async function repairOrphans(now) {
   } catch (err) {
     logger.error("guaranteeQueue: repair step 3 failed:", err);
   }
+  // 4) a live Trial Driver candidate on a closed case (the case closed while the driver was being registered)
+  try {
+    const cleared = await prisma.$executeRaw(Prisma.sql`
+      UPDATE guarantee_outside_candidate g JOIN booking_guarantee_case c ON c.id = g.case_id
+      SET g.status = 'superseded', g.active = NULL, g.reject_reason = 'case_closed'
+      WHERE g.active = 1 AND c.status <> 'open'`);
+    repaired += Number(cleared) || 0;
+  } catch (err) {
+    logger.error("guaranteeQueue: repair step 4 failed:", err);
+  }
   return repaired;
 }
 

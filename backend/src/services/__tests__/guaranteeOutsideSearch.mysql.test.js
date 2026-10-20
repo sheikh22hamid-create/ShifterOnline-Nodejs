@@ -140,4 +140,32 @@ db.describeMysql("automatic outside driver search worker (real MySQL)", () => {
     expect(deps.registerFn).toHaveBeenCalledTimes(1);
     expect((await candidatesOf(c)).filter((x) => x.active === 1)[0].mobile).toBe(driverN(8).mobile);
   });
+
+  it("a worker whose lease was taken over mid-lookup registers nothing and leaves the new owner's lease alone", async () => {
+    const c = await makeHeldCase();
+    const takeover = new Date(Date.now() + min(5));
+    takeover.setMilliseconds(0);
+    const deps = makeDeps([driverN(9)]);
+    deps.lookupFn = jest.fn(async () => {
+      await prisma.booking_guarantee_case.update({ where: { id: c.id }, data: { search_lease_until: takeover } });
+      return { driver: driverN(9), repeat: false };
+    });
+    expect((await search.runSearch(c.id, deps)).outcome).toBe("stopped");
+    expect(deps.registerFn).not.toHaveBeenCalled();
+    expect(await candidatesOf(c)).toHaveLength(0);
+    expect((await caseRow(c)).search_lease_until.getTime()).toBe(takeover.getTime());
+  });
+
+  it("a case that closes while the trial driver is being registered leaves no live candidate", async () => {
+    const c = await makeHeldCase();
+    const deps = makeDeps([driverN(10)]);
+    deps.registerFn = jest.fn(async () => {
+      await prisma.booking_guarantee_case.update({ where: { id: c.id }, data: { status: "cancelled", closed_at: new Date() } });
+      return { rider_id: 7900, kind: "trial_created" };
+    });
+    expect((await search.runSearch(c.id, deps)).outcome).toBe("stopped");
+    const cands = await candidatesOf(c);
+    expect(cands.filter((x) => x.active === 1)).toHaveLength(0);
+    expect(cands.every((x) => x.status === "superseded")).toBe(true);
+  });
 });

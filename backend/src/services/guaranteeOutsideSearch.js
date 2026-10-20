@@ -7,7 +7,13 @@ const outsideDriver = require("./outsideDriverService");
 
 // Automatic outside-driver search for a held Booking Guarantee case (spec 2026-10-20): lookup -> register a Trial
 // driver -> store the candidate -> hand the case to a free executive. One worker per case, guarded by a DB lease.
-const LEASE_MS = 3 * 60 * 1000;
+//
+// The lease is a fencing token: the exact `search_lease_until` value this worker wrote. Renew / release / the
+// ownership check all match on that value, so a worker whose lease lapsed and was taken over can neither extend nor
+// clear the new owner's lease, and stops before registering a driver nobody needs.
+// One lookup can run 3 partner calls of 70 s each, so the lease must outlive that (and a heartbeat keeps it fresh).
+const LEASE_MS = 6 * 60 * 1000;
+const HEARTBEAT_MS = 30 * 1000;
 const GAP_MS = 10 * 1000;
 const MAX_ITERATIONS = 40; // hard stop for a loop that never reaches a lookup limit (e.g. endless busy/repeat answers)
 const SWEEP_BATCH = 50;
@@ -15,6 +21,8 @@ const SWEEP_BATCH = 50;
 // Lazy: guaranteeQueueService requires this module, so a top-level require would be a cycle.
 const queue = () => require("./guaranteeQueueService");
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// DATETIME(0) keeps whole seconds, so a token must too or it would never match its own row.
+const toToken = (ms) => new Date(Math.floor(ms / 1000) * 1000);
 
 async function audit(caseRow, event, meta = null) {
   try {
@@ -26,24 +34,52 @@ async function audit(caseRow, event, meta = null) {
   }
 }
 
-/** Compare-and-swap on a free or expired lease: exactly one worker per case, across app instances. */
-async function acquireLease(caseId, now = new Date()) {
+/** Compare-and-swap on a free or expired lease. Returns this worker's token, or null when another worker holds it. */
+async function acquireToken(caseId, now = new Date()) {
+  const token = toToken(now.getTime() + LEASE_MS);
   const res = await prisma.booking_guarantee_case.updateMany({
     where: { id: caseId, status: "open", OR: [{ search_lease_until: null }, { search_lease_until: { lt: now } }] },
-    data: { search_state: "searching", search_lease_until: new Date(now.getTime() + LEASE_MS) },
+    data: { search_state: "searching", search_lease_until: token },
   });
-  return res.count === 1;
+  return res.count === 1 ? token : null;
 }
 
-const renewLease = (caseId) =>
-  prisma.booking_guarantee_case.updateMany({ where: { id: caseId, status: "open" }, data: { search_lease_until: new Date(Date.now() + LEASE_MS) } });
+const acquireLease = async (caseId, now = new Date()) => (await acquireToken(caseId, now)) !== null;
 
-/** Free the lease; `state` is the search_state to leave behind (null = idle). */
-const releaseLease = (caseId, state = null) =>
-  prisma.booking_guarantee_case.updateMany({ where: { id: caseId }, data: { search_lease_until: null, search_state: state } });
+/**
+ * A held lease. Every operation runs one at a time (`run`), so the heartbeat and the worker never race on the token.
+ * `renew` doubles as the ownership check: it only succeeds while the row still carries OUR token.
+ */
+function makeLease(caseId, token) {
+  const lease = { token, lost: false, queue: Promise.resolve(), timer: null };
+  lease.run = (fn) => { const next = lease.queue.then(fn, fn); lease.queue = next.catch(() => {}); return next; };
+  lease.renew = () => lease.run(async () => {
+    if (lease.lost) return false;
+    const next = toToken(Date.now() + LEASE_MS);
+    const res = await prisma.booking_guarantee_case.updateMany({
+      where: { id: caseId, status: "open", search_lease_until: lease.token }, data: { search_lease_until: next },
+    });
+    if (res.count !== 1) { lease.lost = true; return false; }
+    lease.token = next;
+    return true;
+  });
+  /** Free the lease and leave `state` behind (null = idle). Only our own token is cleared. True when we released it. */
+  lease.release = (state = null) => lease.run(async () => {
+    const res = await prisma.booking_guarantee_case.updateMany({
+      where: { id: caseId, search_lease_until: lease.token }, data: { search_lease_until: null, search_state: state },
+    });
+    return res.count === 1;
+  });
+  lease.startHeartbeat = () => {
+    lease.timer = setInterval(() => { lease.renew().catch(() => { lease.lost = true; }); }, HEARTBEAT_MS);
+    if (lease.timer.unref) lease.timer.unref();
+  };
+  lease.stopHeartbeat = () => { if (lease.timer) clearInterval(lease.timer); };
+  return lease;
+}
 
-async function exhaust(caseRow, reason) {
-  await releaseLease(caseRow.id, "exhausted");
+async function exhaust(caseRow, lease, reason) {
+  if (!(await lease.release("exhausted"))) return; // not our lease any more: the new owner decides
   await audit(caseRow, "outside_search_exhausted", { reason });
   try {
     adminSocket.notifyDispatchAlert(
@@ -69,7 +105,7 @@ function classify(err) {
 
 /**
  * Run the search for one case. Outcome: candidate (a live Trial Driver is stored), exhausted (limit reached),
- * stopped (case closed / order taken / switch off), busy (another worker holds the lease).
+ * stopped (case closed / order taken / switch off / lease lost), busy (another worker holds the lease).
  * `deps` ({ sleep, lookupFn, registerFn }) exist for tests.
  */
 async function runSearch(caseId, deps = {}) {
@@ -77,39 +113,44 @@ async function runSearch(caseId, deps = {}) {
   const lookupFn = deps.lookupFn || outsideDriver.lookup;
   const registerFn = deps.registerFn || outsideDriver.registerTrial;
 
-  if (!(await acquireLease(caseId))) return { outcome: "busy" };
+  const token = await acquireToken(caseId);
+  if (!token) return { outcome: "busy" };
+  const lease = makeLease(caseId, token);
+  lease.startHeartbeat();
   let caseRow = await prisma.booking_guarantee_case.findUnique({ where: { id: caseId } });
   if (caseRow) await audit(caseRow, "outside_search_started");
   try {
     for (let i = 0; i < MAX_ITERATIONS; i += 1) {
       caseRow = await prisma.booking_guarantee_case.findUnique({ where: { id: caseId } });
       if (!caseRow || caseRow.status !== "open" || !(await queueSettings.autoSearchActive(caseRow.city_id))) {
-        await releaseLease(caseId);
+        await lease.release();
         return { outcome: "stopped" };
       }
       if (await candidates.getLive(caseId)) {
-        await releaseLease(caseId);
+        await lease.release();
         return { outcome: "candidate" };
       }
       const order = await prisma.pkg_order.findUnique({
         where: { id: caseRow.order_id }, select: { id: true, rid: true, order_status: true, o_status: true, category: true },
       });
       if (!order || order.rid !== 0 || order.order_status !== 0 || order.o_status !== "Pending") {
-        await releaseLease(caseId);
+        await lease.release();
         return { outcome: "stopped" };
       }
-      await renewLease(caseId);
+      if (!(await lease.renew())) return { outcome: "stopped" }; // lost the lease: someone else owns this search now
 
       let result;
       try {
         result = await lookupFn({ orderId: caseRow.order_id, vehicleId: outsideDriver.guessVehicleId(order.category), adminId: null });
       } catch (err) {
         const verdict = classify(err);
-        if (verdict.action === "exhausted") { await exhaust(caseRow, verdict.reason); return { outcome: "exhausted" }; }
-        if (verdict.action === "stopped") { await releaseLease(caseId); return { outcome: "stopped" }; }
+        if (verdict.action === "exhausted") { await exhaust(caseRow, lease, verdict.reason); return { outcome: "exhausted" }; }
+        if (verdict.action === "stopped") { await lease.release(); return { outcome: "stopped" }; }
         await sleep(GAP_MS);
         continue;
       }
+      // A lookup can take minutes: make sure the lease is still ours before acting on its answer.
+      if (!(await lease.renew())) return { outcome: "stopped" };
 
       const driver = result && result.driver;
       if (driver && !result.repeat && !(await candidates.hasOffered(caseId, { mobile: driver.mobile, vehicleNumber: driver.vehicle_number }))) {
@@ -126,8 +167,16 @@ async function runSearch(caseId, deps = {}) {
         if (trial) {
           const stored = await candidates.createLive({ caseId, orderId: caseRow.order_id, riderId: trial.rider_id, driver });
           if (stored.created) {
+            // The case may have closed while the driver was being registered: onCaseClosed ran before this row
+            // existed, so nothing else would ever clear it.
+            const after = await prisma.booking_guarantee_case.findUnique({ where: { id: caseId }, select: { status: true } });
+            if (!after || after.status !== "open") {
+              await candidates.supersedeLive(caseId, "case_closed");
+              await lease.release();
+              return { outcome: "stopped" };
+            }
             await audit(caseRow, "outside_trial_created", { rider_id: trial.rider_id, kind: trial.kind });
-            await releaseLease(caseId);
+            await lease.release();
             try {
               await queue().dispatchWaiting(caseRow.city_id);
             } catch (err) {
@@ -139,12 +188,14 @@ async function runSearch(caseId, deps = {}) {
       }
       await sleep(GAP_MS);
     }
-    await exhaust(caseRow, "max_iterations");
+    await exhaust(caseRow, lease, "max_iterations");
     return { outcome: "exhausted" };
   } catch (err) {
     logger.error(`guaranteeOutsideSearch: search for case ${caseId} crashed:`, err);
-    try { await releaseLease(caseId); } catch (_) { /* the lease expires by itself */ }
+    try { await lease.release(); } catch (_) { /* the lease expires by itself */ }
     return { outcome: "stopped" };
+  } finally {
+    lease.stopHeartbeat();
   }
 }
 
