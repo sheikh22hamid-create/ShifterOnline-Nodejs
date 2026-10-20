@@ -262,7 +262,14 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         // "changed" above, so it still fires on a fresh screen open (app
         // reopened, or launched via the trip_progress notification) where
         // flow is already "2" and no transition happens in this call.
-        if ("2".equals(flow) && !otpDialogAutoShownForPickup) {
+        // The pickup OTP can already be verified while flow is still "2" (it only changes at "Pickup
+        // Complete"): never ask for it again, e.g. after the app was swiped from recents and reopened.
+        boolean pickupOtpVerified = data.has("otp_verified") && !data.get("otp_verified").isJsonNull()
+                && data.get("otp_verified").getAsBoolean();
+        if ("2".equals(flow) && pickupOtpVerified) {
+            otpDialogAutoShownForPickup = true;
+            if (activeOtpDialog != null && activeOtpDialog.isShowing()) activeOtpDialog.dismiss();
+        } else if ("2".equals(flow) && !otpDialogAutoShownForPickup) {
             otpDialogAutoShownForPickup = true;
             showOtpDialog();
         } else if (!"2".equals(flow)) {
