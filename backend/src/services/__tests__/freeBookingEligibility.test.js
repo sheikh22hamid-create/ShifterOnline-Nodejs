@@ -33,9 +33,16 @@ beforeEach(() => {
 });
 
 describe("checkEligibility", () => {
-  it("not_premium when there is no active customer plan", async () => {
+  it("a general user (no customer plan) is eligible when a pool vehicle is near, with a null planId", async () => {
     pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
-    expect((await svc.checkEligibility(input)).outcome).toBe("not_premium");
+    prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ rider_id: 5 }]); // no open booking, then a pool driver
+    const out = await svc.checkEligibility(input);
+    expect(out).toMatchObject({ outcome: "eligible", planId: null, poolRiderId: 5 });
+  });
+  it("a general user still gets the referral lock", async () => {
+    pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true });
+    expect((await svc.checkEligibility(input)).outcome).toBe("locked");
   });
   it("offer_off when the city has no setting row", async () => {
     prisma.free_booking_setting.findUnique.mockResolvedValue(null);
@@ -222,12 +229,21 @@ describe("getUserStatus", () => {
     expect(out.state).toBe("offer_off");
     expect(out.message).toMatch(/not available/i);
   });
-  it("not_premium without an active plan", async () => {
+  it("a general user without a plan sees the normal state, never an upsell", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: false, free_booking_just_unlocked: false });
     pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
     const out = await svc.getUserStatus(7);
-    expect(out.state).toBe("not_premium");
-    expect(out.message).toMatch(/Premium/);
+    expect(out.state).toBe("available");
+    expect(out.message).not.toMatch(/Premium/);
+  });
+  it("a locked general user gets the referral progress", async () => {
+    pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
+    prisma.tbl_user.findUnique.mockResolvedValue({
+      city_id: 3, free_booking_locked: true, free_booking_locked_at: new Date("2026-10-01"), free_booking_just_unlocked: false,
+    });
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), referrals_required: 2 });
+    prisma.tbl_referral.count.mockResolvedValue(1);
+    expect(await svc.getUserStatus(7)).toMatchObject({ state: "locked", referrals_required: 2, referrals_done: 1 });
   });
   it("open_booking returns the settling message", async () => {
     jest.spyOn(svc, "tryCredit").mockResolvedValue({ credited: false, action: "wait" });
@@ -267,10 +283,9 @@ describe("getUserStatus", () => {
     expect(out.state).toBe("locked");
     expect(out.message).toMatch(/referral/i);
   });
-  it("not_premium is only reported while the offer is open in the city", async () => {
+  it("offer_off for a general user when the offer is not open in the city", async () => {
     pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: false, free_booking_just_unlocked: false });
-    expect((await svc.getUserStatus(7)).state).toBe("not_premium");
     prisma.free_booking_setting.findUnique.mockResolvedValue({ enabled: false });
     expect((await svc.getUserStatus(7)).state).toBe("offer_off");
   });

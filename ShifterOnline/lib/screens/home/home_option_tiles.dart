@@ -4,7 +4,6 @@ import 'package:get_storage/get_storage.dart';
 import 'package:provider/provider.dart';
 import '../../services/free_booking_api_service.dart';
 import '../../utils/colors.dart';
-import '../profile/premium_plans_screen.dart';
 
 /// Home page option tile with the same look and size as the existing Next Day / Schedule tiles
 /// (rounded white card, 38px gradient icon, bold title, small grey subtitle).
@@ -249,7 +248,7 @@ Future<void> showHomeInfoDialog({
 
 /// "Free Ride Chance" tile: replaces the old status card on the Home page. It loads the same Free Booking
 /// status the card used and, on tap, shows the matching message (locked -> the existing referral share,
-/// not used yet -> how the free booking works, non-premium -> the Premium upsell).
+/// not used yet -> how the free booking works). Open to general and premium customers alike.
 class FreeRideChanceTile extends StatefulWidget {
   const FreeRideChanceTile({super.key});
 
@@ -425,20 +424,6 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
               "You have a chance to book with our company's free drivers.".tr,
           content: _refundCard(),
           buttonLabel: 'Okay'.tr,
-        );
-      case 'not_premium':
-        showHomeInfoDialog(
-          icon: Icons.star_rounded,
-          color: orange,
-          title: 'Win Free Rides with Premium'.tr,
-          message:
-              'Premium members get a chance to win 100% wallet cashback when served by a company free pool vehicle.'
-                  .tr,
-          buttonLabel: 'Get Premium'.tr,
-          onButton: () {
-            Get.back();
-            Get.to(() => const PremiumPlansScreen());
-          },
         );
       default:
         // open_booking (a free booking is already running) or the offer is not live in this city.

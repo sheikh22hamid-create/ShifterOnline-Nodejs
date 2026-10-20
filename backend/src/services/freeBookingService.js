@@ -117,7 +117,6 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
   const plan = user ? await pricingEngine.getActiveCustomerPlan(userId) : null;
   const city = Number(cityId) || (user?.city_id ? Number(user.city_id) : null);
   const setting = city ? await getCitySetting(city) : null;
-  const premium = Boolean(plan);
   // Scheduled / next-day bookings are not dispatched at booking time: never free bookings.
   const instant = Number(bookingType) === 1;
   const cityOpen = rules.isCityOfferOpen(setting, new Date()) && instant;
@@ -149,7 +148,7 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
 
   let openBooking = false;
   let pool = null;
-  if (premium && cityOpen && !locked && !exceedsAmount && !exceedsDistance && !limitReached) {
+  if (cityOpen && !locked && !exceedsAmount && !exceedsDistance && !limitReached) {
     const healed = await findOpenBookingAfterRetry(userId);
     openBooking = Boolean(healed.open);
     locked = healed.locked;
@@ -161,7 +160,6 @@ async function checkEligibility({ uid, plat, plong, category, radiusKm, cityId, 
   }
 
   const outcome = rules.decideOutcome({
-    premium,
     cityOpen,
     locked,
     openBooking,
@@ -251,21 +249,17 @@ async function getUserStatus(uid) {
     where: { id: userId },
     select: { city_id: true, free_booking_locked: true, free_booking_locked_at: true, free_booking_just_unlocked: true },
   });
-  const plan = user ? await pricingEngine.getActiveCustomerPlan(userId) : null;
   const setting = user?.city_id ? await getCitySetting(user.city_id) : null;
-  const premium = Boolean(plan);
   const cityOpen = rules.isCityOfferOpen(setting, new Date());
   let locked = Boolean(user?.free_booking_locked);
   let openBooking = false;
-  if (premium && cityOpen && !locked) {
+  if (cityOpen && !locked) {
     const healed = await findOpenBookingAfterRetry(userId);
     openBooking = Boolean(healed.open);
     locked = healed.locked;
   }
 
-  // Non-premium users only hear about the offer (so the app can upsell Premium) while it is live in their city.
-  if (!premium && !cityOpen) return { state: OUTCOME.OFFER_OFF, message: rules.OUTCOME_MESSAGE[OUTCOME.OFFER_OFF] };
-  const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: true });
+  const outcome = rules.decideOutcome({ cityOpen, locked, openBooking, poolVehicleFound: true });
   if (outcome !== OUTCOME.ELIGIBLE) {
     const out = { state: outcome, message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)) };
     if (outcome === OUTCOME.LOCKED) {

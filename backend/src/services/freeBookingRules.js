@@ -13,7 +13,6 @@ const OUTCOME = Object.freeze({
   ELIGIBLE: "eligible",
   NO_FREE_VEHICLE: "no_free_vehicle",
   LOCKED: "locked",
-  NOT_PREMIUM: "not_premium",
   OFFER_OFF: "offer_off",
   OPEN_BOOKING: "open_booking",
   LIMIT_REACHED: "limit_reached",
@@ -35,7 +34,6 @@ const OUTCOME_MESSAGE = Object.freeze({
   [OUTCOME.ELIGIBLE]: "Free Booking Chance applied. If a free pool vehicle accepts, the full trip amount will be credited to your Shifter wallet after completion.",
   [OUTCOME.NO_FREE_VEHICLE]: "No free vehicle is available near your pickup right now. Your booking will continue with standard vehicles.",
   [OUTCOME.LOCKED]: "Free Booking Chance is locked. Complete a successful referral to unlock it.",
-  [OUTCOME.NOT_PREMIUM]: "Free Booking Chance is only for Premium users.",
   [OUTCOME.OFFER_OFF]: "Free Booking Chance is not available right now.",
   [OUTCOME.OPEN_BOOKING]: "Your earlier Free Booking is still being settled. You can book again once it is credited.",
   [OUTCOME.LIMIT_REACHED]: "The maximum number of Free Bookings for this offer period has been reached. Your booking will continue with standard vehicles.",
@@ -73,8 +71,8 @@ function isCityOfferOpen(setting, now = new Date()) {
   return t >= new Date(setting.offer_start).getTime() && t <= new Date(setting.offer_end).getTime();
 }
 
+// Open to every customer, general and premium alike: the city offer, lock, limits and pool decide.
 function decideOutcome({
-  premium,
   cityOpen,
   locked,
   openBooking,
@@ -83,7 +81,6 @@ function decideOutcome({
   exceedsAmount = false,
   exceedsDistance = false,
 }) {
-  if (!premium) return OUTCOME.NOT_PREMIUM;
   if (!cityOpen) return OUTCOME.OFFER_OFF;
   if (locked) return OUTCOME.LOCKED;
   if (openBooking) return OUTCOME.OPEN_BOOKING;

@@ -40,9 +40,9 @@ describe("isCityOfferOpen boundaries", () => {
 });
 
 describe("decideOutcome", () => {
-  const ok = { premium: true, cityOpen: true, locked: false, openBooking: false, poolVehicleFound: true };
+  const ok = { cityOpen: true, locked: false, openBooking: false, poolVehicleFound: true };
   it("eligible when everything holds", () => expect(rules.decideOutcome(ok)).toBe(OUTCOME.ELIGIBLE));
-  it("not_premium wins over everything", () => expect(rules.decideOutcome({ ...ok, premium: false, cityOpen: false })).toBe(OUTCOME.NOT_PREMIUM));
+  it("has no premium outcome any more: the offer is for every customer", () => expect(OUTCOME.NOT_PREMIUM).toBeUndefined());
   it("offer_off before locked", () => expect(rules.decideOutcome({ ...ok, cityOpen: false, locked: true })).toBe(OUTCOME.OFFER_OFF));
   it("locked before open_booking", () => expect(rules.decideOutcome({ ...ok, locked: true, openBooking: true })).toBe(OUTCOME.LOCKED));
   it("open_booking before pool", () => expect(rules.decideOutcome({ ...ok, openBooking: true, poolVehicleFound: false })).toBe(OUTCOME.OPEN_BOOKING));
