@@ -60,6 +60,9 @@ class FreeBookingApiService {
     return {
       'state': ok ? (json['state']?.toString() ?? 'offer_off') : 'offer_off',
       'message': json['message']?.toString() ?? '',
+      // Locked users: referrals the admin requires for the next free ride and how many are done.
+      'referrals_required': int.tryParse(json['referrals_required']?.toString() ?? '') ?? 0,
+      'referrals_done': int.tryParse(json['referrals_done']?.toString() ?? '') ?? 0,
     };
   }
 }

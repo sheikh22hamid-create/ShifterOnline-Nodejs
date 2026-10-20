@@ -4,7 +4,6 @@ import 'package:get_storage/get_storage.dart';
 import 'package:provider/provider.dart';
 import '../../services/free_booking_api_service.dart';
 import '../../utils/colors.dart';
-import '../profile/free_booking_status_card.dart';
 import '../profile/premium_plans_screen.dart';
 
 /// Home page option tile with the same look and size as the existing Next Day / Schedule tiles
@@ -140,6 +139,7 @@ Future<void> showHomeInfoDialog({
   required String buttonLabel,
   String? subtitle,
   String? tag,
+  Widget? content,
   VoidCallback? onButton,
 }) {
   final notifier = Provider.of<ColorNotifier>(Get.context!, listen: false);
@@ -214,6 +214,10 @@ Future<void> showHomeInfoDialog({
                   fontSize: 14.5,
                   height: 1.4),
             ),
+            if (content != null) ...[
+              const SizedBox(height: 14),
+              content,
+            ],
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
@@ -256,6 +260,8 @@ class FreeRideChanceTile extends StatefulWidget {
 class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
   String _state = 'offer_off';
   String _message = '';
+  int _referralsRequired = 0;
+  int _referralsDone = 0;
 
   @override
   void initState() {
@@ -271,7 +277,129 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
     setState(() {
       _state = result['state'] as String;
       _message = result['message'] as String;
+      _referralsRequired = result['referrals_required'] as int;
+      _referralsDone = result['referrals_done'] as int;
     });
+  }
+
+  /// Case 1 card: what happens when a free driver is confirmed.
+  Widget _refundCard() {
+    const green = Color(0xff2E9E5B);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: const Color(0xffE6F6EC),
+          borderRadius: BorderRadius.circular(14)),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: green.withOpacity(0.18), shape: BoxShape.circle),
+            child: const Icon(Icons.account_balance_wallet_rounded,
+                color: green, size: 26),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'If a free driver is confirmed, you will get 100% booking amount refund.'
+                  .tr,
+              style: const TextStyle(
+                  fontFamily: 'Gilroy_Bold',
+                  fontSize: 14,
+                  color: Color(0xff1F2937),
+                  height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Case 2 card: the admin's referral condition for the next free ride, with progress.
+  Widget _referralConditionCard() {
+    const orange = Color(0xfff26522);
+    final required = _referralsRequired > 0 ? _referralsRequired : 1;
+    final done = _referralsDone.clamp(0, required);
+    final left = required - done;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: const Color(0xffFFF4DC),
+          borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.campaign_rounded, color: orange, size: 26),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'To get next Free Ride Chance, complete the following condition:'
+                      .tr,
+                  style: const TextStyle(
+                      fontFamily: 'Gilroy_Bold',
+                      fontSize: 13,
+                      color: Color(0xff1F2937)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: const BoxDecoration(
+                      color: orange, shape: BoxShape.circle),
+                  child: const Icon(Icons.groups_rounded,
+                      color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        left == 1
+                            ? 'Refer 1 more friend'.tr
+                            : 'Refer $left more friends'.tr,
+                        style: const TextStyle(
+                            fontFamily: 'Gilroy_Bold',
+                            fontSize: 14,
+                            color: Color(0xff1F2937)),
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: done / required,
+                          minHeight: 8,
+                          backgroundColor: const Color(0xffE5E7EB),
+                          valueColor: const AlwaysStoppedAnimation(
+                              Color(0xff2E9E5B)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('$done / $required',
+                    style: const TextStyle(
+                        fontFamily: 'Gilroy_Bold',
+                        fontSize: 14,
+                        color: Color(0xff1F2937))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onTap() {
@@ -279,29 +407,23 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
     switch (_state) {
       case 'locked':
         showHomeInfoDialog(
-          icon: Icons.lock_outline_rounded,
+          icon: Icons.card_giftcard_rounded,
           color: orange,
-          title: 'Free Ride Chance Locked'.tr,
-          // The backend message carries the real referral count set by the admin.
-          message: _message.isNotEmpty
-              ? _message
-              : 'Free Booking Chance is locked. Complete referrals to unlock it.'
-                  .tr,
-          buttonLabel: 'Refer now'.tr,
-          onButton: () {
-            Get.back();
-            shareReferralInvite();
-          },
+          title: 'Free Ride Chance'.tr,
+          message:
+              'You have already received a free booking with 100% refund.'.tr,
+          content: _referralConditionCard(),
+          buttonLabel: 'Okay'.tr,
         );
       case 'available':
       case 'unlocked':
         showHomeInfoDialog(
           icon: Icons.card_giftcard_rounded,
           color: orange,
-          title: 'Get Free Booking Chance!'.tr,
+          title: 'Free Ride Chance'.tr,
           message:
-              'On booking with company selected vehicle, you will get the full amount refunded from the receiver.'
-                  .tr,
+              "You have a chance to book with our company's free drivers.".tr,
+          content: _refundCard(),
           buttonLabel: 'Okay'.tr,
         );
       case 'not_premium':

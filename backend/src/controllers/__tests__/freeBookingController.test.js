@@ -90,6 +90,14 @@ describe("status", () => {
     await controller.status({ body: { uid: 7 } }, res);
     expect(res.json).toHaveBeenCalledWith({ ResponseCode: "200", Result: "true", state: "locked", message: "m" });
   });
+  it("includes referral progress for a locked user", async () => {
+    svc.getUserStatus.mockResolvedValue({ state: "locked", message: "m", referrals_required: 3, referrals_done: 1 });
+    const res = mockRes();
+    await controller.status({ body: { uid: 7 } }, res);
+    expect(res.json).toHaveBeenCalledWith({
+      ResponseCode: "200", Result: "true", state: "locked", message: "m", referrals_required: 3, referrals_done: 1,
+    });
+  });
   it("500 when the service rejects", async () => {
     svc.getUserStatus.mockRejectedValue(new Error("db"));
     const res = mockRes();

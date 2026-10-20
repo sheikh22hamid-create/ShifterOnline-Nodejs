@@ -3,6 +3,7 @@ jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
   tbl_user: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_premium_plan: { findUnique: jest.fn() },
+  tbl_referral: { count: jest.fn().mockResolvedValue(0) },
   free_booking_setting: { findUnique: jest.fn() },
   free_booking_pool: { findMany: jest.fn() },
   free_booking_order: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn(), update: jest.fn(), count: jest.fn() },
@@ -277,6 +278,15 @@ describe("getUserStatus", () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true, free_booking_just_unlocked: false });
     prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), referrals_required: 3 });
     expect((await svc.getUserStatus(7)).message).toMatch(/Complete 3 successful referrals/);
+  });
+  it("locked status carries the referral progress (required from admin setting, done since the lock)", async () => {
+    prisma.tbl_user.findUnique.mockResolvedValue({
+      city_id: 3, free_booking_locked: true, free_booking_locked_at: new Date("2026-10-01"), free_booking_just_unlocked: false,
+    });
+    prisma.free_booking_setting.findUnique.mockResolvedValue({ ...openSetting(), referrals_required: 3 });
+    prisma.tbl_referral.count.mockResolvedValue(1);
+    const out = await svc.getUserStatus(7);
+    expect(out).toMatchObject({ state: "locked", referrals_required: 3, referrals_done: 1 });
   });
   it("checkEligibility returns the locked message with the required count", async () => {
     prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 3, free_booking_locked: true });

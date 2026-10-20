@@ -36,7 +36,13 @@ async function status(req, res) {
     const { uid } = req.body || {};
     if (!uid) return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid is required" });
     const out = await freeBookingService.getUserStatus(Number(uid));
-    return res.json({ ResponseCode: "200", Result: "true", state: out.state, message: out.message });
+    const payload = { ResponseCode: "200", Result: "true", state: out.state, message: out.message };
+    // Referral progress toward the next free ride (locked users only), from the city's admin setting.
+    if (out.referrals_required != null) {
+      payload.referrals_required = out.referrals_required;
+      payload.referrals_done = out.referrals_done ?? 0;
+    }
+    return res.json(payload);
   } catch (err) {
     logger.error("freeBooking.status failed:", err);
     return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });

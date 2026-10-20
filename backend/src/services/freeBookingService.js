@@ -249,7 +249,7 @@ async function getUserStatus(uid) {
   const userId = Number(uid);
   const user = await prisma.tbl_user.findUnique({
     where: { id: userId },
-    select: { city_id: true, free_booking_locked: true, free_booking_just_unlocked: true },
+    select: { city_id: true, free_booking_locked: true, free_booking_locked_at: true, free_booking_just_unlocked: true },
   });
   const plan = user ? await pricingEngine.getActiveCustomerPlan(userId) : null;
   const setting = user?.city_id ? await getCitySetting(user.city_id) : null;
@@ -266,7 +266,27 @@ async function getUserStatus(uid) {
   // Non-premium users only hear about the offer (so the app can upsell Premium) while it is live in their city.
   if (!premium && !cityOpen) return { state: OUTCOME.OFFER_OFF, message: rules.OUTCOME_MESSAGE[OUTCOME.OFFER_OFF] };
   const outcome = rules.decideOutcome({ premium, cityOpen, locked, openBooking, poolVehicleFound: true });
-  if (outcome !== OUTCOME.ELIGIBLE) return { state: outcome, message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)) };
+  if (outcome !== OUTCOME.ELIGIBLE) {
+    const out = { state: outcome, message: rules.outcomeMessage(outcome, rules.referralsRequiredOf(setting)) };
+    if (outcome === OUTCOME.LOCKED) {
+      // Progress toward the next free ride: referrals made since the lock vs. the city's requirement.
+      const required = rules.referralsRequiredOf(setting);
+      // Locked just now by the self-heal above (not locked when read): nothing can count toward it yet.
+      const done = !user.free_booking_locked
+        ? 0
+        : await prisma.tbl_referral.count({
+            where: {
+              referrer_id: userId,
+              referrer_type: "USER",
+              status: "completed",
+              ...(user.free_booking_locked_at ? { verified_at: { gte: user.free_booking_locked_at } } : {}),
+            },
+          });
+      out.referrals_required = required;
+      out.referrals_done = Math.min(done, required);
+    }
+    return out;
+  }
   if (user.free_booking_just_unlocked) {
     await prisma.tbl_user.updateMany({ where: { id: userId, free_booking_just_unlocked: true }, data: { free_booking_just_unlocked: false } });
     return { state: "unlocked", message: "Free Ride Chance unlocked! Your next trip with a free vehicle can be credited back." };
