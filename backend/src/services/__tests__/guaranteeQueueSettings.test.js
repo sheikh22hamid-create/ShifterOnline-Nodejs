@@ -61,3 +61,28 @@ describe("saveQueueSettings", () => {
     expect(arg.update).not.toHaveProperty("exec_queue_enabled");
   });
 });
+
+describe("autoSearchActive", () => {
+  it("is true only when the queue AND the auto-search switch are both on", async () => {
+    prisma.city_order_settings.findUnique.mockResolvedValue({ exec_queue_enabled: 1, exec_auto_outside_search: 1 });
+    expect(await settings.autoSearchActive(3)).toBe(true);
+    settings._resetCache();
+    prisma.city_order_settings.findUnique.mockResolvedValue({ exec_queue_enabled: 0, exec_auto_outside_search: 1 });
+    expect(await settings.autoSearchActive(3)).toBe(false);
+    settings._resetCache();
+    prisma.city_order_settings.findUnique.mockResolvedValue({ exec_queue_enabled: 1, exec_auto_outside_search: 0 });
+    expect(await settings.autoSearchActive(3)).toBe(false);
+  });
+  it("is false on a read error and for a missing city", async () => {
+    prisma.city_order_settings.findUnique.mockRejectedValue(new Error("db down"));
+    expect(await settings.autoSearchActive(3)).toBe(false);
+    expect(await settings.autoSearchActive(null)).toBe(false);
+  });
+  it("persists the switch as exec_auto_outside_search", async () => {
+    prisma.tbl_city.findUnique.mockResolvedValue({ id: 3 });
+    prisma.city_order_settings.upsert.mockResolvedValue({});
+    prisma.city_order_settings.findUnique.mockResolvedValue({ exec_queue_enabled: 1, exec_auto_outside_search: 1 });
+    await settings.saveQueueSettings({ cityId: 3, input: { autoOutsideSearch: true }, adminId: 1 });
+    expect(prisma.city_order_settings.upsert.mock.calls[0][0].update).toMatchObject({ exec_auto_outside_search: true });
+  });
+});

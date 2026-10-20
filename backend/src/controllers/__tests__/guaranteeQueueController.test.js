@@ -122,9 +122,16 @@ describe("settings endpoints", () => {
     await ctrl.saveSettings({ user: admin, query: {}, body: { exec_queue_enabled: true, guarantee_recover_on_cancel: true, exec_default_capacity: 6 } }, r);
     expect(settings.saveQueueSettings).toHaveBeenCalledWith({
       cityId: 3, adminId: 2,
-      input: { execQueueEnabled: true, recoverOnDriverCancel: true, execDefaultCapacity: 6, reminderPct: undefined, escalatePct: undefined, autoReassignIdleMinutes: undefined },
+      input: { execQueueEnabled: true, recoverOnDriverCancel: true, autoOutsideSearch: undefined, execDefaultCapacity: 6, reminderPct: undefined, escalatePct: undefined, autoReassignIdleMinutes: undefined },
     });
     expect(r.json.mock.calls[0][0].data).toMatchObject({ exec_queue_enabled: true, guarantee_recover_on_cancel: true, exec_default_capacity: 6 });
+  });
+  it("saveSettings maps exec_auto_outside_search both ways", async () => {
+    settings.saveQueueSettings.mockResolvedValue({ execQueueEnabled: true, autoOutsideSearch: true, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
+    const r = res();
+    await ctrl.saveSettings({ user: admin, query: {}, body: { exec_auto_outside_search: true } }, r);
+    expect(settings.saveQueueSettings.mock.calls.at(-1)[0].input.autoOutsideSearch).toBe(true);
+    expect(r.json.mock.calls[0][0].data.exec_auto_outside_search).toBe(true);
   });
 });
 

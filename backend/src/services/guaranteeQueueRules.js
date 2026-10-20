@@ -4,6 +4,7 @@
 const DEFAULTS = Object.freeze({
   execQueueEnabled: false,
   recoverOnDriverCancel: false,
+  autoOutsideSearch: false,
   execDefaultCapacity: 5,
   reminderPct: 50,
   escalatePct: 75,
@@ -34,6 +35,7 @@ function normalizeQueueRow(row) {
   return {
     execQueueEnabled: Boolean(row.exec_queue_enabled),
     recoverOnDriverCancel: Boolean(row.guarantee_recover_on_cancel),
+    autoOutsideSearch: Boolean(row.exec_auto_outside_search),
     execDefaultCapacity: inRange(cap, LIMITS.capacity) ? cap : d.execDefaultCapacity,
     reminderPct: pctsOk ? rem : d.reminderPct,
     escalatePct: pctsOk ? esc : d.escalatePct,
@@ -46,6 +48,7 @@ function validateQueueInput(input = {}, current = DEFAULTS) {
   const out = {};
   if (input.execQueueEnabled !== undefined) out.execQueueEnabled = toBool(input.execQueueEnabled);
   if (input.recoverOnDriverCancel !== undefined) out.recoverOnDriverCancel = toBool(input.recoverOnDriverCancel);
+  if (input.autoOutsideSearch !== undefined) out.autoOutsideSearch = toBool(input.autoOutsideSearch);
   if (input.execDefaultCapacity !== undefined) {
     const n = blank(input.execDefaultCapacity) ? NaN : Number(input.execDefaultCapacity);
     if (!inRange(n, LIMITS.capacity)) throw badRequest("exec_default_capacity must be a whole number between 1 and 200");

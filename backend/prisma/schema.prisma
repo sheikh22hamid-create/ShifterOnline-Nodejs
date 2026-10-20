@@ -2026,6 +2026,7 @@ model city_order_settings {
   guarantee_end_time          String?  @db.VarChar(5)
   exec_queue_enabled          Boolean  @default(false)
   guarantee_recover_on_cancel Boolean  @default(false)
+  exec_auto_outside_search    Boolean  @default(false)
   exec_default_capacity       Int      @default(5)
   reminder_pct                Int      @default(50)
   escalate_pct                Int      @default(75)
@@ -2100,6 +2101,9 @@ model booking_guarantee_case {
   reminded_at       DateTime? @db.DateTime(0)
   escalated_at      DateTime? @db.DateTime(0)
   last_alerted_at   DateTime? @db.DateTime(0)
+  // Automated outside-driver search (spec 2026-10-20): null | searching | exhausted, and the single-worker lease.
+  search_state       String?   @db.VarChar(15)
+  search_lease_until DateTime? @db.DateTime(0)
 
   @@index([status, deadline_at], map: "idx_bgc_status_deadline")
   @@index([uid], map: "idx_bgc_uid")
@@ -2163,6 +2167,30 @@ model executive_guarantee_profile {
   last_assigned_at DateTime? @db.DateTime(0)
   updated_by       Int?
   updated_at       DateTime  @default(now()) @db.DateTime(0)
+}
+
+// The outside (Trial) driver offered to an executive for a held guarantee case (spec 2026-10-20). `active` is 1 while
+// the candidate is the live one and NULL afterwards (never 0), so a case has at most one live candidate.
+model guarantee_outside_candidate {
+  id             Int       @id @default(autoincrement())
+  case_id        Int
+  order_id       Int
+  rider_id       Int
+  name           String    @default("") @db.VarChar(120)
+  mobile         String    @db.VarChar(20)
+  vehicle_number String    @default("") @db.VarChar(50)
+  vehicle_name   String    @default("") @db.VarChar(120)
+  fare           Decimal?  @db.Decimal(10, 2)
+  status         String    @default("ready") @db.VarChar(15)
+  rejected_by    Int?
+  rejected_at    DateTime? @db.DateTime(0)
+  reject_reason  String?   @db.VarChar(200)
+  created_at     DateTime  @default(now()) @db.DateTime(0)
+  active         Int?      @db.TinyInt
+
+  @@unique([case_id, active], map: "uq_goc_one_live")
+  @@unique([case_id, mobile], map: "uq_goc_case_mobile")
+  @@index([order_id], map: "idx_goc_order")
 }
 
 model order_dispatch_stage {

@@ -8,6 +8,7 @@ const cache = new Map(); // cityId -> { at, value }
 const COLUMN = {
   execQueueEnabled: "exec_queue_enabled",
   recoverOnDriverCancel: "guarantee_recover_on_cancel",
+  autoOutsideSearch: "exec_auto_outside_search",
   execDefaultCapacity: "exec_default_capacity",
   reminderPct: "reminder_pct",
   escalatePct: "escalate_pct",
@@ -50,6 +51,12 @@ async function saveQueueSettings({ cityId, input, adminId }) {
   return getQueueSettings(id, { fresh: true });
 }
 
+/** Automatic outside-driver search is live for a city: the executive queue AND the auto switch are on. Fails closed. */
+async function autoSearchActive(cityId) {
+  const s = await getQueueSettings(cityId);
+  return Boolean(s.execQueueEnabled && s.autoOutsideSearch);
+}
+
 const _resetCache = () => cache.clear();
 
-module.exports = { getQueueSettings, saveQueueSettings, _resetCache };
+module.exports = { getQueueSettings, saveQueueSettings, autoSearchActive, _resetCache };

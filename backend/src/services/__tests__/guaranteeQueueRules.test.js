@@ -5,13 +5,13 @@ const at = (iso) => new Date(iso);
 
 describe("normalizeQueueRow", () => {
   it("returns the defaults (OFF, 5, 50, 75, no idle reassign) for a missing row", () => {
-    expect(r.normalizeQueueRow(null)).toEqual({ execQueueEnabled: false, recoverOnDriverCancel: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
+    expect(r.normalizeQueueRow(null)).toEqual({ execQueueEnabled: false, recoverOnDriverCancel: false, autoOutsideSearch: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
   });
   it("reads a stored row and falls back per field on bad values", () => {
     expect(r.normalizeQueueRow({ exec_queue_enabled: 1, exec_default_capacity: 8, reminder_pct: 40, escalate_pct: 80, auto_reassign_idle_minutes: 7 }))
-      .toEqual({ execQueueEnabled: true, recoverOnDriverCancel: false, execDefaultCapacity: 8, reminderPct: 40, escalatePct: 80, autoReassignIdleMinutes: 7 });
+      .toEqual({ execQueueEnabled: true, recoverOnDriverCancel: false, autoOutsideSearch: false, execDefaultCapacity: 8, reminderPct: 40, escalatePct: 80, autoReassignIdleMinutes: 7 });
     expect(r.normalizeQueueRow({ exec_queue_enabled: 1, exec_default_capacity: 0, reminder_pct: 90, escalate_pct: 10, auto_reassign_idle_minutes: -3 }))
-      .toEqual({ execQueueEnabled: true, recoverOnDriverCancel: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
+      .toEqual({ execQueueEnabled: true, recoverOnDriverCancel: false, autoOutsideSearch: false, execDefaultCapacity: 5, reminderPct: 50, escalatePct: 75, autoReassignIdleMinutes: null });
   });
 });
 
@@ -115,6 +115,20 @@ describe("recoverOnDriverCancel setting", () => {
   it("validates input as a boolean and returns it only when sent", () => {
     expect(r.validateQueueInput({ recoverOnDriverCancel: true })).toEqual({ recoverOnDriverCancel: true });
     expect(r.validateQueueInput({ recoverOnDriverCancel: "false" })).toEqual({ recoverOnDriverCancel: false });
+    expect(r.validateQueueInput({})).toEqual({});
+  });
+});
+
+describe("autoOutsideSearch setting", () => {
+  it("defaults to OFF and reads the column", () => {
+    expect(r.DEFAULTS.autoOutsideSearch).toBe(false);
+    expect(r.normalizeQueueRow(null).autoOutsideSearch).toBe(false);
+    expect(r.normalizeQueueRow({ exec_auto_outside_search: 1 }).autoOutsideSearch).toBe(true);
+    expect(r.normalizeQueueRow({ exec_auto_outside_search: 0 }).autoOutsideSearch).toBe(false);
+  });
+  it("validates input as a boolean and returns it only when sent", () => {
+    expect(r.validateQueueInput({ autoOutsideSearch: "true" })).toEqual({ autoOutsideSearch: true });
+    expect(r.validateQueueInput({ autoOutsideSearch: 0 })).toEqual({ autoOutsideSearch: false });
     expect(r.validateQueueInput({})).toEqual({});
   });
 });
