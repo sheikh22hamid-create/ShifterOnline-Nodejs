@@ -8,6 +8,7 @@ import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import GuaranteeCountdown from '../components/orders/GuaranteeCountdown'
 import { formatDateTime } from '../utils/format'
+import { trialStatusLabel } from '../utils/trialDriverStatus'
 import {
   REASON_MAX_LENGTH,
   buildProfileBody,
@@ -33,6 +34,7 @@ const SETTING_FIELDS = [
 const settingsToForm = (d) => ({
   exec_queue_enabled: Boolean(d?.exec_queue_enabled),
   guarantee_recover_on_cancel: Boolean(d?.guarantee_recover_on_cancel),
+  exec_auto_outside_search: Boolean(d?.exec_auto_outside_search),
   exec_default_capacity: d?.exec_default_capacity != null ? String(d.exec_default_capacity) : '',
   reminder_pct: d?.reminder_pct != null ? String(d.reminder_pct) : '',
   escalate_pct: d?.escalate_pct != null ? String(d.escalate_pct) : '',
@@ -251,6 +253,8 @@ export default function GuaranteeWorkload() {
             <span className="font-mono-data font-bold">#{c.order_id}</span>
             <Badge tone={c.status === 'open' ? (STATE_TONE[c.queue_state] ?? 'neutral') : 'neutral'}>{c.status === 'open' ? c.queue_state : c.status}</Badge>
             <span style={{ color: 'var(--ink-muted)' }}>{c.owner_admin_id ? `Owner: ${c.owner_name || c.owner_username || c.owner_admin_id}` : (REASON[c.unassigned_reason] ?? 'Unassigned')}</span>
+            {trialStatusLabel(c) && <Badge tone={trialStatusLabel(c).tone}>{trialStatusLabel(c).label}</Badge>}
+            {c.candidate_name && <span style={{ color: 'var(--ink-muted)' }}>Driver: {c.candidate_name}{c.candidate_mobile ? ` · ${c.candidate_mobile}` : ''}</span>}
             {c.status === 'open' && <span className="ml-auto">Left <GuaranteeCountdown deadline={c.deadline_at} /></span>}
             <span style={{ color: 'var(--ink-faint)' }}>{c.first_action_at ? `first action ${formatDateTime(c.first_action_at)}` : 'no action yet'}</span>
             {c.status === 'open' && (
@@ -330,6 +334,10 @@ export default function GuaranteeWorkload() {
             <label className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink)' }}>
               <input type="checkbox" disabled={busy} checked={form.guarantee_recover_on_cancel} onChange={setField('guarantee_recover_on_cancel')} />
               Recover orders when an assigned driver cancels before pickup (OFF keeps today's behaviour: the cancel is final)
+            </label>
+            <label className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink)' }}>
+              <input type="checkbox" disabled={busy} checked={form.exec_auto_outside_search} onChange={setField('exec_auto_outside_search')} />
+              Auto trial driver search (a bot finds an outside driver and offers it to one free executive at a time; needs the executive queue ON)
             </label>
             {SETTING_FIELDS.map(([k, label]) => (
               <label key={k} className="grid gap-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{label}

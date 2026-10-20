@@ -91,6 +91,7 @@ export function buildSettingsBody(s, cityId) {
   const body = {
     exec_queue_enabled: s.exec_queue_enabled,
     guarantee_recover_on_cancel: Boolean(s.guarantee_recover_on_cancel),
+    exec_auto_outside_search: Boolean(s.exec_auto_outside_search),
     exec_default_capacity: parseWhole(s.exec_default_capacity),
     reminder_pct: parseWhole(s.reminder_pct),
     escalate_pct: parseWhole(s.escalate_pct),

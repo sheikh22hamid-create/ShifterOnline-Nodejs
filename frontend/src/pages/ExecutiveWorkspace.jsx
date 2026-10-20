@@ -26,6 +26,105 @@ const errMsg = (err, fallback) => err?.response?.data?.message || fallback
 const inputStyle = { background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }
 const inputClass = 'rounded-lg border px-3 py-2 text-[13px]'
 
+const detailRow = 'flex justify-between gap-3 text-[13px]'
+
+// The Trial Driver the bot found, with the order, on one screen: the executive decides assign or reject here.
+function TrialDriverOffer({ c, onChanged }) {
+  const toast = useToast()
+  const toastRef = useRef(toast)
+  useEffect(() => { toastRef.current = toast })
+  const [busy, setBusy] = useState(false)
+  const [confirming, setConfirming] = useState(null) // 'assign' | 'reject'
+  const [reason, setReason] = useState('')
+  const cand = c.candidate
+  const order = c.order
+  const online = Boolean(cand?.online)
+
+  // The driver installs the app and goes online after the executive's call: keep checking until they do.
+  useEffect(() => {
+    if (online) return undefined
+    const timer = setInterval(onChanged, 5000)
+    return () => clearInterval(timer)
+  }, [online, onChanged])
+
+  const assign = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await api.post(`/orders/${c.order_id}/assign-rider`, { rider_id: cand.rider_id })
+      toastRef.current.success(`Order #${c.order_id} assigned to ${cand.name || 'the driver'}`)
+    } catch (err) {
+      toastRef.current.error(errMsg(err, 'Could not assign the driver'))
+    } finally { setBusy(false); setConfirming(null); onChanged() }
+  }
+
+  const reject = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await api.post(`/booking-guarantee/exec/cases/${c.order_id}/candidate/reject`, reason.trim() ? { reason: reason.trim() } : {})
+      toastRef.current.success('Driver rejected. Searching for the next one')
+      setReason('')
+    } catch (err) {
+      toastRef.current.error(errMsg(err, 'Could not reject the driver'))
+    } finally { setBusy(false); setConfirming(null); onChanged() }
+  }
+
+  const block = { borderColor: 'var(--border)', background: 'var(--bg)' }
+  return (
+    <div className="mt-3 grid gap-3 rounded-xl border p-3" style={{ borderColor: 'var(--brand)' }}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-1 rounded-lg border p-3" style={block}>
+          <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Trial driver</div>
+          <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>{cand.name || 'Driver'}</div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Mobile</span><a href={`tel:${cand.mobile}`} className="font-mono-data" style={{ color: 'var(--brand)' }}>{cand.mobile}</a></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{cand.vehicle_name || order?.category || '—'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle number</span><span className="font-mono-data">{cand.vehicle_number || 'not available'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Status</span><Badge tone={online ? 'success' : 'warning'}>{online ? 'Online' : 'Trial driver · offline'}</Badge></div>
+        </div>
+        <div className="grid gap-1 rounded-lg border p-3" style={block}>
+          <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Order</div>
+          <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>#{c.order_id}</div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Pickup</span><span className="text-right">{order?.pick_name || '—'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Drop</span><span className="text-right">{order?.drop_name || '—'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{order?.category || '—'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Fare</span><span className="font-mono-data">{order?.fare != null ? `₹${order.fare}` : '—'}</span></div>
+        </div>
+      </div>
+      {!online && (
+        <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+          Call the driver. They must install the Shifter app and go online with this mobile number; this page updates by itself.
+        </p>
+      )}
+      {confirming === 'assign' && (
+        <div className="rounded-lg border p-3 text-[13px]" style={{ borderColor: 'var(--warning)', background: 'var(--warning-soft)', color: 'var(--ink)' }}>
+          Assign order #{c.order_id} to <b>{cand.name || 'this driver'}</b>? This takes effect immediately and closes the guarantee case.
+          <div className="mt-2 flex gap-2">
+            <button type="button" disabled={busy} onClick={assign} className="rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Confirm assign</button>
+            <button type="button" disabled={busy} onClick={() => setConfirming(null)} className="rounded-lg border px-3 py-1.5 disabled:opacity-50" style={{ borderColor: 'var(--border)' }}>Back</button>
+          </div>
+        </div>
+      )}
+      {confirming === 'reject' && (
+        <div className="grid gap-2 rounded-lg border p-3 text-[13px]" style={{ borderColor: 'var(--danger)', color: 'var(--ink)' }}>
+          Not convinced about {cand.name || 'this driver'}? You become free at once and the next driver is searched automatically. This driver is not offered again for this order.
+          <input aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} placeholder="Reason (optional)" className={inputClass} style={inputStyle} />
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={reject} className="rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50" style={{ background: 'var(--danger)', color: '#fff' }}>Confirm reject</button>
+            <button type="button" disabled={busy} onClick={() => setConfirming(null)} className="rounded-lg border px-3 py-1.5 disabled:opacity-50" style={{ borderColor: 'var(--border)' }}>Back</button>
+          </div>
+        </div>
+      )}
+      {!confirming && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy || !online} onClick={() => setConfirming('assign')} title={online ? undefined : 'Available once the driver is online'} className="rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Assign Order to Driver</button>
+          <button type="button" disabled={busy} onClick={() => setConfirming('reject')} className="rounded-lg border px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Not Convinced / Do Not Assign</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
   const toast = useToast()
   const toastRef = useRef(toast)
@@ -151,6 +250,8 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
         {c.first_action_at ? ` · first action ${formatDateTime(c.first_action_at)}` : ' · no action yet'}
       </div>
 
+      {isOpen && !readOnly && !summaryOnly && c.candidate && <TrialDriverOffer c={c} onChanged={onChanged} />}
+
       {open && !summaryOnly && (
         <div className="mt-4 grid gap-4">
           {isOpen && !readOnly && (
@@ -239,10 +340,10 @@ export default function ExecutiveWorkspace() {
     <div className="grid gap-5">
       <div className="flex items-center gap-2">
         <ClipboardList size={20} style={{ color: 'var(--brand)' }} />
-        <h1 className="text-[18px] font-bold" style={{ color: 'var(--ink)' }}>My Guarantee Cases</h1>
+        <h1 className="text-[18px] font-bold" style={{ color: 'var(--ink)' }}>New Ride Trial Driver</h1>
       </div>
       <div className="text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
-        Find and assign a driver before the countdown ends. The deadline is fixed for the customer's guarantee and does not move when a case is reassigned.
+        Review the Trial Driver and the order, then assign or reject before the countdown ends. The deadline is fixed for the customer's guarantee and does not move when a case is reassigned.
       </div>
       {loading && !data && <div className="text-sm" style={{ color: 'var(--ink-faint)' }}>Loading…</div>}
       {error && <div className="text-sm" style={{ color: 'var(--danger)' }}>{error}</div>}
