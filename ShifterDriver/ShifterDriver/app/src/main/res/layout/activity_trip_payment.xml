@@ -712,6 +712,29 @@
                                 android:textSize="13sp" />
                         </LinearLayout>
 
+                        <!-- Sender commission (receiver-pays only) -->
+                        <LinearLayout
+                            android:id="@+id/layout_row_sender_commission"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="3dp"
+                            android:visibility="gone">
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/fare_sender_commission"
+                                android:textColor="#334155"
+                                android:textSize="13sp" />
+                            <TextView
+                                android:id="@+id/txt_sender_commission"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="₹0.00"
+                                android:textColor="#15803D"
+                                android:textSize="13sp" />
+                        </LinearLayout>
                         <!-- Cash to Collect Strip -->
                         <LinearLayout
                             android:id="@+id/layout_cash_to_collect_strip"

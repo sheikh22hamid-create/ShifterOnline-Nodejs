@@ -268,6 +268,9 @@ function formatPkgOrderForDriver(row, ctx) {
     total_deductions: adminAmount,
     admin_amount: adminAmount,
     total_amount_by_user: fare,
+    // Booker's commission riding on the cash (receiver-pays only, 0 otherwise): display-only, it is
+    // already inside cash_to_collect, so the driver app shows it as its own row without recomputing.
+    sender_commission: receiverMarkup,
     cash_to_collect: cashCollect,
     cash_collected_from_user: cashCollect,
     wallet_adjustment: walletAdj,
@@ -298,7 +301,7 @@ function formatPkgOrderForDriver(row, ctx) {
         total_deductions: adminAmount,
         driver_total_earning: driverEarning,
       },
-      payment_by_user: { total_amount_by_user: fare, advance_payment: advPayForCash, cash_to_collect: cashCollect },
+      payment_by_user: { total_amount_by_user: fare, advance_payment: advPayForCash, sender_commission: receiverMarkup, cash_to_collect: cashCollect },
       final_settlement: {
         driver_total_earning: driverEarning,
         cash_collected_from_user: cashCollect,

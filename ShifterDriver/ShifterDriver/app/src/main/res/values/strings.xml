@@ -425,6 +425,7 @@
     <string name="outstanding_dues_message">You have outstanding dues. Please clear the dues to start receiving new rides.</string>
     <string name="ledger_earnings_empty_message">Your ledger earnings and payout records will appear here.</string>
     <string name="fare_advance_payment">- Advance payment</string>
+    <string name="fare_sender_commission">+ Sender Commission</string>
     <string name="fare_cash_collected_from_user">- Cash collected from user</string>
     <string name="fare_commission">- Commission</string>
     <string name="fare_per_trip_charge">- Per trip charge</string>

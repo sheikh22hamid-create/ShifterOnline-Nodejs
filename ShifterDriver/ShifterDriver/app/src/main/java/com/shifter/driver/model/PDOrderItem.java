@@ -156,6 +156,9 @@ public class PDOrderItem implements Parcelable {
 	@SerializedName("cash_collected_from_user")
 	private String cashCollectedFromUser;
 
+	@SerializedName("sender_commission")
+	private String senderCommission;
+
 	@SerializedName("wallet_adjustment")
 	private String walletAdjustment;
 
@@ -305,6 +308,7 @@ public class PDOrderItem implements Parcelable {
 		totalAmountByUser = in.readString();
 		cashToCollect = in.readString();
 		cashCollectedFromUser = in.readString();
+		senderCommission = in.readString();
 		walletAdjustment = in.readString();
 		walletAdjustmentNote = in.readString();
 		cancelReason = in.readString();
@@ -543,6 +547,15 @@ public class PDOrderItem implements Parcelable {
 		return cashToCollect;
 	}
 
+	/** Booker commission inside the cash to collect (receiver-pays); null when none applied. */
+	public String getSenderCommission() {
+		try {
+			return senderCommission != null && Double.parseDouble(senderCommission.trim()) > 0 ? senderCommission : null;
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
 	public String getCashCollectedFromUser() {
 		return cashCollectedFromUser;
 	}
@@ -635,6 +648,7 @@ public class PDOrderItem implements Parcelable {
 		parcel.writeString(totalAmountByUser);
 		parcel.writeString(cashToCollect);
 		parcel.writeString(cashCollectedFromUser);
+		parcel.writeString(senderCommission);
 		parcel.writeString(walletAdjustment);
 		parcel.writeString(walletAdjustmentNote);
 		parcel.writeString(cancelReason);

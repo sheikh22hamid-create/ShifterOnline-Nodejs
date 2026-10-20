@@ -462,6 +462,7 @@
     <string name="outstanding_dues_message">आपके ऊपर बकाया राशि है। नई राइड्स प्राप्त करने के लिए कृपया बकाया चुकाएं।</string>
     <string name="ledger_earnings_empty_message">आपकी लेजर कमाई और भुगतान रिकॉर्ड यहां दिखाई देंगे।</string>
     <string name="fare_advance_payment">- अग्रिम भुगतान</string>
+    <string name="fare_sender_commission">+ सेंडर कमीशन</string>
     <string name="fare_cash_collected_from_user">- ग्राहक से लिया गया नकद</string>
     <string name="fare_commission">- कमीशन</string>
     <string name="fare_per_trip_charge">- प्रति ट्रिप शुल्क</string>

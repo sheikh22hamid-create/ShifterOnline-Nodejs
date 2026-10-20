@@ -45,9 +45,19 @@ describe("pkgHistoryDriver receiver-mode lookup", () => {
 
   it("adds the booker's commission to the cash to collect, except when the receiver paid online", async () => {
     prisma.order_settlement.findMany.mockResolvedValue([{ order_id: 7, receiver_markup: 3, status: "cash_received" }]);
-    expect((await run()).OrderHistory[0].cash_to_collect).toBe(103);
+    const paidCash = (await run()).OrderHistory[0];
+    expect(paidCash.cash_to_collect).toBe(103);
+    expect(paidCash.sender_commission).toBe(3);
+    expect(paidCash.trip_payment_summary.payment_by_user.sender_commission).toBe(3);
     prisma.order_settlement.findMany.mockResolvedValue([{ order_id: 7, receiver_markup: 3, status: "paid_online" }]);
-    expect((await run()).OrderHistory[0].cash_to_collect).toBe(100);
+    const paidOnline = (await run()).OrderHistory[0];
+    expect(paidOnline.cash_to_collect).toBe(100);
+    expect(paidOnline.sender_commission).toBe(0);
+  });
+
+  it("reports no sender commission for a normal order", async () => {
+    prisma.order_settlement.findMany.mockResolvedValue([]);
+    expect((await run()).OrderHistory[0].sender_commission).toBe(0);
   });
 
   it("keeps normal numbers when the order has no receiver settlement", async () => {

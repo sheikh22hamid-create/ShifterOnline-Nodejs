@@ -3312,6 +3312,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_total_amount_by_user), dialog.findViewById(R.id.txt_total_amount_by_user), currency, totalAmountByUserStr);
 
         setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_advance_payment), dialog.findViewById(R.id.txt_advance_payment), currency, orderItem.getAdvancePayment());
+        setRowVisibilityAndValue(dialog.findViewById(R.id.layout_row_sender_commission), dialog.findViewById(R.id.txt_sender_commission), currency, orderItem.getSenderCommission());
 
         String cashToCollectStr = orderItem.getCashToCollect();
         if (cashToCollectStr == null && totalAmountByUserStr != null) {

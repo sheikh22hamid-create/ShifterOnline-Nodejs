@@ -497,6 +497,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
             setRowVisibilityAndValue(binding.layoutRowTotalAmountByUser, binding.txtTotalAmountByUser, currency, totalAmountByUserStr);
 
             setRowVisibilityAndValue(binding.layoutRowAdvancePayment, binding.txtAdvancePayment, currency, orderItem.getAdvancePayment());
+            setRowVisibilityAndValue(binding.layoutRowSenderCommission, binding.txtSenderCommission, currency, orderItem.getSenderCommission());
 
             String cashToCollectStr = orderItem.getCashToCollect();
             if (cashToCollectStr == null && totalAmountByUserStr != null) {
