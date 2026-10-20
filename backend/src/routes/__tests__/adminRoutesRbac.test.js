@@ -27,7 +27,8 @@ const EXECUTIVE_WRITES = [
   "POST /orders/:id/assign-rider", "POST /driver-leads/:id/verify", "POST /driver-leads/:id/reject",
   "POST /driver-leads/:id/send-invite", "POST /registration-leads/:id/send-reminder", "POST /registration-leads/:id/status",
   "POST /user-leads/:id/verify", "POST /user-leads/:id/reject",
-  "POST /booking-guarantee/exec/cases/:orderId/actions",
+  "POST /booking-guarantee/exec/cases/:orderId/actions", "POST /booking-guarantee/exec/cases/:orderId/candidate/reject",
+  "POST /orders/:id/outside-driver-lookup", "POST /orders/:id/outside-driver/register",
 ];
 
 function parseRoutes() {
