@@ -256,6 +256,29 @@ db.describeMysql("auto trial driver search + executive queue (real MySQL)", () =
     });
   });
 
+  describe("assign and manual-search rules (review follow-ups)", () => {
+    it("a non-owner admin assigning the offered driver still marks the candidate assigned", async () => {
+      const e = await exec();
+      const a = await makeCase();
+      const cand = await addCandidate(a);
+      await svc.claimCase(a.id, { cityId: CITY });
+      await svc.recordAssignmentAction({ orderId: a.order_id, adminId: e.id + 999, riderId: cand.row.rider_id });
+      expect((await prisma.guarantee_outside_candidate.findUnique({ where: { id: cand.row.id } })).status).toBe("assigned");
+    });
+
+    it("an executive may not run the manual outside search in auto mode; admins may, and so may executives with the switch OFF", async () => {
+      const e = await exec();
+      const a = await makeCase();
+      await addCandidate(a);
+      await svc.claimCase(a.id, { cityId: CITY });
+      await expect(svc.assertExecutiveMayRunManualSearch({ id: e.id, role: "executive" }, a.order_id)).rejects.toMatchObject({ statusCode: 403 });
+      await expect(svc.assertExecutiveMayRunManualSearch({ id: 1, role: "admin" }, a.order_id)).resolves.toBeUndefined();
+      await prisma.city_order_settings.update({ where: { city_id: CITY }, data: { exec_auto_outside_search: false } });
+      settings._resetCache();
+      await expect(svc.assertExecutiveMayRunManualSearch({ id: e.id, role: "executive" }, a.order_id)).resolves.toBeUndefined();
+    });
+  });
+
   describe("case detail", () => {
     it("shows the Trial Driver (with online flag) and the order details on one payload", async () => {
       const e = await exec();

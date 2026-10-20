@@ -190,7 +190,7 @@ async function getOne(req, res) {
 
 // Shared guard for the outside-driver endpoints: city scope + executive ownership, same rules as assignRider.
 // Returns the order id, or null after sending the error response.
-async function guardOutsideDriver(req, res) {
+async function guardOutsideDriver(req, res, { manualSearch = false } = {}) {
   const orderId = parseInt(req.params.id, 10);
   if (!orderId) { res.status(400).json({ success: false, message: "Invalid order id" }); return null; }
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { city_id: true } });
@@ -200,13 +200,14 @@ async function guardOutsideDriver(req, res) {
     return null;
   }
   await guaranteeQueue.assertExecutiveMayAssign(req.user, orderId);
+  if (manualSearch) await guaranteeQueue.assertExecutiveMayRunManualSearch(req.user, orderId);
   return orderId;
 }
 
-function outsideDriverHandler(label, run) {
+function outsideDriverHandler(label, run, { manualSearch = false } = {}) {
   return async (req, res) => {
     try {
-      const orderId = await guardOutsideDriver(req, res);
+      const orderId = await guardOutsideDriver(req, res, { manualSearch });
       if (orderId === null) return undefined;
       const data = await run(orderId, req);
       return res.json({ success: true, data });
@@ -226,12 +227,12 @@ async function outsideDriverVehicles(req, res) {
 }
 
 const outsideDriverLookup = outsideDriverHandler("orders.outsideDriverLookup", (orderId, req) =>
-  outsideDriver.lookup({ orderId, vehicleId: req.body?.vehicle_id, adminId: req.user?.id }));
+  outsideDriver.lookup({ orderId, vehicleId: req.body?.vehicle_id, adminId: req.user?.id }), { manualSearch: true });
 const outsideDriverRegister = outsideDriverHandler("orders.outsideDriverRegister", (orderId, req) =>
   outsideDriver.registerTrial({
     orderId, adminId: req.user?.id, name: req.body?.name, mobile: req.body?.mobile,
     vehicleNumber: req.body?.vehicle_number, trialOrders: req.body?.trial_orders,
-  }));
+  }), { manualSearch: true });
 const outsideDriverStatus = outsideDriverHandler("orders.outsideDriverStatus", (orderId, req) =>
   outsideDriver.onboardStatus({ orderId, riderId: req.query?.rider_id }));
 
@@ -760,7 +761,7 @@ async function assignNextDayBatch(req, res) {
     }
     for (const id of orderIds) {
       try {
-        await guaranteeQueue.assertExecutiveMayAssign(req.user, id);
+        await guaranteeQueue.assertExecutiveMayAssign(req.user, id, riderId);
       } catch (ownerErr) {
         if (ownerErr.statusCode) return res.status(ownerErr.statusCode).json({ success: false, message: ownerErr.message });
         throw ownerErr;

@@ -517,8 +517,9 @@ async function recordAssignmentAction({ orderId, adminId, riderId }) {
       await prisma.booking_guarantee_case.updateMany({ where: { ...own, first_action_at: null }, data: { first_action_at: now } });
       await prisma.booking_guarantee_case.updateMany({ where: own, data: { last_action_at: now } });
       await prisma.booking_guarantee_case.updateMany({ where: { ...own, queue_state: "assigned" }, data: { queue_state: "in_progress" } });
-      await outsideCandidates.markAssigned(row.id, Number(riderId));
     }
+    // Whoever assigns the offered Trial Driver (owner or an admin), the outcome is "assigned", not "superseded".
+    await outsideCandidates.markAssigned(row.id, Number(riderId));
   } catch (err) {
     logger.error(`guaranteeQueue: recording driver_assigned for order ${orderId} failed:`, err);
   }
@@ -541,6 +542,17 @@ async function assertExecutiveMayAssign(user, orderId, riderId) {
     const live = await outsideCandidates.getLive(row.id);
     if (live && Number(riderId) !== Number(live.rider_id)) throw httpError(403, "Assign the Trial Driver offered for this case");
   }
+}
+
+/**
+ * Auto mode: the bot owns the outside-driver search (and its shared lookup budget), so an executive may not start a
+ * manual lookup/registration for a queued case. Admins and cities with the switch OFF are unaffected.
+ */
+async function assertExecutiveMayRunManualSearch(user, orderId) {
+  if (!user || user.role !== "executive") return;
+  const row = await prisma.booking_guarantee_case.findUnique({ where: { order_id: Number(orderId) } });
+  if (!row || row.status !== "open" || !row.queue_state || row.city_id == null) return;
+  if (isAutoMode(await queueSettings.getQueueSettings(row.city_id))) throw httpError(403, "Automatic trial driver search is on for this city");
 }
 
 const CASE_FIELDS = {
@@ -813,6 +825,6 @@ module.exports = {
   writeAudit, notify, ensureProfile, listCandidates, endActiveAssignment, tryAssign, markUnassigned, claimCase,
   assertCityAccess, releaseToUnassigned, reassignAuto, reassignCase, setAvailability, setCapacity, onCaseOpened, onCaseClosed,
   dispatchWaiting, rejectCandidate,
-  recordAction, recordAssignmentAction, assertExecutiveMayAssign, getCaseDetail, listMyCases,
+  recordAction, recordAssignmentAction, assertExecutiveMayAssign, assertExecutiveMayRunManualSearch, getCaseDetail, listMyCases,
   tick, processOpenCases, repairOrphans,
 };

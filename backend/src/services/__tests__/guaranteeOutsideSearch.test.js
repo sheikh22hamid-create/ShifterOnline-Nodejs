@@ -6,7 +6,7 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
 jest.mock("../guaranteeQueueSettings", () => ({ autoSearchActive: jest.fn() }));
-jest.mock("../guaranteeOutsideCandidateService", () => ({ createLive: jest.fn(), getLive: jest.fn(), hasOffered: jest.fn() }));
+jest.mock("../guaranteeOutsideCandidateService", () => ({ createLive: jest.fn(), getLive: jest.fn(), hasOffered: jest.fn(), hasOfferedRider: jest.fn(), supersedeLive: jest.fn() }));
 jest.mock("../guaranteeQueueService", () => ({ dispatchWaiting: jest.fn() }));
 
 const prisma = require("../../config/db");
@@ -31,6 +31,7 @@ beforeEach(() => {
   settings.autoSearchActive.mockResolvedValue(true);
   candidates.getLive.mockResolvedValue(null);
   candidates.hasOffered.mockResolvedValue(false);
+  candidates.hasOfferedRider.mockResolvedValue(false);
   candidates.createLive.mockResolvedValue({ created: true, row: { id: 5 } });
   deps = {
     sleep: jest.fn().mockResolvedValue(),
@@ -75,6 +76,20 @@ describe("runSearch", () => {
     expect(deps.registerFn).toHaveBeenCalledTimes(1);
     expect(deps.registerFn.mock.calls[0][0].mobile).toBe("9000000001");
     expect(deps.sleep).toHaveBeenCalledWith(10000);
+  });
+
+  it("skips a driver whose trial rider was already offered for this order, even if the mobile text differed", async () => {
+    deps.lookupFn
+      .mockResolvedValueOnce({ driver: { ...driver, mobile: "+919876543210" }, repeat: false })
+      .mockResolvedValueOnce({ driver: { ...driver, mobile: "9000000003" }, repeat: false });
+    deps.registerFn
+      .mockResolvedValueOnce({ rider_id: 44, kind: "already_on_shifter" })
+      .mockResolvedValueOnce({ rider_id: 45, kind: "trial_created" });
+    candidates.hasOfferedRider.mockResolvedValueOnce(true).mockResolvedValue(false);
+    const out = await svc.runSearch(1, deps);
+    expect(out.outcome).toBe("candidate");
+    expect(candidates.createLive).toHaveBeenCalledTimes(1);
+    expect(candidates.createLive.mock.calls[0][0].riderId).toBe(45);
   });
 
   it("a lookup limit (429) ends as exhausted: state, audit, admin alert", async () => {

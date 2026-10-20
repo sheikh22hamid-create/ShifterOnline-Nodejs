@@ -164,6 +164,8 @@ async function runSearch(caseId, deps = {}) {
           logger.error(`guaranteeOutsideSearch: trial registration failed for order ${caseRow.order_id}:`, err);
           await audit(caseRow, "outside_trial_failed", { mobile: driver.mobile, error: String(err.message || err).slice(0, 120) });
         }
+        // registerTrial resolves the driver by normalised mobile: the same rider may come back under another spelling.
+        if (trial && (await candidates.hasOfferedRider(caseId, trial.rider_id))) trial = null;
         if (trial) {
           const stored = await candidates.createLive({ caseId, orderId: caseRow.order_id, riderId: trial.rider_id, driver });
           if (stored.created) {

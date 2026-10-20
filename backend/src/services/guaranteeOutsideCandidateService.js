@@ -34,6 +34,11 @@ async function hasOffered(caseId, { mobile, vehicleNumber }) {
   return Boolean(await model().findFirst({ where: { case_id: caseId, OR: or }, select: { id: true } }));
 }
 
+/** Was this trial rider already offered for the case? Catches the same driver the partner reports with a differently formatted mobile. */
+async function hasOfferedRider(caseId, riderId) {
+  return Boolean(await model().findFirst({ where: { case_id: caseId, rider_id: riderId }, select: { id: true } }));
+}
+
 /** The executive rejects the live candidate. false when there is no ready live candidate. */
 async function reject({ caseId, adminId, reason, client = prisma }) {
   const res = await client.guarantee_outside_candidate.updateMany({
@@ -59,4 +64,4 @@ async function supersedeLive(caseId, reason) {
   return res.count;
 }
 
-module.exports = { createLive, getLive, hasOffered, reject, markAssigned, supersedeLive };
+module.exports = { createLive, getLive, hasOffered, hasOfferedRider, reject, markAssigned, supersedeLive };

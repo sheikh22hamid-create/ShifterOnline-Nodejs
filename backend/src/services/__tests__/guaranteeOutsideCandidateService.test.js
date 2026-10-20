@@ -51,6 +51,18 @@ describe("hasOffered", () => {
   });
 });
 
+describe("hasOfferedRider", () => {
+  it("is true when any candidate of the case already points at that trial rider", async () => {
+    model.findFirst.mockResolvedValue({ id: 1 });
+    expect(await svc.hasOfferedRider(1, 44)).toBe(true);
+    expect(model.findFirst.mock.calls[0][0].where).toEqual({ case_id: 1, rider_id: 44 });
+  });
+  it("is false when none does", async () => {
+    model.findFirst.mockResolvedValue(null);
+    expect(await svc.hasOfferedRider(1, 44)).toBe(false);
+  });
+});
+
 describe("reject", () => {
   it("flips only a ready live candidate and clears active (never 0)", async () => {
     model.updateMany.mockResolvedValue({ count: 1 });

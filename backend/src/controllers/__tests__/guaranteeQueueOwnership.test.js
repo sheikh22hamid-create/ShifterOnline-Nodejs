@@ -114,7 +114,7 @@ describe("assignNextDayBatch ownership guard", () => {
     const res = makeRes();
     await assignNextDayBatch({ body, user }, res);
     expect(queue.assertExecutiveMayAssign).toHaveBeenCalledTimes(2);
-    expect(queue.assertExecutiveMayAssign).toHaveBeenCalledWith(user, 12);
+    expect(queue.assertExecutiveMayAssign).toHaveBeenCalledWith(user, 12, 2);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
