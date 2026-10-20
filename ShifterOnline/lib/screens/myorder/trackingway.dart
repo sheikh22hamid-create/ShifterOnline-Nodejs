@@ -5245,6 +5245,32 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             _canChangeDestination,
             _handleChangeDropLocation,
           ),
+          if (_canAddStop) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: InkWell(
+                onTap: _handleAddStop,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  decoration: BoxDecoration(
+                    color: linercolor.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: linercolor.withOpacity(0.6), width: 1.1),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_location_alt_rounded, color: linercolor, size: 18),
+                      const SizedBox(width: 8),
+                      Text("Add Stop".tr, style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 14)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -5781,9 +5807,6 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               if (_canChangeDestination)
                 option(Icons.edit_location_alt_rounded, const Color(0xFF2979FF), "Change Drop Location".tr,
                     "Change where we deliver".tr, _handleChangeDropLocation),
-              if (_canAddStop)
-                option(Icons.add_location_alt_rounded, linercolor, "Add Stop".tr,
-                    "Add a stop before the final drop".tr, _handleAddStop),
               option(Icons.cancel_outlined, const Color(0xFFFF5252), "Cancel Order".tr,
                   "Cancel this booking".tr, () => dialogShow(cancelOrderId)),
             ],
