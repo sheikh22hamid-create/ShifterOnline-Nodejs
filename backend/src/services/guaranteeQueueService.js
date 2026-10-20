@@ -4,6 +4,7 @@ const logger = require("../utils/logger");
 const adminSocket = require("../sockets/adminSocket");
 const rules = require("./guaranteeQueueRules");
 const queueSettings = require("./guaranteeQueueSettings");
+const outsideCandidates = require("./guaranteeOutsideCandidateService");
 const { BOOKING_GUARANTEE_SWEEP_INTERVAL_MS } = require("../config/constants");
 
 const MIN_HANDOVER_MS = 2 * BOOKING_GUARANTEE_SWEEP_INTERVAL_MS;
@@ -13,6 +14,9 @@ const MAX_CLAIM_ATTEMPTS = 5;
 const ALERT_THROTTLE_MS = 5 * 60 * 1000;
 const TX_OPTIONS = { maxWait: 10000, timeout: 15000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted };
 const END_REASON_FOR_STATUS = { resolved_assigned: "resolved", cancelled: "cancelled", expired_compensated: "expired" };
+
+// Lazy: guaranteeOutsideSearch calls back into this module (dispatchWaiting), so a top-level require would be a cycle.
+const outsideSearch = () => require("./guaranteeOutsideSearch");
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const safeJson = (v) => (v == null ? null : JSON.stringify(v));
@@ -46,6 +50,14 @@ async function ensureProfile(adminId) {
     VALUES (${adminId}, 1, ${new Date()})
     ON DUPLICATE KEY UPDATE admin_id = admin_id`);
 }
+
+const isAutoMode = (city) => Boolean(city && city.execQueueEnabled && city.autoOutsideSearch);
+// Auto mode (spec 2026-10-20): an executive holds ONE active case, whatever the profile or city capacity says.
+const AUTO_CAPACITY = 1;
+const rankFor = (candidates, city) =>
+  isAutoMode(city)
+    ? rules.rankCandidates(candidates.map((c) => ({ ...c, capacity: null })), AUTO_CAPACITY)
+    : rules.rankCandidates(candidates, city.execDefaultCapacity);
 
 /** Executives of a city with their live load: a COUNT of active periods on OPEN cases, never a stored counter. */
 async function listCandidates(cityId, client = prisma) {
@@ -97,7 +109,9 @@ async function tryAssign(caseId, adminId, { cityId, expectedOwnerId = null, sour
         SELECT id FROM admin WHERE id = ${adminId} AND role = 'executive' AND status = 1 AND city_id = ${Number(cityId)}`))[0];
       if (!admin) return "candidate_unavailable";
 
-      const capacity = rules.effectiveCapacity({ capacity: profile.capacity == null ? null : Number(profile.capacity) }, city.execDefaultCapacity);
+      const capacity = isAutoMode(city)
+        ? AUTO_CAPACITY
+        : rules.effectiveCapacity({ capacity: profile.capacity == null ? null : Number(profile.capacity) }, city.execDefaultCapacity);
       const load = Number((await tx.$queryRaw(Prisma.sql`
         SELECT COUNT(*) AS load_count FROM guarantee_assignment ga JOIN booking_guarantee_case c ON c.id = ga.case_id
         WHERE ga.admin_id = ${adminId} AND ga.active = 1 AND c.status = 'open'`))[0].load_count);
@@ -162,8 +176,10 @@ async function claimCase(caseId, { cityId, source = "auto", assignedBy = null } 
   if (!row || row.status !== "open" || row.owner_admin_id || Number(row.city_id) !== Number(cityId)) return { claimed: false, reason: "not_claimable" };
 
   const city = await queueSettings.getQueueSettings(cityId);
+  // Auto mode: only a case that already has a ready Trial Driver is handed out; one still searching is not "unassigned".
+  if (isAutoMode(city) && !(await outsideCandidates.getLive(caseId))) return { claimed: false, reason: "awaiting_driver" };
   const candidates = await listCandidates(cityId);
-  const ranked = rules.rankCandidates(candidates, city.execDefaultCapacity);
+  const ranked = rankFor(candidates, city);
   if (!ranked.length) {
     const reason = rules.unassignedReason(candidates);
     await markUnassigned(row, cityId, reason);
@@ -213,7 +229,7 @@ async function releaseToUnassigned(caseRow, cityId, { endReason, reason = null, 
 async function reassignAuto(caseRow, { cityId, endReason = "reassigned", source = "auto", assignedBy = null, reason = null, idleBefore }) {
   const city = await queueSettings.getQueueSettings(cityId);
   const candidates = (await listCandidates(cityId)).filter((c) => c.adminId !== caseRow.owner_admin_id);
-  const ranked = rules.rankCandidates(candidates, city.execDefaultCapacity);
+  const ranked = rankFor(candidates, city);
   for (const cand of ranked.slice(0, MAX_CLAIM_ATTEMPTS)) {
     const outcome = await tryAssign(caseRow.id, cand.adminId, {
       cityId, expectedOwnerId: caseRow.owner_admin_id, source, assignedBy, endReason, reason, idleBefore,
@@ -276,6 +292,73 @@ async function reassignCase({ orderId, targetAdminId = null, actor, reason }) {
   throw httpError(409, messages[outcome] || "Could not reassign");
 }
 
+/**
+ * Auto mode: hand the oldest waiting cases (open, unowned, with a ready Trial Driver) to free executives, right now.
+ * Called wherever an executive may have become free. Stops at the first case nobody can take. Returns the count claimed.
+ */
+async function dispatchWaiting(cityId) {
+  const city = Number(cityId);
+  if (!Number.isInteger(city) || city <= 0 || !isAutoMode(await queueSettings.getQueueSettings(city))) return 0;
+  const waiting = await prisma.$queryRaw(Prisma.sql`
+    SELECT c.id AS id FROM booking_guarantee_case c
+    JOIN guarantee_outside_candidate g ON g.case_id = c.id AND g.active = 1
+    WHERE c.status = 'open' AND c.owner_admin_id IS NULL AND c.city_id = ${city} AND c.deadline_at > ${new Date()}
+    ORDER BY c.opened_at ASC, c.id ASC LIMIT 50`);
+  let claimed = 0;
+  for (const w of waiting) {
+    const res = await claimCase(Number(w.id), { cityId: city });
+    if (res.claimed) claimed += 1;
+    else if (res.reason !== "not_claimable" && res.reason !== "awaiting_driver") break; // nobody free: the rest wait too
+  }
+  return claimed;
+}
+
+/** Best-effort wrapper for hooks: a failure here is repaired by the next sweeper tick. */
+async function dispatchWaitingSafe(cityId) {
+  try {
+    return await dispatchWaiting(cityId);
+  } catch (err) {
+    logger.error(`guaranteeQueue: dispatchWaiting failed for city ${cityId}:`, err);
+    return 0;
+  }
+}
+
+/**
+ * The owning executive rejects the offered Trial Driver (Not Convinced). One transaction records the rejection,
+ * ends the executive's period (they are Free at once) and returns the case to the queue; then the next search starts
+ * and the next waiting case goes to a free executive.
+ */
+async function rejectCandidate({ orderId, actor, reason }) {
+  if (!actor || actor.role !== "executive") throw httpError(403, "Only the owning executive can reject a driver");
+  const row = await loadCaseFor(orderId, actor); // 404 unless this executive owns it
+  if (row.status !== "open") throw httpError(409, "This guarantee case is already closed");
+  const live = await outsideCandidates.getLive(row.id);
+  if (!live) throw httpError(409, "There is no offered driver to reject");
+  const why = reason ? String(reason).trim().slice(0, 200) : null;
+
+  const done = await prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const swapped = await tx.booking_guarantee_case.updateMany({
+      where: { id: row.id, status: "open", owner_admin_id: actor.id },
+      data: { owner_admin_id: null, owner_assigned_at: null, queue_state: "unassigned" },
+    });
+    if (swapped.count === 0) return false;
+    if (!(await outsideCandidates.reject({ caseId: row.id, adminId: actor.id, reason: why, client: tx }))) {
+      throw httpError(409, "The offered driver changed. Refresh and retry");
+    }
+    await endActiveAssignment(row.id, "driver_rejected", tx, now);
+    await writeAudit(tx, row.id, row.order_id, "outside_driver_rejected", {
+      adminId: actor.id, meta: { rider_id: live.rider_id, mobile: live.mobile, reason: why },
+    });
+    return true;
+  }, TX_OPTIONS);
+  if (!done) throw httpError(404, "Not found"); // ownership changed under us
+
+  outsideSearch().startForCase(row.id);
+  await dispatchWaitingSafe(row.city_id);
+  return { released: true };
+}
+
 async function loadExecutive(adminId, actor) {
   const a = await prisma.admin.findUnique({ where: { id: Number(adminId) }, select: { id: true, role: true, city_id: true } });
   if (!a || a.role !== "executive") throw httpError(404, "Not found");
@@ -297,8 +380,13 @@ async function setAvailability(adminId, available, actor) {
   const exec = await loadExecutive(adminId, actor);
   await ensureProfile(exec.id);
   await prisma.executive_guarantee_profile.update({ where: { admin_id: exec.id }, data: { available: available ? 1 : 0, updated_by: actor.id, updated_at: new Date() } });
-  if (available) return { handedOver: 0 };
-  return { handedOver: await handoverOwnedCases(exec.id, exec.city_id, actor.id) };
+  if (available) {
+    await dispatchWaitingSafe(exec.city_id); // newly free: take the oldest waiting case
+    return { handedOver: 0 };
+  }
+  const handedOver = await handoverOwnedCases(exec.id, exec.city_id, actor.id);
+  await dispatchWaitingSafe(exec.city_id);
+  return { handedOver };
 }
 
 async function setCapacity(adminId, capacity, actor) {
@@ -326,6 +414,11 @@ async function onCaseOpened(caseRow, cityId) {
   });
   if (set.count === 0) return { queued: false };
   await writeAudit(prisma, caseRow.id, caseRow.order_id, "exec_queue_unassigned");
+  if (isAutoMode(city)) {
+    // The bot finds a Trial Driver first; the case reaches an executive only once one is ready (dispatchWaiting).
+    outsideSearch().startForCase(caseRow.id);
+    return { queued: true };
+  }
   await claimCase(caseRow.id, { cityId });
   return { queued: true };
 }
@@ -336,7 +429,15 @@ async function onCaseClosed(caseRow, status) {
   if (!endReason) return 0;
   const current = await prisma.booking_guarantee_case.findUnique({ where: { id: caseRow.id }, select: { status: true } });
   if (!current || current.status === "open") return 0;
-  return endActiveAssignment(caseRow.id, endReason);
+  const ended = await endActiveAssignment(caseRow.id, endReason);
+  // Auto mode: a driver still on offer is no longer needed, and the executive just freed gets the next waiting case.
+  try {
+    await outsideCandidates.supersedeLive(caseRow.id, "case_closed");
+  } catch (err) {
+    logger.error(`guaranteeQueue: superseding candidate of case ${caseRow.id} failed:`, err);
+  }
+  if (caseRow.city_id != null) await dispatchWaitingSafe(caseRow.city_id);
+  return ended;
 }
 
 
@@ -416,6 +517,7 @@ async function recordAssignmentAction({ orderId, adminId, riderId }) {
       await prisma.booking_guarantee_case.updateMany({ where: { ...own, first_action_at: null }, data: { first_action_at: now } });
       await prisma.booking_guarantee_case.updateMany({ where: own, data: { last_action_at: now } });
       await prisma.booking_guarantee_case.updateMany({ where: { ...own, queue_state: "assigned" }, data: { queue_state: "in_progress" } });
+      await outsideCandidates.markAssigned(row.id, Number(riderId));
     }
   } catch (err) {
     logger.error(`guaranteeQueue: recording driver_assigned for order ${orderId} failed:`, err);
@@ -427,20 +529,57 @@ async function recordAssignmentAction({ orderId, adminId, riderId }) {
  * case they currently own. Admins and superadmins are unaffected, as is any order without an open queued case
  * and any city with the queue OFF (so turning the flag off restores today's behaviour).
  */
-async function assertExecutiveMayAssign(user, orderId) {
+async function assertExecutiveMayAssign(user, orderId, riderId) {
   if (!user || user.role !== "executive") return;
   const row = await prisma.booking_guarantee_case.findUnique({ where: { order_id: Number(orderId) } });
   if (!row || row.status !== "open" || !row.queue_state || row.city_id == null) return;
   const city = await queueSettings.getQueueSettings(row.city_id);
   if (!city.execQueueEnabled) return;
   if (row.owner_admin_id !== user.id) throw httpError(403, "This Booking Guarantee case is owned by another executive");
+  // Auto mode: the executive decides on the offered Trial Driver, not an arbitrary one.
+  if (isAutoMode(city) && riderId != null) {
+    const live = await outsideCandidates.getLive(row.id);
+    if (live && Number(riderId) !== Number(live.rider_id)) throw httpError(403, "Assign the Trial Driver offered for this case");
+  }
 }
 
 const CASE_FIELDS = {
   id: true, order_id: true, city_id: true, status: true, queue_state: true, unassigned_reason: true, opened_at: true, deadline_at: true,
   owner_admin_id: true, owner_assigned_at: true, first_action_at: true, last_action_at: true, reminded_at: true, escalated_at: true,
-  closed_at: true, compensation_amount: true, selected_package_ids: true,
+  closed_at: true, compensation_amount: true, selected_package_ids: true, search_state: true,
 };
+
+const ORDER_FIELDS = {
+  id: true, category: true, pick_name: true, drop_name: true, plat: true, plong: true, dlat: true, dlong: true,
+  total_dcharge: true, distance: true,
+};
+
+/** Adds the live Trial Driver (with an online flag) and the order's key details to each case, in a few queries. */
+async function attachOffer(cases) {
+  if (!cases.length) return cases;
+  const live = await prisma.guarantee_outside_candidate.findMany({ where: { case_id: { in: cases.map((c) => c.id) }, active: 1 } });
+  const riders = live.length
+    ? await prisma.tbl_rider.findMany({ where: { id: { in: live.map((l) => l.rider_id) } }, select: { id: true, a_status: true, status: true, trial_status: true } })
+    : [];
+  const riderBy = new Map(riders.map((r) => [r.id, r]));
+  const orders = await prisma.pkg_order.findMany({ where: { id: { in: cases.map((c) => c.order_id) } }, select: ORDER_FIELDS });
+  const orderBy = new Map(orders.map((o) => [o.id, o]));
+  const liveBy = new Map(live.map((l) => [l.case_id, l]));
+  return cases.map((c) => {
+    const l = liveBy.get(c.id);
+    const r = l ? riderBy.get(l.rider_id) : null;
+    const o = orderBy.get(c.order_id);
+    return {
+      ...c,
+      candidate: l ? {
+        id: l.id, rider_id: l.rider_id, name: l.name, mobile: l.mobile, vehicle_number: l.vehicle_number, vehicle_name: l.vehicle_name,
+        fare: l.fare == null ? null : Number(l.fare), status: l.status, trial_status: r ? r.trial_status : null,
+        online: Boolean(r && r.a_status === 1 && r.status === 1),
+      } : null,
+      order: o ? { ...o, fare: o.total_dcharge == null ? null : Number(o.total_dcharge) } : null,
+    };
+  });
+}
 
 async function getCaseDetail(orderId, actor) {
   const row = await loadCaseFor(orderId, actor);
@@ -451,7 +590,8 @@ async function getCaseDetail(orderId, actor) {
     prisma.guarantee_action.findMany({ where: { case_id: row.id }, orderBy: { id: "desc" }, take: 100 }),
     prisma.booking_guarantee_audit.findMany({ where: { case_id: row.id }, orderBy: { id: "asc" } }),
   ]);
-  return { case: full, assignments, actions, audit };
+  const [withOffer] = await attachOffer([full]);
+  return { case: withOffer, assignments, actions, audit, candidate: withOffer.candidate, order: withOffer.order };
 }
 
 async function listMyCases(adminId) {
@@ -467,7 +607,7 @@ async function listMyCases(adminId) {
   const awayCases = away.length
     ? await prisma.booking_guarantee_case.findMany({ where: { id: { in: away.map((a) => a.case_id) } }, select: CASE_FIELDS })
     : [];
-  return { active, recent, reassigned: awayCases };
+  return { active: await attachOffer(active), recent, reassigned: awayCases };
 }
 
 async function maybeRemind(c, city, now) {
@@ -532,7 +672,7 @@ async function processOpenCases(now) {
       if (c.owner_admin_id && rules.isIdle(c, city, now, MIN_HANDOVER_MS)) {
         // Only hand over when another executive can actually take it; otherwise keep the owner (no release/claim ping-pong).
         const others = (await listCandidates(c.city_id)).filter((x) => x.adminId !== c.owner_admin_id);
-        if (rules.rankCandidates(others, city.execDefaultCapacity).length > 0) {
+        if (rankFor(others, city).length > 0) {
           const idleBefore = new Date(now.getTime() - city.autoReassignIdleMinutes * 60 * 1000);
           const res = await reassignAuto(c, { cityId: c.city_id, endReason: "idle_auto_reassign", source: "escalation", reason: "owner idle", idleBefore });
           if (res.queueState !== "unchanged") {
@@ -650,7 +790,9 @@ async function repairOrphans(now) {
 
 /** One sweeper pass; called right after expireDue(). Every step is contained so one failure never stops the others. */
 async function tick(now = new Date()) {
-  const out = { processed: 0, repaired: 0 };
+  const out = { processed: 0, repaired: 0, searched: 0 };
+  // Auto mode: (re)start searches for cases with no live Trial Driver (recovers a crashed worker or a restart).
+  try { out.searched = await outsideSearch().sweep(now); } catch (err) { logger.error("guaranteeQueue: outside search sweep failed:", err); }
   try { out.processed = await processOpenCases(now); } catch (err) { logger.error("guaranteeQueue: processOpenCases failed:", err); }
   try { out.repaired = await repairOrphans(now); } catch (err) { logger.error("guaranteeQueue: repairOrphans failed:", err); }
   return out;
@@ -660,6 +802,7 @@ module.exports = {
   END_REASON_FOR_STATUS, TX_OPTIONS, httpError,
   writeAudit, notify, ensureProfile, listCandidates, endActiveAssignment, tryAssign, markUnassigned, claimCase,
   assertCityAccess, releaseToUnassigned, reassignAuto, reassignCase, setAvailability, setCapacity, onCaseOpened, onCaseClosed,
+  dispatchWaiting, rejectCandidate,
   recordAction, recordAssignmentAction, assertExecutiveMayAssign, getCaseDetail, listMyCases,
   tick, processOpenCases, repairOrphans,
 };

@@ -14,7 +14,7 @@ const describeMysql = enabled ? describe : describe.skip;
 
 const TABLES = [
   "guarantee_assignment", "guarantee_action", "executive_guarantee_profile", "booking_guarantee_audit",
-  "booking_guarantee_case", "city_order_settings", "admin",
+  "booking_guarantee_case", "city_order_settings", "admin", "guarantee_outside_candidate",
 ];
 
 async function resetDb(prisma) {

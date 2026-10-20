@@ -251,7 +251,7 @@ async function assignRider(req, res) {
       return res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
     }
     try {
-      await guaranteeQueue.assertExecutiveMayAssign(req.user, orderId);
+      await guaranteeQueue.assertExecutiveMayAssign(req.user, orderId, riderId);
     } catch (ownerErr) {
       if (ownerErr.statusCode) return res.status(ownerErr.statusCode).json({ success: false, message: ownerErr.message });
       throw ownerErr;

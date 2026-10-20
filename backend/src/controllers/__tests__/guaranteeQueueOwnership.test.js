@@ -59,7 +59,7 @@ describe("assignRider ownership guard", () => {
     const req = { params: { id: "500" }, body: { rider_id: "2" }, user: { role: "executive", id: 5 } };
     const res = makeRes();
     await assignRider(req, res);
-    expect(queue.assertExecutiveMayAssign).toHaveBeenCalledWith(req.user, 500);
+    expect(queue.assertExecutiveMayAssign).toHaveBeenCalledWith(req.user, 500, 2);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
     expect(guarantee.closeOnAssign).not.toHaveBeenCalled();

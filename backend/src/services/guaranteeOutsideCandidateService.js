@@ -35,8 +35,8 @@ async function hasOffered(caseId, { mobile, vehicleNumber }) {
 }
 
 /** The executive rejects the live candidate. false when there is no ready live candidate. */
-async function reject({ caseId, adminId, reason }) {
-  const res = await model().updateMany({
+async function reject({ caseId, adminId, reason, client = prisma }) {
+  const res = await client.guarantee_outside_candidate.updateMany({
     where: { case_id: caseId, active: 1, status: "ready" },
     data: {
       status: "rejected", active: null, rejected_by: adminId ?? null, rejected_at: new Date(),
