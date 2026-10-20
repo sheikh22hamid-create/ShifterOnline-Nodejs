@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:http/http.dart' as http;
@@ -1114,6 +1115,15 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   /// even though WhatsApp was installed. Launching can only succeed when an
   /// app really handles the link, so just try, most specific first.
   Future<bool> _openWhatsApp() async {
+    // First choice: start the installed app like its launcher icon (works even when WhatsApp is not
+    // in recents, where whatsapp:// shows "Couldn't open this link").
+    try {
+      if (await const MethodChannel('com.shifter.online/contacts').invokeMethod<bool>('openWhatsApp') == true) {
+        return true;
+      }
+    } catch (_) {
+      // channel missing (non-Android) - fall back to the links below
+    }
     final attempts = <Uri>[
       Uri.parse('whatsapp://send'), // WhatsApp / WhatsApp Business app scheme
       Uri.parse('whatsapp://'),
