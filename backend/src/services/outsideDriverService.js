@@ -47,6 +47,17 @@ async function getVehicles(fetchImpl = fetch) {
 const knownVehicleIds = () => (catalog.list || FALLBACK_VEHICLES).map((v) => v.id);
 const resetCatalogCache = () => { catalog = { at: 0, list: null }; };
 
+/** Best-effort partner vehicle id from the order's category text (same rules as the admin panel's starting choice). */
+function guessVehicleId(category) {
+  const c = String(category || "").toLowerCase();
+  if (/bike|2.?w|scooter/.test(c)) return 133;
+  if (/ace|8 ?ft truck|4 ?w|four/.test(c)) return 97;
+  if (/pickup/.test(c)) return 91;
+  if (/407/.test(c)) return 1;
+  if (/500/.test(c)) return 126;
+  return 1139;
+}
+
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const inFlight = new Set();
 
@@ -254,4 +265,4 @@ async function notifyIfAwaited(rider) {
   }
 }
 
-module.exports = { getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
+module.exports = { guessVehicleId, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
