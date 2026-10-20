@@ -8,7 +8,11 @@ async function queueList({ cityId = null, state = null, limit = 100 } = {}) {
   const take = Math.min(Math.max(Number(limit) || 100, 1), 200);
   const rows = await prisma.$queryRaw(Prisma.sql`
     SELECT c.id, c.order_id, c.city_id, c.status, c.queue_state, c.unassigned_reason, c.opened_at, c.deadline_at, c.owner_admin_id,
-           c.first_action_at, c.last_action_at, c.reminded_at, c.escalated_at, a.name AS owner_name, a.username AS owner_username
+           c.first_action_at, c.last_action_at, c.reminded_at, c.escalated_at, a.name AS owner_name, a.username AS owner_username,
+           c.search_state,
+           (SELECT g.name FROM guarantee_outside_candidate g WHERE g.case_id = c.id ORDER BY g.id DESC LIMIT 1) AS candidate_name,
+           (SELECT g.mobile FROM guarantee_outside_candidate g WHERE g.case_id = c.id ORDER BY g.id DESC LIMIT 1) AS candidate_mobile,
+           (SELECT g.status FROM guarantee_outside_candidate g WHERE g.case_id = c.id ORDER BY g.id DESC LIMIT 1) AS candidate_status
     FROM booking_guarantee_case c LEFT JOIN admin a ON a.id = c.owner_admin_id
     WHERE c.queue_state IS NOT NULL ${cityClause(cityId)} ${state ? Prisma.sql`AND c.queue_state = ${state}` : Prisma.empty}
     ORDER BY (c.status = 'open') DESC, c.deadline_at ASC LIMIT ${take}`);

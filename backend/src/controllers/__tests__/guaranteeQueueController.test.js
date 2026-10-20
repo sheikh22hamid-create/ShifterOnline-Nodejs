@@ -1,5 +1,5 @@
 jest.mock("../../services/guaranteeQueueService", () => ({
-  listMyCases: jest.fn(), getCaseDetail: jest.fn(), recordAction: jest.fn(), reassignCase: jest.fn(), setAvailability: jest.fn(), setCapacity: jest.fn(),
+  listMyCases: jest.fn(), getCaseDetail: jest.fn(), rejectCandidate: jest.fn(), recordAction: jest.fn(), reassignCase: jest.fn(), setAvailability: jest.fn(), setCapacity: jest.fn(),
 }));
 jest.mock("../../services/guaranteeQueueReports", () => ({ queueList: jest.fn(), workload: jest.fn(), report: jest.fn() }));
 jest.mock("../../services/guaranteeQueueSettings", () => ({ getQueueSettings: jest.fn(), saveQueueSettings: jest.fn() }));
@@ -285,5 +285,37 @@ describe("strict input validation (V1-V6)", () => {
       expect(r.status).toHaveBeenCalledWith(403);
       expect(settings.getQueueSettings).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("rejectCandidate endpoint", () => {
+  it("passes the server-derived actor, the order id and a trimmed reason", async () => {
+    svc.rejectCandidate.mockResolvedValue({ released: true });
+    const r = res();
+    await ctrl.rejectCandidate({ user: exec, params: { orderId: "77" }, body: { reason: "  driver looks unsuitable " } }, r);
+    expect(svc.rejectCandidate).toHaveBeenCalledWith({ orderId: 77, actor: { id: 5, role: "executive", cityId: 3 }, reason: "driver looks unsuitable" });
+    expect(r.json).toHaveBeenCalledWith({ success: true, data: { released: true } });
+  });
+  it("the reason is optional", async () => {
+    svc.rejectCandidate.mockResolvedValue({ released: true });
+    await ctrl.rejectCandidate({ user: exec, params: { orderId: "77" }, body: {} }, res());
+    expect(svc.rejectCandidate.mock.calls[0][0].reason).toBeUndefined();
+  });
+  it("400 for a bad order id or a reason over 200 characters, without touching the service", async () => {
+    const r1 = res();
+    await ctrl.rejectCandidate({ user: exec, params: { orderId: "abc" }, body: {} }, r1);
+    expect(r1.status).toHaveBeenCalledWith(400);
+    const r2 = res();
+    await ctrl.rejectCandidate({ user: exec, params: { orderId: "77" }, body: { reason: "x".repeat(201) } }, r2);
+    expect(r2.status).toHaveBeenCalledWith(400);
+    expect(svc.rejectCandidate).not.toHaveBeenCalled();
+  });
+  it("turns a service 403/404/409 into the same status", async () => {
+    for (const code of [403, 404, 409]) {
+      svc.rejectCandidate.mockRejectedValueOnce(Object.assign(new Error("nope"), { statusCode: code }));
+      const r = res();
+      await ctrl.rejectCandidate({ user: exec, params: { orderId: "77" }, body: {} }, r);
+      expect(r.status).toHaveBeenCalledWith(code);
+    }
   });
 });

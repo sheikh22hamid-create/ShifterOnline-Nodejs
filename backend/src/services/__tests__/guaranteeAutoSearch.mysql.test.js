@@ -226,6 +226,18 @@ db.describeMysql("auto trial driver search + executive queue (real MySQL)", () =
     });
   });
 
+  describe("admin queue view", () => {
+    it("shows the offered driver and the search state next to each case", async () => {
+      const reports = require("../guaranteeQueueReports");
+      const waiting = await makeCase(3, { search_state: "searching" });
+      const offered = await makeCase(2); const c = await addCandidate(offered);
+      const rows = await reports.queueList({ cityId: CITY });
+      const w = rows.find((r) => r.id === waiting.id); const o = rows.find((r) => r.id === offered.id);
+      expect(w).toMatchObject({ search_state: "searching", candidate_name: null, candidate_status: null });
+      expect(o).toMatchObject({ candidate_name: c.row.name, candidate_mobile: c.row.mobile, candidate_status: "ready" });
+    });
+  });
+
   describe("case detail", () => {
     it("shows the Trial Driver (with online flag) and the order details on one payload", async () => {
       const e = await exec();

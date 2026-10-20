@@ -111,6 +111,21 @@ async function recordAction(req, res) {
   } catch (e) { return fail(res, e, "recordAction"); }
 }
 
+async function rejectCandidate(req, res) {
+  try {
+    const orderId = idParam(req.params.orderId, "orderId");
+    const raw = req.body?.reason;
+    let reason;
+    if (raw !== undefined && raw !== null && raw !== "") {
+      if (typeof raw !== "string") throw httpError(400, "reason must be a string");
+      reason = raw.trim();
+      if (reason.length > MAX_REASON) throw httpError(400, `reason must be at most ${MAX_REASON} characters`);
+    }
+    const out = await queue.rejectCandidate({ orderId, actor: actorOf(req), reason: reason || undefined });
+    return res.json({ success: true, data: out });
+  } catch (e) { return fail(res, e, "rejectCandidate"); }
+}
+
 async function reassign(req, res) {
   try {
     const orderId = idParam(req.params.orderId, "orderId");
@@ -193,4 +208,4 @@ async function saveSettings(req, res) {
   } catch (e) { return fail(res, e, "saveSettings"); }
 }
 
-module.exports = { myCases, caseDetail, recordAction, reassign, queue: queueView, workload, report, saveProfile, getSettings, saveSettings };
+module.exports = { myCases, caseDetail, recordAction, rejectCandidate, reassign, queue: queueView, workload, report, saveProfile, getSettings, saveSettings };
