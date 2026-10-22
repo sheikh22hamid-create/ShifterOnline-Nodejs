@@ -576,6 +576,20 @@ async function attachOffer(cases) {
   const riderBy = new Map(riders.map((r) => [r.id, r]));
   const orders = await prisma.pkg_order.findMany({ where: { id: { in: cases.map((c) => c.order_id) } }, select: ORDER_FIELDS });
   const orderBy = new Map(orders.map((o) => [o.id, o]));
+  // Extra stops between pickup and drop, one query for every case. Best-effort: a missing stops table (older DB) must
+  // not take the whole queue down, the card just shows no stops.
+  const stopsBy = new Map();
+  try {
+    const stops = await prisma.pkg_order_stops.findMany({
+      where: { order_id: { in: orders.map((o) => o.id) } },
+      orderBy: [{ order_id: "asc" }, { sequence: "asc" }],
+      select: { order_id: true, sequence: true, address: true, landmark: true, contact_name: true },
+    });
+    for (const s of stops) {
+      if (!stopsBy.has(s.order_id)) stopsBy.set(s.order_id, []);
+      stopsBy.get(s.order_id).push(s);
+    }
+  } catch (_e) { /* no stops available */ }
   const liveBy = new Map(live.map((l) => [l.case_id, l]));
   return cases.map((c) => {
     const l = liveBy.get(c.id);
@@ -588,7 +602,7 @@ async function attachOffer(cases) {
         fare: l.fare == null ? null : Number(l.fare), status: l.status, trial_status: r ? r.trial_status : null,
         online: Boolean(r && r.a_status === 1 && r.status === 1),
       } : null,
-      order: o ? { ...o, fare: o.total_dcharge == null ? null : Number(o.total_dcharge) } : null,
+      order: o ? { ...o, fare: o.total_dcharge == null ? null : Number(o.total_dcharge), stops: stopsBy.get(o.id) || [] } : null,
     };
   });
 }
@@ -826,5 +840,5 @@ module.exports = {
   assertCityAccess, releaseToUnassigned, reassignAuto, reassignCase, setAvailability, setCapacity, onCaseOpened, onCaseClosed,
   dispatchWaiting, rejectCandidate,
   recordAction, recordAssignmentAction, assertExecutiveMayAssign, assertExecutiveMayRunManualSearch, getCaseDetail, listMyCases,
-  tick, processOpenCases, repairOrphans,
+  attachOffer, tick, processOpenCases, repairOrphans,
 };
