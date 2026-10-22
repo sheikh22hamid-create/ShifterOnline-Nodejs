@@ -21,6 +21,7 @@ import {
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { NAV_GROUPS } from '../../config/navigation'
+import { canSeeNavItem } from '../../utils/access'
 import { formatCurrency, formatDateTime } from '../../utils/format'
 
 export default function GlobalSearchModal({ open, onClose, onSelectOrder }) {
@@ -49,7 +50,7 @@ export default function GlobalSearchModal({ open, onClose, onSelectOrder }) {
     const pages = []
     NAV_GROUPS.forEach((grp) => {
       grp.items.forEach((item) => {
-        if (!item.roles || item.roles.includes(role)) {
+        if (!item.roles || canSeeNavItem(user || { role }, item)) {
           pages.push({
             ...item,
             group: grp.group,
@@ -58,7 +59,7 @@ export default function GlobalSearchModal({ open, onClose, onSelectOrder }) {
       })
     })
     return pages
-  }, [user?.role])
+  }, [user])
 
   // Matched navigation pages
   const matchedPages = useMemo(() => {

@@ -3,6 +3,7 @@ import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
+import { EXECUTIVE_NAV_ITEMS } from '../../utils/access'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
 
@@ -11,6 +12,65 @@ function Label({ children, htmlFor }) {
     <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor={htmlFor}>
       {children}
     </label>
+  )
+}
+
+const ALL_MODULES = EXECUTIVE_NAV_ITEMS.map((i) => i.to)
+const MODULE_GROUPS = EXECUTIVE_NAV_ITEMS.reduce((acc, item) => {
+  ;(acc[item.group] ||= []).push(item)
+  return acc
+}, {})
+
+// Which sidebar tabs an executive sees. Everything ticked = unrestricted (sent as null), so tabs added later show up
+// for executives who were given full access.
+function SidebarAccess({ value, onChange }) {
+  const selected = new Set(value)
+  function toggle(keys, on) {
+    const next = new Set(selected)
+    keys.forEach((k) => (on ? next.add(k) : next.delete(k)))
+    onChange(ALL_MODULES.filter((k) => next.has(k)))
+  }
+  return (
+    <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }}>
+          Sidebar access ({selected.size}/{ALL_MODULES.length})
+        </span>
+        <span className="flex gap-3 text-[11.5px] font-medium">
+          <button type="button" onClick={() => toggle(ALL_MODULES, true)} style={{ color: 'var(--brand)' }}>
+            Select all
+          </button>
+          <button type="button" onClick={() => toggle(ALL_MODULES, false)} style={{ color: 'var(--ink-faint)' }}>
+            Clear
+          </button>
+        </span>
+      </div>
+      <p className="mb-2 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+        The executive only sees these tabs, and the server blocks the data behind every other tab. Executives stay read-only.
+      </p>
+      <div className="max-h-56 space-y-2.5 overflow-y-auto pr-1">
+        {Object.entries(MODULE_GROUPS).map(([group, items]) => {
+          const keys = items.map((i) => i.to)
+          const allOn = keys.every((k) => selected.has(k))
+          return (
+            <div key={group}>
+              <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                <input type="checkbox" checked={allOn} onChange={(e) => toggle(keys, e.target.checked)} />
+                {group}
+              </label>
+              <div className="mt-1 grid grid-cols-1 gap-x-3 gap-y-1 pl-5 sm:grid-cols-2">
+                {items.map((item) => (
+                  <label key={item.to} className="flex items-center gap-2 text-[12.5px]" style={{ color: 'var(--ink)' }}>
+                    <input type="checkbox" checked={selected.has(item.to)} onChange={(e) => toggle([item.to], e.target.checked)} />
+                    <span className="truncate">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -23,6 +83,7 @@ export default function StaffFormModal({ open, staffMember, onClose, onSaved }) 
   const { data: cities } = useApiQuery(citiesFetcher)
 
   const [form, setForm] = useState({ username: '', password: '', name: '', email: '', mobile: '', role: 'executive', city_id: '', status: 1 })
+  const [modules, setModules] = useState(ALL_MODULES)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -44,10 +105,16 @@ export default function StaffFormModal({ open, staffMember, onClose, onSaved }) 
         city_id: staffMember.city_id ?? '',
         status: staffMember.status ? 1 : 0,
       })
+      setModules(Array.isArray(staffMember.sidebar_modules) ? staffMember.sidebar_modules : ALL_MODULES)
     } else {
       setForm({ username: '', password: '', name: '', email: '', mobile: '', role: 'executive', city_id: isSuperadmin ? '' : user.city_id, status: 1 })
+      setModules(ALL_MODULES)
     }
   }, [open, staffMember, isSuperadmin, user])
+
+  // City admins can only ever create/edit executives; a superadmin picks the role.
+  const isExecutiveForm = isSuperadmin ? form.role === 'executive' : true
+  const sidebarPayload = modules.length === ALL_MODULES.length ? null : modules
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -60,10 +127,12 @@ export default function StaffFormModal({ open, staffMember, onClose, onSaved }) 
           body.city_id = form.city_id || null
         }
         if (form.password) body.password = form.password
+        if (isExecutiveForm) body.sidebar_modules = sidebarPayload
         await api.put(`/staff/${staffMember.id}`, body)
       } else {
         const body = { username: form.username, password: form.password, name: form.name, email: form.email, mobile: form.mobile, role: form.role }
         if (form.city_id) body.city_id = form.city_id
+        if (isExecutiveForm) body.sidebar_modules = sidebarPayload
         await api.post('/staff', body)
       }
       onSaved()
@@ -79,7 +148,7 @@ export default function StaffFormModal({ open, staffMember, onClose, onSaved }) 
       open={open}
       onClose={onClose}
       title={isEdit ? `Edit ${staffMember.username}` : 'New staff account'}
-      width={420}
+      width={isExecutiveForm ? 540 : 420}
       footer={
         <>
           <button type="button" onClick={onClose} className="rounded-lg border px-3 py-1.5 text-[13px]" style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}>
@@ -163,6 +232,8 @@ export default function StaffFormModal({ open, staffMember, onClose, onSaved }) 
             City admins can only create Executives in their own city — this account will be created as an Executive in your assigned city.
           </p>
         )}
+
+        {isExecutiveForm && <SidebarAccess value={modules} onChange={setModules} />}
 
         {isEdit && (
           <div>

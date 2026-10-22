@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { BCRYPT_SALT_ROUNDS } = require("../config/constants");
+const { parseSidebarModules } = require("../config/executiveModules");
 
 const BCRYPT_HASH_RE = /^\$2[aby]\$/;
 
@@ -32,6 +33,8 @@ function toPublicAdmin(admin, cityName) {
     city_name: cityName,
     status: admin.status,
     permissions: admin.permissions,
+    // string[] of sidebar modules for a restricted executive; null = no restriction (everyone else, legacy executives)
+    sidebar_modules: admin.role === "executive" ? parseSidebarModules(admin.permissions) : null,
     last_login_at: admin.last_login_at,
   };
 }

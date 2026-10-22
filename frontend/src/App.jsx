@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import RequireRole from './components/common/RequireRole'
+import RequireModule from './components/common/RequireModule'
 import AppShell from './components/layout/AppShell'
 import Login from './pages/Login'
 
@@ -88,6 +89,7 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
+          <Route element={<RequireModule />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
             {/* Operations */}
@@ -151,6 +153,7 @@ function App() {
             <Route path="/settings/dynamic-questions" element={<Gated roles={['superadmin']}><DynamicQuestions /></Gated>} />
             <Route path="/staff" element={<Gated roles={['superadmin', 'admin']}><Staff /></Gated>} />
             <Route path="/settings" element={<Gated roles={['superadmin']}><Settings /></Gated>} />
+          </Route>
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />

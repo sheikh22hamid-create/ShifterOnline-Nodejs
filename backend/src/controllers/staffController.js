@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { BCRYPT_SALT_ROUNDS, ADMIN_ROLES } = require("../config/constants");
+const { parseSidebarModules, serializeSidebarModules, normalizeSidebarModules } = require("../config/executiveModules");
 
 async function attachCityNames(rows) {
   const cityIds = [...new Set(rows.map((r) => r.city_id).filter(Boolean))];
@@ -23,6 +24,8 @@ function toPublicStaff(row) {
     city_id: row.city_id,
     city_name: row.city_name,
     status: row.status,
+    // Executives only: allowed sidebar modules, or null when unrestricted.
+    sidebar_modules: row.role === "executive" ? parseSidebarModules(row.permissions) : null,
     last_login_at: row.last_login_at,
     created_at: row.created_at,
   };
@@ -63,7 +66,7 @@ async function list(req, res) {
 async function create(req, res) {
   try {
     const actor = req.user;
-    const { username, password, name, role, city_id, email, mobile } = req.body;
+    const { username, password, name, role, city_id, email, mobile, sidebar_modules } = req.body;
 
     if (!username || !password || !role) {
       return res.status(400).json({ success: false, message: "username, password and role are required" });
@@ -93,6 +96,14 @@ async function create(req, res) {
       }
     }
 
+    // Sidebar access only applies to executives; omitted => unrestricted, same as every pre-existing executive.
+    let permissions = null;
+    if (finalRole === "executive" && sidebar_modules !== undefined) {
+      const parsed = normalizeSidebarModules(sidebar_modules);
+      if (!parsed.ok) return res.status(400).json({ success: false, message: parsed.message });
+      permissions = serializeSidebarModules(parsed.modules);
+    }
+
     const existing = await prisma.admin.findFirst({ where: { username } });
     if (existing) {
       return res.status(409).json({ success: false, message: "username already in use" });
@@ -108,6 +119,7 @@ async function create(req, res) {
         mobile: mobile || null,
         role: finalRole,
         city_id: finalCityId,
+        permissions,
         status: true,
         created_by: actor.id,
       },
@@ -134,7 +146,7 @@ async function update(req, res) {
       return res.status(403).json({ success: false, message: "Forbidden: can only update executives in your own city" });
     }
 
-    const { name, email, mobile, status, city_id, role, password } = req.body;
+    const { name, email, mobile, status, city_id, role, password, sidebar_modules } = req.body;
     const data = {};
     if (name !== undefined) data.name = name;
     if (email !== undefined) data.email = email;
@@ -156,6 +168,17 @@ async function update(req, res) {
         }
         data.city_id = cid;
       }
+    }
+
+    // Sidebar access is meaningful only for executives. Moving an executive to another role drops it; other roles'
+    // existing permissions value is never touched.
+    const effectiveRole = data.role !== undefined ? data.role : target.role;
+    if (target.role === "executive" && effectiveRole !== "executive") {
+      data.permissions = null;
+    } else if (effectiveRole === "executive" && sidebar_modules !== undefined) {
+      const parsed = normalizeSidebarModules(sidebar_modules);
+      if (!parsed.ok) return res.status(400).json({ success: false, message: parsed.message });
+      data.permissions = serializeSidebarModules(parsed.modules);
     }
 
     if (password) {

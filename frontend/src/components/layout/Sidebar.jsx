@@ -5,6 +5,7 @@ import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import { NAV_GROUPS, ROLE_LABELS, ROLE_ACCENT } from '../../config/navigation'
+import { canSeeNavItem } from '../../utils/access'
 
 const KPI_ROLES = ['superadmin', 'admin']
 
@@ -14,7 +15,7 @@ export default function Sidebar({ open, onNavigate }) {
   const location = useLocation()
   const accent = ROLE_ACCENT[user?.role] ?? ROLE_ACCENT.executive
 
-  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => item.roles.includes(user?.role)) })).filter((g) => g.items.length > 0)
+  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((item) => canSeeNavItem(user, item)) })).filter((g) => g.items.length > 0)
 
   // Live counters shown as sidebar badges — fetched only for roles that can
   // actually call these endpoints (see adminRoutes.js authorize() lists).

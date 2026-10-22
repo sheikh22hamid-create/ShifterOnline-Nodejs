@@ -81,7 +81,9 @@ describe("access decisions over HTTP", () => {
       res.on("end", () => resolve({ status: res.statusCode, body }));
     });
     req.on("error", (e) => resolve({ status: 0, body: String(e.message) }));
-    req.end("{}");
+    // Only methods that carry a body get one: Node sends a GET/DELETE body with no Content-Length, which the server
+    // parses as a second, malformed request (400) whenever the handler answers asynchronously.
+    req.end(["POST", "PUT", "PATCH"].includes(method) ? "{}" : undefined);
   });
 
   beforeAll(async () => {

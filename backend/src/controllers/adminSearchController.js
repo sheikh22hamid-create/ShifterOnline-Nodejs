@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const { canSearchSection } = require("../config/executiveModules");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -227,13 +228,15 @@ async function globalSearch(req, res) {
       status: c.status,
     }));
 
+    // A restricted executive only gets the sections whose sidebar module is enabled for them.
+    const allowed = req.executiveModules || null;
     return res.status(200).json({
       success: true,
       query: rawQuery,
       results: {
-        orders: formattedOrders,
-        drivers: formattedDrivers,
-        customers: formattedCustomers,
+        orders: canSearchSection(allowed, "orders") ? formattedOrders : [],
+        drivers: canSearchSection(allowed, "drivers") ? formattedDrivers : [],
+        customers: canSearchSection(allowed, "customers") ? formattedCustomers : [],
       },
     });
   } catch (err) {
