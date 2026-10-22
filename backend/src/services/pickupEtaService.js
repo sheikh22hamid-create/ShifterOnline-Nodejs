@@ -1,12 +1,11 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { haversineKm } = require("../utils/geoDistance");
-const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 
 // Pickup ETA for an accepted order: Google's driver -> pickup travel time plus
 // an admin-configurable buffer is what the customer is shown, and the same
 // moment is the deadline. Once it passes with the driver still outside the
-// pickup geofence, the customer may cancel for free (isPickupEtaExpired): no
+// "Arrived" tap, the customer may cancel for free (isPickupEtaExpired): no
 // customer charge, no driver penalty, no driver payment. Nothing auto-cancels.
 //
 // pickup_eta_minutes / pickup_deadline_at are deliberately NOT modelled in
@@ -17,7 +16,6 @@ const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 // raw distance and minutes.
 
 const DEFAULT_BUFFER_MIN = 10;
-const DEFAULT_GEOFENCE_M = 200;
 const GOOGLE_TIMEOUT_MS = 4000;
 const FALLBACK_ROAD_FACTOR = 1.4; // straight-line -> road distance
 const FALLBACK_SPEED_KMPH = 25; // urban two-wheeler/mini-truck average
@@ -30,16 +28,12 @@ function parseNonNegative(value, fallback) {
 // Same convention as pickupOtpTimeout / pickupRelocateSettings: no caching, an
 // admin change applies on the very next accept.
 async function getPickupEtaSettings() {
-  const keys = ["pickup_eta_buffer_minutes", "pickup_eta_geofence_m"];
-  const settings = { bufferMinutes: DEFAULT_BUFFER_MIN, geofenceM: DEFAULT_GEOFENCE_M };
+  const keys = ["pickup_eta_buffer_minutes"];
+  const settings = { bufferMinutes: DEFAULT_BUFFER_MIN };
   try {
     const rows = await prisma.app_settings.findMany({ where: { setting_key: { in: keys } } });
     for (const row of rows) {
       if (row.setting_key === "pickup_eta_buffer_minutes") settings.bufferMinutes = parseNonNegative(row.setting_value, DEFAULT_BUFFER_MIN);
-      if (row.setting_key === "pickup_eta_geofence_m") {
-        const m = parseNonNegative(row.setting_value, DEFAULT_GEOFENCE_M);
-        settings.geofenceM = m > 0 ? m : DEFAULT_GEOFENCE_M;
-      }
     }
   } catch (err) {
     logger.error("getPickupEtaSettings: failed to read admin settings, using defaults:", err);
@@ -182,10 +176,10 @@ async function getPickupEtaRow(orderId, client = prisma) {
 
 /**
  * True when the accepted driver has missed the pickup ETA: still heading to
- * pickup (order_status 1), deadline passed, no recorded arrival, and not
- * inside the pickup geofence by a fresh GPS fix (a stale fix can't vouch).
+ * pickup (order_status 1), deadline passed and no recorded arrival. Only the
+ * driver tapping "Arrived" counts as on time - being near the pickup does not.
  */
-async function isPickupEtaExpired(order, etaRow, rider, now = Date.now()) {
+async function isPickupEtaExpired(order, etaRow, now = Date.now()) {
   const deadlineMs = etaRow?.pickup_deadline_at ? new Date(etaRow.pickup_deadline_at).getTime() : 0;
   if (Number(order?.order_status) !== 1 || !deadlineMs || now < deadlineMs) return false;
 
@@ -193,15 +187,7 @@ async function isPickupEtaExpired(order, etaRow, rider, now = Date.now()) {
     where: { order_id: Number(order.id), first_arrival_at: { not: null } },
     select: { id: true },
   }).catch(() => null);
-  if (arrived) return false;
-
-  const fresh = rider?.rloc_updated_at && now - new Date(rider.rloc_updated_at).getTime() <= RIDER_LOCATION_FRESHNESS_MS;
-  if (fresh) {
-    const { geofenceM } = await getPickupEtaSettings();
-    const distanceM = haversineKm(Number(order.plat), Number(order.plong), Number(rider.rlats), Number(rider.rlongs)) * 1000;
-    if (Number.isFinite(distanceM) && distanceM <= geofenceM) return false;
-  }
-  return true;
+  return !arrived;
 }
 
 // What the customer / driver / admin apps get on an order payload.
@@ -232,5 +218,4 @@ module.exports = {
   isPickupEtaExpired,
   buildEtaView,
   DEFAULT_BUFFER_MIN,
-  DEFAULT_GEOFENCE_M,
 };

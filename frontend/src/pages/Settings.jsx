@@ -83,7 +83,6 @@ const HANDLED_FLAG_KEYS = [
   'pickup_complete_auto_distance_m',
   'pickup_timer_auto_pause_distance_m',
   'pickup_eta_buffer_minutes',
-  'pickup_eta_geofence_m',
   'pickup_eta_auto_cancel_enabled',
   'max_extra_stops',
   'customer_wallet_max_topup',
@@ -560,20 +559,6 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               After a driver accepts, the customer and the driver see a live countdown of Google's driver-to-pickup travel time plus this buffer (Google 20 min + 10 min buffer = 30 min). Nothing is auto-cancelled: once it reaches 0 and the driver has not arrived, the customer can cancel for free (no charge to the customer, no payment to or penalty on the driver). If the driver clicks Arrived before it ends, a later customer cancellation pays the driver the normal cancellation charge.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="flag-pickup_eta_geofence_m">Pickup ETA geofence radius (m)</Label>
-            <Input
-              id="flag-pickup_eta_geofence_m"
-              type="number"
-              min="1"
-              placeholder="e.g. 200"
-              value={flags.pickup_eta_geofence_m ?? '200'}
-              onChange={(e) => setFlags((f) => ({ ...f, pickup_eta_geofence_m: e.target.value }))}
-            />
-            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              A driver who is inside this radius of the pickup (by a fresh GPS fix) when the countdown ends counts as on time, so the customer does not get the free cancel.
             </p>
           </div>
           <div>

@@ -1287,15 +1287,12 @@ async function customerCancel(uid, orderId, comment) {
     return { success: false, msg: "Order not found" };
   }
 
-  // Driver missed the pickup ETA (Google + buffer) and isn't at the pickup:
+  // Driver missed the pickup ETA (Google + buffer) without tapping Arrived:
   // the customer cancels free - evaluated before the cancel changes the order.
   let driverMissedEta = false;
   if (Number(orderBefore.rid) !== 0 && Number(orderBefore.order_status) === 1) {
-    const [etaRow, etaRider] = await Promise.all([
-      pickupEtaService.getPickupEtaRow(orderId),
-      prisma.tbl_rider.findUnique({ where: { id: Number(orderBefore.rid) }, select: { rlats: true, rlongs: true, rloc_updated_at: true } }),
-    ]);
-    driverMissedEta = await pickupEtaService.isPickupEtaExpired(orderBefore, etaRow, etaRider);
+    const etaRow = await pickupEtaService.getPickupEtaRow(orderId);
+    driverMissedEta = await pickupEtaService.isPickupEtaExpired(orderBefore, etaRow);
   }
 
   const affectedRows = await prisma.$executeRaw`

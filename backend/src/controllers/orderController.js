@@ -971,7 +971,7 @@ async function getOrderDetails(req, res) {
     }
 
     const etaRow = await getPickupEtaRow(order.id);
-    const etaView = buildEtaView(order, etaRow, Date.now(), await isPickupEtaExpired(order, etaRow, rider));
+    const etaView = buildEtaView(order, etaRow, Date.now(), await isPickupEtaExpired(order, etaRow));
 
     return res.status(200).json({
       ResponseCode: "200",
