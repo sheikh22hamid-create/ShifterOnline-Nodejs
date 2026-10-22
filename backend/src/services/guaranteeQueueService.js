@@ -562,7 +562,7 @@ const CASE_FIELDS = {
 };
 
 const ORDER_FIELDS = {
-  id: true, category: true, pick_name: true, drop_name: true, plat: true, plong: true, dlat: true, dlong: true,
+  id: true, category: true, paddress: true, daddress: true, pick_name: true, drop_name: true, plat: true, plong: true, dlat: true, dlong: true,
   total_dcharge: true, distance: true,
 };
 

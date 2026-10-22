@@ -85,8 +85,8 @@ function TrialDriverOffer({ c, onChanged }) {
         <div className="grid gap-1 rounded-lg border p-3" style={block}>
           <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Order</div>
           <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>#{c.order_id}</div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Pickup</span><span className="text-right">{order?.pick_name || '—'}</span></div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Drop</span><span className="text-right">{order?.drop_name || '—'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Pickup</span><span className="text-right">{order?.paddress || '—'}{order?.pick_name && <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{order.pick_name}</span>}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Drop</span><span className="text-right">{order?.daddress || '—'}{order?.drop_name && <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{order.drop_name}</span>}</span></div>
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{order?.category || '—'}</span></div>
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Fare</span><span className="font-mono-data">{order?.fare != null ? `₹${order.fare}` : '—'}</span></div>
         </div>
