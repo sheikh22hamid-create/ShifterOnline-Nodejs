@@ -3,8 +3,6 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { parseSidebarModules, isApiPathAllowed } = require("../config/executiveModules");
 
-const ADMIN_API_BASE = "/api/v1/admin";
-
 /**
  * Executive sidebar access (see config/executiveModules.js). Reads admin.permissions on every request so a change
  * made by an admin applies immediately, without waiting for the executive's JWT to expire. Sets
@@ -12,14 +10,16 @@ const ADMIN_API_BASE = "/api/v1/admin";
  */
 async function enforceExecutiveModules(req, res, next) {
   req.executiveModules = null;
-  // Only the admin panel API is module-gated; /api/v1/whatsapp etc. keep their own role checks.
-  if (req.baseUrl !== ADMIN_API_BASE) return next();
+  // Only the admin panel API is module-gated; /api/v1/whatsapp etc. keep their own role checks. adminRoutes.js
+  // sets this flag on its own router, so it holds for any URL casing (Express routing is case-insensitive).
+  if (!req.isAdminPanelApi) return next();
   try {
     const row = await prisma.admin.findUnique({ where: { id: req.user.id }, select: { permissions: true } });
     const allowed = parseSidebarModules(row && row.permissions);
     if (!allowed) return next(); // no restriction configured (or account row not found): behave as before
     req.executiveModules = allowed;
-    if (req.path.startsWith("/auth/") || isApiPathAllowed(req.path, allowed)) return next();
+    const apiPath = req.path.toLowerCase();
+    if (apiPath.startsWith("/auth/") || isApiPathAllowed(apiPath, allowed)) return next();
     return res.status(403).json({ success: false, message: "Forbidden: this module is not enabled for your account" });
   } catch (err) {
     // Fail closed: a DB hiccup must not silently lift a restriction.

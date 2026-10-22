@@ -109,8 +109,8 @@ describe("API path rules", () => {
 
 describe("auth middleware for executives", () => {
   const tokenFor = (role) => jwt.sign({ id: 9, username: "e", role, city_id: 1 }, process.env.JWT_SECRET);
-  const run = async (role, urlPath, baseUrl = "/api/v1/admin") => {
-    const req = { headers: { authorization: `Bearer ${tokenFor(role)}` }, baseUrl, path: urlPath };
+  const run = async (role, urlPath, isAdminPanelApi = true) => {
+    const req = { headers: { authorization: `Bearer ${tokenFor(role)}` }, isAdminPanelApi, path: urlPath };
     const res = { statusCode: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
     const next = jest.fn();
     await auth(req, res, next);
@@ -141,6 +141,16 @@ describe("auth middleware for executives", () => {
     expect(ok.req.executiveModules).toEqual(["/orders"]);
   });
 
+  it("cannot be dodged with a differently-cased or slash-padded path", async () => {
+    prisma.admin.findUnique.mockResolvedValue({ permissions: serializeSidebarModules(["/orders"]) });
+    for (const p of ["/Customers", "/CUSTOMERS/1", "//customers", "/customers/"]) {
+      const r = await run("executive", p);
+      expect(r.res.statusCode).toBe(403);
+      expect(r.next).not.toHaveBeenCalled();
+    }
+    expect((await run("executive", "/Orders/5")).next).toHaveBeenCalled();
+  });
+
   it("always lets a restricted executive load their own profile", async () => {
     prisma.admin.findUnique.mockResolvedValue({ permissions: serializeSidebarModules([]) });
     expect((await run("executive", "/auth/me")).next).toHaveBeenCalled();
@@ -156,7 +166,7 @@ describe("auth middleware for executives", () => {
   it("never touches the DB for admins, or for non-admin-panel mounts", async () => {
     expect((await run("admin", "/customers")).next).toHaveBeenCalled();
     expect((await run("superadmin", "/customers")).next).toHaveBeenCalled();
-    expect((await run("executive", "/pair", "/api/v1/whatsapp")).next).toHaveBeenCalled();
+    expect((await run("executive", "/pair", false)).next).toHaveBeenCalled();
     expect(prisma.admin.findUnique).not.toHaveBeenCalled();
   });
 });

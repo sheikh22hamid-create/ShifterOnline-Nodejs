@@ -44,6 +44,13 @@ const scopeFilter = require("../middleware/scopeFilter");
 
 const router = express.Router();
 
+// Marks every request that reaches this router as admin-panel API traffic (auth.js applies the executive module
+// gate to these). A flag, not a URL compare, so it can't be dodged with a differently-cased path.
+router.use((req, _res, next) => {
+  req.isAdminPanelApi = true;
+  next();
+});
+
 // General admin image upload (category icons, vehicle images, etc.)
 router.post("/upload-image", auth, memoryUpload.single("image"), uploadController.uploadAdminImage);
 

@@ -159,7 +159,7 @@ function normalizeSidebarModules(input) {
 
 /** Modules that unlock an API path, or undefined when no rule covers it. */
 function modulesForApiPath(apiPath) {
-  const p = apiPath.split("?")[0].replace(/\/+$/, "") || "/";
+  const p = apiPath.split("?")[0].toLowerCase().replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
   for (const [prefix, modules] of API_RULES) {
     if (p === prefix || p.startsWith(`${prefix}/`)) return modules;
   }
