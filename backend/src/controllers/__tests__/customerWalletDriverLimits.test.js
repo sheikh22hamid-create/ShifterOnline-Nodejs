@@ -38,7 +38,7 @@ describe("driver wallet limits follow the driver's vehicle type", () => {
     expect(sent(res).ResponseMsg).toContain("₹300");
   });
 
-  it("history summary reports the vehicle's minimum balance and negative limit, and the saved bank details", async () => {
+  it("history summary reports the vehicle's minimum balance and negative limit, and the saved payout details (account number masked)", async () => {
     prisma.tbl_rider.findFirst.mockResolvedValue({ id: 7, vehicle: "Three Wheeler", wallet_balance: "500.00", upi_id: "ram@okbank" });
     prisma.tbl_bank_account.findFirst.mockResolvedValue({ bank_name: "SBI", a_name: "Ram Kumar", ifsc_code: "SBIN0001234", iban_num: "123456789012" });
     const res = mockRes();
@@ -48,7 +48,10 @@ describe("driver wallet limits follow the driver's vehicle type", () => {
     const body = sent(res);
     expect(body).toMatchObject({ vehicle_name: "Three Wheeler", min_required_balance: 300, max_due_limit: 200, available_to_withdraw: "200.00" });
     expect(body.payout_methods.upi_id).toBe("ram@okbank");
-    expect(body.payout_methods.bank_account).toMatchObject({ bank_name: "SBI", account_name: "Ram Kumar", ifsc_code: "SBIN0001234", account_number: "123456789012", account_number_masked: "•••9012" });
+    expect(body.payout_methods.bank_account).toMatchObject({ bank_name: "SBI", account_name: "Ram Kumar", ifsc_code: "SBIN0001234", account_number_masked: "•••9012" });
+    // The full number must never be readable through this mobile-keyed endpoint.
+    expect(body.payout_methods.bank_account).not.toHaveProperty("account_number");
+    expect(JSON.stringify(body)).not.toContain("123456789012");
   });
 });
 
@@ -91,6 +94,18 @@ describe("withdraw payout details are validated", () => {
     expect(sent(res)).toMatchObject({ Result: "false", ResponseCode: "405" });
     expect(prisma.tbl_bank_account.create).not.toHaveBeenCalled();
     expect(prisma.driver_withdraw_requests.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps the saved account number when the form leaves it blank, while saving the edited name and IFSC", async () => {
+    const saved = { id: 3, bank_name: "SBI", iban_num: "123456789012", ifsc_code: "SBIN0001234", a_name: "Ram Kumar" };
+    prisma.tbl_bank_account.findFirst.mockResolvedValue(saved);
+    const res = mockRes();
+    await withdrawWallet(body({ payout_method: "bank", account_name: "Ram K Sharma", account_number: "", ifsc_code: "HDFC0000001", bank_name: "HDFC" }), res);
+    expect(prisma.tbl_bank_account.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: expect.objectContaining({ a_name: "Ram K Sharma", iban_num: "123456789012", ifsc_code: "HDFC0000001", bank_name: "HDFC" }),
+    });
+    expect(sent(res)).toMatchObject({ Result: "true" });
   });
 
   it("saves valid edited bank details, normalising spaces and IFSC case", async () => {

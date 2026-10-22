@@ -493,9 +493,9 @@ async function walletHistory(req, res) {
                 bank_name: bankAccount.bank_name,
                 account_name: bankAccount.a_name,
                 ifsc_code: bankAccount.ifsc_code,
+                // Only the masked number leaves the server: this endpoint is keyed by mobile number, so the full
+                // number must not be readable here. The withdraw form keeps the saved number when left blank.
                 account_number_masked: bankAccount.iban_num ? `•••${String(bankAccount.iban_num).slice(-4)}` : null,
-                // The withdraw form pre-fills the saved details so the driver can review and edit them.
-                account_number: bankAccount.iban_num || null,
               }
             : null,
         },
@@ -645,14 +645,17 @@ async function withdrawWallet(req, res) {
           payoutDetailText = `UPI (${upiId})`;
         } else if (method === "bank") {
           const accountName = b.account_name ? String(b.account_name).trim() : "";
-          const accountNumber = b.account_number ? String(b.account_number).replace(/\s+/g, "") : "";
+          const typedAccountNumber = b.account_number ? String(b.account_number).replace(/\s+/g, "") : "";
           const ifscCode = b.ifsc_code ? String(b.ifsc_code).trim().toUpperCase() : "";
           const bankName = b.bank_name ? String(b.bank_name).trim() : "";
+          const existing = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
+          // The app never receives the full saved number, so a blank account number means "keep the saved one"
+          // while the other fields (holder name, IFSC, bank) are still editable.
+          const accountNumber = typedAccountNumber || (existing?.iban_num ? String(existing.iban_num) : "");
           if (accountName && accountNumber && bankName) {
             if (!ACCOUNT_NAME_RE.test(accountName)) return payoutError(res, "Enter the account holder name as it appears on the bank account.");
-            if (!ACCOUNT_NUMBER_RE.test(accountNumber)) return payoutError(res, "Enter a valid bank account number (9 to 18 digits).");
+            if (typedAccountNumber && !ACCOUNT_NUMBER_RE.test(typedAccountNumber)) return payoutError(res, "Enter a valid bank account number (9 to 18 digits).");
             if (ifscCode && !IFSC_RE.test(ifscCode)) return payoutError(res, "Enter a valid IFSC code, for example SBIN0001234.");
-            const existing = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
             if (!ifscCode && !existing?.ifsc_code) return payoutError(res, "Enter the IFSC code of your bank branch.");
             const data = {
               a_name: accountName,
