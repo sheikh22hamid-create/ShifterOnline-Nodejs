@@ -4,6 +4,7 @@ const { formatLedgerTime } = require("../utils/istTime");
 const { buildRoute } = require("../services/tripRouteService");
 const { getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
 const rewardPlanService = require("../services/rewardPlanService");
+const { resolveHowToUseUrl } = require("../utils/howToUse");
 
 // Node port of several small read-mostly cust_api/*.php endpoints:
 // add_favorite_driver.php, get_favorite_drivers.php, couponlist.php,
@@ -516,7 +517,7 @@ async function homeData(req, res) {
     const completedOrdersCount = completedPkgOrders + completedBuyOrders;
 
     const howToUseMap = Object.fromEntries(howToUseSettings.map((s) => [s.setting_key, s.setting_value]));
-    const howToUseUrl = howToUseMap.how_to_use_video_url || "https://www.youtube.com/shorts/h7KMfS0IrI8";
+    const howToUseUrl = resolveHowToUseUrl(howToUseMap.how_to_use_video_url);
     const howToUseTitle = howToUseMap.how_to_use_title || "How To Use";
     const maxOrdersThreshold = howToUseMap.how_to_use_max_orders !== undefined && howToUseMap.how_to_use_max_orders !== ""
       ? Number(howToUseMap.how_to_use_max_orders)

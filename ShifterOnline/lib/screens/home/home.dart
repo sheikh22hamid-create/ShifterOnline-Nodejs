@@ -80,9 +80,22 @@ class _HomeState extends State<Home> {
   TextEditingController searchController = TextEditingController();
   Timer? _searchDebounce;
   bool isHowUse = false;
-  String howToUseUrl = "https://www.youtube.com/shorts/h7KMfS0IrI8";
+  // The How To Use button stays hidden until the server's home response says it is enabled, so a disabled button
+  // never flashes on screen and a slow or failed response can't leave a stale one behind. The link is only used
+  // once the server has sent one; otherwise the company default below.
+  String howToUseUrl = "";
   String howToUseTitle = "How To Use";
-  bool showHowToUse = true;
+  bool showHowToUse = false;
+
+  // Shown only when the admin link is missing/invalid. Keep in sync with backend utils/howToUse.js.
+  static const String _defaultHowToUseUrl = "https://shifteronline.com";
+
+  String get _howToUseLink {
+    final link = howToUseUrl.trim();
+    final uri = Uri.tryParse(link);
+    final isWebLink = uri != null && (uri.scheme == "http" || uri.scheme == "https") && uri.host.isNotEmpty;
+    return isWebLink ? link : _defaultHowToUseUrl;
+  }
   bool _pickupConfirmed = false;
   String? _confirmedPickupAddress;
   String? _confirmedDropAddress;
@@ -3252,19 +3265,19 @@ class _HomeState extends State<Home> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (showHowToUse && howToUseUrl.isNotEmpty)
+                      if (showHowToUse)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 15.0),
                           child: InkWell(
                             onTap: () async {
                               try {
-                                final Uri url = Uri.parse(howToUseUrl.trim());
+                                final Uri url = Uri.parse(_howToUseLink);
                                 if (!await launchUrl(url,
                                     mode: LaunchMode.externalApplication)) {
                                   debugPrint('Could not launch $url');
                                 }
                               } catch (e) {
-                                debugPrint('Could not parse/launch url $howToUseUrl: $e');
+                                debugPrint('Could not parse/launch url $_howToUseLink: $e');
                               }
                             },
                             child: Container(
@@ -4074,8 +4087,9 @@ class _HomeState extends State<Home> {
 
           if (val["ResultData"] != null) {
             // Dynamic How To Use Bar configuration from Admin Settings
-            if (val["ResultData"]["how_to_use_url"] != null &&
-                val["ResultData"]["how_to_use_url"].toString().trim().isNotEmpty) {
+            // Always take the server's latest link (even an empty one: _howToUseLink then uses the company default),
+            // so an older link never lingers.
+            if (val["ResultData"]["how_to_use_url"] != null) {
               howToUseUrl = val["ResultData"]["how_to_use_url"].toString().trim();
             }
             if (val["ResultData"]["how_to_use_title"] != null &&

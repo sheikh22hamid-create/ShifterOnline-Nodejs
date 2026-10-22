@@ -105,6 +105,8 @@ const HANDLED_FLAG_KEYS = [
 // Per-vehicle-type verification fee, stored as flags.auto_verification_charge_vehicle_<slug>.
 // The slug rule must match backend/src/utils/driverVerificationSettings.js.
 const VEHICLE_CHARGE_PREFIX = 'auto_verification_charge_vehicle_'
+// Customer app "How To Use" fallback when no valid link is saved. Keep in sync with backend utils/howToUse.js.
+const DEFAULT_HOW_TO_USE_URL = 'https://shifteronline.com'
 const isHandledFlag = (key) => HANDLED_FLAG_KEYS.includes(key) || key.startsWith(VEHICLE_CHARGE_PREFIX)
 const vehicleSlug = (name) => String(name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
 
@@ -1276,12 +1278,12 @@ function SettingsForm({ data, onSaved }) {
                 <Label htmlFor="how_to_use_video_url">Video / Tutorial URL</Label>
                 <Input
                   id="how_to_use_video_url"
-                  placeholder="https://www.youtube.com/shorts/h7KMfS0IrI8"
+                  placeholder={DEFAULT_HOW_TO_USE_URL}
                   value={flags.how_to_use_video_url ?? ''}
                   onChange={(e) => setFlags((f) => ({ ...f, how_to_use_video_url: e.target.value }))}
                 />
                 <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                  YouTube Shorts, YouTube video, or any external link opened when the user clicks the button.
+                  YouTube Shorts, YouTube video, or any external link opened when the user clicks the button. If left empty or invalid, the app opens the default company link.
                 </p>
               </div>
 
@@ -1306,7 +1308,7 @@ function SettingsForm({ data, onSaved }) {
                   onClick={() =>
                     setFlags((f) => ({
                       ...f,
-                      how_to_use_video_url: 'https://www.youtube.com/shorts/h7KMfS0IrI8',
+                      how_to_use_video_url: DEFAULT_HOW_TO_USE_URL,
                       how_to_use_title: 'How To Use',
                       how_to_use_enabled: '1',
                     }))
@@ -1358,7 +1360,7 @@ function SettingsForm({ data, onSaved }) {
                     </span>
                   </div>
                   <p className="text-center text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-                    Target: <code className="font-mono text-[10.5px]">{flags.how_to_use_video_url || 'https://www.youtube.com/shorts/h7KMfS0IrI8'}</code>
+                    Target: <code className="font-mono text-[10.5px]">{flags.how_to_use_video_url || DEFAULT_HOW_TO_USE_URL}</code>
                   </p>
                 </div>
               )}
