@@ -33,7 +33,7 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
   Map<String, dynamic>? pendingPlanToPurchase;
   double pendingAmountPaid = 0.0;
   int pendingUsedPoints = 0;
-  String _razorpayKey = "rzp_test_Rr8n8p41taq6fM";
+  String _razorpayKey = "rzp_live_SUiompzvYRhrsg";
 
   @override
   void initState() {

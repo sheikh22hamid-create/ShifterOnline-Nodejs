@@ -50,13 +50,13 @@ android {
         debug {
             debuggable true
             buildConfigField "String", "API_BASE_URL", '"https://dev-api.shifteronline.com/"'
-            buildConfigField "String", "RAZORPAY_KEY", '"rzp_test_Rr8n8p41taq6fM"'
+            buildConfigField "String", "RAZORPAY_KEY", '"rzp_live_SUiompzvYRhrsg"'
         }
 
         release {
             minifyEnabled false
             buildConfigField "String", "API_BASE_URL", '"' + providers.gradleProperty("productionApiBaseUrl").getOrElse("https://dev-api.shifteronline.com/") + '"'
-            buildConfigField "String", "RAZORPAY_KEY", '"' + providers.gradleProperty("razorpayKey").getOrElse("rzp_test_Rr8n8p41taq6fM") + '"'
+            buildConfigField "String", "RAZORPAY_KEY", '"' + providers.gradleProperty("razorpayKey").getOrElse("rzp_live_SUiompzvYRhrsg") + '"'
             shrinkResources false
             if (keystorePropertiesFile.exists()) {
                 signingConfig signingConfigs.release

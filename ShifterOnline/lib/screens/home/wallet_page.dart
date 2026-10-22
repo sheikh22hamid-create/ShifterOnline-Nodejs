@@ -235,7 +235,7 @@ class _WalletPageState extends State<WalletPage> {
           // In _addMoneyToWallet() method, update this part:
 
           // Get Razorpay key from payment gateway
-           String razorpayKey = "rzp_test_Rr8n8p41taq6fM"; // Live Razorpay key
+           String razorpayKey = "rzp_live_SUiompzvYRhrsg"; // Live Razorpay key
            bool razorpayFound = true; 
 
            // Dynamic key logic removed as per user request
