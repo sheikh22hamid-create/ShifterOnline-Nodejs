@@ -462,8 +462,8 @@ async function walletHistory(req, res) {
       const [pending, latest, maxDueLimit, minWithdrawalAmount, bankAccount] = await Promise.all([
         prisma.driver_withdraw_requests.aggregate({ where: { rider_id: userId, status: "pending" }, _sum: { amount: true } }),
         prisma.driver_withdraw_requests.findFirst({ where: { rider_id: userId }, orderBy: { id: "desc" }, select: { id: true, amount: true, status: true, created_at: true } }),
-        getDriverMaxDueLimit(),
-        getDriverMinWithdrawalAmount(),
+        getDriverMaxDueLimit(account.vehicle),
+        getDriverMinWithdrawalAmount(account.vehicle),
         prisma.tbl_bank_account.findFirst({ where: { rider_id: userId } }),
       ]);
       const pendingAmount = Number(pending._sum.amount || 0);
@@ -478,8 +478,11 @@ async function walletHistory(req, res) {
         available_to_withdraw: availableToWithdraw.toFixed(2),
         latest_withdrawal: latest ? { id: latest.id, amount: Number(latest.amount || 0).toFixed(2), status: latest.status, created_at: latest.created_at } : null,
         outstanding_due: outstandingDue.toFixed(2),
+        // Both limits are for this driver's vehicle type (admin Settings > per-vehicle limits, else the global value).
+        vehicle_name: account.vehicle || null,
         max_due_limit: maxDueLimit,
         min_withdrawal_amount: minWithdrawalAmount,
+        min_required_balance: minWithdrawalAmount,
         can_withdraw: availableToWithdraw > 0,
         can_clear_due: balanceNum < 0,
         due_limit_reached: balanceNum <= -maxDueLimit,
@@ -491,6 +494,8 @@ async function walletHistory(req, res) {
                 account_name: bankAccount.a_name,
                 ifsc_code: bankAccount.ifsc_code,
                 account_number_masked: bankAccount.iban_num ? `•••${String(bankAccount.iban_num).slice(-4)}` : null,
+                // The withdraw form pre-fills the saved details so the driver can review and edit them.
+                account_number: bankAccount.iban_num || null,
               }
             : null,
         },
@@ -519,6 +524,14 @@ async function walletHistory(req, res) {
     return fail(res, "Internal server error");
   }
 }
+
+// Payout detail checks, applied to what the driver submits in the withdraw form (saved details are pre-filled and
+// editable there, so every submit is validated the same way).
+const UPI_RE = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
+const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const ACCOUNT_NUMBER_RE = /^\d{9,18}$/;
+const ACCOUNT_NAME_RE = /^[\p{L}][\p{L} .'-]{1,99}$/u;
+const payoutError = (res, message) => res.status(200).json({ ResponseCode: "405", Result: "false", ResponseMsg: message });
 
 // --- withdraw_wallet.php ---
 async function withdrawWallet(req, res) {
@@ -573,7 +586,9 @@ async function withdrawWallet(req, res) {
       if (currentBalance <= 0) {
         return res.status(200).json({ ResponseCode: "403", Result: "false", ResponseMsg: "No withdrawable balance. Clear your outstanding dues first." });
       }
-      const reserve = await getDriverMinWithdrawalAmount();
+      const reserve = await getDriverMinWithdrawalAmount(account.vehicle);
+      // Sent with every minimum-balance refusal so the app can highlight the amount instead of just a message.
+      const minBalanceInfo = { min_balance_violation: true, min_required_balance: reserve, current_balance: currentBalance };
       const pendingAgg = await prisma.driver_withdraw_requests.aggregate({
         where: { rider_id: account.id, status: "pending" },
         _sum: { amount: true },
@@ -589,14 +604,17 @@ async function withdrawWallet(req, res) {
           Result: "false",
           ResponseMsg: pendingAmount > 0
             ? `You already have ₹${pendingAmount} pending approval. Nothing further is available to request right now.`
-            : `₹${reserve} must stay in your ledger. Current balance ₹${currentBalance}.`,
+            : `You must maintain a minimum balance of ₹${reserve} in your wallet. Current balance ₹${currentBalance}.`,
+          ...(pendingAmount > 0 ? {} : minBalanceInfo),
         });
       }
       if (amount > maxWithdrawable) {
         return res.status(200).json({
           ResponseCode: "404",
           Result: "false",
-          ResponseMsg: `You can request up to ₹${maxWithdrawable} right now - ₹${reserve} must stay in your ledger${pendingAmount > 0 ? `, and ₹${pendingAmount} is already pending approval` : ""}.`,
+          ResponseMsg: `You can request up to ₹${maxWithdrawable} right now - a minimum balance of ₹${reserve} must stay in your wallet${pendingAmount > 0 ? `, and ₹${pendingAmount} is already pending approval` : ""}.`,
+          ...minBalanceInfo,
+          max_withdrawable: maxWithdrawable,
         });
       }
 
@@ -614,6 +632,7 @@ async function withdrawWallet(req, res) {
         if (method === "upi") {
           let upiId = b.upi_id ? String(b.upi_id).trim() : "";
           if (upiId) {
+            if (!UPI_RE.test(upiId)) return payoutError(res, "Enter a valid UPI ID, for example name@bank.");
             await prisma.tbl_rider.update({ where: { id: account.id }, data: { upi_id: upiId } });
           } else {
             const rider = await prisma.tbl_rider.findUnique({ where: { id: account.id }, select: { upi_id: true } });
@@ -625,12 +644,16 @@ async function withdrawWallet(req, res) {
           payoutMethod = "upi";
           payoutDetailText = `UPI (${upiId})`;
         } else if (method === "bank") {
-          const accountName = b.account_name;
-          const accountNumber = b.account_number;
-          const ifscCode = b.ifsc_code;
-          const bankName = b.bank_name;
+          const accountName = b.account_name ? String(b.account_name).trim() : "";
+          const accountNumber = b.account_number ? String(b.account_number).replace(/\s+/g, "") : "";
+          const ifscCode = b.ifsc_code ? String(b.ifsc_code).trim().toUpperCase() : "";
+          const bankName = b.bank_name ? String(b.bank_name).trim() : "";
           if (accountName && accountNumber && bankName) {
+            if (!ACCOUNT_NAME_RE.test(accountName)) return payoutError(res, "Enter the account holder name as it appears on the bank account.");
+            if (!ACCOUNT_NUMBER_RE.test(accountNumber)) return payoutError(res, "Enter a valid bank account number (9 to 18 digits).");
+            if (ifscCode && !IFSC_RE.test(ifscCode)) return payoutError(res, "Enter a valid IFSC code, for example SBIN0001234.");
             const existing = await prisma.tbl_bank_account.findFirst({ where: { rider_id: account.id } });
+            if (!ifscCode && !existing?.ifsc_code) return payoutError(res, "Enter the IFSC code of your bank branch.");
             const data = {
               a_name: accountName,
               iban_num: accountNumber,

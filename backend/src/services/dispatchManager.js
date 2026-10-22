@@ -9,6 +9,7 @@ const settlementSettings = require("./settlementSettings");
 const walletPrepayment = require("./walletPrepaymentRefund");
 const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 const { haversineKm } = require("../utils/geoDistance");
+const { driverMaxDueLimitVehicleKey, DRIVER_MAX_DUE_LIMIT_KEY, DEFAULT_DRIVER_MAX_DUE_LIMIT } = require("./driverWalletSettings");
 const { formatGoodsType } = require("./goodsTypeService");
 const {
   POPUP_TIMEOUT_MS,
@@ -131,6 +132,10 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
     ? Prisma.sql`AND r.id IN (${Prisma.join(poolIds.length ? poolIds : [0])})`
     : Prisma.empty;
 
+  // Negative balance limit: every candidate is of the order's vehicle type (r.vehicle = order.category), so the
+  // vehicle's own admin value applies, else the global one, else the default. NULLIF: a blank admin field = unset.
+  const vehicleLimitKey = driverMaxDueLimitVehicleKey(order.category);
+
   const rows = await prisma.$queryRaw`
     SELECT
       r.id AS rider_id,
@@ -193,8 +198,9 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       AND (
         r.wallet_balance IS NULL
         OR r.wallet_balance >= -COALESCE(
-          (SELECT CAST(setting_value AS DECIMAL(10,2)) FROM app_settings WHERE setting_key = 'driver_max_due_limit' LIMIT 1),
-          100.00
+          (SELECT CAST(NULLIF(TRIM(setting_value), '') AS DECIMAL(10,2)) FROM app_settings WHERE setting_key = ${vehicleLimitKey} LIMIT 1),
+          (SELECT CAST(NULLIF(TRIM(setting_value), '') AS DECIMAL(10,2)) FROM app_settings WHERE setting_key = ${DRIVER_MAX_DUE_LIMIT_KEY} LIMIT 1),
+          ${DEFAULT_DRIVER_MAX_DUE_LIMIT}
         )
       )
       AND (

@@ -2079,6 +2079,14 @@ describe("dispatchManager.selectEligibleDrivers wallet-balance gate", () => {
     expect(sql).toContain("wallet_balance >=");
   });
 
+  it("applies the order's vehicle type's own negative balance limit, falling back to the global one", async () => {
+    const order = { id: 902, uid: 7, plat: "28.7", plong: "77.1", category: "Three Wheeler" };
+    await selectEligibleDrivers(order, 6, []);
+    const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
+    expect(strings.join(" ")).toContain("NULLIF(TRIM(setting_value)");
+    expect(values).toEqual(expect.arrayContaining(["driver_max_due_limit_vehicle_three_wheeler", "driver_max_due_limit", 100]));
+  });
+
   afterEach(() => {
     require("../settlementSettings").getSettlementSettings.mockResolvedValue({ enabled: false, reminderMinutes: [], escalateAfterMinutes: 60, driverBlockGraceMinutes: 10, disputeWindowHours: 48 });
   });

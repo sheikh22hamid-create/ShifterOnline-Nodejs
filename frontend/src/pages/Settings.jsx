@@ -107,8 +107,72 @@ const HANDLED_FLAG_KEYS = [
 const VEHICLE_CHARGE_PREFIX = 'auto_verification_charge_vehicle_'
 // Customer app "How To Use" fallback when no valid link is saved. Keep in sync with backend utils/howToUse.js.
 const DEFAULT_HOW_TO_USE_URL = 'https://shifteronline.com'
-const isHandledFlag = (key) => HANDLED_FLAG_KEYS.includes(key) || key.startsWith(VEHICLE_CHARGE_PREFIX)
+// Per-vehicle driver wallet limits (<global key>_vehicle_<slug>); keep in sync with backend services/driverWalletSettings.js.
+const MIN_BALANCE_VEHICLE_PREFIX = 'driver_min_withdrawal_amount_vehicle_'
+const NEGATIVE_LIMIT_VEHICLE_PREFIX = 'driver_max_due_limit_vehicle_'
+const isHandledFlag = (key) =>
+  HANDLED_FLAG_KEYS.includes(key) ||
+  key.startsWith(VEHICLE_CHARGE_PREFIX) ||
+  key.startsWith(MIN_BALANCE_VEHICLE_PREFIX) ||
+  key.startsWith(NEGATIVE_LIMIT_VEHICLE_PREFIX)
 const vehicleSlug = (name) => String(name || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_+|_+$/g, '')
+
+// Minimum Required Balance and Negative Balance Limit per vehicle type. A blank field means "use the default above".
+function VehicleWalletLimitFields({ flags, setFlags }) {
+  const fetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
+  const { data: categories, loading } = useApiQuery(fetcher)
+  const names = [...new Set((categories ?? []).filter((c) => c.cat_status === 1).map((c) => c.cat_name))]
+
+  return (
+    <div>
+      <Label>Limits by vehicle type (₹)</Label>
+      {loading ? (
+        <p className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>Loading vehicle types…</p>
+      ) : names.length === 0 ? (
+        <p className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>No active vehicle types found.</p>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            <span>Vehicle type</span>
+            <span>Minimum required balance</span>
+            <span>Negative balance limit</span>
+          </div>
+          {names.map((name) => {
+            const slug = vehicleSlug(name)
+            if (!slug) return null
+            const minKey = `${MIN_BALANCE_VEHICLE_PREFIX}${slug}`
+            const limitKey = `${NEGATIVE_LIMIT_VEHICLE_PREFIX}${slug}`
+            return (
+              <div key={slug} className="grid grid-cols-[1fr_1fr_1fr] items-center gap-2">
+                <label className="text-[12.5px]" style={{ color: 'var(--ink)' }} htmlFor={`flag-${minKey}`}>{name}</label>
+                <Input
+                  id={`flag-${minKey}`}
+                  type="number"
+                  min="0"
+                  placeholder="Default"
+                  value={flags[minKey] ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, [minKey]: e.target.value }))}
+                />
+                <Input
+                  id={`flag-${limitKey}`}
+                  type="number"
+                  min="0"
+                  placeholder="Default"
+                  aria-label={`${name} negative balance limit`}
+                  value={flags[limitKey] ?? ''}
+                  onChange={(e) => setFlags((f) => ({ ...f, [limitKey]: e.target.value }))}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+        Each driver gets the amounts of their own vehicle type. Leave a field blank to use the default above; <strong>0</strong> means no minimum / no negative balance allowed.
+      </p>
+    </div>
+  )
+}
 
 function VehicleChargeFields({ flags, setFlags }) {
   const fetcher = useCallback(() => api.get('/categories').then((res) => res.data.data), [])
@@ -564,7 +628,7 @@ function SettingsForm({ data, onSaved }) {
             </p>
           </div>
           <div>
-            <Label htmlFor="flag-driver_min_withdrawal_amount">Driver minimum withdrawal amount (₹)</Label>
+            <Label htmlFor="flag-driver_min_withdrawal_amount">Driver minimum required balance - default (₹)</Label>
             <Input
               id="flag-driver_min_withdrawal_amount"
               type="number"
@@ -574,11 +638,11 @@ function SettingsForm({ data, onSaved }) {
               onChange={(e) => setFlags((f) => ({ ...f, driver_min_withdrawal_amount: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              This amount always stays in the driver's ledger - they can only withdraw the balance above it (e.g. ₹20 balance with a ₹10 minimum lets them withdraw up to ₹10). Set to 0 to allow withdrawing the full balance.
+              This amount always stays in the driver's ledger - they can only withdraw the balance above it (e.g. ₹20 balance with a ₹10 minimum lets them withdraw up to ₹10). Set to 0 to allow withdrawing the full balance. Used for vehicle types without their own value below.
             </p>
           </div>
           <div>
-            <Label htmlFor="flag-driver_max_due_limit">Driver maximum due limit (₹)</Label>
+            <Label htmlFor="flag-driver_max_due_limit">Driver negative balance limit - default (₹)</Label>
             <Input
               id="flag-driver_max_due_limit"
               type="number"
@@ -588,9 +652,10 @@ function SettingsForm({ data, onSaved }) {
               onChange={(e) => setFlags((f) => ({ ...f, driver_max_due_limit: e.target.value }))}
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              Maximum negative wallet balance allowed for a driver before they are blocked from receiving new ride offers (Default: 100).
+              Maximum negative wallet balance allowed for a driver before they are blocked from receiving new ride offers (Default: 100). Used for vehicle types without their own value below.
             </p>
           </div>
+          <VehicleWalletLimitFields flags={flags} setFlags={setFlags} />
         </Section>
 
         <Section title="Customer Safety">
