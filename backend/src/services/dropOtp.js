@@ -41,16 +41,54 @@ async function isRequired(order) {
 const matches = (order, otp) =>
   otp !== undefined && otp !== null && order?.drop_otp != null && String(otp).trim() === String(order.drop_otp).trim();
 
+// A 4-digit OTP must not be guessable by a script: after MAX_WRONG_ATTEMPTS wrong tries on an order, further
+// attempts are refused for LOCK_MS (a cool-down, not a permanent lock, so an honest typo can't strand a driver).
+// Kept in memory per process: it slows brute force without a schema change; the correct OTP clears the counter.
+const MAX_WRONG_ATTEMPTS = 5;
+const LOCK_MS = 10 * 60 * 1000;
+const attempts = new Map(); // orderId -> { wrong, lockedUntil }
+
+function lockRemainingMs(orderId) {
+  const entry = attempts.get(orderId);
+  if (!entry || !entry.lockedUntil) return 0;
+  const left = entry.lockedUntil - Date.now();
+  if (left <= 0) { attempts.delete(orderId); return 0; }
+  return left;
+}
+
+function recordWrongAttempt(orderId) {
+  const entry = attempts.get(orderId) || { wrong: 0, lockedUntil: 0 };
+  entry.wrong += 1;
+  if (entry.wrong >= MAX_WRONG_ATTEMPTS) { entry.lockedUntil = Date.now() + LOCK_MS; entry.wrong = 0; }
+  attempts.set(orderId, entry);
+}
+
+function resetAttempts(orderId) {
+  if (orderId !== undefined) attempts.delete(orderId); else attempts.clear();
+}
+
 /**
  * Completion gate. Returns null when the trip may complete, otherwise the refusal to send the driver app:
  * { msg, drop_otp_required: true, drop_otp_invalid } - the app opens (or re-opens) its OTP entry on it.
  */
 async function completionRefusal(order, otp) {
   if (!(await isRequired(order))) return null;
+  const left = lockRemainingMs(order.id);
+  if (left > 0) {
+    const minutes = Math.ceil(left / 60000);
+    return {
+      msg: `Too many wrong OTP attempts. Try again in ${minutes} min, or contact support.`,
+      drop_otp_required: true, drop_otp_invalid: true, drop_otp_locked: true, retry_after_seconds: Math.ceil(left / 1000),
+    };
+  }
   const given = otp === undefined || otp === null ? "" : String(otp).trim();
   if (given === "") return { msg: "Enter the drop OTP to complete the delivery", drop_otp_required: true, drop_otp_invalid: false };
-  if (!matches(order, given)) return { msg: "Invalid drop OTP", drop_otp_required: true, drop_otp_invalid: true };
+  if (!matches(order, given)) {
+    recordWrongAttempt(order.id);
+    return { msg: "Invalid drop OTP", drop_otp_required: true, drop_otp_invalid: true };
+  }
+  resetAttempts(order.id);
   return null;
 }
 
-module.exports = { isEnabled, generateForNewOrder, isRequired, matches, completionRefusal, KEY };
+module.exports = { isEnabled, generateForNewOrder, isRequired, matches, completionRefusal, resetAttempts, MAX_WRONG_ATTEMPTS, LOCK_MS, KEY };
