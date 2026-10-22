@@ -168,7 +168,7 @@ async function getOrderDetailsWithParticipants(orderId) {
 async function dropOptInOtpBlock(order) {
   if (order.send_receiver_whatsapp !== true) return "";
   if (!(await require("../services/dropOtp").isRequired(order))) return "";
-  return `🔐 *Drop OTP*: *${order.drop_otp}*\n(Parcel milne par ye OTP driver ko batayein, tabhi unloading shuru hogi.)\n\n`;
+  return `🔐 *Drop OTP*: *${order.drop_otp}*\n(Parcel milne par delivery complete karne ke liye ye OTP driver ko batayein.)\n\n`;
 }
 
 /**
@@ -351,7 +351,7 @@ async function notifyDriverArrivedDrop(orderId) {
   const riderVehicle = rider?.vehicle_no ? `(${rider.vehicle_no})` : "";
 
   const dropOtpLine = (await require("../services/dropOtp").isRequired(order))
-    ? `🔐 *Drop OTP*: *${order.drop_otp}* — parcel lene se pehle ye OTP driver ko batayein.
+    ? `🔐 *Drop OTP*: *${order.drop_otp}* — parcel lene ke baad delivery complete karne ke liye ye OTP driver ko batayein.
 
 `
     : "";

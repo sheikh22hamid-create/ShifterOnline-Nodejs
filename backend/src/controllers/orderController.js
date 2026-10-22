@@ -71,7 +71,6 @@ async function customerTripProgress(order) {
     stop_step: progress?.stop_step || 0,
     arrived_drop: order.order_status === 3 && !!(timer?.drop_wait_start || timer?.drop_arrived_at),
     // Drop OTP gate: true while the driver is at the drop and the unloading timer is waiting for the OTP.
-    drop_otp_pending: order.order_status === 3 && !!timer?.drop_arrived_at && !timer?.drop_wait_start && (await dropOtpService.isRequired(order)),
   };
 }
 

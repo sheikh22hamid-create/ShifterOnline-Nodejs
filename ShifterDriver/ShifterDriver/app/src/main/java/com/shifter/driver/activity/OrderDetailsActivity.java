@@ -114,8 +114,12 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private boolean otpDialogAutoShownForPickup;
     // Same idea for the drop OTP (the unloading timer waits for it): auto-open it once per arrival,
     // and keep a handle so it can be closed if the server no longer needs it.
-    private boolean dropOtpDialogAutoShown;
     private android.app.Dialog activeDropOtpDialog;
+    // Drop OTP: the 4 boxes / submit button of the open dialog, and the OTP being sent with the completion. The OTP
+    // is kept while the early-drop confirmation is on screen so it can be re-sent with the confirmed completion.
+    private EditText[] dropOtpBoxes;
+    private TextView dropOtpSubmit;
+    private String pendingDropOtp;
     // Currently/last shown OTP dialog, so a large-move pickup change arriving
     // over the socket (onPickupUpdatedFromCustomer) can close it - the server
     // reverts the order to en-route and would reject an OTP entered here.
@@ -278,21 +282,14 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             // off from the pickup) - the OTP prompt no longer applies.
             if (activeOtpDialog != null && activeOtpDialog.isShowing()) activeOtpDialog.dismiss();
         }
-        // Drop OTP: the driver has reached the final drop but the unloading timer is still waiting for the OTP.
-        boolean dropOtpPending = data.has("drop_otp_pending") && data.get("drop_otp_pending").getAsBoolean();
-        if (dropOtpPending && !dropOtpDialogAutoShown) {
-            dropOtpDialogAutoShown = true;
-            showDropOtpDialog();
-        } else if (!dropOtpPending) {
-            dropOtpDialogAutoShown = false;
-            if (activeDropOtpDialog != null && activeDropOtpDialog.isShowing()) activeDropOtpDialog.dismiss();
-        }
     }
 
-    private boolean isDropOtpPending() {
+    // Drop OTP (admin setting): arrival at the drop and the waiting timer work as usual; the OTP is asked when the
+    // driver taps "Complete Trip". The server says per order whether it is required.
+    private boolean isDropOtpRequired() {
         if (orderItem == null) return false;
         JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
-        return cached != null && cached.has("drop_otp_pending") && cached.get("drop_otp_pending").getAsBoolean();
+        return cached != null && cached.has("drop_otp_required") && cached.get("drop_otp_required").getAsBoolean();
     }
 
     private void showDropOtpDialog() {
@@ -306,13 +303,15 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
         }
         TextView submit = dialog.findViewById(R.id.txt_submit_otp);
-        // Closing only hides the dialog (the button on the trip screen re-opens it); nothing is sent.
+        // Closing only hides the dialog (Complete Trip re-opens it); nothing is sent and the trip stays open.
         dialog.findViewById(R.id.txt_cancel_otp).setOnClickListener(v -> dialog.dismiss());
 
         EditText[] boxes = {
                 dialog.findViewById(R.id.ed_otp_1), dialog.findViewById(R.id.ed_otp_2),
                 dialog.findViewById(R.id.ed_otp_3), dialog.findViewById(R.id.ed_otp_4)
         };
+        dropOtpBoxes = boxes;
+        dropOtpSubmit = submit;
         for (int i = 0; i < boxes.length; i++) {
             final int index = i;
             boxes[i].addTextChangedListener(new android.text.TextWatcher() {
@@ -344,26 +343,33 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             }
             if (tripActionPending) return;
             submit.setEnabled(false);
-            tripActionPending = true;
-            binding.txtConfirm.setEnabled(false);
-            // A wrong OTP is rejected by the server and the unloading timer does not start.
-            com.shifter.driver.utility.TripProgressClient.request(this, orderItem.getId(), "verify_drop_otp", otp, (data, error) -> {
-                tripActionPending = false;
-                if (isFinishing() || isDestroyed()) return;
-                submit.setEnabled(true);
-                binding.txtConfirm.setEnabled(true);
-                if (error != null) {
-                    for (EditText box : boxes) { box.setBackground(getDrawable(R.drawable.bg_input_error)); box.setText(""); }
-                    boxes[0].requestFocus();
-                    Toast.makeText(this, error, Toast.LENGTH_LONG).show();
-                    return;
-                }
-                dialog.dismiss();
-                applyTripProgress();
-                updateTripControls();
-            });
+            // The server checks the OTP as part of completing the trip: a wrong OTP leaves the trip open and the
+            // ack tells us to ask again (see orderstatus); the correct one completes it.
+            pendingDropOtp = otp;
+            orderstatus("complete", "", false);
+        });
+        dialog.setOnDismissListener(d -> {
+            // Only forget the OTP when no early-drop confirmation still needs it.
+            if (!earlyDropConfirmPending) pendingDropOtp = null;
+            activeDropOtpDialog = null;
+            dropOtpBoxes = null;
+            dropOtpSubmit = null;
         });
         dialog.show();
+    }
+
+    private boolean earlyDropConfirmPending;
+
+    // The server refused the completion for a missing or wrong drop OTP: show it on the open dialog (or open it).
+    private void onDropOtpRefused(String message) {
+        pendingDropOtp = null;
+        if (activeDropOtpDialog == null || !activeDropOtpDialog.isShowing()) showDropOtpDialog();
+        if (dropOtpBoxes != null) {
+            for (EditText box : dropOtpBoxes) { box.setBackground(getDrawable(R.drawable.bg_input_error)); box.setText(""); }
+            dropOtpBoxes[0].requestFocus();
+        }
+        if (dropOtpSubmit != null) dropOtpSubmit.setEnabled(true);
+        Toast.makeText(this, TextUtils.isEmpty(message) ? "Invalid drop OTP" : message, Toast.LENGTH_LONG).show();
     }
 
     private void sendTripAction(String action, String otp, Runnable success) {
@@ -1845,8 +1851,6 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             if (tripActionPending) return;
             if ("pickup".equals(status)) {
                 showOtpDialog();
-            } else if ("drop_otp".equals(status)) {
-                showDropOtpDialog();
             } else if ("pickup_complete".equals(status)) {
                 new android.app.AlertDialog.Builder(this)
                         .setTitle("Pickup complete?")
@@ -1854,6 +1858,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                         .setNegativeButton("Not yet", null)
                         .setPositiveButton("Pickup Complete", (dialog, which) -> sendTripAction("pickup_complete", null, null))
                         .show();
+            } else if ("complete".equals(status) && isDropOtpRequired()) {
+                // Admin setting ON: ask for the drop OTP now; the trip completes only if it is correct.
+                showDropOtpDialog();
             } else if ("complete".equals(status)) {
                 new android.app.AlertDialog.Builder(this)
                         .setTitle("Complete delivery?")
@@ -2204,9 +2211,11 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (binding == null || orderItem == null || isWaitingForPayment) return;
         String flow = orderItem.getOrderFlowId();
         if ("2".equals(flow)) { binding.txtTripLocationStatus.setText("Pickup reached. Verify OTP after goods handover."); return; }
-        if ("4".equals(flow)) { binding.txtTripLocationStatus.setText("Drop reached. Confirm delivery after goods handover."); return; }
-        if ("3".equals(flow) && isDropOtpPending()) {
-            binding.txtTripLocationStatus.setText("Drop reached. Enter the drop OTP to start unloading."); return;
+        if ("4".equals(flow)) {
+            binding.txtTripLocationStatus.setText(isDropOtpRequired()
+                    ? "Drop reached. After goods handover, tap Complete and enter the drop OTP."
+                    : "Drop reached. Confirm delivery after goods handover.");
+            return;
         }
         if ("3".equals(flow) && getActiveStopStep() % 2 == 1) {
             binding.txtTripLocationStatus.setText("Stop reached. Complete this stop to continue."); return;
@@ -2312,11 +2321,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 binding.txtReject.setVisibility(View.GONE);
                 int numStops = (stops != null) ? stops.size() : 0;
                 int stopStep = getActiveStopStep();
-                if (isDropOtpPending()) {
-                    // Reached the drop, unloading timer waiting for the drop OTP.
-                    status = "drop_otp";
-                    binding.txtConfirm.setText("VERIFY DROP OTP");
-                } else if (numStops > 0 && stopStep < numStops * 2) {
+                if (numStops > 0 && stopStep < numStops * 2) {
                     int stopIndex = stopStep / 2;
                     int stopNumber = stopIndex + 1;
                     if (stopStep % 2 == 0) {
@@ -2606,6 +2611,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     payload.put("lng", loc.getLongitude());
                     if (earlyDrop) payload.put("early_drop", true);
                 }
+                // Drop OTP (when the admin setting is on): sent with the completion; the server verifies it.
+                if (!TextUtils.isEmpty(pendingDropOtp)) payload.put("drop_otp", pendingDropOtp);
             }
         } catch (JSONException e) {
             e.printStackTrace();
@@ -2614,6 +2621,17 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         com.shifter.driver.socket.NodeSocketManager.getInstance().emitStatusUpdate(payload, ackData -> {
             boolean success = ackData.optBoolean("Result", false);
             String msg = ackData.optString("msg", "");
+            if (!success && ackData.optBoolean("drop_otp_required", false)) {
+                // Missing or wrong drop OTP: the trip is still open; ask again on the OTP dialog.
+                runOnUiThread(() -> {
+                    tripActionPending = false;
+                    custPrograssbar.closePrograssBar();
+                    if (isFinishing() || isDestroyed()) return;
+                    binding.txtConfirm.setEnabled(true);
+                    onDropOtpRefused(msg);
+                });
+                return;
+            }
             if (!success && ackData.optBoolean("early_drop_required", false)) {
                 final double km = ackData.optDouble("distance_m", 0) / 1000.0;
                 final int oldFare = (int) Math.round(ackData.optDouble("old_fare", 0));
@@ -2623,13 +2641,17 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                     custPrograssbar.closePrograssBar();
                     if (isFinishing() || isDestroyed()) return;
                     binding.txtConfirm.setEnabled(true);
+                    // The OTP was already accepted; keep it so the confirmed completion can re-send it.
+                    earlyDropConfirmPending = true;
+                    if (activeDropOtpDialog != null && activeDropOtpDialog.isShowing()) activeDropOtpDialog.dismiss();
                     new android.app.AlertDialog.Builder(this)
                             .setTitle("Early drop?")
                             .setMessage(String.format(java.util.Locale.getDefault(),
                                     "You are %.1f km before the booked drop location.\n\nEnd the trip here? Your current location becomes the drop point and the fare is recalculated for the distance travelled.\n\nFare: Rs. %d to Rs. %d",
                                     km, oldFare, newFare))
-                            .setNegativeButton("Not yet", null)
-                            .setPositiveButton("End trip here", (d, w) -> orderstatus("complete", "", true))
+                            .setNegativeButton("Not yet", (d, w) -> { earlyDropConfirmPending = false; pendingDropOtp = null; })
+                            .setPositiveButton("End trip here", (d, w) -> { earlyDropConfirmPending = false; orderstatus("complete", "", true); })
+                            .setOnCancelListener(d -> { earlyDropConfirmPending = false; pendingDropOtp = null; })
                             .show();
                 });
                 return;
@@ -2639,6 +2661,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             fakeResult.addProperty("ResponseMsg", msg);
             runOnUiThread(() -> {
                 tripActionPending = false;
+                pendingDropOtp = null;
+                if (success && activeDropOtpDialog != null && activeDropOtpDialog.isShowing()) activeDropOtpDialog.dismiss();
+                if (!success && dropOtpSubmit != null) dropOtpSubmit.setEnabled(true); // some other failure: let them retry
                 if (isFinishing() || isDestroyed()) return;
                 binding.txtConfirm.setEnabled(true);
                 callback(fakeResult, "1");

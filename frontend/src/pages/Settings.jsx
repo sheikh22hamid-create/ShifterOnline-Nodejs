@@ -522,11 +522,11 @@ function SettingsForm({ data, onSaved }) {
               value={flags.drop_otp_enabled ?? '0'}
               onChange={(e) => setFlags((f) => ({ ...f, drop_otp_enabled: e.target.value }))}
             >
-              <option value="0">Disabled (0 - the unloading timer starts when the driver arrives at the drop)</option>
-              <option value="1">Enabled (1 - the driver must enter the drop OTP before unloading starts)</option>
+              <option value="0">Disabled (0 - the driver completes the trip without a drop OTP)</option>
+              <option value="1">Enabled (1 - the driver must enter the drop OTP to complete the trip)</option>
             </select>
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-              Applies to new bookings only. The booker and the receiver both see the OTP; a wrong OTP never starts the timer. Needs migration <code>20261016010000_add_drop_otp</code> and the updated driver app. Switching it OFF releases any order stuck at the drop.
+              Applies to new bookings only. The booker and the receiver both see the OTP. Arriving at the drop and the waiting timer work as usual; the driver enters the OTP when they tap Complete Trip and a wrong OTP never completes the ride. Needs migration <code>20261016010000_add_drop_otp</code> and the updated driver app. Switching it OFF releases any order stuck at the drop.
             </p>
           </div>
           <div>

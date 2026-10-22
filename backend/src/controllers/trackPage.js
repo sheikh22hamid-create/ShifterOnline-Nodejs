@@ -66,7 +66,7 @@ const TEMPLATE = `<!doctype html>
   <div class="card" id="otpCard" hidden>
     <div class="muted">Drop OTP</div>
     <div id="dropOtp" style="font-size:30px;font-weight:800;letter-spacing:6px;margin:4px 0"></div>
-    <div class="muted">Tell this OTP to the driver when the parcel reaches you. Unloading starts only after it is verified.</div>
+    <div class="muted">Tell this OTP to the driver once you have received the parcel. The delivery completes only after it is verified.</div>
   </div>
   <div class="card" id="addrCard" hidden>
     <div class="muted">Pickup</div><div id="pickupAddr"></div>

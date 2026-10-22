@@ -144,11 +144,12 @@ function registerOrderHandlers(io, socket) {
     }
   });
 
-  socket.on("order:status_update", async ({ rider_id, order_id, status, lat, lng, early_drop }) => {
+  socket.on("order:status_update", async ({ rider_id, order_id, status, lat, lng, early_drop, drop_otp }) => {
     try {
       const result = await tripLifecycle.updateStatus(Number(order_id), Number(rider_id), status, {
         lat,
         lng,
+        dropOtp: drop_otp,
         earlyDrop: early_drop === true || early_drop === "true" || early_drop === 1,
       });
 
@@ -158,6 +159,9 @@ function registerOrderHandlers(io, socket) {
         // Early Drop: the app asks the driver to confirm, then re-sends with
         // early_drop=true; on success it shows the recalculated fare.
         early_drop_required: result.early_drop_required === true,
+        // Drop OTP: set when completion was refused for a missing/wrong OTP so the app can ask again.
+        drop_otp_required: result.drop_otp_required === true,
+        drop_otp_invalid: result.drop_otp_invalid === true,
         distance_m: result.distance_m,
         old_fare: result.old_fare ?? result.early_drop?.old_fare,
         new_fare: result.new_fare ?? result.early_drop?.new_fare,

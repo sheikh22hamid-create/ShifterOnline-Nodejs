@@ -49,58 +49,49 @@ beforeEach(() => {
   db.pkg_order_wait_timer.update.mockImplementation(async ({ data }) => timer = { ...timer, ...data });
 });
 afterEach(() => jest.restoreAllMocks());
-// Drop OTP (spec 2026-10-16): the unloading timer (drop_wait_start) starts only after the drop OTP is verified.
+// Drop OTP (moved 2026-10-22): arrival and the unloading/waiting timer are unchanged; the OTP is asked when the
+// driver completes the trip (tripLifecycle.updateStatus, covered in tripLifecycle.test.js and dropOtp.test.js).
 const reachDrop = async () => {
   await call('arrived'); await call('pickup', { otp: '1234' });
   await call('arrived_drop');
 };
-test('arriving at the drop records arrival but does NOT start the unloading timer', async () => {
+test('arriving at the drop starts the unloading timer as usual, even when a drop OTP is required', async () => {
   await reachDrop();
   expect(order.order_status).toBe(3);
   expect(timer.drop_arrived_at).toBeTruthy();
-  expect(timer.drop_wait_start).toBeFalsy();
+  expect(timer.drop_wait_start).toBeTruthy();
   const snap = await call();
   expect(snap.drop_otp_required).toBe(true);
-  expect(snap.drop_otp_pending).toBe(true);
-  expect(snap.driver_flow_id).toBe(3);
-});
-test('a wrong or missing drop OTP never starts the timer', async () => {
-  await reachDrop();
-  await expect(call('verify_drop_otp', { otp: '0000' })).rejects.toThrow('Invalid drop OTP');
-  await expect(call('verify_drop_otp')).rejects.toThrow('Invalid drop OTP');
-  expect(timer.drop_wait_start).toBeFalsy();
-});
-test('the correct drop OTP starts the unloading timer once; a retry does not restart it', async () => {
-  await reachDrop();
-  const snap = await call('verify_drop_otp', { otp: '5678' });
-  expect(timer.drop_wait_start).toBeTruthy();
+  expect(snap.drop_otp_pending).toBeUndefined();
   expect(snap.driver_flow_id).toBe(4);
-  expect(snap.drop_otp_pending).toBe(false);
-  const started = timer.drop_wait_start;
-  await call('verify_drop_otp', { otp: '5678' });
-  expect(timer.drop_wait_start).toEqual(started);
 });
-test('the drop OTP cannot be verified before arriving at the drop', async () => {
-  await call('arrived'); await call('pickup', { otp: '1234' });
-  await expect(call('verify_drop_otp', { otp: '5678' })).rejects.toThrow('drop arrival');
+test('the arrival notice tells the receiver to share the OTP for completion, not for unloading', async () => {
+  await reachDrop();
+  const created = db.driver_trip_event.upsert.mock.calls.map(c => c[0].create).filter(Boolean).find(c => c.milestone === 'arrived_drop');
+  expect(created.payload.message).toContain('drop OTP');
+  expect(created.payload.message).toContain('complete the delivery');
 });
-test('with intermediate stops the drop OTP is only accepted after the last stop and the drop arrival', async () => {
+test('the old verify_drop_otp step no longer exists', async () => {
+  await reachDrop();
+  await expect(call('verify_drop_otp', { otp: '5678' })).rejects.toThrow('Unsupported trip action');
+});
+test('with intermediate stops the drop arrival still comes after the last stop and starts the timer', async () => {
   await call('arrived'); await call('pickup', { otp: '1234' });
   stops = [{ lat: '28.65', lng: '77.25' }];
   await call('arrived_stop_1'); await call('complete_stop_1');
-  await expect(call('verify_drop_otp', { otp: '5678' })).rejects.toThrow('drop arrival');
+  expect(timer.drop_wait_start).toBeFalsy();
   await call('arrived_drop');
-  await call('verify_drop_otp', { otp: '5678' });
   expect(timer.drop_wait_start).toBeTruthy();
 });
-test('an order without a drop OTP keeps the old behaviour: arrival starts the unloading timer', async () => {
+test('an order without a drop OTP behaves the same: arrival starts the unloading timer, no OTP is required', async () => {
   order.drop_otp = null;
   await reachDrop();
   expect(timer.drop_wait_start).toBeTruthy();
-  expect((await call()).driver_flow_id).toBe(4);
-  await expect(call('verify_drop_otp', { otp: '5678' })).rejects.toThrow('not required');
+  const snap = await call();
+  expect(snap.drop_otp_required).toBe(false);
+  expect(snap.driver_flow_id).toBe(4);
 });
-test('switching the feature OFF releases an order stuck at the drop (arrival then no longer needs the OTP)', async () => {
+test('switching the feature OFF stops requiring the OTP', async () => {
   await reachDrop();
   db.app_settings.findFirst.mockResolvedValue({ setting_value: '0' });
   await dropOtp.isEnabled({ fresh: true });

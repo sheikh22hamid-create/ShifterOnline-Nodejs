@@ -3058,7 +3058,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     );
   }
 
-  // Drop OTP card: the driver asks for it at the drop before unloading starts. The receiver sees the
+  // Drop OTP card: the driver asks for it at the drop to complete the delivery. The receiver sees the
   // same OTP on their tracking page, so either person can read it out.
   Widget _buildDropOtpCard(String otp) {
     return Container(
@@ -3122,7 +3122,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           ),
           const SizedBox(height: 8),
           Text(
-            "Give this OTP to the driver when the goods reach the drop. Unloading starts only after it is verified. The receiver can see it too.".tr,
+            "Give this OTP to the driver once you have received the goods; the delivery completes only after it is verified. The receiver can see it too.".tr,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: greaycolor.withOpacity(0.85),

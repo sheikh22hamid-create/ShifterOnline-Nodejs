@@ -1741,6 +1741,53 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
   });
 });
 
+describe("tripLifecycle.updateStatus('complete') — drop OTP gate", () => {
+  const dropOtp = require("../dropOtp");
+  const base = { id: 297, rid: 1, city_id: 1, d_charge: 100, total_dcharge: 100, commission: 0, trans_id: "cash_payment", free_waiting_time: "0", wating_charge: "0", drop_otp: 5678 };
+
+  async function setSwitch(value) {
+    prisma.app_settings.findFirst.mockResolvedValue({ setting_value: value });
+    await dropOtp.isEnabled({ fresh: true });
+  }
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    prisma.pkg_order_wait_timer.findUnique.mockResolvedValue(null);
+    prisma.pkg_order.update.mockResolvedValue({});
+    prisma.$queryRaw.mockResolvedValue([{ advance_payment: 0 }]);
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...base });
+    await setSwitch("1");
+  });
+  afterEach(async () => { prisma.app_settings.findFirst.mockResolvedValue(null); await dropOtp.isEnabled({ fresh: true }); });
+
+  it("refuses to complete without the OTP and asks the app for it; nothing is written", async () => {
+    const result = await tripLifecycle.updateStatus(297, 1, "complete");
+    expect(result).toEqual({ success: false, msg: "Enter the drop OTP to complete the delivery", drop_otp_required: true, drop_otp_invalid: false });
+    expect(prisma.pkg_order.update).not.toHaveBeenCalled();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses a wrong OTP and does not complete the ride", async () => {
+    const result = await tripLifecycle.updateStatus(297, 1, "complete", { dropOtp: "0000" });
+    expect(result).toMatchObject({ success: false, msg: "Invalid drop OTP", drop_otp_required: true, drop_otp_invalid: true });
+    expect(prisma.pkg_order.update).not.toHaveBeenCalled();
+  });
+
+  it("completes the ride with the correct OTP", async () => {
+    const result = await tripLifecycle.updateStatus(297, 1, "complete", { dropOtp: "5678" });
+    expect(result).toEqual({ success: true, order_status: 5, o_status: "Completed" });
+  });
+
+  it("needs no OTP when the admin switch is OFF, or the order has none", async () => {
+    await setSwitch("0");
+    expect((await tripLifecycle.updateStatus(297, 1, "complete")).success).toBe(true);
+
+    await setSwitch("1");
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...base, drop_otp: null });
+    expect((await tripLifecycle.updateStatus(297, 1, "complete")).success).toBe(true);
+  });
+});
+
 describe("tripLifecycle.updateStatus('complete') — next-day Daily Driver earning (90%)", () => {
   const nextDayOrder = (overrides = {}) => ({
     id: 310,

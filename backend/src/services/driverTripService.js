@@ -65,11 +65,10 @@ async function snapshot(order, progress, timer, stopCount) {
     pickup_load_wait_start: timer?.pickup_load_wait_start ? new Date(timer.pickup_load_wait_start).getTime() : 0,
     pickup_load_wait_seconds: timer?.pickup_load_wait_seconds || 0,
     drop_wait_start: timer?.drop_wait_start ? new Date(timer.drop_wait_start).getTime() : 0,
-    // Drop OTP: the unloading timer (drop_wait_start) only starts once the OTP is verified. While
-    // drop_otp_pending the driver app shows the OTP entry instead of the unloading timer.
+    // Drop OTP: arrival and the unloading/waiting timer behave exactly as without the feature; the driver
+    // app asks for the OTP when "Complete Trip" is tapped (drop_otp_required) and sends it with the completion.
     drop_arrived_at: timer?.drop_arrived_at ? new Date(timer.drop_arrived_at).getTime() : 0,
     drop_otp_required: dropOtpRequired,
-    drop_otp_pending: dropOtpRequired && !!timer?.drop_arrived_at && !timer?.drop_wait_start,
     server_time: Date.now(), version: progress?.updated_at ? new Date(progress.updated_at).getTime() : 0,
   };
 }
@@ -129,18 +128,14 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
       } else if (target === 'arrived_drop') {
         if (order.order_status !== 3 || progress.stop_step !== stops.length * 2) fail('Finish the active stop first');
         progress.stop_step++;
-        if (await dropOtp.isRequired(order)) {
-          // Arrival is recorded, but the unloading timer waits for the drop OTP (see verify_drop_otp).
-          timer = await tx.pkg_order_wait_timer.upsert({ where: timerKey,
-            create: { order_id: orderId, rid: riderId, drop_arrived_at: at, created_at: new Date() },
-            update: { drop_arrived_at: at, updated_at: new Date() } });
-          await event('arrived_drop', 'Your driver has arrived at the drop location. Please share the drop OTP with the driver to start unloading.');
-        } else {
-          timer = await tx.pkg_order_wait_timer.upsert({ where: timerKey,
-            create: { order_id: orderId, rid: riderId, drop_wait_start: at, created_at: new Date() },
-            update: { drop_wait_start: at, updated_at: new Date() } });
-          await event('arrived_drop', 'Your driver has arrived at the drop location. Please receive your goods.');
-        }
+        // Arrival always starts the unloading/waiting timer (free waiting time and charges are unchanged). With a
+        // drop OTP the OTP is asked when the driver completes the trip, not here.
+        timer = await tx.pkg_order_wait_timer.upsert({ where: timerKey,
+          create: { order_id: orderId, rid: riderId, drop_arrived_at: at, drop_wait_start: at, created_at: new Date() },
+          update: { drop_arrived_at: at, drop_wait_start: at, updated_at: new Date() } });
+        await event('arrived_drop', (await dropOtp.isRequired(order))
+          ? 'Your driver has arrived at the drop location. Please share the drop OTP with the driver to complete the delivery.'
+          : 'Your driver has arrived at the drop location. Please receive your goods.');
       } else {
         const stopNumber = Number(target.substring('arrived_stop_'.length));
         if (order.order_status !== 3 || progress.stop_step !== (stopNumber - 1) * 2 || stopNumber > stops.length) fail('This is not the active stop');
@@ -350,19 +345,6 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
       if ((action === 'pickup' || action === 'pickup_complete') && order.order_status !== 3) {
         if (order.order_status !== 2) fail('Mark pickup arrival before verifying handover');
         await completePickup(new Date());
-      }
-    } else if (action === 'verify_drop_otp') {
-      if (!(await dropOtp.isRequired(order))) fail('A drop OTP is not required for this order');
-      if (order.order_status !== 3 || progress.stop_step !== stops.length * 2 + 1 || !timer?.drop_arrived_at) {
-        fail('Mark drop arrival before verifying the drop OTP');
-      }
-      if (!timer.drop_wait_start) {
-        // A wrong OTP fails here, before anything is written, so the unloading timer never starts.
-        if (!dropOtp.matches(order, otp)) fail('Invalid drop OTP');
-        const verifiedAt = new Date();
-        timer = await tx.pkg_order_wait_timer.update({ where: timerKey, data: { drop_wait_start: verifiedAt, updated_at: verifiedAt } });
-        progress.last_sample_at = verifiedAt;
-        await event('drop_otp_verified', 'Drop OTP verified. Unloading has started.');
       }
     } else if (/^arrived_stop_[1-9]\d*$/.test(action) || action === 'arrived_drop') {
       const requestedStep = action === 'arrived_drop' ? stops.length * 2 : (Number(action.split('_').pop()) - 1) * 2;

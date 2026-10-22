@@ -35,7 +35,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Ask the customer or receiver for the drop OTP. The unloading timer starts only after the correct OTP is entered."
+        android:text="Ask the customer or receiver for the drop OTP. The trip is completed only after the correct OTP is entered."
         android:textColor="#64748B"
         android:textSize="13sp"
         android:gravity="center"
@@ -131,7 +131,7 @@
             android:layout_width="0dp"
             android:layout_height="50dp"
             android:layout_weight="1"
-            android:text="Verify &amp; Start Unloading"
+            android:text="Verify &amp; Complete Trip"
             android:gravity="center"
             android:textColor="@color/white"
             android:textStyle="bold"
