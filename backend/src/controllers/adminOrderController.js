@@ -18,6 +18,7 @@ const bookingGuarantee = require("../services/bookingGuaranteeService");
 const guaranteeQueue = require("../services/guaranteeQueueService");
 const freeBookingService = require("../services/freeBookingService");
 const outsideDriver = require("../services/outsideDriverService");
+const orderAssignment = require("../services/orderAssignmentService");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -257,125 +258,16 @@ async function assignRider(req, res) {
       if (ownerErr.statusCode) return res.status(ownerErr.statusCode).json({ success: false, message: ownerErr.message });
       throw ownerErr;
     }
-    if (order.rid !== 0 || order.order_status !== 0) {
-      return res.status(409).json({ success: false, message: "Order is already assigned, completed, or cancelled" });
-    }
-    if (!order.delivery_type) {
-      return res.status(400).json({ success: false, message: "Order has no rate card assigned yet — cannot compute fare" });
-    }
-
-    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
-    if (!rider) {
-      return res.status(404).json({ success: false, message: "Driver not found" });
-    }
-    if (isScopedOut(req, rider.city_id)) {
-      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
-    }
-    if (rider.status !== 1) {
-      return res.status(400).json({ success: false, message: "Driver is not approved" });
-    }
-    if (rider.a_status !== 1) {
-      return res.status(400).json({ success: false, message: "Driver is currently offline" });
-    }
-    // order_status alone isn't reliable — cancel() (here and in tripLifecycle)
-    // only ever updates o_status, never resets order_status, so a cancelled
-    // order can still show order_status 1-3 forever. o_status is the
-    // authoritative terminal-state signal.
-    const riderBusy = await prisma.pkg_order.count({
-      where: { rid: riderId, order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
+    const result = await orderAssignment.assignRiderToOrder({
+      order,
+      riderId,
+      actor: req.user,
+      isRiderForbidden: (rider) => isScopedOut(req, rider.city_id),
     });
-    if (riderBusy) {
-      return res.status(409).json({ success: false, message: "Driver already has an active trip" });
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, message: result.message });
     }
-
-    const customerPlan = typeof pricingEngine.getActiveCustomerPlan === "function"
-      ? await pricingEngine.getActiveCustomerPlan(order.uid)
-      : null;
-    const isNoAdvance = Boolean(
-      customerPlan &&
-      (customerPlan.noAdvancePayment === true ||
-       customerPlan.noAdvancePayment === 1 ||
-       String(customerPlan.noAdvancePayment) === "1" ||
-       String(customerPlan.noAdvancePayment) === "true")
-    );
-    const paymentStatus = isNoAdvance ? 1 : (Number(order.payment_status) || 0);
-    const advancePayment = isNoAdvance ? "0" : (order.advance_payment != null ? String(order.advance_payment) : "0");
-
-    // Same atomic-conditional-UPDATE pattern as tripLifecycle.acceptOrder —
-    // wins the race against the live dispatch cascade if it's still running.
-    const affectedRows = await prisma.$executeRaw`
-      UPDATE pkg_order
-      SET rid = ${riderId}, order_status = 1, o_status = 'Processing', accept_time = NOW(),
-          payment_status = ${paymentStatus}, advance_payment = ${advancePayment}
-      WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
-    `;
-    if (affectedRows === 0) {
-      return res.status(409).json({ success: false, message: "Order was just taken or cancelled — refresh and retry" });
-    }
-
-    // driver_earning stores the full gross fare, same as the dispatch
-    // popup and pkg_order.driver_earning set at self-accept (see
-    // tripLifecycle.acceptOrder) — the driver sees one consistent number
-    // throughout, not a commission-deducted figure only here.
-    const { pkg, fare, commission } = await pricingEngine.priceForPackageId(
-      order.delivery_type,
-      Number(order.distance) || 0,
-      Number(order.radius_range) || 1,
-      Number(order.extra_mile_charge) || 0,
-      order.uid
-    );
-    await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: fare, commission } });
-
-    dispatchManager.stopDispatch(orderId, "accepted_by_other");
-    await guaranteeQueue.recordAssignmentAction({ orderId, adminId: req.user.id, riderId });
-    try {
-      await bookingGuarantee.closeOnAssign(orderId, req.user.id);
-    } catch (guaranteeErr) {
-      logger.error(`assignRider: booking guarantee close failed for order ${orderId}:`, guaranteeErr);
-    }
-
-    try {
-      await freeBookingService.recordAcceptance(orderId, riderId);
-    } catch (fbErr) {
-      logger.error(`assignRider: free-booking recordAcceptance failed for order ${orderId}:`, fbErr);
-    }
-
-    await prisma.order_status_history.create({
-      data: { order_id: orderId, rider_id: riderId, status: "Processing", remark: `Manually assigned by admin #${req.user.id} (${req.user.username})` },
-    });
-
-    const updatedOrder = await prisma.pkg_order.findUnique({ where: { id: orderId } });
-    const freeBookingView = await freeBookingService.getViewForOrder(updatedOrder.id);
-
-    try {
-      const io = getIO();
-      io.to(`driver_${riderId}`).emit("order:assigned", {
-        order_id: updatedOrder.id,
-        pickup_address: updatedOrder.paddress,
-        delivery_address: updatedOrder.daddress,
-        driver_earning: String(fare),
-      });
-      dispatchManager.emitDirectAssign(riderId, updatedOrder);
-      io.to(`customer_${updatedOrder.uid}`).emit("order:assigned", {
-        order_id: updatedOrder.id,
-        rider_id: rider.id,
-        rider_name: rider.full_name || `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
-        rider_phone: rider.fmobile,
-        vehicle_no: rider.vehicle_no,
-        order_status: updatedOrder.order_status,
-        o_status: updatedOrder.o_status,
-        free_booking: freeBookingView,
-      });
-    } catch (socketErr) {
-      logger.error(`assignRider: socket notify failed for order ${orderId}:`, socketErr);
-    }
-    try {
-      adminSocket.notifyOrderStatusUpdate(updatedOrder);
-    } catch (adminErr) {
-      logger.error(`assignRider: admin socket notify failed for order ${orderId}:`, adminErr);
-    }
-
-    return res.status(200).json({ success: true, message: "Driver assigned", data: { ...updatedOrder, package: pkg } });
+    return res.status(200).json({ success: true, message: "Driver assigned", data: { ...result.order, package: result.pkg } });
   } catch (err) {
     return internalError(res, err, "orders.assignRider");
   }

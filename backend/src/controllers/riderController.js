@@ -326,7 +326,10 @@ async function setStatus(req, res) {
       select: { id: true, city_id: true, a_status: true, status: true, rlats: true, rlongs: true, rloc_updated_at: true },
     });
 
-    if (updated.a_status === 1) outsideDriver.notifyIfAwaited(updated);
+    if (updated.a_status === 1) {
+      outsideDriver.notifyIfAwaited(updated);
+      trialDriverAutoAssign.scheduleOnOnline(updated);
+    }
 
     adminSocket.notifyDriverStatusUpdate(updated.id, updated.city_id, {
       a_status: updated.a_status,
@@ -360,6 +363,7 @@ async function setStatus(req, res) {
 
 const dutyTrackingService = require("../services/dutyTrackingService");
 const outsideDriver = require("../services/outsideDriverService");
+const trialDriverAutoAssign = require("../services/trialDriverAutoAssign");
 
 /** REST fallback for clients that can't hold a live socket for location updates. */
 async function updateLocation(req, res) {

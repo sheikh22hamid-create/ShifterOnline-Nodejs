@@ -99,7 +99,7 @@ function TrialDriverOffer({ c, onChanged }) {
       </div>
       {!online && (
         <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
-          Call the driver. They must install the Shifter app and go online with this mobile number; this page updates by itself.
+          Call the driver. They must install the Shifter app and go online with this mobile number. The order is assigned to them automatically the moment they go online; this page updates by itself.
         </p>
       )}
       {confirming === 'assign' && (
