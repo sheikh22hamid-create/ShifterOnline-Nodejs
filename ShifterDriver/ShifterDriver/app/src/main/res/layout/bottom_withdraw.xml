@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/rounded_top">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="5dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="5sp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:padding="3dp"
+                android:singleLine="true"
+                android:text="@string/withdraw_plain"
+                android:textColor="@color/black"
+                android:textSize="18dp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="10dp" />
+
+            <!-- Everything below scrolls so a focused EditText (amount, UPI
+                 id, bank fields) is never left sitting behind the soft
+                 keyboard - the sheet is expanded to full height (see
+                 bottomWithdraw()'s BottomSheetBehavior setup) and
+                 SOFT_INPUT_ADJUST_RESIZE shrinks this ScrollView's available
+                 space, so Android's own focused-view-into-view scrolling
+                 takes over from there. -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fillViewport="false">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:padding="1dp"
+                android:text="@string/enter_your_amount"
+
+                />
+
+            <EditText
+                android:id="@+id/ed_amount"
+                android:background="@drawable/edittext_box"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="5dp"
+                android:layout_marginEnd="10dp"
+                android:inputType="number"
+                android:padding="10dp" />
+
+            <TextView
+                android:id="@+id/txt_max_withdrawable"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="4dp"
+                android:padding="1dp"
+                android:textSize="12sp"
+                android:textColor="@color/gray1" />
+
+            <!-- Required minimum balance, highlighted; hidden when the admin set none. -->
+            <TextView
+                android:id="@+id/txt_min_balance_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_min_balance_card"
+                android:padding="10dp"
+                android:textColor="#B45309"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="16dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:padding="1dp"
+                android:text="Receive via"
+                android:textStyle="bold" />
+
+            <RadioGroup
+                android:id="@+id/radio_payout_method"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/rb_payout_upi"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="UPI" />
+
+                <RadioButton
+                    android:id="@+id/rb_payout_bank"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="24dp"
+                    android:text="Bank" />
+            </RadioGroup>
+
+            <!-- Saved-detail summary + "use a different one" toggle -->
+            <TextView
+                android:id="@+id/txt_saved_payout_detail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="6dp"
+                android:padding="1dp"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/txt_change_payout_detail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_marginTop="2dp"
+                android:padding="1dp"
+                android:text="Use a different UPI ID / account"
+                android:textColor="@color/applight"
+                android:textSize="12sp" />
+
+            <!-- Fresh-detail entry, shown only when there's no saved detail
+                 yet or the driver taps "Use a different..." above. -->
+            <LinearLayout
+                android:id="@+id/layout_new_upi"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <EditText
+                    android:id="@+id/ed_upi_id"
+                    android:background="@drawable/edittext_box"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginEnd="10dp"
+                    android:hint="yourname@upi"
+                    android:padding="10dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/layout_new_bank"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <EditText
+                    android:id="@+id/ed_account_name"
+                    android:background="@drawable/edittext_box"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginEnd="10dp"
+                    android:hint="Account holder name"
+                    android:padding="10dp" />
+
+                <EditText
+                    android:id="@+id/ed_account_number"
+                    android:background="@drawable/edittext_box"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginEnd="10dp"
+                    android:hint="Account number"
+                    android:inputType="number"
+                    android:padding="10dp" />
+
+                <EditText
+                    android:id="@+id/ed_ifsc_code"
+                    android:background="@drawable/edittext_box"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginEnd="10dp"
+                    android:hint="IFSC code"
+                    android:padding="10dp" />
+
+                <EditText
+                    android:id="@+id/ed_bank_name"
+                    android:background="@drawable/edittext_box"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginEnd="10dp"
+                    android:hint="Bank name"
+                    android:padding="10dp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="20dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:gravity="center"
+                android:padding="5dp">
+
+                <TextView
+                    android:id="@+id/txt_reject"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:background="@drawable/rounded_logout"
+                    android:text="@string/cancel"
+                    android:textStyle="bold"
+                    android:textColor="@color/applight"
+                    android:textSize="15dp" />
+
+                <TextView
+                    android:id="@+id/btn_submit"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/rounded_button"
+                    android:gravity="center"
+                    android:text="@string/proceed"
+                    android:textColor="@color/white"
+                    android:theme="@style/AppTheme.Button" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="50dp" />
+            </LinearLayout>
+            </ScrollView>
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>
+
+
+
+
+
+
+

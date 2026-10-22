@@ -205,8 +205,54 @@ public class WalletActivity extends LocaleAwareActivity implements GetResult.MyL
         datePickerDialog.show();
     }
 
+    // Same rules the server applies to the submitted payout details (customerWalletController.withdrawWallet).
+    private static final java.util.regex.Pattern UPI_PATTERN = java.util.regex.Pattern.compile("^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$");
+    private static final java.util.regex.Pattern IFSC_PATTERN = java.util.regex.Pattern.compile("^[A-Z]{4}0[A-Z0-9]{6}$");
+    private static final java.util.regex.Pattern ACCOUNT_NUMBER_PATTERN = java.util.regex.Pattern.compile("^\\d{9,18}$");
+    private static final java.util.regex.Pattern ACCOUNT_NAME_PATTERN = java.util.regex.Pattern.compile("^\\p{L}[\\p{L} .'-]{1,99}$");
+
+    // ---------------- MINIMUM BALANCE POPUP ----------------
+    // A withdrawal was refused (or is not possible) because the driver must keep a minimum balance in the wallet.
+    // The required amount is shown big and highlighted so it is understood at a glance.
+    private void showMinBalanceDialog(double minRequired, double currentBalance, String message) {
+        String currency = sessionManager.getStringData(SessionManager.currency);
+        if (TextUtils.isEmpty(currency)) currency = "₹";
+        final android.app.Dialog popup = new android.app.Dialog(this);
+        popup.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        View popupView = getLayoutInflater().inflate(R.layout.dialog_min_balance, null);
+        popup.setContentView(popupView);
+        ((TextView) popupView.findViewById(R.id.txt_min_balance_amount)).setText(currency + formatAmount(minRequired));
+        ((TextView) popupView.findViewById(R.id.txt_min_balance_current)).setText("Your current balance: " + currency + formatAmount(currentBalance));
+        TextView txtMessage = popupView.findViewById(R.id.txt_min_balance_message);
+        if (TextUtils.isEmpty(message)) {
+            txtMessage.setVisibility(View.GONE);
+        } else {
+            txtMessage.setText(message);
+        }
+        popupView.findViewById(R.id.btn_min_balance_ok).setOnClickListener(v -> popup.dismiss());
+        if (popup.getWindow() != null) {
+            popup.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            popup.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+        popup.show();
+    }
+
     // ---------------- WITHDRAW BOTTOM SHEET ----------------
     private void bottomWithdraw() {
+
+        // The button stays tappable (dimmed) when nothing can be withdrawn: if that is because of the minimum
+        // balance, say so with the amount highlighted rather than doing nothing.
+        if (latestResponse != null && !latestResponse.getCanWithdraw()) {
+            double minRequired = latestResponse.getMinRequiredBalance() != null ? latestResponse.getMinRequiredBalance() : 0;
+            double balance = parseDoubleSafe(latestResponse.getWalletBalance());
+            if (minRequired > 0 && balance > 0) {
+                showMinBalanceDialog(minRequired, balance,
+                        "You can withdraw only the balance above this amount. Earn more or wait for your pending request to be processed.");
+            } else {
+                Toast.makeText(this, "Nothing to withdraw yet.", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
 
         BottomSheetDialog dialog = new BottomSheetDialog(this);
         View view = getLayoutInflater().inflate(R.layout.bottom_withdraw, null);
@@ -260,46 +306,48 @@ public class WalletActivity extends LocaleAwareActivity implements GetResult.MyL
             txtMaxWithdrawable.setText("You can withdraw up to " + currency + availableToWithdraw + ". The rest stays in your ledger.");
         }
 
+        // Highlight the minimum balance that has to stay in the wallet (admin-set for this vehicle type).
+        TextView txtMinBalanceNote = view.findViewById(R.id.txt_min_balance_note);
+        double minRequired = latestResponse != null && latestResponse.getMinRequiredBalance() != null ? latestResponse.getMinRequiredBalance() : 0;
+        if (minRequired > 0) {
+            txtMinBalanceNote.setVisibility(View.VISIBLE);
+            txtMinBalanceNote.setText("Minimum required balance: " + currency + formatAmount(minRequired)
+                    + ". This amount must always stay in your wallet.");
+        }
+
+        // The saved UPI id / bank details are pre-filled (and stay editable); whatever the driver submits is what
+        // gets validated and saved, so a correction here also updates the profile.
         WalletHistoryResponse.PayoutMethods payoutMethods = latestResponse != null ? latestResponse.getPayoutMethods() : null;
         String savedUpiId = payoutMethods != null ? payoutMethods.getUpiId() : null;
         WalletHistoryResponse.BankAccount savedBank = payoutMethods != null ? payoutMethods.getBankAccount() : null;
 
-        // Default to whichever method the driver already has saved; UPI wins if both exist.
         boolean hasSavedUpi = !TextUtils.isEmpty(savedUpiId);
         boolean hasSavedBank = savedBank != null;
+        if (hasSavedUpi) edUpiId.setText(savedUpiId);
+        if (hasSavedBank) {
+            if (savedBank.getAccountName() != null) edAccountName.setText(savedBank.getAccountName());
+            // The full number is never sent to the app; show the masked one and keep it when the field is left blank.
+            if (savedBank.getAccountNumberMasked() != null) {
+                edAccountNumber.setHint("Saved " + savedBank.getAccountNumberMasked() + " - leave blank to keep");
+            }
+            if (savedBank.getIfscCode() != null) edIfscCode.setText(savedBank.getIfscCode());
+            if (savedBank.getBankName() != null) edBankName.setText(savedBank.getBankName());
+        }
+
+        // Default to whichever method the driver already has saved; UPI wins if both exist.
         rbUpi.setChecked(hasSavedUpi || !hasSavedBank);
         rbBank.setChecked(!hasSavedUpi && hasSavedBank);
 
-        final boolean[] usingFreshDetail = {false};
+        // The old "saved detail / use a different one" toggle is replaced by the always-visible editable fields.
+        txtSavedDetail.setVisibility(View.GONE);
+        txtChangeDetail.setVisibility(View.GONE);
         Runnable renderSelectedMethod = () -> {
             boolean upiSelected = rbUpi.isChecked();
-            boolean hasSaved = upiSelected ? hasSavedUpi : hasSavedBank;
-            if (hasSaved && !usingFreshDetail[0]) {
-                txtSavedDetail.setVisibility(View.VISIBLE);
-                txtSavedDetail.setText(upiSelected
-                        ? "Saved UPI: " + savedUpiId
-                        : "Saved bank: " + (savedBank.getBankName() != null ? savedBank.getBankName() : "") + " " + (savedBank.getAccountNumberMasked() != null ? savedBank.getAccountNumberMasked() : ""));
-                txtChangeDetail.setVisibility(View.VISIBLE);
-                txtChangeDetail.setText(upiSelected ? "Use a different UPI ID" : "Use a different bank account");
-                layoutNewUpi.setVisibility(View.GONE);
-                layoutNewBank.setVisibility(View.GONE);
-            } else {
-                txtSavedDetail.setVisibility(View.GONE);
-                txtChangeDetail.setVisibility(View.GONE);
-                layoutNewUpi.setVisibility(upiSelected ? View.VISIBLE : View.GONE);
-                layoutNewBank.setVisibility(upiSelected ? View.GONE : View.VISIBLE);
-            }
+            layoutNewUpi.setVisibility(upiSelected ? View.VISIBLE : View.GONE);
+            layoutNewBank.setVisibility(upiSelected ? View.GONE : View.VISIBLE);
         };
         renderSelectedMethod.run();
-
-        radioPayoutMethod.setOnCheckedChangeListener((group, checkedId) -> {
-            usingFreshDetail[0] = false;
-            renderSelectedMethod.run();
-        });
-        txtChangeDetail.setOnClickListener(v -> {
-            usingFreshDetail[0] = true;
-            renderSelectedMethod.run();
-        });
+        radioPayoutMethod.setOnCheckedChangeListener((group, checkedId) -> renderSelectedMethod.run());
 
         txtReject.setOnClickListener(v -> dialog.dismiss());
 
@@ -311,26 +359,41 @@ public class WalletActivity extends LocaleAwareActivity implements GetResult.MyL
 
             boolean upiSelected = rbUpi.isChecked();
             String payoutMethod = upiSelected ? "upi" : "bank";
-            boolean needsFreshDetail = usingFreshDetail[0] || (upiSelected ? !hasSavedUpi : !hasSavedBank);
 
             String upiIdToSend = null, accountNameToSend = null, accountNumberToSend = null, ifscCodeToSend = null, bankNameToSend = null;
-            if (needsFreshDetail) {
-                if (upiSelected) {
-                    if (TextUtils.isEmpty(edUpiId.getText())) {
-                        edUpiId.setError("Enter UPI ID");
-                        return;
-                    }
-                    upiIdToSend = edUpiId.getText().toString().trim();
-                } else {
-                    if (TextUtils.isEmpty(edAccountName.getText()) || TextUtils.isEmpty(edAccountNumber.getText()) || TextUtils.isEmpty(edBankName.getText())) {
-                        Toast.makeText(this, "Enter account name, account number and bank name", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    accountNameToSend = edAccountName.getText().toString().trim();
-                    accountNumberToSend = edAccountNumber.getText().toString().trim();
-                    ifscCodeToSend = edIfscCode.getText().toString().trim();
-                    bankNameToSend = edBankName.getText().toString().trim();
+            if (upiSelected) {
+                String upi = edUpiId.getText().toString().trim();
+                if (!UPI_PATTERN.matcher(upi).matches()) {
+                    edUpiId.setError("Enter a valid UPI ID, e.g. name@bank");
+                    return;
                 }
+                upiIdToSend = upi;
+            } else {
+                String name = edAccountName.getText().toString().trim();
+                String number = edAccountNumber.getText().toString().replaceAll("\\s+", "");
+                String ifsc = edIfscCode.getText().toString().trim().toUpperCase(java.util.Locale.ROOT);
+                String bank = edBankName.getText().toString().trim();
+                if (!ACCOUNT_NAME_PATTERN.matcher(name).matches()) {
+                    edAccountName.setError("Enter the account holder name");
+                    return;
+                }
+                boolean keepSavedNumber = number.isEmpty() && hasSavedBank;
+                if (!keepSavedNumber && !ACCOUNT_NUMBER_PATTERN.matcher(number).matches()) {
+                    edAccountNumber.setError("Enter a valid account number (9 to 18 digits)");
+                    return;
+                }
+                if (!IFSC_PATTERN.matcher(ifsc).matches()) {
+                    edIfscCode.setError("Enter a valid IFSC, e.g. SBIN0001234");
+                    return;
+                }
+                if (TextUtils.isEmpty(bank)) {
+                    edBankName.setError("Enter the bank name");
+                    return;
+                }
+                accountNameToSend = name;
+                accountNumberToSend = number;
+                ifscCodeToSend = ifsc;
+                bankNameToSend = bank;
             }
 
             dialog.dismiss();
@@ -583,7 +646,15 @@ public class WalletActivity extends LocaleAwareActivity implements GetResult.MyL
 
             } else if ("23".equals(callNo)) { // Withdraw request submitted (pending admin approval)
                 String msg = getMsgFromJson(result);
-                if (!TextUtils.isEmpty(msg)) {
+                boolean minBalanceRefusal = result != null && result.has("min_balance_violation") && !result.get("min_balance_violation").isJsonNull()
+                        && result.get("min_balance_violation").getAsBoolean();
+                if (minBalanceRefusal) {
+                    double minRequired = result.has("min_required_balance") && !result.get("min_required_balance").isJsonNull()
+                            ? result.get("min_required_balance").getAsDouble() : 0;
+                    double current = result.has("current_balance") && !result.get("current_balance").isJsonNull()
+                            ? result.get("current_balance").getAsDouble() : 0;
+                    showMinBalanceDialog(minRequired, current, msg);
+                } else if (!TextUtils.isEmpty(msg)) {
                     Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
                 }
                 getEarning();
@@ -645,6 +716,15 @@ public class WalletActivity extends LocaleAwareActivity implements GetResult.MyL
 
                     binding.txtAmount.setText(currency + balance);
 
+                    // Minimum Required Balance for this driver's vehicle type (admin Settings), shown with the balance.
+                    Double minRequiredBalance = response.getMinRequiredBalance();
+                    if (minRequiredBalance != null && minRequiredBalance > 0) {
+                        binding.txtMinBalance.setVisibility(View.VISIBLE);
+                        binding.txtMinBalance.setText("Minimum Required Balance: " + currency + formatAmount(minRequiredBalance));
+                    } else {
+                        binding.txtMinBalance.setVisibility(View.GONE);
+                    }
+
                     // Keep the cached balance fresh so the Home "negative wallet" banner
                     // updates as soon as the driver returns from this screen.
                     if (riderData != null) {
@@ -696,7 +776,7 @@ public class WalletActivity extends LocaleAwareActivity implements GetResult.MyL
                         binding.lvlWithdraw.setAlpha(1f);
                     } else if (balanceNum >= 0) {
                         binding.lvlWithdraw.setVisibility(View.VISIBLE);
-                        binding.lvlWithdraw.setEnabled(false);
+                        binding.lvlWithdraw.setEnabled(true); // dimmed, but bottomWithdraw() explains why nothing can be withdrawn
                         binding.lvlWithdraw.setAlpha(0.5f);
                     } else {
                         binding.lvlWithdraw.setVisibility(View.GONE);
