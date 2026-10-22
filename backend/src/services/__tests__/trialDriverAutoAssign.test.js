@@ -2,6 +2,7 @@ jest.mock("../../config/db", () => ({
   guarantee_outside_candidate: { findFirst: jest.fn() },
   booking_guarantee_case: { findUnique: jest.fn() },
   pkg_order: { findUnique: jest.fn() },
+  tbl_rider: { findUnique: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
@@ -20,6 +21,7 @@ describe("trialDriverAutoAssign.autoAssignIfOffered", () => {
     prisma.guarantee_outside_candidate.findFirst.mockResolvedValue({ case_id: 11, order_id: 877, rider_id: 55, name: "Sultan" });
     prisma.booking_guarantee_case.findUnique.mockResolvedValue({ id: 11, status: "open" });
     prisma.pkg_order.findUnique.mockResolvedValue(ORDER);
+    prisma.tbl_rider.findUnique.mockResolvedValue({ city_id: 4 });
   });
 
   it("does nothing for a rider that is not the live Trial Driver candidate", async () => {
@@ -35,6 +37,13 @@ describe("trialDriverAutoAssign.autoAssignIfOffered", () => {
     expect(args).toMatchObject({ order: ORDER, riderId: 55, closeAdminId: null, closeEvent: "trial_driver_auto_assigned" });
     expect(args.actor).toEqual({ id: 0, username: "system" });
     expect(adminSocket.notifyDispatchAlert).toHaveBeenCalledWith(877, 4, expect.stringContaining("assigned automatically"), expect.objectContaining({ kind: "trial_driver_auto_assigned" }));
+  });
+
+  it("does not assign across cities and tells the executive instead", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ city_id: 9 });
+    expect((await auto.autoAssignIfOffered(55)).reason).toBe("city_mismatch");
+    expect(assignRiderToOrder).not.toHaveBeenCalled();
+    expect(adminSocket.notifyDispatchAlert).toHaveBeenCalledWith(877, 4, expect.stringContaining("not in this order's city"), expect.any(Object));
   });
 
   it("skips a case that is no longer open", async () => {

@@ -22,11 +22,20 @@ async function autoAssignIfOffered(riderId) {
     const live = await prisma.guarantee_outside_candidate.findFirst({ where: { rider_id: Number(riderId), active: 1 } });
     if (!live) return { assigned: false, reason: "not_offered" };
 
-    const [caseRow, order] = await Promise.all([
+    const [caseRow, order, rider] = await Promise.all([
       prisma.booking_guarantee_case.findUnique({ where: { id: live.case_id } }),
       prisma.pkg_order.findUnique({ where: { id: live.order_id } }),
+      prisma.tbl_rider.findUnique({ where: { id: Number(riderId) }, select: { city_id: true } }),
     ]);
     if (!caseRow || caseRow.status !== "open" || !order) return { assigned: false, reason: "case_closed" };
+    // Defence in depth: a Trial Driver is registered in the order's own city, so a mismatch means something is off
+    // (e.g. the rider was moved) and a person should look instead of the system assigning across cities.
+    if (!rider || Number(rider.city_id) !== Number(order.city_id)) {
+      adminSocket.notifyDispatchAlert(order.id, order.city_id, `Trial Driver is online but is not in this order's city, so order #${order.id} was not assigned automatically. Check and assign manually.`, {
+        kind: "trial_driver_auto_assign_failed", rider_id: Number(riderId),
+      });
+      return { assigned: false, reason: "city_mismatch" };
+    }
 
     const result = await assignRiderToOrder({
       order,
