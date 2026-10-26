@@ -2402,3 +2402,20 @@ model customise_event {
 
   @@index([order_id, type])
 }
+
+/// Customise Order: one row per billed activity segment of a ride (spec 2026-10-26 section 11). Written once at completion.
+model customise_order_timer {
+  id              Int       @id @default(autoincrement())
+  order_id        Int
+  segment         String    @db.VarChar(20)
+  selected_min    Int
+  started_at      DateTime? @db.DateTime(0)
+  ended_at        DateTime? @db.DateTime(0)
+  elapsed_seconds Int       @default(0)
+  billed_seconds  Int       @default(0)
+  rate_per_min    Decimal   @db.Decimal(10, 2)
+  charge          Decimal   @db.Decimal(10, 2)
+  computed_at     DateTime  @default(now()) @db.DateTime(0)
+
+  @@unique([order_id, segment])
+}

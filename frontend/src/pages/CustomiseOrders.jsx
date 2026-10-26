@@ -27,6 +27,8 @@ function statusTone(status) {
   return 'neutral'
 }
 
+const SEGMENT_LABELS = { pickup_wait: 'Pickup waiting', pickup_load: 'Pickup loading', drop: 'Drop waiting and unloading' }
+
 const offerTone = (status) => (status === 'accepted' ? 'success' : status === 'active' ? 'info' : 'neutral')
 
 function Row({ label, children }) {
@@ -110,6 +112,26 @@ function DetailDrawer({ order, onClose }) {
                 </span>
               </div>
             ))}
+          </Section>
+
+          <Section title="Timers and extra charges">
+            {data.timers.length === 0 && <div className="py-1 text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>Recorded when the trip is completed.</div>}
+            {data.timers.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-[12.5px]" style={{ borderTop: '1px solid var(--border)' }}>
+                <span style={{ color: 'var(--ink)' }}>{SEGMENT_LABELS[t.segment] || t.segment}</span>
+                <span className="flex items-center gap-3" style={{ color: 'var(--ink-muted)' }}>
+                  <span>selected {t.selected_min} min</span>
+                  <span>actual {Math.round((t.elapsed_seconds / 60) * 10) / 10} min</span>
+                  <b className="font-mono-data" style={{ color: Number(t.charge) > 0 ? 'var(--danger)' : 'var(--ink)' }}>{formatCurrency(t.charge)}</b>
+                </span>
+              </div>
+            ))}
+            {data.timers.length > 0 && (
+              <div className="flex justify-between pt-1.5 text-[12.5px]" style={{ borderTop: '1px solid var(--border)' }}>
+                <span style={{ color: 'var(--ink-muted)' }}>Extra charges in total</span>
+                <b className="font-mono-data">{formatCurrency(data.timers.reduce((sum, t) => sum + Number(t.charge || 0), 0))}</b>
+              </div>
+            )}
           </Section>
 
           <Section title="History">

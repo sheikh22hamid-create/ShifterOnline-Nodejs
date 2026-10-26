@@ -3,6 +3,7 @@ jest.mock("../../config/db", () => ({
   customise_order_stop: { findMany: jest.fn() },
   customise_offer: { findMany: jest.fn() },
   customise_event: { findMany: jest.fn() },
+  customise_order_timer: { findMany: jest.fn() },
   tbl_user: { findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn() },
 }));
@@ -90,5 +91,20 @@ describe("admin endpoints", () => {
     const res = makeRes();
     await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
     expect(res.status).toHaveBeenCalledWith(404);
+  });
+});
+
+describe("admin detail timers", () => {
+  it("returns the recorded timer segments with the extra charges", async () => {
+    prisma.customise_order.findUnique.mockResolvedValue({ id: 5, city_id: 3 });
+    prisma.customise_order_stop.findMany.mockResolvedValue([]);
+    prisma.customise_offer.findMany.mockResolvedValue([]);
+    prisma.customise_event.findMany.mockResolvedValue([]);
+    prisma.customise_order_timer.findMany.mockResolvedValue([{ segment: "pickup_load", selected_min: 30, elapsed_seconds: 2400, billed_seconds: 600, charge: "20.00" }]);
+    const res = makeRes();
+    await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
+    const body = res.json.mock.calls[0][0];
+    expect(body.data.timers).toEqual([expect.objectContaining({ segment: "pickup_load", charge: "20.00" })]);
+    expect(prisma.customise_order_timer.findMany).toHaveBeenCalledWith({ where: { order_id: 5 }, orderBy: { id: "asc" } });
   });
 });

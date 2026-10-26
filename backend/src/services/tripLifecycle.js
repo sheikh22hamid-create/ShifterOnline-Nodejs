@@ -27,6 +27,7 @@ const receiverPayService = require("./receiverPayService");
 const receiverPaySettings = require("./receiverPaySettings");
 const receiverPayCalc = require("./receiverPayCalc");
 const freeBookingService = require("./freeBookingService");
+const customiseTimers = require("./customiseTimerService");
 const orderStage = require("./orderStageService");
 const tierPenalty = require("./tierPenaltyService");
 const driverOrderEvents = require("./driverOrderEventService");
@@ -623,9 +624,12 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
         drop_wait_end: now, drop_wait_seconds: dropWaitSeconds, total_wait_seconds: totalWaitSeconds,
       } });
     }
+    // A Customise Order bills each activity against the minutes the customer selected (null = not one, or its order
+    // could not be read: the normal pooled free-minutes formula below applies).
+    const customiseBilling = await customiseTimers.billFor(order, waitTimer, dropWaitSeconds, now);
     const chargeableWaitSeconds = Math.max(0, totalWaitSeconds - freeWaitSeconds);
     const waitingChargeRate = Number(order.wating_charge) || 0;
-    const waitingCharge = round2((chargeableWaitSeconds / 60) * waitingChargeRate);
+    const waitingCharge = customiseBilling ? customiseBilling.total : round2((chargeableWaitSeconds / 60) * waitingChargeRate);
 
     const finalTotal = round2(Number(order.total_dcharge) + waitingCharge);
 
@@ -663,6 +667,8 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
         commission: effectiveCommissionPercent,
       },
     });
+
+    if (customiseBilling) await customiseTimers.record(order.customise_order_id, customiseBilling.segments);
 
     if (waitTimer) {
       await prisma.pkg_order_wait_timer.update({

@@ -1,3 +1,4 @@
+jest.mock("../customiseTimerService", () => ({ billFor: jest.fn().mockResolvedValue(null), record: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../referralPointsRefund", () => ({
   ...jest.requireActual("../referralPointsRefund"),
   reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}),
@@ -1452,6 +1453,33 @@ describe("tripLifecycle.updateStatus('complete') — commission deduction", () =
     // findUnique() never returns it — updateStatus fetches it separately
     // via $queryRaw (see tripLifecycle.js). Default: no advance collected.
     prisma.$queryRaw.mockResolvedValue([{ advance_payment: 0 }]);
+  });
+
+  describe("Customise Order rides bill the customer's selected minutes, not the rate card's free minutes", () => {
+    const customiseTimers = require("../customiseTimerService");
+    const ride = { id: 297, rid: 1, city_id: 1, d_charge: 300, total_dcharge: 300, commission: 0, trans_id: "cash_payment", free_waiting_time: "60", wating_charge: "2", customise_order_id: 5 };
+
+    it("adds the per-segment extra charge to the agreed fare and records the segments once", async () => {
+      const segments = [{ segment: "pickup_load", charge: 12.5 }];
+      customiseTimers.billFor.mockResolvedValueOnce({ total: 12.5, segments });
+      prisma.pkg_order.findUnique.mockResolvedValue(ride);
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(prisma.pkg_order.update.mock.calls[0][0].data).toMatchObject({ total_dcharge: 312.5, driver_earning: 312.5 });
+      expect(customiseTimers.record).toHaveBeenCalledWith(5, segments);
+    });
+
+    it("keeps the normal formula when the Customise order cannot be billed (billFor returns null)", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue(ride);
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(prisma.pkg_order.update.mock.calls[0][0].data.total_dcharge).toBe(300);
+      expect(customiseTimers.record).not.toHaveBeenCalled();
+    });
+
+    it("never asks the Customise billing for a normal ride's charges to be recorded", async () => {
+      prisma.pkg_order.findUnique.mockResolvedValue({ ...ride, customise_order_id: null });
+      await tripLifecycle.updateStatus(297, 1, "complete");
+      expect(customiseTimers.record).not.toHaveBeenCalled();
+    });
   });
 
   it("debits the driver's wallet for a cash order with commission > 0, reading the payment method from trans_id", async () => {
