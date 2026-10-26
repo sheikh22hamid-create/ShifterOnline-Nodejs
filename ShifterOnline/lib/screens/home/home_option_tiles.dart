@@ -4,6 +4,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:provider/provider.dart';
 import '../../services/free_booking_api_service.dart';
 import '../../utils/colors.dart';
+import '../customise/my_customise_orders.dart';
 
 /// Home page option tile with the same look and size as the existing Next Day / Schedule tiles
 /// (rounded white card, 38px gradient icon, bold title, small grey subtitle).
@@ -451,7 +452,24 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
   }
 }
 
-/// "Custom Order (with bargaining)" tile: not live yet, so it only opens the Coming Soon message.
+/// "Customise Order (with bargaining)" tile: opens the customer's negotiated orders and the form to post a new one.
+class CustomiseOrderTile extends StatelessWidget {
+  const CustomiseOrderTile({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return HomeOptionTile(
+      icon: Icons.handshake_rounded,
+      gradient: const [Color(0xffB34EFF), Color(0xff7B2FF7)],
+      borderColor: const Color(0xff7B2FF7).withOpacity(0.3),
+      title: 'Customise Order'.tr,
+      subtitle: '(name your price)'.tr,
+      onTap: () => Get.to(() => const MyCustomiseOrders()),
+    );
+  }
+}
+
+/// Kept for reference: the earlier "Coming Soon" version of the Customise Order tile (no longer used on Home).
 class CustomOrderComingSoonTile extends StatelessWidget {
   const CustomOrderComingSoonTile({super.key});
 
