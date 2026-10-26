@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const settings = require("../services/customiseOrderSettings");
 const service = require("../services/customiseOrderService");
+const cancelPolicy = require("../services/customiseCancelPolicy");
 
 // HTTP layer for Customise Order. Customer and driver endpoints use the legacy custom-order response shape
 // ({ Result, msg, ... }, HTTP 200); admin endpoints use the admin panel's { success, data }. The kill switch
@@ -72,18 +73,19 @@ async function adminDetail(req, res) {
     if (!order || (req.scopedCityId && order.city_id !== req.scopedCityId)) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const [stops, offers, events, timers] = await Promise.all([
+    const [stops, offers, events, timers, fees] = await Promise.all([
       prisma.customise_order_stop.findMany({ where: { order_id: id }, orderBy: { seq: "asc" } }),
       prisma.customise_offer.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
       prisma.customise_event.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
       prisma.customise_order_timer.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
+      prisma.customise_cancel_fee.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
     ]);
     const riderIds = [...new Set(offers.map((o) => o.rider_id))];
     const riders = riderIds.length ? await prisma.tbl_rider.findMany({ where: { id: { in: riderIds } }, select: { id: true, first_name: true, vehicle: true } }) : [];
     const riderById = Object.fromEntries(riders.map((r) => [r.id, r]));
     return res.status(200).json({
       success: true,
-      data: { order, stops, timers, offers: offers.map((o) => ({ ...o, driver_name: riderById[o.rider_id]?.first_name || null, vehicle: riderById[o.rider_id]?.vehicle || null })), events },
+      data: { order, stops, timers, fees, offers: offers.map((o) => ({ ...o, driver_name: riderById[o.rider_id]?.first_name || null, vehicle: riderById[o.rider_id]?.vehicle || null })), events },
     });
   } catch (err) {
     logger.error("customiseOrderController.adminDetail failed:", err);
@@ -91,7 +93,41 @@ async function adminDetail(req, res) {
   }
 }
 
+// --- admin: cancellation policy (Normal / Special) per city, driver and customer separately ----------------------------
+const policyView = (p) => ({ mode: p.mode, fixed: p.fixed, percent: p.percent, admin_share: p.adminSharePercent });
+const policyInput = (b = {}) => ({ mode: b.mode, fixed: Number(b.fixed ?? 0), percent: Number(b.percent ?? 0), adminSharePercent: Number(b.admin_share ?? 0) });
+
+async function getSettings(req, res) {
+  try {
+    const cityId = req.scopedCityId || null;
+    const [driver, customer] = await Promise.all([cancelPolicy.getPolicy("driver", cityId), cancelPolicy.getPolicy("customer", cityId)]);
+    return res.status(200).json({ success: true, data: { city_id: cityId, driver: policyView(driver), customer: policyView(customer) } });
+  } catch (err) {
+    logger.error("customiseOrderController.getSettings failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
+// A city admin is bound to their own city by scopeFilter (req.scopedCityId); a super admin with no city sets the global default.
+async function saveSettings(req, res) {
+  try {
+    const cityId = req.scopedCityId || null;
+    const driver = policyInput(req.body?.driver);
+    const customer = policyInput(req.body?.customer);
+    cancelPolicy.assertValid(driver); // both sides are checked before either is saved
+    cancelPolicy.assertValid(customer);
+    await cancelPolicy.savePolicy("driver", cityId, driver);
+    await cancelPolicy.savePolicy("customer", cityId, customer);
+    return res.status(200).json({ success: true, message: "Cancellation policy saved" });
+  } catch (err) {
+    if (/must be|must/.test(err.message)) return res.status(400).json({ success: false, message: err.message });
+    logger.error("customiseOrderController.saveSettings failed:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+}
+
 module.exports = {
+  getSettings, saveSettings,
   create, mine, detail, offers, acceptOffer, rejectOffer, cancel,
   driverList, driverCount, driverAccept, driverCounter, driverDismiss,
   adminList, adminDetail,

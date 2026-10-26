@@ -89,3 +89,11 @@ describe("savePolicy", () => {
     await expect(policy.savePolicy("admin", 3, { mode: "normal", fixed: 0, percent: 0, adminSharePercent: 0 })).rejects.toThrow();
   });
 });
+
+describe("assertValid", () => {
+  it("accepts a good policy and throws the same reasons savePolicy would", () => {
+    expect(() => policy.assertValid({ mode: "special", fixed: 1, percent: 2, adminSharePercent: 3 })).not.toThrow();
+    expect(() => policy.assertValid({ mode: "special", fixed: 1, percent: 200, adminSharePercent: 3 })).toThrow("percentage");
+    expect(() => policy.assertValid(undefined)).toThrow();
+  });
+});

@@ -45,13 +45,17 @@ async function getPolicy(side, cityId) {
   }
 }
 
-async function savePolicy(side, cityId, policy) {
-  if (!SIDES.includes(side)) throw new Error("side must be driver or customer");
+function assertValid(policy) {
   if (!MODES.includes(policy?.mode)) throw new Error("mode must be normal or special");
   const { fixed, percent, adminSharePercent } = policy;
   if (!(Number(fixed) >= 0)) throw new Error("fixed amount must be zero or more");
   if (!(Number(percent) >= 0 && Number(percent) <= 100)) throw new Error("percentage must be between 0 and 100");
   if (!(Number(adminSharePercent) >= 0 && Number(adminSharePercent) <= 100)) throw new Error("admin share must be between 0 and 100");
+}
+
+async function savePolicy(side, cityId, policy) {
+  if (!SIDES.includes(side)) throw new Error("side must be driver or customer");
+  assertValid(policy);
   for (const field of Object.keys(FIELDS)) {
     const where = { setting_key: key(side, field, cityId) };
     const setting_value = String(policy[field]);
@@ -59,4 +63,4 @@ async function savePolicy(side, cityId, policy) {
   }
 }
 
-module.exports = { penaltyOf, getPolicy, savePolicy, NORMAL };
+module.exports = { penaltyOf, getPolicy, savePolicy, assertValid, NORMAL };
