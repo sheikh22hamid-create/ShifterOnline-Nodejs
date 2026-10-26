@@ -2193,6 +2193,24 @@ model guarantee_outside_candidate {
   @@index([order_id], map: "idx_goc_order")
 }
 
+model guarantee_candidate_distance {
+  candidate_id    Int      @id
+  case_id         Int
+  order_id        Int
+  rider_id        Int
+  driver_lat      Decimal  @db.Decimal(10, 7)
+  driver_lng      Decimal  @db.Decimal(10, 7)
+  location_source String   @db.VarChar(20)
+  location_at     DateTime? @db.DateTime(0)
+  location_approx Boolean  @default(false)
+  distance_m      Int
+  distance_unit   String   @db.VarChar(2)
+  distance_kind   String   @db.VarChar(10)
+  computed_at     DateTime @default(now()) @db.DateTime(0)
+
+  @@index([order_id], map: "idx_gcd_order")
+}
+
 model order_dispatch_stage {
   order_id   Int      @id
   stage      String   @db.VarChar(10)

@@ -160,6 +160,7 @@ router.get("/booking-guarantee/exec/my-cases", auth, authorize("executive"), gua
 router.get("/booking-guarantee/exec/cases/:orderId", auth, authorize(...RIDER_ROLES), guaranteeQueueController.caseDetail);
 router.post("/booking-guarantee/exec/cases/:orderId/actions", auth, authorize(...RIDER_ROLES), guaranteeQueueController.recordAction);
 router.post("/booking-guarantee/exec/cases/:orderId/candidate/reject", auth, authorize("executive"), guaranteeQueueController.rejectCandidate);
+router.post("/booking-guarantee/exec/cases/:orderId/candidate/refresh-distance", auth, authorize("executive"), guaranteeQueueController.refreshDistance);
 router.post("/booking-guarantee/exec/cases/:orderId/reassign", auth, authorize("superadmin", "admin"), guaranteeQueueController.reassign);
 router.get("/booking-guarantee/exec/queue", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.queue);
 router.get("/booking-guarantee/exec/workload", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.workload);

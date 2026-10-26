@@ -4,6 +4,7 @@ const adminSocket = require("../sockets/adminSocket");
 const queueSettings = require("./guaranteeQueueSettings");
 const candidates = require("./guaranteeOutsideCandidateService");
 const outsideDriver = require("./outsideDriverService");
+const candidateDistance = require("./guaranteeCandidateDistance");
 
 // Automatic outside-driver search for a held Booking Guarantee case (spec 2026-10-20): lookup -> register a Trial
 // driver -> store the candidate -> hand the case to a free executive. One worker per case, guarded by a DB lease.
@@ -131,7 +132,7 @@ async function runSearch(caseId, deps = {}) {
         return { outcome: "candidate" };
       }
       const order = await prisma.pkg_order.findUnique({
-        where: { id: caseRow.order_id }, select: { id: true, rid: true, order_status: true, o_status: true, category: true },
+        where: { id: caseRow.order_id }, select: { id: true, rid: true, order_status: true, o_status: true, category: true, plat: true, plong: true },
       });
       if (!order || order.rid !== 0 || order.order_status !== 0 || order.o_status !== "Pending") {
         await lease.release();
@@ -185,6 +186,10 @@ async function runSearch(caseId, deps = {}) {
               return { outcome: "stopped" };
             }
             await audit(caseRow, "outside_trial_created", { rider_id: trial.rider_id, kind: trial.kind });
+            // Driver-to-pickup distance, to the order's real pickup. Best-effort: never blocks offering the driver.
+            await candidateDistance.computeSafely({
+              candidate: stored.row, orderPickup: { lat: order.plat, lng: order.plong }, reported: driver.location,
+            });
             await lease.release();
             try {
               await queue().dispatchWaiting(caseRow.city_id);

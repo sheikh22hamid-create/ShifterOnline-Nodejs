@@ -88,6 +88,14 @@ function parseSseEvent(block) {
   try { return JSON.parse(line.slice(5).trim()); } catch { return null; }
 }
 
+function locationFromEvent(d) {
+  const loc = d.location;
+  const lat = Number(loc?.lat ?? loc?.latitude);
+  const lng = Number(loc?.lng ?? loc?.longitude);
+  if (!loc || !Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+  return { lat, lng, approx: Boolean(loc.approximate ?? loc.approx), at: loc.updatedAt || loc.at || null, source: "partner" };
+}
+
 function driverFromEvent(evt) {
   const d = evt?.data?.driver;
   if (!d || !d.contactNumber) return null;
@@ -96,6 +104,8 @@ function driverFromEvent(evt) {
     mobile: String(d.contactNumber).trim(),
     vehicle_number: String(d.vehicleNumber || "").trim(),
     vehicle_name: String(d.vehicleDisplayName || "").trim(),
+    // Where the partner shows the driver (absolute coordinates, so usable against any pickup); null when it shows none.
+    location: locationFromEvent(d),
     // The vehicle id the partner reports for this driver (assigned vehicle first, then the booked one); it can
     // differ from the one we asked for.
     vehicle_id: Number(d.vehicleId ?? evt.data?.fareDetails?.vehicleId) || null,

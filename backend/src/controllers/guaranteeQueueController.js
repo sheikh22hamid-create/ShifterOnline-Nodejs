@@ -126,6 +126,13 @@ async function rejectCandidate(req, res) {
   } catch (e) { return fail(res, e, "rejectCandidate"); }
 }
 
+async function refreshDistance(req, res) {
+  try {
+    const orderId = idParam(req.params.orderId, "orderId");
+    return res.json({ success: true, data: await queue.refreshCandidateDistance({ orderId, actor: actorOf(req) }) });
+  } catch (e) { return fail(res, e, "refreshDistance"); }
+}
+
 async function reassign(req, res) {
   try {
     const orderId = idParam(req.params.orderId, "orderId");
@@ -208,4 +215,4 @@ async function saveSettings(req, res) {
   } catch (e) { return fail(res, e, "saveSettings"); }
 }
 
-module.exports = { myCases, caseDetail, recordAction, rejectCandidate, reassign, queue: queueView, workload, report, saveProfile, getSettings, saveSettings };
+module.exports = { myCases, caseDetail, recordAction, rejectCandidate, refreshDistance, reassign, queue: queueView, workload, report, saveProfile, getSettings, saveSettings };

@@ -42,6 +42,12 @@ beforeEach(() => {
 });
 
 describe("parseSseEvent / driverFromEvent", () => {
+  it("reads the driver's location when the partner shows one, and null otherwise", () => {
+    const withLoc = { data: { driver: { ...FOUND.data.driver, location: { lat: "22.73", lng: 75.86, approximate: true, updatedAt: "2026-10-26T10:00:00Z" } } } };
+    expect(svc.driverFromEvent(withLoc).location).toEqual({ lat: 22.73, lng: 75.86, approx: true, at: "2026-10-26T10:00:00Z", source: "partner" });
+    expect(svc.driverFromEvent(FOUND).location).toBeNull();
+    expect(svc.driverFromEvent({ data: { driver: { ...FOUND.data.driver, location: { lat: 0, lng: 0 } } } }).location).toBeNull();
+  });
   it("parses data lines and ignores junk", () => {
     expect(svc.parseSseEvent('data: {"step":"INIT"}')).toEqual({ step: "INIT" });
     expect(svc.parseSseEvent("data: nope")).toBeNull();

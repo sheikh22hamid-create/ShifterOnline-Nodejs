@@ -34,6 +34,7 @@ function TrialDriverOffer({ c, onChanged }) {
   const toastRef = useRef(toast)
   useEffect(() => { toastRef.current = toast })
   const [busy, setBusy] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [confirming, setConfirming] = useState(null) // 'assign' | 'reject'
   const [reason, setReason] = useState('')
   const cand = c.candidate
@@ -58,6 +59,18 @@ function TrialDriverOffer({ c, onChanged }) {
     } finally { setBusy(false); setConfirming(null); onChanged() }
   }
 
+  // The driver's location changes (they may start moving or open the app): re-measure on demand.
+  const refreshDistance = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const res = await api.post(`/booking-guarantee/exec/cases/${c.order_id}/candidate/refresh-distance`)
+      if (!res.data?.data?.distance) toastRef.current.info?.('No reliable driver location is available yet')
+    } catch (err) {
+      toastRef.current.error(errMsg(err, 'Could not refresh the distance'))
+    } finally { setRefreshing(false); onChanged() }
+  }
+
   const reject = async () => {
     if (busy) return
     setBusy(true)
@@ -80,6 +93,25 @@ function TrialDriverOffer({ c, onChanged }) {
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Mobile</span><a href={`tel:${cand.mobile}`} className="font-mono-data" style={{ color: 'var(--brand)' }}>{cand.mobile}</a></div>
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{cand.vehicle_name || order?.category || '—'}</span></div>
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle number</span><span className="font-mono-data">{cand.vehicle_number || 'not available'}</span></div>
+          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+            <span>Driver Distance from Pickup</span>
+            <span className="text-right">
+              {cand.distance ? (
+                <>
+                  <b className="font-mono-data" style={{ color: 'var(--ink)' }}>{cand.distance.approximate ? '≈ ' : ''}{cand.distance.text}</b>
+                  <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                    {cand.distance.kind === 'road' ? 'Road distance' : 'Straight-line distance'}
+                    {cand.distance.approximate ? ' · approximate location' : ''}
+                    {' · '}{cand.distance.source === 'shifter_app' ? "from driver's app" : 'from search platform'}
+                    {cand.distance.computed_at ? ` · ${formatDateTime(cand.distance.computed_at)}` : ''}
+                  </span>
+                </>
+              ) : <span style={{ color: 'var(--ink-faint)' }}>Distance unavailable</span>}
+              <button type="button" onClick={refreshDistance} disabled={refreshing} className="ml-2 text-[12px] font-semibold underline" style={{ color: 'var(--brand)' }}>
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </span>
+          </div>
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Status</span><Badge tone={online ? 'success' : 'warning'}>{online ? 'Online' : 'Trial driver · offline'}</Badge></div>
         </div>
         <div className="grid gap-1 rounded-lg border p-3" style={block}>

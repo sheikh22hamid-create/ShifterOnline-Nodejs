@@ -5,6 +5,7 @@ const adminSocket = require("../sockets/adminSocket");
 const rules = require("./guaranteeQueueRules");
 const queueSettings = require("./guaranteeQueueSettings");
 const outsideCandidates = require("./guaranteeOutsideCandidateService");
+const candidateDistance = require("./guaranteeCandidateDistance");
 const { BOOKING_GUARANTEE_SWEEP_INTERVAL_MS } = require("../config/constants");
 
 const MIN_HANDOVER_MS = 2 * BOOKING_GUARANTEE_SWEEP_INTERVAL_MS;
@@ -328,6 +329,24 @@ async function dispatchWaitingSafe(cityId) {
  * ends the executive's period (they are Free at once) and returns the case to the queue; then the next search starts
  * and the next waiting case goes to a free executive.
  */
+/**
+ * Re-measure the offered driver's distance to the order's real pickup (the driver's app location when fresh, else the
+ * location the partner last reported). Resolves { distance } where distance is null when no reliable location exists.
+ */
+async function refreshCandidateDistance({ orderId, actor }) {
+  const row = await loadCaseFor(orderId, actor);
+  if (row.status !== "open") throw httpError(409, "This guarantee case is already closed");
+  const live = await outsideCandidates.getLive(row.id);
+  if (!live) throw httpError(409, "There is no offered driver");
+  const order = await prisma.pkg_order.findUnique({ where: { id: row.order_id }, select: { plat: true, plong: true } });
+  const [stored] = [...(await candidateDistance.loadMany([live.id])).values()];
+  const reported = stored && stored.location_source !== "shifter_app"
+    ? { lat: Number(stored.driver_lat), lng: Number(stored.driver_lng), approx: stored.location_approx, at: stored.location_at, source: stored.location_source }
+    : null;
+  const fresh = await candidateDistance.computeSafely({ candidate: live, orderPickup: { lat: order?.plat, lng: order?.plong }, reported });
+  return { distance: candidateDistance.present(fresh || stored || null) };
+}
+
 async function rejectCandidate({ orderId, actor, reason }) {
   if (!actor || actor.role !== "executive") throw httpError(403, "Only the owning executive can reject a driver");
   const row = await loadCaseFor(orderId, actor); // 404 unless this executive owns it
@@ -591,6 +610,7 @@ async function attachOffer(cases) {
     }
   } catch (_e) { /* no stops available */ }
   const liveBy = new Map(live.map((l) => [l.case_id, l]));
+  const distanceBy = await candidateDistance.loadMany(live.map((l) => l.id));
   return cases.map((c) => {
     const l = liveBy.get(c.id);
     const r = l ? riderBy.get(l.rider_id) : null;
@@ -601,6 +621,7 @@ async function attachOffer(cases) {
         id: l.id, rider_id: l.rider_id, name: l.name, mobile: l.mobile, vehicle_number: l.vehicle_number, vehicle_name: l.vehicle_name,
         fare: l.fare == null ? null : Number(l.fare), status: l.status, trial_status: r ? r.trial_status : null,
         online: Boolean(r && r.a_status === 1 && r.status === 1),
+        distance: candidateDistance.present(distanceBy.get(l.id)), // null = unavailable (never guessed)
       } : null,
       order: o ? { ...o, fare: o.total_dcharge == null ? null : Number(o.total_dcharge), stops: stopsBy.get(o.id) || [] } : null,
     };
@@ -838,7 +859,7 @@ module.exports = {
   END_REASON_FOR_STATUS, TX_OPTIONS, httpError,
   writeAudit, notify, ensureProfile, listCandidates, endActiveAssignment, tryAssign, markUnassigned, claimCase,
   assertCityAccess, releaseToUnassigned, reassignAuto, reassignCase, setAvailability, setCapacity, onCaseOpened, onCaseClosed,
-  dispatchWaiting, rejectCandidate,
+  dispatchWaiting, rejectCandidate, refreshCandidateDistance,
   recordAction, recordAssignmentAction, assertExecutiveMayAssign, assertExecutiveMayRunManualSearch, getCaseDetail, listMyCases,
   attachOffer, tick, processOpenCases, repairOrphans,
 };
