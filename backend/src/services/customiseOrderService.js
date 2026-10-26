@@ -387,7 +387,8 @@ async function activateDue(now = new Date()) {
 }
 
 /** Beep + count refresh for each online eligible driver, once per (order, driver) however often this is called. */
-async function notifyEligible(order, { now = new Date() } = {}) {
+async function notifyEligible(order, { now = new Date(), round = 0 } = {}) {
+  const notifiedType = round ? `notified_r${round}` : "notified";
   try {
     if (!(await settings.isEnabled())) return 0;
     const where = { status: 1, a_status: 1 };
@@ -396,8 +397,8 @@ async function notifyEligible(order, { now = new Date() } = {}) {
     let sent = 0;
     for (const rider of riders) {
       if (!rules.driverEligible({ order, rider, category: categoryOf(categories, rider.vehicle), dismissed: false })) continue;
-      if (await prisma.customise_event.findFirst({ where: { order_id: order.id, rider_id: rider.id, type: "notified" } })) continue;
-      await logEvent(prisma, order.id, "notified", rider.id);
+      if (await prisma.customise_event.findFirst({ where: { order_id: order.id, rider_id: rider.id, type: notifiedType } })) continue;
+      await logEvent(prisma, order.id, notifiedType, rider.id);
       dispatchManager.emitDriverEvent(rider.id, "customise:new", { order_id: order.id, fare: num(order.initial_fare) });
       if (rider.fcm_token) await pushNotifier.notifyDriverCustomiseOrder(rider.fcm_token, { orderId: order.id, fare: num(order.initial_fare) }).catch(() => {});
       sent += 1;
