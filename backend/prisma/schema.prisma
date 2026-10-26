@@ -329,6 +329,7 @@ model pkg_order {
   referral_points_used   Int                @default(0)
   referral_points_amount Decimal            @default(0.00) @db.Decimal(10, 2)
   body_type              String?            @default("any") @db.VarChar(20)
+  customise_order_id     Int?
   covered_charge         Decimal?           @default(0.00) @db.Decimal(10, 2)
   // Set when driverTripService.progressTrip reprices the trip against
   // pkg_order_wait_timer.otp_verify_lat/lng (where the driver actually was
@@ -2297,4 +2298,107 @@ model next_day_daily_offer {
   @@unique([order_id, rider_id], map: "uniq_ndo_order_rider")
   @@index([order_id, status], map: "idx_ndo_order_status")
   @@index([status, expires_at], map: "idx_ndo_status_expires")
+}
+
+/// Customise Order with counter-offer bargaining (spec 2026-10-26). Independent of the legacy tbl_custom_order.
+model customise_order {
+  id               Int      @id @default(autoincrement())
+  uid              Int
+  city_id          Int?
+  category_id      Int?
+  category_name    String?  @db.VarChar(100)
+  status           String   @default("scheduled") @db.VarChar(20)
+  p_lat            Decimal  @db.Decimal(10, 7)
+  p_lng            Decimal  @db.Decimal(10, 7)
+  p_address        String   @db.Text
+  p_exact          Boolean  @default(true)
+  d_lat            Decimal  @db.Decimal(10, 7)
+  d_lng            Decimal  @db.Decimal(10, 7)
+  d_address        String   @db.Text
+  goods_desc       String   @db.Text
+  goods_qty        Int
+  goods_weight_kg  Decimal  @db.Decimal(10, 2)
+  goods_len_cm     Decimal? @db.Decimal(10, 2)
+  goods_wid_cm     Decimal? @db.Decimal(10, 2)
+  goods_hgt_cm     Decimal? @db.Decimal(10, 2)
+  packing_notes    String?  @db.Text
+  p_floor          Int      @default(0)
+  p_carry_m        Int      @default(0)
+  p_helpers        Int      @default(0)
+  p_load_min       Int      @default(0)
+  p_wait_min       Int      @default(0)
+  p_notes          String?  @db.Text
+  d_floor          Int      @default(0)
+  d_carry_m        Int      @default(0)
+  d_helpers        Int      @default(0)
+  d_unload_min     Int      @default(0)
+  d_wait_min       Int      @default(0)
+  d_notes          String?  @db.Text
+  initial_fare     Decimal  @db.Decimal(10, 2)
+  p_method_id      Int      @default(1)
+  bargain_start_at DateTime @db.DateTime(0)
+  expires_at       DateTime @db.DateTime(0)
+  agreed_fare      Decimal? @db.Decimal(10, 2)
+  agreed_rider_id  Int?
+  agreed_offer_id  Int?
+  pkg_order_id     Int?     @unique
+  created_at       DateTime @default(now()) @db.DateTime(0)
+  updated_at       DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([status, city_id])
+  @@index([uid])
+  @@index([expires_at])
+}
+
+model customise_order_stop {
+  id         Int     @id @default(autoincrement())
+  order_id   Int
+  seq        Int
+  lat        Decimal @db.Decimal(10, 7)
+  lng        Decimal @db.Decimal(10, 7)
+  address    String  @db.Text
+  kind       String  @default("drop") @db.VarChar(10)
+  goods_desc String? @db.Text
+  floor      Int     @default(0)
+  carry_m    Int     @default(0)
+  helpers    Int     @default(0)
+  load_min   Int     @default(0)
+  unload_min Int     @default(0)
+  wait_min   Int     @default(0)
+  notes      String? @db.Text
+
+  @@index([order_id])
+}
+
+model customise_offer {
+  id         Int       @id @default(autoincrement())
+  order_id   Int
+  rider_id   Int
+  kind       String    @db.VarChar(10)
+  amount     Decimal   @db.Decimal(10, 2)
+  status     String    @default("active") @db.VarChar(24)
+  created_at DateTime  @default(now()) @db.DateTime(0)
+  decided_at DateTime? @db.DateTime(0)
+
+  @@index([order_id, rider_id, status])
+}
+
+model customise_dismissal {
+  id         Int      @id @default(autoincrement())
+  order_id   Int
+  rider_id   Int
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([order_id, rider_id])
+}
+
+model customise_event {
+  id         Int      @id @default(autoincrement())
+  order_id   Int
+  rider_id   Int?
+  type       String   @db.VarChar(40)
+  meta       Json?
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  @@index([order_id, type])
 }
