@@ -28,6 +28,7 @@ const EXECUTIVE_WRITES = [
   "POST /driver-leads/:id/send-invite", "POST /registration-leads/:id/send-reminder", "POST /registration-leads/:id/status",
   "POST /user-leads/:id/verify", "POST /user-leads/:id/reject",
   "POST /booking-guarantee/exec/cases/:orderId/actions", "POST /booking-guarantee/exec/cases/:orderId/candidate/reject",
+  "POST /booking-guarantee/exec/cases/:orderId/candidate/refresh-distance",
   "POST /orders/:id/outside-driver-lookup", "POST /orders/:id/outside-driver/register",
 ];
 

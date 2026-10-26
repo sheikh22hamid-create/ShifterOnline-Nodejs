@@ -203,6 +203,16 @@ async function claimOrderForRider(orderId, riderId) {
  * notifications. Split out from claimOrderForRider so the driver's own
  * accept ack doesn't wait on any of it — see that function's comment.
  */
+/** Did an earlier driver cancel this order (it was re-lived rather than ended)? False on any read error. */
+async function hasEarlierDriverCancel(orderId) {
+  try {
+    return (await prisma.order_status_history.count({ where: { order_id: orderId, status: "Driver Cancelled" } })) > 0;
+  } catch (err) {
+    logger.warn(`finalizeAcceptedOrder: driver-cancel history unreadable for order ${orderId}: ${err.message}`);
+    return false;
+  }
+}
+
 async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   orderStage
     .getStage(orderId)
@@ -333,7 +343,16 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
     advancePayment = 0;
     paymentStatus = 1;
   }
-  await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)}, payment_status = ${paymentStatus} WHERE id = ${orderId}`;
+  // A re-lived order (an earlier driver cancelled and the same booking is being searched again): an advance the
+  // customer has already paid stays exactly as paid. Re-pricing it for this driver would overwrite the recorded
+  // amount (later refunds and the final settlement net against it) and could ask the customer to pay twice.
+  const keepPaidAdvance = Number(order.payment_status) === 1 && await hasEarlierDriverCancel(orderId);
+  if (keepPaidAdvance) {
+    advancePayment = Math.round(Number(order.advance_payment) || 0);
+    paymentStatus = 1;
+  } else {
+    await prisma.$executeRaw`UPDATE pkg_order SET advance_payment = ${String(advancePayment)}, payment_status = ${paymentStatus} WHERE id = ${orderId}`;
+  }
 
   const customer = await prisma.tbl_user.findUnique({ where: { id: order.uid }, select: { fcm_token: true } });
   // FCM is only a background/reconnect fallback.  It must not block the
@@ -1514,6 +1533,31 @@ async function heldAfterOwnRecovery(orderId, riderId) {
 }
 
 /**
+ * Driver-side leftovers of an assignment that is being undone (the order goes back to Pending): the cancelling driver
+ * is marked as a reject so the cascade never offers the order to them again, and their trip state is dropped so it
+ * cannot leak into the next driver's trip. Runs inside the caller's transaction.
+ */
+async function releaseDriverSideState(tx, { orderId, riderId, reason }) {
+  // Marked as a reject so the cascade never offers this order to the same driver again.
+  await tx.tbl_order_requests.updateMany({
+    where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
+    data: { status: "10" },
+  });
+  await tx.driver_trip_progress.deleteMany({ where: { order_id: orderId } });
+  // This driver may already have arrived (Pickup): their pickup wait clock must not keep running into the
+  // next driver's trip, or sweepOverduePickups / sweepPickupRelocationCeiling would cancel THAT trip as a
+  // customer no-show. Same cleanup as the pickup pause / relocation paths (driverTripService,
+  // orderPickupService): drop the stale "arrived" milestone so the next driver's arrival is recorded fresh,
+  // and the spent pickup-ETA deadline.
+  await tx.pkg_order_wait_timer.deleteMany({ where: { order_id: orderId, rid: riderId } });
+  await tx.driver_trip_event.deleteMany({ where: { order_id: orderId, milestone: "arrived" } });
+  try { await tx.$executeRaw`UPDATE pkg_order SET pickup_deadline_at = NULL WHERE id = ${orderId}`; } catch (_) { /* column not on this DB yet */ }
+  await tx.order_status_history.create({
+    data: { order_id: orderId, rider_id: riderId, status: "Driver Cancelled", remark: reason || "No reason provided", created_at: new Date() },
+  });
+}
+
+/**
  * Booking Guarantee recovery (spec 2026-10-14): a guarantee order whose assigned driver cancels before pickup goes
  * back to the held state under the SAME case and original deadline, instead of being cancelled. Returns the
  * driverCancel result, or null to take the normal terminal path (switch off, ineligible, or any failure).
@@ -1528,23 +1572,7 @@ async function recoverGuaranteeOrder(orderId, riderId, reason) {
     orderId, riderId, cityId,
     inTx: async (tx, order) => {
       if (Number(order.order_status) !== 0) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications });
-      // Marked as a reject so the cascade never offers this order to the same driver again.
-      await tx.tbl_order_requests.updateMany({
-        where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
-        data: { status: "10" },
-      });
-      await tx.driver_trip_progress.deleteMany({ where: { order_id: orderId } });
-      // This driver may already have arrived (Pickup): their pickup wait clock must not keep running into the
-      // next driver's trip, or sweepOverduePickups / sweepPickupRelocationCeiling would cancel THAT trip as a
-      // customer no-show. Same cleanup as the pickup pause / relocation paths (driverTripService,
-      // orderPickupService): drop the stale "arrived" milestone so the next driver's arrival is recorded fresh,
-      // and the spent pickup-ETA deadline.
-      await tx.pkg_order_wait_timer.deleteMany({ where: { order_id: orderId, rid: riderId } });
-      await tx.driver_trip_event.deleteMany({ where: { order_id: orderId, milestone: "arrived" } });
-      try { await tx.$executeRaw`UPDATE pkg_order SET pickup_deadline_at = NULL WHERE id = ${orderId}`; } catch (_) { /* column not on this DB yet */ }
-      await tx.order_status_history.create({
-        data: { order_id: orderId, rider_id: riderId, status: "Driver Cancelled", remark: reason || "No reason provided", created_at: new Date() },
-      });
+      await releaseDriverSideState(tx, { orderId, riderId, reason });
     },
   });
   if (!outcome.reopened) {
@@ -1570,6 +1598,45 @@ async function recoverGuaranteeOrder(orderId, riderId, reason) {
 }
 
 /**
+ * Re-live (spec 2026-10-27): a driver who cancels after accepting but before pickup does not end the booking. The same
+ * order goes back to Pending and is searched again without that driver; the customer's payment stays on the order
+ * (no refund and re-charge). The driver still pays their cancellation fee. Returns the driverCancel result, or null to
+ * take the normal terminal path (switch off, too late in the trip, too many cancels, or any failure).
+ */
+async function reliveOrder(orderId, riderId, reason) {
+  const relive = require("./driverCancelRelive");
+  if (!(await relive.isEnabled())) return null;
+
+  const walletNotifications = [];
+  const outcome = await relive.reopenForRelive({
+    orderId, riderId,
+    inTx: async (tx, order) => {
+      await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications });
+      await releaseDriverSideState(tx, { orderId, riderId, reason });
+    },
+  });
+  if (!outcome.relived) {
+    // A retry of a cancel that already re-lived this order (double tap / socket retry) gets the same answer.
+    const held = outcome.reason === "not_assigned_driver" ? await heldAfterOwnRecovery(orderId, riderId) : null;
+    return held ? { success: true, recovered: true, order: held, refund_amount: 0, refund_status: "order_relive" } : null;
+  }
+
+  for (const n of walletNotifications) {
+    walletNotifier
+      .notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark })
+      .catch((err) => logger.error(`driverCancel: wallet notify failed for rider ${n.riderId}:`, err));
+  }
+  await relive.afterRelive({ orderId, riderId, reason });
+  return {
+    success: true,
+    recovered: true,
+    order: { ...outcome.order, rid: 0, order_status: 0, o_status: "Pending" },
+    refund_amount: 0,
+    refund_status: "order_relive",
+  };
+}
+
+/**
  * Driver cancellation after acceptance.
  *
  * This is deliberately a single transaction.  The order row is locked before
@@ -1589,6 +1656,8 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
   if (opts.requireOrderStatus == null) {
     const recovered = await recoverGuaranteeOrder(orderId, riderId, reason);
     if (recovered) return recovered;
+    const relived = await reliveOrder(orderId, riderId, reason);
+    if (relived) return relived;
   }
 
   let cancelledOrder = null;
