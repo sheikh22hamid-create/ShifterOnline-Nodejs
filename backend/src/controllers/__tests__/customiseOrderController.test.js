@@ -5,6 +5,7 @@ jest.mock("../../config/db", () => ({
   customise_event: { findMany: jest.fn() },
   customise_order_timer: { findMany: jest.fn() },
   customise_cancel_fee: { findMany: jest.fn() },
+  pkg_order: { findMany: jest.fn() },
   tbl_user: { findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn() },
 }));
@@ -104,6 +105,7 @@ describe("admin detail timers", () => {
     prisma.customise_offer.findMany.mockResolvedValue([]);
     prisma.customise_event.findMany.mockResolvedValue([]);
     prisma.customise_cancel_fee.findMany.mockResolvedValue([]);
+    prisma.pkg_order.findMany.mockResolvedValue([]);
     prisma.customise_order_timer.findMany.mockResolvedValue([{ segment: "pickup_load", selected_min: 30, elapsed_seconds: 2400, billed_seconds: 600, charge: "20.00" }]);
     const res = makeRes();
     await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
@@ -117,6 +119,7 @@ describe("admin detail penalties", () => {
   it("returns the cancellation penalties actually applied, with the admin share", async () => {
     prisma.customise_order.findUnique.mockResolvedValue({ id: 5, city_id: 3 });
     for (const m of ["customise_order_stop", "customise_offer", "customise_event", "customise_order_timer"]) prisma[m].findMany.mockResolvedValue([]);
+    prisma.pkg_order.findMany.mockResolvedValue([]);
     prisma.customise_cancel_fee.findMany.mockResolvedValue([{ side: "driver", charge: "150.00", admin_share: "30.00", recipient_amount: "120.00" }]);
     const res = makeRes();
     await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
@@ -161,5 +164,25 @@ describe("cancellation policy settings", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ success: false, message: "percentage must be between 0 and 100" });
     expect(cancelPolicy.savePolicy).not.toHaveBeenCalled();
+  });
+});
+
+describe("admin detail rides (reassignment history)", () => {
+  it("lists every ride made from the order, cancelled ones too, with the driver and the cancel reason", async () => {
+    prisma.customise_order.findUnique.mockResolvedValue({ id: 5, city_id: 3 });
+    for (const m of ["customise_order_stop", "customise_offer", "customise_event", "customise_order_timer", "customise_cancel_fee"]) prisma[m].findMany.mockResolvedValue([]);
+    prisma.pkg_order.findMany.mockResolvedValue([
+      { id: 321, rid: 11, o_status: "Cancelled", order_status: 4, cancel_reason: "Driver cancelled: breakdown", total_dcharge: 1000, advance_payment: "60", payment_status: 1, cancel_charge: 0 },
+      { id: 340, rid: 12, o_status: "Completed", order_status: 5, cancel_reason: null, total_dcharge: 1100, advance_payment: "60", payment_status: 1, cancel_charge: 0 },
+    ]);
+    prisma.tbl_rider.findMany.mockResolvedValue([{ id: 11, first_name: "Ravi", vehicle: "Tata Ace" }, { id: 12, first_name: "Amit", vehicle: "Tata Ace" }]);
+    const res = makeRes();
+    await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
+    const rides = res.json.mock.calls[0][0].data.rides;
+    expect(prisma.pkg_order.findMany.mock.calls[0][0].where).toEqual({ customise_order_id: 5 });
+    expect(rides).toEqual([
+      expect.objectContaining({ id: 321, driver_name: "Ravi", cancel_reason: "Driver cancelled: breakdown", o_status: "Cancelled" }),
+      expect.objectContaining({ id: 340, driver_name: "Amit", o_status: "Completed" }),
+    ]);
   });
 });

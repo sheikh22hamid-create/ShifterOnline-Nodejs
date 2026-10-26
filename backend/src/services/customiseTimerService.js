@@ -9,7 +9,8 @@ const logger = require("../utils/logger");
 //   pickup_load  pickup OTP verified -> pickup complete
 //   drop         drop arrival -> trip completion (allowance = drop waiting + unloading minutes combined, because the
 //                app has no separate "unloading started" event)
-// Per-stop timers are not billed: there is no "left the stop" event to measure a stop's dwell time.
+//   stop_<n>     the trip flow's own arrived_stop_<n> -> complete_stop_<n> events (driver_trip_event); allowance = that
+//                stop's waiting + loading + unloading minutes. A stop missing either event is not billed (no guess).
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const secs = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : 0);
@@ -40,6 +41,36 @@ function segmentsOf({ co, waitTimer, dropWaitSeconds, rate, endedAt }) {
   ];
 }
 
+/** One segment per additional stop that has both its arrival and its completion recorded, in the stop order. */
+function stopSegmentsOf({ stops, events, rate }) {
+  const when = (milestone) => {
+    const row = (events || []).find((e) => e.milestone === milestone);
+    return row ? new Date(row.created_at) : null;
+  };
+  const out = [];
+  for (const stop of [...(stops || [])].sort((a, b) => a.seq - b.seq)) {
+    const arrived = when(`arrived_stop_${stop.seq}`);
+    const completed = when(`complete_stop_${stop.seq}`);
+    if (!arrived || !completed || completed.getTime() < arrived.getTime()) continue;
+    const allowance = (Number(stop.wait_min) || 0) + (Number(stop.load_min) || 0) + (Number(stop.unload_min) || 0);
+    out.push(segment(`stop_${stop.seq}`, allowance, Math.floor((completed.getTime() - arrived.getTime()) / 1000), rate, arrived, completed));
+  }
+  return out;
+}
+
+async function stopSegmentsFor(order, rate) {
+  try {
+    const stops = await prisma.customise_order_stop.findMany({ where: { order_id: Number(order.customise_order_id) }, orderBy: { seq: "asc" } });
+    if (!stops.length) return [];
+    const milestones = stops.flatMap((st) => [`arrived_stop_${st.seq}`, `complete_stop_${st.seq}`]);
+    const events = await prisma.driver_trip_event.findMany({ where: { order_id: order.id, milestone: { in: milestones } }, select: { milestone: true, created_at: true } });
+    return stopSegmentsOf({ stops, events, rate });
+  } catch (err) {
+    logger.error(`customiseTimers: stop timers for ride ${order.id} unreadable, billing pickup and drop only:`, err);
+    return [];
+  }
+}
+
 /** { total, segments } for a Customise ride, or null (not one, or its order row is unreadable: keep the normal formula). */
 async function billFor(order, waitTimer, dropWaitSeconds, endedAt = new Date()) {
   if (order?.customise_order_id == null) return null;
@@ -52,7 +83,7 @@ async function billFor(order, waitTimer, dropWaitSeconds, endedAt = new Date()) 
   }
   if (!co) return null;
   const rate = Number(order.wating_charge) || 0;
-  const segments = segmentsOf({ co, waitTimer, dropWaitSeconds, rate, endedAt });
+  const segments = [...segmentsOf({ co, waitTimer, dropWaitSeconds, rate, endedAt }), ...(await stopSegmentsFor(order, rate))];
   return { total: round2(segments.reduce((sum, s) => sum + s.charge, 0)), segments };
 }
 
@@ -78,4 +109,4 @@ async function record(orderId, segments) {
   }
 }
 
-module.exports = { segmentsOf, billFor, record };
+module.exports = { segmentsOf, stopSegmentsOf, billFor, record };

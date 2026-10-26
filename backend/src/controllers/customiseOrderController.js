@@ -73,19 +73,24 @@ async function adminDetail(req, res) {
     if (!order || (req.scopedCityId && order.city_id !== req.scopedCityId)) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const [stops, offers, events, timers, fees] = await Promise.all([
+    const [stops, offers, events, timers, fees, rides] = await Promise.all([
       prisma.customise_order_stop.findMany({ where: { order_id: id }, orderBy: { seq: "asc" } }),
       prisma.customise_offer.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
       prisma.customise_event.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
       prisma.customise_order_timer.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
       prisma.customise_cancel_fee.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
+      // Every ride made from this order: a driver cancel leaves a cancelled ride behind and the next acceptance adds a new one.
+      prisma.pkg_order.findMany({
+        where: { customise_order_id: id }, orderBy: { id: "asc" },
+        select: { id: true, rid: true, o_status: true, order_status: true, cancel_reason: true, total_dcharge: true, advance_payment: true, payment_status: true, cancel_charge: true },
+      }),
     ]);
-    const riderIds = [...new Set(offers.map((o) => o.rider_id))];
+    const riderIds = [...new Set([...offers.map((o) => o.rider_id), ...rides.map((r) => r.rid)].filter(Boolean))];
     const riders = riderIds.length ? await prisma.tbl_rider.findMany({ where: { id: { in: riderIds } }, select: { id: true, first_name: true, vehicle: true } }) : [];
     const riderById = Object.fromEntries(riders.map((r) => [r.id, r]));
     return res.status(200).json({
       success: true,
-      data: { order, stops, timers, fees, offers: offers.map((o) => ({ ...o, driver_name: riderById[o.rider_id]?.first_name || null, vehicle: riderById[o.rider_id]?.vehicle || null })), events },
+      data: { order, stops, timers, fees, rides: rides.map((r) => ({ ...r, driver_name: riderById[r.rid]?.first_name || null, vehicle: riderById[r.rid]?.vehicle || null })), offers: offers.map((o) => ({ ...o, driver_name: riderById[o.rider_id]?.first_name || null, vehicle: riderById[o.rider_id]?.vehicle || null })), events },
     });
   } catch (err) {
     logger.error("customiseOrderController.adminDetail failed:", err);
