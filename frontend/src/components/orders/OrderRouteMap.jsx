@@ -88,7 +88,10 @@ export default function OrderRouteMap({ orderId, status }) {
     const mark = (where, color, label) => {
       const at = toLatLng(where)
       if (!at) return
-      L.marker(at, { icon: pin(color) }).bindTooltip(label).addTo(layer)
+      // Leaflet parses a string tooltip as HTML and the driver name is rider-submitted: pass a text node instead.
+      const tip = document.createElement('span')
+      tip.textContent = label
+      L.marker(at, { icon: pin(color) }).bindTooltip(tip).addTo(layer)
       bounds.push(at)
     }
 
