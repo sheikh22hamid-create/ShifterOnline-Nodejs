@@ -120,6 +120,14 @@ router.post("/survey/answer", appKeyAuth, driverSurveyController.saveSurveyAnswe
 router.post("/custom-order/open", customOrderBiddingController.listOpenOrdersForDriver);
 router.post("/custom-order/bid", customOrderBiddingController.placeBid);
 
+// Customise Order with counter-offer bargaining (driver side, spec 2026-10-26).
+const customiseOrderController = require("../controllers/customiseOrderController");
+router.post("/customise/list", customiseOrderController.driverList);
+router.post("/customise/count", customiseOrderController.driverCount);
+router.post("/customise/accept", customiseOrderController.driverAccept);
+router.post("/customise/counter", customiseOrderController.driverCounter);
+router.post("/customise/dismiss", customiseOrderController.driverDismiss);
+
 // Driver home/dashboard, static content, misc onboarding (Node port of the
 // remaining rider_api/*.php endpoints confirmed live in UserService.java)
 router.post("/home", driverContentController.homeData);

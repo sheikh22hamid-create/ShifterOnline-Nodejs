@@ -67,6 +67,17 @@ router.post("/custom-order/create", customOrderBiddingController.createCustomOrd
 router.post("/custom-order/bids", customOrderBiddingController.listBids);
 router.post("/custom-order/convert", customOrderBiddingController.convertOrder);
 
+// Customise Order with counter-offer bargaining (customer side, spec 2026-10-26). Driver side is in riderRoutes.js,
+// admin monitor in adminRoutes.js. Guarded by the customise_order_enabled switch.
+const customiseOrderController = require("../controllers/customiseOrderController");
+router.post("/customise/create", customiseOrderController.create);
+router.post("/customise/my", customiseOrderController.mine);
+router.post("/customise/detail", customiseOrderController.detail);
+router.post("/customise/offers", customiseOrderController.offers);
+router.post("/customise/accept-offer", customiseOrderController.acceptOffer);
+router.post("/customise/reject-offer", customiseOrderController.rejectOffer);
+router.post("/customise/cancel", customiseOrderController.cancel);
+
 // Customer premium plan purchase (Node port of get_premium_plans_api.php /
 // purchase_premium_plan_api.php's CUSTOMER_PREMIUM branch - see
 // customerPlanService.js header for what's out of scope)

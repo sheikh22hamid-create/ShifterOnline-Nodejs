@@ -286,6 +286,11 @@ router.get("/custom-orders", auth, authorize(...RIDER_ROLES), scopeFilter, custo
 router.get("/custom-orders/:id/bids", auth, authorize(...RIDER_ROLES), scopeFilter, customOrderController.getBids);
 router.post("/custom-orders/:id/convert", auth, authorize("superadmin", "admin"), scopeFilter, customOrderController.convert);
 
+// --- Customise Order (counter-offer bargaining) monitor, read only ---------------
+const customiseOrderController = require("../controllers/customiseOrderController");
+router.get("/customise-orders", auth, authorize(...RIDER_ROLES), scopeFilter, customiseOrderController.adminList);
+router.get("/customise-orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, customiseOrderController.adminDetail);
+
 // --- Marketing: Banners, Coupons, Premium Plans ------------------------------
 router.get("/marketing/banners", auth, marketingController.listBanners);
 router.post("/marketing/banners", auth, authorize("superadmin", "admin"), marketingController.createBanner);

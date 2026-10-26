@@ -117,6 +117,14 @@ setInterval(() => {
   );
 }, ADVANCE_PAYMENT_SWEEP_INTERVAL_MS);
 
+// Customise Order: open orders whose bargaining start has arrived, expire the ones past their deadline.
+// Offers are also checked against the clock on every write, so this only keeps lists and badges tidy.
+setInterval(() => {
+  const customise = require("./services/customiseOrderService");
+  customise.activateDue().catch((err) => logger.error("customise activateDue interval failed:", err));
+  customise.expireDue().catch((err) => logger.error("customise expireDue interval failed:", err));
+}, 30 * 1000);
+
 // Payment-settlement reminders + "Unsettled" flagging — see settlementSweep.
 setInterval(() => {
   require("./services/settlementSweep").sweepSettlements().catch((err) =>

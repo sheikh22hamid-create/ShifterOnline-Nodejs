@@ -18,6 +18,7 @@ const EXECUTIVE_MODULES = [
   "/orders/scheduled",
   "/orders/next-day",
   "/custom-orders",
+  "/customise-orders",
   "/drivers",
   "/favorite-routes",
   "/monthly-drivers",
@@ -90,6 +91,7 @@ const API_RULES = [
   ["/receiver-feedback", ["/trip-feedback"]],
   ["/trip-feedback", ["/trip-feedback"]],
   ["/custom-orders", ["/custom-orders"]],
+  ["/customise-orders", ["/customise-orders"]],
   ["/favorite-routes", ["/favorite-routes"]],
 
   ["/monthly-drivers", ["/monthly-drivers", "/drivers"]],
