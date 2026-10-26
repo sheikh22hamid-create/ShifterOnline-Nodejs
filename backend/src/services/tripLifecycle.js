@@ -1363,6 +1363,21 @@ async function customerCancel(uid, orderId, comment) {
       `;
     }
 
+    // Customise Order ride under a Special policy: the admin-configured penalty replaces the rate-card charge (and
+    // the driver's compensation is the non-admin part of it). Cancels that are free in the normal flow stay free.
+    let specialFee = null;
+    const chargeWaived = isUnpaidAdvance || isAdvanceTimeout || driverMissedEta || Boolean(hasFreeCancellation);
+    if (orderBefore.customise_order_id != null && !chargeWaived) {
+      const fee = await require("./customiseCancelService").feeFor({
+        side: "customer",
+        ride: { customiseOrderId: Number(orderBefore.customise_order_id), agreedFare: Number(orderBefore.total_dcharge) || 0, cityId: orderBefore.city_id ?? null },
+      });
+      if (fee.special) {
+        specialFee = fee;
+        cancellationCharge = fee.charge;
+      }
+    }
+
     // Wallet-paid booking: the fare was already taken from the wallet at
     // booking, so refund it net of the cancellation charge (one credit row)
     // instead of leaving the whole fare gone. When that refund covers the
@@ -1394,7 +1409,15 @@ async function customerCancel(uid, orderId, comment) {
       // Admin order view + finance ledger read cancel_charge from the order.
       await prisma.pkg_order.update({ where: { id: orderId }, data: { cancel_charge: cancellationCharge } });
 
-      const driverEarning = Number(pkg?.driver_earning) || 0;
+      if (specialFee) {
+        await require("./customiseCancelService").recordFee(prisma, {
+          orderId: Number(orderBefore.customise_order_id), rideId: orderId, side: "customer", mode: "special", payerId: uid,
+          recipientId: Number(orderBefore.rid), agreedFare: Number(orderBefore.total_dcharge) || 0, fixed: specialFee.fixed,
+          percent: specialFee.percent, charge: specialFee.charge, adminShare: specialFee.adminShare,
+          recipientAmount: specialFee.recipientAmount, reason: comment || null,
+        });
+      }
+      const driverEarning = specialFee ? specialFee.recipientAmount : (Number(pkg?.driver_earning) || 0);
       if (driverEarning > 0) {
         const compRemark = `Cancellation compensation for order #${orderId}`;
         await prisma.tbl_rider.update({
@@ -1433,6 +1456,11 @@ async function customerCancel(uid, orderId, comment) {
     await releaseScheduledInterest(orderId);
   }
 
+  // A cancelled Customise Order ride closes the negotiation for good: it is never relisted.
+  if (orderBefore.customise_order_id != null) {
+    await require("./customiseCancelService").afterCustomerCancel({ customiseOrderId: Number(orderBefore.customise_order_id), rideId: orderId });
+  }
+
   // The driver has no other real-time signal that the customer cancelled
   // after accepting — their app doesn't poll once past the advance-payment
   // screen (see OrderDetailsActivity), and nothing else in this function
@@ -1468,10 +1496,20 @@ async function customerCancel(uid, orderId, comment) {
  * The driver's cancellation fee and the customer's `driver_cancel_user_earning` credit, each behind its own
  * idempotency key. Runs inside the caller's transaction; shared by the terminal cancel and guarantee recovery.
  */
-async function applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications }) {
+async function applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications, customise = null }) {
   if (!order.delivery_type) return;
   const pkg = await pricingEngine.getPackageById(order.delivery_type);
-  const driverFee = Number(pkg?.cancellation_charge_driver) || 0;
+  let driverFee = Number(pkg?.cancellation_charge_driver) || 0;
+  // Customise Order ride under a Special policy: the admin-configured penalty replaces the rate-card fee, and the
+  // customer receives the non-admin part (the admin share is retained by the platform).
+  let special = null;
+  if (customise) {
+    const fee = await require("./customiseCancelService").feeFor({ side: "driver", ride: customise });
+    if (fee.special) {
+      special = fee;
+      driverFee = fee.charge;
+    }
+  }
   if (driverFee > 0) {
     const driverFeeKey = `driver_cancel_fee:${orderId}:${riderId}`;
     const alreadyDebited = await tx.tbl_wallet_history.findFirst({
@@ -1497,7 +1535,14 @@ async function applyDriverCancelFee(tx, { order, orderId, riderId, walletNotific
       });
       walletNotifications.push({ riderId: Number(riderId), type: "debit", amount: driverFee, remark: feeRemark });
 
-      const userComp = Number(pkg?.driver_cancel_user_earning) || 0;
+      if (special) {
+        await require("./customiseCancelService").recordFee(tx, {
+          orderId: customise.customiseOrderId, rideId: orderId, side: "driver", mode: "special", payerId: Number(riderId),
+          recipientId: Number(order.uid), agreedFare: customise.agreedFare, fixed: special.fixed, percent: special.percent,
+          charge: special.charge, adminShare: special.adminShare, recipientAmount: special.recipientAmount, reason: feeRemark,
+        });
+      }
+      const userComp = special ? special.recipientAmount : (Number(pkg?.driver_cancel_user_earning) || 0);
       if (userComp > 0) {
         await tx.tbl_user.update({
           where: { id: Number(order.uid) },
@@ -1660,7 +1705,10 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
       return { refund_amount: 0, refund_status: "cancel_requested", requires_admin_approval: true, cancel_request_id: gate.requestId };
     }
   }
-  if (opts.requireOrderStatus == null) {
+  // A Customise Order ride is relisted in the Customise list after the cancel (customiseCancelService), never put
+  // back into the normal driver search, so it skips guarantee recovery and re-live.
+  const customiseRide = await require("./customiseCancelService").rideInfo(orderId);
+  if (opts.requireOrderStatus == null && !customiseRide) {
     const recovered = await recoverGuaranteeOrder(orderId, riderId, reason);
     if (recovered) return recovered;
     const relived = await reliveOrder(orderId, riderId, reason);
@@ -1754,7 +1802,7 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
       refundStatus = "payment_not_captured";
     }
 
-    if (!isPending) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications });
+    if (!isPending) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications, customise: customiseRide });
 
     await tx.tbl_order_requests.updateMany({
       where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
@@ -1790,6 +1838,10 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
     // Driver cancellation is terminal for this booking. Do not silently put
     // a paid order back into dispatch/reassignment after refunding it.
     dispatchManager.stopDispatch(orderId, "driver_cancelled");
+    // A Customise Order goes back to the Customise list for other drivers (never past its expiry); the ride stays cancelled.
+    const customiseRelist = customiseRide
+      ? await require("./customiseCancelService").afterDriverCancel({ customiseOrderId: customiseRide.customiseOrderId, riderId, rideId: orderId, reason })
+      : null;
     dispatchManager.emitCustomerEvent(freshOrder.uid, "order:driver_cancelled", {
       order_id: orderId,
       rider_id: riderId,
@@ -1799,6 +1851,7 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
       order_status: 4,
       o_status: "Cancelled",
       searching_for_new_driver: false,
+      ...(customiseRelist ? { customise_order_id: customiseRide.customiseOrderId, customise_relisted: customiseRelist.relisted } : {}),
     });
   }
 
