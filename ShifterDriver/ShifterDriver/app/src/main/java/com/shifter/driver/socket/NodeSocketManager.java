@@ -89,6 +89,21 @@ public class NodeSocketManager {
         void onSettlementUpdated(JSONObject data);
     }
 
+    /** customise:new / customise:closed / customise:converted / customise:offer_rejected: a Customise Order changed for this driver. */
+    public interface CustomiseListener {
+        void onCustomiseEvent(String event, JSONObject data);
+    }
+
+    private final java.util.Set<CustomiseListener> customiseListeners = new java.util.concurrent.CopyOnWriteArraySet<>();
+
+    public void addCustomiseListener(CustomiseListener listener) {
+        if (listener != null) customiseListeners.add(listener);
+    }
+
+    public void removeCustomiseListener(CustomiseListener listener) {
+        customiseListeners.remove(listener);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -248,6 +263,20 @@ public class NodeSocketManager {
                 orderPickupUpdatedListener.onOrderPickupUpdated(data);
             }
         }));
+
+        for (String customiseEvent : new String[]{"customise:new", "customise:closed", "customise:converted", "customise:offer_rejected"}) {
+            socket.on(customiseEvent, args -> mainHandler.post(() -> {
+                JSONObject data = firstArgAsJson(args);
+                if (data == null) return;
+                for (CustomiseListener listener : customiseListeners) {
+                    try {
+                        listener.onCustomiseEvent(customiseEvent, data);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error delivering " + customiseEvent, e);
+                    }
+                }
+            }));
+        }
 
         socket.on("settlement:updated", args -> mainHandler.post(() -> {
             JSONObject data = firstArgAsJson(args);

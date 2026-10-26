@@ -46,7 +46,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.shifter.driver.R;
-import com.shifter.driver.activity.CustomOrderListActivity;
+import com.shifter.driver.activity.CustomiseOrderListActivity;
 import com.shifter.driver.activity.DailyDriverPlansActivity;
 import com.shifter.driver.activity.LeadReferralActivity;
 import com.shifter.driver.activity.NotificationActivity;
@@ -196,9 +196,9 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         binding.crdOrderby.setOnClickListener(this::onBindClick);
         binding.txtContinue1.setOnClickListener(this::onBindClick);
 
-        // Custom Orders button
+        // Customise Orders button (negotiated jobs; the badge shows how many are open for this driver)
         binding.btnCustomOrders.setOnClickListener(v -> {
-            startActivity(new Intent(getActivity(), CustomOrderListActivity.class));
+            startActivity(new Intent(getActivity(), CustomiseOrderListActivity.class));
         });
 
         // Scheduled Trips button — browse booking_type=2 scheduled trips and
@@ -1588,11 +1588,48 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         }
 
         checkPendingSettlements();
+        NodeSocketManager.getInstance().addCustomiseListener(customiseListener);
+        refreshCustomiseCount();
+    }
+
+    // Customise Orders: the badge follows the server's own count of open, eligible orders; a new one beeps once.
+    private final NodeSocketManager.CustomiseListener customiseListener = (event, data) -> {
+        if ("customise:new".equals(event)) {
+            com.shifter.driver.utility.CustomiseBeeper.beepOnce(getContext(), String.valueOf(data.opt("order_id")));
+        }
+        refreshCustomiseCount();
+    };
+
+    private void refreshCustomiseCount() {
+        if (riderData == null) return;
+        try {
+            org.json.JSONObject body = new org.json.JSONObject();
+            body.put("rider_id", riderData.getId());
+            com.shifter.driver.retrofit.NodeApiClient.getInterface()
+                    .customiseCount(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), body.toString()))
+                    .enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
+                        @Override
+                        public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
+                            if (!isAdded() || binding == null) return;
+                            com.google.gson.JsonObject b = response.body();
+                            int count = b != null && b.has("count") && !b.get("count").isJsonNull() ? b.get("count").getAsInt() : 0;
+                            binding.txtCustomiseBadge.setText(count > 99 ? "99+" : String.valueOf(count));
+                            binding.txtCustomiseBadge.setVisibility(count > 0 ? View.VISIBLE : View.GONE);
+                        }
+
+                        @Override
+                        public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
+                            // Keep the last badge; the next resume or socket event refreshes it.
+                        }
+                    });
+        } catch (org.json.JSONException ignored) {
+        }
     }
 
     @Override
     public void onPause() {
         super.onPause();
+        NodeSocketManager.getInstance().removeCustomiseListener(customiseListener);
         NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
     }

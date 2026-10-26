@@ -230,6 +230,27 @@ public interface NodeService {
     @POST("api/rider/custom-order/bid")
     Call<JsonObject> placeCustomOrderBid(@Body RequestBody body);
 
+    // Customise Order with counter-offer bargaining (spec 2026-10-26). Behind the app key like the other driver calls.
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/customise/list")
+    Call<JsonObject> customiseList(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/customise/count")
+    Call<JsonObject> customiseCount(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/customise/accept")
+    Call<JsonObject> customiseAccept(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/customise/counter")
+    Call<JsonObject> customiseCounter(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/customise/dismiss")
+    Call<JsonObject> customiseDismiss(@Body RequestBody body);
+
     @Headers("Authorization: genie_rest_key")
     @POST("api/rider/notifications")
     Call<JsonObject> notification(@Body RequestBody body);
