@@ -76,6 +76,7 @@ const HANDLED_FLAG_KEYS = [
   'advance_payment_timeout_minutes',
   'pickup_otp_timeout_minutes',
   'drop_otp_enabled',
+  'customise_order_enabled',
   'pickup_relocate_ceiling_minutes',
   'pickup_small_move_threshold_m',
   'pickup_otp_mismatch_flag_m',
@@ -527,6 +528,22 @@ function SettingsForm({ data, onSaved }) {
             </select>
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Applies to new bookings only. The booker and the receiver both see the OTP. Arriving at the drop and the waiting timer work as usual; the driver enters the OTP when they tap Complete Trip and a wrong OTP never completes the ride. Needs migration <code>20261016010000_add_drop_otp</code> and the updated driver app. Switching it OFF releases any order stuck at the drop.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-customise_order_enabled">Customise Order (customise_order_enabled)</Label>
+            <select
+              id="flag-customise_order_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.customise_order_enabled ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, customise_order_enabled: e.target.value }))}
+            >
+              <option value="0">Disabled (0 - customers cannot post Customise Orders and drivers see none)</option>
+              <option value="1">Enabled (1 - customers can post negotiated orders and drivers can accept or counter them)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Needs the three Customise Order migrations applied first. Orders already being negotiated stop receiving offers while it is off. Set the cancellation policy on the Customise Orders page.
             </p>
           </div>
           <div>
