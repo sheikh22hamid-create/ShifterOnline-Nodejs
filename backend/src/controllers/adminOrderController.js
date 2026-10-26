@@ -341,6 +341,8 @@ async function cancel(req, res) {
       // late driver 'arrived' / 'complete' could still act on the order.
       data: { o_status: "Cancelled", order_status: 4, cancel_reason: comment || "Cancelled by admin" },
     });
+    // A Customise Order ride cancelled by an admin closes its negotiation too (never relisted).
+    await require("../services/customiseCancelService").closeIfCustomise(order);
 
     if (wasUnassigned) {
       dispatchManager.stopDispatch(id, "cancelled_by_user");

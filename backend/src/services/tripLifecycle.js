@@ -1909,6 +1909,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
   `;
   if (affected === 0) return; // already resolved another way between the sweep's read and this write
   logger.info(`cancelOverduePickup: order #${orderId} auto-cancelled by the pickup OTP timeout (limit ${timeoutMinutes} min)`);
+  await require("./customiseCancelService").closeIfCustomise(order);
 
   await prisma.pkg_order_wait_timer.updateMany({
     where: { order_id: orderId, rid: riderId },
@@ -2147,7 +2148,7 @@ async function sweepPickupRelocationCeiling() {
  */
 async function cancelExpiredAdvancePayment(orderId) {
   const [order] = await prisma.$queryRaw`
-    SELECT id, uid, rid, advance_payment, accept_time, order_status, payment_status
+    SELECT id, uid, rid, advance_payment, accept_time, order_status, payment_status, customise_order_id
     FROM pkg_order WHERE id = ${orderId} LIMIT 1
   `;
   if (!order) return;
@@ -2179,6 +2180,7 @@ async function cancelExpiredAdvancePayment(orderId) {
       )
   `;
   if (affected === 0) return; // already paid, already cancelled another way, or not yet expired
+  await require("./customiseCancelService").closeIfCustomise(order);
 
   const riderId = Number(order.rid) || null;
 

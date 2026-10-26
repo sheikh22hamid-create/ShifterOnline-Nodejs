@@ -128,3 +128,16 @@ describe("afterCustomerCancel", () => {
     expect(await svc.afterCustomerCancel({ customiseOrderId: 5, rideId: 321, now: NOW })).toEqual({ ok: false });
   });
 });
+
+describe("closeIfCustomise (system and admin cancels)", () => {
+  it("closes the Customise order behind a cancelled ride", async () => {
+    const out = await svc.closeIfCustomise({ id: 321, customise_order_id: 5 });
+    expect(out).toEqual({ ok: true });
+    expect(prisma.customise_order.update).toHaveBeenCalledWith({ where: { id: 5 }, data: { status: "cancelled" } });
+  });
+  it("does nothing for an ordinary ride", async () => {
+    expect(await svc.closeIfCustomise({ id: 321, customise_order_id: null })).toEqual({ ok: false });
+    expect(await svc.closeIfCustomise(null)).toEqual({ ok: false });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

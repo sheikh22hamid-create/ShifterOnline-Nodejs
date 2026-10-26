@@ -4,6 +4,7 @@ jest.mock("../customiseCancelService", () => ({
   recordFee: jest.fn().mockResolvedValue(undefined),
   afterDriverCancel: jest.fn().mockResolvedValue({ ok: true, relisted: true }),
   afterCustomerCancel: jest.fn().mockResolvedValue({ ok: true }),
+  closeIfCustomise: jest.fn().mockResolvedValue({ ok: true }),
 }));
 jest.mock("../customiseTimerService", () => ({ billFor: jest.fn().mockResolvedValue(null), record: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../referralPointsRefund", () => ({

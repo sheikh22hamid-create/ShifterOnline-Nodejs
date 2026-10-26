@@ -113,4 +113,10 @@ async function afterCustomerCancel({ customiseOrderId, rideId, now = new Date() 
   }
 }
 
-module.exports = { rideInfo, feeFor, recordFee, afterDriverCancel, afterCustomerCancel };
+/** For cancels the customer's side caused (no-show, unpaid advance) or an admin made: the negotiation closes for good. */
+async function closeIfCustomise(ride) {
+  if (ride?.customise_order_id == null) return { ok: false };
+  return afterCustomerCancel({ customiseOrderId: Number(ride.customise_order_id), rideId: Number(ride.id) });
+}
+
+module.exports = { rideInfo, feeFor, recordFee, afterDriverCancel, afterCustomerCancel, closeIfCustomise };
