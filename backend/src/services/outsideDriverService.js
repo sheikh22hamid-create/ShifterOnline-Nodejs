@@ -10,6 +10,8 @@ const { newTrialRiderData } = require("../utils/trialRiderData");
 // and onboard them. The service books and auto-cancels a trip on its own account per call, so every call is
 // rate limited and recorded.
 const BASE_URL = (process.env.OUTSIDE_DRIVER_API_URL || "https://rider.shifteronline.com").replace(/\/+$/, "");
+// Shared secret for the partner service (its PARTNER_API_KEY); sent only when configured.
+const partnerHeaders = (extra = {}) => (process.env.OUTSIDE_DRIVER_API_KEY ? { ...extra, "x-api-key": process.env.OUTSIDE_DRIVER_API_KEY } : extra);
 const REQUEST_TIMEOUT_MS = 70 * 1000;
 const MIN_GAP_MS = 10 * 1000;
 const MAX_LOOKUPS_PER_ORDER = 8;
@@ -31,7 +33,7 @@ let catalog = { at: 0, list: null };
 async function getVehicles(fetchImpl = fetch) {
   if (catalog.list && Date.now() - catalog.at < CATALOG_TTL_MS) return catalog.list;
   try {
-    const resp = await fetchImpl(`${BASE_URL}/api/vehicles`, { signal: AbortSignal.timeout(8000) });
+    const resp = await fetchImpl(`${BASE_URL}/api/vehicles`, { headers: partnerHeaders(), signal: AbortSignal.timeout(8000) });
     if (resp.ok) {
       const body = await resp.json();
       const list = (Array.isArray(body?.vehicles) ? body.vehicles : [])
@@ -106,7 +108,7 @@ async function callStream({ pickup, drop, vehicleId, fetchImpl = fetch }) {
   try {
     const resp = await fetchImpl(`${BASE_URL}/api/find-driver-stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: partnerHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ pickup, drop, vehicleId }),
       signal: ctrl.signal,
     });
