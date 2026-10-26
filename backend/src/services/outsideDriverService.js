@@ -82,8 +82,9 @@ function driverFromEvent(evt) {
     mobile: String(d.contactNumber).trim(),
     vehicle_number: String(d.vehicleNumber || "").trim(),
     vehicle_name: String(d.vehicleDisplayName || "").trim(),
-    // The vehicle id the partner actually booked (it can differ from the one we asked for).
-    vehicle_id: Number(evt.data?.fareDetails?.vehicleId) || null,
+    // The vehicle id the partner reports for this driver (assigned vehicle first, then the booked one); it can
+    // differ from the one we asked for.
+    vehicle_id: Number(d.vehicleId ?? evt.data?.fareDetails?.vehicleId) || null,
     fare: Number(d.fare ?? evt.data?.fareDetails?.amount) || null,
   };
 }

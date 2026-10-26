@@ -51,6 +51,8 @@ describe("lookup", () => {
   it("drops a driver the partner booked on a different vehicle than requested", async () => {
     const wrong = { ...FOUND, data: { ...FOUND.data, fareDetails: { vehicleId: 1139 } } };
     expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([wrong, { step: "COMPLETED" }])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });
+    const assignedElsewhere = { ...FOUND, data: { driver: { ...FOUND.data.driver, vehicleId: 1139 }, fareDetails: { vehicleId: 133 } } };
+    expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([assignedElsewhere])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });
     const unknown = { ...FOUND, data: { driver: FOUND.data.driver } };
     expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([unknown])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });
   });
