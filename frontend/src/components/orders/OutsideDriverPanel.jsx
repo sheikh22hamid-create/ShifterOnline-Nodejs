@@ -18,7 +18,7 @@ function guessVehicle(category) {
   const c = String(category || '').toLowerCase()
   if (/passenger/.test(c)) return null
   if (/e.?loader|electric|e.?rickshaw/.test(c)) return 126
-  if (/mini/.test(c)) return 1139
+  if (/mini/.test(c)) return null
   if (/scooter/.test(c)) return 133
   if (/bike|2.?w|two/.test(c)) return 97
   if (/\bace\b|4.?w|four/.test(c)) return 1

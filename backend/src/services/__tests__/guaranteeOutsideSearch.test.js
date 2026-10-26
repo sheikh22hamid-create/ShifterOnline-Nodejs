@@ -48,11 +48,11 @@ describe("vehicleIdForCategory", () => {
     expect(vehicleIdForCategory("Tata Ace")).toBe(1);
     expect(vehicleIdForCategory("4 wheeler")).toBe(1);
     expect(vehicleIdForCategory("3 wheeler")).toBe(91);
-    expect(vehicleIdForCategory("Mini 3W")).toBe(1139);
     expect(vehicleIdForCategory("E loader")).toBe(126);
   });
   it("never substitutes another vehicle for an unmapped category", () => {
     expect(vehicleIdForCategory("Passenger Vehicle")).toBeNull();
+    expect(vehicleIdForCategory("Mini 3W")).toBeNull();
     expect(vehicleIdForCategory("Pickup 8ft")).toBeNull();
     expect(vehicleIdForCategory("something else")).toBeNull();
     expect(vehicleIdForCategory(null)).toBeNull();

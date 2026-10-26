@@ -73,8 +73,9 @@ function vehicleFamily(text) {
   return null;
 }
 // Partner (Porter) vehicle ids, verified against the drivers they return (2026-10-26): 97 "2 Wheeler", 133 "Scooter",
-// 1139 "Mini 3W", 126 "E Loader", 91 "3 Wheeler", 1 "Tata Ace". "passenger" and anything else has no id.
-const FAMILY_VEHICLE_ID = Object.freeze({ bike: 97, scooter: 133, mini_3w: 1139, e_loader: 126, three_wheeler: 91, four_wheeler: 1 });
+// 1139 "Mini 3W", 126 "E Loader", 91 "3 Wheeler", 1 "Tata Ace". Porter's Mini 3W is a passenger rickshaw and Shifter has
+// no such vehicle, so mini_3w (like passenger) is never searched: its drivers are only recognised so they get rejected.
+const FAMILY_VEHICLE_ID = Object.freeze({ bike: 97, scooter: 133, e_loader: 126, three_wheeler: 91, four_wheeler: 1 });
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const inFlight = new Set();
