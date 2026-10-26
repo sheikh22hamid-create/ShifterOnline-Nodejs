@@ -4,25 +4,25 @@ import api from '../../services/api'
 
 // Shown until the partner's live list loads (or if it cannot be loaded).
 const FALLBACK_VEHICLES = [
-  { id: 133, name: '2-Wheeler (Bike)' },
-  { id: 1139, name: 'Mini 3-Wheeler' },
-  { id: 126, name: '3-Wheeler 500kg' },
-  { id: 97, name: 'Tata Ace / 8ft Truck' },
-  { id: 91, name: 'Pickup 8ft' },
-  { id: 1, name: 'Tata 407' },
+  { id: 97, name: '2 Wheeler' },
+  { id: 133, name: 'Scooter' },
+  { id: 1139, name: 'Mini 3W' },
+  { id: 126, name: 'E Loader' },
+  { id: 91, name: '3 Wheeler' },
+  { id: 1, name: 'Tata Ace' },
 ]
 
 // Starting choice from the order's category text (same rules as the backend's vehicleIdForCategory).
 // null when the partner has no matching vehicle: the admin must pick one instead of getting a wrong default.
 function guessVehicle(category) {
   const c = String(category || '').toLowerCase()
-  if (/passenger|e.?loader|electric|e.?rickshaw/.test(c)) return null
+  if (/passenger/.test(c)) return null
+  if (/e.?loader|electric|e.?rickshaw/.test(c)) return 126
   if (/mini/.test(c)) return 1139
-  if (/bike|2.?w|scooter/.test(c)) return 133
-  if (/\bace\b|8 ?ft truck|4 ?w|four/.test(c)) return 97
-  if (/pickup/.test(c)) return 91
-  if (/407/.test(c)) return 1
-  if (/3.?w|three/.test(c)) return 126
+  if (/scooter/.test(c)) return 133
+  if (/bike|2.?w|two/.test(c)) return 97
+  if (/\bace\b|4.?w|four/.test(c)) return 1
+  if (/3.?w|three|tempo/.test(c)) return 91
   return null
 }
 

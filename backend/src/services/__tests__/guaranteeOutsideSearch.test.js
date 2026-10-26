@@ -43,18 +43,17 @@ beforeEach(() => {
 describe("vehicleIdForCategory", () => {
   const { vehicleIdForCategory } = require("../outsideDriverService");
   it("maps the order category to a partner vehicle id", () => {
-    expect(vehicleIdForCategory("Bike")).toBe(133);
-    expect(vehicleIdForCategory("Tata Ace")).toBe(97);
-    expect(vehicleIdForCategory("4 wheeler")).toBe(97);
-    expect(vehicleIdForCategory("Pickup 8ft")).toBe(91);
-    expect(vehicleIdForCategory("Tata 407")).toBe(1);
-    expect(vehicleIdForCategory("3 Wheeler 500kg")).toBe(126);
-    expect(vehicleIdForCategory("3 wheeler")).toBe(126);
+    expect(vehicleIdForCategory("Bike")).toBe(97);
+    expect(vehicleIdForCategory("Scooter")).toBe(133);
+    expect(vehicleIdForCategory("Tata Ace")).toBe(1);
+    expect(vehicleIdForCategory("4 wheeler")).toBe(1);
+    expect(vehicleIdForCategory("3 wheeler")).toBe(91);
     expect(vehicleIdForCategory("Mini 3W")).toBe(1139);
     expect(vehicleIdForCategory("E loader")).toBe(126);
   });
   it("never substitutes another vehicle for an unmapped category", () => {
     expect(vehicleIdForCategory("Passenger Vehicle")).toBeNull();
+    expect(vehicleIdForCategory("Pickup 8ft")).toBeNull();
     expect(vehicleIdForCategory("something else")).toBeNull();
     expect(vehicleIdForCategory(null)).toBeNull();
   });
@@ -64,7 +63,7 @@ describe("runSearch", () => {
   it("finds a driver, registers a trial rider once, stores the candidate and dispatches the queue", async () => {
     const out = await svc.runSearch(1, deps);
     expect(out).toEqual({ outcome: "candidate" });
-    expect(deps.lookupFn).toHaveBeenCalledWith(expect.objectContaining({ orderId: 9, vehicleId: 133, adminId: null }));
+    expect(deps.lookupFn).toHaveBeenCalledWith(expect.objectContaining({ orderId: 9, vehicleId: 97, adminId: null }));
     expect(deps.registerFn).toHaveBeenCalledTimes(1);
     expect(deps.registerFn).toHaveBeenCalledWith(expect.objectContaining({ orderId: 9, name: "Rakesh", mobile: "9876543210", vehicleNumber: "MP09 AB 1234", trialOrders: 1 }));
     expect(candidates.createLive).toHaveBeenCalledWith({ caseId: 1, orderId: 9, riderId: 44, driver });

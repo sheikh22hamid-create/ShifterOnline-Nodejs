@@ -21,8 +21,8 @@ const MAX_TRIAL_ORDERS = 5;
 
 // Fallback catalog used until (or when) the partner's live /api/vehicles list is unavailable.
 const FALLBACK_VEHICLES = Object.freeze([
-  { id: 133, name: "2-Wheeler (Bike)" }, { id: 1139, name: "Mini 3-Wheeler" }, { id: 126, name: "3-Wheeler 500kg" },
-  { id: 97, name: "Tata Ace / 8ft Truck" }, { id: 91, name: "Pickup 8ft" }, { id: 1, name: "Tata 407" },
+  { id: 97, name: "2 Wheeler" }, { id: 133, name: "Scooter" }, { id: 1139, name: "Mini 3W" },
+  { id: 126, name: "E Loader" }, { id: 91, name: "3 Wheeler" }, { id: 1, name: "Tata Ace" },
 ]);
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 let catalog = { at: 0, list: null };
@@ -64,15 +64,15 @@ function vehicleFamily(text) {
   if (/passenger/.test(c)) return "passenger";
   if (/e.?loader|electric|e.?rickshaw/.test(c)) return "e_loader";
   if (/mini/.test(c)) return "mini_3w";
-  if (/pickup/.test(c)) return "pickup";
-  if (/407/.test(c)) return "truck_407";
-  if (/bike|2.?w|scooter/.test(c)) return "bike";
-  if (/\bace\b|4.?w|four|8 ?ft truck/.test(c)) return "four_wheeler";
-  if (/3.?w|three|tempo|\bauto\b/.test(c)) return "three_wheeler";
+  if (/scooter/.test(c)) return "scooter";
+  if (/bike|2.?w|two/.test(c)) return "bike";
+  if (/\bace\b|4.?w|four/.test(c)) return "four_wheeler";
+  if (/3.?w|three|tempo/.test(c)) return "three_wheeler";
   return null;
 }
-// The partner has no vehicle for "passenger"; its E-Loader drivers are booked under id 126.
-const FAMILY_VEHICLE_ID = Object.freeze({ bike: 133, mini_3w: 1139, e_loader: 126, three_wheeler: 126, four_wheeler: 97, pickup: 91, truck_407: 1 });
+// Partner (Porter) vehicle ids, verified against the drivers they return (2026-10-26): 97 "2 Wheeler", 133 "Scooter",
+// 1139 "Mini 3W", 126 "E Loader", 91 "3 Wheeler", 1 "Tata Ace". "passenger" and anything else has no id.
+const FAMILY_VEHICLE_ID = Object.freeze({ bike: 97, scooter: 133, mini_3w: 1139, e_loader: 126, three_wheeler: 91, four_wheeler: 1 });
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const inFlight = new Set();
