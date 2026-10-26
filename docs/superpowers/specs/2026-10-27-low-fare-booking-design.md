@@ -40,14 +40,13 @@ A Premium customer books a ride for a future date at a Model-1 fare minus an adm
 
 **Phasing.** (1) Backend: settings, quote, creation, list/count/accept, expiry sweep, cancel handling. (2) Admin page. (3) Customer app flow. (4) Driver app section. Each phase tested and committed separately.
 
-## Calls I made (change any)
-- New bookings use Low Fare only while the switch is ON; old in-flight next-day orders finish the old way.
-- The customer's window is when drivers may ACCEPT; after accepting, the driver heads to pickup right away like any ride.
-- No taker by the window's end means the order cancels (no fallback to normal dispatch).
-- Daily Driver cascade, 14:00 auto-live and batch assign stay in the code, just not used for `low_fare` orders.
-- Max 7 days ahead, max 12 h window, discount capped at 50%.
+## Owner answers (manager, 2026-10-27) and how they change this design
+1. Driver side is **a separate section like Schedule Booking** (a Home button opening a list, same pattern as the driver's Scheduled Trips), **no popup**. Its name on the driver side is **Low Fare Order**; the customer-side name stays the Next Day order. This replaces the Daily Driver offer popups for new orders (Daily Driver cascade is not used when the switch is ON).
+2. **The customer decides the pickup time and gives the driver some leeway, as a range** (example: 2:00 PM to 4:00 PM). The order shows in the next-day section / Low Fare Order list **from the start time until the end time**. So one window does both jobs: it is the pickup window the customer chose and the time drivers can accept; a driver who accepts is expected to pick up inside it (the existing pickup ETA and OTP rules still apply; no new penalty). My reading, easy to change: there is ONE window (from, until), not a separate acceptance window plus a pickup time. Before the start time the order is not shown to drivers.
+3. If no driver accepts by the end time the order **expires** (cancelled with reason "No driver accepted in the booking window"; nothing was charged, next-day bookings take no advance). It does not fall back to normal dispatch.
+4. When one driver accepts, the Accept button disappears for the others ("Already Attended"). If that driver cancels (for any reason) the Accept button comes back for the others while the window is open, the cancelling driver never sees it again, and the existing driver-cancel penalty applies.
 
-## Questions only the owner can answer
-1. Should Low Fare replace the Daily Driver offer flow for new next-day orders (my default), or should Daily Drivers still get the first offer before the order opens to everyone?
-2. After a driver accepts at the window time, does the customer want the pickup to happen right then (my default), or is there a separate pickup time the customer sets?
-3. If no driver accepts by the end of the window: cancel the order (my default), or hand it to the normal automatic driver search?
+## Calls I made (change any)
+- New bookings use Low Fare only while `low_fare_booking_enabled` is ON; old in-flight next-day orders finish the old way. Old Daily Driver / batch-assign code stays, just unused for `low_fare` orders.
+- Max 7 days ahead, max 12 h window, discount capped at 50% (default 20%).
+- Before the window starts the order is hidden from drivers (manager's wording), so "details visible but Accept disabled" is not needed.
