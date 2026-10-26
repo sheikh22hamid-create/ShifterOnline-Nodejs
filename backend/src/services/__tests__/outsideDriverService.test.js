@@ -12,7 +12,12 @@ jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error
 const prisma = require("../../config/db");
 const adminSocket = require("../../sockets/adminSocket");
 const { assignDefaultDeliveryTypes } = require("../../utils/assignDefaultDeliveryTypes");
+jest.mock("../outsideSearchPoints", () => ({
+  generate: jest.fn(),
+}));
+const searchPoints = require("../outsideSearchPoints");
 const svc = require("../outsideDriverService");
+const POINTS = { pickup: { title: "Near A", subtitle: "Indore", lat: 22.751, lng: 75.891 }, drop: { title: "Near B", subtitle: "Indore", lat: 22.769, lng: 75.893 } };
 
 const FOUND = {
   step: "DRIVER_FOUND",
@@ -29,6 +34,7 @@ const ORDER = { id: 5, rid: 0, order_status: 0, o_status: "Pending", plat: "22.7
 beforeEach(() => {
   jest.clearAllMocks();
   svc.resetCatalogCache();
+  searchPoints.generate.mockResolvedValue(POINTS);
   prisma.pkg_order.findUnique.mockResolvedValue(ORDER);
   prisma.booking_guarantee_case.findUnique.mockResolvedValue({ id: 9, status: "open" });
   prisma.booking_guarantee_audit.findMany.mockResolvedValue([]);
@@ -61,6 +67,13 @@ describe("vehicleFamily", () => {
 });
 
 describe("lookup", () => {
+  it("does not contact the partner when no suitable search points exist", async () => {
+    searchPoints.generate.mockResolvedValue(null);
+    const f = jest.fn();
+    expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: f })).toMatchObject({ driver: null, reason: "search_point_unavailable" });
+    expect(f).not.toHaveBeenCalled();
+  });
+
   it("drops a driver whose real vehicle is not the order's vehicle type", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({ ...ORDER, category: "3 wheeler" });
     const eLoader = { ...FOUND, data: { ...FOUND.data, driver: { ...FOUND.data.driver, vehicleDisplayName: "E Loader" } } };
@@ -84,7 +97,11 @@ describe("lookup", () => {
     expect(out.driver).toMatchObject({ name: "ANKIT BARFA", mobile: "09340352904" });
     expect(out.attempts).toBe(1);
     const body = JSON.parse(f.mock.calls[0][1].body);
-    expect(body).toMatchObject({ vehicleId: 133, pickup: { lat: 22.75, lng: 75.89 }, drop: { lat: 22.71, lng: 75.85 } });
+    // the partner gets the generated search points, never the order's own locations
+    expect(searchPoints.generate).toHaveBeenCalledWith({ lat: 22.75, lng: 75.89 });
+    expect(body).toMatchObject({ vehicleId: 133, pickup: { lat: 22.751, lng: 75.891 }, drop: { lat: 22.769, lng: 75.893 } });
+    expect(JSON.stringify(body)).not.toContain("22.71");
+    expect(prisma.booking_guarantee_audit.create.mock.calls[0][0].data.meta).toContain("search_pickup");
     expect(prisma.booking_guarantee_audit.create.mock.calls[0][0].data).toMatchObject({ case_id: 9, order_id: 5, event: "outside_driver_lookup", admin_id: 1 });
   });
 

@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const otpService = require("./otpService");
+const searchPoints = require("./outsideSearchPoints");
 const adminSocket = require("../sockets/adminSocket");
 const { assignDefaultDeliveryTypes } = require("../utils/assignDefaultDeliveryTypes");
 const { newTrialRiderData } = require("../utils/trialRiderData");
@@ -155,12 +156,12 @@ async function previousLookups(orderId) {
  * Find one outside driver for a held order. Returns { driver|null, reason?, attempts, repeat }.
  * Throws httpError for caller mistakes (not held, rate limited, bad vehicle).
  */
-async function lookup({ orderId, vehicleId, adminId, fetchImpl }) {
+async function lookup({ orderId, vehicleId, adminId, fetchImpl, pointsFn = searchPoints.generate }) {
   const vid = Number(vehicleId);
   if (!knownVehicleIds().includes(vid)) throw httpError(400, "Unsupported vehicle");
   const order = await prisma.pkg_order.findUnique({
     where: { id: orderId },
-    select: { id: true, rid: true, order_status: true, o_status: true, category: true, plat: true, plong: true, dlat: true, dlong: true, pick_name: true, drop_name: true },
+    select: { id: true, rid: true, order_status: true, o_status: true, category: true, plat: true, plong: true, dlat: true, dlong: true },
   });
   if (!order) throw httpError(404, "Order not found");
   if (order.rid !== 0 || order.order_status !== 0 || order.o_status !== "Pending") throw httpError(409, "Order is already assigned or closed");
@@ -174,18 +175,24 @@ async function lookup({ orderId, vehicleId, adminId, fetchImpl }) {
   if (last && Date.now() - new Date(last.at).getTime() < MIN_GAP_MS) throw httpError(429, "Please wait a few seconds before trying again");
 
   const coord = (v) => (String(v ?? "").trim() === "" ? NaN : Number(v));
-  const point = (title, lat, lng) => ({ title: title || "Location", subtitle: "", lat: coord(lat), lng: coord(lng) });
-  const pickup = point(order.pick_name, order.plat, order.plong);
-  const drop = point(order.drop_name, order.dlat, order.dlong);
-  if (![pickup.lat, pickup.lng, drop.lat, drop.lng].every(Number.isFinite)) throw httpError(422, "Order has no usable pickup/drop coordinates");
+  const origin = { lat: coord(order.plat), lng: coord(order.plong) };
+  if (![origin.lat, origin.lng, coord(order.dlat), coord(order.dlong)].every(Number.isFinite)) throw httpError(422, "Order has no usable pickup/drop coordinates");
 
   const seen = new Set(prior.map((p) => p.vehicle_number).filter(Boolean));
   inFlight.add(orderId);
   let result = { driver: null, reason: "no_driver_found" };
   let repeat = false;
+  let searched = null; // the points sent to the partner (never the order's own locations)
   try {
     for (let i = 0; i <= MAX_REPEAT_RETRIES; i += 1) {
-      result = await callStream({ pickup, drop, vehicleId: vid, fetchImpl });
+      // The partner never sees the customer's locations: it gets generated points near the order's pickup.
+      searched = await pointsFn(origin);
+      if (!searched) {
+        logger.error(`outsideDriver: no suitable search points near order ${orderId}; not contacting the partner`);
+        result = { driver: null, reason: "search_point_unavailable" };
+        break;
+      }
+      result = await callStream({ pickup: searched.pickup, drop: searched.drop, vehicleId: vid, fetchImpl });
       repeat = Boolean(result.driver && seen.has(result.driver.vehicle_number));
       if (!result.driver || !repeat) break;
     }
@@ -204,7 +211,7 @@ async function lookup({ orderId, vehicleId, adminId, fetchImpl }) {
     await prisma.booking_guarantee_audit.create({
       data: {
         case_id: caseRow.id, order_id: orderId, event: EVENT, admin_id: adminId ?? null,
-        meta: JSON.stringify({ vehicle_id: vid, found: Boolean(result.driver), reason: result.reason || null, repeat, ...(result.driver ? { name: result.driver.name, mobile: result.driver.mobile, vehicle_number: result.driver.vehicle_number, fare: result.driver.fare } : {}) }),
+        meta: JSON.stringify({ vehicle_id: vid, ...(searched ? { search_pickup: [searched.pickup.lat, searched.pickup.lng], search_drop: [searched.drop.lat, searched.drop.lng] } : {}), found: Boolean(result.driver), reason: result.reason || null, repeat, ...(result.driver ? { name: result.driver.name, mobile: result.driver.mobile, vehicle_number: result.driver.vehicle_number, fare: result.driver.fare } : {}) }),
       },
     });
   } catch (err) {
