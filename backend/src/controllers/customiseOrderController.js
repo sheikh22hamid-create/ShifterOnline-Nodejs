@@ -72,17 +72,18 @@ async function adminDetail(req, res) {
     if (!order || (req.scopedCityId && order.city_id !== req.scopedCityId)) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
-    const [stops, offers, events] = await Promise.all([
+    const [stops, offers, events, timers] = await Promise.all([
       prisma.customise_order_stop.findMany({ where: { order_id: id }, orderBy: { seq: "asc" } }),
       prisma.customise_offer.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
       prisma.customise_event.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
+      prisma.customise_order_timer.findMany({ where: { order_id: id }, orderBy: { id: "asc" } }),
     ]);
     const riderIds = [...new Set(offers.map((o) => o.rider_id))];
     const riders = riderIds.length ? await prisma.tbl_rider.findMany({ where: { id: { in: riderIds } }, select: { id: true, first_name: true, vehicle: true } }) : [];
     const riderById = Object.fromEntries(riders.map((r) => [r.id, r]));
     return res.status(200).json({
       success: true,
-      data: { order, stops, offers: offers.map((o) => ({ ...o, driver_name: riderById[o.rider_id]?.first_name || null, vehicle: riderById[o.rider_id]?.vehicle || null })), events },
+      data: { order, stops, timers, offers: offers.map((o) => ({ ...o, driver_name: riderById[o.rider_id]?.first_name || null, vehicle: riderById[o.rider_id]?.vehicle || null })), events },
     });
   } catch (err) {
     logger.error("customiseOrderController.adminDetail failed:", err);
