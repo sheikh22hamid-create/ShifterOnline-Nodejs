@@ -30,6 +30,7 @@ function statusTone(status) {
 }
 
 const SEGMENT_LABELS = { pickup_wait: 'Pickup waiting', pickup_load: 'Pickup loading', drop: 'Drop waiting and unloading' }
+const segmentLabel = (segment) => SEGMENT_LABELS[segment] || (segment.startsWith('stop_') ? `Stop ${segment.slice(5)} (waiting, loading, unloading)` : segment)
 
 const offerTone = (status) => (status === 'accepted' ? 'success' : status === 'active' ? 'info' : 'neutral')
 
@@ -137,6 +138,7 @@ function DetailDrawer({ order, onClose }) {
         <>
           <Section title="Status">
             <Row label="Status"><Badge tone={statusTone(o.status)}>{o.status}</Badge></Row>
+            <Row label="Customer">{order.customer ? `${order.customer.name || ''} ${order.customer.mobile ? '· ' + order.customer.mobile : ''}` : `#${o.uid}`}</Row>
             <Row label="Customer's offer">{formatCurrency(o.initial_fare)}</Row>
             <Row label="Final agreed fare">{o.agreed_fare != null ? formatCurrency(o.agreed_fare) : null}</Row>
             <Row label="Assigned driver">{o.agreed_rider_id ? `#${o.agreed_rider_id}` : null}</Row>
@@ -192,7 +194,7 @@ function DetailDrawer({ order, onClose }) {
             {data.timers.length === 0 && <div className="py-1 text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>Recorded when the trip is completed.</div>}
             {data.timers.map((t) => (
               <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-[12.5px]" style={{ borderTop: '1px solid var(--border)' }}>
-                <span style={{ color: 'var(--ink)' }}>{SEGMENT_LABELS[t.segment] || t.segment}</span>
+                <span style={{ color: 'var(--ink)' }}>{segmentLabel(t.segment)}</span>
                 <span className="flex items-center gap-3" style={{ color: 'var(--ink-muted)' }}>
                   <span>selected {t.selected_min} min</span>
                   <span>actual {Math.round((t.elapsed_seconds / 60) * 10) / 10} min</span>
@@ -206,6 +208,23 @@ function DetailDrawer({ order, onClose }) {
                 <b className="font-mono-data">{formatCurrency(data.timers.reduce((sum, t) => sum + Number(t.charge || 0), 0))}</b>
               </div>
             )}
+          </Section>
+
+          <Section title="Rides and reassignment history">
+            {data.rides.length === 0 && <div className="py-1 text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>No ride has been created yet.</div>}
+            {data.rides.map((r, i) => (
+              <div key={r.id} className="py-1.5 text-[12.5px]" style={{ borderTop: '1px solid var(--border)' }}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span style={{ color: 'var(--ink)' }}>Ride #{r.id} · {r.driver_name || `Driver #${r.rid}`}{r.vehicle ? ` (${r.vehicle})` : ''}{i < data.rides.length - 1 || r.o_status === 'Cancelled' ? '' : ' · current'}</span>
+                  <Badge tone={r.o_status === 'Completed' ? 'success' : r.o_status === 'Cancelled' ? 'danger' : 'info'}>{r.o_status}</Badge>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2" style={{ color: 'var(--ink-muted)' }}>
+                  <span>Fare {formatCurrency(r.total_dcharge)}</span>
+                  <span>Advance {formatCurrency(r.advance_payment || 0)} · {Number(r.payment_status) === 1 ? 'paid' : 'unpaid'}</span>
+                </div>
+                {r.cancel_reason && <div style={{ color: 'var(--ink-faint)' }}>{r.cancel_reason}</div>}
+              </div>
+            ))}
           </Section>
 
           <Section title="Cancellation and penalties">
