@@ -112,6 +112,11 @@ function TrialDriverOffer({ c, onChanged }) {
               </button>
             </span>
           </div>
+          {cand.already_registered != null && (
+            <div className="text-[12.5px] font-semibold" style={{ color: cand.already_registered ? 'var(--success)' : 'var(--ink-muted)' }}>
+              {cand.already_registered ? 'This driver is already registered with platform.' : 'Not Registered'}
+            </div>
+          )}
           <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Status</span><Badge tone={online ? 'success' : 'warning'}>{online ? 'Online' : 'Trial driver · offline'}</Badge></div>
         </div>
         <div className="grid gap-1 rounded-lg border p-3" style={block}>

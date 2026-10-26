@@ -585,6 +585,34 @@ const ORDER_FIELDS = {
   total_dcharge: true, distance: true,
 };
 
+/**
+ * Was each live candidate already in the Drivers Fleet (tbl_rider, matched by normalised mobile) BEFORE the bot registered
+ * them as a Trial Driver? registerTrial does that lookup and records its verdict in the "outside_trial_created" audit
+ * row: kind "trial_created" = not in the fleet, anything else = already registered. (A live lookup now would always say
+ * "registered", because the bot itself has just put the driver in the fleet.) Map candidate id -> boolean; absent = unknown.
+ */
+async function fleetRegistrationOf(live) {
+  const out = new Map();
+  if (!live.length) return out;
+  try {
+    const rows = await prisma.booking_guarantee_audit.findMany({
+      where: { case_id: { in: live.map((l) => l.case_id) }, event: "outside_trial_created" },
+      orderBy: { id: "asc" }, select: { case_id: true, meta: true },
+    });
+    for (const l of live) {
+      for (const r of rows) {
+        if (r.case_id !== l.case_id) continue;
+        let m = {};
+        try { m = JSON.parse(r.meta || "{}"); } catch (_e) { /* ignore */ }
+        if (m.rider_id === l.rider_id && typeof m.kind === "string") out.set(l.id, m.kind !== "trial_created");
+      }
+    }
+  } catch (err) {
+    logger.warn(`guaranteeQueue: fleet registration lookup failed: ${err.message}`);
+  }
+  return out;
+}
+
 /** Adds the live Trial Driver (with an online flag) and the order's key details to each case, in a few queries. */
 async function attachOffer(cases) {
   if (!cases.length) return cases;
@@ -611,6 +639,7 @@ async function attachOffer(cases) {
   } catch (_e) { /* no stops available */ }
   const liveBy = new Map(live.map((l) => [l.case_id, l]));
   const distanceBy = await candidateDistance.loadMany(live.map((l) => l.id));
+  const fleetBy = await fleetRegistrationOf(live);
   return cases.map((c) => {
     const l = liveBy.get(c.id);
     const r = l ? riderBy.get(l.rider_id) : null;
@@ -622,6 +651,7 @@ async function attachOffer(cases) {
         fare: l.fare == null ? null : Number(l.fare), status: l.status, trial_status: r ? r.trial_status : null,
         online: Boolean(r && r.a_status === 1 && r.status === 1),
         distance: candidateDistance.present(distanceBy.get(l.id)), // null = unavailable (never guessed)
+        already_registered: fleetBy.get(l.id) ?? null, // true = was already in the Drivers Fleet; null = unknown
       } : null,
       order: o ? { ...o, fare: o.total_dcharge == null ? null : Number(o.total_dcharge), stops: stopsBy.get(o.id) || [] } : null,
     };
