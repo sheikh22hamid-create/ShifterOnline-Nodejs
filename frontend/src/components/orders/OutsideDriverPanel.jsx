@@ -12,15 +12,18 @@ const FALLBACK_VEHICLES = [
   { id: 1, name: 'Tata 407' },
 ]
 
-// Best-effort starting choice from the order's category text; the admin can always change it.
+// Starting choice from the order's category text (same rules as the backend's vehicleIdForCategory).
+// null when the partner has no matching vehicle: the admin must pick one instead of getting a wrong default.
 function guessVehicle(category) {
   const c = String(category || '').toLowerCase()
+  if (/passenger|e.?loader|electric|e.?rickshaw/.test(c)) return null
+  if (/mini/.test(c)) return 1139
   if (/bike|2.?w|scooter/.test(c)) return 133
-  if (/ace|8 ?ft truck|4 ?w|four/.test(c)) return 97
+  if (/\bace\b|8 ?ft truck|4 ?w|four/.test(c)) return 97
   if (/pickup/.test(c)) return 91
   if (/407/.test(c)) return 1
-  if (/500/.test(c)) return 126
-  return 1139
+  if (/3.?w|three/.test(c)) return 126
+  return null
 }
 
 const REASONS = {
@@ -51,7 +54,7 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
         const list = res.data?.data
         if (!cancelled && Array.isArray(list) && list.length) {
           setVehicles(list)
-          setVehicleId((cur) => (list.some((v) => v.id === cur) ? cur : list[0].id))
+          setVehicleId((cur) => (list.some((v) => v.id === cur) ? cur : null))
         }
       })
       .catch(() => { /* keep the fallback list */ })
@@ -138,13 +141,14 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
         Finds one nearby driver who is not on Shifter yet. Call them, get them to install the app, register them as a trial driver, then assign this order.
       </p>
       <div className="flex items-center gap-2">
-        <select value={vehicleId} onChange={(e) => setVehicleId(Number(e.target.value))} disabled={busy} className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[12.5px]" style={inputStyle}>
+        <select value={vehicleId ?? ''} onChange={(e) => setVehicleId(Number(e.target.value))} disabled={busy} className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[12.5px]" style={inputStyle}>
+          {vehicleId === null && <option value="" disabled style={optionStyle}>Select a vehicle type</option>}
           {vehicles.map((v) => <option key={v.id} value={v.id} style={optionStyle}>{v.name}{v.desc ? ` · ${v.desc}` : ''}</option>)}
         </select>
         <button
           type="button"
           onClick={find}
-          disabled={busy}
+          disabled={busy || vehicleId === null}
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-60"
           style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}
         >
