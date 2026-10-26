@@ -16,7 +16,7 @@ const svc = require("../outsideDriverService");
 
 const FOUND = {
   step: "DRIVER_FOUND",
-  data: { driver: { driverName: "ANKIT BARFA", vehicleNumber: "MP-09-US-7097", contactNumber: "09340352904", vehicleDisplayName: "Scooter", fare: 98 } },
+  data: { driver: { driverName: "ANKIT BARFA", vehicleNumber: "MP-09-US-7097", contactNumber: "09340352904", vehicleDisplayName: "Scooter", fare: 98 }, fareDetails: { vehicleId: 133 } },
 };
 const sse = (events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
 const streamResp = (text, ok = true, status = 200) => ({
@@ -48,6 +48,13 @@ describe("parseSseEvent / driverFromEvent", () => {
 });
 
 describe("lookup", () => {
+  it("drops a driver the partner booked on a different vehicle than requested", async () => {
+    const wrong = { ...FOUND, data: { ...FOUND.data, fareDetails: { vehicleId: 1139 } } };
+    expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([wrong, { step: "COMPLETED" }])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });
+    const unknown = { ...FOUND, data: { driver: FOUND.data.driver } };
+    expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([unknown])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });
+  });
+
   it("returns the driver, reads the stream to its end, and audits the lookup", async () => {
     const f = fetchOf(sse([{ step: "INIT" }, FOUND, { step: "CANCELLING" }, { step: "COMPLETED" }]));
     const out = await svc.lookup({ orderId: 5, vehicleId: 133, adminId: 1, fetchImpl: f });
@@ -73,7 +80,7 @@ describe("lookup", () => {
   it("re-asks when the same driver comes back, then flags the repeat", async () => {
     prisma.booking_guarantee_audit.findMany.mockResolvedValue([{ created_at: new Date(Date.now() - 60000), meta: JSON.stringify({ vehicle_number: "MP-09-US-7097" }) }]);
     const same = sse([FOUND, { step: "COMPLETED" }]);
-    const other = sse([{ step: "DRIVER_FOUND", data: { driver: { driverName: "NEW", vehicleNumber: "MP-09-ZZ-1", contactNumber: "111" } } }]);
+    const other = sse([{ step: "DRIVER_FOUND", data: { driver: { driverName: "NEW", vehicleNumber: "MP-09-ZZ-1", contactNumber: "111" }, fareDetails: { vehicleId: 133 } } }]);
     const f = fetchOf(same, other);
     const out = await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: f });
     expect(f).toHaveBeenCalledTimes(2);
@@ -194,7 +201,7 @@ describe("getVehicles", () => {
     expect(await svc.getVehicles(f)).toEqual([{ id: 133, name: "Bike", desc: undefined }, { id: 555, name: "Car", desc: "4 wheeler" }]);
     await svc.getVehicles(f);
     expect(f).toHaveBeenCalledTimes(1);
-    const stream = fetchOf(sse([FOUND]));
+    const stream = fetchOf(sse([{ ...FOUND, data: { ...FOUND.data, fareDetails: { vehicleId: 555 } } }]));
     expect((await svc.lookup({ orderId: 5, vehicleId: 555, fetchImpl: stream })).driver).toBeTruthy();
     await expect(svc.lookup({ orderId: 5, vehicleId: 1, fetchImpl: jest.fn() })).rejects.toMatchObject({ statusCode: 400 });
   });

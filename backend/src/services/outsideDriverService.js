@@ -47,15 +47,21 @@ async function getVehicles(fetchImpl = fetch) {
 const knownVehicleIds = () => (catalog.list || FALLBACK_VEHICLES).map((v) => v.id);
 const resetCatalogCache = () => { catalog = { at: 0, list: null }; };
 
-/** Best-effort partner vehicle id from the order's category text (same rules as the admin panel's starting choice). */
-function guessVehicleId(category) {
+/**
+ * Partner vehicle id for an order's category, or null when the partner has no matching vehicle. Never falls back to
+ * another vehicle: searching the wrong type surfaces drivers who cannot take the booking (e.g. an E-Loader or
+ * passenger vehicle for a 3-Wheeler order).
+ */
+function vehicleIdForCategory(category) {
   const c = String(category || "").toLowerCase();
+  if (/passenger|e.?loader|electric|e.?rickshaw/.test(c)) return null; // the partner has no id for these
+  if (/mini/.test(c)) return 1139;
   if (/bike|2.?w|scooter/.test(c)) return 133;
-  if (/ace|8 ?ft truck|4 ?w|four/.test(c)) return 97;
+  if (/\bace\b|8 ?ft truck|4 ?w|four/.test(c)) return 97;
   if (/pickup/.test(c)) return 91;
   if (/407/.test(c)) return 1;
-  if (/500/.test(c)) return 126;
-  return 1139;
+  if (/3.?w|three/.test(c)) return 126;
+  return null;
 }
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
@@ -76,6 +82,8 @@ function driverFromEvent(evt) {
     mobile: String(d.contactNumber).trim(),
     vehicle_number: String(d.vehicleNumber || "").trim(),
     vehicle_name: String(d.vehicleDisplayName || "").trim(),
+    // The vehicle id the partner actually booked (it can differ from the one we asked for).
+    vehicle_id: Number(evt.data?.fareDetails?.vehicleId) || null,
     fare: Number(d.fare ?? evt.data?.fareDetails?.amount) || null,
   };
 }
@@ -108,6 +116,10 @@ async function callStream({ pickup, drop, vehicleId, fetchImpl = fetch }) {
         if (evt.step === "DRIVER_FOUND" && !driver) driver = driverFromEvent(evt);
         if (evt.step === "ERROR" || evt.step === "NO_DRIVER") failure = String(evt.step).toLowerCase();
       }
+    }
+    if (driver && vehicleId && driver.vehicle_id !== Number(vehicleId)) {
+      logger.warn(`outsideDriver: dropped driver ${driver.mobile}: asked vehicle ${vehicleId}, partner booked ${driver.vehicle_id ?? "unknown"} (${driver.vehicle_name})`);
+      return { driver: null, reason: "vehicle_mismatch" };
     }
     if (driver) return { driver };
     return { driver: null, reason: failure || "no_driver_found" };
@@ -265,4 +277,4 @@ async function notifyIfAwaited(rider) {
   }
 }
 
-module.exports = { guessVehicleId, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
+module.exports = { vehicleIdForCategory, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };

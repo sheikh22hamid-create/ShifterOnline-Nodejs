@@ -40,15 +40,23 @@ beforeEach(() => {
   };
 });
 
-describe("guessVehicleId", () => {
-  const { guessVehicleId } = require("../outsideDriverService");
+describe("vehicleIdForCategory", () => {
+  const { vehicleIdForCategory } = require("../outsideDriverService");
   it("maps the order category to a partner vehicle id", () => {
-    expect(guessVehicleId("Bike")).toBe(133);
-    expect(guessVehicleId("Tata Ace")).toBe(97);
-    expect(guessVehicleId("Pickup 8ft")).toBe(91);
-    expect(guessVehicleId("Tata 407")).toBe(1);
-    expect(guessVehicleId("3 Wheeler 500kg")).toBe(126);
-    expect(guessVehicleId("something else")).toBe(1139);
+    expect(vehicleIdForCategory("Bike")).toBe(133);
+    expect(vehicleIdForCategory("Tata Ace")).toBe(97);
+    expect(vehicleIdForCategory("4 wheeler")).toBe(97);
+    expect(vehicleIdForCategory("Pickup 8ft")).toBe(91);
+    expect(vehicleIdForCategory("Tata 407")).toBe(1);
+    expect(vehicleIdForCategory("3 Wheeler 500kg")).toBe(126);
+    expect(vehicleIdForCategory("3 wheeler")).toBe(126);
+    expect(vehicleIdForCategory("Mini 3W")).toBe(1139);
+  });
+  it("never substitutes another vehicle for an unmapped category", () => {
+    expect(vehicleIdForCategory("E loader")).toBeNull();
+    expect(vehicleIdForCategory("Passenger Vehicle")).toBeNull();
+    expect(vehicleIdForCategory("something else")).toBeNull();
+    expect(vehicleIdForCategory(null)).toBeNull();
   });
 });
 

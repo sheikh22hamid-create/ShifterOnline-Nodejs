@@ -139,9 +139,16 @@ async function runSearch(caseId, deps = {}) {
       }
       if (!(await lease.renew())) return { outcome: "stopped" }; // lost the lease: someone else owns this search now
 
+      const vehicleId = outsideDriver.vehicleIdForCategory(order.category);
+      if (!vehicleId) {
+        logger.error(`guaranteeOutsideSearch: no partner vehicle for category "${order.category}" (order ${order.id}); not searching`);
+        await exhaust(caseRow, lease, "no_vehicle_mapping");
+        return { outcome: "exhausted" };
+      }
+
       let result;
       try {
-        result = await lookupFn({ orderId: caseRow.order_id, vehicleId: outsideDriver.guessVehicleId(order.category), adminId: null });
+        result = await lookupFn({ orderId: caseRow.order_id, vehicleId, adminId: null });
       } catch (err) {
         const verdict = classify(err);
         if (verdict.action === "exhausted") { await exhaust(caseRow, lease, verdict.reason); return { outcome: "exhausted" }; }
