@@ -146,7 +146,12 @@ async function callStream({ pickup, drop, vehicleId, fetchImpl = fetch }) {
       logger.warn(`outsideDriver: dropped driver ***${String(driver.mobile).slice(-4)}: asked vehicle ${vehicleId}, partner booked ${driver.vehicle_id ?? "unknown"} (${driver.vehicle_name})`);
       return { driver: null, reason: "vehicle_mismatch" };
     }
-    if (driver) return { driver };
+    if (driver) {
+      // A "driver location" equal to a point we sent is the trip's own pickup/drop, not the driver's: drop it.
+      const same = (p) => driver.location && Math.abs(driver.location.lat - Number(p?.lat)) < 5e-5 && Math.abs(driver.location.lng - Number(p?.lng)) < 5e-5;
+      if (same(pickup) || same(drop)) driver.location = null;
+      return { driver };
+    }
     return { driver: null, reason: failure || "no_driver_found" };
   } catch (err) {
     return { driver: null, reason: ctrl.signal.aborted ? "timeout" : "api_unreachable" };

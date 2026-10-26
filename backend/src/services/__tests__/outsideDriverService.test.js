@@ -42,6 +42,12 @@ beforeEach(() => {
 });
 
 describe("parseSseEvent / driverFromEvent", () => {
+  it("drops a driver location that equals the search pickup (that is the trip's point, not the driver's)", async () => {
+    const evt = { ...FOUND, data: { ...FOUND.data, driver: { ...FOUND.data.driver, location: { lat: POINTS.pickup.lat, lng: POINTS.pickup.lng } } } };
+    const out = await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([evt])) });
+    expect(out.driver.location).toBeNull();
+  });
+
   it("reads the driver's location when the partner shows one, and null otherwise", () => {
     const withLoc = { data: { driver: { ...FOUND.data.driver, location: { lat: "22.73", lng: 75.86, approximate: true, updatedAt: "2026-10-26T10:00:00Z" } } } };
     expect(svc.driverFromEvent(withLoc).location).toEqual({ lat: 22.73, lng: 75.86, approx: true, at: "2026-10-26T10:00:00Z", source: "partner" });
