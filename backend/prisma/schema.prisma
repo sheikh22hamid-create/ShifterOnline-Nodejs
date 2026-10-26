@@ -2419,3 +2419,25 @@ model customise_order_timer {
 
   @@unique([order_id, segment])
 }
+
+/// Customise Order cancellation penalty actually applied (spec 2026-10-26, Phase 3). One row per (ride, side).
+model customise_cancel_fee {
+  id               Int      @id @default(autoincrement())
+  order_id         Int
+  ride_id          Int
+  side             String   @db.VarChar(10)
+  mode             String   @db.VarChar(10)
+  payer_id         Int
+  recipient_id     Int?
+  agreed_fare      Decimal  @db.Decimal(10, 2)
+  fixed            Decimal  @db.Decimal(10, 2)
+  percent          Decimal  @db.Decimal(5, 2)
+  charge           Decimal  @db.Decimal(10, 2)
+  admin_share      Decimal  @db.Decimal(10, 2)
+  recipient_amount Decimal  @db.Decimal(10, 2)
+  reason           String?  @db.VarChar(255)
+  created_at       DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([ride_id, side])
+  @@index([order_id])
+}
