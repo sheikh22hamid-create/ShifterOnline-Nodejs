@@ -120,13 +120,14 @@ router.post("/survey/answer", appKeyAuth, driverSurveyController.saveSurveyAnswe
 router.post("/custom-order/open", customOrderBiddingController.listOpenOrdersForDriver);
 router.post("/custom-order/bid", customOrderBiddingController.placeBid);
 
-// Customise Order with counter-offer bargaining (driver side, spec 2026-10-26).
+// Customise Order with counter-offer bargaining (driver side, spec 2026-10-26). Behind the app key like the other
+// driver calls; rider_id still comes from the body (the platform has no per-user tokens yet, see order_dispatch_auth_gap).
 const customiseOrderController = require("../controllers/customiseOrderController");
-router.post("/customise/list", customiseOrderController.driverList);
-router.post("/customise/count", customiseOrderController.driverCount);
-router.post("/customise/accept", customiseOrderController.driverAccept);
-router.post("/customise/counter", customiseOrderController.driverCounter);
-router.post("/customise/dismiss", customiseOrderController.driverDismiss);
+router.post("/customise/list", appKeyAuth, customiseOrderController.driverList);
+router.post("/customise/count", appKeyAuth, customiseOrderController.driverCount);
+router.post("/customise/accept", appKeyAuth, customiseOrderController.driverAccept);
+router.post("/customise/counter", appKeyAuth, customiseOrderController.driverCounter);
+router.post("/customise/dismiss", appKeyAuth, customiseOrderController.driverDismiss);
 
 // Driver home/dashboard, static content, misc onboarding (Node port of the
 // remaining rider_api/*.php endpoints confirmed live in UserService.java)

@@ -62,7 +62,7 @@ describe("convert", () => {
     });
     expect(prisma.customise_offer.updateMany).toHaveBeenCalledWith({ where: { id: 90 }, data: { status: "accepted", decided_at: NOW } });
     expect(prisma.customise_offer.updateMany).toHaveBeenCalledWith({ where: { order_id: 5, status: "active" }, data: { status: "void", decided_at: NOW } });
-    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:assigned", expect.objectContaining({ order_id: 321, rider_id: 11 }));
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:assigned", expect.objectContaining({ order_id: 321, rider_id: 11, customise_order_id: 5 }));
   });
 
   it("claims with the server clock, so an expired or not-yet-started order can never convert", async () => {

@@ -137,6 +137,7 @@ async function notifyConverted({ order, rider, rideId, amount, others }) {
   dispatchManager.emitCustomerEvent(order.uid, "order:assigned", {
     order_id: rideId, rider_id: rider.id, rider_name: `${rider.first_name || ""} ${rider.last_name || ""}`.trim(),
     rider_phone: rider.fmobile, vehicle_no: rider.vehicle_no, order_status: 1, o_status: "Processing",
+    customise_order_id: order.id, // lets the customer app route straight to the advance-payment screen
   });
   dispatchManager.emitCustomerEvent(order.uid, "customise:converted", { order_id: order.id, pkg_order_id: rideId, rider_id: rider.id, fare: amount });
   const ride = await prisma.pkg_order.findUnique({ where: { id: rideId } });
