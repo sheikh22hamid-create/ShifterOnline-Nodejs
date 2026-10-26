@@ -118,7 +118,7 @@ async function callStream({ pickup, drop, vehicleId, fetchImpl = fetch }) {
       }
     }
     if (driver && vehicleId && driver.vehicle_id !== Number(vehicleId)) {
-      logger.warn(`outsideDriver: dropped driver ${driver.mobile}: asked vehicle ${vehicleId}, partner booked ${driver.vehicle_id ?? "unknown"} (${driver.vehicle_name})`);
+      logger.warn(`outsideDriver: dropped driver ***${String(driver.mobile).slice(-4)}: asked vehicle ${vehicleId}, partner booked ${driver.vehicle_id ?? "unknown"} (${driver.vehicle_name})`);
       return { driver: null, reason: "vehicle_mismatch" };
     }
     if (driver) return { driver };
