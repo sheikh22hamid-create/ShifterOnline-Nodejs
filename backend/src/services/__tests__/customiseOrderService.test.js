@@ -239,3 +239,22 @@ describe("customer views", () => {
     expect((await service.getOrder(5, 999)).ok).toBe(false);
   });
 });
+
+describe("customerAcceptOffer", () => {
+  it("refuses an offer id that is not an active offer on the caller's own order (no cross-order conversion)", async () => {
+    prisma.customise_order.findUnique.mockResolvedValue({ id: 5, uid: 7 });
+    prisma.customise_offer.findFirst.mockResolvedValue(null);
+    const out = await service.customerAcceptOffer(5, 7, 4242);
+    expect(out.ok).toBe(false);
+    expect(prisma.customise_offer.findFirst).toHaveBeenCalledWith({ where: { id: 4242, order_id: 5, status: "active" } });
+    expect(convertService.convert).not.toHaveBeenCalled();
+  });
+
+  it("converts the chosen active offer for the owner", async () => {
+    prisma.customise_order.findUnique.mockResolvedValue({ id: 5, uid: 7 });
+    prisma.customise_offer.findFirst.mockResolvedValue({ id: 90, order_id: 5, status: "active" });
+    convertService.convert.mockResolvedValue({ ok: true, pkg_order_id: 321 });
+    expect(await service.customerAcceptOffer(5, 7, 90)).toEqual({ ok: true, pkg_order_id: 321 });
+    expect(convertService.convert).toHaveBeenCalledWith(5, 90);
+  });
+});

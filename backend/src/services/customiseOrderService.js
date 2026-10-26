@@ -297,6 +297,9 @@ async function customerAcceptOffer(orderId, uid, offerId) {
   try {
     if (!(await settings.isEnabled())) return fail(NOT_AVAILABLE);
     if (!(await ownedOrder(orderId, uid))) return fail("Order not found");
+    // The offer must be an active one on THIS order: an id from another customer's order must never convert this one.
+    const offer = await prisma.customise_offer.findFirst({ where: { id: Number(offerId), order_id: Number(orderId), status: "active" } });
+    if (!offer) return fail("This offer is no longer available");
     const converted = await convertService().convert(Number(orderId), Number(offerId));
     return converted.ok ? { ok: true, pkg_order_id: converted.pkg_order_id } : fail(converted.msg || "Could not accept this offer");
   } catch (err) {
