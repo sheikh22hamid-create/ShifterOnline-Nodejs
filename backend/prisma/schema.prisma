@@ -342,6 +342,10 @@ model pkg_order {
   next_day_live_at         DateTime? @db.DateTime(0)
   next_day_stage           String?   @db.VarChar(10)
   next_day_discount_amount Decimal?  @db.Decimal(10, 2)
+  // Low Fare Booking (spec 2026-10-27): Model-1 fare, the admin discount applied at booking time, and the window's end.
+  next_day_model1_fare       Decimal?  @db.Decimal(10, 2)
+  next_day_discount_percent  Decimal?  @db.Decimal(5, 2)
+  next_day_live_until        DateTime? @db.DateTime(0)
   @@index([rid, order_status], map: "idx_rid_status")
   @@index([search_system, o_status, search_deadline_at], map: "idx_order_search")
 }
@@ -2439,5 +2443,16 @@ model customise_cancel_fee {
   created_at       DateTime @default(now()) @db.DateTime(0)
 
   @@unique([ride_id, side])
+  @@index([order_id])
+}
+
+/// Low Fare Booking: which orders a driver has already opened, for the unread-style badge.
+model low_fare_view {
+  id       Int      @id @default(autoincrement())
+  rider_id Int
+  order_id Int
+  seen_at  DateTime @default(now()) @db.DateTime(0)
+
+  @@unique([rider_id, order_id])
   @@index([order_id])
 }
