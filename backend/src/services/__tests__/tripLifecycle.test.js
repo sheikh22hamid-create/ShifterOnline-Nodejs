@@ -452,6 +452,18 @@ describe("tripLifecycle.acceptOrder", () => {
       expect(result.order.d_charge).toBe("300");
     });
 
+    it("a Customise Order keeps the fare the customer and driver agreed, but still gets the normal advance", async () => {
+      setup({ booking_type: 1, customise_order_id: 12 });
+      const result = await tripLifecycle.acceptOrder(297, 1);
+      const data = prisma.pkg_order.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty("d_charge");
+      expect(data).not.toHaveProperty("total_dcharge");
+      expect(data).toEqual(expect.objectContaining({ delivery_type: 6, driver_earning: "300" }));
+      expect(reconcileRideDiscountToFare).not.toHaveBeenCalled();
+      expect(result.order.total_dcharge).toBe("300");
+      expect(result.order.advance_payment).toBe("60"); // cancellation charge 15 + radius charge 45, the normal formula
+    });
+
     it("type 1: the fare is still re-priced off the driver's real distance", async () => {
       setup({ booking_type: 1 });
       const result = await tripLifecycle.acceptOrder(297, 1);

@@ -279,7 +279,8 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // (spec D3/§3: the customer's fare never changes; next-day is no-radius):
   // d_charge/total_dcharge are left alone and driver_earning is the booked
   // fare, same as assignNextDayBatch. Package bookkeeping is still written.
-  const keepBookedFare = Number(order.booking_type) === 3;
+  // A Customise Order's fare was negotiated between customer and driver (customise_order_id), so it is never re-priced.
+  const keepBookedFare = Number(order.booking_type) === 3 || order.customise_order_id != null;
   const priced = keepBookedFare
     ? {
       delivery_type: Number(acceptedPackageId), driver_earning: order.total_dcharge, commission,

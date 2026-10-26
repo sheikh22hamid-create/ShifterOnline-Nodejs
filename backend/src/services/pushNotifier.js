@@ -399,7 +399,29 @@ async function notifyCustomerFreeBookingRefunded(fcmToken, orderId, amount) {
   );
 }
 
+/** A new Customise Order the driver is eligible for. Same push path as an order request so it beeps. */
+async function notifyDriverCustomiseOrder(fcmToken, { orderId, fare }) {
+  return sendPushNotification(
+    fcmToken,
+    "New Customise Order",
+    `A customer offers ₹${fare} for a custom job. Accept it or send your price.`,
+    stringifyPayload({ type: "customise_order", order_id: orderId })
+  );
+}
+
+/** A driver accepted or countered the customer's Customise Order. */
+async function notifyCustomerCustomiseOffer(fcmToken, { orderId, driverName, amount }) {
+  return sendCustomerPush(
+    fcmToken,
+    "New offer on your Customise Order",
+    `${driverName || "A driver"} offered ₹${amount} for order #${orderId}.`,
+    { type: "customise_offer", order_id: String(orderId) }
+  );
+}
+
 module.exports = {
+  notifyDriverCustomiseOrder,
+  notifyCustomerCustomiseOffer,
   notifyCustomerSettlementReminder,
   notifyDriverSettlementReminder,
   notifyDriverOrderRequest,

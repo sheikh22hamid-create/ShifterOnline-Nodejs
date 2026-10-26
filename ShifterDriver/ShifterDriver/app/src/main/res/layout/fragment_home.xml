@@ -1717,7 +1717,7 @@
                     android:src="@drawable/arow_right"
                     app:tint="@color/white" />
             </LinearLayout>
-            <!-- Custom Orders Button (kept accessible) -->
+            <!-- Customise Orders: negotiated jobs; the badge is the number of open orders for this driver -->
             <LinearLayout
                 android:id="@+id/btn_custom_orders"
                 android:layout_width="match_parent"
@@ -1731,7 +1731,6 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:padding="14dp"
-                android:visibility="gone"
                 android:foreground="?attr/selectableItemBackground">
                 <ImageView
                     android:layout_width="28dp"
@@ -1747,17 +1746,33 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/custom_orders_label"
+                        android:text="@string/customise_orders_label"
                         android:textColor="@color/white"
                         android:textSize="15sp"
                         android:textStyle="bold" />
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/view_and_bid_custom_orders"
+                        android:text="@string/customise_orders_hint"
                         android:textColor="#DDEEFF"
                         android:textSize="12sp" />
                 </LinearLayout>
+                <TextView
+                    android:id="@+id/txt_customise_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="22dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/rounded_button"
+                    android:backgroundTint="#E53935"
+                    android:gravity="center"
+                    android:minWidth="22dp"
+                    android:paddingStart="7dp"
+                    android:paddingEnd="7dp"
+                    android:text="0"
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
                 <ImageView
                     android:layout_width="20dp"
                     android:layout_height="20dp"

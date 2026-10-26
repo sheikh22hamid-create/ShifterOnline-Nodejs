@@ -278,6 +278,11 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name="com.shifter.driver.activity.CustomiseOrderListActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name="com.shifter.driver.activity.PremiumPlansActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />

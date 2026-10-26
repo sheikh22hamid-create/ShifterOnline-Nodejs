@@ -8,6 +8,7 @@ import 'package:goParcel/Api/config.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:goParcel/controllers/page_list_api_controller.dart';
 import 'package:goParcel/screens/home/home.dart';
+import 'package:goParcel/screens/customise/customise_api.dart';
 import 'package:goParcel/screens/home/wallet_page.dart';
 import 'package:goParcel/screens/myorder/myorder.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
@@ -67,6 +68,13 @@ class BottombarState extends State<Bottombar> {
     _scheduledOrderSubscription = NodeSocketManager.instance.addListeners(onOrderAssigned: (data) {
       final orderId = data['order_id']?.toString();
       if (orderId == null || orderId.isEmpty) return;
+      // A Customise Order a driver accepted at the customer's price: the advance-payment window is short, so take the
+      // customer to the ride wherever they are (the Customise screen routes first when it is open).
+      if (data['customise_order_id'] != null) {
+        if (!mounted || !CustomiseApi.claimRouting(orderId)) return;
+        Get.to(() => TrackingWay(type: "Pickup", initialOrderData: data));
+        return;
+      }
       if (!ScheduledOrderWatch.remove(orderId)) return; // not a scheduled order we're catching up on
       if (!mounted) return;
       Get.to(() => TrackingWay(type: "Pickup", initialOrderData: data));

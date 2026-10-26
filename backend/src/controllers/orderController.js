@@ -270,6 +270,9 @@ async function createOrderCore({
   stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
   receiverPays = false, receiverCommissionPercent,
   freeBooking = false, sendSenderWhatsapp = false, sendReceiverWhatsapp = false,
+  // Customise Order (spec 2026-10-26): the fare was negotiated, so it replaces the rate-card fare, the driver search is
+  // skipped (the driver is already chosen) and the ride keeps a permanent link back to the negotiation.
+  agreedFare = null, skipDispatch = false, customiseOrderId = null,
 }) {
   if (
     !uid ||
@@ -440,8 +443,13 @@ async function createOrderCore({
 
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);
-  const finalTotalCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare);
-  const finalDCharge = validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare);
+  const agreed = Number(agreedFare) > 0 ? Number(agreedFare) : null;
+  const finalTotalCharge = agreed ?? (validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare));
+  const finalDCharge = agreed ?? (validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare));
+  // Commission is a percentage of the fare: re-derive it for the agreed fare with the package's own earning rule.
+  const orderCommission = agreed
+    ? pricingEngine.calculateCommissionPercent(agreed, pricingEngine.calculateDriverEarning(firstPkg, agreed))
+    : commission;
 
   // Free Booking Offer: Free Ride Chance check.
   // Verified server-side. If the customer qualifies for the free ride chance (premium, city offer on,
@@ -589,7 +597,7 @@ async function createOrderCore({
       distance: distanceKm,
       d_charge: finalDCharge,
       total_dcharge: finalTotalCharge,
-      commission,
+      commission: orderCommission,
       extra_mile_charge: (Number(extraMileCharge) || 0) + stopCharge,
       time_duration: 0,
       package_weight: Number.isFinite(parsedWeight) ? parsedWeight : 0,
@@ -614,6 +622,7 @@ async function createOrderCore({
       referral_points_amount: referralPointsAmount,
       body_type: cleanBodyType,
       covered_charge: bodyTypeCharge,
+      ...(customiseOrderId ? { customise_order_id: Number(customiseOrderId) } : {}),
     },
   });
   } catch (err) {
@@ -760,7 +769,7 @@ async function createOrderCore({
   // null schedule time as immediately due, meaning today this only adds a
   // sweep-interval-sized delay vs the old instant dispatch. Once the app
   // grows a real time picker for this button, the wait becomes meaningful.)
-  if (Number(bookingType) !== 3 && Number(bookingType) !== 2) {
+  if (Number(bookingType) !== 3 && Number(bookingType) !== 2 && !skipDispatch) {
     dispatchManager.startDispatch(order, {
       fare, driverEarning, commission, packageTitle: firstPkg?.title || null,
       // Handed through so dispatchManager can price each eligible driver's own

@@ -1616,7 +1616,7 @@ class _HomeState extends State<Home> {
           if (_scheduleBookingEnabled) const SizedBox(width: 10),
 
           // -- Custom Order (Half width, coming soon) --------
-          const Expanded(child: CustomOrderComingSoonTile()),
+          const Expanded(child: CustomiseOrderTile()),
         ],
       ),
         ],
