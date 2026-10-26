@@ -5859,8 +5859,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             RepaintBoundary(child: _buildLiveTrackingCard()),
             const SizedBox(height: 14),
           ],
-          // Completed trip: the route the driver actually drove + distance.
-          if (status == "completed" && orderid != "0" && orderid.isNotEmpty) ...[
+          // Completed or cancelled trip: the route the driver actually drove (up to the cancellation) + distance.
+          if ((status == "completed" || status == "cancelled" || status == "cancel") && orderid != "0" && orderid.isNotEmpty) ...[
             OrderRouteMap(key: ValueKey("route_$orderid"), orderId: orderid, embedded: true),
             const SizedBox(height: 14),
           ],

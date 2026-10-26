@@ -18,6 +18,7 @@ const bookingGuarantee = require("../services/bookingGuaranteeService");
 const guaranteeQueue = require("../services/guaranteeQueueService");
 const freeBookingService = require("../services/freeBookingService");
 const outsideDriver = require("../services/outsideDriverService");
+const { buildRoute } = require("../services/tripRouteService");
 const orderAssignment = require("../services/orderAssignmentService");
 
 const STATUS_MAP = {
@@ -409,6 +410,23 @@ async function cancel(req, res) {
   }
 }
 
+// Recorded driver GPS trail of one order (live, completed or cancelled), split by driver. Read-only.
+async function route(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const order = await prisma.pkg_order.findUnique({ where: { id }, select: { id: true, city_id: true } });
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+    if (isScopedOut(req, order.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
+    }
+    return res.json({ success: true, data: await buildRoute(prisma, id, { withDrivers: true }) });
+  } catch (err) {
+    return internalError(res, err, "adminOrderController.route");
+  }
+}
+
 async function invoice(req, res) {
   try {
     const id = parseInt(req.params.id, 10);
@@ -784,6 +802,6 @@ async function assignNextDayBatch(req, res) {
 }
 
 module.exports = {
-  list, getOne, assignRider, outsideDriverLookup, outsideDriverVehicles, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
+  list, getOne, route, assignRider, outsideDriverLookup, outsideDriverVehicles, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
   listNextDay, suggestNextDaySequence, assignNextDayBatch,
 };

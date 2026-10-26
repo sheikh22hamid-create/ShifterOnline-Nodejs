@@ -75,6 +75,54 @@ describe("buildRoute", () => {
   }
   const row = (min, lat, lng, phase) => ({ lat: String(lat), lng: String(lng), phase, recorded_at: new Date(NOW - min * 60000) });
 
+  describe("several drivers on one booking", () => {
+    const rowBy = (riderId, min, lat, lng, phase = 0) => ({ ...row(min, lat, lng, phase), rider_id: riderId });
+    const rows = [
+      rowBy(11, 60, 22.0, 75.0), rowBy(11, 55, 22.003, 75.0), rowBy(11, 50, 22.006, 75.0), // first driver, cancelled
+      rowBy(12, 30, 21.99, 75.1), rowBy(12, 20, 22.0, 75.0), rowBy(12, 10, 22.01, 75.0, 1), // second driver
+    ];
+
+    it("keeps each driver's route separate and draws only the latest driver on the main map", async () => {
+      const route = await buildRoute(clientWith({ rows }), 5);
+      expect(route.assignments.map((a) => a.rider_id)).toEqual([11, 12]);
+      expect(route.assignments[0].points).toHaveLength(3);
+      expect(route.assignments[1].points).toHaveLength(3);
+      expect(route.points).toEqual(route.assignments[1].points);
+      expect(route.start).toEqual({ lat: 21.99, lng: 75.1 });
+      // the connector between the two drivers is NOT part of either distance
+      expect(route.distance_km).toBe(route.assignments[1].distance_km);
+    });
+
+    it("adds driver names only when asked (admin), never for the customer", async () => {
+      const client = clientWith({ rows });
+      client.tbl_rider = { findMany: jest.fn().mockResolvedValue([{ id: 11, full_name: "Raju", vehicle_no: "MP09AA1111" }, { id: 12, first_name: "Sonu", last_name: "K", vehicle_no: null }]) };
+      const customer = await buildRoute(client, 5);
+      expect(customer.assignments[0]).not.toHaveProperty("driver_name");
+      expect(client.tbl_rider.findMany).not.toHaveBeenCalled();
+      const admin = await buildRoute(client, 5, { withDrivers: true });
+      expect(admin.assignments.map((a) => a.driver_name)).toEqual(["Raju", "Sonu K"]);
+    });
+  });
+
+  describe("cancelled orders", () => {
+    const cancelled = { o_status: "Cancelled", order_status: 4 };
+    it("keeps the recorded trail up to the cancellation", async () => {
+      const route = await buildRoute(clientWith({ order: cancelled, rows: [row(30, 21.99, 75.0, 0), row(20, 22.0, 75.0, 0), row(10, 22.003, 75.0, 0)] }), 5);
+      expect(route).toMatchObject({ cancelled: true, has_trail: true, o_status: "Cancelled" });
+      expect(route.points).toHaveLength(3);
+      expect(route.distance_km).toBeGreaterThan(1);
+    });
+    it("reports no trail and no planned distance when nothing was recorded (never a made-up route)", async () => {
+      const route = await buildRoute(clientWith({ order: cancelled, rows: [] }), 5);
+      expect(route).toMatchObject({ cancelled: true, has_trail: false, points: [], assignments: [], distance_km: 0 });
+    });
+    it("a live or completed order is not flagged cancelled and still falls back to the planned distance", async () => {
+      const route = await buildRoute(clientWith({ order: { o_status: "Processing", order_status: 1 }, rows: [] }), 5);
+      expect(route.cancelled).toBe(false);
+      expect(route.distance_km).toBe(2.4);
+    });
+  });
+
   it("sums the real driven distance and reports start / pickup / drop", async () => {
     const route = await buildRoute(clientWith({
       rows: [row(30, 21.99, 75.0, 0), row(20, 22.0, 75.0, 0), row(10, 22.01, 75.0, 1), row(1, 22.02, 75.0, 1)],

@@ -250,6 +250,7 @@ router.get("/orders/next-day/:id/offers", auth, authorize(...RIDER_ROLES), scope
 
 router.get("/orders", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.list);
 router.get("/orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.getOne);
+router.get("/orders/:id/route", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.route);
 router.get("/orders/:id/invoice", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.invoice);
 router.get("/orders/:id/daily-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, dailyDriverOrder.listForOrder);
 router.post("/orders/:id/assign-rider", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignRider);

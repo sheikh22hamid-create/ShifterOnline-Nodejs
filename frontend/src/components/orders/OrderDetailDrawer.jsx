@@ -12,6 +12,7 @@ import { formatCurrency, formatDateTime } from '../../utils/format'
 import AssignDriverModal from './AssignDriverModal'
 import CancelOrderModal from './CancelOrderModal'
 import InvoiceModal from './InvoiceModal'
+import OrderRouteMap from './OrderRouteMap'
 
 const EDIT_FIELDS = [
   { key: 'paddress', label: 'Pickup address' },
@@ -542,6 +543,9 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                     </div>
                   </div>
                 </section>
+
+                {/* Recorded driver GPS route: live, completed and cancelled orders */}
+                <OrderRouteMap orderId={order.id} status={orderStatusLabel(order.o_status)} />
 
                 {/* Live Milestones */}
                 <section>

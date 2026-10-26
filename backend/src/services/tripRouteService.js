@@ -76,18 +76,8 @@ function point(lat, lng) {
   return { lat: a, lng: b };
 }
 
-// Returns null if the order doesn't exist. Ownership is checked by the caller.
-async function buildRoute(client, orderId) {
-  const order = await client.pkg_order.findUnique({ where: { id: orderId } });
-  if (!order) return null;
-
-  const [rows, stops, timer, pickupEvent] = await Promise.all([
-    client.driver_trip_location.findMany({ where: { order_id: orderId }, orderBy: { recorded_at: "asc" } }),
-    client.pkg_order_stops.findMany({ where: { order_id: orderId }, orderBy: [{ sequence: "asc" }, { id: "asc" }] }),
-    client.pkg_order_wait_timer.findFirst({ where: { order_id: orderId } }),
-    client.driver_trip_event.findUnique({ where: { order_id_milestone: { order_id: orderId, milestone: "pickup_updated" } } }),
-  ]);
-
+// One driver's stretch of the trail: the points, a dashed-gap flag after a long silence, and the distance driven.
+function trailOf(rows) {
   const points = [];
   let distanceKm = 0;
   let prev = null;
@@ -105,6 +95,53 @@ async function buildRoute(client, orderId) {
     prev = p;
     prevAt = at;
   }
+  return { points, distanceKm };
+}
+
+/**
+ * The stored trail split by driver, in the order the drivers took the booking. A booking several drivers accepted
+ * (one cancelled, the next took over) has one assignment per driver, so their routes are never drawn as one line.
+ */
+function splitByDriver(rows) {
+  const byRider = new Map();
+  for (const r of rows) {
+    const key = Number(r.rider_id);
+    if (!byRider.has(key)) byRider.set(key, []);
+    byRider.get(key).push(r);
+  }
+  return [...byRider.entries()].map(([riderId, list]) => {
+    const { points, distanceKm } = trailOf(list);
+    return {
+      rider_id: riderId,
+      points,
+      has_trail: points.length >= 2,
+      distance_km: Math.round(distanceKm * 100) / 100,
+      started_at: list[0].recorded_at,
+      ended_at: list[list.length - 1].recorded_at,
+    };
+  });
+}
+
+const isCancelled = (order) => String(order?.o_status || "").trim().toLowerCase() === "cancelled" || Number(order?.order_status) === 4;
+
+// Returns null if the order doesn't exist. Ownership is checked by the caller.
+// `withDrivers` (admin only) adds each driver's name to the per-driver assignments.
+async function buildRoute(client, orderId, { withDrivers = false } = {}) {
+  const order = await client.pkg_order.findUnique({ where: { id: orderId } });
+  if (!order) return null;
+
+  const [rows, stops, timer, pickupEvent] = await Promise.all([
+    client.driver_trip_location.findMany({ where: { order_id: orderId }, orderBy: { recorded_at: "asc" } }),
+    client.pkg_order_stops.findMany({ where: { order_id: orderId }, orderBy: [{ sequence: "asc" }, { id: "asc" }] }),
+    client.pkg_order_wait_timer.findFirst({ where: { order_id: orderId } }),
+    client.driver_trip_event.findUnique({ where: { order_id_milestone: { order_id: orderId, milestone: "pickup_updated" } } }),
+  ]);
+
+  const assignments = splitByDriver(rows);
+  // The map shows the driver the booking ended with (the latest one); earlier drivers stay in `assignments`.
+  const latest = assignments[assignments.length - 1] || { points: [], has_trail: false, distance_km: 0 };
+  const points = latest.points;
+  const cancelled = isCancelled(order);
 
   const currentPickup = point(order.plat, order.plong);
   const oldPickup = pickupEvent ? point(pickupEvent.payload?.old_lat, pickupEvent.payload?.old_lng) : null;
@@ -117,14 +154,34 @@ async function buildRoute(client, orderId) {
     otpPoint = null;
   }
 
+  let names = new Map();
+  if (withDrivers && assignments.length) {
+    const riders = await client.tbl_rider.findMany({
+      where: { id: { in: assignments.map((a) => a.rider_id) } },
+      select: { id: true, full_name: true, first_name: true, last_name: true, vehicle_no: true },
+    });
+    names = new Map(riders.map((r) => [r.id, r]));
+  }
+
   // One lonely fix can't draw a line; treat it as "no trail" so the app falls
   // back to the planned path instead of showing pins only.
-  const hasTrail = points.length >= 2;
+  const hasTrail = latest.has_trail;
   return {
     has_trail: hasTrail,
     points,
-    // Without a recorded trail the best figure is the planned trip distance.
-    distance_km: hasTrail ? Math.round(distanceKm * 100) / 100 : Number(order.distance) || 0,
+    // Without a recorded trail the best figure is the planned trip distance. A cancelled order never shows a
+    // planned/estimated figure or path: only what was actually recorded (0 when nothing was).
+    distance_km: hasTrail ? latest.distance_km : (cancelled ? 0 : Number(order.distance) || 0),
+    cancelled,
+    order_status: order.order_status,
+    o_status: order.o_status,
+    assignments: assignments.map((a) => ({
+      ...a,
+      ...(withDrivers ? {
+        driver_name: (names.get(a.rider_id)?.full_name || `${names.get(a.rider_id)?.first_name || ""} ${names.get(a.rider_id)?.last_name || ""}`).trim() || null,
+        vehicle_no: names.get(a.rider_id)?.vehicle_no || null,
+      } : {}),
+    })),
     start: hasTrail ? { lat: points[0].lat, lng: points[0].lng } : null,
     // "pickup" = where the customer first asked for pickup; "final_pickup"
     // only when it was changed after booking.

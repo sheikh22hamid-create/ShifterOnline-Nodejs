@@ -130,7 +130,8 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
         previous = point;
       }
       flush();
-    } else {
+    } else if (_route!["cancelled"] != true) {
+      // A cancelled order never gets a planned/estimated path: only what was really recorded is drawn.
       // No usable GPS trail: draw the planned path through every known point
       // (pickup -> final pickup -> OTP -> stops -> drop) as a solid, clearly
       // coloured line so the route is still highlighted.
@@ -251,6 +252,7 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
 
   Widget _summaryCard() {
     final distance = double.tryParse(_route?["distance_km"]?.toString() ?? "") ?? 0;
+    final cancelled = _route?["cancelled"] == true;
     return SafeArea(
       top: false,
       child: Container(
@@ -270,13 +272,15 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "${_hasTrail ? "Total distance".tr : "Planned distance".tr}: ${distance.toStringAsFixed(2)} km",
+                    cancelled && !_hasTrail
+                        ? "No GPS tracking was recorded before this order was cancelled".tr
+                        : "${_hasTrail ? (cancelled ? "Distance travelled until cancellation".tr : "Total distance".tr) : "Planned distance".tr}: ${distance.toStringAsFixed(2)} km",
                     style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 16),
                   ),
                 ),
               ],
             ),
-            if (!_hasTrail) ...[
+            if (!_hasTrail && !cancelled) ...[
               const SizedBox(height: 6),
               Text(
                 "Route not recorded for this order".tr,
