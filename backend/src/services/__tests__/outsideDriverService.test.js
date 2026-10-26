@@ -47,7 +47,27 @@ describe("parseSseEvent / driverFromEvent", () => {
   });
 });
 
+describe("vehicleFamily", () => {
+  it("classifies Shifter categories and the partner's driver vehicle names alike", () => {
+    expect(["E loader", "E Loader"].map(svc.vehicleFamily)).toEqual(["e_loader", "e_loader"]);
+    expect(["Bike", "Scooter", "2 Wheeler"].map(svc.vehicleFamily)).toEqual(["bike", "bike", "bike"]);
+    expect(["3 wheeler", "3-Wheeler 500kg"].map(svc.vehicleFamily)).toEqual(["three_wheeler", "three_wheeler"]);
+    expect(["Mini 3W", "Mini 3-Wheeler"].map(svc.vehicleFamily)).toEqual(["mini_3w", "mini_3w"]);
+    expect(["4 wheeler", "Tata Ace / 8ft Truck"].map(svc.vehicleFamily)).toEqual(["four_wheeler", "four_wheeler"]);
+    expect(svc.vehicleFamily("Passenger Vehicle")).toBe("passenger");
+    expect(svc.vehicleFamily("")).toBeNull();
+  });
+});
+
 describe("lookup", () => {
+  it("drops a driver whose real vehicle is not the order's vehicle type", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...ORDER, category: "3 wheeler" });
+    const eLoader = { ...FOUND, data: { ...FOUND.data, driver: { ...FOUND.data.driver, vehicleDisplayName: "E Loader" } } };
+    expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([eLoader])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });
+    const ok = { ...FOUND, data: { ...FOUND.data, driver: { ...FOUND.data.driver, vehicleDisplayName: "3 Wheeler" } } };
+    expect((await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([ok])) })).driver).toBeTruthy();
+  });
+
   it("drops a driver the partner booked on a different vehicle than requested", async () => {
     const wrong = { ...FOUND, data: { ...FOUND.data, fareDetails: { vehicleId: 1139 } } };
     expect(await svc.lookup({ orderId: 5, vehicleId: 133, fetchImpl: fetchOf(sse([wrong, { step: "COMPLETED" }])) })).toMatchObject({ driver: null, reason: "vehicle_mismatch" });

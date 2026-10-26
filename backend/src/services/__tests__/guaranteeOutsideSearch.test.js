@@ -51,9 +51,9 @@ describe("vehicleIdForCategory", () => {
     expect(vehicleIdForCategory("3 Wheeler 500kg")).toBe(126);
     expect(vehicleIdForCategory("3 wheeler")).toBe(126);
     expect(vehicleIdForCategory("Mini 3W")).toBe(1139);
+    expect(vehicleIdForCategory("E loader")).toBe(126);
   });
   it("never substitutes another vehicle for an unmapped category", () => {
-    expect(vehicleIdForCategory("E loader")).toBeNull();
     expect(vehicleIdForCategory("Passenger Vehicle")).toBeNull();
     expect(vehicleIdForCategory("something else")).toBeNull();
     expect(vehicleIdForCategory(null)).toBeNull();

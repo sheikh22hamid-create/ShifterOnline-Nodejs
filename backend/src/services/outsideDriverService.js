@@ -53,16 +53,26 @@ const resetCatalogCache = () => { catalog = { at: 0, list: null }; };
  * passenger vehicle for a 3-Wheeler order).
  */
 function vehicleIdForCategory(category) {
-  const c = String(category || "").toLowerCase();
-  if (/passenger|e.?loader|electric|e.?rickshaw/.test(c)) return null; // the partner has no id for these
-  if (/mini/.test(c)) return 1139;
-  if (/bike|2.?w|scooter/.test(c)) return 133;
-  if (/\bace\b|8 ?ft truck|4 ?w|four/.test(c)) return 97;
-  if (/pickup/.test(c)) return 91;
-  if (/407/.test(c)) return 1;
-  if (/3.?w|three/.test(c)) return 126;
+  return FAMILY_VEHICLE_ID[vehicleFamily(category)] ?? null;
+}
+
+// Vehicle family of a Shifter category ("E loader", "3 wheeler"...) or of the partner's driver vehicle name
+// ("E Loader", "2 Wheeler", "Scooter"...). The partner's booked id says nothing about the driver's real vehicle,
+// so the families of the order and of the driver are compared instead.
+function vehicleFamily(text) {
+  const c = String(text || "").toLowerCase();
+  if (/passenger/.test(c)) return "passenger";
+  if (/e.?loader|electric|e.?rickshaw/.test(c)) return "e_loader";
+  if (/mini/.test(c)) return "mini_3w";
+  if (/pickup/.test(c)) return "pickup";
+  if (/407/.test(c)) return "truck_407";
+  if (/bike|2.?w|scooter/.test(c)) return "bike";
+  if (/\bace\b|4.?w|four|8 ?ft truck/.test(c)) return "four_wheeler";
+  if (/3.?w|three|tempo|\bauto\b/.test(c)) return "three_wheeler";
   return null;
 }
+// The partner has no vehicle for "passenger"; its E-Loader drivers are booked under id 126.
+const FAMILY_VEHICLE_ID = Object.freeze({ bike: 133, mini_3w: 1139, e_loader: 126, three_wheeler: 126, four_wheeler: 97, pickup: 91, truck_407: 1 });
 
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const inFlight = new Set();
@@ -147,7 +157,7 @@ async function lookup({ orderId, vehicleId, adminId, fetchImpl }) {
   if (!knownVehicleIds().includes(vid)) throw httpError(400, "Unsupported vehicle");
   const order = await prisma.pkg_order.findUnique({
     where: { id: orderId },
-    select: { id: true, rid: true, order_status: true, o_status: true, plat: true, plong: true, dlat: true, dlong: true, pick_name: true, drop_name: true },
+    select: { id: true, rid: true, order_status: true, o_status: true, category: true, plat: true, plong: true, dlat: true, dlong: true, pick_name: true, drop_name: true },
   });
   if (!order) throw httpError(404, "Order not found");
   if (order.rid !== 0 || order.order_status !== 0 || order.o_status !== "Pending") throw httpError(409, "Order is already assigned or closed");
@@ -178,6 +188,13 @@ async function lookup({ orderId, vehicleId, adminId, fetchImpl }) {
     }
   } finally {
     inFlight.delete(orderId);
+  }
+
+  // The driver's real vehicle must be the order's vehicle type (an unclassifiable order category is not checked).
+  const orderFamily = vehicleFamily(order.category);
+  if (result.driver && orderFamily && vehicleFamily(result.driver.vehicle_name) !== orderFamily) {
+    logger.warn(`outsideDriver: dropped driver ***${String(result.driver.mobile).slice(-4)} for order ${orderId}: order is ${orderFamily}, driver vehicle "${result.driver.vehicle_name}"`);
+    result = { driver: null, reason: "vehicle_mismatch" };
   }
 
   try {
@@ -278,4 +295,4 @@ async function notifyIfAwaited(rider) {
   }
 }
 
-module.exports = { vehicleIdForCategory, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
+module.exports = { vehicleIdForCategory, vehicleFamily, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
