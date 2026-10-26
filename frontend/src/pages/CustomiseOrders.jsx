@@ -1,6 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Eye, Search } from 'lucide-react'
 import api from '../services/api'
+import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
 import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
@@ -46,6 +48,78 @@ function Section({ title, children }) {
       <h3 className="mb-1.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>{title}</h3>
       <div className="surface-card rounded-xl px-3.5 py-2">{children}</div>
     </section>
+  )
+}
+
+const FIELD = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
+const EMPTY_POLICY = { mode: 'normal', fixed: 0, percent: 0, admin_share: 0 }
+
+function PolicyEditor({ title, value, onChange }) {
+  const special = value.mode === 'special'
+  const set = (key) => (e) => onChange({ ...value, [key]: e.target.value })
+  return (
+    <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border)' }}>
+      <div className="mb-2 text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>{title}</div>
+      <select value={value.mode} onChange={set('mode')} className="mb-2 w-full rounded-lg border px-2 py-1.5 text-[12.5px]" style={FIELD}>
+        <option value="normal">Normal (usual rate-card charge)</option>
+        <option value="special">Special (fixed + % of fare)</option>
+      </select>
+      {special && (
+        <div className="grid grid-cols-3 gap-2 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+          <label>Fixed (₹)<input type="number" min="0" value={value.fixed} onChange={set('fixed')} className="mt-0.5 w-full rounded-lg border px-2 py-1 text-[12.5px]" style={FIELD} /></label>
+          <label>% of fare<input type="number" min="0" max="100" value={value.percent} onChange={set('percent')} className="mt-0.5 w-full rounded-lg border px-2 py-1 text-[12.5px]" style={FIELD} /></label>
+          <label>Admin share %<input type="number" min="0" max="100" value={value.admin_share} onChange={set('admin_share')} className="mt-0.5 w-full rounded-lg border px-2 py-1 text-[12.5px]" style={FIELD} /></label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CancellationPolicy() {
+  const toast = useToast()
+  const fetcher = useCallback(() => api.get('/customise-settings').then((res) => res.data.data), [])
+  const { data, loading } = useApiQuery(fetcher)
+  const [driver, setDriver] = useState(EMPTY_POLICY)
+  const [customer, setCustomer] = useState(EMPTY_POLICY)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!data) return
+    setDriver(data.driver)
+    setCustomer(data.customer)
+  }, [data])
+
+  async function save() {
+    setSaving(true)
+    try {
+      await api.put('/customise-settings', { driver, customer })
+      toast.success('Cancellation policy saved.')
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Could not save the policy.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <details className="surface-card mt-4 rounded-xl p-4">
+      <summary className="cursor-pointer text-[13.5px] font-semibold" style={{ color: 'var(--ink)' }}>Cancellation policy</summary>
+      <p className="mt-2 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+        Special charge = fixed amount + % of the agreed fare (never more than the fare). The admin keeps its share; the rest goes to the other party.
+        Normal keeps the usual rate-card charge. Applies to your city{data && data.city_id == null ? ' (all cities, the default)' : ''}.
+      </p>
+      {loading ? <div className="mt-3 text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>Loading…</div> : (
+        <>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <PolicyEditor title="Driver cancels after assignment" value={driver} onChange={setDriver} />
+            <PolicyEditor title="Customer cancels after assignment" value={customer} onChange={setCustomer} />
+          </div>
+          <button type="button" disabled={saving} onClick={save} className="mt-3 rounded-lg px-3.5 py-1.5 text-[13px] font-semibold text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+            {saving ? 'Saving…' : 'Save policy'}
+          </button>
+        </>
+      )}
+    </details>
   )
 }
 
@@ -134,6 +208,23 @@ function DetailDrawer({ order, onClose }) {
             )}
           </Section>
 
+          <Section title="Cancellation and penalties">
+            {data.fees.length === 0 && <div className="py-1 text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>No cancellation penalty applied.</div>}
+            {data.fees.map((f) => (
+              <div key={f.id} className="py-1.5 text-[12.5px]" style={{ borderTop: '1px solid var(--border)' }}>
+                <div className="flex justify-between gap-3">
+                  <span style={{ color: 'var(--ink)' }}>{f.side === 'driver' ? `Driver #${f.payer_id} cancelled` : 'Customer cancelled'} ({f.mode})</span>
+                  <b className="font-mono-data">{formatCurrency(f.charge)}</b>
+                </div>
+                <div className="flex justify-between gap-3" style={{ color: 'var(--ink-muted)' }}>
+                  <span>Admin share {formatCurrency(f.admin_share)}</span>
+                  <span>To {f.side === 'driver' ? 'customer' : 'driver'} {formatCurrency(f.recipient_amount)}</span>
+                </div>
+                {f.reason && <div style={{ color: 'var(--ink-faint)' }}>{f.reason}</div>}
+              </div>
+            ))}
+          </Section>
+
           <Section title="History">
             {data.events.map((e) => (
               <div key={e.id} className="flex justify-between gap-3 py-1 text-[12px]">
@@ -149,6 +240,7 @@ function DetailDrawer({ order, onClose }) {
 }
 
 export default function CustomiseOrders() {
+  const { hasRole } = useAuth()
   const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(null)
@@ -172,6 +264,8 @@ export default function CustomiseOrders() {
       <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
         Negotiated jobs: the customer names a price, drivers accept or counter, and the customer picks one. Monitoring only.
       </p>
+
+      {hasRole('superadmin', 'admin') && <CancellationPolicy />}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-1.5">

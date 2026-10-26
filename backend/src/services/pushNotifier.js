@@ -419,7 +419,18 @@ async function notifyCustomerCustomiseOffer(fcmToken, { orderId, driverName, amo
   );
 }
 
+/** The driver of the customer's Customise Order cancelled; the order is open again for other drivers. */
+async function notifyCustomerCustomiseRelisted(fcmToken, { orderId }) {
+  return sendCustomerPush(
+    fcmToken,
+    "Your driver cancelled",
+    `Your driver cancelled order #${orderId}. It is open again so other drivers can send offers.`,
+    { type: "customise_relisted", order_id: String(orderId) }
+  );
+}
+
 module.exports = {
+  notifyCustomerCustomiseRelisted,
   notifyDriverCustomiseOrder,
   notifyCustomerCustomiseOffer,
   notifyCustomerSettlementReminder,

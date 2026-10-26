@@ -11,6 +11,7 @@ jest.mock("../../config/db", () => ({
   $transaction: jest.fn(),
 }));
 jest.mock("../../services/dispatchManager", () => ({ stopDispatch: jest.fn() }));
+jest.mock("../../services/customiseCancelService", () => ({ closeIfCustomise: jest.fn().mockResolvedValue({ ok: true }) }));
 jest.mock("../../services/pricingEngine", () => ({ getPackageById: jest.fn() }));
 jest.mock("../../services/pushNotifier", () => ({}));
 jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn() }));
@@ -142,5 +143,21 @@ describe("adminOrderController.cancel - Booking Guarantee", () => {
     const r = res();
     await cancel(req(), r);
     expect(r.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("adminOrderController.cancel - Customise Order", () => {
+  const { closeIfCustomise } = require("../../services/customiseCancelService");
+
+  it("closes the Customise order behind a ride an admin cancels", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ customise_order_id: 5 }));
+    await cancel(req(), res());
+    expect(closeIfCustomise).toHaveBeenCalledWith(expect.objectContaining({ id: 468, customise_order_id: 5 }));
+  });
+
+  it("an ordinary ride never touches the Customise tables", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    await cancel(req(), res());
+    expect(closeIfCustomise).toHaveBeenCalledWith(expect.not.objectContaining({ customise_order_id: 5 }));
   });
 });

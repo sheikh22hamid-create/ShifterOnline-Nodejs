@@ -290,6 +290,8 @@ router.post("/custom-orders/:id/convert", auth, authorize("superadmin", "admin")
 const customiseOrderController = require("../controllers/customiseOrderController");
 router.get("/customise-orders", auth, authorize(...RIDER_ROLES), scopeFilter, customiseOrderController.adminList);
 router.get("/customise-orders/:id", auth, authorize(...RIDER_ROLES), scopeFilter, customiseOrderController.adminDetail);
+router.get("/customise-settings", auth, authorize("superadmin", "admin"), scopeFilter, customiseOrderController.getSettings);
+router.put("/customise-settings", auth, authorize("superadmin", "admin"), scopeFilter, customiseOrderController.saveSettings);
 
 // --- Marketing: Banners, Coupons, Premium Plans ------------------------------
 router.get("/marketing/banners", auth, marketingController.listBanners);

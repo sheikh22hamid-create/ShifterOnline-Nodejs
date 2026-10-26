@@ -4,10 +4,12 @@ jest.mock("../../config/db", () => ({
   customise_offer: { findMany: jest.fn() },
   customise_event: { findMany: jest.fn() },
   customise_order_timer: { findMany: jest.fn() },
+  customise_cancel_fee: { findMany: jest.fn() },
   tbl_user: { findMany: jest.fn() },
   tbl_rider: { findMany: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+jest.mock("../../services/customiseCancelPolicy", () => ({ getPolicy: jest.fn(), savePolicy: jest.fn(), assertValid: jest.fn() }));
 jest.mock("../../services/customiseOrderSettings", () => ({ isEnabled: jest.fn() }));
 jest.mock("../../services/customiseOrderService", () => ({
   createOrder: jest.fn(), myOrders: jest.fn(), getOrder: jest.fn(), listOffers: jest.fn(), customerAcceptOffer: jest.fn(),
@@ -17,6 +19,7 @@ jest.mock("../../services/customiseOrderService", () => ({
 
 const prisma = require("../../config/db");
 const settings = require("../../services/customiseOrderSettings");
+const cancelPolicy = require("../../services/customiseCancelPolicy");
 const service = require("../../services/customiseOrderService");
 const controller = require("../customiseOrderController");
 
@@ -100,11 +103,63 @@ describe("admin detail timers", () => {
     prisma.customise_order_stop.findMany.mockResolvedValue([]);
     prisma.customise_offer.findMany.mockResolvedValue([]);
     prisma.customise_event.findMany.mockResolvedValue([]);
+    prisma.customise_cancel_fee.findMany.mockResolvedValue([]);
     prisma.customise_order_timer.findMany.mockResolvedValue([{ segment: "pickup_load", selected_min: 30, elapsed_seconds: 2400, billed_seconds: 600, charge: "20.00" }]);
     const res = makeRes();
     await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
     const body = res.json.mock.calls[0][0];
     expect(body.data.timers).toEqual([expect.objectContaining({ segment: "pickup_load", charge: "20.00" })]);
     expect(prisma.customise_order_timer.findMany).toHaveBeenCalledWith({ where: { order_id: 5 }, orderBy: { id: "asc" } });
+  });
+});
+
+describe("admin detail penalties", () => {
+  it("returns the cancellation penalties actually applied, with the admin share", async () => {
+    prisma.customise_order.findUnique.mockResolvedValue({ id: 5, city_id: 3 });
+    for (const m of ["customise_order_stop", "customise_offer", "customise_event", "customise_order_timer"]) prisma[m].findMany.mockResolvedValue([]);
+    prisma.customise_cancel_fee.findMany.mockResolvedValue([{ side: "driver", charge: "150.00", admin_share: "30.00", recipient_amount: "120.00" }]);
+    const res = makeRes();
+    await controller.adminDetail({ params: { id: "5" }, scopedCityId: 3 }, res);
+    expect(res.json.mock.calls[0][0].data.fees).toEqual([expect.objectContaining({ side: "driver", admin_share: "30.00" })]);
+    expect(prisma.customise_cancel_fee.findMany).toHaveBeenCalledWith({ where: { order_id: 5 }, orderBy: { id: "asc" } });
+  });
+});
+
+describe("cancellation policy settings", () => {
+  const body = {
+    city_id: 99,
+    driver: { mode: "special", fixed: 50, percent: 10, admin_share: 20 },
+    customer: { mode: "normal", fixed: 0, percent: 0, admin_share: 0 },
+  };
+
+  it("reads both sides for the admin's own city", async () => {
+    cancelPolicy.getPolicy.mockImplementation(async (side) => ({ mode: side === "driver" ? "special" : "normal", fixed: 50, percent: 10, adminSharePercent: 20 }));
+    const res = makeRes();
+    await controller.getSettings({ scopedCityId: 3 }, res);
+    expect(cancelPolicy.getPolicy).toHaveBeenCalledWith("driver", 3);
+    expect(cancelPolicy.getPolicy).toHaveBeenCalledWith("customer", 3);
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: true, data: { city_id: 3, driver: { mode: "special", admin_share: 20 }, customer: { mode: "normal" } } });
+  });
+
+  it("saves into the admin's own city and ignores a city id in the body", async () => {
+    const res = makeRes();
+    await controller.saveSettings({ scopedCityId: 3, body }, res);
+    expect(cancelPolicy.savePolicy).toHaveBeenCalledWith("driver", 3, { mode: "special", fixed: 50, percent: 10, adminSharePercent: 20 });
+    expect(cancelPolicy.savePolicy).toHaveBeenCalledWith("customer", 3, expect.objectContaining({ mode: "normal" }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  it("a super admin without a city saves the global default", async () => {
+    await controller.saveSettings({ scopedCityId: null, body }, makeRes());
+    expect(cancelPolicy.savePolicy).toHaveBeenCalledWith("driver", null, expect.any(Object));
+  });
+
+  it("answers 400 with the reason for an invalid policy and saves NOTHING (not even the valid side)", async () => {
+    cancelPolicy.assertValid.mockImplementation((p) => { if (p.mode === "normal") throw new Error("percentage must be between 0 and 100"); });
+    const res = makeRes();
+    await controller.saveSettings({ scopedCityId: 3, body }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: "percentage must be between 0 and 100" });
+    expect(cancelPolicy.savePolicy).not.toHaveBeenCalled();
   });
 });

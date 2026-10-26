@@ -10,6 +10,7 @@
 //   3. an unpaid advance means a customer-side cancel is free
 //   4. a wallet-paid fare is always routed through refundIfWalletPaid
 //   5. retrying the same cancel moves no further money
+jest.mock("../customiseCancelService", () => ({ closeIfCustomise: jest.fn().mockResolvedValue({ ok: true }), rideInfo: jest.fn().mockResolvedValue(null) }));
 jest.mock("../referralPointsRefund", () => ({
   ...jest.requireActual("../referralPointsRefund"),
   reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}),
@@ -199,5 +200,32 @@ describe("advance-payment timeout cancel", () => {
     await tripLifecycle.cancelExpiredAdvancePayment(297);
     expect(pointRefunds()).toEqual([]);
     expect(customerDebits()).toEqual([]);
+  });
+});
+
+describe("auto-cancels close a Customise Order (the customer's side failed, so it is never relisted)", () => {
+  const { closeIfCustomise } = require("../customiseCancelService");
+
+  it("OTP no-show", async () => {
+    const row = { ...orderRow({ walletPaid: false, points: 0, advanceState: "paid" }), customise_order_id: 5 };
+    baseMocks(row, false);
+    await tripLifecycle.cancelOverduePickup(297, 11);
+    expect(closeIfCustomise).toHaveBeenCalledWith(expect.objectContaining({ customise_order_id: 5 }));
+  });
+
+  it("advance payment timeout", async () => {
+    const row = { ...orderRow({ walletPaid: false, points: 0, advanceState: "unpaid" }), accept_time: new Date(Date.now() - 600000), order_status: 1, customise_order_id: 5 };
+    baseMocks(row, false);
+    await tripLifecycle.cancelExpiredAdvancePayment(297);
+    expect(closeIfCustomise).toHaveBeenCalledWith(expect.objectContaining({ customise_order_id: 5 }));
+  });
+
+  it("not when the cancel did not happen (the guarded UPDATE matched no row)", async () => {
+    const row = { ...orderRow({ walletPaid: false, points: 0, advanceState: "paid" }), customise_order_id: 5 };
+    baseMocks(row, false);
+    prisma.$executeRaw.mockResolvedValue(0);
+    await tripLifecycle.cancelOverduePickup(297, 11);
+    await tripLifecycle.cancelExpiredAdvancePayment(297);
+    expect(closeIfCustomise).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,11 @@
+jest.mock("../customiseCancelService", () => ({
+  rideInfo: jest.fn().mockResolvedValue(null),
+  feeFor: jest.fn().mockResolvedValue({ special: false }),
+  recordFee: jest.fn().mockResolvedValue(undefined),
+  afterDriverCancel: jest.fn().mockResolvedValue({ ok: true, relisted: true }),
+  afterCustomerCancel: jest.fn().mockResolvedValue({ ok: true }),
+  closeIfCustomise: jest.fn().mockResolvedValue({ ok: true }),
+}));
 jest.mock("../customiseTimerService", () => ({ billFor: jest.fn().mockResolvedValue(null), record: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../referralPointsRefund", () => ({
   ...jest.requireActual("../referralPointsRefund"),
@@ -2626,5 +2634,113 @@ describe("finalizeAcceptedOrder - booking guarantee close", () => {
     const logged = jest.spyOn(logger, "error").mockImplementation(() => {});
     await expect(tripLifecycle.acceptOrder(297, 1)).resolves.toBeDefined();
     expect(logged).toHaveBeenCalledWith(expect.stringContaining("closeOnAssign"), expect.any(Error));
+  });
+});
+
+describe("Customise Order rides: cancellation policy and relist", () => {
+  const cancelSvc = require("../customiseCancelService");
+  const relive = require("../driverCancelRelive");
+  const SPECIAL = { special: true, fixed: 50, percent: 10, charge: 150, adminShare: 30, recipientAmount: 120 };
+  const RIDE = { customiseOrderId: 5, agreedFare: 1000, cityId: 3 };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    cancelSvc.rideInfo.mockResolvedValue(null);
+    cancelSvc.feeFor.mockResolvedValue({ special: false });
+    relive.isEnabled.mockResolvedValue(false);
+    require("../guaranteeRecoveryService").recoveryCityFor.mockResolvedValue(null);
+  });
+
+  describe("driver cancels after assignment", () => {
+    beforeEach(() => {
+      prisma.$transaction.mockImplementation((cb) => cb(prisma));
+      prisma.$queryRaw.mockResolvedValue([{ id: 297, uid: 7, rid: 11, order_status: 1, o_status: "Processing", advance_payment: "0", payment_status: 0, delivery_type: 6 }]);
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.tbl_wallet_history.findFirst.mockResolvedValue(null);
+      prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 7, rid: 0, order_status: 0, o_status: "Pending" });
+      pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_driver: 40, driver_cancel_user_earning: 25 });
+    });
+
+    it("Special policy: the driver pays the configured penalty, the customer gets the non-admin part, the order is relisted", async () => {
+      cancelSvc.rideInfo.mockResolvedValue(RIDE);
+      cancelSvc.feeFor.mockResolvedValue(SPECIAL);
+      await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 11 }, data: { wallet_balance: { decrement: 150 } } });
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 120 } } });
+      expect(cancelSvc.feeFor).toHaveBeenCalledWith({ side: "driver", ride: RIDE });
+      expect(cancelSvc.recordFee).toHaveBeenCalledWith(prisma, expect.objectContaining({ orderId: 5, rideId: 297, side: "driver", payerId: 11, recipientId: 7, charge: 150, adminShare: 30, recipientAmount: 120 }));
+      expect(cancelSvc.afterDriverCancel).toHaveBeenCalledWith(expect.objectContaining({ customiseOrderId: 5, riderId: 11, rideId: 297 }));
+      expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:driver_cancelled", expect.objectContaining({ customise_relisted: true }));
+    });
+
+    it("Normal policy: the rate-card fee still applies, and the order is still relisted", async () => {
+      cancelSvc.rideInfo.mockResolvedValue(RIDE);
+      await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 11 }, data: { wallet_balance: { decrement: 40 } } });
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { increment: 25 } } });
+      expect(cancelSvc.recordFee).not.toHaveBeenCalled();
+      expect(cancelSvc.afterDriverCancel).toHaveBeenCalled();
+    });
+
+    it("never goes through the normal re-live search (the order is relisted in the Customise list instead)", async () => {
+      cancelSvc.rideInfo.mockResolvedValue(RIDE);
+      relive.isEnabled.mockResolvedValue(true);
+      await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(relive.reopenForRelive).not.toHaveBeenCalled();
+    });
+
+    it("a normal ride is untouched: no policy lookup, no Customise relist", async () => {
+      await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(cancelSvc.feeFor).not.toHaveBeenCalled();
+      expect(cancelSvc.afterDriverCancel).not.toHaveBeenCalled();
+      expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(7, "order:driver_cancelled", expect.not.objectContaining({ customise_relisted: true }));
+    });
+  });
+
+  describe("customer cancels after assignment", () => {
+    const order = { id: 297, uid: 7, rid: 1, order_status: 1, delivery_type: 6, advance_payment: "100", payment_status: 1, total_dcharge: 1000, city_id: 3, customise_order_id: 5 };
+
+    beforeEach(() => {
+      prisma.$transaction.mockImplementation((ops) => Promise.all(ops));
+      prisma.$executeRaw.mockResolvedValue(1);
+      prisma.tbl_rider.findUnique.mockResolvedValue({ fcm_token: null });
+      pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_customer: 15, driver_earning: 10 });
+      pricingEngine.getActiveCustomerPlan.mockResolvedValue(null);
+    });
+
+    it("Special policy: the customer pays the configured penalty, the driver gets the non-admin part, the order closes", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      cancelSvc.feeFor.mockResolvedValue(SPECIAL);
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 150 } } });
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_balance: { increment: 120 } } });
+      expect(cancelSvc.recordFee).toHaveBeenCalledWith(prisma, expect.objectContaining({ orderId: 5, rideId: 297, side: "customer", payerId: 7, recipientId: 1, charge: 150, adminShare: 30, recipientAmount: 120 }));
+      expect(cancelSvc.afterCustomerCancel).toHaveBeenCalledWith(expect.objectContaining({ customiseOrderId: 5, rideId: 297 }));
+    });
+
+    it("Normal policy: the rate-card charge and driver compensation are unchanged, and the order still closes", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+      expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { wallet: { decrement: 15 } } });
+      expect(prisma.tbl_rider.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { wallet_balance: { increment: 10 } } });
+      expect(cancelSvc.recordFee).not.toHaveBeenCalled();
+      expect(cancelSvc.afterCustomerCancel).toHaveBeenCalled();
+    });
+
+    it("stays free where the normal flow is free (free plan cancellation), even under a Special policy", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue(order);
+      cancelSvc.feeFor.mockResolvedValue(SPECIAL);
+      pricingEngine.getActiveCustomerPlan.mockResolvedValue({ subscriptionId: 44, cancellationEnabled: true, freeCancellations: 5, cancellationsUsed: 1 });
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+      expect(prisma.tbl_user.update).not.toHaveBeenCalled();
+      expect(cancelSvc.recordFee).not.toHaveBeenCalled();
+    });
+
+    it("a normal ride never consults the Customise policy", async () => {
+      prisma.pkg_order.findFirst.mockResolvedValue({ ...order, customise_order_id: null });
+      await tripLifecycle.customerCancel(7, 297, "changed my mind");
+      expect(cancelSvc.feeFor).not.toHaveBeenCalled();
+      expect(cancelSvc.afterCustomerCancel).not.toHaveBeenCalled();
+    });
   });
 });
