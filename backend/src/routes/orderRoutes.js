@@ -43,6 +43,7 @@ router.post("/driver-feedback", require("../controllers/driverFeedbackController
 router.post("/customer-feedback", require("../controllers/customerFeedbackController").submitCustomerFeedback);
 router.post("/next-day-eligibility", orderController.checkNextDayEligibility);
 router.post("/low-fare-quote", orderController.lowFareQuote);
+router.post("/validate-location", orderController.validateLocation);
 router.post("/upload-photo", uploadController.uploadOrderPhoto);
 
 // Live, hot-path endpoints the booking screen still calls on legacy PHP

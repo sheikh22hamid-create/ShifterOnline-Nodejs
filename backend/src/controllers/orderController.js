@@ -26,6 +26,7 @@ const nextDaySettings = require("../services/nextDaySettings");
 const nextDayRules = require("../services/nextDayRules");
 const lowFareSettings = require("../services/lowFareSettings");
 const lowFareRules = require("../services/lowFareRules");
+const serviceAreaService = require("../services/serviceAreaService");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
@@ -287,6 +288,13 @@ async function createOrderCore({
   ) {
     return { ok: false, code: "VALIDATION", msg: "uid, category, a non-empty delivery_type array, and valid coordinates are required" };
   }
+
+  // Service area (spec 2026-10-29): with the switch on, pickup and drop must each be inside coverage and outside the
+  // selected vehicle's No Entry Zones. Runs before anything is charged or created. A no-op while the switch is off.
+  const area = await serviceAreaService.validateRoute({
+    pickup: { lat: plat, lng: plong }, drop: { lat: dlat, lng: dlong }, category,
+  });
+  if (!area.ok) return { ok: false, code: "SERVICE_AREA", msg: area.message, area_code: area.code, which: area.which };
 
   const blockingSettlement = await settlementService.findBlockingSettlement(uid);
   if (blockingSettlement) {
@@ -860,6 +868,9 @@ async function createOrder(req, res) {
 
     if (!result.ok && result.code === "VALIDATION") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    if (!result.ok && result.code === "SERVICE_AREA") {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg, code: "SERVICE_AREA", area_code: result.area_code, which: result.which });
     }
     if (!result.ok && result.code === "INVALID_COUPON") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
@@ -1777,6 +1788,27 @@ async function rateOrder(req, res) {
  * Low Fare Booking (spec 2026-10-27): what the customer will pay for a next-day order, before booking. Uses the same
  * fare engine as booking, so the quote is the Model-1 fare (first package) minus the admin's discount.
  */
+/**
+ * Service-area check for the apps (spec 2026-10-29): is this pickup or drop allowed, optionally for a vehicle category.
+ * Same code as order creation, which stays the final word. Without a category only coverage is checked.
+ */
+async function validateLocation(req, res) {
+  try {
+    const { lat, lng, type, cat_id, category } = req.body;
+    if (!isFiniteNumber(lat) || !isFiniteNumber(lng) || !["pickup", "drop"].includes(type)) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "lat, lng and type (pickup or drop) are required" });
+    }
+    const out = await serviceAreaService.validateLocation({ lat, lng, kind: type, category: cat_id ?? category });
+    return res.status(200).json({
+      ResponseCode: "200", Result: "true", allowed: out.ok, enforced: out.enforced,
+      ...(out.ok ? {} : { code: out.code, message: out.message }),
+    });
+  } catch (err) {
+    logger.error("validateLocation failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 async function lowFareQuote(req, res) {
   try {
     const { cat_id, plat, plong, dlat, dlong, uid, stops, body_type } = req.body;
@@ -2337,6 +2369,7 @@ module.exports = {
   rateOrder,
   checkNextDayEligibility,
   lowFareQuote,
+  validateLocation,
   paymentMethodStatus,
   getMapInfo,
   advancePayment,
