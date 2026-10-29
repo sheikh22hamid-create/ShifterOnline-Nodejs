@@ -201,6 +201,11 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             startActivity(new Intent(getActivity(), CustomiseOrderListActivity.class));
         });
 
+        // Low Fare Order button (next-day orders accepted in their window; the badge counts unopened ones)
+        binding.btnLowFareOrders.setOnClickListener(v -> {
+            startActivity(new Intent(getActivity(), com.shifter.driver.activity.LowFareOrderListActivity.class));
+        });
+
         // Scheduled Trips button — browse booking_type=2 scheduled trips and
         // mark non-binding interest ahead of time (Task 9; see
         // ScheduledTripsActivity's own header for details).
@@ -1590,6 +1595,37 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
         checkPendingSettlements();
         NodeSocketManager.getInstance().addCustomiseListener(customiseListener);
         refreshCustomiseCount();
+        NodeSocketManager.getInstance().addLowFareListener(lowFareListener);
+        refreshLowFareCount();
+    }
+
+    // Low Fare Order: the badge follows the server's own count of unopened, eligible orders. No popup and no sound.
+    private final NodeSocketManager.LowFareListener lowFareListener = (event, data) -> refreshLowFareCount();
+
+    private void refreshLowFareCount() {
+        if (riderData == null) return;
+        try {
+            org.json.JSONObject body = new org.json.JSONObject();
+            body.put("rider_id", riderData.getId());
+            com.shifter.driver.retrofit.NodeApiClient.getInterface()
+                    .lowFareCount(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), body.toString()))
+                    .enqueue(new retrofit2.Callback<com.google.gson.JsonObject>() {
+                        @Override
+                        public void onResponse(retrofit2.Call<com.google.gson.JsonObject> call, retrofit2.Response<com.google.gson.JsonObject> response) {
+                            if (!isAdded() || binding == null) return;
+                            com.google.gson.JsonObject b = response.body();
+                            int count = b != null && b.has("count") && !b.get("count").isJsonNull() ? b.get("count").getAsInt() : 0;
+                            binding.txtLowFareBadge.setText(count > 99 ? "99+" : String.valueOf(count));
+                            binding.txtLowFareBadge.setVisibility(count > 0 ? View.VISIBLE : View.GONE);
+                        }
+
+                        @Override
+                        public void onFailure(retrofit2.Call<com.google.gson.JsonObject> call, Throwable t) {
+                            // Keep the last badge; the next resume or socket event refreshes it.
+                        }
+                    });
+        } catch (org.json.JSONException ignored) {
+        }
     }
 
     // Customise Orders: the badge follows the server's own count of open, eligible orders; a new one beeps once.
@@ -1630,6 +1666,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
     public void onPause() {
         super.onPause();
         NodeSocketManager.getInstance().removeCustomiseListener(customiseListener);
+        NodeSocketManager.getInstance().removeLowFareListener(lowFareListener);
         NodeSocketManager.getInstance().removeConnectionListener(connectionListener);
         dutyTickerHandler.removeCallbacks(dutyTickerRunnable);
     }

@@ -251,6 +251,23 @@ public interface NodeService {
     @POST("api/rider/customise/dismiss")
     Call<JsonObject> customiseDismiss(@Body RequestBody body);
 
+    // Low Fare Order (spec 2026-10-27): next-day orders accepted from their own section. Behind the app key.
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/low-fare/list")
+    Call<JsonObject> lowFareList(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/low-fare/count")
+    Call<JsonObject> lowFareCount(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/low-fare/seen")
+    Call<JsonObject> lowFareSeen(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/low-fare/accept")
+    Call<JsonObject> lowFareAccept(@Body RequestBody body);
+
     @Headers("Authorization: genie_rest_key")
     @POST("api/rider/notifications")
     Call<JsonObject> notification(@Body RequestBody body);
