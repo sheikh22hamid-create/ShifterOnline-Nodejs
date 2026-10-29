@@ -85,4 +85,13 @@ function validZonePayload({ name, polygon_geojson, center_lat, center_lng, radiu
   return { ok: false, error: "Draw an area on the map first" };
 }
 
-module.exports = { containsPoint, parsePolygon, messageFor, validZonePayload, MESSAGES };
+/** The points that stand for a zone's shape: every polygon vertex, else the circle centre. Used for overlap checks. */
+function shapePoints(zone) {
+  const polygon = parsePolygon(zone?.polygon_geojson);
+  if (polygon) return polygon;
+  const lat = Number(zone?.center_lat);
+  const lng = Number(zone?.center_lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? [[lat, lng]] : [];
+}
+
+module.exports = { containsPoint, parsePolygon, shapePoints, messageFor, validZonePayload, MESSAGES };

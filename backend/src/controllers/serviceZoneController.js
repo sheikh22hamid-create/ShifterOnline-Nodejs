@@ -14,6 +14,20 @@ const polygonText = (value) =>
 const fail = (res, status, message) => res.status(status).json({ success: false, message });
 
 /**
+ * A city admin must not draw their city's pickup area over another city's: there is no stored city boundary to check
+ * against, so a new or edited coverage shape is refused when any of its points (polygon vertices, or the circle centre)
+ * already lies inside another city's active coverage. A super admin is not limited, they manage every city.
+ */
+async function overlapsOtherCity(cityId, shape) {
+  const others = await prisma.service_zone.findMany({
+    where: { status: 1, zone_kind: "coverage", NOT: { city_id: cityId } },
+  });
+  const points = rules.shapePoints(shape);
+  return others.some((zone) => zone.city_id && points.some(([lat, lng]) => rules.containsPoint(zone, lat, lng)));
+}
+const OVERLAP_MESSAGE = "This area overlaps another city's pickup area. Draw it inside your own city.";
+
+/**
  * Lists zones: a superadmin sees all (or one city with ?city_id), a city admin their own city's plus any zone not yet
  * tied to a city. ?kind=duty|coverage narrows the list (the duty-driver pickers ask for duty).
  */
@@ -46,6 +60,9 @@ async function createZone(req, res) {
     if (zoneKind === "coverage") {
       const valid = rules.validZonePayload({ name, polygon_geojson, center_lat, center_lng, radius_km });
       if (!valid.ok) return fail(res, 400, valid.error);
+      if (req.scopedCityId && (await overlapsOtherCity(cityId, { polygon_geojson, center_lat, center_lng }))) {
+        return fail(res, 400, OVERLAP_MESSAGE);
+      }
     }
 
     const rKm = radius_km != null && !isNaN(parseFloat(radius_km)) ? parseFloat(radius_km) : 5.0;
@@ -107,6 +124,15 @@ async function updateZone(req, res) {
         radius_km: data.radius_km ?? zone.radius_km,
       });
       if (!valid.ok) return fail(res, 400, valid.error);
+      const shapeChanged = data.polygon_geojson !== undefined || data.center_lat !== undefined || data.center_lng !== undefined;
+      if (req.scopedCityId && shapeChanged) {
+        const shape = {
+          polygon_geojson: data.polygon_geojson !== undefined ? data.polygon_geojson : zone.polygon_geojson,
+          center_lat: data.center_lat ?? zone.center_lat,
+          center_lng: data.center_lng ?? zone.center_lng,
+        };
+        if (await overlapsOtherCity(zone.city_id, shape)) return fail(res, 400, OVERLAP_MESSAGE);
+      }
     }
 
     const updated = await prisma.service_zone.update({ where: { id: zone.id }, data });

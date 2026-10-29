@@ -78,6 +78,7 @@ const HANDLED_FLAG_KEYS = [
   'drop_otp_enabled',
   'customise_order_enabled',
   'low_fare_booking_enabled',
+  'service_area_enforcement_enabled',
   'low_fare_discount_percent',
   'low_fare_max_days_ahead',
   'low_fare_max_window_hours',
@@ -548,6 +549,22 @@ function SettingsForm({ data, onSaved }) {
             </select>
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Needs the three Customise Order migrations applied first. Orders already being negotiated stop receiving offers while it is off. Set the cancellation policy on the Customise Orders page.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-service_area_enforcement_enabled">Service area check (service_area_enforcement_enabled)</Label>
+            <select
+              id="flag-service_area_enforcement_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.service_area_enforcement_enabled ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, service_area_enforcement_enabled: e.target.value }))}
+            >
+              <option value="0">Disabled (0 - bookings are accepted anywhere, as before)</option>
+              <option value="1">Enabled (1 - pickup and drop must be inside a city's pickup service area and outside the vehicle's No Entry Zones)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Needs migration <code>20261029010000_add_service_area_zones</code> applied first. Draw every city's pickup service area on the Service Zones page BEFORE enabling: once on, a location outside every drawn area cannot be booked.
             </p>
           </div>
           <div>

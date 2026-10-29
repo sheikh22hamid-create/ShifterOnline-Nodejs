@@ -88,6 +88,7 @@ export const NAV_GROUPS = [
     group: 'Fleet & Pricing',
     items: [
       { to: '/service-zones', label: 'Service Zones (Geofence)', icon: MapPin, roles: ALL_STAFF, built: true },
+      { to: '/no-entry-zones', label: 'No Entry Zones', icon: MapPin, roles: ALL_STAFF, built: true },
       { to: '/rate-cards', label: 'Rate Cards', icon: Tag, roles: ALL_STAFF, built: true },
       { to: '/categories', label: 'Package Categories', icon: LayoutGrid, roles: ALL_STAFF, built: true },
       { to: '/vehicles', label: 'Vehicle Types', icon: Truck, roles: ALL_STAFF, built: true },
