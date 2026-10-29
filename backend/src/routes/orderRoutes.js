@@ -1,5 +1,6 @@
 const express = require("express");
 const orderController = require("../controllers/orderController");
+const pickupOtpShareController = require("../controllers/pickupOtpShareController");
 const uploadController = require("../controllers/uploadController");
 const legacyOrderController = require("../controllers/legacyOrderController");
 const orderAvailabilityController = require("../controllers/orderAvailabilityController");
@@ -44,6 +45,7 @@ router.post("/customer-feedback", require("../controllers/customerFeedbackContro
 router.post("/next-day-eligibility", orderController.checkNextDayEligibility);
 router.post("/low-fare-quote", orderController.lowFareQuote);
 router.post("/validate-location", orderController.validateLocation);
+router.post("/share-pickup-otp", pickupOtpShareController.customerShare);
 router.post("/upload-photo", uploadController.uploadOrderPhoto);
 
 // Live, hot-path endpoints the booking screen still calls on legacy PHP

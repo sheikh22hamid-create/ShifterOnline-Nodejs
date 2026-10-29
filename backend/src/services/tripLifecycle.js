@@ -1811,7 +1811,8 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
       refundStatus = "payment_not_captured";
     }
 
-    if (!isPending) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications, customise: customiseRide });
+    // `waiveDriverFee`: the pickup OTP timeout where nobody is at fault (spec 2026-10-29) charges the driver nothing.
+    if (!isPending && !opts.waiveDriverFee) await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications, customise: customiseRide });
 
     await tx.tbl_order_requests.updateMany({
       where: { order_id: orderId, rider_id: riderId, status: { in: ["sent", "accepted"] } },
@@ -1886,6 +1887,43 @@ async function rateOrder(uid, orderId, riderId, star, comment) {
 }
 
 /**
+ * The pickup OTP timed out although the customer tried to share the OTP. Reuses driverCancel's automated variant
+ * (requireOrderStatus 2), so the customer's refunds are the existing ones and nothing is charged to them. The driver's
+ * own cancellation charge applies only when `driverAtFault` (the OTP was confirmed on their screen in good time);
+ * otherwise it is waived. Safe to repeat: an already resolved order is left alone.
+ */
+async function cancelOverduePickupWithoutCustomerFault(order, riderId, timeoutMinutes, driverAtFault) {
+  const orderId = order.id;
+  const reason = driverAtFault
+    ? `Pickup OTP not verified by the driver within ${timeoutMinutes} minutes although the customer shared it`
+    : `Pickup OTP could not be completed within ${timeoutMinutes} minutes (customer tried to share it; delivery to the driver was not confirmed)`;
+  try {
+    await driverCancel(orderId, riderId, reason, { requireOrderStatus: 2, waiveDriverFee: !driverAtFault });
+  } catch (err) {
+    if (!["ORDER_STATE_CHANGED", "ORDER_NOT_CANCELLABLE", "NOT_ASSIGNED_DRIVER", "ORDER_NOT_FOUND"].includes(err.message)) {
+      logger.error(`cancelOverduePickup: driver-side cancel failed for order ${orderId}:`, err);
+    }
+    return; // resolved another way, or failed: the customer is not penalised either way
+  }
+  logger.info(`cancelOverduePickup: order #${orderId} cancelled as a driver-side OTP timeout (the customer had shared the OTP)`);
+  await prisma.pkg_order_wait_timer.updateMany({ where: { order_id: orderId, rid: riderId }, data: { pickup_wait_end: new Date() } });
+  try {
+    await prisma.order_status_history.create({
+      data: {
+        order_id: orderId,
+        rider_id: riderId || null,
+        status: "cancelled",
+        remark: driverAtFault
+        ? `Auto-cancelled: the customer shared the pickup OTP in time but the driver did not verify it within ${timeoutMinutes} minutes. No customer penalty.`
+        : `Auto-cancelled: the customer tried to share the pickup OTP but delivery to the driver was not confirmed within ${timeoutMinutes} minutes. No customer penalty, no driver charge.`,
+      },
+    });
+  } catch (err) {
+    logger.error(`cancelOverduePickup: history for order ${orderId} not written:`, err);
+  }
+}
+
+/**
  * Auto-cancels a single order whose driver has been waiting at pickup past
  * PICKUP_OTP_TIMEOUT_MS with no OTP handed over — the customer's own
  * no-show. Charges the same cancellation fee an ordinary customer-initiated
@@ -1909,6 +1947,18 @@ async function rateOrder(uid, orderId, riderId, star, comment) {
 async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP_TIMEOUT_MS / 60000) {
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   if (!order) return;
+
+  // Pickup OTP share (spec 2026-10-29): a customer who tried to send the OTP to the driver during this wait did their
+  // part, so the timeout is never charged to them as a no-show. Who bears it depends on what is known: an OTP the
+  // driver's app confirmed having (with time to act) is a driver-side timeout (the driver's own cancellation rule);
+  // an unconfirmed delivery or one too close to the timeout is neutral (nobody is charged). Either way the customer is
+  // refunded in full through the existing driver-cancel path.
+  const waitRow = await prisma.pkg_order_wait_timer.findFirst({ where: { order_id: orderId, rid: riderId } });
+  const shareOutcome = await require("./pickupOtpShareService").shareOutcomeThisCycle(orderId, waitRow, riderId);
+  if (shareOutcome) {
+    await cancelOverduePickupWithoutCustomerFault(order, riderId, timeoutMinutes, shareOutcome === "delivered_to_driver");
+    return;
+  }
 
   const affected = await prisma.$executeRaw`
     UPDATE pkg_order

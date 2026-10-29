@@ -104,6 +104,21 @@ public class NodeSocketManager {
         customiseListeners.remove(listener);
     }
 
+    /** pickup_otp:shared: the customer sent the pickup OTP; the payload only names the order, the OTP is fetched over the API. */
+    public interface PickupOtpListener {
+        void onPickupOtpShared(JSONObject data);
+    }
+
+    private final java.util.Set<PickupOtpListener> pickupOtpListeners = new java.util.concurrent.CopyOnWriteArraySet<>();
+
+    public void addPickupOtpListener(PickupOtpListener listener) {
+        if (listener != null) pickupOtpListeners.add(listener);
+    }
+
+    public void removePickupOtpListener(PickupOtpListener listener) {
+        pickupOtpListeners.remove(listener);
+    }
+
     /** lowfare:new / lowfare:closed: a Low Fare Order opened for this driver, or was taken by someone else. */
     public interface LowFareListener {
         void onLowFareEvent(String event, JSONObject data);
@@ -292,6 +307,18 @@ public class NodeSocketManager {
                 }
             }));
         }
+
+        socket.on("pickup_otp:shared", args -> mainHandler.post(() -> {
+            JSONObject data = firstArgAsJson(args);
+            if (data == null) return;
+            for (PickupOtpListener listener : pickupOtpListeners) {
+                try {
+                    listener.onPickupOtpShared(data);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error delivering pickup_otp:shared", e);
+                }
+            }
+        }));
 
         for (String lowFareEvent : new String[]{"lowfare:new", "lowfare:closed"}) {
             socket.on(lowFareEvent, args -> mainHandler.post(() -> {

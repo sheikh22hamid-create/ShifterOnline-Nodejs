@@ -27,6 +27,7 @@ const nextDayRules = require("../services/nextDayRules");
 const lowFareSettings = require("../services/lowFareSettings");
 const lowFareRules = require("../services/lowFareRules");
 const serviceAreaService = require("../services/serviceAreaService");
+const pickupOtpShareService = require("../services/pickupOtpShareService");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
@@ -1120,6 +1121,9 @@ async function getOrderDetails(req, res) {
           stops,
           body_type: order.body_type || "any",
           covered_charge: order.covered_charge ? String(order.covered_charge) : "0",
+          // Pickup OTP share (spec 2026-10-29): lets the customer app enable "Send OTP to Driver" only while the
+          // driver is waiting for the OTP. Any read problem simply leaves the button off.
+          otp_share: await pickupOtpShareService.statusForCustomer(order).catch(() => ({ can_send: false, verified: false, shared: false, delivered: false })),
         },
       ],
     });

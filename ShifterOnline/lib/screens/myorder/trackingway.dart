@@ -32,6 +32,7 @@ import 'package:goParcel/utils/node_socket_manager.dart';
 import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:goParcel/utils/Calculation.dart';
 import 'package:flutter/material.dart';
+import 'package:goParcel/services/pickup_otp_api_service.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -3136,6 +3137,64 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     );
   }
 
+  // Pickup OTP share (spec 2026-10-29): "Send OTP to Driver" is enabled by the server only while the driver is waiting
+  // for the OTP; sending never verifies it, the driver still verifies it in their app.
+  bool _sharingOtp = false;
+
+  Widget _buildSendOtpToDriverButton() {
+    final share = orderProduc?["otp_share"];
+    final canSend = share is Map && share["can_send"] == true;
+    final verified = share is Map && share["verified"] == true;
+    final delivered = share is Map && share["delivered"] == true;
+    final enabled = canSend && !_sharingOtp && !delivered;
+    final label = verified
+        ? "Pickup OTP verified"
+        : delivered
+            ? "OTP sent to driver"
+            : _sharingOtp
+                ? "Sending..."
+                : "Send OTP to Driver";
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 44,
+          child: ElevatedButton.icon(
+            onPressed: enabled ? _sendOtpToDriver : null,
+            icon: Icon(verified || delivered ? Icons.check_circle_rounded : Icons.send_rounded, size: 18),
+            label: Text(label.tr, style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 14)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: linercolor,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: greaycolor.withOpacity(0.25),
+              disabledForegroundColor: greaycolor,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+        if (!canSend && !verified && !delivered) ...[
+          const SizedBox(height: 6),
+          Text(
+            "You can send the OTP once the driver reaches the pickup location.".tr,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: greaycolor.withOpacity(0.85), fontFamily: "Gilroy_Medium", fontSize: 10.5, height: 1.25),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _sendOtpToDriver() async {
+    if (_sharingOtp) return;
+    setState(() => _sharingOtp = true);
+    final result = await PickupOtpApiService.share(uid: uid, orderId: orderid);
+    if (!mounted) return;
+    setState(() => _sharingOtp = false);
+    ApiWrapper.showToastMessage(result.message.tr);
+    pageRefresh();
+  }
+
   Widget _buildOtpCard(String otp) {
     final isPickupState = orderProduc?["Order_Status"] == "Pickup";
 
@@ -3230,6 +3289,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 ),
               ),
             ),
+          ],
+          if (isPickupState) ...[
+            const SizedBox(height: 10),
+            _buildSendOtpToDriverButton(),
           ],
         ],
       ),
