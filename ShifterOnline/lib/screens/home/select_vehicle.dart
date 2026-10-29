@@ -13,6 +13,7 @@ import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../bottombar.dart';
 import '../../services/free_booking_api_service.dart';
+import '../../services/low_fare_api_service.dart';
 import '../../services/settlement_api_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/receiver_pay_options.dart';
@@ -71,6 +72,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   int _selectedIndex = -1;
   int _selectedRadiusKm = 4;
   DateTime? _scheduledFor;
+  // Low Fare Booking (next-day): the server price quote (null = feature off) and the customer pickup window.
+  Map<String, dynamic>? _lowFare;
+  LowFareWindow _lowFareWindow = const LowFareWindow();
   bool _loadingRoute = true;
   bool _loadingAvailability = false;
   bool _loadingModels = false;
@@ -741,13 +745,33 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (!mounted) return;
     if (response is Map && (response['Result'] == true || response['Result'] == 'true') && rawModels is List) {
       var models = rawModels.whereType<Map>().map(Map<String, dynamic>.from).where((model) => _modelFare(model) != null).toList();
+      Map<String, dynamic>? lowFareQuote;
       if (_currentBookingType == 3 && models.isNotEmpty) {
         models = [models.first];
+        // Low Fare Booking: the price is the server quote (Model 1 minus the discount), never one worked out here.
+        final quote = await LowFareApiService.quote(
+          categoryId: int.tryParse(categoryId.toString()) ?? categoryId,
+          plat: _pickup.latitude, plong: _pickup.longitude, dlat: _drop.latitude, dlong: _drop.longitude,
+          stops: _stopsData.map((stop) => {'lat': stop['lat_map'], 'lng': stop['long_map'], 'address': stop['address']}).toList(),
+          bodyType: _selectedBodyType,
+          uid: uid != null ? (int.tryParse(uid.toString()) ?? uid) : null,
+        );
+        if (!mounted) return;
+        if (quote == null) {
+          _autoScrollPending = false;
+          setState(() { _models = []; _loadingModels = false; _modelsError = 'Could not load the next-day price. Please try again.'; });
+          return;
+        }
+        if (quote['enabled'] == true) {
+          lowFareQuote = quote;
+          models = [{...models.first, 'estimated_fare': quote['final_fare'], 'low_fare_model1_fare': quote['model1_fare']}];
+        }
       }
       final retainedModelIndex = preserveModelKey == null
           ? -1
           : models.indexWhere((model) => _modelKey(model) == preserveModelKey);
       setState(() {
+        _lowFare = lowFareQuote;
         _models = models;
         _selectedModelIndex = retainedModelIndex >= 0 ? retainedModelIndex : (models.isEmpty ? null : 0);
         _loadingModels = false;
@@ -862,9 +886,47 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     }
   }
 
+  Future<void> _pickLowFareDate() async {
+    final now = DateTime.now();
+    final maxDays = int.tryParse('${_lowFare?['max_days_ahead'] ?? 7}') ?? 7;
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _lowFareWindow.date ?? tomorrow,
+      firstDate: tomorrow,
+      lastDate: today.add(Duration(days: maxDays)),
+    );
+    if (date == null || !mounted) return;
+    setState(() => _lowFareWindow = LowFareWindow(date: date, from: _lowFareWindow.from, until: _lowFareWindow.until));
+  }
+
+  Future<void> _pickLowFareTime({required bool from}) async {
+    final current = from ? _lowFareWindow.from : _lowFareWindow.until;
+    final fallback = from ? const TimeOfDay(hour: 14, minute: 0) : const TimeOfDay(hour: 16, minute: 0);
+    final time = await showTimePicker(context: context, initialTime: current ?? fallback);
+    if (time == null || !mounted) return;
+    setState(() => _lowFareWindow = LowFareWindow(
+          date: _lowFareWindow.date,
+          from: from ? time : _lowFareWindow.from,
+          until: from ? _lowFareWindow.until : time,
+        ));
+  }
+
+  /// Null when the window looks fine (the server still validates it), else a plain message to show.
+  String? _lowFareWindowProblem() {
+    if (_currentBookingType != 3 || _lowFare == null) return null;
+    return _lowFareWindow.problem(maxWindowHours: int.tryParse('${_lowFare?['max_window_hours'] ?? 12}') ?? 12);
+  }
+
   Future<void> _bookSelected() async {
     final selected = _selected; final model = _selectedModel; final fee = model == null ? null : _modelFare(model);
     if (selected == null || model == null || fee == null || _booking || _checkingFreeBooking) return;
+    final windowProblem = _lowFareWindowProblem();
+    if (windowProblem != null) {
+      ApiWrapper.showToastMessage(windowProblem);
+      return;
+    }
     final maxStops = _vehicleMaxExtraStops;
     if (maxStops != null && _stopsData.length > maxStops) {
       ApiWrapper.showToastMessage('This vehicle allows only $maxStops extra ${maxStops == 1 ? 'stop' : 'stops'}. Please remove ${_stopsData.length - maxStops} to continue.');
@@ -905,6 +967,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       await _pickScheduleDateTime();
       return;
     }
+    final windowProblem = _lowFareWindowProblem();
+    if (windowProblem != null) {
+      ApiWrapper.showToastMessage(windowProblem);
+      Get.back();
+      return;
+    }
     if (_booking) return;
     setState(() => _booking = true);
     final deliveryTypeIds = _bookingDeliveryTypeIds(model);
@@ -940,6 +1008,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       // driver app reads it as UTC. .toUtc() emits a `Z`-suffixed instant,
       // which means the same moment to all of them.
       if (_currentBookingType == 2) 'schedule_date_time': _scheduledFor!.toUtc().toIso8601String(),
+      if (_currentBookingType == 3 && _lowFare != null) ..._lowFareWindow.toBody(),
       'plat': _pickup.latitude, 'plong': _pickup.longitude, 'paddress': _text(_pickupData['address'], 'Pickup location'),
       'pick_name': _text(_pickupData['c_name'], 'Customer'), 'pmobile': _text(_pickupData['c_number']), 'pick_type': _text(_pickupData['type'], 'Other'),
       'dlat': _drop.latitude, 'dlong': _drop.longitude, 'daddress': _text(_dropData['address'], 'Drop location'),
@@ -984,7 +1053,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           orderId, fee, payValue,
           badgeIcon: Icons.local_shipping_rounded,
           badgeText: "Next Day Delivery",
-          message: "Your order #$orderId has been scheduled for tomorrow. A driver will be assigned for pickup in the morning.",
+          message: _lowFare != null && _lowFareWindow.isComplete
+              ? "Your order #$orderId is booked for ${DateFormat('EEE, d MMM').format(_lowFareWindow.date!)}, pickup between ${_lowFareWindow.from!.format(context)} and ${_lowFareWindow.until!.format(context)}. Drivers can accept it during that time; if no driver accepts by ${_lowFareWindow.until!.format(context)}, the order is cancelled."
+              : "Your order #$orderId has been scheduled for tomorrow. A driver will be assigned for pickup in the morning.",
         );
       } else if (_currentBookingType == 2) {
         // Scheduled (booking_type=2) orders aren't dispatched immediately —
@@ -2277,6 +2348,74 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               ],
             ),
           ),
+        if (_currentBookingType == 3 && _lowFare != null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: linercolor.withOpacity(.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: linercolor.withOpacity(.4))),
+            child: Row(children: [
+              Icon(Icons.local_offer_rounded, color: linercolor, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Low fare: Model 1 ₹${_number(_lowFare!['model1_fare']).toStringAsFixed(2)} - ${_number(_lowFare!['discount_percent']).toStringAsFixed(0)}% off = ₹${_number(_lowFare!['final_fare']).toStringAsFixed(2)}',
+                  style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: _pickLowFareDate,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(border: Border.all(color: linercolor, width: _lowFareWindow.date == null ? 1 : 1.6), borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                Icon(Icons.event_rounded, color: linercolor, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Pickup date', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+                    Text(
+                      _lowFareWindow.date == null ? 'Pick a date (from tomorrow)' : DateFormat('EEE, d MMM yyyy').format(_lowFareWindow.date!),
+                      style: TextStyle(color: _lowFareWindow.date == null ? notifier.text : linercolor, fontFamily: 'Gilroy_Bold', fontSize: 14),
+                    ),
+                  ]),
+                ),
+                Icon(Icons.chevron_right, color: greaycolor, size: 18),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            for (final isFrom in [true, false]) ...[
+              if (!isFrom) const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  onTap: () => _pickLowFareTime(from: isFrom),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(border: Border.all(color: linercolor, width: (isFrom ? _lowFareWindow.from : _lowFareWindow.until) == null ? 1 : 1.6), borderRadius: BorderRadius.circular(12)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(isFrom ? 'Pickup from' : 'Pickup until', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+                      Text(
+                        (isFrom ? _lowFareWindow.from : _lowFareWindow.until)?.format(context) ?? 'Pick time',
+                        style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            'Drivers can accept your order only between these two times. If no driver accepts by the end time, your order is cancelled and refunded.',
+            style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11, height: 1.3),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (_currentBookingType == 2) ...[
           InkWell(
             onTap: _pickScheduleDateTime,
