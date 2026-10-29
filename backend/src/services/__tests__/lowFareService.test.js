@@ -47,13 +47,29 @@ beforeEach(() => {
 });
 
 describe("listForDriver / countForDriver", () => {
-  it("lists open orders for the driver's own vehicle only, flagging unread ones", async () => {
-    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, id: 100 }, { ...ORDER, id: 101 }]);
+  it("lists orders for the driver's own vehicle only, flagging unread ones, newest query first", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, id: 101, rid: 0 }, { ...ORDER, id: 100, rid: 0 }]);
     prisma.low_fare_view.findMany.mockResolvedValue([{ order_id: 101 }]);
     const out = await service.listForDriver(7, NOW);
-    expect(out.map((o) => [o.id, o.unread])).toEqual([[100, true], [101, false]]);
-    const where = prisma.pkg_order.findMany.mock.calls[0][0].where;
-    expect(where).toMatchObject({ category: "Tata Ace", next_day_stage: "low_fare", rid: 0, o_status: "Pending", next_day_live_at: { lte: NOW }, next_day_live_until: { gt: NOW } });
+    expect(out.map((o) => [o.id, o.unread, o.state, o.can_accept])).toEqual([[101, false, "open", true], [100, true, "open", true]]);
+    expect(out[0]).not.toHaveProperty("rid");
+    const args = prisma.pkg_order.findMany.mock.calls[0][0];
+    expect(args.where).toMatchObject({ category: "Tata Ace", next_day_stage: "low_fare", next_day_live_until: { gt: NOW } });
+    expect(args.orderBy).toEqual({ id: "desc" });
+  });
+
+  it("shows an order before its window opens as upcoming: details only, cannot be accepted", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, rid: 0, next_day_live_at: new Date("2026-10-28T09:30:00Z") }]);
+    const out = await service.listForDriver(7, NOW);
+    expect(out[0]).toMatchObject({ state: "upcoming", can_accept: false });
+  });
+
+  it("shows an order another driver took as taken (Already Attended), not acceptable", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, rid: 8 }]);
+    const out = await service.listForDriver(7, NOW);
+    expect(out[0]).toMatchObject({ state: "taken", can_accept: false });
+    const or = prisma.pkg_order.findMany.mock.calls[0][0].where.OR;
+    expect(or[1]).toMatchObject({ rid: { notIn: [0, 7] } });
   });
 
   it("hides an order this driver cancelled before", async () => {
@@ -73,8 +89,8 @@ describe("listForDriver / countForDriver", () => {
     expect(prisma.pkg_order.findMany).not.toHaveBeenCalled();
   });
 
-  it("counts only unread orders and fails closed to 0", async () => {
-    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, id: 100 }, { ...ORDER, id: 101 }]);
+  it("counts only unread, still-available orders and fails closed to 0", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, id: 100, rid: 0 }, { ...ORDER, id: 101, rid: 0 }, { ...ORDER, id: 102, rid: 8 }]);
     prisma.low_fare_view.findMany.mockResolvedValue([{ order_id: 101 }]);
     expect(await service.countForDriver(7, NOW)).toBe(1);
     prisma.pkg_order.findMany.mockRejectedValue(new Error("db"));

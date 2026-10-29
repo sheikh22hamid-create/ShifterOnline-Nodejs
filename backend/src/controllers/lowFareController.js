@@ -18,7 +18,7 @@ async function guarded(req, res, run) {
 
 const list = (req, res) => guarded(req, res, async (rid) => {
   const orders = await service.listForDriver(rid);
-  return res.status(200).json({ Result: true, orders, count: orders.filter((o) => o.unread).length });
+  return res.status(200).json({ Result: true, orders, count: orders.filter((o) => o.unread && o.state !== "taken").length });
 });
 const count = (req, res) => guarded(req, res, async (rid) => res.status(200).json({ Result: true, count: await service.countForDriver(rid) }));
 const seen = (req, res) => guarded(req, res, async (rid, b) => {

@@ -19,15 +19,10 @@ const LIST_FIELDS = {
   id: true, category: true, paddress: true, daddress: true, plat: true, plong: true, dlat: true, dlong: true,
   distance: true, total_dcharge: true, description: true, pick_name: true, drop_name: true, schedule_date_time: true,
   next_day_live_at: true, next_day_live_until: true, next_day_model1_fare: true, next_day_discount_percent: true,
-  package_weight: true, odate: true,
+  package_weight: true, odate: true, rid: true,
 };
 
 const fail = (msg) => ({ ok: false, msg });
-const openWhere = (now) => ({
-  booking_type: 3, next_day_stage: "low_fare", rid: 0, order_status: 0, o_status: "Pending",
-  next_day_live_at: { lte: now }, next_day_live_until: { gt: now },
-});
-
 /**
  * The rider, if they may take Low Fare orders at all: approved, active, and not past the wallet negative-balance limit
  * (the same per-vehicle, then global, then default limit dispatch uses to stop sending orders). Sets `overDueLimit`
@@ -50,15 +45,30 @@ async function cancelledByRider(riderId, orderIds) {
   return new Set(rows.map((r) => r.order_id));
 }
 
-/** Orders this driver may see right now: open window, their vehicle category, not one they cancelled before. */
+/**
+ * Orders this driver can see: their vehicle category, window not yet ended, not one they cancelled before, newest first.
+ * Each carries a `state`: upcoming (window not started: details only), open (can be accepted now) or taken (another
+ * driver has it: shown as Already Attended until its window ends). `can_accept` is true only for open.
+ */
 async function visibleOrders(rider, now) {
   const orders = await prisma.pkg_order.findMany({
-    where: { ...openWhere(now), category: String(rider.vehicle || "").trim() },
+    where: {
+      booking_type: 3, next_day_stage: "low_fare", category: String(rider.vehicle || "").trim(), next_day_live_until: { gt: now },
+      OR: [
+        { rid: 0, order_status: 0, o_status: "Pending" },
+        { rid: { notIn: [0, rider.id] }, o_status: { notIn: ["Cancelled", "Completed"] } },
+      ],
+    },
     select: LIST_FIELDS,
-    orderBy: { next_day_live_until: "asc" },
+    orderBy: { id: "desc" },
   });
   const excluded = await cancelledByRider(rider.id, orders.map((o) => o.id));
-  return orders.filter((o) => !excluded.has(o.id) && lowFareRules.isOpenNow({ ...o, next_day_stage: "low_fare" }, now));
+  return orders
+    .filter((o) => !excluded.has(o.id) && new Date(o.next_day_live_until) > now)
+    .map(({ rid, ...o }) => {
+      const state = rid ? "taken" : lowFareRules.isOpenNow({ ...o, next_day_stage: "low_fare" }, now) ? "open" : "upcoming";
+      return { ...o, state, can_accept: state === "open" };
+    });
 }
 
 async function listForDriver(riderId, now = new Date()) {
@@ -70,10 +80,10 @@ async function listForDriver(riderId, now = new Date()) {
   return orders.map((o) => ({ ...o, unread: !seenIds.has(o.id) }));
 }
 
-/** Unread = listed to this driver and not yet opened. Fails closed to 0. */
+/** Unread = still available (upcoming or open, not taken) and not yet opened. Fails closed to 0. */
 async function countForDriver(riderId, now = new Date()) {
   try {
-    return (await listForDriver(riderId, now)).filter((o) => o.unread).length;
+    return (await listForDriver(riderId, now)).filter((o) => o.unread && o.state !== "taken").length;
   } catch (err) {
     logger.warn(`lowFare.count: rider ${riderId} treated as 0 (${err.message})`);
     return 0;

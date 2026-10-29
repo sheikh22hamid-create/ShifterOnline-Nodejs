@@ -820,6 +820,12 @@ async function createOrderCore({
     logger.error(`createOrderCore: admin socket notify failed for order ${order.id}:`, err);
   }
 
+  // Low Fare: drivers of this vehicle can see the order from now on (details only until its window opens).
+  if (lowFare) {
+    require("../services/lowFareService").notifyNew(order)
+      .catch((err) => logger.error(`createOrderCore: low fare drivers not notified for order ${order.id}:`, err));
+  }
+
   return { ok: true, order };
 }
 
