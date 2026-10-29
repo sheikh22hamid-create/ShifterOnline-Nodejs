@@ -11,6 +11,11 @@ import NextDaySettingsCard from '../components/orders/NextDaySettingsCard'
 import { orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
 import { formatCurrency, truncate } from '../utils/format'
 
+const isLowFare = (o) => o.next_day_stage === 'low_fare'
+const LOW_FARE_TONE = { 'Waiting to open': 'neutral', Open: 'info', Accepted: 'success', Expired: 'danger', Cancelled: 'danger' }
+const istTime = (v) => new Date(v).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+const lowFareWindow = (o) => `${istTime(o.next_day_live_at)} - ${istTime(o.next_day_live_until)}`
+
 export default function NextDayOrders() {
   const toast = useToast()
   const [selectedIds, setSelectedIds] = useState([])
@@ -24,7 +29,8 @@ export default function NextDayOrders() {
   // while `data` is still null, pre-fetch), which is wasteful for a value
   // multiple derived lists below are filtered from.
   const orders = useMemo(() => data?.data ?? [], [data])
-  const unassigned = orders.filter((o) => !o.rid)
+  // Low Fare orders are taken by drivers from their own section, so there is nothing to assign or offer by hand.
+  const unassigned = orders.filter((o) => !o.rid && !isLowFare(o))
   // Filtering against the current `unassigned` on every render (rather than
   // pruning `selectedIds` itself in an effect) means a selection that drops
   // out of `unassigned` — assigned/cancelled elsewhere, seen via the
@@ -45,7 +51,7 @@ export default function NextDayOrders() {
         Next Day Orders
       </h1>
       <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Next-day bookings are priced at Model 1. Offer each one to a Daily Driver; if none accepts, it goes live to Normal Drivers at the live time.
+        Next-day bookings are priced at Model 1. Old-style orders are offered to a Daily Driver by hand. Low Fare orders (marked below) are priced at Model 1 minus the discount and accepted by drivers themselves during the customer's pickup window; they expire if nobody takes them.
       </p>
 
       <NextDaySettingsCard />
@@ -69,7 +75,7 @@ export default function NextDayOrders() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['', 'Order', 'Category', 'Pickup', 'For date', 'Fare', 'Status', 'Live at', 'Driver', 'Driver discount', ''].map((h) => (
+                {['', 'Order', 'Category', 'Pickup', 'For date', 'Fare', 'Status', 'Live at / window', 'Driver', 'Driver discount', ''].map((h) => (
                   <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -105,7 +111,7 @@ export default function NextDayOrders() {
                 orders.map((o) => (
                   <tr key={o.id} style={{ borderTop: '1px solid var(--border)' }}>
                     <td className="px-4 py-2.5">
-                      {!o.rid && (
+                      {!o.rid && !isLowFare(o) && (
                         <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={() => toggleSelect(o.id)} />
                       )}
                     </td>
@@ -119,18 +125,31 @@ export default function NextDayOrders() {
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
                       {formatCurrency(o.total_dcharge)}
+                      {isLowFare(o) && o.next_day_model1_fare != null && (
+                        <div className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                          Model 1 {formatCurrency(o.next_day_model1_fare)} - {Number(o.next_day_discount_percent)}% ({formatCurrency(o.next_day_discount_amount)})
+                        </div>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
-                      <Badge tone={orderStatusTone(o.o_status)}>{orderStatusLabel(o.o_status)}</Badge>
+                      {isLowFare(o) ? (
+                        <Badge tone={LOW_FARE_TONE[o.low_fare_status] || 'neutral'}>Low Fare: {o.low_fare_status}</Badge>
+                      ) : (
+                        <Badge tone={orderStatusTone(o.o_status)}>{orderStatusLabel(o.o_status)}</Badge>
+                      )}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
-                      {o.next_day_stage === 'live' ? 'Live' : o.next_day_live_at ? new Date(o.next_day_live_at).toLocaleString() : '—'}
+                      {isLowFare(o)
+                        ? lowFareWindow(o)
+                        : o.next_day_stage === 'live' ? 'Live' : o.next_day_live_at ? new Date(o.next_day_live_at).toLocaleString() : '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: o.rid ? 'var(--success)' : 'var(--ink-faint)' }}>
-                      {o.rid ? `Driver #${o.rid}${o.next_day_sequence ? ` (stop ${o.next_day_sequence})` : ''}` : 'Unassigned'}
+                      {o.rid
+                        ? `${o.low_fare_driver_name ? `${o.low_fare_driver_name} · ` : ''}Driver #${o.rid}${o.next_day_sequence ? ` (stop ${o.next_day_sequence})` : ''}`
+                        : isLowFare(o) ? 'Open to drivers' : 'Unassigned'}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
-                      {o.next_day_discount_amount != null ? formatCurrency(o.next_day_discount_amount) : '—'}
+                      {!isLowFare(o) && o.next_day_discount_amount != null ? formatCurrency(o.next_day_discount_amount) : '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       {!o.rid && o.next_day_stage === 'arranging' && (
