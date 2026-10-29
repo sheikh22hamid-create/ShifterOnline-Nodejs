@@ -29,6 +29,7 @@ const adminUserLeadController = require("../controllers/adminUserLeadController"
 const multer = require("multer");
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const serviceZoneController = require("../controllers/serviceZoneController");
+const noEntryZoneController = require("../controllers/noEntryZoneController");
 const monthlyDriverController = require("../controllers/monthlyDriverController");
 const orderQueueController = require("../controllers/orderQueueController");
 const adminSearchController = require("../controllers/adminSearchController");
@@ -73,10 +74,18 @@ router.get("/search", auth, authorize(...RIDER_ROLES), scopeFilter, adminSearchC
 
 
 // --- Service Zones & Geofencing --------------------------------------------
-router.get("/service-zones", auth, authorize(...RIDER_ROLES), serviceZoneController.listZones);
-router.post("/service-zones", auth, authorize("superadmin", "admin"), serviceZoneController.createZone);
-router.put("/service-zones/:id", auth, authorize("superadmin", "admin"), serviceZoneController.updateZone);
-router.delete("/service-zones/:id", auth, authorize("superadmin"), serviceZoneController.deleteZone);
+// City-scoped (spec 2026-10-29): a city admin only sees and manages their own city's zones. Deleting a duty zone is
+// still superadmin only (checked in the controller); a city admin may delete their own city's coverage zones.
+router.get("/service-zones", auth, authorize(...RIDER_ROLES), scopeFilter, serviceZoneController.listZones);
+router.post("/service-zones", auth, authorize("superadmin", "admin"), scopeFilter, serviceZoneController.createZone);
+router.put("/service-zones/:id", auth, authorize("superadmin", "admin"), scopeFilter, serviceZoneController.updateZone);
+router.delete("/service-zones/:id", auth, authorize("superadmin", "admin"), scopeFilter, serviceZoneController.deleteZone);
+
+// Vehicle-wise Pickup / Drop No Entry Zones (spec 2026-10-29), city-scoped the same way.
+router.get("/no-entry-zones", auth, authorize(...RIDER_ROLES), scopeFilter, noEntryZoneController.list);
+router.post("/no-entry-zones", auth, authorize("superadmin", "admin"), scopeFilter, noEntryZoneController.create);
+router.put("/no-entry-zones/:id", auth, authorize("superadmin", "admin"), scopeFilter, noEntryZoneController.update);
+router.delete("/no-entry-zones/:id", auth, authorize("superadmin", "admin"), scopeFilter, noEntryZoneController.remove);
 
 // --- Monthly Dedicated Drivers & Duty Tracking ------------------------------
 router.get("/monthly-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.listMonthlyDrivers);

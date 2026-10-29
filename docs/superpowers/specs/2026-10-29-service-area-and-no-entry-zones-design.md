@@ -22,11 +22,11 @@ Every city has a configured pickup service area. Inside a city, admins can mark 
   3. A point on a polygon edge counts as inside (coverage allows it, No Entry blocks it); a circle includes its radius.
   4. Without a vehicle category the check is coverage only (used when a location is first confirmed); it is repeated with the category when the vehicle is chosen or changed.
 - Messages (exact): pickup out of coverage "No service zone available for this pickup location."; pickup in a No Entry Zone "Pickup is not allowed in this area for the selected vehicle type."; drop out of coverage "No service zone available for this drop location."; drop in a No Entry Zone "Drop location is a no-entry zone for the selected vehicle type. Please choose another location."
-- **Enforcement point:** `createOrderCore` runs both checks before anything is charged or created (stops are not checked, the brief does not ask for it). A new `POST /api/order/validate-location` runs the same code for the apps. Both use one service.
+- **Enforcement point:** `createOrderCore` runs the checks before anything is charged or created, for pickup, drop and every extra stop (a stop is a place goods are dropped, so it follows the drop rules; added after the security review). The vehicle category is taken from the validated packages, never from the client-sent name, and an unresolvable category is refused. The same guard runs when an existing order's pickup or drop is changed or a stop is added (preview and confirm). A new `POST /api/order/validate-location` runs the same code for the apps. Both use one service.
 - **Permissions:** zone and No Entry routes use `scopeFilter`. A city admin can only create, edit, delete and list their own city's coverage and No Entry zones; a superadmin any city. Deleting a 'duty' zone stays superadmin only.
 
 ## Non-goals
-Stops are not validated. `tbl_geofence_zones` is not migrated or removed. Driver-side zone rules, pricing by zone, and the duty-zone behaviour are untouched. Wallet-prepaid orders keep their normal refunds because nothing is charged before the check.
+`tbl_geofence_zones` is not migrated or removed. Driver-side zone rules, pricing by zone, and the duty-zone behaviour are untouched. Wallet-prepaid orders keep their normal refunds because nothing is charged before the check.
 
 ## Parts
 1. Backend: schema, rules, settings, service, order enforcement and validate endpoint, admin controllers and routes.

@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const serviceAreaService = require("./serviceAreaService");
 const pricingEngine = require("./pricingEngine");
 const dispatchManager = require("./dispatchManager");
 const pushNotifier = require("./pushNotifier");
@@ -68,6 +69,7 @@ async function previewDestinationChange({ uid, orderId, newDlat, newDlong, newDa
   if (!activeStatuses.includes(order.order_status) || order.o_status === "Completed" || order.o_status === "Cancelled") {
     throw new Error("ORDER_NOT_ACTIVE");
   }
+  await serviceAreaService.assertOrderChangeAllowed(order, { kind: "drop", lat: newDlat, lng: newDlong });
 
   const newDistanceKm = await computeNewRouteDistance(order, newDlat, newDlong);
   const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
@@ -143,6 +145,7 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     if (!activeStatuses.includes(order.order_status) || order.o_status === "Completed" || order.o_status === "Cancelled") {
       throw new Error("ORDER_NOT_ACTIVE");
     }
+    await serviceAreaService.assertOrderChangeAllowed(order, { kind: "drop", lat: newDlat, lng: newDlong });
 
     const newDistanceKm = await computeNewRouteDistance(order, newDlat, newDlong);
     const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);

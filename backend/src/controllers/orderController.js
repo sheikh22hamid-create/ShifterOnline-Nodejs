@@ -289,13 +289,6 @@ async function createOrderCore({
     return { ok: false, code: "VALIDATION", msg: "uid, category, a non-empty delivery_type array, and valid coordinates are required" };
   }
 
-  // Service area (spec 2026-10-29): with the switch on, pickup and drop must each be inside coverage and outside the
-  // selected vehicle's No Entry Zones. Runs before anything is charged or created. A no-op while the switch is off.
-  const area = await serviceAreaService.validateRoute({
-    pickup: { lat: plat, lng: plong }, drop: { lat: dlat, lng: dlong }, category,
-  });
-  if (!area.ok) return { ok: false, code: "SERVICE_AREA", msg: area.message, area_code: area.code, which: area.which };
-
   const blockingSettlement = await settlementService.findBlockingSettlement(uid);
   if (blockingSettlement) {
     return {
@@ -352,6 +345,15 @@ async function createOrderCore({
   if (invalidPackageIds.length > 0) {
     return { ok: false, code: "INVALID_PACKAGES", invalidPackageIds };
   }
+
+  // Service area (spec 2026-10-29): with the switch on, pickup, drop and every stop must be inside coverage and outside
+  // the No Entry Zones of the vehicle category the validated packages belong to (never the client-sent name). Runs
+  // before anything is charged or created. A no-op while the switch is off.
+  const area = await serviceAreaService.validateBooking({
+    pickup: { lat: plat, lng: plong }, drop: { lat: dlat, lng: dlong }, stops: validStops,
+    categoryIds: validPackages.map((p) => p.cat_id),
+  });
+  if (!area.ok) return { ok: false, code: "SERVICE_AREA", msg: area.message, area_code: area.code, which: area.which };
 
   // Dispatch tier order must be cheapest-model-first regardless of what
   // order the client's delivery_type array arrived in — a caller sending
@@ -1208,6 +1210,7 @@ async function previewDestinationChange(req, res) {
       ORDER_NOT_FOUND: [404, "Order not found"],
       FORBIDDEN: [403, "You are not authorized to update this order"],
       ORDER_NOT_ACTIVE: [409, "Destination can only be changed for active orders"],
+      ...serviceAreaService.SERVICE_AREA_ERRORS,
     };
     if (messages[err.message]) {
       const [status, message] = messages[err.message];
@@ -1243,6 +1246,7 @@ async function confirmDestinationChange(req, res) {
       ORDER_NOT_FOUND: [404, "Order not found"],
       FORBIDDEN: [403, "You are not authorized to update this order"],
       ORDER_NOT_ACTIVE: [409, "Destination can only be changed for active orders"],
+      ...serviceAreaService.SERVICE_AREA_ERRORS,
     };
     if (messages[err.message]) {
       const [status, message] = messages[err.message];
@@ -1261,6 +1265,7 @@ const PICKUP_CHANGE_ERROR_MESSAGES = {
   ORDER_NOT_FOUND: [404, "Order not found"],
   FORBIDDEN: [403, "You are not authorized to update this order"],
   ORDER_NOT_ACTIVE: [409, "Pickup location can only be changed before the goods are picked up"],
+  ...serviceAreaService.SERVICE_AREA_ERRORS,
 };
 
 async function previewPickupChange(req, res) {
@@ -1324,6 +1329,7 @@ const ADD_STOP_ERROR_MESSAGES = {
   ORDER_NOT_ACTIVE: [409, "Stops can only be added while the order is active"],
   ALREADY_AT_DROP: [409, "Driver has already reached the drop location, so a stop can no longer be added"],
   MAX_STOPS_EXCEEDED: [409, "Maximum number of extra stops already reached"],
+  ...serviceAreaService.SERVICE_AREA_ERRORS,
 };
 
 async function previewAddStop(req, res) {

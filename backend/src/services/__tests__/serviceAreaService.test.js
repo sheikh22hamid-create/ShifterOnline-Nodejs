@@ -2,6 +2,7 @@ jest.mock("../../config/db", () => ({
   service_zone: { findMany: jest.fn() },
   vehicle_no_entry_zone: { findMany: jest.fn() },
   pkg_category: { findFirst: jest.fn() },
+  tbl_package: { findUnique: jest.fn() },
 }));
 jest.mock("../serviceAreaSettings", () => ({ isEnforced: jest.fn() }));
 
@@ -127,5 +128,71 @@ describe("validateRoute (pickup and drop judged independently)", () => {
     expect(bad).toMatchObject({ ok: false, which: "pickup", code: "NO_SERVICE_ZONE" });
     const good = await service.validateRoute({ pickup: { lat: IN_INDORE[0], lng: IN_INDORE[1] }, drop: { lat: IN_UJJAIN[0], lng: IN_UJJAIN[1] }, category: 3 });
     expect(good).toMatchObject({ ok: true });
+  });
+});
+
+describe("fail closed", () => {
+  it("a named vehicle that cannot be resolved is refused, not given a pass on its No Entry rules", async () => {
+    prisma.pkg_category.findFirst.mockResolvedValue(null);
+    const out = await service.validateLocation({ lat: IN_INDORE[0], lng: IN_INDORE[1], kind: "pickup", category: "Mystery Cart" });
+    expect(out).toMatchObject({ ok: false, code: "UNKNOWN_VEHICLE" });
+    expect(prisma.vehicle_no_entry_zone.findMany).not.toHaveBeenCalled();
+  });
+
+  it("a coverage zone that is not tied to a city does not count as coverage", async () => {
+    prisma.service_zone.findMany.mockResolvedValue([{ ...INDORE, city_id: null }]);
+    expect((await service.validateLocation({ lat: IN_INDORE[0], lng: IN_INDORE[1], kind: "pickup", category: 3 })).code).toBe("NO_SERVICE_ZONE");
+  });
+});
+
+describe("validateBooking (categories come from the validated packages)", () => {
+  const pickup = { lat: IN_INDORE[0], lng: IN_INDORE[1] };
+  const drop = { lat: IN_UJJAIN[0], lng: IN_UJJAIN[1] };
+
+  it("is a no-op while the switch is off", async () => {
+    settings.isEnforced.mockResolvedValue(false);
+    expect(await service.validateBooking({ pickup, drop, stops: [], categoryIds: [] })).toEqual({ ok: true, enforced: false });
+  });
+
+  it("refuses when no category can be resolved from the packages", async () => {
+    expect(await service.validateBooking({ pickup, drop, stops: [], categoryIds: [null, 0] })).toMatchObject({ ok: false, code: "UNKNOWN_VEHICLE" });
+  });
+
+  it("checks every distinct category and every stop as a drop", async () => {
+    prisma.vehicle_no_entry_zone.findMany.mockImplementation(async ({ where }) =>
+      where.kind === "drop" && where.category_id === 4 ? [noEntry({ city_id: 1, category_id: 4, kind: "drop", polygon_geojson: box(22.69, 22.71, 75.79, 75.81) })] : []);
+    const stops = [{ lat: 22.7, lng: 75.8 }];
+    const out = await service.validateBooking({ pickup, drop, stops, categoryIds: [3, "4", 3] });
+    expect(out).toMatchObject({ ok: false, which: "stop", code: "NO_ENTRY" });
+    expect(await service.validateBooking({ pickup, drop, stops, categoryIds: [3] })).toMatchObject({ ok: true });
+  });
+});
+
+describe("assertOrderChangeAllowed (existing order: new pickup, drop or stop)", () => {
+  const order = { id: 7, delivery_type: 6, category: "Whatever the client typed" };
+
+  it("does nothing while the switch is off", async () => {
+    settings.isEnforced.mockResolvedValue(false);
+    await expect(service.assertOrderChangeAllowed(order, { kind: "drop", lat: NOWHERE[0], lng: NOWHERE[1] })).resolves.toBeUndefined();
+  });
+
+  it("uses the package's category, not the stored name, and throws a code the controllers map to the exact message", async () => {
+    prisma.tbl_package.findUnique.mockResolvedValue({ cat_id: 3 });
+    prisma.vehicle_no_entry_zone.findMany.mockResolvedValue([noEntry({ city_id: 1, category_id: 3, kind: "drop", polygon_geojson: box(22.69, 22.71, 75.79, 75.81) })]);
+    await expect(service.assertOrderChangeAllowed(order, { kind: "drop", lat: 22.7, lng: 75.8 })).rejects.toThrow("SERVICE_AREA_drop_NO_ENTRY");
+    expect(prisma.vehicle_no_entry_zone.findMany.mock.calls[0][0].where).toMatchObject({ category_id: 3, kind: "drop" });
+    await expect(service.assertOrderChangeAllowed(order, { kind: "pickup", lat: NOWHERE[0], lng: NOWHERE[1] })).rejects.toThrow("SERVICE_AREA_pickup_NO_SERVICE_ZONE");
+    await expect(service.assertOrderChangeAllowed(order, { kind: "drop", lat: 22.75, lng: 75.9 })).resolves.toBeUndefined();
+  });
+
+  it("refuses when the order's vehicle cannot be determined", async () => {
+    prisma.tbl_package.findUnique.mockResolvedValue(null);
+    prisma.pkg_category.findFirst.mockResolvedValue(null);
+    await expect(service.assertOrderChangeAllowed(order, { kind: "drop", lat: 22.7, lng: 75.8 })).rejects.toThrow("SERVICE_AREA_UNKNOWN_VEHICLE");
+  });
+
+  it("exposes the exact messages for the controller error maps", () => {
+    expect(service.SERVICE_AREA_ERRORS.SERVICE_AREA_drop_NO_ENTRY).toEqual([400, "Drop location is a no-entry zone for the selected vehicle type. Please choose another location."]);
+    expect(service.SERVICE_AREA_ERRORS.SERVICE_AREA_pickup_NO_SERVICE_ZONE).toEqual([400, "No service zone available for this pickup location."]);
   });
 });
