@@ -202,7 +202,9 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
             countText.setText("");
             return;
         }
-        countText.setText(orders.size() + " open");
+        int available = 0;
+        for (JsonElement e : orders) if (!"taken".equals(s(e.getAsJsonObject(), "state"))) available++;
+        countText.setText(available + " available");
         if (orders.size() == 0) {
             TextView empty = text("No Low Fare Orders right now.\nNext-day orders appear here during their time window.", 14, Color.GRAY, false);
             empty.setGravity(Gravity.CENTER);
@@ -214,7 +216,7 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
         for (JsonElement e : orders) {
             JsonObject o = e.getAsJsonObject();
             list.addView(card(o));
-            if (o.has("unread") && o.get("unread").getAsBoolean()) unreadIds.put(o.get("id").getAsInt());
+            if (o.has("unread") && o.get("unread").getAsBoolean() && !"taken".equals(s(o, "state"))) unreadIds.put(o.get("id").getAsInt());
         }
         if (unreadIds.length() > 0) {
             // The cards above still carry their NEW tag; the server now counts these as seen, so the Home badge drops.
@@ -281,7 +283,7 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.addView(text("Order #" + orderId + "   ·   " + s(o, "category"), 14, Color.BLACK, true), new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        if (o.has("unread") && o.get("unread").getAsBoolean()) {
+        if (o.has("unread") && o.get("unread").getAsBoolean() && !"taken".equals(s(o, "state"))) {
             TextView tag = text("NEW", 11, Color.WHITE, true);
             tag.setBackground(box(Color.parseColor("#E53935"), 8));
             tag.setPadding(dp(8), dp(2), dp(8), dp(2));
@@ -311,6 +313,23 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
         row(details, "Goods", s(o, "description"));
         row(details, "Weight", s(o, "package_weight").isEmpty() ? "" : money(s(o, "package_weight")) + " kg");
         card.addView(details);
+        // The server decides what can be done: upcoming = details only, open = can accept, taken = Already Attended.
+        String state = s(o, "state");
+        boolean canAccept = o.has("can_accept") && o.get("can_accept").getAsBoolean();
+        if ("taken".equals(state)) {
+            TextView taken = text("Already Attended", 14, Color.WHITE, true);
+            taken.setGravity(Gravity.CENTER);
+            taken.setBackground(box(Color.parseColor("#9E9E9E"), 10));
+            taken.setPadding(dp(12), dp(10), dp(12), dp(10));
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tp.topMargin = dp(12);
+            card.addView(taken, tp);
+            return card;
+        }
+        if (!canAccept) {
+            card.addView(text("Opens at " + istTime(s(o, "next_day_live_at")) + ". You can accept it from then until " + istTime(s(o, "next_day_live_until")) + ".", 12, Color.parseColor("#B26A00"), true));
+            return card;
+        }
         card.addView(text("Open to accept until " + istTime(s(o, "next_day_live_until")), 12, Color.parseColor("#B26A00"), true));
 
         Button accept = new Button(this);
