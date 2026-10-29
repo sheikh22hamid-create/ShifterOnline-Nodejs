@@ -2,6 +2,9 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const dispatchManager = require("./dispatchManager");
 const lowFareRules = require("./lowFareRules");
+const walletPrepayment = require("./walletPrepaymentRefund");
+const walletAdvance = require("./walletAdvanceService");
+const { refundReferralPointsForOrder } = require("./referralPointsRefund");
 
 // Low Fare Booking, driver side (spec 2026-10-27). A low_fare order is open to drivers of its vehicle category from the
 // customer's window start until the window end. Exactly one driver wins an accept: a conditional UPDATE on the server
@@ -175,7 +178,6 @@ async function afterReopen({ orderId, riderId, reason }) {
 async function expireDue(now = new Date()) {
   const due = await prisma.pkg_order.findMany({
     where: { booking_type: 3, next_day_stage: "low_fare", rid: 0, order_status: 0, o_status: "Pending", next_day_live_until: { lte: now } },
-    select: { id: true, uid: true, category: true },
   });
   let expired = 0;
   for (const order of due) {
@@ -184,6 +186,15 @@ async function expireDue(now = new Date()) {
       WHERE id = ${order.id} AND rid = 0 AND order_status = 0 AND o_status = 'Pending' AND next_day_stage = 'low_fare'`;
     if (moved !== 1) continue;
     expired += 1;
+    // The customer never got a ride: give back a wallet-paid fare, a wallet advance and any referral points (each is
+    // idempotent, and a failure of one must not stop the rest or the customer's notification).
+    for (const refund of [
+      () => walletPrepayment.refundIfWalletPaid(order, { note: "no driver found" }),
+      () => walletAdvance.refundWalletAdvanceIfAny(order.id),
+      () => refundReferralPointsForOrder(order.id),
+    ]) {
+      await refund().catch((err) => logger.error(`lowFare.expireDue: refund for order ${order.id} failed:`, err));
+    }
     try {
       dispatchManager.emitCustomerEvent(order.uid, "order:cancelled", { order_id: order.id, o_status: "Cancelled", reason: EXPIRE_REASON });
     } catch (err) {

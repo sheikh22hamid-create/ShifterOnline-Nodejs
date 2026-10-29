@@ -8,11 +8,17 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock("../dispatchManager", () => ({ emitDriverEvent: jest.fn(), emitCustomerEvent: jest.fn() }));
 jest.mock("../tripLifecycle", () => ({ acceptOrder: jest.fn() }));
+jest.mock("../walletPrepaymentRefund", () => ({ refundIfWalletPaid: jest.fn() }));
+jest.mock("../walletAdvanceService", () => ({ refundWalletAdvanceIfAny: jest.fn() }));
+jest.mock("../referralPointsRefund", () => ({ refundReferralPointsForOrder: jest.fn() }));
 
 const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const tripLifecycle = require("../tripLifecycle");
 const service = require("../lowFareService");
+const walletPrepayment = require("../walletPrepaymentRefund");
+const walletAdvance = require("../walletAdvanceService");
+const { refundReferralPointsForOrder } = require("../referralPointsRefund");
 
 const NOW = new Date("2026-10-28T09:00:00Z");
 const RIDER = { id: 7, status: 1, a_status: 1, verification_status: "approved", vehicle: "Tata Ace" };
@@ -32,6 +38,9 @@ beforeEach(() => {
   prisma.low_fare_view.findMany.mockResolvedValue([]);
   prisma.$executeRaw.mockResolvedValue(1);
   tripLifecycle.acceptOrder.mockResolvedValue({ success: true });
+  walletPrepayment.refundIfWalletPaid.mockResolvedValue(undefined);
+  walletAdvance.refundWalletAdvanceIfAny.mockResolvedValue(undefined);
+  refundReferralPointsForOrder.mockResolvedValue(undefined);
 });
 
 describe("listForDriver / countForDriver", () => {
@@ -153,5 +162,24 @@ describe("expireDue", () => {
     expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledWith(3, "order:cancelled", expect.objectContaining({ order_id: 100, reason: service.EXPIRE_REASON }));
     const where = prisma.pkg_order.findMany.mock.calls[0][0].where;
     expect(where).toMatchObject({ next_day_stage: "low_fare", rid: 0, o_status: "Pending", next_day_live_until: { lte: NOW } });
+  });
+
+  it("refunds a wallet-paid fare, a wallet advance and referral points for an order it cancels, and only for that one", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([{ id: 100, uid: 3 }, { id: 101, uid: 4 }]);
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    await service.expireDue(NOW);
+    expect(walletPrepayment.refundIfWalletPaid).toHaveBeenCalledTimes(1);
+    expect(walletPrepayment.refundIfWalletPaid).toHaveBeenCalledWith(expect.objectContaining({ id: 100 }), { note: "no driver found" });
+    expect(walletAdvance.refundWalletAdvanceIfAny).toHaveBeenCalledWith(100);
+    expect(refundReferralPointsForOrder).toHaveBeenCalledWith(100);
+  });
+
+  it("a failing refund does not stop the others or the customer's notification", async () => {
+    prisma.pkg_order.findMany.mockResolvedValue([{ id: 100, uid: 3 }]);
+    walletPrepayment.refundIfWalletPaid.mockRejectedValue(new Error("wallet down"));
+    expect(await service.expireDue(NOW)).toBe(1);
+    expect(walletAdvance.refundWalletAdvanceIfAny).toHaveBeenCalled();
+    expect(refundReferralPointsForOrder).toHaveBeenCalled();
+    expect(dispatchManager.emitCustomerEvent).toHaveBeenCalledTimes(1);
   });
 });

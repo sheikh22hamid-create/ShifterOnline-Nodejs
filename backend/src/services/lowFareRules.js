@@ -47,4 +47,14 @@ function isOpenNow(order, now) {
   return t >= new Date(order.next_day_live_at).getTime() && t < new Date(order.next_day_live_until).getTime();
 }
 
-module.exports = { validateWindow, discountedFare, isOpenNow, MAX_DISCOUNT_PERCENT };
+/** What the admin sees for a low_fare order: Cancelled / Expired / Accepted / Waiting to open / Open. */
+function statusOf(order, now, expireReason = "No driver accepted in the booking window") {
+  if (String(order.o_status) === "Cancelled") return order.cancel_reason === expireReason ? "Expired" : "Cancelled";
+  if (Number(order.rid) > 0) return "Accepted";
+  const t = now.getTime();
+  if (t < new Date(order.next_day_live_at).getTime()) return "Waiting to open";
+  if (t < new Date(order.next_day_live_until).getTime()) return "Open";
+  return "Expired";
+}
+
+module.exports = { validateWindow, discountedFare, isOpenNow, statusOf, MAX_DISCOUNT_PERCENT };

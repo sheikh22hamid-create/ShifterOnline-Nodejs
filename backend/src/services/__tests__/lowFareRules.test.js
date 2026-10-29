@@ -71,3 +71,19 @@ describe("isOpenNow", () => {
     expect(rules.isOpenNow({ ...order, next_day_live_until: null }, new Date("2026-10-28T09:00:00Z"))).toBe(false);
   });
 });
+
+describe("statusOf", () => {
+  const base = { o_status: "Pending", rid: 0, next_day_live_at: new Date("2026-10-28T08:30:00Z"), next_day_live_until: new Date("2026-10-28T10:30:00Z") };
+  it("walks Waiting to open, Open, Expired by the clock", () => {
+    expect(rules.statusOf(base, new Date("2026-10-28T08:00:00Z"))).toBe("Waiting to open");
+    expect(rules.statusOf(base, new Date("2026-10-28T09:00:00Z"))).toBe("Open");
+    expect(rules.statusOf(base, new Date("2026-10-28T10:30:00Z"))).toBe("Expired");
+  });
+  it("is Accepted once a driver holds it, whatever the clock says", () => {
+    expect(rules.statusOf({ ...base, rid: 7, o_status: "Processing" }, new Date("2026-10-29T00:00:00Z"))).toBe("Accepted");
+  });
+  it("tells an expiry from any other cancellation", () => {
+    expect(rules.statusOf({ ...base, o_status: "Cancelled", cancel_reason: "No driver accepted in the booking window" }, NOW)).toBe("Expired");
+    expect(rules.statusOf({ ...base, o_status: "Cancelled", cancel_reason: "Customer cancelled" }, NOW)).toBe("Cancelled");
+  });
+});
