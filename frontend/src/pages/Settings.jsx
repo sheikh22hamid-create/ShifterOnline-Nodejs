@@ -77,6 +77,10 @@ const HANDLED_FLAG_KEYS = [
   'pickup_otp_timeout_minutes',
   'drop_otp_enabled',
   'customise_order_enabled',
+  'low_fare_booking_enabled',
+  'low_fare_discount_percent',
+  'low_fare_max_days_ahead',
+  'low_fare_max_window_hours',
   'pickup_relocate_ceiling_minutes',
   'pickup_small_move_threshold_m',
   'pickup_otp_mismatch_flag_m',
@@ -544,6 +548,67 @@ function SettingsForm({ data, onSaved }) {
             </select>
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               Needs the three Customise Order migrations applied first. Orders already being negotiated stop receiving offers while it is off. Set the cancellation policy on the Customise Orders page.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-low_fare_booking_enabled">Low Fare Booking (low_fare_booking_enabled)</Label>
+            <select
+              id="flag-low_fare_booking_enabled"
+              className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+              value={flags.low_fare_booking_enabled ?? '0'}
+              onChange={(e) => setFlags((f) => ({ ...f, low_fare_booking_enabled: e.target.value }))}
+            >
+              <option value="0">Disabled (0 - next-day bookings keep the Daily Driver flow)</option>
+              <option value="1">Enabled (1 - Premium customers book next-day at a discount; drivers accept from the Low Fare Order section)</option>
+            </select>
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Needs migration <code>20261028010000_add_low_fare_booking</code> applied first and the updated apps. Applies to new bookings; existing ones keep their fare.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-low_fare_discount_percent">Low Fare discount (%)</Label>
+            <Input
+              id="flag-low_fare_discount_percent"
+              type="number"
+              min="0"
+              max="50"
+              placeholder="e.g. 20"
+              value={flags.low_fare_discount_percent ?? '20'}
+              onChange={(e) => setFlags((f) => ({ ...f, low_fare_discount_percent: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              Taken off the vehicle's Model 1 fare (0 to 50). Saved on each booking when it is made.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-low_fare_max_days_ahead">Low Fare: furthest day ahead</Label>
+            <Input
+              id="flag-low_fare_max_days_ahead"
+              type="number"
+              min="1"
+              max="30"
+              placeholder="e.g. 7"
+              value={flags.low_fare_max_days_ahead ?? '7'}
+              onChange={(e) => setFlags((f) => ({ ...f, low_fare_max_days_ahead: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              How many days ahead a customer may book (1 to 30). The earliest is tomorrow.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-low_fare_max_window_hours">Low Fare: longest pickup window (hours)</Label>
+            <Input
+              id="flag-low_fare_max_window_hours"
+              type="number"
+              min="1"
+              max="24"
+              placeholder="e.g. 12"
+              value={flags.low_fare_max_window_hours ?? '12'}
+              onChange={(e) => setFlags((f) => ({ ...f, low_fare_max_window_hours: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              The widest "from - until" pickup window a customer can pick (1 to 24 hours).
             </p>
           </div>
           <div>

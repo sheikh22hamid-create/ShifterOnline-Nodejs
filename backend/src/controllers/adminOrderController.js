@@ -20,6 +20,7 @@ const freeBookingService = require("../services/freeBookingService");
 const outsideDriver = require("../services/outsideDriverService");
 const { buildRoute } = require("../services/tripRouteService");
 const orderAssignment = require("../services/orderAssignmentService");
+const lowFareRules = require("../services/lowFareRules");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -601,7 +602,16 @@ async function listNextDay(req, res) {
     if (req.query.status === "assigned") where.rid = { not: 0 };
 
     const rows = await prisma.pkg_order.findMany({ where, orderBy: [{ schedule_date_time: "asc" }, { id: "asc" }] });
-    return res.status(200).json({ success: true, total: rows.length, data: rows });
+    // Low Fare orders (spec 2026-10-27) carry a derived status and the accepting driver's name for the admin table.
+    const lowFareRows = rows.filter((o) => o.next_day_stage === "low_fare");
+    const riderIds = [...new Set(lowFareRows.map((o) => o.rid).filter((id) => id > 0))];
+    const riders = riderIds.length ? await prisma.tbl_rider.findMany({ where: { id: { in: riderIds } }, select: { id: true, first_name: true, last_name: true } }) : [];
+    const riderName = Object.fromEntries(riders.map((r) => [r.id, `${r.first_name || ""} ${r.last_name || ""}`.trim()]));
+    const now = new Date();
+    const data = rows.map((o) => (o.next_day_stage === "low_fare"
+      ? { ...o, low_fare_status: lowFareRules.statusOf(o, now), low_fare_driver_name: riderName[o.rid] || null }
+      : o));
+    return res.status(200).json({ success: true, total: data.length, data });
   } catch (err) {
     return internalError(res, err, "orders.listNextDay");
   }

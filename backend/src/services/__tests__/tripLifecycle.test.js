@@ -48,6 +48,10 @@ jest.mock("../driverCancelRelive", () => ({
   reopenForRelive: jest.fn(),
   afterRelive: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock("../lowFareService", () => ({
+  isOpenLowFareOrder: jest.fn().mockResolvedValue(false),
+  afterReopen: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("../guaranteeRecoveryService", () => ({
   recoveryCityFor: jest.fn().mockResolvedValue(null),
   reopenAfterDriverCancel: jest.fn(),
@@ -1320,6 +1324,66 @@ describe("tripLifecycle.driverCancel", () => {
 
     it("automated cancels (requireOrderStatus) are never re-lived", async () => {
       relive.isEnabled.mockResolvedValue(true);
+      await tripLifecycle.driverCancel(297, 11, "auto", { requireOrderStatus: 1 });
+      expect(relive.reopenForRelive).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Low Fare order: driver cancel", () => {
+    const relive = require("../driverCancelRelive");
+    const lowFare = require("../lowFareService");
+    const reliveOk = { relived: true, order: { id: 297, uid: 7, rid: 11, order_status: 1, delivery_type: 6 } };
+    afterEach(() => {
+      lowFare.isOpenLowFareOrder.mockResolvedValue(false);
+      relive.isEnabled.mockResolvedValue(false);
+      relive.reopenForRelive.mockReset();
+    });
+
+    it("inside the window the same order reopens for the other drivers, even with the general re-live switch off", async () => {
+      lowFare.isOpenLowFareOrder.mockResolvedValue(true);
+      relive.isEnabled.mockResolvedValue(false);
+      relive.reopenForRelive.mockResolvedValue(reliveOk);
+      const result = await tripLifecycle.driverCancel(297, 11, "breakdown");
+      expect(result).toMatchObject({ success: true, recovered: true, refund_status: "order_relive", order: { id: 297, rid: 0, o_status: "Pending" } });
+      expect(relive.reopenForRelive).toHaveBeenCalledWith(expect.objectContaining({ orderId: 297, riderId: 11, maxRelives: Infinity }));
+      expect(lowFare.afterReopen).toHaveBeenCalledWith({ orderId: 297, riderId: 11, reason: "breakdown" });
+      expect(relive.afterRelive).not.toHaveBeenCalled(); // no normal driver search for a Low Fare order
+      expect(recovery.recoveryCityFor).not.toHaveBeenCalled(); // no guarantee recovery either
+      expect(dispatchManager.stopDispatch).not.toHaveBeenCalled();
+    });
+
+    it("the cancelling driver is charged once through the same in-transaction hook", async () => {
+      lowFare.isOpenLowFareOrder.mockResolvedValue(true);
+      relive.reopenForRelive.mockResolvedValue(reliveOk);
+      pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_driver: 50, driver_cancel_user_earning: 20 });
+      prisma.tbl_rider.update.mockResolvedValue({});
+      await tripLifecycle.driverCancel(297, 11, "breakdown");
+      const { inTx } = relive.reopenForRelive.mock.calls[0][0];
+      await inTx(prisma, { id: 297, uid: 7, rid: 11, order_status: 1, delivery_type: 6 });
+      expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+      expect(prisma.order_status_history.create).toHaveBeenCalledWith({ data: expect.objectContaining({ order_id: 297, rider_id: 11, status: "Driver Cancelled" }) });
+    });
+
+    it("after the window ended it is an ordinary cancel and is never reopened", async () => {
+      lowFare.isOpenLowFareOrder.mockResolvedValue(false);
+      const result = await tripLifecycle.driverCancel(297, 11, "late");
+      expect(relive.reopenForRelive).not.toHaveBeenCalled();
+      expect(lowFare.afterReopen).not.toHaveBeenCalled();
+      expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "driver_cancelled");
+      expect(result.recovered).toBeUndefined();
+    });
+
+    it("when the reopen is declined (past pickup) it falls through to the normal cancel", async () => {
+      lowFare.isOpenLowFareOrder.mockResolvedValue(true);
+      relive.reopenForRelive.mockResolvedValue({ relived: false, reason: "not_before_pickup" });
+      const result = await tripLifecycle.driverCancel(297, 11, "late");
+      expect(lowFare.afterReopen).not.toHaveBeenCalled();
+      expect(dispatchManager.stopDispatch).toHaveBeenCalledWith(297, "driver_cancelled");
+      expect(result.recovered).toBeUndefined();
+    });
+
+    it("an automated cancel (requireOrderStatus) is never reopened", async () => {
+      lowFare.isOpenLowFareOrder.mockResolvedValue(true);
       await tripLifecycle.driverCancel(297, 11, "auto", { requireOrderStatus: 1 });
       expect(relive.reopenForRelive).not.toHaveBeenCalled();
     });

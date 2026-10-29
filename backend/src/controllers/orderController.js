@@ -24,6 +24,8 @@ const freeBookingService = require("../services/freeBookingService");
 const bookingGuaranteeService = require("../services/bookingGuaranteeService");
 const nextDaySettings = require("../services/nextDaySettings");
 const nextDayRules = require("../services/nextDayRules");
+const lowFareSettings = require("../services/lowFareSettings");
+const lowFareRules = require("../services/lowFareRules");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
@@ -273,6 +275,8 @@ async function createOrderCore({
   // Customise Order (spec 2026-10-26): the fare was negotiated, so it replaces the rate-card fare, the driver search is
   // skipped (the driver is already chosen) and the ride keeps a permanent link back to the negotiation.
   agreedFare = null, skipDispatch = false, customiseOrderId = null,
+  // Low Fare Booking: the customer's { date: "YYYY-MM-DD", from: "HH:MM", until: "HH:MM" } pickup window.
+  lowFareWindow = null,
 }) {
   if (
     !uid ||
@@ -441,9 +445,26 @@ async function createOrderCore({
           )
       );
 
+  // Low Fare Booking (spec 2026-10-27): with the switch on, a next-day order is priced at the Model-1 fare minus the
+  // admin's discount, computed here once and stored; the customer's own date + pickup window replace the Daily Driver flow.
+  let lowFare = null;
+  if (Number(bookingType) === 3 && await lowFareSettings.isEnabled()) {
+    const premium = Boolean(customerPlan && (
+      customerPlan.noAdvancePayment === true || customerPlan.noAdvancePayment === 1 ||
+      String(customerPlan.noAdvancePayment) === "1" || String(customerPlan.noAdvancePayment) === "true" ||
+      customerPlan.subscriptionId > 0));
+    if (!premium) {
+      return { ok: false, code: "PREMIUM_PLAN_REQUIRED", msg: "Next Day Delivery is exclusively available for Premium Plan members." };
+    }
+    const cfg = await lowFareSettings.getConfig();
+    const win = lowFareRules.validateWindow(lowFareWindow, new Date(), cfg);
+    if (!win.ok) return { ok: false, code: "VALIDATION", msg: win.error };
+    lowFare = { ...win, date: lowFareWindow.date, percent: cfg.discountPercent, model1: fare, ...lowFareRules.discountedFare(fare, cfg.discountPercent) };
+  }
+
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);
-  const agreed = Number(agreedFare) > 0 ? Number(agreedFare) : null;
+  const agreed = lowFare ? lowFare.discounted : (Number(agreedFare) > 0 ? Number(agreedFare) : null);
   const finalTotalCharge = agreed ?? (validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare));
   const finalDCharge = agreed ?? (validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare));
   // Commission is a percentage of the fare: re-derive it for the agreed fare with the package's own earning rule.
@@ -554,11 +575,21 @@ async function createOrderCore({
 
   const parsedWeight = parseFloat(String(packageWeight));
   const finalScheduleDateTime = Number(bookingType) === 3
-    ? nextDayScheduleDateIST()
+    ? (lowFare ? lowFare.date : nextDayScheduleDateIST())
     : ((scheduleDateTime || schedule_date_time) ? String(scheduleDateTime || schedule_date_time) : null);
 
   // Next-day (spec 2026-10-13): arranged through Daily Drivers until the live time on the trip day.
-  const nextDayFields = Number(bookingType) === 3
+  // Low Fare orders instead open to drivers for the customer's chosen window.
+  const nextDayFields = lowFare
+    ? {
+        next_day_stage: "low_fare",
+        next_day_live_at: lowFare.liveAt,
+        next_day_live_until: lowFare.liveUntil,
+        next_day_model1_fare: lowFare.model1,
+        next_day_discount_percent: lowFare.percent,
+        next_day_discount_amount: lowFare.discountAmount,
+      }
+    : Number(bookingType) === 3
     ? {
         next_day_stage: nextDayRules.STAGE.ARRANGING,
         next_day_live_at: nextDayRules.liveAtFor(finalScheduleDateTime, await nextDaySettings.getLiveTime().catch(() => nextDayRules.DEFAULT_LIVE_TIME)),
@@ -801,9 +832,11 @@ async function createOrder(req, res) {
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
       receiver_pays, receiver_commission_percent, free_booking, send_sender_whatsapp, send_receiver_whatsapp,
+      low_fare_date, low_fare_from, low_fare_until,
     } = req.body;
 
     const result = await createOrderCore({
+      lowFareWindow: { date: low_fare_date, from: low_fare_from, until: low_fare_until },
       uid, category, deliveryTypeIds: delivery_type, bookingType: booking_type, plat, plong, paddress,
       pickName: pick_name, pmobile, pickType: pick_type, dlat, dlong, daddress, dropName: drop_name,
       dmobile, dropType: drop_type, packageWeight: package_weight, packageCost: package_cost, description,
@@ -1734,6 +1767,38 @@ async function rateOrder(req, res) {
   }
 }
 
+/**
+ * Low Fare Booking (spec 2026-10-27): what the customer will pay for a next-day order, before booking. Uses the same
+ * fare engine as booking, so the quote is the Model-1 fare (first package) minus the admin's discount.
+ */
+async function lowFareQuote(req, res) {
+  try {
+    const { cat_id, plat, plong, dlat, dlong, uid, stops, body_type } = req.body;
+    if (!cat_id || ![plat, plong, dlat, dlong].every(isFiniteNumber)) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "cat_id and valid coordinates are required" });
+    }
+    const enabled = await lowFareSettings.isEnabled();
+    const cfg = await lowFareSettings.getConfig();
+    if (!enabled) {
+      return res.status(200).json({ ResponseCode: "200", Result: "true", enabled: false, ...cfg });
+    }
+    const estimate = await pricingEngine.getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, stops, body_type: body_type || "any" });
+    const model1 = Number(estimate.packages?.[0]?.estimated_fare);
+    if (!(model1 > 0)) {
+      return res.status(200).json({ ResponseCode: "400", Result: "false", ResponseMsg: "Fare is not available for this route" });
+    }
+    const { discounted, discountAmount } = lowFareRules.discountedFare(model1, cfg.discountPercent);
+    return res.status(200).json({
+      ResponseCode: "200", Result: "true", enabled: true,
+      model1_fare: model1, discount_percent: cfg.discountPercent, discount_amount: discountAmount, final_fare: discounted,
+      max_days_ahead: cfg.maxDaysAhead, max_window_hours: cfg.maxWindowHours, distance_km: estimate.distance_km,
+    });
+  } catch (err) {
+    logger.error("lowFareQuote failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 async function checkNextDayEligibility(req, res) {
   try {
     const uid = req.body?.uid || req.query?.uid;
@@ -2265,6 +2330,7 @@ module.exports = {
   buyOrderItemUpload,
   rateOrder,
   checkNextDayEligibility,
+  lowFareQuote,
   paymentMethodStatus,
   getMapInfo,
   advancePayment,

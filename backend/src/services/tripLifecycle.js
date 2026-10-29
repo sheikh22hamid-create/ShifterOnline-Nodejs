@@ -1655,13 +1655,15 @@ async function recoverGuaranteeOrder(orderId, riderId, reason) {
  * (no refund and re-charge). The driver still pays their cancellation fee. Returns the driverCancel result, or null to
  * take the normal terminal path (switch off, too late in the trip, too many cancels, or any failure).
  */
-async function reliveOrder(orderId, riderId, reason) {
+async function reliveOrder(orderId, riderId, reason, { lowFare = false } = {}) {
   const relive = require("./driverCancelRelive");
-  if (!(await relive.isEnabled())) return null;
+  // A Low Fare order reopens for the other drivers of its window whatever the general re-live switch says.
+  if (!lowFare && !(await relive.isEnabled())) return null;
 
   const walletNotifications = [];
   const outcome = await relive.reopenForRelive({
     orderId, riderId,
+    ...(lowFare ? { maxRelives: Infinity } : {}),
     inTx: async (tx, order) => {
       await applyDriverCancelFee(tx, { order, orderId, riderId, walletNotifications });
       await releaseDriverSideState(tx, { orderId, riderId, reason });
@@ -1678,7 +1680,8 @@ async function reliveOrder(orderId, riderId, reason) {
       .notifyDriverWalletTransaction(n.riderId, { type: n.type, amount: n.amount, remark: n.remark })
       .catch((err) => logger.error(`driverCancel: wallet notify failed for rider ${n.riderId}:`, err));
   }
-  await relive.afterRelive({ orderId, riderId, reason });
+  if (lowFare) await require("./lowFareService").afterReopen({ orderId, riderId, reason });
+  else await relive.afterRelive({ orderId, riderId, reason });
   return {
     success: true,
     recovered: true,
@@ -1708,7 +1711,13 @@ async function driverCancel(orderId, riderId, reason, opts = {}) {
   // A Customise Order ride is relisted in the Customise list after the cancel (customiseCancelService), never put
   // back into the normal driver search, so it skips guarantee recovery and re-live.
   const customiseRide = await require("./customiseCancelService").rideInfo(orderId);
-  if (opts.requireOrderStatus == null && !customiseRide) {
+  // A Low Fare order inside its booking window goes back to the other drivers of the window (same order id); once the
+  // window has ended it takes the normal cancel path below. It never goes through guarantee recovery or the normal search.
+  const lowFareOpen = opts.requireOrderStatus == null && !customiseRide && await require("./lowFareService").isOpenLowFareOrder(orderId);
+  if (lowFareOpen) {
+    const reopened = await reliveOrder(orderId, riderId, reason, { lowFare: true });
+    if (reopened) return reopened;
+  } else if (opts.requireOrderStatus == null && !customiseRide) {
     const recovered = await recoverGuaranteeOrder(orderId, riderId, reason);
     if (recovered) return recovered;
     const relived = await reliveOrder(orderId, riderId, reason);

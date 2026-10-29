@@ -125,6 +125,12 @@ setInterval(() => {
   customise.expireDue().catch((err) => logger.error("customise expireDue interval failed:", err));
 }, 30 * 1000);
 
+// Low Fare Booking: cancel orders whose booking window ended with no driver. The accept itself is checked against the
+// clock, so this only keeps the customer's order and the drivers' lists honest.
+setInterval(() => {
+  require("./services/lowFareService").expireDue().catch((err) => logger.error("lowFare expireDue interval failed:", err));
+}, 30 * 1000);
+
 // Payment-settlement reminders + "Unsettled" flagging — see settlementSweep.
 setInterval(() => {
   require("./services/settlementSweep").sweepSettlements().catch((err) =>

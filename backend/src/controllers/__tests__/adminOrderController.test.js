@@ -1,7 +1,7 @@
 jest.mock("../../config/db", () => ({
   pkg_order: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
   pkg_order_interest: { groupBy: jest.fn() },
-  tbl_rider: { findUnique: jest.fn() },
+  tbl_rider: { findUnique: jest.fn(), findMany: jest.fn() },
   tbl_rnoti: { create: jest.fn() },
   tbl_user: { findMany: jest.fn() },
   order_status_history: { create: jest.fn() },
@@ -155,6 +155,21 @@ describe("adminOrderController next-day orders", () => {
         expect.objectContaining({ where: { booking_type: 3 } })
       );
       expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it("gives Low Fare orders a derived status and the accepting driver's name, and leaves other orders untouched", async () => {
+      const future = new Date(Date.now() + 3 * 86400000);
+      const lowFare = { id: 2, booking_type: 3, next_day_stage: "low_fare", o_status: "Processing", rid: 9, next_day_live_at: future, next_day_live_until: future };
+      const old = { id: 3, booking_type: 3, next_day_stage: "arranging", o_status: "Pending", rid: 0 };
+      prisma.pkg_order.findMany.mockResolvedValue([lowFare, old]);
+      prisma.tbl_rider.findMany.mockResolvedValue([{ id: 9, first_name: "Asha", last_name: "Rao" }]);
+      const res = makeRes();
+
+      await listNextDay({ query: {}, scopedCityId: null }, res);
+
+      const data = res.json.mock.calls[0][0].data;
+      expect(data[0]).toMatchObject({ id: 2, low_fare_status: "Accepted", low_fare_driver_name: "Asha Rao" });
+      expect(data[1]).toEqual(old);
     });
   });
 
