@@ -72,6 +72,7 @@ const API_RULES = [
   ["/vehicles", [ANY]],
   ["/categories", [ANY]],
   ["/service-zones", ["/service-zones", "/daily-drivers", "/monthly-drivers"]],
+  ["/no-entry-zones", ["/service-zones"]],
   ["/rate-cards", ["/rate-cards"]],
 
   ["/fleet/live-tracking", ["/fleet/live-tracking", "/drivers", "/dashboard"]],
