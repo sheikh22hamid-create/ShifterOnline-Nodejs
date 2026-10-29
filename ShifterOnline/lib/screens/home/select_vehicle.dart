@@ -14,6 +14,7 @@ import '../../Api/config.dart';
 import '../../bottombar.dart';
 import '../../services/free_booking_api_service.dart';
 import '../../services/low_fare_api_service.dart';
+import '../../services/service_area_api_service.dart';
 import '../../services/settlement_api_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/receiver_pay_options.dart';
@@ -726,6 +727,18 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       return;
     }
     setState(() { _loadingModels = true; _modelsError = null; _models = []; _selectedModelIndex = null; });
+    // Service area: pickup and drop are checked against this vehicle's rules. Done again whenever the vehicle or a
+    // location changes (this runs for both). The server is the final judge at booking; this just says so early.
+    final areaMessage = await ServiceAreaApiService.routeBlockedMessage(
+      pickupLat: _pickup.latitude, pickupLng: _pickup.longitude, dropLat: _drop.latitude, dropLng: _drop.longitude,
+      categoryId: int.tryParse(categoryId.toString()) ?? categoryId,
+    );
+    if (!mounted) return;
+    if (areaMessage != null) {
+      _autoScrollPending = false;
+      setState(() { _models = []; _loadingModels = false; _modelsError = areaMessage; });
+      return;
+    }
     _refreshGuaranteeQuote();
     final uid = _storage.read('Uid');
     final response = await ApiWrapper.dataPostNode(Config.nodeFareEstimate, {

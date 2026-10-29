@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const serviceAreaService = require("./serviceAreaService");
 const pickupEtaService = require("./pickupEtaService");
 const pricingEngine = require("./pricingEngine");
 const dispatchManager = require("./dispatchManager");
@@ -79,6 +80,7 @@ async function previewPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
 
   const order = await prisma.pkg_order.findUnique({ where: { id: numericOrderId } });
   assertOrderEditable(order, numericUid);
+  await serviceAreaService.assertOrderChangeAllowed(order, { kind: "pickup", lat: newPlat, lng: newPlong });
 
   const newDistanceKm = await computeNewRouteDistance(order, newPlat, newPlong);
   const radiusKm = await getDriverRealDistanceKm(order.rid, newPlat, newPlong);
@@ -129,6 +131,7 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
 
     const order = await tx.pkg_order.findUnique({ where: { id: numericOrderId } });
     assertOrderEditable(order, numericUid);
+    await serviceAreaService.assertOrderChangeAllowed(order, { kind: "pickup", lat: newPlat, lng: newPlong });
 
     const newDistanceKm = await computeNewRouteDistance(order, newPlat, newPlong);
     const radiusKm = await getDriverRealDistanceKm(order.rid, newPlat, newPlong);

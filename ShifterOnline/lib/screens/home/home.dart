@@ -14,6 +14,7 @@ import 'package:goParcel/screens/home/makewishlist.dart';
 import 'package:goParcel/screens/home/my_custom_orders.dart';
 import 'package:goParcel/screens/home/route_review.dart';
 import 'package:goParcel/screens/home/select_vehicle.dart';
+import 'package:goParcel/services/service_area_api_service.dart';
 import 'package:goParcel/screens/home/location_search_screen.dart';
 import 'package:goParcel/screens/home/location_confirm_map_screen.dart';
 import 'package:goParcel/screens/home/trackingpoliyline.dart';
@@ -185,6 +186,20 @@ class _HomeState extends State<Home> {
     _confirmedPickupAddress = _confirmedPickupData!["address"]?.toString();
   }
 
+  /// Coverage check of the chosen pickup and drop (no vehicle yet). Shows the server's message and returns false when
+  /// either is outside every pickup service area; true when fine or when the check cannot be read.
+  Future<bool> _locationsServiceable(Map<String, dynamic> pickup, Map<String, dynamic> drop) async {
+    final pLat = double.tryParse(pickup['lat_map']?.toString() ?? '');
+    final pLng = double.tryParse(pickup['long_map']?.toString() ?? '');
+    final dLat = double.tryParse(drop['lat_map']?.toString() ?? '');
+    final dLng = double.tryParse(drop['long_map']?.toString() ?? '');
+    if (pLat == null || pLng == null || dLat == null || dLng == null) return true;
+    final message = await ServiceAreaApiService.routeBlockedMessage(pickupLat: pLat, pickupLng: pLng, dropLat: dLat, dropLng: dLng);
+    if (message == null) return true;
+    ApiWrapper.showToastMessage(message);
+    return false;
+  }
+
   Future<void> _startDropSelection() async {
     await _ensureCurrentPickup();
     final selectedDrop = await Get.to<Map<String, dynamic>>(
@@ -203,6 +218,10 @@ class _HomeState extends State<Home> {
     }
 
     if (!mounted || drop == null || _confirmedPickupData == null) return;
+
+    // Service area: the pickup and drop must both be inside a city's pickup service area (the vehicle-wise No Entry
+    // rules are checked once a vehicle is chosen). The customer stays here and can change the location.
+    if (!await _locationsServiceable(_confirmedPickupData!, drop)) return;
 
     final pickup = _confirmedPickupData!;
     setState(() {
@@ -261,6 +280,7 @@ class _HomeState extends State<Home> {
     }
 
     final drop = Map<String, dynamic>.from(location);
+    if (!await _locationsServiceable(_confirmedPickupData!, drop)) return;
     await getdata.write("DropeAddress", [drop]);
     if (!mounted) return;
 

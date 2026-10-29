@@ -87,7 +87,7 @@ export default function MonthlyDrivers() {
 
   function fetchRidersAndZones() {
     api.get('/riders').then((res) => setAllRiders(res.data.data || res.data || [])).catch(() => {})
-    api.get('/service-zones').then((res) => setZones(res.data.data || [])).catch(() => {})
+    api.get('/service-zones?kind=duty').then((res) => setZones(res.data.data || [])).catch(() => {})
   }
 
   async function handlePromote(e) {

@@ -79,7 +79,7 @@ export default function DailyDrivers() {
 
   useEffect(() => {
     fetchPlans()
-    api.get('/service-zones').then((res) => setZones(res.data.data || [])).catch(() => {})
+    api.get('/service-zones?kind=duty').then((res) => setZones(res.data.data || [])).catch(() => {})
     api.get('/riders').then((res) => setAllRiders(res.data.data || res.data || [])).catch(() => {})
     api.get('/categories').then((res) => setCategories(res.data?.data || res.data || [])).catch(() => {})
   }, [])

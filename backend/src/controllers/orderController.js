@@ -26,6 +26,7 @@ const nextDaySettings = require("../services/nextDaySettings");
 const nextDayRules = require("../services/nextDayRules");
 const lowFareSettings = require("../services/lowFareSettings");
 const lowFareRules = require("../services/lowFareRules");
+const serviceAreaService = require("../services/serviceAreaService");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
@@ -344,6 +345,15 @@ async function createOrderCore({
   if (invalidPackageIds.length > 0) {
     return { ok: false, code: "INVALID_PACKAGES", invalidPackageIds };
   }
+
+  // Service area (spec 2026-10-29): with the switch on, pickup, drop and every stop must be inside coverage and outside
+  // the No Entry Zones of the vehicle category the validated packages belong to (never the client-sent name). Runs
+  // before anything is charged or created. A no-op while the switch is off.
+  const area = await serviceAreaService.validateBooking({
+    pickup: { lat: plat, lng: plong }, drop: { lat: dlat, lng: dlong }, stops: validStops,
+    categoryIds: validPackages.map((p) => p.cat_id),
+  });
+  if (!area.ok) return { ok: false, code: "SERVICE_AREA", msg: area.message, area_code: area.code, which: area.which };
 
   // Dispatch tier order must be cheapest-model-first regardless of what
   // order the client's delivery_type array arrived in — a caller sending
@@ -861,6 +871,9 @@ async function createOrder(req, res) {
     if (!result.ok && result.code === "VALIDATION") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
     }
+    if (!result.ok && result.code === "SERVICE_AREA") {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg, code: "SERVICE_AREA", area_code: result.area_code, which: result.which });
+    }
     if (!result.ok && result.code === "INVALID_COUPON") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
     }
@@ -1197,6 +1210,7 @@ async function previewDestinationChange(req, res) {
       ORDER_NOT_FOUND: [404, "Order not found"],
       FORBIDDEN: [403, "You are not authorized to update this order"],
       ORDER_NOT_ACTIVE: [409, "Destination can only be changed for active orders"],
+      ...serviceAreaService.SERVICE_AREA_ERRORS,
     };
     if (messages[err.message]) {
       const [status, message] = messages[err.message];
@@ -1232,6 +1246,7 @@ async function confirmDestinationChange(req, res) {
       ORDER_NOT_FOUND: [404, "Order not found"],
       FORBIDDEN: [403, "You are not authorized to update this order"],
       ORDER_NOT_ACTIVE: [409, "Destination can only be changed for active orders"],
+      ...serviceAreaService.SERVICE_AREA_ERRORS,
     };
     if (messages[err.message]) {
       const [status, message] = messages[err.message];
@@ -1250,6 +1265,7 @@ const PICKUP_CHANGE_ERROR_MESSAGES = {
   ORDER_NOT_FOUND: [404, "Order not found"],
   FORBIDDEN: [403, "You are not authorized to update this order"],
   ORDER_NOT_ACTIVE: [409, "Pickup location can only be changed before the goods are picked up"],
+  ...serviceAreaService.SERVICE_AREA_ERRORS,
 };
 
 async function previewPickupChange(req, res) {
@@ -1313,6 +1329,7 @@ const ADD_STOP_ERROR_MESSAGES = {
   ORDER_NOT_ACTIVE: [409, "Stops can only be added while the order is active"],
   ALREADY_AT_DROP: [409, "Driver has already reached the drop location, so a stop can no longer be added"],
   MAX_STOPS_EXCEEDED: [409, "Maximum number of extra stops already reached"],
+  ...serviceAreaService.SERVICE_AREA_ERRORS,
 };
 
 async function previewAddStop(req, res) {
@@ -1777,6 +1794,27 @@ async function rateOrder(req, res) {
  * Low Fare Booking (spec 2026-10-27): what the customer will pay for a next-day order, before booking. Uses the same
  * fare engine as booking, so the quote is the Model-1 fare (first package) minus the admin's discount.
  */
+/**
+ * Service-area check for the apps (spec 2026-10-29): is this pickup or drop allowed, optionally for a vehicle category.
+ * Same code as order creation, which stays the final word. Without a category only coverage is checked.
+ */
+async function validateLocation(req, res) {
+  try {
+    const { lat, lng, type, cat_id, category } = req.body;
+    if (!isFiniteNumber(lat) || !isFiniteNumber(lng) || !["pickup", "drop"].includes(type)) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "lat, lng and type (pickup or drop) are required" });
+    }
+    const out = await serviceAreaService.validateLocation({ lat, lng, kind: type, category: cat_id ?? category });
+    return res.status(200).json({
+      ResponseCode: "200", Result: "true", allowed: out.ok, enforced: out.enforced,
+      ...(out.ok ? {} : { code: out.code, message: out.message }),
+    });
+  } catch (err) {
+    logger.error("validateLocation failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 async function lowFareQuote(req, res) {
   try {
     const { cat_id, plat, plong, dlat, dlong, uid, stops, body_type } = req.body;
@@ -2337,6 +2375,7 @@ module.exports = {
   rateOrder,
   checkNextDayEligibility,
   lowFareQuote,
+  validateLocation,
   paymentMethodStatus,
   getMapInfo,
   advancePayment,

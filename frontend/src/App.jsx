@@ -54,6 +54,7 @@ const DynamicQuestions = lazy(() => import('./pages/DynamicQuestions'))
 const Staff = lazy(() => import('./pages/Staff'))
 const Settings = lazy(() => import('./pages/Settings'))
 const ServiceZones = lazy(() => import('./pages/ServiceZones'))
+const NoEntryZones = lazy(() => import('./pages/NoEntryZones'))
 const MonthlyDrivers = lazy(() => import('./pages/MonthlyDrivers'))
 const DailyDrivers = lazy(() => import('./pages/DailyDrivers'))
 const FreeBookingOffer = lazy(() => import('./pages/FreeBookingOffer'))
@@ -120,6 +121,7 @@ function App() {
 
             {/* Fleet & Pricing */}
             <Route path="/service-zones" element={<ServiceZones />} />
+            <Route path="/no-entry-zones" element={<NoEntryZones />} />
             <Route path="/rate-cards" element={<RateCards />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/vehicles" element={<Vehicles />} />

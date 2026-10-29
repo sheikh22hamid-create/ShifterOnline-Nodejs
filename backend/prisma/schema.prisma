@@ -1477,8 +1477,28 @@ model service_zone {
   radius_km       Float    @default(5)
   polygon_geojson String?  @db.LongText
   status          Int      @default(1)
+  // 'duty' = Daily Driver duty zone (original behaviour), 'coverage' = a city's pickup service area.
+  zone_kind       String   @default("duty") @db.VarChar(20)
   created_at      DateTime @default(now()) @db.DateTime(0)
   updated_at      DateTime @default(now()) @updatedAt @db.DateTime(0)
+}
+
+// An area where one vehicle category may not pick up ('pickup') or drop ('drop') in one city. Many per combination.
+model vehicle_no_entry_zone {
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(150)
+  city_id         Int
+  category_id     Int
+  kind            String   @db.VarChar(10)
+  center_lat      Float
+  center_lng      Float
+  radius_km       Float    @default(1)
+  polygon_geojson String?  @db.LongText
+  status          Int      @default(1)
+  created_at      DateTime @default(now()) @db.DateTime(0)
+  updated_at      DateTime @default(now()) @updatedAt @db.DateTime(0)
+
+  @@index([city_id, category_id, kind, status], map: "idx_no_entry_lookup")
 }
 
 model monthly_driver_contract {

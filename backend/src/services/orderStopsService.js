@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const serviceAreaService = require("./serviceAreaService");
 const pricingEngine = require("./pricingEngine");
 const dispatchManager = require("./dispatchManager");
 const pushNotifier = require("./pushNotifier");
@@ -108,6 +109,7 @@ async function previewAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
   const order = await prisma.pkg_order.findUnique({ where: { id: numericOrderId } });
   assertOrderEditable(order, numericUid);
   await assertNotAtDrop(prisma, order);
+  await serviceAreaService.assertOrderChangeAllowed(order, { kind: "drop", lat, lng });
 
   const existingStops = await prisma.pkg_order_stops.findMany({
     where: { order_id: numericOrderId }, orderBy: { sequence: "asc" },
@@ -156,6 +158,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
     const order = await tx.pkg_order.findUnique({ where: { id: numericOrderId } });
     assertOrderEditable(order, numericUid);
     await assertNotAtDrop(tx, order);
+    await serviceAreaService.assertOrderChangeAllowed(order, { kind: "drop", lat, lng });
 
     const existingStops = await tx.pkg_order_stops.findMany({
       where: { order_id: numericOrderId }, orderBy: { sequence: "asc" },

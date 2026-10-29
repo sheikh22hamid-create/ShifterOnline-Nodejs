@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   MapPin,
   Plus,
@@ -15,6 +16,7 @@ import {
   Square,
   Hexagon,
   Sparkles,
+  Ban,
 } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -23,9 +25,20 @@ import AllZonesOverviewMap from '../components/zones/AllZonesOverviewMap'
 
 export default function ServiceZones() {
   // The API lets admins create/edit zones but only a superadmin delete them; executives are view-only.
-  const { hasRole } = useAuth()
+  // A city admin works only in their own city (the API enforces it); only a super admin chooses any city.
+  // Deleting a duty zone is super admin only; a city admin can delete their own city's pickup service areas.
+  const { hasRole, user } = useAuth()
+  const navigate = useNavigate()
   const canEdit = hasRole('superadmin', 'admin')
-  const canDelete = hasRole('superadmin')
+  const isSuper = hasRole('superadmin')
+  const canDeleteZone = (z) => isSuper || (hasRole('admin') && z.zone_kind === 'coverage')
+  const ownCityId = isSuper ? '' : String(user?.city_id || '')
+  const cityName = (id) => {
+    const c = cities.find((x) => String(x.id) === String(id))
+    return c ? c.title || c.name || `City #${c.id}` : id ? `City #${id}` : 'All cities'
+  }
+  const [kindFilter, setKindFilter] = useState('all') // 'all' | 'coverage' | 'duty'
+  const [cityStep, setCityStep] = useState(null) // { city_id } while "Pickup Allowed in City" is being asked
   const [zones, setZones] = useState([])
   const [cities, setCities] = useState([])
   const [loading, setLoading] = useState(true)
@@ -45,6 +58,7 @@ export default function ServiceZones() {
     radius_km: '5.0',
     polygon_geojson: '',
     status: 1,
+    zone_kind: 'duty',
   })
 
   useEffect(() => {
@@ -61,19 +75,35 @@ export default function ServiceZones() {
       .finally(() => setLoading(false))
   }
 
-  function openCreate() {
+  // kind 'coverage' = a city's pickup service area ("Pickup Allowed in City"); 'duty' = a Daily Driver duty zone.
+  function openCreate(kind = 'duty', cityId = '') {
     setEditingZone(null)
     setShapeMode('circle')
     setForm({
       name: '',
-      city_id: cities[0]?.id || '',
+      city_id: kind === 'coverage' ? cityId : cities[0]?.id || '',
       center_lat: '25.1800',
       center_lng: '75.8300',
       radius_km: '5.0',
       polygon_geojson: '',
       status: 1,
+      zone_kind: kind,
     })
     setModalOpen(true)
+  }
+
+  function startPickupCity() {
+    setCityStep({ city_id: ownCityId || '' })
+  }
+
+  function continueFromCity() {
+    if (!cityStep?.city_id) {
+      alert('Choose the city first')
+      return
+    }
+    const cityId = String(cityStep.city_id)
+    setCityStep(null)
+    openCreate('coverage', cityId)
   }
 
   function openEdit(z) {
@@ -99,6 +129,7 @@ export default function ServiceZones() {
       radius_km: String(z.radius_km || '5.0'),
       polygon_geojson: z.polygon_geojson || '',
       status: z.status,
+      zone_kind: z.zone_kind || 'duty',
     })
     setModalOpen(true)
   }
@@ -121,7 +152,13 @@ export default function ServiceZones() {
       return
     }
 
+    if (form.zone_kind === 'coverage' && !(form.city_id && Number(form.city_id) > 0)) {
+      alert('Choose the city this pickup area belongs to')
+      return
+    }
+
     const payload = {
+      zone_kind: form.zone_kind || 'duty',
       name: form.name.trim(),
       city_id: form.city_id && Number(form.city_id) > 0 ? Number(form.city_id) : null,
       center_lat: parseFloat(form.center_lat),
@@ -155,8 +192,10 @@ export default function ServiceZones() {
     }
   }
 
-  const filtered = zones.filter((z) =>
-    z.name?.toLowerCase().includes(search.toLowerCase())
+  const filtered = zones.filter(
+    (z) =>
+      z.name?.toLowerCase().includes(search.toLowerCase()) &&
+      (kindFilter === 'all' || (z.zone_kind || 'duty') === kindFilter)
   )
 
   return (
@@ -169,7 +208,7 @@ export default function ServiceZones() {
             Service Zones & Geofences
           </h1>
           <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-            Draw circle, square, or custom polygon operating boundaries on the interactive map for Monthly Dedicated Drivers.
+            Mark each city's pickup service area on the map, then add the vehicle-wise No Entry Zones inside it. Duty zones for Daily Drivers are listed here too.
           </p>
         </div>
 
@@ -207,13 +246,31 @@ export default function ServiceZones() {
 
           {canEdit && (
             <button
-              onClick={openCreate}
+              onClick={startPickupCity}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition"
             >
               <Plus size={18} />
               Mark Zone on Map
             </button>
           )}
+          {canEdit && (
+            <button
+              onClick={() => openCreate('duty')}
+              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition hover:opacity-80"
+              style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+              title="A duty zone for Daily Drivers (not a pickup service area)"
+            >
+              Duty zone
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/no-entry-zones')}
+            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition hover:opacity-80"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+          >
+            <Ban size={14} />
+            No Entry Zones
+          </button>
         </div>
       </div>
 
@@ -232,6 +289,16 @@ export default function ServiceZones() {
             className="w-full bg-transparent text-sm outline-none"
             style={{ color: 'var(--ink)' }}
           />
+          <select
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            className="rounded-lg border px-2 py-1 text-xs outline-none"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+          >
+            <option value="all">All zones</option>
+            <option value="coverage">Pickup service areas</option>
+            <option value="duty">Duty zones</option>
+          </select>
         </div>
       )}
 
@@ -281,6 +348,9 @@ export default function ServiceZones() {
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="text-base font-bold" style={{ color: 'var(--ink)' }}>{z.name}</h3>
+                      <p className="mt-0.5 text-[11px] font-semibold" style={{ color: z.zone_kind === 'coverage' ? 'var(--success, #15803d)' : 'var(--ink-faint)' }}>
+                        {z.zone_kind === 'coverage' ? `Pickup service area · ${cityName(z.city_id)}` : `Duty zone · ${cityName(z.city_id)}`}
+                      </p>
                       <div className="flex items-center gap-2 mt-1">
                         <span
                           className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md"
@@ -340,7 +410,18 @@ export default function ServiceZones() {
                       <Edit2 size={16} />
                     </button>
                   )}
-                  {canDelete && (
+                  {z.zone_kind === 'coverage' && (
+                    <button
+                      onClick={() => navigate(`/no-entry-zones?city_id=${z.city_id}`)}
+                      className="inline-flex items-center gap-1 p-2 rounded-lg text-xs font-semibold transition hover:opacity-80"
+                      style={{ color: 'var(--warning, #b45309)', background: 'var(--warning-soft, #fffbeb)' }}
+                      title="Vehicle-wise No Entry Zones for this city"
+                    >
+                      <Ban size={14} />
+                      No Entry Zones
+                    </button>
+                  )}
+                  {canDeleteZone(z) && (
                     <button
                       onClick={() => handleDelete(z.id)}
                       className="p-2 rounded-lg transition hover:opacity-80"
@@ -354,6 +435,52 @@ export default function ServiceZones() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* STEP 1 of "Mark Zone on Map": which city is pickup allowed in */}
+      {cityStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="w-full max-w-md rounded-2xl border p-6 shadow-2xl"
+            style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+          >
+            <h2 className="text-base font-bold" style={{ color: 'var(--ink)' }}>Pickup Allowed in City</h2>
+            <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Choose the city, then draw the areas on the map where pickup service is available. A city can have several separate areas.
+            </p>
+            <select
+              value={cityStep.city_id}
+              disabled={!isSuper}
+              onChange={(e) => setCityStep({ city_id: e.target.value })}
+              className="mt-4 w-full rounded-xl border px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--ink)' }}
+            >
+              <option value="">-- Select city --</option>
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title || c.name || `City #${c.id}`}
+                </option>
+              ))}
+            </select>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCityStep(null)}
+                className="rounded-xl px-4 py-2 text-xs font-semibold"
+                style={{ background: 'var(--bg)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={continueFromCity}
+                className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Continue to map
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -372,7 +499,7 @@ export default function ServiceZones() {
               <div>
                 <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--ink)' }}>
                   <MapPin className="text-blue-600" />
-                  {editingZone ? 'Edit Service Zone on Map' : 'Mark New Service Zone on Map'}
+                  {editingZone ? 'Edit Service Zone on Map' : form.zone_kind === 'coverage' ? `Mark Pickup Area: ${cityName(form.city_id)}` : 'Mark New Duty Zone on Map'}
                 </h2>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
                   Click on the map or use the drawing tools to mark the operational boundary for drivers.
@@ -410,6 +537,7 @@ export default function ServiceZones() {
                       <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>City</label>
                       <select
                         value={form.city_id}
+                        disabled={!isSuper || form.zone_kind === 'coverage'}
                         onChange={(e) => setForm({ ...form, city_id: e.target.value })}
                         className="mt-1 w-full rounded-xl border px-3.5 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
                         style={{
