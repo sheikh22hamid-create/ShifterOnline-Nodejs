@@ -65,9 +65,11 @@ describe("listForDriver / countForDriver", () => {
   });
 
   it("shows an order another driver took as taken (Already Attended), not acceptable", async () => {
-    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, rid: 8 }]);
+    prisma.pkg_order.findMany.mockResolvedValue([{ ...ORDER, rid: 8, paddress: "12 Secret Lane", daddress: "9 Hidden Road", plat: "22.7", total_dcharge: 800, description: "fridge" }]);
     const out = await service.listForDriver(7, NOW);
     expect(out[0]).toMatchObject({ state: "taken", can_accept: false });
+    // only a status line: nothing about where the goods are or who the customer is
+    expect(Object.keys(out[0]).sort()).toEqual(["can_accept", "category", "id", "next_day_live_at", "next_day_live_until", "schedule_date_time", "state", "unread"]);
     const or = prisma.pkg_order.findMany.mock.calls[0][0].where.OR;
     expect(or[1]).toMatchObject({ rid: { notIn: [0, 7] } });
   });

@@ -17,7 +17,7 @@ const tripLifecycle = () => require("./tripLifecycle");
 const EXPIRE_REASON = "No driver accepted in the booking window";
 const LIST_FIELDS = {
   id: true, category: true, paddress: true, daddress: true, plat: true, plong: true, dlat: true, dlong: true,
-  distance: true, total_dcharge: true, description: true, pick_name: true, drop_name: true, schedule_date_time: true,
+  distance: true, total_dcharge: true, description: true, schedule_date_time: true,
   next_day_live_at: true, next_day_live_until: true, next_day_model1_fare: true, next_day_discount_percent: true,
   package_weight: true, odate: true, rid: true,
 };
@@ -67,6 +67,10 @@ async function visibleOrders(rider, now) {
     .filter((o) => !excluded.has(o.id) && new Date(o.next_day_live_until) > now)
     .map(({ rid, ...o }) => {
       const state = rid ? "taken" : lowFareRules.isOpenNow({ ...o, next_day_stage: "low_fare" }, now) ? "open" : "upcoming";
+      // An order another driver holds is only a status line for this driver: no addresses, goods or fare details.
+      if (state === "taken") {
+        return { id: o.id, category: o.category, schedule_date_time: o.schedule_date_time, next_day_live_at: o.next_day_live_at, next_day_live_until: o.next_day_live_until, state, can_accept: false };
+      }
       return { ...o, state, can_accept: state === "open" };
     });
 }

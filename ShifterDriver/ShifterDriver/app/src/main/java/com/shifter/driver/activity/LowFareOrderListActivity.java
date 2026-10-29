@@ -291,6 +291,18 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
         }
         card.addView(head);
 
+        // An order another driver holds arrives as a status line only (no fare, address or goods).
+        if ("taken".equals(s(o, "state"))) {
+            TextView taken = text("Already Attended", 14, Color.WHITE, true);
+            taken.setGravity(Gravity.CENTER);
+            taken.setBackground(box(Color.parseColor("#9E9E9E"), 10));
+            taken.setPadding(dp(12), dp(10), dp(12), dp(10));
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tp.topMargin = dp(8);
+            card.addView(taken, tp);
+            return card;
+        }
+
         TextView price = text("Fare  ₹" + fare, 20, Color.WHITE, true);
         price.setBackground(box(GREEN, 10));
         price.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -313,19 +325,8 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
         row(details, "Goods", s(o, "description"));
         row(details, "Weight", s(o, "package_weight").isEmpty() ? "" : money(s(o, "package_weight")) + " kg");
         card.addView(details);
-        // The server decides what can be done: upcoming = details only, open = can accept, taken = Already Attended.
-        String state = s(o, "state");
+        // The server decides what can be done: upcoming = details only, open = can accept.
         boolean canAccept = o.has("can_accept") && o.get("can_accept").getAsBoolean();
-        if ("taken".equals(state)) {
-            TextView taken = text("Already Attended", 14, Color.WHITE, true);
-            taken.setGravity(Gravity.CENTER);
-            taken.setBackground(box(Color.parseColor("#9E9E9E"), 10));
-            taken.setPadding(dp(12), dp(10), dp(12), dp(10));
-            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            tp.topMargin = dp(12);
-            card.addView(taken, tp);
-            return card;
-        }
         if (!canAccept) {
             card.addView(text("Opens at " + istTime(s(o, "next_day_live_at")) + ". You can accept it from then until " + istTime(s(o, "next_day_live_until")) + ".", 12, Color.parseColor("#B26A00"), true));
             return card;
