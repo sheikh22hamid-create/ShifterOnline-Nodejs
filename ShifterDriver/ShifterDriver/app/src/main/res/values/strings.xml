@@ -365,6 +365,8 @@
     <string name="custom_orders_label">Custom Orders</string>
     <string name="customise_orders_label">Customise Orders</string>
     <string name="customise_orders_hint">Accept the offered price or send your own</string>
+    <string name="low_fare_orders_label">Low Fare Order</string>
+    <string name="low_fare_orders_hint">Next-day orders you can accept in their time window</string>
     <string name="delivery_address_label">Delivery Address</string>
     <string name="going_offline">Going Offline...</string>
     <string name="going_online">Going Online...</string>

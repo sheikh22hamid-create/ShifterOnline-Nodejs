@@ -104,6 +104,21 @@ public class NodeSocketManager {
         customiseListeners.remove(listener);
     }
 
+    /** lowfare:new / lowfare:closed: a Low Fare Order opened for this driver, or was taken by someone else. */
+    public interface LowFareListener {
+        void onLowFareEvent(String event, JSONObject data);
+    }
+
+    private final java.util.Set<LowFareListener> lowFareListeners = new java.util.concurrent.CopyOnWriteArraySet<>();
+
+    public void addLowFareListener(LowFareListener listener) {
+        if (listener != null) lowFareListeners.add(listener);
+    }
+
+    public void removeLowFareListener(LowFareListener listener) {
+        lowFareListeners.remove(listener);
+    }
+
     public interface AckListener {
         void onAck(JSONObject data);
     }
@@ -273,6 +288,20 @@ public class NodeSocketManager {
                         listener.onCustomiseEvent(customiseEvent, data);
                     } catch (Exception e) {
                         Log.e(TAG, "Error delivering " + customiseEvent, e);
+                    }
+                }
+            }));
+        }
+
+        for (String lowFareEvent : new String[]{"lowfare:new", "lowfare:closed"}) {
+            socket.on(lowFareEvent, args -> mainHandler.post(() -> {
+                JSONObject data = firstArgAsJson(args);
+                if (data == null) return;
+                for (LowFareListener listener : lowFareListeners) {
+                    try {
+                        listener.onLowFareEvent(lowFareEvent, data);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error delivering " + lowFareEvent, e);
                     }
                 }
             }));

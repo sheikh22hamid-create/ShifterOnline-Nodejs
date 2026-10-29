@@ -1779,6 +1779,68 @@
                     android:src="@drawable/arow_right"
                     app:tint="@color/white" />
             </LinearLayout>
+            <!-- Low Fare Order: next-day orders; the badge is how many new ones this driver has not opened yet -->
+            <LinearLayout
+                android:id="@+id/btn_low_fare_orders"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/rounded_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="14dp"
+                android:foreground="?attr/selectableItemBackground">
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="12dp"
+                    android:src="@drawable/ic_dollar"
+                    app:tint="@color/white" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/low_fare_orders_label"
+                        android:textColor="@color/white"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/low_fare_orders_hint"
+                        android:textColor="#DDEEFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
+                <TextView
+                    android:id="@+id/txt_low_fare_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="22dp"
+                    android:layout_marginEnd="10dp"
+                    android:background="@drawable/rounded_button"
+                    android:backgroundTint="#E53935"
+                    android:gravity="center"
+                    android:minWidth="22dp"
+                    android:paddingStart="7dp"
+                    android:paddingEnd="7dp"
+                    android:text="0"
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/arow_right"
+                    app:tint="@color/white" />
+            </LinearLayout>
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
