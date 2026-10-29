@@ -129,6 +129,13 @@ router.post("/customise/accept", appKeyAuth, customiseOrderController.driverAcce
 router.post("/customise/counter", appKeyAuth, customiseOrderController.driverCounter);
 router.post("/customise/dismiss", appKeyAuth, customiseOrderController.driverDismiss);
 
+// Low Fare Order (driver side, spec 2026-10-27): next-day orders accepted from their own section, no popup.
+const lowFareController = require("../controllers/lowFareController");
+router.post("/low-fare/list", appKeyAuth, lowFareController.list);
+router.post("/low-fare/count", appKeyAuth, lowFareController.count);
+router.post("/low-fare/seen", appKeyAuth, lowFareController.seen);
+router.post("/low-fare/accept", appKeyAuth, lowFareController.accept);
+
 // Driver home/dashboard, static content, misc onboarding (Node port of the
 // remaining rider_api/*.php endpoints confirmed live in UserService.java)
 router.post("/home", driverContentController.homeData);
