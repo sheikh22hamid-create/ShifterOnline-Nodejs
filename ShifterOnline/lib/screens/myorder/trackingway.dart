@@ -195,6 +195,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     _driverMapPositionNotifier.dispose();
     commit.dispose();
     numController.dispose();
+    _otpShareTicker?.cancel();
     _socketSubscription?.dispose();
     NodeSocketManager.instance.connectionState.removeListener(_refreshAfterReconnect);
     super.dispose();
@@ -206,6 +207,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   }
 
   void _listenForLiveUpdates() {
+    _otpShareTicker?.cancel();
+    _otpShareTicker = Timer.periodic(const Duration(seconds: 6), (_) => _refreshOtpShareState());
     final uidInt = int.tryParse(uid) ?? 0;
     if (uidInt > 0) {
       NodeSocketManager.instance.connectCustomer(uidInt, orderId: orderid);
@@ -3140,6 +3143,23 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   // Pickup OTP share (spec 2026-10-29): "Send OTP to Driver" is enabled by the server only while the driver is waiting
   // for the OTP; sending never verifies it, the driver still verifies it in their app.
   bool _sharingOtp = false;
+  // While the driver is at the pickup, quietly re-read just the OTP-share state (no spinner, no page reload) so the
+  // button turns off after the driver verifies the OTP and on after they arrive, even if a live event was missed.
+  Timer? _otpShareTicker;
+
+  Future<void> _refreshOtpShareState() async {
+    if (!mounted || _sharingOtp || orderProduc == null || orderProduc["Order_Status"] != "Pickup") return;
+    try {
+      final val = await ApiWrapper.dataPostNode(Config.nodeOrderDetails, {"uid": uid, "order_id": orderid});
+      if (!mounted || val is! Map || val["ResponseCode"] != "200" || val["Result"] != "true") return;
+      final list = val["OrderProductList"];
+      if (list is! List || list.isEmpty || list.first is! Map) return;
+      final share = (list.first as Map)["otp_share"];
+      if (share is Map && orderProduc is Map) setState(() => orderProduc["otp_share"] = share);
+    } catch (_) {
+      // Keep the last state; the next tick or a live event refreshes it.
+    }
+  }
 
   Widget _buildSendOtpToDriverButton() {
     final share = orderProduc?["otp_share"];

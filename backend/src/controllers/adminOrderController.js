@@ -593,6 +593,8 @@ async function assignScheduledDriver(req, res) {
 // these stay independent functions instead of parameterizing the existing
 // pair over booking_type.
 
+const LOW_FARE_NO_ASSIGN = "Low Fare orders are accepted by drivers from the Low Fare Order section and cannot be assigned here";
+
 async function listNextDay(req, res) {
   try {
     const where = { booking_type: 3 };
@@ -637,6 +639,7 @@ async function suggestNextDaySequence(req, res) {
     if (orders.length !== orderIds.length) {
       return res.status(400).json({ success: false, message: "One or more order ids are not valid next-day orders" });
     }
+    if (orders.some((o) => o.next_day_stage === "low_fare")) return res.status(400).json({ success: false, message: LOW_FARE_NO_ASSIGN });
     if (orders.some((o) => isScopedOut(req, o.city_id))) {
       return res.status(403).json({ success: false, message: "Forbidden: an order is outside your assigned city" });
     }
@@ -678,6 +681,8 @@ async function assignNextDayBatch(req, res) {
     if (orders.length !== orderIds.length || orders.some((o) => o.booking_type !== 3)) {
       return res.status(400).json({ success: false, message: "One or more order ids are not valid next-day orders" });
     }
+    // Low Fare orders (spec 2026-10-27) are taken by drivers from their own section: no manual batch assignment.
+    if (orders.some((o) => o.next_day_stage === "low_fare")) return res.status(400).json({ success: false, message: LOW_FARE_NO_ASSIGN });
     if (orders.some((o) => isScopedOut(req, o.city_id))) {
       return res.status(403).json({ success: false, message: "Forbidden: an order is outside your assigned city" });
     }

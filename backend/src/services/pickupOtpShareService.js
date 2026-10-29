@@ -138,8 +138,21 @@ async function acknowledge({ riderId, orderId, shareId }) {
   return true;
 }
 
-// A driver who was only handed the OTP moments before the timeout had no real chance to verify it.
-const DRIVER_GRACE_AFTER_DELIVERY_MS = 60000;
+// A driver who was only handed the OTP moments before the timeout had no real chance to verify it. Admin setting
+// `pickup_otp_driver_grace_seconds` (Settings page), default 60, clamped 0..600.
+const GRACE_KEY = "pickup_otp_driver_grace_seconds";
+const DEFAULT_GRACE_SECONDS = 60;
+
+async function driverGraceMs() {
+  try {
+    const row = await prisma.app_settings.findFirst({ where: { setting_key: GRACE_KEY } });
+    const raw = row?.setting_value;
+    const n = raw === undefined || raw === null || String(raw).trim() === "" ? NaN : Number(raw);
+    return (Number.isFinite(n) ? Math.min(600, Math.max(0, n)) : DEFAULT_GRACE_SECONDS) * 1000;
+  } catch (_err) {
+    return DEFAULT_GRACE_SECONDS * 1000;
+  }
+}
 
 /**
  * What the customer did about the OTP in this waiting cycle, for the pickup timeout. The customer is never penalised
@@ -154,7 +167,7 @@ async function shareOutcomeThisCycle(orderId, timer, riderId, now = Date.now()) 
     const row = await currentShare(Number(orderId), timer);
     if (!row || (riderId && row.rider_id !== Number(riderId))) return null;
     const delivered = row.status === "delivered" && row.delivered_at;
-    if (delivered && now - new Date(row.delivered_at).getTime() >= DRIVER_GRACE_AFTER_DELIVERY_MS) return "delivered_to_driver";
+    if (delivered && now - new Date(row.delivered_at).getTime() >= (await driverGraceMs())) return "delivered_to_driver";
     return "attempted";
   } catch (err) {
     logger.error(`pickupOtpShare: could not check shares for order ${orderId}, treating as a neutral attempt:`, err);

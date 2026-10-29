@@ -1,12 +1,12 @@
 const logger = require("../utils/logger");
-const settings = require("../services/lowFareSettings");
 const service = require("../services/lowFareService");
 
 // Driver HTTP layer for Low Fare Booking (spec 2026-10-27), legacy { Result, msg } shape at HTTP 200 like the Customise
-// driver calls. The low_fare_booking_enabled switch guards every call; all rules live in lowFareService.
+// driver calls. The low_fare_booking_enabled switch stops NEW bookings (createOrderCore); it deliberately does not block
+// these calls, so orders that were already booked can still be listed and accepted after an admin turns the switch off.
+// All rules live in lowFareService.
 async function guarded(req, res, run) {
   try {
-    if (!(await settings.isEnabled())) return res.status(200).json({ Result: false, msg: "Low Fare Order is not available" });
     const riderId = Number(req.body?.rider_id || 0);
     if (!riderId) return res.status(200).json({ Result: false, msg: "rider_id is required" });
     return await run(riderId, req.body || {});

@@ -1,10 +1,8 @@
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
-jest.mock("../../services/lowFareSettings", () => ({ isEnabled: jest.fn() }));
 jest.mock("../../services/lowFareService", () => ({
   listForDriver: jest.fn(), countForDriver: jest.fn(), markSeen: jest.fn(), accept: jest.fn(),
 }));
 
-const settings = require("../../services/lowFareSettings");
 const service = require("../../services/lowFareService");
 const controller = require("../lowFareController");
 
@@ -16,16 +14,17 @@ const call = async (handler, body) => {
 
 beforeEach(() => {
   jest.resetAllMocks();
-  settings.isEnabled.mockResolvedValue(true);
 });
 
 describe("lowFareController", () => {
-  it("answers Result:false for every call while the switch is off", async () => {
-    settings.isEnabled.mockResolvedValue(false);
-    for (const h of [controller.list, controller.count, controller.seen, controller.accept]) {
-      expect(await call(h, { rider_id: 7, order_id: 1 })).toEqual({ Result: false, msg: "Low Fare Order is not available" });
-    }
-    expect(service.accept).not.toHaveBeenCalled();
+  it("keeps serving already-booked orders: the switch only stops new bookings, so list, count, seen and accept never consult it", async () => {
+    service.listForDriver.mockResolvedValue([]);
+    service.countForDriver.mockResolvedValue(0);
+    service.accept.mockResolvedValue({ ok: true, order_id: 1 });
+    expect((await call(controller.list, { rider_id: 7 })).Result).toBe(true);
+    expect((await call(controller.count, { rider_id: 7 })).Result).toBe(true);
+    expect((await call(controller.seen, { rider_id: 7, order_ids: [1] })).Result).toBe(true);
+    expect((await call(controller.accept, { rider_id: 7, order_id: 1 })).Result).toBe(true);
   });
 
   it("needs a rider_id", async () => {

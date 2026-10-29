@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const { isInsideZone } = require("./geofenceService");
+const serviceAreaSettings = require("./serviceAreaSettings");
 
 // Pickup -> city resolution shared by the vehicle list (orderAvailabilityController.availableVehicles)
 // and order creation, so both decide System 1 / System 2 from the SAME city (the pickup's), not the
@@ -8,6 +9,18 @@ const { isInsideZone } = require("./geofenceService");
 // Matches the first active `service_zone` containing the pickup. When no zone matches, falls back to
 // the first active city (the long-standing availableVehicles behaviour). `serviceable` is false only
 // when there is neither a zone match nor any active city.
+/**
+ * The zones the city lookup walks. Coverage zones (a city's pickup service area, spec 2026-10-29) take part only once the
+ * service-area check is on, and then come first (they name the pickup's city). With it off the lookup is exactly the
+ * original one over the Daily Driver duty zones, so drawing coverage areas ahead of time changes nothing.
+ */
+async function lookupZones() {
+  const zones = await prisma.service_zone.findMany({ where: { status: 1 } });
+  const duty = zones.filter((zone) => zone.zone_kind !== "coverage");
+  if (!(await serviceAreaSettings.isEnforced())) return duty;
+  return [...zones.filter((zone) => zone.zone_kind === "coverage"), ...duty];
+}
+
 async function resolvePickupArea(lat, lng) {
   let cityId = 0;
   let cityName = "";
@@ -15,7 +28,7 @@ async function resolvePickupArea(lat, lng) {
   let zoneName = "";
   let serviceable = false;
 
-  const zones = await prisma.service_zone.findMany({ where: { status: 1 } });
+  const zones = await lookupZones();
   for (const zone of zones) {
     if (isInsideZone(lat, lng, zone)) {
       serviceable = true;
@@ -49,7 +62,7 @@ async function resolvePickupCityId(lat, lng) {
   const pickupLng = Number(lng);
   if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return null;
 
-  const zones = await prisma.service_zone.findMany({ where: { status: 1 } });
+  const zones = await lookupZones();
   for (const zone of zones) {
     if (isInsideZone(pickupLat, pickupLng, zone)) {
       const id = Number(zone.city_id);
