@@ -8,6 +8,7 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock("../dispatchManager", () => ({ emitDriverEvent: jest.fn(), emitCustomerEvent: jest.fn() }));
 jest.mock("../tripLifecycle", () => ({ acceptOrder: jest.fn() }));
+jest.mock("../driverWalletSettings", () => ({ getDriverMaxDueLimit: jest.fn() }));
 jest.mock("../walletPrepaymentRefund", () => ({ refundIfWalletPaid: jest.fn() }));
 jest.mock("../walletAdvanceService", () => ({ refundWalletAdvanceIfAny: jest.fn() }));
 jest.mock("../referralPointsRefund", () => ({ refundReferralPointsForOrder: jest.fn() }));
@@ -16,6 +17,7 @@ const prisma = require("../../config/db");
 const dispatchManager = require("../dispatchManager");
 const tripLifecycle = require("../tripLifecycle");
 const service = require("../lowFareService");
+const { getDriverMaxDueLimit } = require("../driverWalletSettings");
 const walletPrepayment = require("../walletPrepaymentRefund");
 const walletAdvance = require("../walletAdvanceService");
 const { refundReferralPointsForOrder } = require("../referralPointsRefund");
@@ -38,6 +40,7 @@ beforeEach(() => {
   prisma.low_fare_view.findMany.mockResolvedValue([]);
   prisma.$executeRaw.mockResolvedValue(1);
   tripLifecycle.acceptOrder.mockResolvedValue({ success: true });
+  getDriverMaxDueLimit.mockResolvedValue(100);
   walletPrepayment.refundIfWalletPaid.mockResolvedValue(undefined);
   walletAdvance.refundWalletAdvanceIfAny.mockResolvedValue(undefined);
   refundReferralPointsForOrder.mockResolvedValue(undefined);
@@ -76,6 +79,30 @@ describe("listForDriver / countForDriver", () => {
     expect(await service.countForDriver(7, NOW)).toBe(1);
     prisma.pkg_order.findMany.mockRejectedValue(new Error("db"));
     expect(await service.countForDriver(7, NOW)).toBe(0);
+  });
+});
+
+describe("wallet due limit", () => {
+  const overLimit = { ...RIDER, wallet_balance: "-150.00" };
+
+  it("a driver past the negative-balance limit sees nothing and the vehicle's own limit is used", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue(overLimit);
+    expect(await service.listForDriver(7, NOW)).toEqual([]);
+    expect(getDriverMaxDueLimit).toHaveBeenCalledWith("Tata Ace");
+    expect(prisma.pkg_order.findMany).not.toHaveBeenCalled();
+  });
+
+  it("cannot accept, with a plain reason, and the order is never touched", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue(overLimit);
+    expect(await service.accept(100, 7, NOW)).toEqual({ ok: false, msg: "Clear your wallet dues to accept orders" });
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("exactly at the limit, with a positive balance, or with no wallet figure is allowed", async () => {
+    for (const wallet_balance of ["-100.00", "25", null]) {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ ...RIDER, wallet_balance });
+      expect((await service.accept(100, 7, NOW)).ok).toBe(true);
+    }
   });
 });
 

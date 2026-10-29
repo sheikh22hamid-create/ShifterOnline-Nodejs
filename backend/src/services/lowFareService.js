@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const dispatchManager = require("./dispatchManager");
 const lowFareRules = require("./lowFareRules");
+const { getDriverMaxDueLimit } = require("./driverWalletSettings");
 const walletPrepayment = require("./walletPrepaymentRefund");
 const walletAdvance = require("./walletAdvanceService");
 const { refundReferralPointsForOrder } = require("./referralPointsRefund");
@@ -27,10 +28,16 @@ const openWhere = (now) => ({
   next_day_live_at: { lte: now }, next_day_live_until: { gt: now },
 });
 
-/** The rider, if they may take Low Fare orders at all (approved and active). */
+/**
+ * The rider, if they may take Low Fare orders at all: approved, active, and not past the wallet negative-balance limit
+ * (the same per-vehicle, then global, then default limit dispatch uses to stop sending orders). Sets `overDueLimit`
+ * so accept can say why. A driver with no wallet figure is not blocked.
+ */
 async function eligibleRider(riderId) {
   const rider = await prisma.tbl_rider.findUnique({ where: { id: Number(riderId) } });
   if (!rider || rider.status !== 1 || rider.verification_status !== "approved") return null;
+  const balance = rider.wallet_balance === null || rider.wallet_balance === undefined ? null : Number(rider.wallet_balance);
+  if (balance !== null && balance < -(await getDriverMaxDueLimit(rider.vehicle))) return { ...rider, overDueLimit: true };
   return rider;
 }
 
@@ -56,7 +63,7 @@ async function visibleOrders(rider, now) {
 
 async function listForDriver(riderId, now = new Date()) {
   const rider = await eligibleRider(riderId);
-  if (!rider) return [];
+  if (!rider || rider.overDueLimit) return [];
   const orders = await visibleOrders(rider, now);
   const seen = await prisma.low_fare_view.findMany({ where: { rider_id: rider.id, order_id: { in: orders.map((o) => o.id) } }, select: { order_id: true } });
   const seenIds = new Set(seen.map((s) => s.order_id));
@@ -85,6 +92,7 @@ async function accept(orderId, riderId, now = new Date()) {
   riderId = Number(riderId);
   const rider = await eligibleRider(riderId);
   if (!rider) return fail("Your account cannot take this order");
+  if (rider.overDueLimit) return fail("Clear your wallet dues to accept orders");
   if (rider.a_status !== 1) return fail("Go online to accept this order");
 
   const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
