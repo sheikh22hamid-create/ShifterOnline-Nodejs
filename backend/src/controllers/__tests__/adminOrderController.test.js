@@ -173,6 +173,20 @@ describe("adminOrderController next-day orders", () => {
     });
   });
 
+  describe("Low Fare orders are never batch-assigned by hand", () => {
+    it.each([
+      ["suggestNextDaySequence", suggestNextDaySequence, { rider_id: "2", order_ids: [100] }],
+      ["assignNextDayBatch", assignNextDayBatch, { rider_id: "2", sequence: [{ order_id: 100, position: 1 }] }],
+    ])("%s refuses a low_fare order", async (_name, handler, reqBody) => {
+      prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, city_id: 1, status: 1, a_status: 1, rlats: "0", rlongs: "0" });
+      prisma.pkg_order.findMany.mockResolvedValue([{ id: 100, booking_type: 3, next_day_stage: "low_fare", rid: 0, o_status: "Pending", city_id: 1 }]);
+      const res = makeRes();
+      await handler({ body: reqBody, user: { id: 1, role: "admin" }, scopedCityId: null }, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json.mock.calls[0][0].message).toMatch(/Low Fare orders are accepted by drivers/);
+    });
+  });
+
   describe("suggestNextDaySequence", () => {
     it("orders by nearest-pickup-from-driver, then nearest-pickup-from-previous-drop", async () => {
       prisma.tbl_rider.findUnique.mockResolvedValue({ id: 2, rlats: "0", rlongs: "0" });

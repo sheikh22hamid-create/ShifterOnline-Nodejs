@@ -75,6 +75,7 @@ const HANDLED_FLAG_KEYS = [
   'half_body_charge',
   'advance_payment_timeout_minutes',
   'pickup_otp_timeout_minutes',
+  'pickup_otp_driver_grace_seconds',
   'drop_otp_enabled',
   'customise_order_enabled',
   'low_fare_booking_enabled',
@@ -517,6 +518,21 @@ function SettingsForm({ data, onSaved }) {
             />
             <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
               If the customer doesn't hand over the pickup OTP within this many minutes of the driver arriving, the ride auto-cancels from the customer's side.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="flag-pickup_otp_driver_grace_seconds">Driver grace after the customer's OTP arrives (sec)</Label>
+            <Input
+              id="flag-pickup_otp_driver_grace_seconds"
+              type="number"
+              min="0"
+              max="600"
+              placeholder="e.g. 60"
+              value={flags.pickup_otp_driver_grace_seconds ?? '60'}
+              onChange={(e) => setFlags((f) => ({ ...f, pickup_otp_driver_grace_seconds: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+              When the customer shared the pickup OTP but the driver did not verify it before the timeout: if the OTP reached the driver's app at least this many seconds before the timeout, it counts as the driver's timeout (the driver's cancellation rule applies); otherwise nobody is charged. The customer is never charged for an OTP they shared.
             </p>
           </div>
           <div>

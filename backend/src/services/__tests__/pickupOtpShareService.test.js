@@ -162,6 +162,22 @@ describe("statusForCustomer and the timeout outcome", () => {
     expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBeNull();
   });
 
+  it("the driver grace is the admin setting (default 60 s, clamped to 0..600)", async () => {
+    const delivered = (secondsAgo) => ({ id: 55, rider_id: 7, status: "delivered", delivered_at: new Date(Date.now() - secondsAgo * 1000) });
+    prisma.pickup_otp_share.findFirst.mockResolvedValue(delivered(100));
+    prisma.app_settings = { findFirst: jest.fn().mockResolvedValue({ setting_value: "120" }) };
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("attempted"); // 100 s is inside a 120 s grace
+    prisma.app_settings.findFirst.mockResolvedValue({ setting_value: "30" });
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("delivered_to_driver");
+    prisma.app_settings.findFirst.mockResolvedValue({ setting_value: "9999" });
+    prisma.pickup_otp_share.findFirst.mockResolvedValue(delivered(601));
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("delivered_to_driver"); // clamped to 600 s
+    prisma.app_settings.findFirst.mockResolvedValue({ setting_value: "abc" });
+    prisma.pickup_otp_share.findFirst.mockResolvedValue(delivered(59));
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("attempted"); // junk falls back to 60 s
+    delete prisma.app_settings;
+  });
+
   it("only this order's own driver's share counts, and a read error is a neutral attempt, never a guess against anyone", async () => {
     prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 9, status: "delivered", delivered_at: new Date(Date.now() - 5 * 60000) });
     expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBeNull();
