@@ -1,0 +1,19 @@
+# Pickup OTP share (customer to driver): design
+
+Brief of 2026-10-29. Open choices were left to me and are marked **My call**.
+
+## Today (verified in code)
+- `pkg_order.otp` is the pickup OTP. The customer app shows it (`orderProduc["otp"]` in `trackingway.dart`); the driver types it in the OTP dialog (`OrderDetailsActivity.showOtpDialog`, 4 boxes) and `driverTripService` action `verify_otp` compares it with `order.otp`.
+- "Driver reached pickup" = `driverTripService.arrive('arrived')`: order_status 2 / o_status 'Pickup', `pkg_order_wait_timer.pickup_wait_start` set. The driver app auto-opens the OTP dialog at that moment. So the OTP session is active exactly while: order_status 2, a driver is assigned, `pickup_wait_start` set, `pickup_wait_end` null, OTP not verified, and the admin timeout (`getPickupOtpTimeoutMinutes`, plus banked seconds) has not run out. A driver pause or large pickup move clears `pickup_wait_start`, which closes the session.
+- `tripLifecycle.sweepOverduePickups` (30 s) calls `cancelOverduePickup` once the wait passes the admin timeout: cancels, refunds, charges the customer the package's `cancellation_charge_customer` and may credit the driver.
+
+## Design
+- **Table `pickup_otp_share`** (order_id, rider_id, uid, status pending|delivered|failed, attempts, requested_at, delivered_at). One row per waiting cycle; repeated clicks reuse it, so nothing duplicates.
+- **Customer endpoint** `POST /api/order/share-pickup-otp {uid, order_id}`: checks the order belongs to that customer, is assigned, the session is active, OTP not verified and the timeout not passed; records the share; nudges the driver over the existing socket (`pickup_otp:shared`, no OTP in the event); waits up to 6 s for the driver app's acknowledgement. Only an acknowledged delivery answers "OTP sent to driver successfully."; otherwise the row is marked failed and the customer sees "Unable to send OTP to driver. Please try again." (a late acknowledgement still marks it delivered). Sharing never verifies anything: `verify_otp` is unchanged.
+- **Driver endpoints** (behind the app key, rider must be the order's driver): `pickup-otp/pending` returns the OTP of the active share for that order (so the OTP only ever travels over the authenticated driver API, never in a broadcast event) and `pickup-otp/ack` marks it delivered. The app fills the dialog's boxes from it (on the socket nudge, when the dialog opens, and by a short poll while it is open, which also covers reconnects), then the driver taps the existing verify.
+- **Order payload** gets `otp_share {can_send, shared, delivered, verified}` so the customer app enables the button only while the session is active and survives refresh.
+- **My call: timeout rule.** `cancelOverduePickup` checks for a share in this wait cycle (pending, failed or delivered all count, because an unclear delivery must not be held against the customer). If one exists the customer is NOT charged and is not told they were a no-show: the cancel runs through the existing `driverCancel` path (automated variant), which refunds the customer fully and applies the driver's existing cancellation rule. Without a share the existing no-show behaviour is untouched.
+- Sharing is refused with exact messages: not at pickup yet "You can send the OTP once the driver reaches the pickup location."; already verified "Pickup OTP has already been verified."; anything else (cancelled, completed, other customer, session closed) "OTP sharing is currently unavailable. Please try again."
+
+## Non-goals
+No auto-verification, no new timeout setting, no change to waiting-time maths or the normal OTP verify, no per-user auth (platform-wide gap, uid is checked against the order owner).
