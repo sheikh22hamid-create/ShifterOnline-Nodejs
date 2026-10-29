@@ -129,6 +129,11 @@ router.post("/customise/accept", appKeyAuth, customiseOrderController.driverAcce
 router.post("/customise/counter", appKeyAuth, customiseOrderController.driverCounter);
 router.post("/customise/dismiss", appKeyAuth, customiseOrderController.driverDismiss);
 
+// Pickup OTP the customer shared (driver side, spec 2026-10-29): fetch it for the open OTP dialog, confirm it is on screen.
+const pickupOtpShareController = require("../controllers/pickupOtpShareController");
+router.post("/pickup-otp/pending", appKeyAuth, pickupOtpShareController.driverPending);
+router.post("/pickup-otp/ack", appKeyAuth, pickupOtpShareController.driverAck);
+
 // Low Fare Order (driver side, spec 2026-10-27): next-day orders accepted from their own section, no popup.
 const lowFareController = require("../controllers/lowFareController");
 router.post("/low-fare/list", appKeyAuth, lowFareController.list);
