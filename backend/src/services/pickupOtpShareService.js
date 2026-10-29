@@ -133,18 +133,28 @@ async function acknowledge({ riderId, orderId, shareId }) {
   return true;
 }
 
+// A driver who was only handed the OTP moments before the timeout had no real chance to verify it.
+const DRIVER_GRACE_AFTER_DELIVERY_MS = 60000;
+
 /**
- * True when the customer tried to share the OTP during this waiting cycle (pending, failed or delivered all count: an
- * unclear delivery must never be held against the customer). Used by the timeout so a customer who did their part is
- * not charged the no-show penalty. Any read error answers true, the safe side for the customer.
+ * What the customer did about the OTP in this waiting cycle, for the pickup timeout. The customer is never penalised
+ * once they tried to share it; who bears the cost depends on what is actually known:
+ *   'delivered_to_driver'  the driver's app confirmed it had the OTP, and long enough before the timeout to act: driver-side timeout
+ *   'attempted'            tried, but delivery unconfirmed or too close to the timeout: neutral, nobody is charged
+ *   null                   never tried: the existing customer no-show rule applies
+ * Only this order's own driver's shares count. A read error answers 'attempted' (neutral, never a guess against anyone).
  */
-async function customerSharedThisCycle(orderId, timer) {
+async function shareOutcomeThisCycle(orderId, timer, riderId, now = Date.now()) {
   try {
-    return Boolean(await currentShare(Number(orderId), timer));
+    const row = await currentShare(Number(orderId), timer);
+    if (!row || (riderId && row.rider_id !== Number(riderId))) return null;
+    const delivered = row.status === "delivered" && row.delivered_at;
+    if (delivered && now - new Date(row.delivered_at).getTime() >= DRIVER_GRACE_AFTER_DELIVERY_MS) return "delivered_to_driver";
+    return "attempted";
   } catch (err) {
-    logger.error(`pickupOtpShare: could not check shares for order ${orderId}, treating as shared:`, err);
-    return true;
+    logger.error(`pickupOtpShare: could not check shares for order ${orderId}, treating as a neutral attempt:`, err);
+    return "attempted";
   }
 }
 
-module.exports = { share, pendingForDriver, acknowledge, statusForCustomer, customerSharedThisCycle, sessionOf, MSG };
+module.exports = { share, pendingForDriver, acknowledge, statusForCustomer, shareOutcomeThisCycle, sessionOf, MSG };

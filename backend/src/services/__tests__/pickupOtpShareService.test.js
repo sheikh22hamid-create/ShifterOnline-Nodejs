@@ -135,7 +135,7 @@ describe("driver side", () => {
   });
 });
 
-describe("statusForCustomer and customerSharedThisCycle", () => {
+describe("statusForCustomer and the timeout outcome", () => {
   it("enables the button only while the session is active, and reports shared/delivered/verified", async () => {
     expect(await service.statusForCustomer(ORDER)).toEqual({ can_send: true, verified: false, shared: false, delivered: false });
     prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, status: "delivered" });
@@ -146,12 +146,24 @@ describe("statusForCustomer and customerSharedThisCycle", () => {
     expect((await service.statusForCustomer(ORDER)).can_send).toBe(false);
   });
 
-  it("counts any share row of the cycle (even a failed one) and answers true if the check itself errors", async () => {
-    prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, status: "failed" });
-    expect(await service.customerSharedThisCycle(100, TIMER)).toBe(true);
+  it("tells the timeout what is known: delivered in good time = driver side, tried but unconfirmed or too late = neutral, never tried = existing rule", async () => {
+    const at = (msAgo) => new Date(Date.now() - msAgo);
+    prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 7, status: "delivered", delivered_at: at(5 * 60000) });
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("delivered_to_driver");
+    prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 7, status: "delivered", delivered_at: at(10000) });
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("attempted"); // no real chance to verify
+    prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 7, status: "failed", delivered_at: null });
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("attempted");
+    prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 7, status: "pending", delivered_at: null });
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("attempted");
     prisma.pickup_otp_share.findFirst.mockResolvedValue(null);
-    expect(await service.customerSharedThisCycle(100, TIMER)).toBe(false);
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBeNull();
+  });
+
+  it("only this order's own driver's share counts, and a read error is a neutral attempt, never a guess against anyone", async () => {
+    prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 9, status: "delivered", delivered_at: new Date(Date.now() - 5 * 60000) });
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBeNull();
     prisma.pickup_otp_share.findFirst.mockRejectedValue(new Error("db"));
-    expect(await service.customerSharedThisCycle(100, TIMER)).toBe(true);
+    expect(await service.shareOutcomeThisCycle(100, TIMER, 7)).toBe("attempted");
   });
 });

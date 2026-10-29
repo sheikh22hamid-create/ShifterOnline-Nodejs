@@ -124,6 +124,21 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     // over the socket (onPickupUpdatedFromCustomer) can close it - the server
     // reverts the order to en-route and would reject an OTP entered here.
     private android.app.Dialog activeOtpDialog;
+    // Pickup OTP the customer shared (spec 2026-10-29): the open dialog's boxes, the share already acknowledged, and a
+    // short poll that also covers a missed socket event or a reconnect. Filling the boxes never submits anything.
+    private EditText[] pickupOtpBoxes;
+    private boolean otpAutofilling;
+    private int ackedOtpShareId;
+    private final android.os.Handler otpShareHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable otpSharePoll = new Runnable() {
+        @Override public void run() {
+            fetchSharedPickupOtp();
+            otpShareHandler.postDelayed(this, 3000);
+        }
+    };
+    private final com.shifter.driver.socket.NodeSocketManager.PickupOtpListener pickupOtpListener = data -> {
+        if (orderItem != null && String.valueOf(data.opt("order_id")).equals(String.valueOf(orderItem.getId()))) fetchSharedPickupOtp();
+    };
     private android.os.Handler otpTimeoutPollHandler;
     private com.google.android.gms.maps.model.Circle driverAccuracyCircle;
     private final Runnable tripPoll = new Runnable() {
@@ -180,6 +195,9 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         etaHandler.post(etaTick);
         tripHandler.removeCallbacks(tripPoll);
         tripHandler.post(tripPoll);
+        com.shifter.driver.socket.NodeSocketManager.getInstance().addPickupOtpListener(pickupOtpListener);
+        otpShareHandler.removeCallbacks(otpSharePoll);
+        otpShareHandler.post(otpSharePoll);
         if (binding != null && !isWaitingForPayment) requestFreshLocationAndUpdateMap();
     }
 
@@ -187,6 +205,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         super.onPause();
         etaHandler.removeCallbacks(etaTick);
         tripHandler.removeCallbacks(tripPoll);
+        otpShareHandler.removeCallbacks(otpSharePoll);
+        com.shifter.driver.socket.NodeSocketManager.getInstance().removePickupOtpListener(pickupOtpListener);
     }
 
     private void registerTripProgress() {
@@ -1945,6 +1965,76 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         txtCountdown.setText(String.format(java.util.Locale.getDefault(), "%02d:%02d", m, s));
     }
 
+    /**
+     * Pickup OTP the customer shared: ask the server (only the order's own driver gets it, and only while the pickup
+     * OTP session is open), fill the dialog's boxes and confirm it is on screen. Filling never submits: the driver
+     * still taps verify after the goods are handed over, and the server checks the OTP as always. Runs on the socket
+     * nudge, when the dialog opens and on a short poll (covers a missed event or a reconnect); fetching again is harmless.
+     */
+    private void fetchSharedPickupOtp() {
+        if (orderItem == null || riderData == null || isFinishing() || isDestroyed()) return;
+        final String orderId = String.valueOf(orderItem.getId());
+        final org.json.JSONObject body = new org.json.JSONObject();
+        try {
+            body.put("rider_id", riderData.getId());
+            body.put("order_id", Integer.parseInt(orderId));
+        } catch (Exception e) {
+            return;
+        }
+        NodeApiClient.getInterface()
+                .pickupOtpPending(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), body.toString()))
+                .enqueue(new retrofit2.Callback<JsonObject>() {
+                    @Override public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                        JsonObject b = response.body();
+                        if (b == null || isFinishing() || isDestroyed()) return;
+                        if (!b.has("share_id") || b.get("share_id").isJsonNull() || !b.has("otp") || b.get("otp").isJsonNull()) return;
+                        // Only fill for the order this screen is showing.
+                        if (b.has("order_id") && !String.valueOf(b.get("order_id").getAsInt()).equals(orderId)) return;
+                        applySharedPickupOtp(b.get("otp").getAsString(), b.get("share_id").getAsInt(), orderId);
+                    }
+                    @Override public void onFailure(Call<JsonObject> call, Throwable t) { /* the next poll tries again */ }
+                });
+    }
+
+    private void applySharedPickupOtp(String otp, int shareId, String orderId) {
+        if (otp == null || !otp.matches("[0-9]{4}")) return;
+        if (pickupOtpBoxes == null || activeOtpDialog == null || !activeOtpDialog.isShowing()) {
+            // The OTP section normally opens at arrival; if it is closed, open it so the customer's OTP lands in it.
+            if (!"2".equals(orderItem.getOrderFlowId())) return;
+            showOtpDialog();
+            if (pickupOtpBoxes == null) return;
+        }
+        if (!otp.equals(otpFromBoxes(pickupOtpBoxes))) {
+            otpAutofilling = true;
+            try {
+                for (int i = 0; i < pickupOtpBoxes.length; i++) pickupOtpBoxes[i].setText(String.valueOf(otp.charAt(i)));
+            } finally {
+                otpAutofilling = false;
+            }
+            Toast.makeText(this, "Customer shared the OTP. Check it and tap verify after the goods are handed over.", Toast.LENGTH_LONG).show();
+        }
+        if (ackedOtpShareId == shareId) return;
+        ackedOtpShareId = shareId;
+        try {
+            org.json.JSONObject ack = new org.json.JSONObject();
+            ack.put("rider_id", riderData.getId());
+            ack.put("order_id", Integer.parseInt(orderId));
+            ack.put("share_id", shareId);
+            NodeApiClient.getInterface()
+                    .pickupOtpAck(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json"), ack.toString()))
+                    .enqueue(new retrofit2.Callback<JsonObject>() {
+                        @Override public void onResponse(Call<JsonObject> call, retrofit2.Response<JsonObject> response) {
+                            JsonObject b = response.body();
+                            // Not accepted: forget it so the next poll acknowledges again.
+                            if (b == null || !b.has("Result") || !b.get("Result").getAsBoolean()) ackedOtpShareId = 0;
+                        }
+                        @Override public void onFailure(Call<JsonObject> call, Throwable t) { ackedOtpShareId = 0; }
+                    });
+        } catch (Exception e) {
+            ackedOtpShareId = 0;
+        }
+    }
+
     private String otpFromBoxes(EditText[] boxes) {
         StringBuilder sb = new StringBuilder();
         for (EditText box : boxes) sb.append(box.getText().toString().trim());
@@ -2024,6 +2114,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             txtCountdown.setVisibility(View.GONE);
         }
         dialog.setOnDismissListener(d -> {
+            if (activeOtpDialog == dialog) pickupOtpBoxes = null;
             if (otpCountdownHolder[0] != null) otpCountdownHolder[0].cancel();
             if (otpTimeoutPollHandler != null) otpTimeoutPollHandler.removeCallbacksAndMessages(null);
         });
@@ -2040,7 +2131,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
                 @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                     for (EditText box : boxes) box.setBackground(getDrawable(R.drawable.bg_input_white));
                     if (s.length() == 1 && index < boxes.length - 1) boxes[index + 1].requestFocus();
-                    if (otpFromBoxes(boxes).length() == 4 && !tripActionPending) submit.performClick();
+                    if (otpFromBoxes(boxes).length() == 4 && !tripActionPending && !otpAutofilling) submit.performClick();
                 }
                 @Override public void afterTextChanged(android.text.Editable s) {}
             });
@@ -2054,6 +2145,8 @@ public class OrderDetailsActivity extends LocaleAwareActivity
             });
         }
         boxes[0].requestFocus();
+        pickupOtpBoxes = boxes;
+        fetchSharedPickupOtp();
 
         submit.setOnClickListener(v -> {
             String otp = otpFromBoxes(boxes);

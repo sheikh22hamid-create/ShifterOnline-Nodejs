@@ -1,4 +1,4 @@
-jest.mock("../pickupOtpShareService", () => ({ customerSharedThisCycle: jest.fn().mockResolvedValue(false) }));
+jest.mock("../pickupOtpShareService", () => ({ shareOutcomeThisCycle: jest.fn().mockResolvedValue(null) }));
 jest.mock("../customiseCancelService", () => ({
   rideInfo: jest.fn().mockResolvedValue(null),
   feeFor: jest.fn().mockResolvedValue({ special: false }),
@@ -2163,11 +2163,11 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
   describe("the customer shared the pickup OTP in time (spec 2026-10-29)", () => {
     const shareService = require("../pickupOtpShareService");
     beforeEach(() => {
-      shareService.customerSharedThisCycle.mockResolvedValue(true);
+      shareService.shareOutcomeThisCycle.mockResolvedValue("delivered_to_driver");
       prisma.$transaction.mockImplementation(async (fn) => (typeof fn === "function" ? fn(prisma) : Promise.all(fn)));
       prisma.$queryRaw.mockResolvedValue([{ id: 400, uid: 9, rid: 3, order_status: 2, o_status: "Pickup", advance_payment: "0", payment_status: 0, razorpay_payment_id: null, delivery_type: 6, referral_points_used: 0 }]);
     });
-    afterEach(() => shareService.customerSharedThisCycle.mockResolvedValue(false));
+    afterEach(() => shareService.shareOutcomeThisCycle.mockResolvedValue(null));
 
     it("never charges the no-show penalty and never uses the customer no-show cancel", async () => {
       await tripLifecycle.cancelOverduePickup(400, 3, 7);
@@ -2185,6 +2185,24 @@ describe("tripLifecycle.cancelOverduePickup / sweepOverduePickups — customer n
         data: expect.objectContaining({ order_id: 400, rider_id: 3, status: "cancelled", remark: expect.stringContaining("No customer penalty") }),
       });
       expect(prisma.pkg_order_wait_timer.updateMany).toHaveBeenCalledWith({ where: { order_id: 400, rid: 3 }, data: { pickup_wait_end: expect.any(Date) } });
+    });
+
+    it("charges the driver's cancellation rule only when the OTP was confirmed on their screen; an unconfirmed delivery is neutral", async () => {
+      pricingEngine.getPackageById.mockResolvedValue({ cancellation_charge_driver: 50, driver_cancel_user_earning: 0, cancellation_charge_customer: 30 });
+      prisma.tbl_rider.update.mockResolvedValue({});
+      await tripLifecycle.cancelOverduePickup(400, 3, 7);
+      const driverDebits = () => prisma.tbl_wallet_history.create.mock.calls.filter((c) => c[0].data.type === "debit" && c[0].data.payment_id && String(c[0].data.payment_id).startsWith("driver_cancel_fee"));
+      expect(driverDebits().length).toBe(1);
+
+      prisma.tbl_wallet_history.create.mockClear();
+      prisma.tbl_rider.update.mockClear();
+      const shareService = require("../pickupOtpShareService");
+      shareService.shareOutcomeThisCycle.mockResolvedValue("attempted");
+      prisma.order_status_history.create.mockClear();
+      await tripLifecycle.cancelOverduePickup(400, 3, 7);
+      expect(driverDebits().length).toBe(0);
+      expect(prisma.tbl_rider.update).not.toHaveBeenCalledWith({ where: { id: 3 }, data: { wallet_balance: { decrement: 50 } } });
+      expect(prisma.order_status_history.create).toHaveBeenCalledWith({ data: expect.objectContaining({ remark: expect.stringContaining("no driver charge") }) });
     });
 
     it("leaves an order that was resolved in the meantime alone (the driver verified just now)", async () => {

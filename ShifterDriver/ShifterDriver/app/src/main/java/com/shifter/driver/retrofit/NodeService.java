@@ -251,6 +251,15 @@ public interface NodeService {
     @POST("api/rider/customise/dismiss")
     Call<JsonObject> customiseDismiss(@Body RequestBody body);
 
+    // Pickup OTP the customer shared (spec 2026-10-29): fetch it for the open OTP dialog, confirm it is on screen.
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/pickup-otp/pending")
+    Call<JsonObject> pickupOtpPending(@Body RequestBody body);
+
+    @Headers("Authorization: genie_rest_key")
+    @POST("api/rider/pickup-otp/ack")
+    Call<JsonObject> pickupOtpAck(@Body RequestBody body);
+
     // Low Fare Order (spec 2026-10-27): next-day orders accepted from their own section. Behind the app key.
     @Headers("Authorization: genie_rest_key")
     @POST("api/rider/low-fare/list")

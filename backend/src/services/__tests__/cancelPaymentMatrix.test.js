@@ -10,7 +10,7 @@
 //   3. an unpaid advance means a customer-side cancel is free
 //   4. a wallet-paid fare is always routed through refundIfWalletPaid
 //   5. retrying the same cancel moves no further money
-jest.mock("../pickupOtpShareService", () => ({ customerSharedThisCycle: jest.fn().mockResolvedValue(false) }));
+jest.mock("../pickupOtpShareService", () => ({ shareOutcomeThisCycle: jest.fn().mockResolvedValue(null) }));
 jest.mock("../customiseCancelService", () => ({ closeIfCustomise: jest.fn().mockResolvedValue({ ok: true }), rideInfo: jest.fn().mockResolvedValue(null) }));
 jest.mock("../referralPointsRefund", () => ({
   ...jest.requireActual("../referralPointsRefund"),
