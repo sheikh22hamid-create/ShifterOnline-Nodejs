@@ -142,6 +142,35 @@ async function notifyTaken(order, winnerId) {
   });
 }
 
+/** True for a low_fare order whose booking window has not ended: a driver cancel then reopens it instead of ending it. */
+async function isOpenLowFareOrder(orderId, now = new Date()) {
+  try {
+    const order = await prisma.pkg_order.findUnique({
+      where: { id: Number(orderId) },
+      select: { booking_type: true, next_day_stage: true, next_day_live_until: true },
+    });
+    return Boolean(order && order.booking_type === 3 && order.next_day_stage === "low_fare" && order.next_day_live_until && new Date(order.next_day_live_until) > now);
+  } catch (err) {
+    logger.warn(`lowFare.isOpenLowFareOrder: order ${orderId} treated as a normal order (${err.message})`);
+    return false;
+  }
+}
+
+/** After the cancelling driver was dropped and the order put back to Pending: tell the customer, then the other drivers. */
+async function afterReopen({ orderId, riderId, reason }) {
+  const order = await prisma.pkg_order.findUnique({ where: { id: Number(orderId) } });
+  if (!order) return;
+  try {
+    dispatchManager.emitCustomerEvent(order.uid, "order:driver_cancelled", {
+      order_id: order.id, rider_id: riderId, refund_amount: 0, refund_status: "order_relive",
+      reason: reason || "Driver cancelled the ride", order_status: 0, o_status: "Pending", searching_for_new_driver: true,
+    });
+  } catch (err) {
+    logger.error(`lowFare.afterReopen: customer event for order ${orderId} failed:`, err);
+  }
+  await notifyNew(order).catch((err) => logger.error(`lowFare.afterReopen: drivers of order ${orderId} not notified:`, err));
+}
+
 /** Cancel every low_fare order whose window ended with nobody assigned; each is cancelled once. */
 async function expireDue(now = new Date()) {
   const due = await prisma.pkg_order.findMany({
@@ -164,4 +193,4 @@ async function expireDue(now = new Date()) {
   return expired;
 }
 
-module.exports = { listForDriver, countForDriver, markSeen, accept, notifyNew, notifyTaken, expireDue, EXPIRE_REASON };
+module.exports = { listForDriver, countForDriver, markSeen, accept, notifyNew, notifyTaken, isOpenLowFareOrder, afterReopen, expireDue, EXPIRE_REASON };

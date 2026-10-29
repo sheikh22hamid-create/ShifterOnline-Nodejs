@@ -41,7 +41,7 @@ async function isEnabled() {
  * unassigned Pending state and run `inTx(tx, order)` for the caller's driver-side effects (fee, request row, trip
  * state). Any failure rolls everything back and resolves { relived: false, reason }; it never throws.
  */
-async function reopenForRelive({ orderId, riderId, inTx }) {
+async function reopenForRelive({ orderId, riderId, inTx, maxRelives = MAX_RELIVES_PER_ORDER }) {
   orderId = Number(orderId);
   riderId = Number(riderId);
   try {
@@ -54,7 +54,7 @@ async function reopenForRelive({ orderId, riderId, inTx }) {
         throw new NotReliveable("not_before_pickup");
       }
       const earlier = await tx.order_status_history.count({ where: { order_id: orderId, status: "Driver Cancelled" } });
-      if (earlier >= MAX_RELIVES_PER_ORDER) throw new NotReliveable("relive_limit_reached");
+      if (earlier >= maxRelives) throw new NotReliveable("relive_limit_reached");
       const moved = await tx.$executeRaw`
         UPDATE pkg_order SET rid = 0, order_status = 0, o_status = 'Pending', accept_time = NULL
         WHERE id = ${orderId} AND rid = ${riderId} AND o_status NOT IN ('Completed', 'Cancelled')`;
