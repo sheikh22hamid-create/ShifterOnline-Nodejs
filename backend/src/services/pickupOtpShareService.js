@@ -120,10 +120,15 @@ async function pendingForDriver({ riderId, orderId }) {
   if (session.state !== "active") return null;
   const row = await currentShare(order.id, session.timer);
   if (!row || row.rider_id !== Number(riderId)) return null;
-  return { share_id: row.id, order_id: order.id, otp: String(order.otp), delivered: row.status === "delivered" };
+  // The server itself observes this delivery: the driver's app asked for the OTP and is being given it. That counts as
+  // delivered (the app's later ack only confirms it is on screen), so the outcome never rests on the ack alone.
+  if (row.status !== "delivered") {
+    await prisma.pickup_otp_share.updateMany({ where: { id: row.id, status: { not: "delivered" } }, data: { status: "delivered", delivered_at: new Date() } });
+  }
+  return { share_id: row.id, order_id: order.id, otp: String(order.otp), delivered: true };
 }
 
-/** Driver app confirms the OTP is on screen. Idempotent; a late ack still turns a failed row into delivered. */
+/** Driver app confirms the OTP is on screen. Idempotent; a late ack still turns a failed row into delivered (fetching it already did). */
 async function acknowledge({ riderId, orderId, shareId }) {
   const row = await prisma.pickup_otp_share.findUnique({ where: { id: Number(shareId) } });
   if (!row || row.order_id !== Number(orderId) || row.rider_id !== Number(riderId)) return false;

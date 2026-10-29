@@ -113,7 +113,9 @@ describe("share (customer taps Send OTP to Driver)", () => {
 describe("driver side", () => {
   it("gives the OTP only to the order's own driver, only while the session is open and a share exists", async () => {
     prisma.pickup_otp_share.findFirst.mockResolvedValue({ id: 55, rider_id: 7, status: "pending" });
-    expect(await service.pendingForDriver({ riderId: 7, orderId: 100 })).toEqual({ share_id: 55, order_id: 100, otp: "4321", delivered: false });
+    expect(await service.pendingForDriver({ riderId: 7, orderId: 100 })).toEqual({ share_id: 55, order_id: 100, otp: "4321", delivered: true });
+    // fetching the OTP is itself the server-observed delivery, not only the app's later ack
+    expect(prisma.pickup_otp_share.updateMany).toHaveBeenCalledWith({ where: { id: 55, status: { not: "delivered" } }, data: { status: "delivered", delivered_at: expect.any(Date) } });
     expect(await service.pendingForDriver({ riderId: 8, orderId: 100 })).toBeNull();
     prisma.pickup_otp_share.findFirst.mockResolvedValue(null);
     expect(await service.pendingForDriver({ riderId: 7, orderId: 100 })).toBeNull();
