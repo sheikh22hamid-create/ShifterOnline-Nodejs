@@ -22,6 +22,7 @@ const SOURCE_LABELS = {
   ride_discount: { label: 'Ride Discount', tone: 'warning' },
   ride_discount_refund: { label: 'Discount Refund', tone: 'neutral' },
   due_clearance: { label: 'Due Clearance', tone: 'neutral' },
+  points_expiry: { label: 'Points Expired', tone: 'danger' },
 }
 const SOURCE_FILTERS = [
   { value: 'all', label: 'All Sources' },
@@ -31,7 +32,44 @@ const SOURCE_FILTERS = [
   { value: 'ride_discount', label: 'Ride Discount' },
   { value: 'ride_discount_refund', label: 'Discount Refund' },
   { value: 'due_clearance', label: 'Due Clearance' },
+  { value: 'points_expiry', label: 'Points Expired' },
 ]
+
+// Points expiry: one duration per reward activity and recipient. An empty row means those points never expire.
+const EXPIRY_ACTIVITIES = [
+  { key: 'successful_referral', label: 'Successful Referral', hint: 'Referral reward once the referred person completes a ride' },
+  { key: 'number_sharing', label: 'Number Sharing', hint: 'Reward for a shared number (lead) that joins' },
+  { key: 'referral_sent', label: 'Referral Sent', hint: 'Sign-up bonus credited because a referral was used' },
+]
+const EXPIRY_TYPES = [
+  { key: 'USER', label: 'Customer' },
+  { key: 'DRIVER', label: 'Driver' },
+]
+const EXPIRY_UNITS = [
+  { value: 'days', label: 'Days' },
+  { value: 'weeks', label: 'Weeks' },
+  { value: 'months', label: 'Months' },
+]
+
+/** UI rows -> API body: every combination is sent, an empty value clears that row. */
+function expiryPayload(config) {
+  const out = {}
+  for (const a of EXPIRY_ACTIVITIES) {
+    out[a.key] = {}
+    for (const t of EXPIRY_TYPES) {
+      const row = config?.[a.key]?.[t.key]
+      const raw = row?.value
+      out[a.key][t.key] = raw === undefined || raw === null || raw === '' ? null : { value: Number(raw), unit: row.unit || 'months' }
+    }
+  }
+  return out
+}
+
+function expiryDetail(r) {
+  if (r.txn_type === 'expiry') return `Expired from credit #${r.origin_log_id}${r.expires_at ? ` · was due ${formatDateTime(r.expires_at)}` : ''}`
+  if (!r.expires_at) return r.points > 0 && r.activity ? 'Never expires' : '—'
+  return `Expires ${formatDateTime(r.expires_at)}${r.expiry_duration ? ` (${r.expiry_duration})` : ''}`
+}
 
 export default function Referrals() {
   const { hasRole } = useAuth()
@@ -82,6 +120,7 @@ export default function Referrals() {
         ride_discount_percent: editable.ride_discount_percent,
         plan_purchase_enabled: editable.plan_purchase_enabled,
         plan_points_max_percent: editable.plan_points_max_percent,
+        points_expiry: expiryPayload(editable.points_expiry),
       })
       toast.success('Referral settings saved.')
       setForm(null)
@@ -302,6 +341,84 @@ export default function Referrals() {
         </div>
       )}
 
+      {editable && (
+        <div className="surface-card mt-4 rounded-xl p-4">
+          <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+            Points expiry
+          </h3>
+          <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+            How long points from each activity stay valid, counted from the day they are credited. Applies to new credits only; points already
+            credited keep their date. Leave a row empty and those points never expire. Save with the Save button above.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-[13px]">
+              <thead>
+                <tr>
+                  <th className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Reward activity</th>
+                  {EXPIRY_TYPES.map((t) => (
+                    <th key={t.key} className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>{t.label} expiry</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {EXPIRY_ACTIVITIES.map((a) => (
+                  <tr key={a.key} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td className="px-2 py-2" style={{ color: 'var(--ink)' }}>
+                      <div className="font-medium">{a.label}</div>
+                      <div className="text-[10.5px]" style={{ color: 'var(--ink-faint)' }}>{a.hint}</div>
+                    </td>
+                    {EXPIRY_TYPES.map((t) => {
+                      const row = editable.points_expiry?.[a.key]?.[t.key] || {}
+                      const setRow = (patch) =>
+                        setForm({
+                          ...editable,
+                          points_expiry: {
+                            ...(editable.points_expiry || {}),
+                            [a.key]: { ...(editable.points_expiry?.[a.key] || {}), [t.key]: { unit: 'months', ...row, ...patch } },
+                          },
+                        })
+                      return (
+                        <td key={t.key} className="px-2 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              placeholder="No expiry"
+                              disabled={!isSuperadmin}
+                              value={row.value ?? ''}
+                              onChange={(e) => setRow({ value: e.target.value })}
+                              className="w-24 rounded-lg border px-2.5 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                              style={FIELD_STYLE}
+                            />
+                            <select
+                              disabled={!isSuperadmin}
+                              value={row.unit || 'months'}
+                              onChange={(e) => setRow({ unit: e.target.value })}
+                              className="rounded-lg border px-2 py-1.5 text-[13px] outline-none disabled:opacity-60"
+                              style={FIELD_STYLE}
+                            >
+                              {EXPIRY_UNITS.map((u) => (
+                                <option key={u.value} value={u.value}>{u.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {(editable.points_expiry_unset?.length ?? 0) > 0 && (
+            <p className="mt-2 text-[11.5px]" style={{ color: 'var(--warning, #b45309)' }}>
+              No expiry is set for {editable.points_expiry_unset.length} of 6 rows, so those points never expire.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1.5 border-b sm:border-b-0" style={{ borderColor: 'var(--border)' }}>
           <button
@@ -366,21 +483,21 @@ export default function Referrals() {
                 {loading &&
                   Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td colSpan={6} className="px-4 py-3">
+                      <td colSpan={7} className="px-4 py-3">
                         <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                       </td>
                     </tr>
                   ))}
                 {!loading && error && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                    <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                       {error}
                     </td>
                   </tr>
                 )}
                 {!loading && !error && rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+                    <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                       No referrals yet.
                     </td>
                   </tr>
@@ -465,7 +582,7 @@ export default function Referrals() {
               <table className="w-full text-left text-[13px]">
                 <thead>
                   <tr style={{ background: 'var(--bg)' }}>
-                    {['Recipient', 'Source', 'Points', 'Balance After', 'Note', 'Date'].map((h) => (
+                    {['Recipient', 'Source', 'Points', 'Balance After', 'Expiry', 'Note', 'Date'].map((h) => (
                       <th key={h} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                         {h}
                       </th>
@@ -476,21 +593,21 @@ export default function Referrals() {
                   {historyLoading &&
                     Array.from({ length: 4 }).map((_, i) => (
                       <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td colSpan={6} className="px-4 py-3">
+                        <td colSpan={7} className="px-4 py-3">
                           <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                         </td>
                       </tr>
                     ))}
                   {!historyLoading && historyError && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                      <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                         {historyError}
                       </td>
                     </tr>
                   )}
                   {!historyLoading && !historyError && historyRows.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
+                      <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--ink-faint)' }}>
                         No point transactions yet.
                       </td>
                     </tr>
@@ -524,6 +641,14 @@ export default function Referrals() {
                           </td>
                           <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink)' }}>
                             {r.balance_after}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                            <div>{expiryDetail(r)}</div>
+                            {r.remaining_points !== null && r.remaining_points !== undefined && (
+                              <div style={{ color: 'var(--ink-faint)' }}>
+                                Remaining {r.remaining_points} · Redeemed {r.redeemed_points} · Expired {r.expired_points}
+                              </div>
+                            )}
                           </td>
                           <td className="max-w-[220px] truncate px-4 py-2.5 text-[12px]" style={{ color: 'var(--ink-muted)' }} title={r.note || ''}>
                             {r.note || '—'}

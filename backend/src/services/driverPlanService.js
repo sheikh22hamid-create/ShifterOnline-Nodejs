@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const pointsExpiry = require("./pointsExpiryService");
 const { getPlanPointRules, computePlanPointUsage } = require("./referralPointRules");
 const { istNow } = require("../utils/istTime");
 
@@ -244,6 +245,7 @@ function buildPlanPayload(plan, activeSubscriptionsForDriver = [], referralPoint
 }
 
 async function listDriverPlans(driverId, cityId) {
+  await pointsExpiry.settleUser("DRIVER", driverId);
   const driver = await prisma.tbl_rider.findUnique({
     where: { id: Number(driverId) },
     select: { referral_points: true, vehicle: true, city_id: true },
@@ -292,6 +294,7 @@ async function listDriverPlans(driverId, cityId) {
 }
 
 async function purchaseDriverPlan({ driverId, planId, usePoints = false, pointsToUse = null, paymentTxnId = "", paymentMethod = "", amountPaid = 0 }) {
+  if (usePoints) await pointsExpiry.settleUser("DRIVER", driverId); // expired points must not pay for a plan
   const today = todayRange().start;
   return prisma.$transaction(async (tx) => {
     const [driver, plan] = await Promise.all([

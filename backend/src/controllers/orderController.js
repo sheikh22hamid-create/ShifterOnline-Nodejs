@@ -43,6 +43,7 @@ const SCHEDULE_LEAD_GRACE_MS = 60 * 1000;
 const { getPickupEtaRow, buildEtaView, isPickupEtaExpired } = require("../services/pickupEtaService");
 const { buildCustomerWaitingView } = require("../services/customerWaitingView");
 const dropOtpService = require("../services/dropOtp");
+const pointsExpiry = require("../services/pointsExpiryService");
 
 /** Gives referral points back when a booking that already redeemed them failed. Never throws. */
 async function restoreRedeemedPoints(uid, points, reason) {
@@ -558,6 +559,7 @@ async function createOrderCore({
   let referralPointsAmount = 0;
   let pointsLedger = null; // written only once the order row exists
   if (useReferralPoints && finalTotalCharge > 0) {
+    await pointsExpiry.settleUser("USER", uid); // points that expired a moment ago are gone before they can be spent
     const [settings, customerPoints] = await Promise.all([
       prisma.tbl_referral_setting.findFirst(),
       prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { referral_points: true } }),
@@ -2069,6 +2071,7 @@ async function scheduledBookingSettings(req, res) {
 async function referralDiscountInfo(req, res) {
   try {
     const uid = Number(req.query.uid || req.body?.uid || 0);
+    if (uid) await pointsExpiry.settleUser("USER", uid); // the balance offered must be the spendable one
     const [settings, user] = await Promise.all([
       prisma.tbl_referral_setting.findFirst(),
       uid ? prisma.tbl_user.findUnique({ where: { id: uid }, select: { referral_points: true } }) : Promise.resolve(null),
@@ -2263,6 +2266,13 @@ async function redeemAdvanceWithPoints(req, res) {
   }
 
   try {
+    // Expire due points BEFORE the transaction: it holds the order lock and reads the balance.
+    try {
+      const orderOwner = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { uid: true } });
+      if (orderOwner) await pointsExpiry.settleUser("USER", orderOwner.uid);
+    } catch (err) {
+      logger.warn(`redeemAdvanceWithPoints: could not settle expired points first: ${err.message}`);
+    }
     const result = await prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw`SELECT id, uid, advance_payment, payment_status, o_status, order_status, total_dcharge, cou_amt, referral_points_used FROM pkg_order WHERE id = ${orderId} FOR UPDATE`;
       const order = rows[0];

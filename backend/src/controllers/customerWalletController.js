@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const { istNow, formatLedgerTime } = require("../utils/istTime");
+const pointsExpiry = require("../services/pointsExpiryService");
 const logger = require("../utils/logger");
 const { verifyRazorpayPayment, fetchRazorpayOrder } = require("../utils/razorpayVerify");
 const { getDriverMaxDueLimit, getDriverMinWithdrawalAmount, getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
@@ -264,9 +265,11 @@ async function clearDueWithPoints(req, res) {
     if (!settings || !settings.referral_enabled) {
       return fail(res, "Paying with referral points is not available right now.");
     }
+    await pointsExpiry.settleUser("DRIVER", rider.id);
+    const liveRider = await prisma.tbl_rider.findUnique({ where: { id: rider.id }, select: { referral_points: true } });
     const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
     const pointsNeeded = Math.ceil(actualDue / pointValue);
-    const pointsUsed = Math.min(Number(rider.referral_points) || 0, pointsNeeded);
+    const pointsUsed = Math.min(Number((liveRider || rider).referral_points) || 0, pointsNeeded);
     if (pointsUsed <= 0) return fail(res, "No referral points available.");
 
     const creditAmount = Math.min(actualDue, Math.round(pointsUsed * pointValue * 100) / 100);
@@ -757,7 +760,21 @@ const POINT_SOURCE_LABELS = {
   admin_adjustment: "Added by Shifter",
   admin_grant_now: "Added by Shifter",
   admin_grant_ride_complete: "Reward from Shifter",
+  points_expiry: "Points expired",
 };
+
+// Expiry details for the apps. Rows from before points expiry have none of these (all null / 0).
+function expiryView(r) {
+  const rules = require("../services/pointsExpiryRules");
+  return {
+    activity: r.activity || null,
+    activity_label: r.activity ? rules.activityLabel(r.activity) : null,
+    expires_at: r.expires_at ? rules.formatExpiryDate(r.expires_at) : null,
+    expired_points: Number(r.expired_points) || 0,
+    is_expiry: r.txn_type === "expiry",
+    description: r.txn_type === "expiry" ? rules.expiryNote(r.activity) : r.activity && r.points > 0 ? rules.describeCredit(r.activity, r.points, r.expires_at) : null,
+  };
+}
 
 function pointSourceLabel(source) {
   const key = String(source || "");
@@ -777,11 +794,16 @@ async function pointsHistory(req, res) {
     const walletType = b.wallet_type;
     if (!mobile || (walletType !== "user" && walletType !== "driver")) return fail(res, "Missing Parameters");
 
-    const account =
+    let account =
       walletType === "user"
         ? await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } })
         : await prisma.tbl_rider.findFirst({ where: { fmobile: mobile } });
     if (!account) return fail(res, "User Not Found");
+
+    // Anything that has expired is taken off before the statement is read, so the balance shown is the spendable one.
+    if (await pointsExpiry.settleUser(walletType === "user" ? "USER" : "DRIVER", account.id)) {
+      account = walletType === "user" ? await prisma.tbl_user.findUnique({ where: { id: account.id } }) : await prisma.tbl_rider.findUnique({ where: { id: account.id } });
+    }
 
     const page = Math.max(parseInt(b.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(b.limit, 10) || 50, 1), 100);
@@ -811,6 +833,7 @@ async function pointsHistory(req, res) {
         balance_after: r.balance_after,
         note: r.note || "",
         created_at: formatLedgerTime(r.created_at),
+        ...expiryView(r),
       })),
     });
   } catch (err) {

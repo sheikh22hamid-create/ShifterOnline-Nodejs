@@ -1,4 +1,5 @@
 const prisma = require("../config/db");
+const pointsExpiry = require("./pointsExpiryService");
 const { istNow } = require("../utils/istTime");
 const { verifyRazorpayPayment } = require("../utils/razorpayVerify");
 const { getPlanPointRules, computePlanPointUsage } = require("./referralPointRules");
@@ -229,6 +230,7 @@ function buildActivePayload(subscription, today = new Date()) {
 }
 
 async function listCustomerPlans(userId, cityId) {
+  await pointsExpiry.settleUser("USER", userId);
   const user = await prisma.tbl_user.findUnique({ where: { id: Number(userId) }, select: { referral_points: true } });
   if (!user) throw new Error("User not found");
   const { start } = todayRange();
@@ -263,6 +265,7 @@ async function listCustomerPlans(userId, cityId) {
 }
 
 async function purchaseCustomerPlan({ userId, planId, usePoints = false, pointsToUse = null, paymentTxnId = "", paymentMethod = "", razorpayOrderId = "", razorpaySignature = "" }) {
+  if (usePoints) await pointsExpiry.settleUser("USER", userId); // expired points must not pay for a plan
   const today = todayRange().start;
   return prisma.$transaction(async (tx) => {
     const [user, plan] = await Promise.all([

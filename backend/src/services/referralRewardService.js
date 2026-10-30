@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const pointsExpiry = require("./pointsExpiryService");
 
 /**
  * Process referral rewards for an order that just completed.
@@ -66,6 +67,12 @@ async function awardReferralReward({ referral, referredId, referredType, orderId
     if (!referrer) return 0;
 
     const balanceAfter = (referrer.referral_points || 0) + pointsToAward;
+    // Each credit carries its own expiry, fixed now; later setting changes never touch it.
+    const stamp = await pointsExpiry.stampCredit({
+      activity: referral.source === "lead" ? "number_sharing" : "successful_referral",
+      userType: referral.referrer_type === "DRIVER" ? "DRIVER" : "USER",
+      points: pointsToAward,
+    });
     await prisma.$transaction([
       referrerModel.update({
         where: { id: referral.referrer_id },
@@ -80,8 +87,9 @@ async function awardReferralReward({ referral, referredId, referredType, orderId
           source: "referral_reward",
           ref_id: referral.id,
           balance_after: balanceAfter,
-          note: `Referral reward: referred ${referredType.toLowerCase()} #${referredId} completed ride (#${orderId || "first"})`,
+          note: `Referral reward: referred ${referredType.toLowerCase()} #${referredId} completed ride (#${orderId || "first"})${stamp.suffix}`,
           created_at: new Date(),
+          ...stamp.fields,
         },
       }),
     ]);
@@ -118,6 +126,7 @@ async function creditSignUpBonus({ referredId, referredType }) {
     if (!entity) return 0;
 
     const balanceAfter = (entity.referral_points || 0) + bonus;
+    const stamp = await pointsExpiry.stampCredit({ activity: "referral_sent", userType: referredType === "DRIVER" ? "DRIVER" : "USER", points: bonus });
     await prisma.$transaction([
       model.update({ where: { id: referredId }, data: { referral_points: balanceAfter } }),
       prisma.tbl_referral_point_log.create({
@@ -128,8 +137,9 @@ async function creditSignUpBonus({ referredId, referredType }) {
           txn_type: "credit",
           source: "signup_bonus",
           balance_after: balanceAfter,
-          note: "Sign-up bonus for joining via referral",
+          note: `Sign-up bonus for joining via referral${stamp.suffix}`,
           created_at: new Date(),
+          ...stamp.fields,
         },
       }),
     ]);

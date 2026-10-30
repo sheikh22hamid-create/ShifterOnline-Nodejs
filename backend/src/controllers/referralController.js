@@ -1,5 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const expiryRules = require("../services/pointsExpiryRules");
+const pointsExpiry = require("../services/pointsExpiryService");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -19,8 +21,20 @@ const DEFAULT_SETTINGS = Object.freeze({
   signup_bonus_points: 0,
   plan_purchase_enabled: true,
   plan_points_max_percent: 100,
+  points_expiry: {},
   updated_at: null,
 });
+
+// Activity x recipient combinations with no expiry duration set: their points never expire. Shown to the admin so nothing is silent.
+function expiryUnset(config) {
+  const out = [];
+  for (const activity of Object.keys(expiryRules.ACTIVITIES)) {
+    for (const user_type of expiryRules.USER_TYPES) {
+      if (!expiryRules.durationFor(config, activity, user_type)) out.push({ activity, user_type });
+    }
+  }
+  return out;
+}
 
 async function getSettings(req, res) {
   try {
@@ -28,7 +42,8 @@ async function getSettings(req, res) {
     // A DB with no settings row yet used to return null, which made the admin
     // page hide the whole "Reward settings" card (nothing to edit, nothing to
     // save). Hand back the column defaults instead; the first save creates the row.
-    return res.status(200).json({ success: true, data: settings ?? DEFAULT_SETTINGS });
+    const data = settings ?? DEFAULT_SETTINGS;
+    return res.status(200).json({ success: true, data: { ...data, points_expiry: data.points_expiry || {}, points_expiry_unset: expiryUnset(data.points_expiry || {}) } });
   } catch (err) {
     return internalError(res, err, "referrals.getSettings");
   }
@@ -66,6 +81,14 @@ async function updateSettings(req, res) {
       data.plan_points_max_percent = percent;
     }
     if (share_message !== undefined) data.share_message = share_message;
+    if (req.body.points_expiry !== undefined) {
+      // Merged per activity and user type, so saving Customer rows can never overwrite Driver rows.
+      try {
+        data.points_expiry = expiryRules.mergeConfig(existing?.points_expiry, req.body.points_expiry);
+      } catch (err) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
+    }
     data.updated_at = new Date();
 
     if (min_trip_unlock !== undefined) {
@@ -372,8 +395,14 @@ async function listPointLog(req, res) {
     const total = scopedRows.length;
     const pageRows = scopedRows.slice((page - 1) * limit, (page - 1) * limit + limit);
 
+    // Remaining points per expiring credit (replayed from the user's ledger), only for the users on this page.
+    const lotMaps = await pointsExpiry.lotsForUsers(
+      pageRows.filter((r) => r.expires_at && r.points > 0).map((r) => ({ user_id: r.user_id, user_type: r.user_type }))
+    ).catch((err) => { logger.warn(`referrals.listPointLog: could not compute remaining points: ${err.message}`); return new Map(); });
+
     const data = pageRows.map((r) => {
       const { city_id, ...entity } = describeLogEntity(r);
+      const lot = lotMaps.get(`${r.user_type}:${r.user_id}`)?.get(r.id);
       return {
         id: r.id,
         user: { id: r.user_id, type: r.user_type, ...entity },
@@ -384,6 +413,16 @@ async function listPointLog(req, res) {
         balance_after: r.balance_after,
         note: r.note,
         created_at: r.created_at,
+        activity: r.activity,
+        activity_label: r.activity ? expiryRules.activityLabel(r.activity) : null,
+        expires_at: r.expires_at,
+        expiry_duration: r.expiry_duration,
+        expiry_status: r.expiry_status,
+        expired_points: r.expired_points || 0,
+        origin_log_id: r.origin_log_id,
+        // Credits that expire: what is still spendable, and what was redeemed before expiry.
+        remaining_points: lot ? (r.expiry_status === "settled" ? 0 : lot.remaining) : null,
+        redeemed_points: lot ? Math.max(0, r.points - (r.expired_points || 0) - lot.remaining) : null,
       };
     });
 
