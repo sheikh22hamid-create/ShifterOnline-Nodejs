@@ -2490,3 +2490,24 @@ model low_fare_view {
   @@unique([rider_id, order_id])
   @@index([order_id])
 }
+
+model driver_go_to_home {
+  rider_id            Int       @id
+  home_lat            Decimal?  @db.Decimal(10, 7)
+  home_lng            Decimal?  @db.Decimal(10, 7)
+  home_address        String?   @db.VarChar(255)
+  active              Boolean   @default(false)
+  activated_at        DateTime?
+  route_geometry      Json?
+  route_distance_km   Float?
+  route_from_lat      Decimal?  @db.Decimal(10, 7)
+  route_from_lng      Decimal?  @db.Decimal(10, 7)
+  route_computed_at   DateTime?
+  next_refresh_at     DateTime?
+  last_refresh_status String?   @db.VarChar(24)
+  last_refresh_at     DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @default(now()) @updatedAt
+
+  @@index([active, next_refresh_at], map: "idx_go_to_home_active_refresh")
+}

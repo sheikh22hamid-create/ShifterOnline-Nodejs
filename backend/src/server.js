@@ -131,6 +131,11 @@ setInterval(() => {
   require("./services/lowFareService").expireDue().catch((err) => logger.error("lowFare expireDue interval failed:", err));
 }, 30 * 1000);
 
+// Go to Home: rebuild the route of every active driver whose 2-hour refresh is due (claimed per driver, safe across instances).
+setInterval(() => {
+  require("./services/goToHomeService").refreshDue().catch((err) => logger.error("goToHome refreshDue interval failed:", err));
+}, 60 * 1000);
+
 // Payment-settlement reminders + "Unsettled" flagging — see settlementSweep.
 setInterval(() => {
   require("./services/settlementSweep").sweepSettlements().catch((err) =>
