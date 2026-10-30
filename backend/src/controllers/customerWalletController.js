@@ -265,7 +265,10 @@ async function clearDueWithPoints(req, res) {
     if (!settings || !settings.referral_enabled) {
       return fail(res, "Paying with referral points is not available right now.");
     }
-    await pointsExpiry.settleUser("DRIVER", rider.id);
+    try { await pointsExpiry.settleUserStrict("DRIVER", rider.id); } catch (err) {
+      logger.error(`clearDueWithPoints: expired points could not be settled for driver ${rider.id}, refusing:`, err);
+      return fail(res, "Referral points are temporarily unavailable. Please try again in a moment.");
+    }
     const liveRider = await prisma.tbl_rider.findUnique({ where: { id: rider.id }, select: { referral_points: true } });
     const pointValue = Number(settings.point_value) > 0 ? Number(settings.point_value) : 1;
     const pointsNeeded = Math.ceil(actualDue / pointValue);

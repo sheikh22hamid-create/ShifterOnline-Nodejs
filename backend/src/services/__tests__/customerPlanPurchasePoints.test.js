@@ -1,3 +1,4 @@
+jest.mock("../pointsExpiryService", () => ({ settleUser: jest.fn().mockResolvedValue(0), settleUserStrict: jest.fn().mockResolvedValue(0) }));
 // Customer plan purchase with referral points: admin-controlled (global
 // switch + max %), honours the app's stepper, and writes a points ledger row.
 

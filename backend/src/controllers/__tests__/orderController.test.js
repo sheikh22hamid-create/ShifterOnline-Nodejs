@@ -1,3 +1,4 @@
+jest.mock("../../services/pointsExpiryService", () => ({ settleUser: jest.fn().mockResolvedValue(0), settleUserStrict: jest.fn().mockResolvedValue(0) }));
 jest.mock("../../services/nextDaySettings", () => ({ getLiveTime: jest.fn().mockResolvedValue("07:00") }));
 jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -10,7 +11,7 @@ jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn() },
   tbl_referral_setting: { findFirst: jest.fn() },
   tbl_referral_point_log: { create: jest.fn() },
-  pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn(), update: jest.fn() },
+  pkg_order: { create: jest.fn(), findFirst: jest.fn(), aggregate: jest.fn(), update: jest.fn(), findUnique: jest.fn().mockResolvedValue({ uid: 1 }) }, // findUnique: owner lookup before expired points are settled
   $queryRaw: jest.fn(),
   $executeRaw: jest.fn(),
   $transaction: jest.fn(),
