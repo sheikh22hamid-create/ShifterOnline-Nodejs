@@ -131,6 +131,12 @@ setInterval(() => {
   require("./services/lowFareService").expireDue().catch((err) => logger.error("lowFare expireDue interval failed:", err));
 }, 30 * 1000);
 
+// Points expiry: expire what is left of every referral-points credit whose expiry date has passed. Idempotent and safe
+// across instances; redemptions also settle the user's due points first, so a late run never lets expired points be spent.
+setInterval(() => {
+  require("./services/pointsExpiryService").sweepDue().catch((err) => logger.error("pointsExpiry sweep interval failed:", err));
+}, 5 * 60 * 1000);
+
 // Go to Home: rebuild the route of every active driver whose 2-hour refresh is due (claimed per driver, safe across instances).
 setInterval(() => {
   require("./services/goToHomeService").refreshDue().catch((err) => logger.error("goToHome refreshDue interval failed:", err));

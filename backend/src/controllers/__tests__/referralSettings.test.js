@@ -15,7 +15,8 @@ describe("referralController.getSettings", () => {
     prisma.tbl_referral_setting.findFirst.mockResolvedValue({ id: 1, ride_discount_percent: 25 });
     const res = mockRes();
     await getSettings({}, res);
-    expect(res.json).toHaveBeenCalledWith({ success: true, data: { id: 1, ride_discount_percent: 25 } });
+    // Existing fields are returned unchanged; points expiry adds its own config and the list of rows with no duration set.
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: expect.objectContaining({ id: 1, ride_discount_percent: 25, points_expiry: {} }) });
   });
 
   it("returns editable defaults (not null) when the table has no row yet, so the admin card still renders", async () => {
