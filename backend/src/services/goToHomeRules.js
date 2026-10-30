@@ -5,6 +5,7 @@ const CORRIDOR_KM = 5;                      // each side of the route, measured 
 const REFRESH_MS = 2 * 60 * 60 * 1000;      // next refresh after a successful route
 const RETRY_MS = 10 * 60 * 1000;            // retry after a failed refresh (no hammering of the routes API)
 const STALE_GRACE_MS = 15 * 60 * 1000;      // a route older than refresh + grace gets NO priority
+const MAX_ROUTE_KM = 100;                   // a home farther than this by road is not a "going home" trip (stops priority abuse)
 const STANDARD_TIER_PACKAGE_ID = 6;         // Model One; same as constants.MODEL_1_PACKAGE_ID
 
 const toPoint = (lat, lng) => ({ lat: Number(lat), lng: Number(lng) });
@@ -49,4 +50,4 @@ function thin(geometry, max = 400) {
   return out;
 }
 
-module.exports = { CORRIDOR_KM, REFRESH_MS, RETRY_MS, STALE_GRACE_MS, STANDARD_TIER_PACKAGE_ID, validHome, isRouteValid, evaluate, prioritize, thin };
+module.exports = { CORRIDOR_KM, REFRESH_MS, RETRY_MS, STALE_GRACE_MS, MAX_ROUTE_KM, STANDARD_TIER_PACKAGE_ID, validHome, isRouteValid, evaluate, prioritize, thin };

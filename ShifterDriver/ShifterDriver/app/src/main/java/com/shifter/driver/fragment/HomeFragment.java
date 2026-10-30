@@ -149,6 +149,11 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                              Bundle savedInstanceState) {
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         binding.btnFavoriteRoutes.setOnClickListener(v -> startActivity(new Intent(requireContext(), com.shifter.driver.activity.FavoriteRoutesActivity.class)));
+        binding.btnGoToHome.setOnClickListener(v -> {
+            // Enabling Go to Home may switch Standard Tier ON; reload the home screen when the driver comes back.
+            isUpdateHome = true;
+            startActivity(new Intent(requireContext(), com.shifter.driver.activity.GoToHomeActivity.class));
+        });
         sessionManager = new SessionManager(getActivity());
         custPrograssbar = new CustPrograssbar();
 
@@ -1571,6 +1576,12 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                 }
             }
             binding.txtFavoriteRoutesSubtitle.setText(subtitle);
+        });
+        com.shifter.driver.utility.GoToHomeClient.request(requireContext(), "state", null, (data, error) -> {
+            if (!isAdded() || binding == null) return;
+            String subtitle = "Get orders on your way home";
+            if (data != null && data.has("active") && data.get("active").getAsBoolean()) subtitle = "Active · orders towards home get priority";
+            binding.txtGoToHomeSubtitle.setText(subtitle);
         });
         NodeSocketManager.getInstance().addConnectionListener(connectionListener);
         if (sessionManager != null) {

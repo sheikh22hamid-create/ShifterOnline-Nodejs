@@ -373,6 +373,7 @@
         </receiver>
 
         <activity android:name=".activity.FavoriteRoutesActivity" android:exported="false" />
+        <activity android:name=".activity.GoToHomeActivity" android:exported="false" />
     </application>
 
 </manifest>

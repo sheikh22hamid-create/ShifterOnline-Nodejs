@@ -27,6 +27,8 @@ import retrofit2.http.Query;
 public interface NodeService {
     @POST("api/rider/favorite-routes")
     Call<JsonObject> favoriteRoutes(@Body Map<String, Object> body);
+    @POST("api/rider/go-to-home")
+    Call<JsonObject> goToHome(@Body Map<String, Object> body);
     @POST("api/order/trip-progress")
     Call<JsonObject> tripProgress(@Body Map<String, Object> body);
 
