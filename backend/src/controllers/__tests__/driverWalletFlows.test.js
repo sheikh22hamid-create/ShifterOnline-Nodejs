@@ -1,3 +1,4 @@
+jest.mock("../../services/pointsExpiryService", () => ({ settleUser: jest.fn().mockResolvedValue(0), settleUserStrict: jest.fn().mockResolvedValue(0) }));
 jest.mock("../../config/db", () => ({
   tbl_rider: { findFirst: jest.fn(), findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   tbl_user: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },

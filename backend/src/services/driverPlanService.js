@@ -294,7 +294,7 @@ async function listDriverPlans(driverId, cityId) {
 }
 
 async function purchaseDriverPlan({ driverId, planId, usePoints = false, pointsToUse = null, paymentTxnId = "", paymentMethod = "", amountPaid = 0 }) {
-  if (usePoints) await pointsExpiry.settleUser("DRIVER", driverId); // expired points must not pay for a plan
+  if (usePoints) await pointsExpiry.settleUserStrict("DRIVER", driverId); // expired points must not pay for a plan
   const today = todayRange().start;
   return prisma.$transaction(async (tx) => {
     const [driver, plan] = await Promise.all([

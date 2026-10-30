@@ -558,8 +558,16 @@ async function createOrderCore({
   let referralPointsUsed = 0;
   let referralPointsAmount = 0;
   let pointsLedger = null; // written only once the order row exists
+  // Points that expired a moment ago must be gone before they can be spent. If that cannot be done, no points are used
+  // (the booking itself carries on at the full price).
+  let pointsSettled = true;
   if (useReferralPoints && finalTotalCharge > 0) {
-    await pointsExpiry.settleUser("USER", uid); // points that expired a moment ago are gone before they can be spent
+    try { await pointsExpiry.settleUserStrict("USER", uid); } catch (err) {
+      pointsSettled = false;
+      logger.error(`createOrderCore: expired points could not be settled for user ${uid}, not using points:`, err);
+    }
+  }
+  if (useReferralPoints && finalTotalCharge > 0 && pointsSettled) {
     const [settings, customerPoints] = await Promise.all([
       prisma.tbl_referral_setting.findFirst(),
       prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { referral_points: true } }),
@@ -2269,9 +2277,10 @@ async function redeemAdvanceWithPoints(req, res) {
     // Expire due points BEFORE the transaction: it holds the order lock and reads the balance.
     try {
       const orderOwner = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { uid: true } });
-      if (orderOwner) await pointsExpiry.settleUser("USER", orderOwner.uid);
+      if (orderOwner) await pointsExpiry.settleUserStrict("USER", orderOwner.uid);
     } catch (err) {
-      logger.warn(`redeemAdvanceWithPoints: could not settle expired points first: ${err.message}`);
+      logger.error(`redeemAdvanceWithPoints: could not settle expired points first, refusing to use points: ${err.message}`);
+      return res.status(200).json({ ResponseCode: "401", Result: false, ResponseMsg: "Referral points are temporarily unavailable. Please try again in a moment." });
     }
     const result = await prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw`SELECT id, uid, advance_payment, payment_status, o_status, order_status, total_dcharge, cou_amt, referral_points_used FROM pkg_order WHERE id = ${orderId} FOR UPDATE`;

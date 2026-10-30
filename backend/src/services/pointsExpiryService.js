@@ -42,7 +42,7 @@ const ledgerRows = (tx, userId, userType) =>
   tx.tbl_referral_point_log.findMany({
     where: { user_id: userId, user_type: userType },
     orderBy: { id: "asc" },
-    select: { id: true, points: true, activity: true, expires_at: true, origin_log_id: true, created_at: true },
+    select: { id: true, points: true, source: true, activity: true, expires_at: true, origin_log_id: true, created_at: true },
   });
 
 /**
@@ -81,15 +81,28 @@ async function processLot(lotId, now = new Date()) {
   });
 }
 
-/** Credits of one user that are due, expired right now. Called before any redemption; never throws. */
-async function settleUser(userType, userId, now = new Date()) {
-  try {
+/**
+ * Expire EVERY credit of one user that is due (in batches), then resolve how many were settled. Throws if anything fails,
+ * so a redemption that must not see expired points can refuse to continue (fail closed).
+ */
+async function settleUserStrict(userType, userId, now = new Date()) {
+  let settled = 0;
+  for (let round = 0; round < 40; round++) {
     const due = await prisma.tbl_referral_point_log.findMany({
       where: { user_id: Number(userId), user_type: userType, expiry_status: "active", expires_at: { lte: now } },
       orderBy: { expires_at: "asc" }, take: 50, select: { id: true },
     });
+    if (!due.length) return settled;
     for (const d of due) await processLot(d.id, now);
-    return due.length;
+    settled += due.length;
+  }
+  throw new Error(`pointsExpiry: ${userType} #${userId} still has due credits after 40 batches`);
+}
+
+/** Best-effort version for screens that only display a balance: never throws, resolves how many were settled. */
+async function settleUser(userType, userId, now = new Date()) {
+  try {
+    return await settleUserStrict(userType, userId, now);
   } catch (err) {
     logger.error(`pointsExpiry.settleUser failed for ${userType} #${userId}:`, err);
     return 0;
@@ -133,4 +146,4 @@ async function lotsForUsers(pairs) {
   return out;
 }
 
-module.exports = { getConfig, stampCredit, processLot, settleUser, sweepDue, lotsForUsers };
+module.exports = { getConfig, stampCredit, processLot, settleUser, settleUserStrict, sweepDue, lotsForUsers };

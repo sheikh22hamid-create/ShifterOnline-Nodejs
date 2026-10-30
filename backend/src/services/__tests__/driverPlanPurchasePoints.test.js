@@ -1,3 +1,4 @@
+jest.mock("../pointsExpiryService", () => ({ settleUser: jest.fn().mockResolvedValue(0), settleUserStrict: jest.fn().mockResolvedValue(0) }));
 // Regression tests for paying a driver plan with referral points. The plan
 // purchase used to decrement tbl_rider.referral_points with no
 // tbl_referral_point_log row (so the driver's points history never showed

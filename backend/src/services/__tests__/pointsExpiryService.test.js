@@ -178,3 +178,25 @@ describe("sweepDue / settleUser", () => {
     expect(await svc.settleUser("USER", 1)).toBe(0);
   });
 });
+
+describe("settleUserStrict (fail closed, drains everything)", () => {
+  test("expires every due credit, not just the first batch of 50", async () => {
+    db.users[1].referral_points = 60;
+    for (let i = 0; i < 60; i++) await creditRow(1, i + 1);
+    expect(await svc.settleUserStrict("USER", 1, AFTER)).toBe(60);
+    expect(db.users[1].referral_points).toBe(0);
+    expect(db.log.filter((r) => r.txn_type === "expiry")).toHaveLength(60);
+  });
+  test("throws when a credit cannot be expired, so the redemption can refuse", async () => {
+    db.users[1].referral_points = 100;
+    await creditRow(100, 100);
+    mockPrisma.$transaction.mockImplementationOnce(async () => { throw new Error("deadlock"); });
+    await expect(svc.settleUserStrict("USER", 1, AFTER)).rejects.toThrow("deadlock");
+  });
+  test("the best-effort variant swallows the same failure", async () => {
+    db.users[1].referral_points = 100;
+    await creditRow(100, 100);
+    mockPrisma.$transaction.mockImplementationOnce(async () => { throw new Error("deadlock"); });
+    expect(await svc.settleUser("USER", 1, AFTER)).toBe(0);
+  });
+});

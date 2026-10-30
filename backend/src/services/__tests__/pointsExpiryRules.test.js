@@ -95,3 +95,36 @@ describe("replayLots", () => {
     expect(lots.get(1).remaining).toBe(0);
   });
 });
+
+describe("refunds restore the lots they were taken from", () => {
+  const refund = (id, points, created) => ({ id, points, source: "ride_discount_refund", created_at: at(created) });
+
+  test("redeem then cancel: the points are expiring again, not a free non-expiring lot", () => {
+    const lots = r.replayLots([
+      credit(1, 100, "2027-04-10T00:00:00Z", "2027-01-10T00:00:00Z"),
+      debit(2, 40, "2027-02-01T00:00:00Z"),
+      refund(3, 40, "2027-02-02T00:00:00Z"),
+    ]);
+    expect(lots.get(1).remaining).toBe(100);
+    expect(lots.has(3)).toBe(false);
+  });
+  test("a refund after the original lot expired opens a fresh lot (the ride was real when the points were spent)", () => {
+    const lots = r.replayLots([
+      credit(1, 100, "2027-02-01T00:00:00Z", "2027-01-10T00:00:00Z"),
+      debit(2, 40, "2027-01-20T00:00:00Z"),
+      refund(3, 40, "2027-03-01T00:00:00Z"),
+    ]);
+    expect(lots.get(1).remaining).toBe(60);
+    expect(lots.get(3)).toMatchObject({ remaining: 40, expires_at: null });
+  });
+  test("a refund bigger than the tracked redemptions restores those and opens a lot for the rest", () => {
+    const lots = r.replayLots([credit(1, 100, "2027-04-10T00:00:00Z", "2027-01-10T00:00:00Z"), debit(2, 10, "2027-02-01T00:00:00Z"), refund(3, 25, "2027-02-02T00:00:00Z")]);
+    expect(lots.get(1).remaining).toBe(100);
+    expect(lots.get(3).remaining).toBe(15);
+  });
+  test("a non-refund credit never restores anything", () => {
+    const lots = r.replayLots([credit(1, 100, "2027-04-10T00:00:00Z", "2027-01-10T00:00:00Z"), debit(2, 40, "2027-02-01T00:00:00Z"), { id: 3, points: 40, source: "admin_adjustment", created_at: at("2027-02-02T00:00:00Z") }]);
+    expect(lots.get(1).remaining).toBe(60);
+    expect(lots.get(3).remaining).toBe(40);
+  });
+});

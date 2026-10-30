@@ -265,7 +265,7 @@ async function listCustomerPlans(userId, cityId) {
 }
 
 async function purchaseCustomerPlan({ userId, planId, usePoints = false, pointsToUse = null, paymentTxnId = "", paymentMethod = "", razorpayOrderId = "", razorpaySignature = "" }) {
-  if (usePoints) await pointsExpiry.settleUser("USER", userId); // expired points must not pay for a plan
+  if (usePoints) await pointsExpiry.settleUserStrict("USER", userId); // expired points must not pay for a plan
   const today = todayRange().start;
   return prisma.$transaction(async (tx) => {
     const [user, plan] = await Promise.all([

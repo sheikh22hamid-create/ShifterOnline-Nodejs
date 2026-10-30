@@ -84,9 +84,15 @@ function describeCredit(activity, points, expiresAt) {
 }
 const expiryNote = (activity) => `Points Expired – ${activityLabel(activity)}`;
 
+// Ledger sources that hand redeemed points back (a cancelled ride). They restore the lots the points came from, so a
+// redeem-then-cancel can never turn expiring points into points that never expire.
+const REFUND_SOURCES = new Set(["ride_discount_refund"]);
+
 /**
  * Replay a user's ledger (rows in id order) into lots.
  *  - a credit (points > 0) opens a lot (expires_at null = never expires)
+ *  - a refund credit gives points back to the lots the latest redemptions took them from, as long as that lot had not
+ *    expired by then; whatever cannot go back opens a new lot that does not expire
  *  - an expiry row (origin_log_id set) reduces exactly its own lot
  *  - any other debit consumes lots that were still valid at that moment, soonest-expiring first
  * Debits beyond what the ledger can explain (points that predate the ledger) are ignored.
@@ -94,10 +100,24 @@ const expiryNote = (activity) => `Points Expired – ${activityLabel(activity)}`
  */
 function replayLots(rows) {
   const lots = new Map();
+  const taken = []; // what each redemption took from which lot, oldest first
   for (const r of rows) {
     const pts = Number(r.points) || 0;
     if (pts > 0) {
-      lots.set(r.id, { id: r.id, activity: r.activity || null, points: pts, remaining: pts, expires_at: r.expires_at ? new Date(r.expires_at) : null });
+      let left = pts;
+      if (REFUND_SOURCES.has(r.source)) {
+        const at = new Date(r.created_at);
+        for (let i = taken.length - 1; i >= 0 && left > 0; i--) {
+          const t = taken[i];
+          const lot = lots.get(t.lotId);
+          if (t.take <= 0 || !lot || (lot.expires_at && lot.expires_at <= at)) continue;
+          const back = Math.min(t.take, left);
+          lot.remaining += back;
+          t.take -= back;
+          left -= back;
+        }
+      }
+      if (left > 0) lots.set(r.id, { id: r.id, activity: r.activity || null, points: left, remaining: left, expires_at: r.expires_at ? new Date(r.expires_at) : null });
     } else if (pts < 0 && r.origin_log_id) {
       const lot = lots.get(r.origin_log_id);
       if (lot) lot.remaining = Math.max(0, lot.remaining - -pts);
@@ -112,6 +132,7 @@ function replayLots(rows) {
         const take = Math.min(l.remaining, need);
         l.remaining -= take;
         need -= take;
+        taken.push({ lotId: l.id, take });
       }
     }
   }
