@@ -72,9 +72,15 @@ async function pickLocation(candidate, reported, now = new Date()) {
  */
 async function computeAndStore({ candidate, orderPickup, reported, deps = {}, now = new Date() }) {
   const pickup = { lat: Number(orderPickup?.lat), lng: Number(orderPickup?.lng) };
-  if (!isCoord(pickup.lat, pickup.lng)) return null;
+  if (!isCoord(pickup.lat, pickup.lng)) {
+    logger.info(`guaranteeCandidateDistance: candidate ${candidate.id} skipped, order ${candidate.order_id} has no valid pickup`);
+    return null;
+  }
   const loc = await pickLocation(candidate, reported, now);
-  if (!loc) return null;
+  if (!loc) {
+    logger.info(`guaranteeCandidateDistance: candidate ${candidate.id} skipped, no driver location (app offline/stale, partner sent none)`);
+    return null;
+  }
   const { distance_m, kind } = await measure(loc, pickup, deps);
   const data = {
     case_id: candidate.case_id, order_id: candidate.order_id, rider_id: candidate.rider_id,

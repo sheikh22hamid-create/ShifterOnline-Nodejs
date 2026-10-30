@@ -344,7 +344,14 @@ async function refreshCandidateDistance({ orderId, actor }) {
     ? { lat: Number(stored.driver_lat), lng: Number(stored.driver_lng), approx: stored.location_approx, at: stored.location_at, source: stored.location_source }
     : null;
   const fresh = await candidateDistance.computeSafely({ candidate: live, orderPickup: { lat: order?.plat, lng: order?.plong }, reported });
-  return { distance: candidateDistance.present(fresh || stored || null) };
+  const distance = candidateDistance.present(fresh || stored || null);
+  let reason = null;
+  if (!distance) {
+    reason = candidateDistance.isCoord(Number(order?.plat), Number(order?.plong))
+      ? "The search platform did not share this driver's location and the driver's app is offline"
+      : "This order has no valid pickup location";
+  }
+  return { distance, reason };
 }
 
 async function rejectCandidate({ orderId, actor, reason }) {
