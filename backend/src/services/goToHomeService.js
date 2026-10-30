@@ -40,7 +40,9 @@ async function freshLocation(riderId, now = new Date()) {
 /** Road route current position -> home through the shared Google routing helper. */
 async function buildRoute(from, home, cityId) {
   const { roadRoute } = require("./favoriteRouteService");
-  return roadRoute([from, home], cityId);
+  const route = await roadRoute([from, home], cityId);
+  if (route.distance_km > rules.MAX_ROUTE_KM) fail(`Home is too far from your current location (more than ${rules.MAX_ROUTE_KM} km by road) for Go to Home`, 422);
+  return route;
 }
 
 async function standardTierOn(riderId) {

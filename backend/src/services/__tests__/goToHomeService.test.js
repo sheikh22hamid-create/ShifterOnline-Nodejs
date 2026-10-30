@@ -66,6 +66,15 @@ describe("enable", () => {
     expect(mockPrisma.tbl_rider_delivery_type.updateMany).not.toHaveBeenCalled();
   });
 
+  test("a home more than 100 km away by road is refused, nothing written", async () => {
+    mockPrisma.driver_go_to_home.findUnique.mockResolvedValue(home);
+    mockPrisma.tbl_rider.findUnique.mockResolvedValue(fixAt());
+    mockRoadRoute.mockResolvedValue({ ...route, distance_km: 450 });
+    await expect(svc.enable(rider)).rejects.toMatchObject({ statusCode: 422 });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.tbl_rider_delivery_type.updateMany).not.toHaveBeenCalled();
+  });
+
   test("already active: a repeat enable does nothing", async () => {
     mockPrisma.driver_go_to_home.findUnique.mockResolvedValue({ ...home, active: true });
     await svc.enable(rider);
