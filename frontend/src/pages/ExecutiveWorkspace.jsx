@@ -65,7 +65,7 @@ function TrialDriverOffer({ c, onChanged }) {
     setRefreshing(true)
     try {
       const res = await api.post(`/booking-guarantee/exec/cases/${c.order_id}/candidate/refresh-distance`)
-      if (!res.data?.data?.distance) toastRef.current.info?.('No reliable driver location is available yet')
+      if (!res.data?.data?.distance) toastRef.current.info?.(res.data?.data?.reason || 'No reliable driver location is available yet')
     } catch (err) {
       toastRef.current.error(errMsg(err, 'Could not refresh the distance'))
     } finally { setRefreshing(false); onChanged() }
