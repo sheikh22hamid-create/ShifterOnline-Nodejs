@@ -104,6 +104,8 @@ async function getRejectedRiderIds(orderId) {
 async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = MAX_DRIVERS_PER_BATCH + 1, stage = null) {
   const favoriteRoutes = require('./favoriteRouteService');
   const routeConfig = process.env.FAVORITE_ROUTES_ENABLED === 'true' ? await favoriteRoutes.settings(order.city_id) : {enabled:false};
+  const goToHome = require('./goToHomeService');
+  const goToHomeActive = goToHome.hasActiveDrivers(); // then every candidate is read (no SQL LIMIT) so none is missed
   const excludeSet = new Set(excludeRiderIds.map(Number));
   const exclude = excludeSet.size > 0 ? [...excludeSet] : [0];
   const radiusKm = Number(order.radius_range) || SEARCH_RADIUS_KM;
@@ -228,15 +230,17 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       )
     HAVING distance_km <= ${radiusKm}
     ORDER BY has_priority_plan DESC, is_favorite DESC, distance_km ASC
-    ${routeConfig.enabled ? Prisma.empty : Prisma.sql`LIMIT ${limit}`}
+    ${routeConfig.enabled || goToHomeActive ? Prisma.empty : Prisma.sql`LIMIT ${limit}`}
   `;
 
   // Belt-and-suspenders: the SQL's own NOT IN already excludes these riders,
   // but re-checking in JS means the exclusion is guaranteed by this
   // function's return value regardless of how the query was built.
-  const eligible = rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
-  if (!routeConfig.enabled) return eligible;
-  return (await favoriteRoutes.matchCandidates(order, eligible, routeConfig)).slice(0, limit);
+  let eligible = rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
+  if (routeConfig.enabled) eligible = await favoriteRoutes.matchCandidates(order, eligible, routeConfig);
+  // Go to Home: drivers whose route to home passes the order's drop go first; everyone else keeps the order above.
+  if (goToHomeActive) eligible = await goToHome.prioritize(order, eligible);
+  return (routeConfig.enabled || goToHomeActive) ? eligible.slice(0, limit) : eligible;
 }
 
 /**
