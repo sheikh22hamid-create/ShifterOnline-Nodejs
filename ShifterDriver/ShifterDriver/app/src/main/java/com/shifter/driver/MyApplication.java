@@ -119,6 +119,7 @@ public class MyApplication extends Application {
                 processHadActivity = true;
                 activityVisible = true;
                 Log.d(TAG, "Activity started, count: " + activityCount);
+                com.shifter.driver.utility.FloatingBubbleController.sync(MyApplication.this);
             }
 
             @Override
@@ -138,6 +139,7 @@ public class MyApplication extends Application {
                     activityCount = 0;
                     activityVisible = false;
                     Log.d(TAG, "All activities stopped — app in background (processHadActivity=" + processHadActivity + ")");
+                    com.shifter.driver.utility.FloatingBubbleController.sync(MyApplication.this);
                 }
             }
 

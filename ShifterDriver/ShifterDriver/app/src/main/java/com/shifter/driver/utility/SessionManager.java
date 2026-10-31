@@ -99,6 +99,7 @@ public class SessionManager {
         com.shifter.driver.socket.NodeSocketManager.getInstance().disconnect();
         mEditor.clear();
         mEditor.commit();
+        FloatingBubbleController.hide(context);
     }
 
     public static String activeOrder = "active_order";

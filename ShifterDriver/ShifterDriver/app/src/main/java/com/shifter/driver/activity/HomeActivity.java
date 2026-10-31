@@ -159,7 +159,7 @@ public class HomeActivity extends BaseActivity {
             }
             overlayDialog = new AlertDialog.Builder(this)
                     .setTitle("Overlay Permission Needed")
-                    .setMessage("To receive order requests while you are using other apps or when the app is in the background, please allow 'Display over other apps'.")
+                    .setMessage("To receive order requests and to show the Shifter floating icon while you are using other apps or when the app is in the background, please allow 'Display over other apps'.")
                     .setPositiveButton("Allow", (dialog, which) -> {
                         dialog.dismiss();
                         com.shifter.driver.utility.OverlayPermissionHelper.requestOverlayPermission(this);

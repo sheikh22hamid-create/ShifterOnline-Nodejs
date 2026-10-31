@@ -129,6 +129,7 @@ public class LocationUpdateService extends Service {
         apiExecutor = Executors.newSingleThreadExecutor(); // For API calls
         
         createLocationCallback();
+        com.shifter.driver.utility.FloatingBubbleController.sync(this);
     }
 
     @Override
@@ -419,6 +420,8 @@ public class LocationUpdateService extends Service {
         if (locationUpdateHandler != null) locationUpdateHandler.removeCallbacksAndMessages(null);
         sIsRunning = false;
         Log.d(TAG, "Service onDestroy");
+        // Offline: the floating bubble goes away at once.
+        com.shifter.driver.utility.FloatingBubbleController.hide(this);
         stopLocationUpdates();
         stopForeground(true);
         
