@@ -476,6 +476,33 @@ function priceForPackage(pkg, distanceKm, radiusRangeKm = 1, extraMileCharge = 0
   return { pkg: discountedPkg, fare, driverEarning, commission, isNight, packageTitle, userTitle, driverTitle, radiusCharge, coveredBodyCharge };
 }
 
+// The saved slab config carries its own category_id per vehicle, which can drift from the live pkg_category ids
+// (admin rate card shows rows by vehicle_key, the app asks by cat_id): one slot of drift quotes E-Loader at the
+// Mini 3W rate and 3 Wheeler at the E-Loader rate. The category's name is what the admin sees, so match on it first.
+const CATEGORY_NAME_TTL_MS = 60 * 1000;
+const categoryNameCache = new Map();
+async function categoryName(catId) {
+  const id = Number(catId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const hit = categoryNameCache.get(id);
+  if (hit && Date.now() - hit.at < CATEGORY_NAME_TTL_MS) return hit.name;
+  let name = null;
+  try {
+    name = (await prisma.pkg_category.findUnique({ where: { id } }))?.cat_name || null;
+  } catch (_) {
+    // best effort: without the name the id lookup below still applies
+    return null;
+  }
+  categoryNameCache.set(id, { name, at: Date.now() });
+  return name;
+}
+
+async function resolveVehicleSlabConfig(slabRates, catId) {
+  if (!slabRates || !catId) return null;
+  const name = await categoryName(catId);
+  return (name && findVehicleSlabConfig(slabRates, name)) || findVehicleSlabConfig(slabRates, catId);
+}
+
 /** `uid`, when given, looks up that customer's active plan discount (if any) and applies it — see priceForPackage. */
 async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extraMileCharge = 0, uid = null, slabConfig = null, modelMultipliers = null) {
   const [pkg, discount, slabPricingConfig] = await Promise.all([
@@ -486,7 +513,7 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
   if (!pkg) {
     throw new Error(`tbl_package not found for id ${packageId}`);
   }
-  const resolvedSlabConfig = slabConfig || (slabPricingConfig ? findVehicleSlabConfig(slabPricingConfig.slabRates, pkg.cat_id || pkg.category || pkg.category_id) : null);
+  const resolvedSlabConfig = slabConfig || (slabPricingConfig ? await resolveVehicleSlabConfig(slabPricingConfig.slabRates, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const resolvedMultipliers = modelMultipliers || slabPricingConfig?.modelMultipliers || null;
   return priceForPackage(pkg, distanceKm, radiusRangeKm, extraMileCharge, discount, resolvedSlabConfig, resolvedMultipliers);
 }
@@ -529,13 +556,7 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
   const resolvedExtraMileCharge = Number(extraMileCharge) || 0;
-  let vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
-  if (!vehicleSlabConfig && cat_id) {
-    const catRow = await prisma.pkg_category.findUnique({ where: { id: Number(cat_id) } }).catch(() => null);
-    if (catRow?.cat_name) {
-      vehicleSlabConfig = findVehicleSlabConfig(slabPricingConfig.slabRates, catRow.cat_name);
-    }
-  }
+  const vehicleSlabConfig = await resolveVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
 
   return {
     Result: true,
@@ -805,4 +826,5 @@ module.exports = {
   getBodyTypeCharge,
   getSlabPricingConfig,
   findVehicleSlabConfig,
+  resolveVehicleSlabConfig,
 };

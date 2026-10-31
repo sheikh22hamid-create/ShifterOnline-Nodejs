@@ -96,3 +96,36 @@ describe("Slab Pricing Engine", () => {
     expect(findVehicleSlabConfig(DEFAULT_SLAB_RATES, "Tata Ace")?.vehicle_name).toBe("Tata Ace / 4W");
   });
 });
+
+describe("resolveVehicleSlabConfig (category name beats a drifted saved category_id)", () => {
+  const pricingEngine = require("../pricingEngine");
+  const prisma = require("../../config/db");
+
+  // Saved config whose category_ids are shifted one slot from the live pkg_category ids.
+  const drifted = JSON.parse(JSON.stringify(DEFAULT_SLAB_RATES));
+  drifted.mini_3w.category_id = 3;
+  drifted.e_loader.category_id = 4;
+  drifted.three_wheeler.category_id = 5;
+  drifted.four_wheeler.category_id = 6;
+
+  const names = { 3: "E-Loader", 4: "3 Wheeler", 5: "Tata Ace / 4W", 8: "Bike" };
+  beforeEach(() => {
+    jest.spyOn(prisma.pkg_category, "findUnique").mockImplementation(async ({ where }) => (names[where.id] ? { id: where.id, cat_name: names[where.id] } : null));
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  test("the id alone would price every vehicle one slot off", () => {
+    expect(findVehicleSlabConfig(drifted, 3)?.vehicle_key).toBe("mini_3w");
+    expect(findVehicleSlabConfig(drifted, 4)?.vehicle_key).toBe("e_loader");
+  });
+
+  test("with the category name the right vehicle rates are used", async () => {
+    expect((await pricingEngine.resolveVehicleSlabConfig(drifted, 3))?.vehicle_key).toBe("e_loader");
+    expect((await pricingEngine.resolveVehicleSlabConfig(drifted, 4))?.vehicle_key).toBe("three_wheeler");
+    expect((await pricingEngine.resolveVehicleSlabConfig(drifted, 5))?.vehicle_key).toBe("four_wheeler");
+  });
+
+  test("an unknown category falls back to the id lookup", async () => {
+    expect((await pricingEngine.resolveVehicleSlabConfig(drifted, 9))?.vehicle_key).toBe("mini_3w");
+  });
+});

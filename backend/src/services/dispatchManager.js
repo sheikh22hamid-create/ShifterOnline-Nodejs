@@ -693,7 +693,7 @@ async function runBatchInner(orderId) {
     pkg = pkgResult;
     discount = discountResult;
     packageTitle = pkg?.title || `Model ${packageId}`;
-    vehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+    vehicleSlabConfig = await pricingEngine.resolveVehicleSlabConfig(
       slabPricingConfig?.slabRates,
       pkg?.cat_id || pkg?.category || pkg?.category_id
     );
@@ -724,7 +724,7 @@ async function runBatchInner(orderId) {
   if (!vehicleSlabConfig || !modelMultipliers) {
     const slabPricingConfig = await pricingEngine.getSlabPricingConfig();
     if (!vehicleSlabConfig) {
-      vehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+      vehicleSlabConfig = await pricingEngine.resolveVehicleSlabConfig(
         slabPricingConfig?.slabRates,
         pkg?.cat_id || pkg?.category || pkg?.category_id
       );

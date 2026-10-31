@@ -70,7 +70,7 @@ const {
   SCHEDULED_ORDER_PRIORITY_POPUP_MS,
 } = require("../../config/constants");
 
-const flush = async (ticks = 24) => {
+const flush = async (ticks = 40) => {
   for (let i = 0; i < ticks; i++) {
     await Promise.resolve();
   }

@@ -402,16 +402,10 @@ async function createOrderCore({
   // A System 2 order belongs to the city whose switch decided it (guarantee gate + admin city scoping).
   const orderCityId = system2 ? searchCityId : resolvedCityId;
 
-  let firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(
+  const firstVehicleSlabConfig = await pricingEngine.resolveVehicleSlabConfig(
     slabPricingConfig?.slabRates,
     firstPkg?.cat_id || firstPkg?.category || firstPkg?.category_id
   );
-  if (!firstVehicleSlabConfig && firstPkg?.cat_id) {
-    const catRow = await prisma.pkg_category.findUnique({ where: { id: Number(firstPkg.cat_id) } }).catch(() => null);
-    if (catRow?.cat_name) {
-      firstVehicleSlabConfig = pricingEngine.findVehicleSlabConfig(slabPricingConfig?.slabRates, catRow.cat_name);
-    }
-  }
 
   const rawBodyType = body_type || bodyType || "any";
   const cleanBodyType = ["open", "covered", "half", "both", "any"].includes(String(rawBodyType).toLowerCase())

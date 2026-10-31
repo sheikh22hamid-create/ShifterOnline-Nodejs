@@ -19,6 +19,7 @@ jest.mock("../../services/pricingEngine", () => ({
   getActiveCustomerPlan: jest.fn().mockResolvedValue(null),
   getSlabPricingConfig: jest.fn().mockResolvedValue({ slabRates: {}, modelMultipliers: null }),
   findVehicleSlabConfig: jest.fn().mockReturnValue(null),
+  resolveVehicleSlabConfig: jest.fn().mockResolvedValue(null),
   getBodyTypeCharge: jest.fn().mockResolvedValue(0),
   getCoveredBodyCharge: jest.fn().mockResolvedValue(0),
 }));
