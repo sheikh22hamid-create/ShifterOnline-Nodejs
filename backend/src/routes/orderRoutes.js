@@ -55,6 +55,7 @@ router.post("/available-vehicles", orderAvailabilityController.availableVehicles
 router.post("/payment-status", orderController.paymentMethodStatus);
 router.post("/invoice-url", orderInvoiceController.generateInvoiceUrl);
 router.get("/invoice", orderInvoiceController.renderInvoice);
+router.get("/invoice.pdf", orderInvoiceController.downloadInvoicePdf);
 router.post("/map-info", orderController.getMapInfo);
 router.post("/advance-payment", orderController.advancePayment);
 router.post("/advance-payment/redeem-points", orderController.redeemAdvanceWithPoints);
