@@ -105,16 +105,14 @@ const TEMPLATE = `<!doctype html>
       drawTrail(m, d.points, bounds);
       var s = document.createElement("span"); s.textContent = "Distance: " + Number(d.distance_km).toFixed(2) + " km";
       $("stats").appendChild(s);
-      legend([{ color: COLORS[0], label: "Driver to pickup" }, { color: COLORS[1], label: "Pickup to drop" }, { color: "#827E7E", label: "No signal (gap)", dash: true }]);
+      legend([{ color: COLORS[1], label: "Pickup to drop" }, { color: "#827E7E", label: "No signal (gap)", dash: true }]);
     }
-    if (d.start) L.marker(latlng(d.start), { icon: pin("f"), interactive: false }).addTo(m);
     if (d.pickup) { L.marker(latlng(d.pickup), { icon: pin("p"), interactive: false }).addTo(m); bounds.push(latlng(d.pickup)); }
     if (d.final_pickup) { L.marker(latlng(d.final_pickup), { icon: pin("p"), interactive: false }).addTo(m); bounds.push(latlng(d.final_pickup)); }
     (d.stops || []).forEach(function (st, i) { L.marker(latlng(st), { icon: pin("s", String(i + 1)), interactive: false }).addTo(m); bounds.push(latlng(st)); });
     if (d.drop) { L.marker(latlng(d.drop), { icon: pin("d"), interactive: false }).addTo(m); bounds.push(latlng(d.drop)); }
     if (bounds.length) m.fitBounds(L.latLngBounds(bounds), { padding: [30, 30], maxZoom: 17 });
     var key = [];
-    if (d.start) key.push({ color: "#2e7d32", label: "Start" });
     if (d.pickup) key.push({ color: "#1a73e8", label: "Pickup" });
     if ((d.stops || []).length) key.push({ color: "#8e44ad", label: "Stops (numbered)" });
     if (d.drop) key.push({ color: "#d93025", label: "Drop" });
@@ -132,6 +130,7 @@ const TEMPLATE = `<!doctype html>
     .then(function (res) {
       var d = res.body || {};
       if (res.status === 404 || d.state === "invalid") return unavailable("This route link is not valid.");
+      if (res.status === 410 || d.state === "expired") return unavailable("This route link has expired. Ask the sender to share it again.");
       if (d.state === "unavailable") return unavailable("This route is not available. The ride may not be completed.");
       if (d.state === "error" || res.status >= 500) return unavailable("Something went wrong. Please try again in a moment.");
       render(d);

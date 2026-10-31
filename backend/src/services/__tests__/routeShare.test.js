@@ -6,6 +6,7 @@ jest.mock("../../config/db", () => ({
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock("../tripRouteService", () => ({ buildRoute: jest.fn() }));
+jest.mock("../../utils/geoDistance", () => ({ haversineKm: (a, b, c, d) => Math.abs(c - a) + Math.abs(d - b) }));
 
 const prisma = require("../../config/db");
 const tripRoute = require("../tripRouteService");
@@ -56,27 +57,76 @@ describe("urlForOwner", () => {
   });
 });
 
+describe("link expiry (30 days)", () => {
+  const day = 24 * 60 * 60 * 1000;
+
+  test("isExpired flips after 30 days", () => {
+    expect(svc.isExpired({ created_at: new Date(Date.now() - 29 * day) })).toBe(false);
+    expect(svc.isExpired({ created_at: new Date(Date.now() - 31 * day) })).toBe(true);
+  });
+
+  test("owner asking after expiry gets a rotated token and a fresh date", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue(completed);
+    prisma.order_route_share.findUnique.mockResolvedValue({ id: 1, order_id: 9, token: TOKEN, created_at: new Date(Date.now() - 40 * day) });
+    prisma.order_route_share.update.mockImplementation(async ({ data }) => ({ id: 1, ...data }));
+    const out = await svc.urlForOwner({ orderId: 9, uid: 2 });
+    const data = prisma.order_route_share.update.mock.calls[0][0].data;
+    expect(data.token).not.toBe(TOKEN);
+    expect(Date.now() - data.created_at.getTime()).toBeLessThan(5000);
+    expect(out.url).toContain(data.token);
+  });
+
+  test("an unexpired link is reused untouched", async () => {
+    prisma.pkg_order.findFirst.mockResolvedValue(completed);
+    prisma.order_route_share.findUnique.mockResolvedValue({ id: 1, order_id: 9, token: TOKEN, created_at: new Date(Date.now() - 5 * day) });
+    const out = await svc.urlForOwner({ orderId: 9, uid: 2 });
+    expect(prisma.order_route_share.update).not.toHaveBeenCalled();
+    expect(out.url).toContain(TOKEN);
+  });
+
+  test("public API answers 410 expired for an old link and does not build the route", async () => {
+    prisma.order_route_share.findUnique.mockResolvedValue({ id: 1, order_id: 9, created_at: new Date(Date.now() - 31 * day) });
+    const res = mockRes();
+    await controller.routeData({ params: { token: TOKEN } }, res);
+    expect(res.statusCode).toBe(410);
+    expect(res.body).toEqual({ state: "expired" });
+    expect(tripRoute.buildRoute).not.toHaveBeenCalled();
+  });
+});
+
 describe("buildPublicRoute", () => {
   const link = { id: 1, order_id: 9 };
   const route = {
     has_trail: true, distance_km: 12.34, cancelled: false,
-    points: [{ lat: 1, lng: 2, phase: 0 }, { lat: 1.1, lng: 2.1, phase: 1, gap: true }],
+    points: [
+      { lat: 0.5, lng: 1.5, phase: 0 }, { lat: 0.8, lng: 1.8, phase: 0 },
+      { lat: 1, lng: 2, phase: 1 }, { lat: 1.1, lng: 2.1, phase: 1, gap: true },
+    ],
     start: { lat: 1, lng: 2 }, pickup: { lat: 1, lng: 2 }, final_pickup: null, otp_point: { lat: 5, lng: 5 },
     stops: [{ lat: 3, lng: 3 }], drop: { lat: 4, lng: 4 },
     assignments: [{ rider_id: 77, points: [] }], order_status: 5, o_status: "Completed",
   };
 
-  test("ready: the full trail with phases/gaps, pins and stops; nothing private", async () => {
+  test("ready: only the pickup->drop trail (gaps kept), never the driver's own trip or start point", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue(completed);
     tripRoute.buildRoute.mockResolvedValue(route);
     const out = await svc.buildPublicRoute(link);
     expect(out.state).toBe("ready");
-    expect(out.points).toEqual([{ lat: 1, lng: 2, phase: 0 }, { lat: 1.1, lng: 2.1, phase: 1, gap: true }]);
+    expect(out.points).toEqual([{ lat: 1, lng: 2, phase: 1 }, { lat: 1.1, lng: 2.1, phase: 1, gap: true }]);
+    expect(out.start).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("0.5");
+    expect(out.distance_km).toBeCloseTo(0.2, 2); // delivery leg only, not the 12.34 km total
     expect(out.stops).toHaveLength(1);
     expect(out.drop).toEqual({ lat: 4, lng: 4 });
     expect(out.booking_id).toBe("SO0000000009");
     const json = JSON.stringify(out);
     expect(json).not.toMatch(/rider|assignments|otp|uid|mobile|address/i);
+  });
+
+  test("a trail with no pickup->drop part is treated as no trail", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(completed);
+    tripRoute.buildRoute.mockResolvedValue({ ...route, points: route.points.filter((p) => p.phase === 0) });
+    expect((await svc.buildPublicRoute(link)).state).toBe("no_trail");
   });
 
   test("no trail recorded: pins only, state no_trail, no path", async () => {
@@ -111,7 +161,7 @@ describe("public endpoints", () => {
   });
 
   test("valid token -> JSON route, not cacheable", async () => {
-    prisma.order_route_share.findUnique.mockResolvedValue({ id: 1, order_id: 9 });
+    prisma.order_route_share.findUnique.mockResolvedValue({ id: 1, order_id: 9, created_at: new Date() });
     prisma.order_route_share.update.mockResolvedValue({});
     prisma.pkg_order.findUnique.mockResolvedValue(completed);
     tripRoute.buildRoute.mockResolvedValue({ has_trail: false, points: [], pickup: { lat: 1, lng: 2 }, stops: [], drop: { lat: 3, lng: 4 } });

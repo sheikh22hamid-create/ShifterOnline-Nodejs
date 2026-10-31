@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const tripRouteService = require("./tripRouteService");
+const { haversineKm } = require("../utils/geoDistance");
 
 // Read-only share link for a COMPLETED ride's saved route map. The page and the
 // JSON behind it only ever read: the stored trail (driver_trip_location) is never
@@ -11,6 +12,12 @@ const tripRouteService = require("./tripRouteService");
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
 const newToken = () => crypto.randomBytes(32).toString("base64url");
 const isTokenShape = (token) => TOKEN_SHAPE.test(String(token || ""));
+
+// A link stops working this long after it was created; the owner tapping Share Route again after that gets a new one.
+const LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const DELIVERY_PHASE = 1; // trail phase "pickup -> drop"; phase 0 is the driver's own trip to the pickup
+
+const isExpired = (link, now = Date.now()) => now - new Date(link.created_at).getTime() > LINK_TTL_MS;
 
 const isCompleted = (order) => Number(order?.order_status) === 5 || order?.o_status === "Completed";
 
@@ -26,6 +33,10 @@ async function urlForOwner({ orderId, uid }) {
   if (!isCompleted(order)) return { ok: false, code: "NOT_COMPLETED", msg: "The route can be shared once the ride is completed." };
 
   let link = await prisma.order_route_share.findUnique({ where: { order_id: orderId } });
+  if (link && isExpired(link)) {
+    // Rotate: the old URL dies, the owner gets a fresh 30 days.
+    link = await prisma.order_route_share.update({ where: { id: link.id }, data: { token: newToken(), created_at: new Date() } });
+  }
   if (!link) {
     try {
       link = await prisma.order_route_share.create({ data: { order_id: orderId, uid, token: newToken(), created_at: new Date() } });
@@ -73,6 +84,8 @@ async function buildPublicRoute(link) {
   const route = await tripRouteService.buildRoute(prisma, order.id);
   if (!route) return { state: "unavailable" };
 
+  // The public map shows the customer's ride only (pickup -> drop). The driver's own trip to the pickup,
+  // and the point it started from, stay private (it can be near the driver's home).
   const base = {
     booking_id: `SO${String(order.id).padStart(10, "0")}`,
     date: order.ddate || order.odate || null,
@@ -81,14 +94,17 @@ async function buildPublicRoute(link) {
     stops: route.stops,
     drop: route.drop,
   };
-  if (!route.has_trail) return { state: "no_trail", ...base };
+  const delivery = (route.has_trail ? route.points : []).filter((p) => p.phase === DELIVERY_PHASE);
+  if (delivery.length < 2) return { state: "no_trail", ...base };
+
+  let km = 0;
+  for (let i = 1; i < delivery.length; i++) km += haversineKm(delivery[i - 1].lat, delivery[i - 1].lng, delivery[i].lat, delivery[i].lng);
   return {
     state: "ready",
     ...base,
-    distance_km: route.distance_km,
-    start: route.start,
-    points: route.points.map((p) => ({ lat: p.lat, lng: p.lng, phase: p.phase, ...(p.gap ? { gap: true } : {}) })),
+    distance_km: Math.round(km * 100) / 100,
+    points: delivery.map((p) => ({ lat: p.lat, lng: p.lng, phase: p.phase, ...(p.gap ? { gap: true } : {}) })),
   };
 }
 
-module.exports = { isTokenShape, isCompleted, buildLink, urlForOwner, findByToken, touchViewed, buildPublicRoute };
+module.exports = { LINK_TTL_MS, isExpired, isTokenShape, isCompleted, buildLink, urlForOwner, findByToken, touchViewed, buildPublicRoute };

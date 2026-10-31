@@ -37,6 +37,7 @@ async function routeData(req, res) {
   try {
     const link = await routeShareService.findByToken(token);
     if (!link) return res.status(404).json({ state: "invalid" });
+    if (routeShareService.isExpired(link)) return res.status(410).json({ state: "expired" });
     routeShareService.touchViewed(link.id);
     return res.json(await routeShareService.buildPublicRoute(link));
   } catch (err) {
