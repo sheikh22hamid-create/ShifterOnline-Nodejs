@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
@@ -66,6 +67,31 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
   }
 
   bool get _hasTrail => _route?["has_trail"] == true;
+
+  /// Only a finished ride's saved route can be shared (the server enforces this too).
+  bool get _canShare => _route != null && _route?["cancelled"] != true && _route?["o_status"]?.toString() == "Completed";
+
+  static const String _shareEndpoint = "api/order/route-share-link";
+  bool _sharing = false;
+
+  /// Asks the server for this ride's read-only link and hands it to the system share sheet (WhatsApp etc.).
+  Future<void> _shareRoute() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final uid = (getdata.read("Uid") ?? "").toString();
+      final res = await ApiWrapper.dataPostNode(_shareEndpoint, {"uid": uid, "order_id": widget.orderId});
+      final url = res is Map ? res["share_url"]?.toString() : null;
+      if (res is Map && res["Result"]?.toString() == "true" && url != null && url.isNotEmpty) {
+        await Share.share("${"View my Shifter Online ride route".tr}: $url", subject: "Shifter Online ride route".tr);
+      } else {
+        ApiWrapper.showToastMessage((res is Map ? res["ResponseMsg"]?.toString() : null) ?? "Could not create the share link. Please try again.".tr);
+      }
+    } catch (e) {
+      ApiWrapper.showToastMessage("Could not create the share link. Please try again.".tr);
+    }
+    if (mounted) setState(() => _sharing = false);
+  }
 
   List<Map<String, dynamic>> get _trail =>
       ((_route?["points"] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -329,6 +355,12 @@ class _OrderRouteMapState extends State<OrderRouteMap> {
                 Expanded(
                   child: Text("Route Map".tr, style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15)),
                 ),
+                if (!_loading && _error == null && _canShare)
+                  TextButton.icon(
+                    onPressed: _sharing ? null : _shareRoute,
+                    icon: Icon(Icons.share_rounded, size: 17, color: linercolor),
+                    label: Text(_sharing ? "Please wait...".tr : "Share Route".tr, style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12)),
+                  ),
                 if (!_loading && _error == null)
                   TextButton.icon(
                     onPressed: _openFullScreen,

@@ -2045,6 +2045,16 @@ model order_track_link {
   last_viewed_at DateTime? @db.DateTime(0)
 }
 
+// One read-only share link per completed order for the saved route map (/route/<token>).
+model order_route_share {
+  id             Int       @id @default(autoincrement())
+  order_id       Int       @unique(map: "uq_order_route_share_order")
+  uid            Int
+  token          String    @unique(map: "uq_order_route_share_token") @db.Char(43)
+  created_at     DateTime  @db.DateTime(0)
+  last_viewed_at DateTime? @db.DateTime(0)
+}
+
 model order_receiver_feedback {
   id              Int      @id @default(autoincrement())
   order_id        Int      @unique(map: "uq_order_receiver_feedback_order")

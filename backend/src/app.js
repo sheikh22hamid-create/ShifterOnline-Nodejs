@@ -55,6 +55,7 @@ const locationRoutes = require("./routes/locationRoutes");
 const whatsappRoutes = require("./routes/whatsappRoutes");
 const { pageRouter: receiverPayPage, apiRouter: receiverPayApi } = require("./routes/receiverPayRoutes");
 const { pageRouter: trackPage, apiRouter: trackApi } = require("./routes/trackRoutes");
+const { pageRouter: routeSharePage, apiRouter: routeShareApi } = require("./routes/routeShareRoutes");
 
 app.use("/api/users", userRoutes);
 app.use("/api/user", userRoutes);
@@ -64,6 +65,8 @@ app.use("/pay", receiverPayPage);
 app.use("/api/pay", receiverPayApi);
 app.use("/track", trackPage);
 app.use("/api/track", trackApi);
+app.use("/route", routeSharePage);
+app.use("/api/route", routeShareApi);
 app.use("/api/rider", riderRoutes);
 app.use("/rider", riderRoutes);
 app.use("/api/location", locationRoutes);
