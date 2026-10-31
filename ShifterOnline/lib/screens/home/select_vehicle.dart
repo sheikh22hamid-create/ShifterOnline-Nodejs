@@ -700,6 +700,16 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     setState(() => _guaranteeAmount = amount);
   }
 
+  /// True when no available model ranks above [selectedModel] - derived from the loaded model list, not a fixed position.
+  bool _isLastModel(Map<String, dynamic> selectedModel) {
+    final selectedIndex = _models.indexOf(selectedModel);
+    final selectedOrder = _modelOrder(selectedModel, selectedIndex < 0 ? 0 : selectedIndex);
+    for (var index = 0; index < _models.length; index++) {
+      if (_modelOrder(_models[index], index) > selectedOrder) return false;
+    }
+    return true;
+  }
+
   List<int> _bookingDeliveryTypeIds(Map<String, dynamic> selectedModel) {
     final selectedIndex = _models.indexOf(selectedModel);
     final selectedOrder = _modelOrder(selectedModel, selectedIndex < 0 ? 0 : selectedIndex);
@@ -1094,7 +1104,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               : "Your order #$orderId is scheduled for ${DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!)}. It will go live at exactly that time, and a driver will then be assigned.",
         );
       } else {
-        Get.offAll(() => WaitingScreen(orderId: orderId, vehicleName: _vehicleName(_selected!)));
+        Get.offAll(() => WaitingScreen(orderId: orderId, vehicleName: _vehicleName(_selected!), lastModelSelected: _isLastModel(model)));
       }
     } else {
       final msg = _text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.');

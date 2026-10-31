@@ -12,9 +12,14 @@ String rupeesText(double amount) =>
 String? guaranteeLine(double amount) =>
     amount > 0 ? 'If no driver is found, you get ${rupeesText(amount)}' : null;
 
-String noDriverMessage(double compensation) => compensation > 0
-    ? 'No driver found. ${rupeesText(compensation)} has been added to your wallet.'
-    : 'No driver found. Please try again.';
+/// [lastModel]: whether the customer booked the last available model (true), an earlier one (false), or it is
+/// unknown (null, e.g. an order restored without that info) - unknown keeps the original wording.
+String noDriverMessage(double compensation, {bool? lastModel}) {
+  if (compensation > 0) return 'No driver found. ${rupeesText(compensation)} has been added to your wallet.';
+  if (lastModel == true) return 'No driver found. Please increase search radius.';
+  if (lastModel == false) return 'No driver found. Please increase the models and increase search radius.';
+  return 'No driver found. Please try again.';
+}
 
 /// System 2 (Vehicle Category First): the search window ended with nobody found and no guarantee compensation.
 const String driverNotAvailableMessage = 'Driver is not available.';

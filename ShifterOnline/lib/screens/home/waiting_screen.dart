@@ -22,7 +22,9 @@ class WaitingScreen extends StatefulWidget {
   /// Name of the vehicle the customer booked (e.g. "3 wheeler"); drives the animation. When it is not passed
   /// (app reopened on this screen) it is restored from the saved value or the order itself.
   final String? vehicleName;
-  const WaitingScreen({Key? key, required this.orderId, this.vehicleName}) : super(key: key);
+  /// True when the customer booked the last available model, false for an earlier one, null if unknown.
+  final bool? lastModelSelected;
+  const WaitingScreen({Key? key, required this.orderId, this.vehicleName, this.lastModelSelected}) : super(key: key);
 
   @override
   State<WaitingScreen> createState() => _WaitingScreenState();
@@ -32,7 +34,9 @@ class _WaitingScreenState extends State<WaitingScreen> {
   static const _waitingOrderKey = 'active_waiting_order_id';
   static const _waitingExpiryKey = 'active_waiting_expires_at';
   static const _waitingVehicleKey = 'active_waiting_vehicle';
+  static const _waitingLastModelKey = 'active_waiting_last_model';
   String _vehicleName = '';
+  bool? _lastModelSelected;
   Timer? _timer;
   Timer? _timeoutTimer;
   Timer? _countdownTicker;
@@ -55,12 +59,14 @@ class _WaitingScreenState extends State<WaitingScreen> {
     getdata.remove(_waitingOrderKey);
     getdata.remove(_waitingExpiryKey);
     getdata.remove(_waitingVehicleKey);
+    getdata.remove(_waitingLastModelKey);
   }
 
   void _persistWaitingOrder(int expiresAt) {
     getdata.write(_waitingOrderKey, widget.orderId);
     getdata.write(_waitingExpiryKey, expiresAt);
     if (_vehicleName.isNotEmpty) getdata.write(_waitingVehicleKey, _vehicleName);
+    if (_lastModelSelected != null) getdata.write(_waitingLastModelKey, _lastModelSelected);
   }
 
   void _navigateBackToHome() {
@@ -258,6 +264,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
     _listenForAssignment();
     final savedOrderId = getdata.read(_waitingOrderKey)?.toString();
     _vehicleName = (widget.vehicleName ?? (savedOrderId == widget.orderId ? getdata.read(_waitingVehicleKey)?.toString() : null) ?? '').trim();
+    final savedLastModel = savedOrderId == widget.orderId ? getdata.read(_waitingLastModelKey) : null;
+    _lastModelSelected = widget.lastModelSelected ?? (savedLastModel is bool ? savedLastModel : null);
     final savedExpiry = int.tryParse(getdata.read(_waitingExpiryKey)?.toString() ?? '');
     final now = DateTime.now().millisecondsSinceEpoch;
     final hasValidSavedTimer = savedOrderId == widget.orderId &&
@@ -336,7 +344,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
       } else if (flow == 4) {
         clearPersistedWaitingOrder();
         final paid = g != null && g['state'] == 'paid' ? parseGuaranteeAmount(g['amount']) : 0.0;
-        ApiWrapper.showToastMessage(noDriverMessage(paid).tr);
+        ApiWrapper.showToastMessage(noDriverMessage(paid, lastModel: _lastModelSelected).tr);
         Get.offAll(() => const Bottombar());
       }
     } finally {
@@ -375,7 +383,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
       _countdownTicker?.cancel();
       final notAvailable = data['reason']?.toString() == 'driver_not_available';
       ApiWrapper.showToastMessage(
-        (notAvailable ? driverNotAvailableMessage : noDriverMessage(parseGuaranteeAmount(data['compensation_amount']))).tr,
+        (notAvailable ? driverNotAvailableMessage : noDriverMessage(parseGuaranteeAmount(data['compensation_amount']), lastModel: _lastModelSelected)).tr,
       );
       Get.offAll(() => const Bottombar());
     }, onGuaranteePending: (data) {
