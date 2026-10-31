@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const PDFDocument = require("pdfkit");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 
@@ -55,50 +56,96 @@ function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-// --- invoice.php --- (renders a simple styled HTML invoice, token-gated)
-async function renderInvoice(req, res) {
-  const orderId = Number(req.query?.order_id || 0);
-  const uid = Number(req.query?.uid || 0);
-  const expiresAt = Number(req.query?.exp || 0);
-  const token = String(req.query?.token || "");
+// Shared by the HTML page and the PDF download: the signed link binds
+// order_id + uid + expiry, and generateInvoiceUrl only signs after confirming
+// the order belongs to that uid, so a valid token proves ownership.
+function verifyInvoiceLink(query) {
+  const orderId = Number(query?.order_id || 0);
+  const uid = Number(query?.uid || 0);
+  const expiresAt = Number(query?.exp || 0);
+  const token = String(query?.token || "");
 
   const notExpired = expiresAt > 0 && Date.now() <= expiresAt;
   const expected = INVOICE_SECRET_KEY && notExpired ? signToken(orderId, uid, expiresAt) : null;
   const tokenValid =
     expected && token.length === expected.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(token));
 
-  if (!tokenValid || orderId <= 0 || uid <= 0) {
-    return res.status(400).send("Invalid or expired invoice link.");
+  if (!tokenValid || orderId <= 0 || uid <= 0) return null;
+  return { orderId, uid, expiresAt, token };
+}
+
+// Everything both renderers show, computed once so the PDF and the browser
+// page can never disagree on an amount.
+async function loadInvoiceData(uid, orderId) {
+  const row = await prisma.pkg_order.findFirst({ where: { uid, id: orderId } });
+  if (!row) return null;
+
+  let riderName = "";
+  let riderVehicleNo = "";
+  let riderRating = "5.0";
+  if (row.rid) {
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: row.rid } });
+    if (rider) {
+      riderName = `${rider.first_name || ""} ${rider.last_name || ""}`.trim() || rider.full_name || "";
+      riderVehicleNo = rider.vehicle_no || "";
+      const rateAgg = await prisma.pkg_order.aggregate({ where: { rid: row.rid, is_rate: 1 }, _avg: { cust_rate: true } });
+      if (rateAgg._avg.cust_rate != null) riderRating = Number(rateAgg._avg.cust_rate).toFixed(1);
+    }
   }
 
+  let paymentMethodName = "Cash";
+  if (row.p_method_id) {
+    const pm = await prisma.tbl_payment_list.findUnique({ where: { id: row.p_method_id } });
+    if (pm) paymentMethodName = pm.title;
+  }
+
+  const bookingId = `SO${String(row.id).padStart(10, "0")}`;
+  const orderDate = row.odate ? new Date(row.odate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "";
+  // row.wating_charge is the per-minute RATE; what was actually billed for
+  // waiting is the amount "complete" added on top of d_charge in total_dcharge.
+  const waitingBilled = Math.max(0, Math.round((Number(row.total_dcharge || 0) - Number(row.d_charge || 0)) * 100) / 100);
+  const charges = [
+    ["Delivery charge", row.d_charge],
+    ["Service charge", row.service_charge],
+    ["Waiting charge", waitingBilled],
+    ["Extra mile charge", row.extra_mile_charge],
+    ["Coupon discount", row.cou_amt ? -Number(row.cou_amt) : 0],
+    [`Coins redeemed (${Number(row.referral_points_used) || 0} points)`, Number(row.referral_points_amount) ? -Number(row.referral_points_amount) : 0],
+  ].filter(([, v]) => Number(v));
+
+  const fareTotal = Number(row.total_dcharge || row.d_charge || 0);
+  const coinsAmount = Number(row.referral_points_amount) || 0;
+  const couponAmount = Number(row.cou_amt) || 0;
+  const coinsPoints = Number(row.referral_points_used) || 0;
+  // Coins pay part of the fare without touching the wallet/cash, so the
+  // customer's actual payable is the fare minus the coins value.
+  const total = Math.max(0, fareTotal - coinsAmount - couponAmount).toFixed(2);
+
+  return {
+    row, bookingId, orderDate, status: String(row.o_status || "Pending"),
+    riderName, riderVehicleNo, riderRating, paymentMethodName,
+    charges, fareTotal, coinsAmount, coinsPoints, total,
+  };
+}
+
+// --- invoice.php --- (renders a simple styled HTML invoice, token-gated)
+async function renderInvoice(req, res) {
+  const link = verifyInvoiceLink(req.query);
+  if (!link) {
+    return res.status(400).send("Invalid or expired invoice link.");
+  }
+  const { orderId, uid, expiresAt, token } = link;
+
   try {
-    const row = await prisma.pkg_order.findFirst({ where: { uid, id: orderId } });
-    if (!row) return res.status(404).send("Invoice not found.");
+    const data = await loadInvoiceData(uid, orderId);
+    if (!data) return res.status(404).send("Invoice not found.");
+    const { row, bookingId, orderDate, riderName, riderVehicleNo, riderRating, paymentMethodName, charges, fareTotal, coinsAmount, coinsPoints, total } = data;
 
-    let riderName = "";
-    let riderVehicleNo = "";
-    let riderRating = "5.0";
-    if (row.rid) {
-      const rider = await prisma.tbl_rider.findUnique({ where: { id: row.rid } });
-      if (rider) {
-        riderName = `${rider.first_name || ""} ${rider.last_name || ""}`.trim() || rider.full_name || "";
-        riderVehicleNo = rider.vehicle_no || "";
-        const rateAgg = await prisma.pkg_order.aggregate({ where: { rid: row.rid, is_rate: 1 }, _avg: { cust_rate: true } });
-        if (rateAgg._avg.cust_rate != null) riderRating = Number(rateAgg._avg.cust_rate).toFixed(1);
-      }
-    }
-
-    let paymentMethodName = "Cash";
-    if (row.p_method_id) {
-      const pm = await prisma.tbl_payment_list.findUnique({ where: { id: row.p_method_id } });
-      if (pm) paymentMethodName = pm.title;
-    }
-
-    const bookingId = `SO${String(row.id).padStart(10, "0")}`;
-    const orderDate = row.odate ? new Date(row.odate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "";
     const statusRaw = String(row.o_status || "").toLowerCase();
     const isGood = statusRaw === "completed" || statusRaw === "delivered";
     const generatedAt = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+    // Same-origin relative link: /api/order/invoice -> /api/order/invoice.pdf
+    const pdfHref = `invoice.pdf?order_id=${orderId}&uid=${uid}&exp=${expiresAt}&token=${token}`;
 
     const initials = (riderName || "")
       .split(/\s+/)
@@ -106,18 +153,6 @@ async function renderInvoice(req, res) {
       .slice(0, 2)
       .map((p) => p[0].toUpperCase())
       .join("") || "?";
-
-    // row.wating_charge is the per-minute RATE; what was actually billed for
-    // waiting is the amount "complete" added on top of d_charge in total_dcharge.
-    const waitingBilled = Math.max(0, Math.round((Number(row.total_dcharge || 0) - Number(row.d_charge || 0)) * 100) / 100);
-    const charges = [
-      ["Delivery charge", row.d_charge],
-      ["Service charge", row.service_charge],
-      ["Waiting charge", waitingBilled],
-      ["Extra mile charge", row.extra_mile_charge],
-      ["Coupon discount", row.cou_amt ? -Number(row.cou_amt) : 0],
-      [`Coins redeemed (${Number(row.referral_points_used) || 0} points)`, Number(row.referral_points_amount) ? -Number(row.referral_points_amount) : 0],
-    ].filter(([, v]) => Number(v));
 
     const chargeRows = charges
       .map(([label, v]) => {
@@ -129,13 +164,6 @@ async function renderInvoice(req, res) {
       })
       .join("");
 
-    const fareTotal = Number(row.total_dcharge || row.d_charge || 0);
-    const coinsAmount = Number(row.referral_points_amount) || 0;
-    const couponAmount = Number(row.cou_amt) || 0;
-    const coinsPoints = Number(row.referral_points_used) || 0;
-    // Coins pay part of the fare without touching the wallet/cash, so the
-    // customer's actual payable is the fare minus the coins value.
-    const total = Math.max(0, fareTotal - coinsAmount - couponAmount).toFixed(2);
     const coinsNote = coinsAmount > 0
       ? `<div class="paid-via" style="text-align:left;line-height:1.5">Coins: you redeemed ${coinsPoints} referral points worth ₹${coinsAmount.toFixed(2)} against this ride. The trip fare was ₹${fareTotal.toFixed(2)}; the coins value is deducted from it, so you pay ₹${total}.</div>`
       : "";
@@ -213,6 +241,14 @@ async function renderInvoice(req, res) {
   .total-row .amt { font-size: 19px; font-weight: 600; color: var(--brand); }
   .paid-via { margin-top: 10px; font-size: 12px; color: var(--ink-muted); text-align: right; }
 
+  .actions { padding: 0 24px 6px; text-align: center; }
+  .dl-btn { display: inline-block; width: 100%; padding: 12px 16px; border: 0; border-radius: 12px; cursor: pointer;
+    background: var(--brand); color: #fff; font: 600 14px 'IBM Plex Sans', 'Segoe UI', system-ui, Arial, sans-serif;
+    text-decoration: none; }
+  .dl-btn[aria-busy="true"] { opacity: 0.6; pointer-events: none; }
+  .dl-err { margin-top: 8px; font-size: 12px; color: #c0392b; min-height: 1em; }
+  @media print { .actions { display: none; } body { background: #fff; padding: 0; } .ticket { box-shadow: none; } }
+
   .footer { text-align: center; padding: 18px 24px 22px; font-size: 12px; color: var(--ink-faint); }
   .footer .thanks { font-size: 13px; color: var(--ink-muted); margin-bottom: 4px; }
 </style></head>
@@ -259,11 +295,43 @@ async function renderInvoice(req, res) {
       ${coinsNote}
     </div>
 
+    <div class="actions">
+      <a class="dl-btn" id="dl-pdf" href="${esc(pdfHref)}" download="Invoice-${esc(bookingId)}.pdf">Download PDF</a>
+      <div class="dl-err" id="dl-err" role="alert"></div>
+    </div>
+
     <div class="footer">
       <div class="thanks">Thanks for riding with Shifter.</div>
       Generated ${esc(generatedAt)}
     </div>
   </div>
+<script>
+  // Fetch the PDF so a failure shows a message here instead of navigating
+  // away to a bare error page. If fetch/blob is unavailable the plain href
+  // above still downloads it.
+  (function () {
+    var btn = document.getElementById("dl-pdf"), err = document.getElementById("dl-err");
+    if (!btn || !window.fetch || !window.URL || !URL.createObjectURL) return;
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      err.textContent = "";
+      btn.setAttribute("aria-busy", "true");
+      var label = btn.textContent; btn.textContent = "Preparing PDF...";
+      fetch(btn.getAttribute("href"), { credentials: "same-origin" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("Could not generate the PDF (" + r.status + "). Please try again.");
+          return r.blob();
+        })
+        .then(function (b) {
+          var u = URL.createObjectURL(b), a = document.createElement("a");
+          a.href = u; a.download = btn.getAttribute("download"); document.body.appendChild(a); a.click();
+          setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 1000);
+        })
+        .catch(function (ex) { err.textContent = ex.message || "Download failed. Please try again."; })
+        .then(function () { btn.removeAttribute("aria-busy"); btn.textContent = label; });
+    });
+  })();
+</script>
 </body></html>`;
 
     res.set("Content-Type", "text/html; charset=utf-8");
@@ -274,4 +342,109 @@ async function renderInvoice(req, res) {
   }
 }
 
-module.exports = { generateInvoiceUrl, renderInvoice };
+// PDFKit's built-in fonts have no rupee glyph, so amounts print as "Rs.".
+const money = (n) => `Rs. ${Math.abs(Number(n)).toFixed(2)}`;
+
+function drawInvoicePdf(doc, d) {
+  const L = 50, R = doc.page.width - 50, W = R - L;
+  const ink = "#262220", muted = "#756b62", brand = "#c2540a", line = "#e7e1d8";
+  const rule = () => { doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor(line).lineWidth(1).stroke(); doc.moveDown(0.8); };
+  const row = (label, value, opts = {}) => {
+    const y = doc.y;
+    doc.font(opts.bold ? "Helvetica-Bold" : "Helvetica").fontSize(opts.size || 11).fillColor(opts.color || ink);
+    doc.text(label, L, y, { width: W * 0.6 });
+    const h = doc.y - y;
+    doc.text(value, L + W * 0.6, y, { width: W * 0.4, align: "right" });
+    doc.y = y + Math.max(h, doc.currentLineHeight()) + 4;
+  };
+  const section = (title, body) => {
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(muted).text(title, L, doc.y);
+    doc.font("Helvetica").fontSize(11).fillColor(ink).text(body, L, doc.y, { width: W });
+    doc.moveDown(0.6);
+  };
+
+  doc.font("Helvetica-Bold").fontSize(20).fillColor(ink).text("Shifter ", L, 50, { continued: true }).fillColor(brand).text("Online");
+  doc.font("Helvetica").fontSize(10).fillColor(muted).text("Trip Invoice", L, 54, { width: W, align: "right" });
+  doc.y = 90;
+  rule();
+
+  row("Booking ID", d.bookingId, { bold: true });
+  row("Date", d.orderDate || "-");
+  row("Status", d.status);
+  row("Payment method", d.paymentMethodName);
+  doc.moveDown(0.6); rule();
+
+  section("PICKUP", d.row.paddress || "-");
+  section("DROP", d.row.daddress || "-");
+  if (d.riderName) {
+    section("DRIVER", `${d.riderName}${d.riderVehicleNo ? `  |  ${d.riderVehicleNo}` : ""}  |  Rating ${d.riderRating}`);
+  }
+  doc.moveDown(0.2); rule();
+
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(muted).text("FARE BREAKDOWN", L, doc.y);
+  doc.moveDown(0.5);
+  if (d.charges.length) {
+    for (const [label, v] of d.charges) {
+      const neg = Number(v) < 0;
+      row(label, `${neg ? "-" : ""}${money(v)}`, { color: neg ? "#1e9e4d" : ink });
+    }
+  } else {
+    row("Trip fare", money(d.total));
+  }
+  doc.moveDown(0.4); rule();
+  row("Total paid", money(d.total), { bold: true, size: 14, color: brand });
+  if (d.coinsAmount > 0) {
+    doc.moveDown(0.4);
+    doc.font("Helvetica").fontSize(9).fillColor(muted).text(
+      `Coins: you redeemed ${d.coinsPoints} referral points worth ${money(d.coinsAmount)} against this ride. The trip fare was ${money(d.fareTotal)}; the coins value is deducted from it, so you pay ${money(d.total)}.`,
+      L, doc.y, { width: W });
+  }
+
+  // Footer stays above the bottom margin: text drawn below it makes PDFKit
+  // add a blank second page.
+  doc.font("Helvetica").fontSize(9).fillColor(muted).text(
+    `Thanks for riding with Shifter. Generated ${new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`,
+    L, doc.page.height - 90, { width: W, align: "center" });
+}
+
+// --- PDF download of the same invoice, behind the same signed link ---
+async function downloadInvoicePdf(req, res) {
+  const link = verifyInvoiceLink(req.query);
+  if (!link) {
+    return res.status(400).send("Invalid or expired invoice link.");
+  }
+
+  try {
+    const data = await loadInvoiceData(link.uid, link.orderId);
+    if (!data) return res.status(404).send("Invoice not found.");
+
+    // Render fully into memory first so a mid-render failure still returns a
+    // clean 500 instead of a truncated file the customer thinks is real.
+    const buffer = await new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: "A4", margin: 50, info: { Title: `Invoice ${data.bookingId}`, Author: "Shifter Online" } });
+      const chunks = [];
+      doc.on("data", (c) => chunks.push(c));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+      try {
+        drawInvoicePdf(doc, data);
+        doc.end();
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="Invoice-${data.bookingId}.pdf"`,
+      "Content-Length": buffer.length,
+      "Cache-Control": "private, no-store",
+    });
+    return res.status(200).send(buffer);
+  } catch (err) {
+    logger.error("downloadInvoicePdf failed:", err);
+    return res.status(500).send("Could not generate the invoice PDF. Please try again.");
+  }
+}
+
+module.exports = { generateInvoiceUrl, renderInvoice, downloadInvoicePdf, verifyInvoiceLink, loadInvoiceData, drawInvoicePdf };
