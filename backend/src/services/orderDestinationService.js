@@ -7,6 +7,7 @@ const adminSocket = require("../sockets/adminSocket");
 const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRouteRepricing");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
+const orderFareHistory = require("./orderFareHistory");
 
 function isValidCoord(val, min, max) {
   const num = Number(val);
@@ -180,6 +181,10 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     });
     // A cheaper new route must not keep points redeemed against the old fare.
     await reconcileRideDiscountToFare(numericOrderId, newFare, tx);
+    await orderFareHistory.recordChange({
+      orderId: numericOrderId, kind: orderFareHistory.KIND.DROP_CHANGE,
+      reason: `Drop location changed to ${cleanAddress}`, oldFare, newFare, client: tx,
+    });
 
     if (order.rid && order.rid > 0) {
       // upsert, not create: driver_trip_event has a unique (order_id, milestone)

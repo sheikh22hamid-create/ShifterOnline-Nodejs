@@ -421,6 +421,19 @@ model pkg_order_stops {
   @@index([order_id, sequence], map: "idx_pkg_order_stops_order_sequence")
 }
 
+// Append-only fare change log per order (original booking fare, then pickup/drop/stop/driver-assign changes).
+model pkg_order_fare_history {
+  id          Int      @id @default(autoincrement())
+  order_id    Int
+  kind        String   @db.VarChar(24)
+  reason      String   @db.VarChar(255)
+  amount_diff Decimal  @default(0) @db.Decimal(10, 2)
+  new_total   Decimal  @db.Decimal(10, 2)
+  created_at  DateTime @default(now()) @db.DateTime(3)
+
+  @@index([order_id, id], map: "idx_order_fare_history_order")
+}
+
 model pkg_order_wait_timer {
   id                  Int       @id @default(autoincrement())
   order_id            Int

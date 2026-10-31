@@ -5,6 +5,7 @@ const prisma = require("../config/db");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const pricingEngine = require("../services/pricingEngine");
 const tripLifecycle = require("../services/tripLifecycle");
+const orderFareHistory = require("../services/orderFareHistory");
 const dispatchManager = require("../services/dispatchManager");
 const adminSocket = require("../sockets/adminSocket");
 const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
@@ -686,6 +687,9 @@ async function createOrderCore({
     throw err;
   }
 
+  // Booking-time fare for the customer's "View full breakdown" (best-effort; never fails the booking).
+  await orderFareHistory.recordOriginal(order.id, Number(order.total_dcharge) > 0 ? order.total_dcharge : order.d_charge);
+
   if (pointsLedger) {
     // Audit row only - never allowed to fail a booking whose points are already
     // correctly taken and recorded on the order.
@@ -1081,6 +1085,9 @@ async function getOrderDetails(req, res) {
           otp: order.otp,
           // Drop OTP shown to the booker (and the receiver, on their tracking page); "" when the order has none.
           drop_otp: (await dropOtpService.isRequired(order)) && order.order_status === 3 ? String(order.drop_otp) : "",
+          // Chronological fare changes (original booking fare, then every pickup/drop/stop/driver-assign change).
+          // Empty for orders that predate the history table; the app then shows only the current fare.
+          fare_history: await orderFareHistory.getHistory(order.id),
           total_Delivery_charge: String(order.total_dcharge),
           grand_total: String(order.total_dcharge),
           Delivery_charge: String(order.d_charge),

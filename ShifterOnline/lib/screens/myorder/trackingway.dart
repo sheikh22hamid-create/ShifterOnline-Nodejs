@@ -49,6 +49,7 @@ import 'customer_settlement_sheet.dart';
 import '../../utils/receiver_pay_options.dart';
 import 'change_receiver_number_dialog.dart';
 import 'customer_feedback_sheet.dart';
+import 'fare_history_section.dart';
 
 class TrackingWay extends StatefulWidget {
   final String? type;
@@ -3981,6 +3982,15 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 ),
               ),
             ],
+          ),
+
+          // Original booking fare -> every pickup/drop/stop change -> current fare (server records, display only).
+          FareHistorySection(
+            rawEntries: orderProduc?["fare_history"],
+            currency: currency ?? '',
+            currentFare: totalDouble,
+            textColor: notifier.text,
+            mutedColor: greaycolor,
           ),
 
           // Advance & Remaining calculation breakdown

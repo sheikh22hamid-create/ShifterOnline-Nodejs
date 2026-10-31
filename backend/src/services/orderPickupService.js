@@ -10,6 +10,7 @@ const { getPickupRelocateSettings } = require("../utils/pickupRelocateSettings")
 const { haversineKm } = require("../utils/geoDistance");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
+const orderFareHistory = require("./orderFareHistory");
 
 // Pickup can move while the order is still pending (0), while the driver is
 // en route to it (1), or even after the driver has already arrived and is
@@ -204,6 +205,10 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
 
     const updatedOrder = await tx.pkg_order.update({ where: { id: numericOrderId }, data: updateData });
     await reconcileRideDiscountToFare(numericOrderId, newFare, tx);
+    await orderFareHistory.recordChange({
+      orderId: numericOrderId, kind: orderFareHistory.KIND.PICKUP_CHANGE,
+      reason: `Pickup location changed to ${cleanAddress}`, oldFare, newFare, client: tx,
+    });
 
     if (order.rid && order.rid > 0) {
       // upsert, not create: driver_trip_event has a unique (order_id, milestone)

@@ -7,6 +7,7 @@ const adminSocket = require("../sockets/adminSocket");
 const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRouteRepricing");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
+const orderFareHistory = require("./orderFareHistory");
 
 // A stop can be added from booking right through the on-route leg (status 3).
 // It is always appended after the existing stops and before the final drop, so
@@ -204,6 +205,10 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
       },
     });
     await reconcileRideDiscountToFare(numericOrderId, newFare, tx);
+    await orderFareHistory.recordChange({
+      orderId: numericOrderId, kind: orderFareHistory.KIND.STOP_ADDED,
+      reason: `Additional stop ${existingStops.length + 1}`, oldFare, newFare, client: tx,
+    });
 
     if (order.rid && order.rid > 0) {
       // Each stop gets its own milestone name (stop_added_<sequence>), not a

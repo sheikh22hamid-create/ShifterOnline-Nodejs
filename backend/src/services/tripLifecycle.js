@@ -45,6 +45,7 @@ const {
 } = require("../config/constants");
 
 const whatsappNotifications = require("../whatsapp/notifications");
+const orderFareHistory = require("./orderFareHistory");
 
 function notifyAdminStatus(order) {
   try {
@@ -296,6 +297,14 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // total_dcharge; the fare is now re-priced server-side off the real driver
   // distance. If it came out lower, hand back points above the cap for it.
   if (!keepBookedFare) await reconcileRideDiscountToFare(orderId, fare);
+  // Customer's "View full breakdown": the booked fare is re-priced off this driver's real pickup distance here,
+  // so log the difference (nothing is logged when the fare did not move).
+  if (!keepBookedFare) {
+    await orderFareHistory.recordChange({
+      orderId, kind: orderFareHistory.KIND.DRIVER_ASSIGNED, reason: "Driver assigned - pickup distance adjustment",
+      oldFare: Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0, newFare: fare,
+    });
+  }
 
   // Release this rider's own popup lock, then dismiss every OTHER driver
   // still holding a popup for this order and cancel remaining timers.
