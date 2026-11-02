@@ -129,3 +129,70 @@ describe("resolveVehicleSlabConfig (category name beats a drifted saved category
     expect((await pricingEngine.resolveVehicleSlabConfig(drifted, 9))?.vehicle_key).toBe("mini_3w");
   });
 });
+
+describe("time-of-day surcharge bands", () => {
+  const {
+    normalizeTimeBands,
+    hasTimeBands,
+    activeTimeBand,
+    timeBandRawAmount,
+  } = require("../slabPricingService");
+
+  // IST 22:00 = 16:30 UTC, 23:36 = 18:06 UTC, 02:00 (next day) = 20:30 UTC, 11:00 = 05:30 UTC.
+  const at = {
+    evening: new Date("2026-11-02T16:30:00.000Z"),
+    lateNight: new Date("2026-11-02T18:06:00.000Z"),
+    afterMidnight: new Date("2026-11-02T20:30:00.000Z"),
+    day: new Date("2026-11-02T05:30:00.000Z"),
+  };
+  const bands = [
+    { from: "21:00", to: "23:00", amount: 63.64 },
+    { from: "23:00", to: "06:00", amount: 136.36 },
+  ];
+
+  test("normalizeTimeBands keeps valid rows, zero-pads clocks and drops bad ones", () => {
+    expect(normalizeTimeBands([
+      { from: "9:5x", to: "10:00", amount: 10 },
+      { from: "9:05", to: "10:00", amount: 12.345 },
+      { from: "10:00", to: "10:00", amount: 5 },
+      { from: "10:00", to: "11:00", amount: 0 },
+      { from: "24:00", to: "11:00", amount: 5 },
+      null,
+    ])).toEqual([{ from: "09:05", to: "10:00", amount: 12.35 }]);
+    expect(normalizeTimeBands(undefined)).toEqual([]);
+    expect(normalizeTimeBands("21:00")).toEqual([]);
+  });
+
+  test("activeTimeBand matches IST wall clock, including a window that wraps past midnight", () => {
+    expect(activeTimeBand(bands, at.day)).toBeNull();
+    expect(activeTimeBand(bands, at.evening).amount).toBe(63.64);
+    expect(activeTimeBand(bands, at.lateNight).amount).toBe(136.36);
+    expect(activeTimeBand(bands, at.afterMidnight).amount).toBe(136.36);
+  });
+
+  test("the end of a band is exclusive and the start inclusive; minutes since midnight are accepted too", () => {
+    expect(activeTimeBand(bands, 22 * 60 + 59).amount).toBe(63.64);
+    expect(activeTimeBand(bands, 23 * 60).amount).toBe(136.36);
+    expect(activeTimeBand(bands, 6 * 60)).toBeNull();
+    expect(activeTimeBand(bands, 21 * 60 - 1)).toBeNull();
+  });
+
+  test("hasTimeBands / timeBandRawAmount read the vehicle config", () => {
+    expect(hasTimeBands({ time_bands: bands })).toBe(true);
+    expect(hasTimeBands({ time_bands: [] })).toBe(false);
+    expect(hasTimeBands({})).toBe(false);
+    expect(timeBandRawAmount({ time_bands: bands }, at.evening)).toBe(63.64);
+    expect(timeBandRawAmount({}, at.evening)).toBe(0);
+  });
+
+  test("calculateModelFares adds the band to every model, scaled by markup and offset, only when a time is given", () => {
+    const cfg = { ...DEFAULT_SLAB_RATES.three_wheeler, min_charge: 148, rates: { "0_1": 17.8, "1_5": 17.8, "5_10": 17.8 }, time_bands: bands };
+    const mult = { anchor_markup_percent: 10, models: [{ model: "Model 1", offset_percent: -10 }, { model: "Model 2", offset_percent: 0 }, { model: "Model 3", offset_percent: 8 }] };
+    const day = calculateModelFares(cfg, mult, 5);
+    const night = calculateModelFares(cfg, mult, 5, 22 * 60);
+    expect(day.models.map((m) => m.fare)).toEqual([235, 261, 282]);
+    expect(night.models.map((m) => m.fare)).toEqual([298, 331, 357]);
+    expect(night.models[1].time_band_charge).toBe(70);
+    expect(day.models[1].time_band_charge).toBe(0);
+  });
+});
