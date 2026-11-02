@@ -403,3 +403,62 @@ describe("getFareEstimate", () => {
     expect(result.extra_stop_charge).toBe(25);
   });
 });
+
+describe("time-of-day surcharge bands in the fare engine", () => {
+  const { isNightFor } = require("../pricingEngine");
+  const vehicle = {
+    vehicle_key: "three_wheeler",
+    min_charge: 148,
+    markup_percent: 10,
+    rates: { "0_1": 17.8, "1_5": 17.8, "5_10": 17.8 },
+    time_bands: [
+      { from: "21:00", to: "23:00", amount: 63.64 },
+      { from: "23:00", to: "06:00", amount: 136.36 },
+    ],
+  };
+  const multipliers = {
+    anchor_markup_percent: 10,
+    models: [{ model: "Model 1", offset_percent: -10 }, { model: "Model 2", offset_percent: 0 }, { model: "Model 3", offset_percent: 8 }],
+  };
+  // The package still carries a flat night window + amount; with bands configured it must NOT stack on top.
+  const pkgFor = (title) => ({
+    id: 1, title, cat_id: 4, min_charge: "1", per_km_charge: "1",
+    start_time: "1970-01-01T21:00:00.000Z", end_time: "1970-01-01T06:00:00.000Z", night_charge_percent: "150",
+  });
+  const evening = new Date("2026-11-02T16:30:00.000Z"); // 22:00 IST
+  const lateNight = new Date("2026-11-02T18:06:00.000Z"); // 23:36 IST
+  const day = new Date("2026-11-02T05:30:00.000Z"); // 11:00 IST
+
+  const fare = (title, now) => priceForPackage(pkgFor(title), 5, 1, 0, null, vehicle, multipliers, 0, now);
+
+  it("charges the band instead of the package's flat night amount, and nothing by day", () => {
+    expect(fare("Model 2", day).fare).toBe(261);
+    expect(fare("Model 2", evening).fare).toBe(331);
+    expect(fare("Model 2", lateNight).fare).toBe(411);
+  });
+
+  it("scales the band with the model offset so Model 1 / 3 stay -10% / +8% of Model 2", () => {
+    expect(fare("Model 1", evening).fare).toBe(298);
+    expect(fare("Model 3", evening).fare).toBe(357);
+  });
+
+  it("flags is_night from the band window, not the package window", () => {
+    expect(fare("Model 2", evening).isNight).toBe(1);
+    expect(fare("Model 2", day).isNight).toBe(0);
+    expect(isNightFor(pkgFor("Model 2"), vehicle, evening)).toBe(1);
+    expect(isNightFor(pkgFor("Model 2"), vehicle, day)).toBe(0);
+  });
+
+  it("a vehicle without bands keeps the package's own night window and flat amount", () => {
+    const plain = { ...vehicle, time_bands: undefined };
+    const r = priceForPackage(pkgFor("Model 2"), 5, 1, 0, null, plain, multipliers, 0, evening);
+    expect(r.isNight).toBe(1);
+    expect(r.fare).toBe(Math.round(237 * 1.1 + 150));
+  });
+
+  it("a linear-priced package ignores bands", () => {
+    const linear = { ...pkgFor("Model 2"), use_linear_pricing: true };
+    const r = priceForPackage(linear, 5, 1, 0, null, vehicle, multipliers, 0, evening);
+    expect(r.fare).toBe(Math.round(1 + 5 + 150));
+  });
+});

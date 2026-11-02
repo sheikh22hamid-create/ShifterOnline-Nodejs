@@ -9,6 +9,7 @@ const {
   calculateBaseSlabFare,
   calculateModelFares,
   findVehicleSlabConfig,
+  normalizeTimeBands,
 } = require("../services/slabPricingService");
 const {
   normalizeInfoSections,
@@ -443,6 +444,7 @@ async function getSlabs(req, res) {
         min_charge: Number(v.min_charge) || 0,
         anchor_model: Number(v.anchor_model) || (typeof v.anchor_model === "string" ? parseInt(v.anchor_model.replace(/\D/g, ""), 10) : 3) || 3,
         markup_percent: v.markup_percent !== undefined && v.markup_percent !== null ? Number(v.markup_percent) : (Number(modelMultipliers.anchor_markup_percent) || 10),
+        time_bands: normalizeTimeBands(v.time_bands),
         slabs,
       };
     });
@@ -517,6 +519,9 @@ async function updateSlabs(req, res) {
           min_charge: Number(v.min_charge) || 0,
           anchor_model: Number(v.anchor_model) || 3,
           markup_percent: v.markup_percent !== undefined && v.markup_percent !== null ? Number(v.markup_percent) : 10,
+          // A client that omits time_bands (an older cached admin build) must not wipe the saved bands;
+          // an explicit array — even an empty one — replaces them.
+          time_bands: Array.isArray(v.time_bands) ? normalizeTimeBands(v.time_bands) : normalizeTimeBands(existingSlabRates[key]?.time_bands),
           rates,
         };
       }
@@ -557,8 +562,11 @@ async function updateSlabs(req, res) {
 
 async function simulateFare(req, res) {
   try {
-    const { vehicle_key, distance_km } = req.body;
+    const { vehicle_key, distance_km, at_time } = req.body;
     const distance = Number(distance_km) || 0;
+    // Optional IST "HH:MM" so the admin simulator can show a time-of-day band's effect; omitted = daytime fare.
+    const atMatch = /^(\d{1,2}):(\d{2})$/.exec(String(at_time ?? "").trim());
+    const atMinutes = atMatch && Number(atMatch[1]) <= 23 && Number(atMatch[2]) <= 59 ? Number(atMatch[1]) * 60 + Number(atMatch[2]) : null;
     const config = await getSlabPricingConfig();
     const vehicleConfig = config.slabRates[vehicle_key] || findVehicleSlabConfig(config.slabRates, vehicle_key);
 
@@ -566,7 +574,7 @@ async function simulateFare(req, res) {
       return res.status(404).json({ success: false, message: `Vehicle slab config not found for '${vehicle_key}'` });
     }
 
-    const result = calculateModelFares(vehicleConfig, config.modelMultipliers, distance);
+    const result = calculateModelFares(vehicleConfig, config.modelMultipliers, distance, atMinutes);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     return internalError(res, err, "rateCards.simulateFare");

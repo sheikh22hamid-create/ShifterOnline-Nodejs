@@ -322,14 +322,75 @@ function calculateBaseSlabFare(vehicleSlabConfig, distanceKm) {
   };
 }
 
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+const MINUTES_PER_DAY = 24 * 60;
+
+function clockToMinutes(value) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h <= 23 && min <= 59 ? h * 60 + min : null;
+}
+
+function minutesToClock(minutes) {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Per-vehicle time-of-day surcharge bands, e.g. Porter's evening / late-night add-ons:
+ * [{ from: "21:00", to: "23:00", amount: 63.6 }]. `from`/`to` are IST wall-clock "HH:MM" and the window
+ * may wrap past midnight (23:00 -> 06:00). `amount` is a flat ₹ in the SAME units as the slab matrix's
+ * min_charge / rates — i.e. before the vehicle markup and the model offset — so a band moves with the models
+ * exactly like the fare itself (Model 2 stays level with Porter at night too). Invalid rows are dropped
+ * rather than rejected, so one typo cannot take the whole config down.
+ */
+function normalizeTimeBands(bands) {
+  if (!Array.isArray(bands)) return [];
+  const out = [];
+  for (const b of bands) {
+    const from = clockToMinutes(b?.from);
+    const to = clockToMinutes(b?.to);
+    const amount = Number(b?.amount);
+    if (from === null || to === null || from === to) continue;
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    out.push({ from: minutesToClock(from), to: minutesToClock(to), amount: Math.round(amount * 100) / 100 });
+  }
+  return out;
+}
+
+function hasTimeBands(vehicleSlabConfig) {
+  return normalizeTimeBands(vehicleSlabConfig?.time_bands).length > 0;
+}
+
+/** `at` is a Date (instant) or a number of IST minutes since midnight. Returns the first matching band or null. */
+function activeTimeBand(bands, at = new Date()) {
+  const nowMinutes = typeof at === "number"
+    ? at
+    : (at.getUTCHours() * 60 + at.getUTCMinutes() + IST_OFFSET_MINUTES) % MINUTES_PER_DAY;
+  for (const b of normalizeTimeBands(bands)) {
+    const from = clockToMinutes(b.from);
+    const to = clockToMinutes(b.to);
+    const inside = from < to ? nowMinutes >= from && nowMinutes < to : nowMinutes >= from || nowMinutes < to;
+    if (inside) return b;
+  }
+  return null;
+}
+
+/** Raw (pre-markup, pre-model-offset) surcharge for this vehicle at `at`; 0 outside every band. */
+function timeBandRawAmount(vehicleSlabConfig, at = new Date()) {
+  return activeTimeBand(vehicleSlabConfig?.time_bands, at)?.amount || 0;
+}
+
 /**
  * Calculates fare for all 5 models based on the vehicle's slab rates and model multipliers:
  * 1. Base raw fare = min_charge + slab_charges
  * 2. Model 3 fare = Base raw fare * (1 + anchor_markup_percent / 100)
  * 3. Model X fare = Model 3 fare * (1 + offset_percent / 100)
  */
-function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distanceKm) {
+function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distanceKm, at = null) {
   const baseCalc = calculateBaseSlabFare(vehicleSlabConfig, distanceKm);
+  const bandRaw = at === null || at === undefined ? 0 : timeBandRawAmount(vehicleSlabConfig, at);
   const anchorMarkup = Number(
     vehicleSlabConfig?.markup_percent ??
     vehicleSlabConfig?.anchor_markup_percent ??
@@ -350,7 +411,8 @@ function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distance
 
     const modelMinCharge = Math.round(baseCalc.minCharge * effectiveMultiplier * 100) / 100;
     const modelDistanceCharge = Math.round(baseCalc.totalDistanceCharge * effectiveMultiplier * 100) / 100;
-    const calculatedFare = Math.round(baseCalc.rawFare * effectiveMultiplier);
+    const timeBandCharge = Math.round(bandRaw * effectiveMultiplier * 100) / 100;
+    const calculatedFare = Math.round((baseCalc.rawFare + bandRaw) * effectiveMultiplier);
 
     return {
       model: m.model,
@@ -360,6 +422,7 @@ function calculateModelFares(vehicleSlabConfig, modelMultipliersConfig, distance
       effective_multiplier: effectiveMultiplier,
       min_charge: modelMinCharge,
       distance_charge: modelDistanceCharge,
+      time_band_charge: timeBandCharge,
       fare: calculatedFare,
       is_anchor: isAnchor,
     };
@@ -417,6 +480,10 @@ module.exports = {
   getSlabPricingConfig,
   saveSlabPricingConfig,
   calculateBaseSlabFare,
+  normalizeTimeBands,
+  hasTimeBands,
+  activeTimeBand,
+  timeBandRawAmount,
   calculateModelFares,
   findVehicleSlabConfig,
 };

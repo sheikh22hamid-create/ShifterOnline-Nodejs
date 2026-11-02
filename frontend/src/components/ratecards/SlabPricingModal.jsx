@@ -168,6 +168,25 @@ const DEFAULT_MODELS = [
   { model_number: 5, name: 'Model 5', user_title: 'Priority', driver_title: 'Earning Beast', percent_offset: 20 },
 ]
 
+// Mirrors backend slabPricingService.activeTimeBand: IST "HH:MM" window, may wrap past midnight, `to` exclusive.
+function clockMinutes(value) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(value || ''))
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null
+}
+
+function activeBandAmount(bands, clock) {
+  const now = clockMinutes(clock)
+  if (now === null) return 0
+  for (const b of bands || []) {
+    const from = clockMinutes(b.from)
+    const to = clockMinutes(b.to)
+    if (from === null || to === null || from === to || !(Number(b.amount) > 0)) continue
+    const inside = from < to ? now >= from && now < to : now >= from || now < to
+    if (inside) return Number(b.amount)
+  }
+  return 0
+}
+
 function getVehicleIcon(type) {
   const name = String(type || '').toLowerCase()
   if (name.includes('bike') || name.includes('scooter')) return <Bike size={14} />
@@ -193,6 +212,7 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
   // Live Simulator state
   const [simVehicle, setSimVehicle] = useState('Bike')
   const [simDistance, setSimDistance] = useState(20)
+  const [simTime, setSimTime] = useState('') // IST "HH:MM"; empty = daytime (no time-of-day surcharge)
 
   // Vehicle-wise Anchor and preview state
   const [previewVehicleKey, setPreviewVehicleKey] = useState('bike')
@@ -289,6 +309,35 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
         ...copy[vehicleIndex],
         markup_percent: val,
       }
+      return copy
+    })
+  }
+
+  // Time-of-day surcharge bands (Porter-style evening / late-night add-on), per vehicle
+  function handleAddTimeBand(vehicleIndex) {
+    setVehicleSlabs((prev) => {
+      const copy = [...prev]
+      const bands = [...(copy[vehicleIndex].time_bands || []), { from: '21:00', to: '23:00', amount: 0 }]
+      copy[vehicleIndex] = { ...copy[vehicleIndex], time_bands: bands }
+      return copy
+    })
+  }
+
+  function handleTimeBandChange(vehicleIndex, bandIndex, key, value) {
+    setVehicleSlabs((prev) => {
+      const copy = [...prev]
+      const bands = [...(copy[vehicleIndex].time_bands || [])]
+      bands[bandIndex] = { ...bands[bandIndex], [key]: key === 'amount' ? parseFloat(value) || 0 : value }
+      copy[vehicleIndex] = { ...copy[vehicleIndex], time_bands: bands }
+      return copy
+    })
+  }
+
+  function handleRemoveTimeBand(vehicleIndex, bandIndex) {
+    setVehicleSlabs((prev) => {
+      const copy = [...prev]
+      const bands = (copy[vehicleIndex].time_bands || []).filter((_, i) => i !== bandIndex)
+      copy[vehicleIndex] = { ...copy[vehicleIndex], time_bands: bands }
       return copy
     })
   }
@@ -424,10 +473,12 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
     }
 
     const rawBaseFare = minCharge + accumulatedSlabCost
+    const timeBandRaw = activeBandAmount(vConfig.time_bands, simTime)
     const vAnchorNum = Number(vConfig.anchor_model) || (anchorModel?.model_number ?? 3)
     const vMarkupPct = vConfig.markup_percent !== undefined ? Number(vConfig.markup_percent) : (anchorModel?.markup_percent ?? 10)
     const anchorFactor = 1 + vMarkupPct / 100
-    const anchorFare = rawBaseFare * anchorFactor
+    // The band is part of the raw fare, so it is scaled by the markup and every model offset like the rest.
+    const anchorFare = (rawBaseFare + timeBandRaw) * anchorFactor
 
     const models = (modelMultipliers || []).map((m) => {
       const offsetPct = m.percent_offset || 0
@@ -447,13 +498,14 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
       min_charge: minCharge,
       accumulated_slab_cost: Math.round(accumulatedSlabCost * 100) / 100,
       raw_base_fare: Math.round(rawBaseFare * 100) / 100,
+      time_band_raw: Math.round(timeBandRaw * 100) / 100,
       anchor_fare: Math.round(anchorFare * 100) / 100,
       anchor_markup_pct: vMarkupPct,
       anchor_model_num: vAnchorNum,
       slab_breakdown: slabBreakdown,
       models,
     }
-  }, [vehicleSlabs, modelMultipliers, anchorModel, simVehicle, simDistance])
+  }, [vehicleSlabs, modelMultipliers, anchorModel, simVehicle, simDistance, simTime])
 
   return (
     <Modal
@@ -670,6 +722,92 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Time-of-day surcharge bands: a flat ₹ add-on while the clock (IST) is inside a window, e.g. Porter's
+                evening / late-night add-on. Same units as the matrix above (before markup and model offset), so it
+                scales with the models. A vehicle with at least one band ignores the rate card's single night charge. */}
+            <div className="rounded-xl border p-3.5 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+              <div>
+                <div className="text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                  Time-of-day surcharge (evening / late-night add-on)
+                </div>
+                <div className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                  Flat ₹ added while the IST clock is inside a window. Amounts are entered like the Min Charge above (before the markup and model
+                  offset), so every model gets it in proportion. A vehicle with a window here no longer uses its rate card night charge. Leave a
+                  vehicle empty to keep the old night charge. A window can wrap past midnight (23:00 → 06:00) and the end time is exclusive.
+                </div>
+              </div>
+
+              {vehicleSlabs.map((v, vIdx) => {
+                const bands = v.time_bands || []
+                const markupFactor = 1 + (v.markup_percent !== undefined ? Number(v.markup_percent) : 10) / 100
+                return (
+                  <div key={v.vehicle_key || v.vehicle_type} className="flex flex-col gap-2 border-t pt-2.5 sm:flex-row sm:items-start" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex w-36 shrink-0 items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                      {getVehicleIcon(v.vehicle_type)}
+                      {v.vehicle_type}
+                    </div>
+                    <div className="flex-1 space-y-1.5">
+                      {bands.length === 0 && (
+                        <div className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                          No time-of-day surcharge (uses the rate card night charge, if any)
+                        </div>
+                      )}
+                      {bands.map((b, bIdx) => (
+                        <div key={bIdx} className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="time"
+                            value={b.from}
+                            onChange={(e) => handleTimeBandChange(vIdx, bIdx, 'from', e.target.value)}
+                            className="rounded-lg border px-2 py-1 font-mono-data text-[12px] outline-none focus:border-brand"
+                            style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                          />
+                          <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>to</span>
+                          <input
+                            type="time"
+                            value={b.to}
+                            onChange={(e) => handleTimeBandChange(vIdx, bIdx, 'to', e.target.value)}
+                            className="rounded-lg border px-2 py-1 font-mono-data text-[12px] outline-none focus:border-brand"
+                            style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                          />
+                          <div className="relative w-24">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold" style={{ color: 'var(--brand)' }}>₹</span>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={b.amount}
+                              onChange={(e) => handleTimeBandChange(vIdx, bIdx, 'amount', e.target.value)}
+                              className="w-full rounded-lg border py-1 pl-5 pr-1.5 text-center font-mono-data text-[12px] font-semibold outline-none focus:border-brand"
+                              style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                            />
+                          </div>
+                          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                            ≈ ₹{Math.round((Number(b.amount) || 0) * markupFactor)} on the anchor model
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTimeBand(vIdx, bIdx)}
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-black/5 dark:hover:bg-white/10"
+                            style={{ color: 'var(--ink-muted)' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => handleAddTimeBand(vIdx)}
+                        className="rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold hover:opacity-90"
+                        style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                      >
+                        + Add window
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -1027,6 +1165,32 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                   </div>
                 </div>
               </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+                <label className="text-[11.5px] font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                  Time of day (IST)
+                </label>
+                <input
+                  type="time"
+                  value={simTime}
+                  onChange={(e) => setSimTime(e.target.value)}
+                  className="rounded-lg border px-2 py-1 font-mono-data text-[12px] outline-none focus:border-brand"
+                  style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
+                />
+                {simTime && (
+                  <button
+                    type="button"
+                    onClick={() => setSimTime('')}
+                    className="rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-black/5 dark:hover:bg-white/10"
+                    style={{ color: 'var(--ink-muted)' }}
+                  >
+                    Clear (daytime)
+                  </button>
+                )}
+                <span className="text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                  Pick a time to include this vehicle's time-of-day surcharge in the fares below.
+                </span>
+              </div>
             </div>
 
             {/* Step-by-Step Breakdown Grid */}
@@ -1072,6 +1236,15 @@ export default function SlabPricingModal({ open, onClose, onSynced }) {
                         {formatCurrency(simulationResult.raw_base_fare)}
                       </span>
                     </div>
+
+                    {simulationResult.time_band_raw > 0 && (
+                      <div className="flex items-center justify-between text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                        <span>Time-of-day surcharge at {simTime} IST</span>
+                        <span className="font-mono-data" style={{ color: 'var(--ink)' }}>
+                          +{formatCurrency(simulationResult.time_band_raw)}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between text-[11.5px] pt-1" style={{ color: 'var(--ink-muted)' }}>
                       <span>Anchor (Model 3) with +{simulationResult.anchor_markup_pct}% Markup</span>
