@@ -456,9 +456,14 @@ describe("time-of-day surcharge bands in the fare engine", () => {
     expect(r.fare).toBe(Math.round(237 * 1.1 + 150));
   });
 
-  it("a linear-priced package ignores bands", () => {
-    const linear = { ...pkgFor("Model 2"), use_linear_pricing: true };
-    const r = priceForPackage(linear, 5, 1, 0, null, vehicle, multipliers, 0, evening);
-    expect(r.fare).toBe(Math.round(1 + 5 + 150));
+  it("a linear-priced package (e.g. a Model 1 synced from the slabs) gets the band too, scaled by its model offset", () => {
+    const linear = (title) => ({ ...pkgFor(title), use_linear_pricing: true });
+    const at = (title, now) => priceForPackage(linear(title), 5, 1, 0, null, vehicle, multipliers, 0, now);
+    // linear fare = 1 + 5*1 = 6; band 63.64 raw * 1.1 markup * (1 + model offset)
+    expect(at("Model 2", day).fare).toBe(6);
+    expect(at("Model 2", evening).fare).toBe(Math.round(6 + 63.64 * 1.1));
+    expect(at("Model 1", evening).fare).toBe(Math.round(6 + 63.64 * 1.1 * 0.9));
+    expect(at("Model 3", lateNight).fare).toBe(Math.round(6 + 136.36 * 1.1 * 1.08));
+    expect(at("Model 1", evening).isNight).toBe(1);
   });
 });

@@ -131,7 +131,24 @@ async function getCoveredBodyCharge() {
  * offset like every other part of the fare. Without bands the package's own night window applies as before.
  */
 function usesTimeBands(pkg, vehicleConfig) {
-  return !!vehicleConfig && pkg?.use_linear_pricing !== true && hasTimeBands(vehicleConfig);
+  // Linear-priced packages (use_linear_pricing, e.g. a Model 1 whose min/per-km came from the slab sync) get the
+  // vehicle's bands too: the band belongs to the vehicle, not to how one package computes its distance charge.
+  return !!vehicleConfig && hasTimeBands(vehicleConfig);
+}
+
+/** Band amount for this package: raw band × vehicle markup × the package's model offset (same scaling as the fare). */
+function timeBandChargeFor(pkg, vehicleConfig, multipliers, now) {
+  const raw = timeBandRawAmount(vehicleConfig, now);
+  if (!raw) return 0;
+  const anchorMarkup = Number(
+    vehicleConfig?.markup_percent ??
+    vehicleConfig?.anchor_markup_percent ??
+    multipliers.anchor_markup_percent
+  ) || 10;
+  const pkgTitle = String(pkg?.title || "").toLowerCase();
+  const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
+  const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
+  return raw * (1 + anchorMarkup / 100) * (1 + offset / 100);
 }
 
 function isNightFor(pkg, vehicleConfig, now = new Date()) {
@@ -144,7 +161,7 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
   const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
   const bandsApply = usesTimeBands(pkg, vehicleConfig);
-  let timeBandCharge = 0;
+  const timeBandCharge = bandsApply ? timeBandChargeFor(pkg, vehicleConfig, multipliers, now) : 0;
 
   let dCharge;
   if (vehicleConfig && pkg?.use_linear_pricing !== true) {
@@ -160,7 +177,6 @@ function calculateFare(pkg, distanceKm, isNight, radiusRangeKm = 1, extraMileCha
     const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
     const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
     const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
-    if (bandsApply) timeBandCharge = timeBandRawAmount(vehicleConfig, now) * effectiveMultiplier;
 
     // A slab-priced vehicle's base fare comes from calculateBaseSlabFare, not
     // pkg.min_charge/per_km_charge — the two fields applyPlanDiscount (see
@@ -206,7 +222,7 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
   const vehicleConfig = slabConfig || (pkg?.cat_id || pkg?.category ? findVehicleSlabConfig(DEFAULT_SLAB_RATES, pkg.cat_id || pkg.category || pkg.category_id) : null);
   const multipliers = modelMultipliers || DEFAULT_MODEL_MULTIPLIERS;
   const bandsApply = usesTimeBands(pkg, vehicleConfig);
-  let timeBandCharge = 0;
+  const timeBandCharge = bandsApply ? timeBandChargeFor(pkg, vehicleConfig, multipliers, now) : 0;
 
   let baseFare, distanceCharge;
   if (vehicleConfig && pkg?.use_linear_pricing !== true) {
@@ -222,7 +238,6 @@ function calculateFareBreakdown(pkg, distanceKm, isNight, radiusRangeKm = 1, ext
     const modelMatch = (multipliers.models || []).find((m) => pkgTitle.includes(m.model.toLowerCase()));
     const offset = modelMatch ? Number(modelMatch.offset_percent) || 0 : 0;
     const effectiveMultiplier = anchorMultiplier * (1 + offset / 100);
-    if (bandsApply) timeBandCharge = timeBandRawAmount(vehicleConfig, now) * effectiveMultiplier;
 
     const rawBase = baseCalc.minCharge * effectiveMultiplier;
     const rawDist = baseCalc.totalDistanceCharge * effectiveMultiplier;
