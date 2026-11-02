@@ -581,6 +581,9 @@ async function simulateFare(req, res) {
   }
 }
 
+// Share of a model's per-km rate billed per extra km of pickup distance / search radius when syncing from the slabs.
+const PICKUP_PER_KM_SHARE = 0;
+
 async function syncModelsFromSlabs(req, res) {
   try {
     const config = await getSlabPricingConfig();
@@ -618,7 +621,9 @@ async function syncModelsFromSlabs(req, res) {
         // Representative per_km_charge for trip rate (e.g. 5-10 km slab rate scaled)
         const basePerKm = Number(vehicleConfig.rates?.["5_10"] || vehicleConfig.rates?.["1_5"] || 10);
         const calculatedPerKm = Math.round(basePerKm * effectiveMultiplier * 100) / 100;
-        const calculatedPickupPerKm = Math.round(calculatedPerKm * 0.5 * 100) / 100;
+        // Pickup / search-radius ₹ per extra km. 0 = the customer pays only the trip fare, like Porter; it used to be
+        // 50% of the per-km rate, which made every fare-estimate with a wider search area dearer than Porter's.
+        const calculatedPickupPerKm = Math.round(calculatedPerKm * PICKUP_PER_KM_SHARE * 100) / 100;
 
         const modelTargetTitle = String(m.model).trim();
         const pkgMatch = packages.find((p) =>
@@ -631,7 +636,8 @@ async function syncModelsFromSlabs(req, res) {
             data: {
               min_charge: String(calculatedMin),
               per_km_charge: String(calculatedPerKm),
-              pickup_per_km_charge: pkgMatch.pickup_per_km_charge != null ? String(calculatedPickupPerKm) : null,
+              // Always written (a null would fall back to the full per-km rate for the pickup distance).
+              pickup_per_km_charge: String(calculatedPickupPerKm),
               user_title: m.user_title ? String(m.user_title).trim() : pkgMatch.user_title,
               driver_title: m.driver_title ? String(m.driver_title).trim() : pkgMatch.driver_title,
             },
