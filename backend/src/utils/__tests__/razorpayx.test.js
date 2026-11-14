@@ -34,6 +34,14 @@ describe("razorpayx client", () => {
     });
   });
 
+  describe("isWebhookConfigured", () => {
+    it("is true only when RAZORPAYX_WEBHOOK_SECRET is set", () => {
+      expect(rx.isWebhookConfigured()).toBe(true);
+      delete process.env.RAZORPAYX_WEBHOOK_SECRET;
+      expect(rx.isWebhookConfigured()).toBe(false);
+    });
+  });
+
   describe("verifyWebhookSignature", () => {
     const body = Buffer.from('{"event":"payout.processed"}');
     const sign = (b, s = "whsec") => crypto.createHmac("sha256", s).update(b).digest("hex");
@@ -50,7 +58,8 @@ describe("razorpayx client", () => {
   });
 
   describe("createPayout", () => {
-    const okResp = { ok: true, status: 200, json: async () => ({ id: "pout_1", status: "processing", utr: null }) };
+    const okBody = { id: "pout_1", status: "processing", utr: null, fund_account_id: "fa_1", amount: 200 };
+    const okResp = { ok: true, status: 200, json: async () => okBody };
 
     it("posts the exact payload for UPI", async () => {
       global.fetch = jest.fn().mockResolvedValue(okResp);
@@ -71,7 +80,21 @@ describe("razorpayx client", () => {
         purpose: "payout",
         queue_if_low_balance: false,
         reference_id: "wd-5",
+        narration: "Shifter driver payout",
       });
+    });
+
+    it.each([
+      ["fund_account_id differs", { fund_account_id: "fa_other" }],
+      ["amount differs", { amount: 20000 }],
+      ["fund_account_id missing", { fund_account_id: undefined }],
+      ["amount missing", { amount: undefined }],
+    ])("a 2xx whose %s is a non-definitive failure", async (_label, patch) => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ...okBody, ...patch }) });
+      const r = await rx.createPayout({ fundAccountId: "fa_1", amountRupees: "2.00", method: "upi", referenceId: "wd-5" });
+      expect(r).toMatchObject({ ok: false, definitive: false });
+      expect(r.reason).toContain("did not match");
+      expect(r.reason).toContain("pout_1");
     });
 
     it("uses IMPS for bank", async () => {
@@ -88,13 +111,22 @@ describe("razorpayx client", () => {
         .toEqual({ ok: false, definitive: true, reason: "Invalid VPA" });
     });
 
-    it.each([408, 409, 429, 401, 403])("treats %i as non-definitive even with a Razorpay error body", async (status) => {
+    it.each([408, 409, 429])("treats %i as non-definitive even with a Razorpay error body", async (status) => {
       global.fetch = jest.fn().mockResolvedValue({ ok: false, status, json: async () => ({ error: { description: "secret detail" } }) });
       const r = await rx.createPayout({ fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-5" });
       expect(r).toMatchObject({ ok: false, definitive: false });
-      if (status === 401 || status === 403) {
-        expect(r.reason).toBe("RazorpayX rejected our credentials or permissions");
-      }
+    });
+
+    // An unauthenticated / forbidden request cannot have created a payout.
+    it.each([
+      [401, { error: { description: "secret detail" } }],
+      [403, { error: { description: "secret detail" } }],
+      [401, null],
+      [403, { message: "proxy said no" }],
+    ])("treats %i as definitive (body %j) with a fixed reason", async (status, body) => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status, json: async () => body });
+      const r = await rx.createPayout({ fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-5" });
+      expect(r).toEqual({ ok: false, definitive: true, reason: "RazorpayX rejected our credentials or permissions" });
     });
 
     it("treats a 400 without an error object as non-definitive", async () => {

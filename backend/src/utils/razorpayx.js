@@ -3,7 +3,8 @@ const logger = require("./logger");
 
 // RazorpayX (payouts) API client. Result shape:
 //   { ok: true, ...data } | { ok: false, definitive: boolean, reason: string }
-// definitive=true  -> Razorpay rejected the request (4xx); safe to treat as failed.
+// definitive=true  -> Razorpay rejected the request (4xx, incl. 401/403); safe
+//                     to treat as "nothing was created".
 // definitive=false -> outcome unknown (network error, timeout, 5xx, unreadable
 //                     body, or not configured); caller must not assume failure.
 
@@ -16,6 +17,12 @@ function isConfigured() {
       process.env.RAZORPAYX_KEY_SECRET &&
       process.env.RAZORPAYX_ACCOUNT_NUMBER
   );
+}
+
+// Approve also requires the webhook secret: without it payout.processed /
+// payout.reversed events are refused and payouts only resolve via the sweeper.
+function isWebhookConfigured() {
+  return Boolean(process.env.RAZORPAYX_WEBHOOK_SECRET);
 }
 
 function toPaise(rupees) {
@@ -33,11 +40,15 @@ function verifyWebhookSignature(rawBody, signature) {
 }
 
 // The one rule for "Razorpay genuinely rejected this request" (callers refund
-// on definitive). 408/409 = outcome unknown or same idempotency key in flight,
-// 429 = rate limit, 401/403 = credential/permission problem; none of these
-// prove the payout was not made. Body must also be a Razorpay error object.
-const NON_DEFINITIVE_4XX = new Set([408, 409, 429, 401, 403]);
+// on definitive). 401/403 = the request was not authenticated / not allowed,
+// so it cannot have created anything: definitive whatever the body. 408/409 =
+// outcome unknown or same idempotency key in flight, 429 = rate limit; these
+// never prove the payout was not made. Any other 4xx must also carry a
+// Razorpay error object (a bare 4xx may come from a proxy/WAF).
+const AUTH_REJECTED = new Set([401, 403]);
+const NON_DEFINITIVE_4XX = new Set([408, 409, 429]);
 function isDefinitiveRejection(status, data) {
+  if (AUTH_REJECTED.has(status)) return true;
   return status >= 400 && status < 500 && !NON_DEFINITIVE_4XX.has(status) && Boolean(data && data.error);
 }
 
@@ -70,8 +81,8 @@ async function request(label, method, path, { body, headers } = {}) {
   }
   if (!resp.ok) {
     logger.error(`${label}: RazorpayX API error (HTTP ${resp.status}):`, data);
-    if (resp.status === 401 || resp.status === 403) {
-      return { ok: false, definitive: false, reason: "RazorpayX rejected our credentials or permissions" };
+    if (AUTH_REJECTED.has(resp.status)) {
+      return { ok: false, definitive: true, reason: "RazorpayX rejected our credentials or permissions" };
     }
     if (isDefinitiveRejection(resp.status, data)) {
       return { ok: false, definitive: true, reason: data.error.description || "RazorpayX rejected the request" };
@@ -124,11 +135,26 @@ async function createPayout({ fundAccountId, amountRupees, method, referenceId }
       purpose: "payout",
       queue_if_low_balance: false,
       reference_id: referenceId,
+      narration: "Shifter driver payout",
     },
   });
   if (!r.ok) return r;
   const bad = missingId("razorpayx.createPayout", r);
   if (bad) return bad;
+  // Only accept a payout that is provably the one we asked for. Anything else
+  // is an unknown outcome: the caller keeps the request processing, records
+  // the reason and never refunds.
+  if (r.data.fund_account_id !== fundAccountId || Number(r.data.amount) !== toPaise(amountRupees)) {
+    logger.error(
+      `razorpayx.createPayout: response for ${referenceId} did not match the request ` +
+        `(sent fund account ${fundAccountId} / ${toPaise(amountRupees)} paise, got ${r.data.fund_account_id} / ${r.data.amount}, payout ${r.data.id}).`
+    );
+    return {
+      ok: false,
+      definitive: false,
+      reason: `RazorpayX payout ${r.data.id} did not match the request (fund account / amount) — check it in the RazorpayX dashboard`,
+    };
+  }
   return { ok: true, id: r.data.id, status: r.data.status, utr: r.data.utr ?? null };
 }
 
@@ -148,6 +174,7 @@ async function fetchPayout(payoutId) {
 
 module.exports = {
   isConfigured,
+  isWebhookConfigured,
   toPaise,
   verifyWebhookSignature,
   createContact,
