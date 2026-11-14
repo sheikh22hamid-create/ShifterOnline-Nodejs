@@ -1,8 +1,9 @@
 const prisma = require("../config/db");
-const { istNow } = require("../utils/istTime");
 const adminSocket = require("../sockets/adminSocket");
 const pushNotifier = require("../services/pushNotifier");
 const logger = require("../utils/logger");
+const razorpayx = require("../utils/razorpayx");
+const payoutService = require("../services/withdrawalPayout");
 
 function internalError(res, err, label) {
   logger.error(`${label} failed:`, err);
@@ -11,6 +12,16 @@ function internalError(res, err, label) {
 
 function riderName(r) {
   return r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || null;
+}
+
+const FORBIDDEN_MESSAGE = "Forbidden: withdrawal request is outside your assigned city";
+
+// Non-superadmin admins may only act on requests in their own city. Legacy
+// rows without city_id fall back to the rider's city.
+function cityScope(req, withdrawal, rider) {
+  const cityId = withdrawal.city_id ?? rider?.city_id ?? null;
+  const forbidden = req.user.role !== "superadmin" && cityId !== parseInt(req.user.city_id, 10);
+  return { cityId, forbidden };
 }
 
 async function list(req, res) {
@@ -56,6 +67,9 @@ async function list(req, res) {
           ? { bank_name: bank.bank_name, account_no: bank.iban_num, ifsc: bank.ifsc_code }
           : null,
         status: w.status,
+        utr: w.utr ?? null,
+        failure_reason: w.failure_reason ?? null,
+        razorpay_payout_id: w.razorpay_payout_id ?? null,
         created_at: w.created_at,
       };
     });
@@ -66,10 +80,40 @@ async function list(req, res) {
   }
 }
 
+// Driver-facing "Payout approved" entry plus a best-effort push. Never throws:
+// money has already moved, so a notification failure must not change the
+// HTTP result.
+async function notifyPayoutApproved(rider, amount) {
+  try {
+    await prisma.tbl_rnoti.create({
+      data: {
+        rid: rider.id,
+        title: "Payout approved",
+        msg: `Your withdrawal of ${amount} is on its way to your account.`,
+        type: "payout",
+        date: new Date(),
+      },
+    });
+  } catch (err) {
+    logger.error(`payouts.approve: tbl_rnoti insert failed for rider ${rider.id}:`, err);
+  }
+  if (rider.fcm_token) {
+    try {
+      await pushNotifier.notifyDriverWalletTransaction(
+        rider.fcm_token,
+        "debit",
+        `₹${amount.toFixed(2)}`,
+        "Payout approved — on its way to your account"
+      );
+    } catch (err) {
+      logger.error(`payouts.approve: wallet push notify failed for rider ${rider.id}:`, err);
+    }
+  }
+}
+
 async function approve(req, res) {
   try {
     const id = parseInt(req.params.id, 10);
-    const { transaction_reference, payment_proof_url } = req.body;
 
     const withdrawal = await prisma.driver_withdraw_requests.findUnique({ where: { id } });
     if (!withdrawal) {
@@ -83,65 +127,76 @@ async function approve(req, res) {
     if (!rider) {
       return res.status(404).json({ success: false, message: "Driver for this withdrawal request no longer exists" });
     }
-    const cityId = withdrawal.city_id ?? rider.city_id ?? null;
-    if (req.user.role !== "superadmin" && cityId !== parseInt(req.user.city_id, 10)) {
-      return res.status(403).json({ success: false, message: "Forbidden: withdrawal request is outside your assigned city" });
+    const { cityId, forbidden } = cityScope(req, withdrawal, rider);
+    if (forbidden) {
+      return res.status(403).json({ success: false, message: FORBIDDEN_MESSAGE });
+    }
+
+    if (!razorpayx.isConfigured()) {
+      return res.status(503).json({ success: false, message: "RazorpayX payouts are not configured." });
+    }
+
+    // Read-only check, so a mismatch is refused before anything is claimed.
+    const destination = await payoutService.resolveDestination(withdrawal, rider);
+    if (!destination.ok) {
+      return res.status(409).json({ success: false, message: destination.message });
+    }
+
+    const claim = await payoutService.claimAndDebit(id);
+    if (!claim.ok) {
+      const message =
+        claim.reason === "low_balance"
+          ? "Driver's wallet balance is lower than the requested amount"
+          : "Withdrawal request is already being processed";
+      return res.status(409).json({ success: false, message });
+    }
+
+    const result = await payoutService.submitPayout(id);
+    if (result.outcome === "refused") {
+      // revertToPending has already refunded and notified the admin socket.
+      return res.status(422).json({ success: false, message: result.reason });
     }
 
     const amount = Number(withdrawal.amount);
-    if (Number(rider.wallet_balance) < amount) {
-      return res.status(409).json({ success: false, message: "Driver's wallet balance is lower than the requested amount" });
+    try {
+      adminSocket.notifyPayoutUpdate({ id, rider_id: rider.id, city_id: cityId, status: "processing", amount });
+    } catch (err) {
+      logger.error(`payouts.approve: admin socket notify failed for withdrawal ${id}:`, err);
     }
 
-    const remarkParts = [`Payout approved (withdrawal #${id})`];
-    if (withdrawal.payout_detail) remarkParts.push(`via ${withdrawal.payout_detail}`);
-    if (transaction_reference) remarkParts.push(`ref: ${transaction_reference}`);
-    if (payment_proof_url) remarkParts.push(`proof: ${payment_proof_url}`);
-
-    await prisma.$transaction([
-      prisma.driver_withdraw_requests.update({ where: { id }, data: { status: "approved" } }),
-      prisma.tbl_rider.update({ where: { id: rider.id }, data: { wallet_balance: { decrement: amount } } }),
-      prisma.tbl_wallet_history.create({
-        data: {
-          user_id: rider.id,
-          amount,
-          type: "debit",
-          remark: remarkParts.join(" — "),
-          wallet_type: "driver",
-          created_at: istNow(),
-        },
-      }),
-      prisma.tbl_rnoti.create({
-        data: {
-          rid: rider.id,
-          title: "Payout approved",
-          msg: `Your withdrawal of ${amount} has been approved and paid out.${transaction_reference ? ` Reference: ${transaction_reference}` : ""}`,
-          type: "payout",
-          date: new Date(),
-        },
-      }),
-    ]);
-
-    adminSocket.notifyPayoutUpdate({
-      id,
-      rider_id: rider.id,
-      city_id: cityId,
-      status: "approved",
-      amount,
-    });
-
-    // In-app notification list entry is already written above (tbl_rnoti,
-    // "Payout approved") - this is only the actual push so it's seen even
-    // with the app backgrounded, which nothing sent before this fix.
-    if (rider.fcm_token) {
-      pushNotifier
-        .notifyDriverWalletTransaction(rider.fcm_token, "debit", `₹${amount.toFixed(2)}`, remarkParts.join(" — "))
-        .catch((err) => logger.error(`payouts.approve: wallet push notify failed for rider ${rider.id}:`, err));
+    if (result.outcome === "accepted") {
+      await notifyPayoutApproved(rider, amount);
+      return res.status(200).json({ success: true, status: "processing", message: "Payout sent to RazorpayX" });
     }
-
-    return res.status(200).json({ success: true, message: "Withdrawal request approved" });
+    return res
+      .status(202)
+      .json({ success: true, status: "processing", message: "Payout submitted; confirmation pending" });
   } catch (err) {
     return internalError(res, err, "payouts.approve");
+  }
+}
+
+async function sync(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+
+    const withdrawal = await prisma.driver_withdraw_requests.findUnique({ where: { id } });
+    if (!withdrawal) {
+      return res.status(404).json({ success: false, message: "Withdrawal request not found" });
+    }
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: withdrawal.rider_id } });
+    if (cityScope(req, withdrawal, rider).forbidden) {
+      return res.status(403).json({ success: false, message: FORBIDDEN_MESSAGE });
+    }
+    // syncWithdrawal reports a misleading "refused" for non-processing rows.
+    if (withdrawal.status !== "processing") {
+      return res.status(409).json({ success: false, message: "Only processing payouts can be checked" });
+    }
+
+    const status = await payoutService.syncWithdrawal(id);
+    return res.status(200).json({ success: true, status });
+  } catch (err) {
+    return internalError(res, err, "payouts.sync");
   }
 }
 
@@ -159,9 +214,9 @@ async function reject(req, res) {
     }
 
     const rider = await prisma.tbl_rider.findUnique({ where: { id: withdrawal.rider_id } });
-    const cityId = withdrawal.city_id ?? rider?.city_id ?? null;
-    if (req.user.role !== "superadmin" && cityId !== parseInt(req.user.city_id, 10)) {
-      return res.status(403).json({ success: false, message: "Forbidden: withdrawal request is outside your assigned city" });
+    const { cityId, forbidden } = cityScope(req, withdrawal, rider);
+    if (forbidden) {
+      return res.status(403).json({ success: false, message: FORBIDDEN_MESSAGE });
     }
 
     await prisma.driver_withdraw_requests.update({ where: { id }, data: { status: "rejected" } });
@@ -192,4 +247,4 @@ async function reject(req, res) {
   }
 }
 
-module.exports = { list, approve, reject };
+module.exports = { list, approve, sync, reject };

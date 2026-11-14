@@ -285,6 +285,7 @@ router.delete("/customers/:id", auth, authorize("superadmin"), adminCustomerCont
 router.get("/payouts", auth, authorize("superadmin", "admin"), scopeFilter, payoutController.list);
 router.post("/payouts/:id/approve", auth, authorize("superadmin", "admin"), payoutController.approve);
 router.post("/payouts/:id/reject", auth, authorize("superadmin", "admin"), payoutController.reject);
+router.post("/payouts/:id/sync", auth, authorize("superadmin", "admin"), payoutController.sync);
 router.get("/settlements", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.list);
 router.get("/settlements/:id", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.detail);
 router.post("/settlements/:id/resolve", auth, authorize("superadmin", "admin"), scopeFilter, adminSettlementController.resolve);
