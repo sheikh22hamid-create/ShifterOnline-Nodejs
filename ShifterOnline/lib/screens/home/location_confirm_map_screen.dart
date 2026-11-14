@@ -27,8 +27,13 @@ class LocationConfirmMapScreen extends StatefulWidget {
   final String initialPlaceName;
   final Map<String, dynamic>? initialData;
 
+  /// Customise Order only: just pick the point on the map. No sender/receiver contact
+  /// details are asked, and the normal booking's saved pickup/drop is left untouched.
+  final bool locationOnly;
+
   const LocationConfirmMapScreen({
     super.key,
+    this.locationOnly = false,
     required this.locationType,
     this.stopIndex = 0,
     required this.initialLat,
@@ -304,6 +309,19 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
   }
 
   void _confirmAndProceed() async {
+    if (widget.locationOnly) {
+      final houseNo = _houseNoController.text.trim();
+      final base = _currentAddress.isNotEmpty
+          ? _currentAddress
+          : "Location (${_currentLat.toStringAsFixed(4)}, ${_currentLng.toStringAsFixed(4)})";
+      // Coordinates are exactly the pin the customer confirmed; only the address text gets the flat no. in front.
+      Get.back(result: <String, dynamic>{
+        "address": houseNo.isNotEmpty ? "$houseNo, $base" : base,
+        "lat_map": _currentLat,
+        "long_map": _currentLng,
+      });
+      return;
+    }
     final name = _nameController.text.trim();
     final mobile = _mobileController.text.trim();
     final houseNo = _houseNoController.text.trim();
@@ -651,6 +669,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                             ),
                           ),
 
+                          if (!widget.locationOnly) ...[
                           const SizedBox(height: 16),
 
                           // Section Heading: Contact Details
@@ -861,6 +880,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                             ],
                           ),
                           const SizedBox(height: 8),
+                          ],
                         ],
                       ),
                     ),
@@ -889,7 +909,9 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                               child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                             )
                           : Text(
-                              _isAddress
+                              widget.locationOnly
+                                  ? "Confirm Location"
+                                  : _isAddress
                                   ? "Save Address"
                                   : (_isPickup
                                       ? "Confirm & Continue"

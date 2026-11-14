@@ -193,6 +193,10 @@ public class CustomiseOrderListActivity extends LocaleAwareActivity implements G
         }
         if (ok && CALL_ACCEPT.equals(callNo)) {
             Toast.makeText(this, "Order accepted. Opening your trip.", Toast.LENGTH_LONG).show();
+            // The socket event normally does this too; the launcher ignores the second call for the same ride.
+            if (result.has("pkg_order_id") && !result.get("pkg_order_id").isJsonNull()) {
+                com.shifter.driver.utility.CustomiseTripLauncher.open(this, result.get("pkg_order_id").getAsString());
+            }
         } else if (ok && CALL_COUNTER.equals(callNo)) {
             Toast.makeText(this, "Your price was sent to the customer.", Toast.LENGTH_LONG).show();
         }

@@ -28,7 +28,11 @@ class LocationSearchScreen extends StatefulWidget {
   final Map<String, dynamic>? pickupData; // For Drop/Stop mode header
   final Map<String, dynamic>? initialData;
 
+  /// Customise Order: search + pin on map only (see LocationConfirmMapScreen.locationOnly).
+  final bool locationOnly;
+
   const LocationSearchScreen({
+    this.locationOnly = false,
     super.key,
     required this.locationType,
     this.stopIndex = 0,
@@ -540,6 +544,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
         initialAddress: address,
         initialPlaceName: placeName,
         initialData: widget.initialData,
+        locationOnly: widget.locationOnly,
       ),
     );
 

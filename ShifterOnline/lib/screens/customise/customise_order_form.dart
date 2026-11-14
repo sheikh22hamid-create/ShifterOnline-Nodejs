@@ -2,14 +2,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_google_places_hoc081098/flutter_google_places_hoc081098.dart';
 import 'package:get/get.dart';
-import 'package:google_maps_webservice/places.dart';
 import 'package:provider/provider.dart';
-import '../../Api/config.dart';
 import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import '../home/home.dart'; // pickupiteam: the vehicle categories already loaded for the home screen
+import '../home/location_search_screen.dart';
 import 'customise_api.dart';
 import 'customise_order_detail.dart';
 
@@ -106,29 +104,26 @@ class _CustomiseOrderFormState extends State<CustomiseOrderForm> {
     super.dispose();
   }
 
-  Future<_Place?> _pickPlace() async {
+  /// Same search + "pin on the map" flow as the normal booking form (LocationSearchScreen), without the
+  /// sender/receiver contact step. [kind] is 'Pickup', 'Drop' or 'Stop'. The coordinates returned are the
+  /// exact pin the customer confirmed and are passed on untouched.
+  Future<_Place?> _pickPlace(String kind, {int stopIndex = 0}) async {
     try {
-      final p = await PlacesAutocomplete.show(
-        context: context,
-        apiKey: Config.googleApikey,
-        mode: Mode.overlay,
-        types: ['address'],
-        strictbounds: false,
-        components: [Component(Component.country, 'IN')],
-        onError: (err) => debugPrint('Place search error: $err'),
+      final result = await Get.to<Map<String, dynamic>>(
+        () => LocationSearchScreen(locationType: kind, stopIndex: stopIndex, locationOnly: true),
       );
-      final id = p?.placeId;
-      if (p == null || id == null) return null;
-      final details = await GoogleMapsPlaces(apiKey: Config.googleApikey).getDetailsByPlaceId(id);
-      final loc = details.result.geometry?.location;
-      if (loc == null) {
+      if (result == null) return null;
+      final lat = double.tryParse('${result['lat_map']}');
+      final lng = double.tryParse('${result['long_map']}');
+      final address = (result['address'] ?? '').toString().trim();
+      if (lat == null || lng == null || (lat == 0 && lng == 0)) {
         tostmsg('Could not read that location. Please pick another one.');
         return null;
       }
-      return _Place(p.description ?? details.result.formattedAddress ?? '', loc.lat, loc.lng);
+      return _Place(address.isNotEmpty ? address : 'Selected location', lat, lng);
     } catch (e) {
-      debugPrint('Customise place search failed: $e');
-      tostmsg('Error searching location. Please try again.');
+      debugPrint('Customise place pick failed: $e');
+      tostmsg('Error selecting location. Please try again.');
       return null;
     }
   }
@@ -303,7 +298,7 @@ class _CustomiseOrderFormState extends State<CustomiseOrderForm> {
           ),
         ]),
         _placeTile('Choose stop location', s.place, () async {
-          final p = await _pickPlace();
+          final p = await _pickPlace('Stop', stopIndex: index);
           if (p != null) setState(() => s.place = p);
         }),
         Wrap(spacing: 8, children: [
@@ -342,7 +337,7 @@ class _CustomiseOrderFormState extends State<CustomiseOrderForm> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             _card('Route', [
               _placeTile('Choose pickup location', _pickup, () async {
-                final p = await _pickPlace();
+                final p = await _pickPlace('Pickup');
                 if (p != null) setState(() => _pickup = p);
               }),
               SwitchListTile(
@@ -360,7 +355,7 @@ class _CustomiseOrderFormState extends State<CustomiseOrderForm> {
                 label: const Text('Add a stop'),
               ),
               _placeTile('Choose drop location', _drop, () async {
-                final p = await _pickPlace();
+                final p = await _pickPlace('Drop');
                 if (p != null) setState(() => _drop = p);
               }),
             ]),

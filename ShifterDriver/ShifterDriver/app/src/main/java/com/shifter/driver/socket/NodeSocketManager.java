@@ -305,6 +305,12 @@ public class NodeSocketManager {
                         Log.e(TAG, "Error delivering " + customiseEvent, e);
                     }
                 }
+                // This driver's Customise Order just became their ride (they accepted, or the customer picked
+                // their counter-offer): open the normal Trip Details screen, wherever they are in the app.
+                if ("customise:converted".equals(customiseEvent)) {
+                    com.shifter.driver.utility.CustomiseTripLauncher.open(
+                            com.shifter.driver.MyApplication.mContext, data.optString("pkg_order_id", ""));
+                }
             }));
         }
 
