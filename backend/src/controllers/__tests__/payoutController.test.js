@@ -14,10 +14,12 @@ jest.mock("../../services/withdrawalPayout", () => ({
   submitPayout: jest.fn(),
   syncWithdrawal: jest.fn(),
   resolveDestination: jest.fn(),
+  revertToPending: jest.fn(),
 }));
 jest.mock("../../utils/razorpayx", () => ({ isConfigured: jest.fn() }));
 
 const prisma = require("../../config/db");
+const logger = require("../../utils/logger");
 const adminSocket = require("../../sockets/adminSocket");
 const pushNotifier = require("../../services/pushNotifier");
 const payoutService = require("../../services/withdrawalPayout");
@@ -159,6 +161,17 @@ describe("payoutController.approve", () => {
     expect(payoutService.resolveDestination).not.toHaveBeenCalled();
   });
 
+  it("answers a generic 500, never reverts, and logs the withdrawal id when submit throws after a claim", async () => {
+    payoutService.submitPayout.mockRejectedValue(new Error("boom"));
+    const res = mockRes();
+    await approve(approveReq(), res);
+    expect(payoutService.claimAndDebit).toHaveBeenCalledWith(55);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: "Internal server error" });
+    expect(payoutService.revertToPending).not.toHaveBeenCalled();
+    expect(logger.error.mock.calls[0][0]).toContain("55");
+  });
+
   it("answers 404 for an unknown request", async () => {
     prisma.driver_withdraw_requests.findUnique.mockResolvedValue(null);
     const res = mockRes();
@@ -230,12 +243,29 @@ describe("payoutController.reject", () => {
     prisma.tbl_rnoti.create.mockResolvedValue({});
   });
 
-  it("rejects a pending request in the user's city", async () => {
+  it("rejects a pending request in the user's city with a status-guarded update", async () => {
     prisma.driver_withdraw_requests.findUnique.mockResolvedValue(PENDING);
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
     const res = mockRes();
     await reject({ params: { id: "55" }, body: { rejection_reason: "bad" }, user: { role: "admin", city_id: 3 } }, res);
-    expect(prisma.driver_withdraw_requests.update).toHaveBeenCalledWith({ where: { id: 55 }, data: { status: "rejected" } });
+    expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
+      where: { id: 55, status: "pending" },
+      data: { status: "rejected" },
+    });
+    expect(prisma.tbl_rnoti.create).toHaveBeenCalledTimes(1);
+    expect(adminSocket.notifyPayoutUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 55, status: "rejected" }));
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it("answers 409 with no notification when an approve claimed the request meanwhile", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(PENDING);
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 0 });
+    const res = mockRes();
+    await reject({ params: { id: "55" }, body: {}, user: SUPER }, res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: "Withdrawal request is no longer pending" });
+    expect(prisma.tbl_rnoti.create).not.toHaveBeenCalled();
+    expect(adminSocket.notifyPayoutUpdate).not.toHaveBeenCalled();
   });
 
   it("refuses a request that isn't pending and one outside the city", async () => {
@@ -248,7 +278,7 @@ describe("payoutController.reject", () => {
     res = mockRes();
     await reject({ params: { id: "55" }, body: {}, user: { role: "admin", city_id: 9 } }, res);
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(prisma.driver_withdraw_requests.update).not.toHaveBeenCalled();
+    expect(prisma.driver_withdraw_requests.updateMany).not.toHaveBeenCalled();
   });
 });
 

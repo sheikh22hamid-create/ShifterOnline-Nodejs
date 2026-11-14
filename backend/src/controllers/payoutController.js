@@ -172,7 +172,7 @@ async function approve(req, res) {
       .status(202)
       .json({ success: true, status: "processing", message: "Payout submitted; confirmation pending" });
   } catch (err) {
-    return internalError(res, err, "payouts.approve");
+    return internalError(res, err, `payouts.approve (withdrawal #${req.params.id})`);
   }
 }
 
@@ -219,7 +219,15 @@ async function reject(req, res) {
       return res.status(403).json({ success: false, message: FORBIDDEN_MESSAGE });
     }
 
-    await prisma.driver_withdraw_requests.update({ where: { id }, data: { status: "rejected" } });
+    // Guarded on status: an approve may have claimed the request since the
+    // read above, and rejecting a processing payout would orphan it.
+    const moved = await prisma.driver_withdraw_requests.updateMany({
+      where: { id, status: "pending" },
+      data: { status: "rejected" },
+    });
+    if (moved.count !== 1) {
+      return res.status(409).json({ success: false, message: "Withdrawal request is no longer pending" });
+    }
 
     if (rider) {
       await prisma.tbl_rnoti.create({
