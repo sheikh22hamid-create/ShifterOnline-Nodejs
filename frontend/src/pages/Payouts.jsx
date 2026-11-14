@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Check, X } from 'lucide-react'
+import { Check, RefreshCw, X } from 'lucide-react'
 import api from '../services/api'
 import useApiQuery from '../hooks/useApiQuery'
 import useRealtimeSync from '../hooks/useRealtimeSync'
@@ -13,6 +13,8 @@ export default function Payouts() {
   const [status, setStatus] = useState('')
   const [approveTarget, setApproveTarget] = useState(null)
   const [rejectTarget, setRejectTarget] = useState(null)
+  const [notice, setNotice] = useState(null)
+  const [syncingIds, setSyncingIds] = useState([])
 
   const fetcher = useCallback(() => api.get('/payouts', { params: { status: status || undefined } }).then((res) => res.data), [status])
   const { data, loading, error, refetch } = useApiQuery(fetcher)
@@ -20,13 +22,25 @@ export default function Payouts() {
 
   useRealtimeSync(['admin:payout_request', 'admin:payout_update'], refetch)
 
+  async function handleSync(p) {
+    setSyncingIds((ids) => [...ids, p.id])
+    try {
+      await api.post(`/payouts/${p.id}/sync`)
+      refetch()
+    } catch (err) {
+      setNotice({ tone: 'error', text: err.response?.data?.message || 'Could not check this payout.' })
+    } finally {
+      setSyncingIds((ids) => ids.filter((id) => id !== p.id))
+    }
+  }
+
   return (
     <div>
       <h1 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
         Payouts
       </h1>
       <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Driver withdrawal requests.
+        Driver withdrawal requests. Approving a request pays the driver out through RazorpayX.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
@@ -34,7 +48,10 @@ export default function Payouts() {
           <button
             key={f.value}
             type="button"
-            onClick={() => setStatus(f.value)}
+            onClick={() => {
+              setStatus(f.value)
+              setNotice(null)
+            }}
             className="rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors"
             style={{
               borderColor: status === f.value ? 'var(--brand)' : 'var(--border)',
@@ -46,6 +63,23 @@ export default function Payouts() {
           </button>
         ))}
       </div>
+
+      {notice && (
+        <div
+          role="status"
+          className="mt-4 flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-[12.5px]"
+          style={
+            notice.tone === 'error'
+              ? { background: 'var(--danger-soft)', borderColor: 'var(--danger-soft-border)', color: 'var(--danger)' }
+              : { background: 'var(--success-soft)', borderColor: 'var(--border)', color: 'var(--success)' }
+          }
+        >
+          <span>{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="shrink-0">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="surface-card mt-4 overflow-hidden rounded-xl">
         <div className="overflow-x-auto">
@@ -115,6 +149,16 @@ export default function Payouts() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       <Badge tone={payoutStatusTone(p.status)}>{p.status}</Badge>
+                      {p.status === 'paid' && p.utr && (
+                        <div className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                          UTR <span className="font-mono-data">{p.utr}</span>
+                        </div>
+                      )}
+                      {p.failure_reason && ['failed', 'pending', 'processing'].includes(p.status) && (
+                        <div className="mt-1 max-w-[240px] whitespace-normal text-[11.5px]" style={{ color: 'var(--danger)' }}>
+                          {p.failure_reason}
+                        </div>
+                      )}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
                       {formatDateTime(p.created_at)}
@@ -140,6 +184,19 @@ export default function Payouts() {
                           </button>
                         </div>
                       )}
+                      {p.status === 'processing' && (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            disabled={syncingIds.includes(p.id)}
+                            onClick={() => handleSync(p)}
+                            className="flex items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-semibold disabled:opacity-50"
+                            style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+                          >
+                            <RefreshCw size={12} className={syncingIds.includes(p.id) ? 'animate-spin' : ''} /> Check status
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -152,8 +209,9 @@ export default function Payouts() {
         open={Boolean(approveTarget)}
         payout={approveTarget}
         onClose={() => setApproveTarget(null)}
-        onDone={() => {
+        onDone={(message) => {
           setApproveTarget(null)
+          setNotice(message ? { tone: 'success', text: message } : null)
           refetch()
         }}
       />
