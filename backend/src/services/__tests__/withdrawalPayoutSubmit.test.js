@@ -8,7 +8,10 @@ jest.mock("../../config/db", () => ({
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyPayoutUpdate: jest.fn() }));
-jest.mock("../pushNotifier", () => ({ notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("../pushNotifier", () => ({
+  notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined),
+  notifyDriverPayoutSent: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("../../utils/razorpayx", () => ({
   isConfigured: jest.fn(),
   createContact: jest.fn(),
@@ -53,6 +56,13 @@ const BANK = { id: 1, rider_id: 7, iban_num: "123456789012", ifsc_code: "SBIN000
 function revertCalls() {
   return prisma.driver_withdraw_requests.updateMany.mock.calls.filter(
     ([arg]) => arg.data && arg.data.status === "pending"
+  );
+}
+
+// recordFailure: reason stored on the still-processing row, no status change.
+function reasonOnlyWrites() {
+  return prisma.driver_withdraw_requests.updateMany.mock.calls.filter(
+    ([arg]) => arg.data && "failure_reason" in arg.data && !("status" in arg.data)
   );
 }
 
@@ -291,6 +301,49 @@ describe("submitPayout", () => {
     expect(out).toEqual({ outcome: "unknown", reason: "Could not reach RazorpayX. Try again." });
     expect(revertCalls()).toHaveLength(0);
     expect(walletWriteCount()).toBe(0);
+    // First attempt, outcome unknown: the reason is kept on the row for the admin.
+    expect(reasonOnlyWrites()).toEqual([[{
+      where: { id: 55, status: "processing" },
+      data: { failure_reason: "Could not reach RazorpayX. Try again." },
+    }]]);
+  });
+
+  it("payout response mismatch (non-definitive) -> reason stored, no payout id stored, no refund", async () => {
+    const reason = "RazorpayX payout pout_x did not match the request (fund account / amount)";
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: false, reason });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+    expect(reasonOnlyWrites()).toEqual([[{ where: { id: 55, status: "processing" }, data: { failure_reason: reason } }]]);
+    const payoutIdWrites = prisma.driver_withdraw_requests.updateMany.mock.calls.filter(([a]) => "razorpay_payout_id" in a.data);
+    expect(payoutIdWrites).toHaveLength(0);
+  });
+
+  it("first attempt + 401 (definitive) at the contact step -> guarded revert, refused", async () => {
+    razorpayx.createContact.mockResolvedValue({ ok: false, definitive: true, reason: "RazorpayX rejected our credentials or permissions" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "RazorpayX rejected our credentials or permissions" });
+    expect(revertCalls()).toHaveLength(1);
+    expect(razorpayx.createPayout).not.toHaveBeenCalled();
+  });
+
+  it("re-submit + 401 (definitive) -> reason recorded, never refunded", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_fund_account_id: "fa_1" }));
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "RazorpayX rejected our credentials or permissions" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason: "RazorpayX rejected our credentials or permissions" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+  });
+
+  it("driver not found -> reason stored on the row, unknown, nothing sent", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue(null);
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason: "driver not found" });
+    expect(reasonOnlyWrites()).toEqual([[{ where: { id: 55, status: "processing" }, data: { failure_reason: "driver not found" } }]]);
+    expect(razorpayx.createPayout).not.toHaveBeenCalled();
+    expect(walletWriteCount()).toBe(0);
   });
 
   it("not configured (non-definitive at contact step) -> unknown, nothing reverted", async () => {
@@ -301,6 +354,7 @@ describe("submitPayout", () => {
     expect(out).toEqual({ outcome: "unknown", reason: "RazorpayX is not configured" });
     expect(revertCalls()).toHaveLength(0);
     expect(razorpayx.createPayout).not.toHaveBeenCalled();
+    expect(reasonOnlyWrites()).toEqual([[{ where: { id: 55, status: "processing" }, data: { failure_reason: "RazorpayX is not configured" } }]]);
   });
 
   it("destination mismatch -> revertToPending with the message, refused, nothing sent", async () => {
@@ -591,10 +645,45 @@ describe("syncWithdrawal", () => {
     expect(revertCalls()).toHaveLength(1);
   });
 
-  it("not processing -> no Razorpay call, reports the current state", async () => {
-    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "paid", razorpay_payout_id: "pout_1" }));
+  it("not processing (failed / paid without a payout id) -> no Razorpay call, reports the current state", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "failed", razorpay_payout_id: "pout_1" }));
+    expect(await syncWithdrawal(55)).toBe("failed");
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "paid", razorpay_payout_id: null }));
     expect(await syncWithdrawal(55)).toBe("paid");
     expect(razorpayx.fetchPayout).not.toHaveBeenCalled();
+    expect(razorpayx.createPayout).not.toHaveBeenCalled();
+  });
+
+  it("paid row with a payout id, RazorpayX now says reversed -> failed with exactly one refund", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "paid", razorpay_payout_id: "pout_1", utr: "UTR1" }));
+    razorpayx.fetchPayout.mockResolvedValue({ ok: true, id: "pout_1", status: "reversed", utr: "UTR1", failureReason: "Reversed by bank" });
+
+    expect(await syncWithdrawal(55)).toBe("failed");
+    expect(razorpayx.fetchPayout).toHaveBeenCalledWith("pout_1");
+    expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
+      where: { id: 55, status: { in: ["processing", "paid"] }, razorpay_payout_id: "pout_1" },
+      data: expect.objectContaining({ status: "failed", failure_reason: "Reversed by bank" }),
+    });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(razorpayx.createPayout).not.toHaveBeenCalled();
+  });
+
+  it("paid row with a payout id, still processed -> paid, no writes", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "paid", razorpay_payout_id: "pout_1" }));
+    razorpayx.fetchPayout.mockResolvedValue({ ok: true, id: "pout_1", status: "processed", utr: "UTR1", failureReason: null });
+
+    expect(await syncWithdrawal(55)).toBe("paid");
+    expect(prisma.driver_withdraw_requests.updateMany).not.toHaveBeenCalled();
+    expect(walletWriteCount()).toBe(0);
+  });
+
+  it("paid row with a payout id, fetch fails -> stays paid, no writes, never re-submits", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "paid", razorpay_payout_id: "pout_1" }));
+    razorpayx.fetchPayout.mockResolvedValue({ ok: false, definitive: true, reason: "not found" });
+
+    expect(await syncWithdrawal(55)).toBe("paid");
+    expect(prisma.driver_withdraw_requests.updateMany).not.toHaveBeenCalled();
+    expect(walletWriteCount()).toBe(0);
     expect(razorpayx.createPayout).not.toHaveBeenCalled();
   });
 });

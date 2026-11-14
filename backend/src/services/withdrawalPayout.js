@@ -55,8 +55,8 @@ function notifyAdmin(withdrawal, rider, status, amount) {
   }
 }
 
-// In-app notification row + FCM push. Never throws.
-async function notifyDriver(rider, title, msg, amount, type) {
+// In-app notification row + FCM push (push(fcmToken) sends it). Never throws.
+async function notifyDriver(rider, title, msg, push) {
   if (!rider) return;
   try {
     await prisma.tbl_rnoti.create({
@@ -67,7 +67,7 @@ async function notifyDriver(rider, title, msg, amount, type) {
   }
   if (rider.fcm_token) {
     try {
-      await pushNotifier.notifyDriverWalletTransaction(rider.fcm_token, type, rupees(amount), msg);
+      await push(rider.fcm_token);
     } catch (err) {
       logger.error(`withdrawalPayout: push notify failed for rider ${rider.id}:`, err);
     }
@@ -204,7 +204,14 @@ async function applyPayoutState({ withdrawalId, payoutId, status, utr, failureRe
 
   if (isPaid) {
     if (withdrawal.status !== "processing") return "ignored";
-    const data = { status: "paid", utr: clip(utr, 64), payout_processed_at: new Date(), ...payoutIdData };
+    // failure_reason cleared: an earlier "outcome unknown" note no longer applies.
+    const data = {
+      status: "paid",
+      utr: clip(utr, 64),
+      payout_processed_at: new Date(),
+      failure_reason: null,
+      ...payoutIdData,
+    };
     const moved = await prisma.driver_withdraw_requests.updateMany({
       where: { id: withdrawalId, status: "processing", ...payoutIdWhere },
       data,
@@ -212,12 +219,12 @@ async function applyPayoutState({ withdrawalId, payoutId, status, utr, failureRe
     if (moved.count !== 1) return "ignored";
 
     const rider = await findRider(withdrawal.rider_id);
+    // Not a wallet push: the debit was already announced at approve time.
     await notifyDriver(
       rider,
       "Payout sent",
       `Your withdrawal of ${rupees(amount)} has been sent${utr ? ` (UTR ${utr})` : ""}.`,
-      amount,
-      "debit"
+      (token) => pushNotifier.notifyDriverPayoutSent(token, rupees(amount), utr || null)
     );
     notifyAdmin(withdrawal, rider, "paid", amount);
     return "paid";
@@ -241,12 +248,9 @@ async function applyPayoutState({ withdrawalId, payoutId, status, utr, failureRe
   }
 
   const rider = await findRider(withdrawal.rider_id);
-  await notifyDriver(
-    rider,
-    "Payout failed",
-    `Payout failed — ${rupees(amount)} returned to your ledger.`,
-    amount,
-    "credit"
+  const failedMsg = `Payout failed — ${rupees(amount)} returned to your ledger.`;
+  await notifyDriver(rider, "Payout failed", failedMsg, (token) =>
+    pushNotifier.notifyDriverWalletTransaction(token, "credit", rupees(amount), failedMsg)
   );
   notifyAdmin(withdrawal, rider, "failed", amount);
   return "failed";
@@ -303,15 +307,15 @@ async function recordFailure(withdrawalId, reason) {
 
 // Only a Razorpay result with ok:false + definitive:true on a FIRST attempt
 // proves nothing was sent, so only that refunds. Anything else leaves the
-// request processing.
+// request processing with the reason recorded for the admin.
+//   non-definitive (unknown outcome): record reason, never revert.
 //   resubmit: an earlier attempt may exist -> record reason, never revert.
 //   requireNoFundAccount: revert only if no other submit stored a fund
 //   account / payout id meanwhile (steps before this call's own store).
 //   Otherwise (first-attempt createPayout refusal): clear the fund account
 //   this call stored, so a re-approval starts as a clean first attempt.
 async function handleFailure(withdrawalId, result, { resubmit, requireNoFundAccount } = {}) {
-  if (result.definitive !== true) return { outcome: "unknown", reason: result.reason };
-  if (resubmit) return recordFailure(withdrawalId, result.reason);
+  if (result.definitive !== true || resubmit) return recordFailure(withdrawalId, result.reason);
   const reverted = requireNoFundAccount
     ? await revertToPending(withdrawalId, result.reason, { requireNoFundAccount: true })
     : await revertToPending(withdrawalId, result.reason, { clearFundAccount: true });
@@ -337,7 +341,7 @@ async function submitPayout(withdrawalId) {
   const rider = await prisma.tbl_rider.findUnique({ where: { id: withdrawal.rider_id } });
   if (!rider) {
     logger.error(`withdrawalPayout: rider ${withdrawal.rider_id} not found for withdrawal ${withdrawalId}`);
-    return { outcome: "unknown", reason: "driver not found" };
+    return recordFailure(withdrawalId, "driver not found");
   }
 
   let fundAccountId = withdrawal.razorpay_fund_account_id;
@@ -425,20 +429,25 @@ function currentState(withdrawal) {
 }
 
 /**
- * Resolve a processing request against RazorpayX (admin "Check status" and
- * the sweeper). A failed fetch never refunds or reverts, even on a 404.
+ * Resolve a request against RazorpayX (admin "Check status" and the sweeper):
+ * a processing request, or a paid request with a payout id (a payout can be
+ * reversed after it was processed; applyPayoutState refunds paid -> failed
+ * once). A failed fetch never refunds or reverts, even on a 404, and a paid
+ * request is never re-submitted.
  */
 async function syncWithdrawal(withdrawalId) {
   const withdrawal = await prisma.driver_withdraw_requests.findUnique({ where: { id: withdrawalId } });
-  if (!withdrawal || withdrawal.status !== "processing") return currentState(withdrawal);
+  const recheckPaid = withdrawal?.status === "paid" && Boolean(withdrawal.razorpay_payout_id);
+  if (!withdrawal || (withdrawal.status !== "processing" && !recheckPaid)) return currentState(withdrawal);
+  const unchanged = recheckPaid ? "paid" : "processing";
 
   if (withdrawal.razorpay_payout_id) {
     const payout = await razorpayx.fetchPayout(withdrawal.razorpay_payout_id);
     if (!payout.ok) {
       logger.error(
-        `withdrawalPayout: fetchPayout ${withdrawal.razorpay_payout_id} for withdrawal ${withdrawalId} failed (${payout.reason}); left processing`
+        `withdrawalPayout: fetchPayout ${withdrawal.razorpay_payout_id} for withdrawal ${withdrawalId} failed (${payout.reason}); left ${unchanged}`
       );
-      return "processing";
+      return unchanged;
     }
     const applied = await applyPayoutState({
       withdrawalId,
@@ -447,7 +456,7 @@ async function syncWithdrawal(withdrawalId) {
       utr: payout.utr,
       failureReason: payout.failureReason,
     });
-    return applied === "paid" || applied === "failed" ? applied : "processing";
+    return applied === "paid" || applied === "failed" ? applied : unchanged;
   }
 
   const result = await submitPayout(withdrawalId);
@@ -460,6 +469,11 @@ async function syncWithdrawal(withdrawalId) {
 /**
  * Re-sync requests stuck in processing (missed webhook, crash between debit
  * and the Razorpay call, unknown outcome). Returns how many rows it looked at.
+ *
+ * Paid rows are deliberately not re-checked here: with no "last checked"
+ * column, a capped query would re-fetch the same 20 paid rows every run.
+ * A later reversal arrives by the payout.reversed webhook, and an admin can
+ * re-check any paid row with "Check status" (syncWithdrawal handles it).
  */
 async function sweepStuckPayouts(olderThanMs = 15 * 60 * 1000) {
   if (!razorpayx.isConfigured()) return 0;

@@ -7,7 +7,10 @@ jest.mock("../../config/db", () => ({
 }));
 jest.mock("../../utils/logger", () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyPayoutUpdate: jest.fn() }));
-jest.mock("../pushNotifier", () => ({ notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined) }));
+jest.mock("../pushNotifier", () => ({
+  notifyDriverWalletTransaction: jest.fn().mockResolvedValue(undefined),
+  notifyDriverPayoutSent: jest.fn().mockResolvedValue(undefined),
+}));
 
 const prisma = require("../../config/db");
 const adminSocket = require("../../sockets/adminSocket");
@@ -36,6 +39,7 @@ beforeEach(() => {
   prisma.tbl_wallet_history.create.mockResolvedValue({});
   prisma.tbl_rnoti.create.mockResolvedValue({});
   pushNotifier.notifyDriverWalletTransaction.mockResolvedValue(undefined);
+  pushNotifier.notifyDriverPayoutSent.mockResolvedValue(undefined);
 });
 
 describe("claimAndDebit", () => {
@@ -105,6 +109,7 @@ describe("applyPayoutState", () => {
       where: { id: 55, status: "processing", razorpay_payout_id: null },
       data: expect.objectContaining({
         status: "paid", utr: "UTR123", razorpay_payout_id: "pout_1", payout_processed_at: expect.any(Date),
+        failure_reason: null,
       }),
     });
     expect(walletWriteCount()).toBe(0);
@@ -112,7 +117,11 @@ describe("applyPayoutState", () => {
     expect(prisma.tbl_rnoti.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ rid: 7, title: "Payout sent", type: "payout" }),
     });
-    expect(pushNotifier.notifyDriverWalletTransaction).toHaveBeenCalledTimes(1);
+    // The wallet was already debited (and announced) at approve time: the
+    // paid push is a distinct "Payout sent" push, not a second "Wallet debited".
+    expect(pushNotifier.notifyDriverPayoutSent).toHaveBeenCalledTimes(1);
+    expect(pushNotifier.notifyDriverPayoutSent).toHaveBeenCalledWith("tok-7", "₹2.00", "UTR123");
+    expect(pushNotifier.notifyDriverWalletTransaction).not.toHaveBeenCalled();
     expect(adminSocket.notifyPayoutUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ id: 55, rider_id: 7, city_id: 3, status: "paid", amount: 2 })
     );
