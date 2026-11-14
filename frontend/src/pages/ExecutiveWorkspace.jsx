@@ -28,6 +28,164 @@ const inputClass = 'rounded-lg border px-3 py-2 text-[13px]'
 
 const detailRow = 'flex justify-between gap-3 text-[13px]'
 
+function formatTripDistance(order) {
+  if (!order) return null
+  if (order.trip_distance_text) {
+    return {
+      text: order.trip_distance_text,
+      kind: order.trip_distance_kind || 'road',
+    }
+  }
+  const dist = Number(order.distance)
+  if (Number.isFinite(dist) && dist > 0) {
+    const formatted = dist % 1 === 0 ? dist.toFixed(1) : dist.toFixed(2)
+    return {
+      text: `${formatted} KM`,
+      kind: 'road',
+    }
+  }
+  return null
+}
+
+function OrderDetailsSection({ order, orderId, blockStyle }) {
+  const distInfo = formatTripDistance(order)
+  return (
+    <div className="grid gap-2 rounded-lg border p-3" style={blockStyle}>
+      <div className="flex items-center justify-between">
+        <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Order Details</div>
+        <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>#{orderId}</div>
+      </div>
+
+      {/* Pickup Location */}
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+        <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Pickup</span>
+        <div className="text-right max-w-[70%]">
+          {order?.pickup_title ? (
+            <div className="text-[13px] font-bold leading-snug" style={{ color: 'var(--ink)' }}>
+              <span className="text-[11px] font-semibold uppercase tracking-wider mr-1 opacity-70">Main Area:</span>
+              {order.pickup_title}
+            </div>
+          ) : null}
+          <div className="text-[12.5px] leading-snug mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+            {order?.pickup_title && <span className="text-[11px] mr-1 opacity-70">Address:</span>}
+            {order?.paddress || '—'}
+          </div>
+          {order?.pick_name && <span className="block text-[11.5px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>{order.pick_name}</span>}
+        </div>
+      </div>
+
+      {/* Extra Stops */}
+      {order?.stops?.map((stop, i) => (
+        <div key={stop.sequence ?? i} className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+          <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Stop {i + 1}</span>
+          <div className="text-right max-w-[70%]">
+            <span className="text-[12.5px] leading-snug">{stop.address || stop.landmark || '—'}</span>
+            {stop.contact_name && <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{stop.contact_name}</span>}
+          </div>
+        </div>
+      ))}
+
+      {/* Drop Location */}
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+        <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Drop</span>
+        <div className="text-right max-w-[70%]">
+          {order?.drop_title ? (
+            <div className="text-[13px] font-bold leading-snug" style={{ color: 'var(--ink)' }}>
+              <span className="text-[11px] font-semibold uppercase tracking-wider mr-1 opacity-70">Main Area:</span>
+              {order.drop_title}
+            </div>
+          ) : null}
+          <div className="text-[12.5px] leading-snug mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+            {order?.drop_title && <span className="text-[11px] mr-1 opacity-70">Address:</span>}
+            {order?.daddress || '—'}
+          </div>
+          {order?.drop_name && <span className="block text-[11.5px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>{order.drop_name}</span>}
+        </div>
+      </div>
+
+      {/* Total Trip Distance */}
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+        <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Trip Distance</span>
+        <div className="text-right">
+          {distInfo ? (
+            <>
+              <span className="inline-block font-mono-data text-[13px] font-bold px-2 py-0.5 rounded" style={{ background: 'var(--brand-soft, rgba(37,99,235,0.08))', color: 'var(--brand, #2563eb)' }}>
+                {distInfo.text}
+              </span>
+              <span className="block text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                {distInfo.kind === 'straight_line' ? 'Straight-line distance' : 'Road route distance'}
+              </span>
+            </>
+          ) : (
+            <span className="text-[12px]" style={{ color: 'var(--ink-faint)' }}>Distance unavailable</span>
+          )}
+        </div>
+      </div>
+
+      {/* Vehicle & Fare */}
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+        <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Vehicle</span>
+        <span>{order?.category || '—'}</span>
+      </div>
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+        <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Fare</span>
+        <span className="font-mono-data font-semibold">{order?.fare != null ? `₹${order.fare}` : '—'}</span>
+      </div>
+    </div>
+  )
+}
+
+function DriverDetailsSection({ driver, title = 'Driver', blockStyle, onRefreshDistance, refreshing }) {
+  if (!driver) return null
+  const online = Boolean(driver.online)
+  return (
+    <div className="grid gap-1 rounded-lg border p-3" style={blockStyle}>
+      <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>{title}</div>
+      <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>{driver.name || 'Driver'}</div>
+      {driver.mobile && (
+        <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+          <span>Mobile</span>
+          <a href={`tel:${driver.mobile}`} className="font-mono-data" style={{ color: 'var(--brand)' }}>{driver.mobile}</a>
+        </div>
+      )}
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{driver.vehicle_name || '—'}</span></div>
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle number</span><span className="font-mono-data">{driver.vehicle_number || 'not available'}</span></div>
+      {driver.distance !== undefined && (
+        <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+          <span>Driver Distance from Pickup</span>
+          <span className="text-right">
+            {driver.distance ? (
+              <>
+                <b className="font-mono-data" style={{ color: 'var(--ink)' }}>{driver.distance.approximate ? '≈ ' : ''}{driver.distance.text}</b>
+                <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
+                  {driver.distance.kind === 'road' ? 'Road distance' : 'Straight-line distance'}
+                  {driver.distance.approximate ? ' · approximate location' : ''}
+                  {' · '}{driver.distance.source === 'shifter_app' ? "from driver's app" : 'from search platform'}
+                  {driver.distance.computed_at ? ` · ${formatDateTime(driver.distance.computed_at)}` : ''}
+                </span>
+              </>
+            ) : <span style={{ color: 'var(--ink-faint)' }}>Distance unavailable</span>}
+            {onRefreshDistance && (
+              <button type="button" onClick={onRefreshDistance} disabled={refreshing} className="ml-2 text-[12px] font-semibold underline" style={{ color: 'var(--brand)' }}>
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+      {driver.already_registered != null && (
+        <div className="text-[12.5px] font-semibold" style={{ color: driver.already_registered ? 'var(--success)' : 'var(--ink-muted)' }}>
+          {driver.already_registered ? 'This driver is already registered with platform.' : 'Not Registered'}
+        </div>
+      )}
+      <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
+        <span>Status</span>
+        <Badge tone={online ? 'success' : 'warning'}>{online ? 'Online' : `${title} · offline`}</Badge>
+      </div>
+    </div>
+  )
+}
+
 // The Trial Driver the bot found, with the order, on one screen: the executive decides assign or reject here.
 function TrialDriverOffer({ c, onChanged }) {
   const toast = useToast()
@@ -87,52 +245,18 @@ function TrialDriverOffer({ c, onChanged }) {
   return (
     <div className="mt-3 grid gap-3 rounded-xl border p-3" style={{ borderColor: 'var(--brand)' }}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="grid gap-1 rounded-lg border p-3" style={block}>
-          <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Trial driver</div>
-          <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>{cand.name || 'Driver'}</div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Mobile</span><a href={`tel:${cand.mobile}`} className="font-mono-data" style={{ color: 'var(--brand)' }}>{cand.mobile}</a></div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{cand.vehicle_name || order?.category || '—'}</span></div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle number</span><span className="font-mono-data">{cand.vehicle_number || 'not available'}</span></div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
-            <span>Driver Distance from Pickup</span>
-            <span className="text-right">
-              {cand.distance ? (
-                <>
-                  <b className="font-mono-data" style={{ color: 'var(--ink)' }}>{cand.distance.approximate ? '≈ ' : ''}{cand.distance.text}</b>
-                  <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
-                    {cand.distance.kind === 'road' ? 'Road distance' : 'Straight-line distance'}
-                    {cand.distance.approximate ? ' · approximate location' : ''}
-                    {' · '}{cand.distance.source === 'shifter_app' ? "from driver's app" : 'from search platform'}
-                    {cand.distance.computed_at ? ` · ${formatDateTime(cand.distance.computed_at)}` : ''}
-                  </span>
-                </>
-              ) : <span style={{ color: 'var(--ink-faint)' }}>Distance unavailable</span>}
-              <button type="button" onClick={refreshDistance} disabled={refreshing} className="ml-2 text-[12px] font-semibold underline" style={{ color: 'var(--brand)' }}>
-                {refreshing ? 'Refreshing…' : 'Refresh'}
-              </button>
-            </span>
-          </div>
-          {cand.already_registered != null && (
-            <div className="text-[12.5px] font-semibold" style={{ color: cand.already_registered ? 'var(--success)' : 'var(--ink-muted)' }}>
-              {cand.already_registered ? 'This driver is already registered with platform.' : 'Not Registered'}
-            </div>
-          )}
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Status</span><Badge tone={online ? 'success' : 'warning'}>{online ? 'Online' : 'Trial driver · offline'}</Badge></div>
-        </div>
-        <div className="grid gap-1 rounded-lg border p-3" style={block}>
-          <div className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Order</div>
-          <div className="text-[14px] font-bold" style={{ color: 'var(--ink)' }}>#{c.order_id}</div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Pickup</span><span className="text-right">{order?.pickup_title && <span className="block font-semibold" style={{ color: 'var(--ink)' }}>{order.pickup_title}</span>}{order?.paddress || '—'}{order?.pick_name && <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{order.pick_name}</span>}</span></div>
-          {order?.stops?.map((stop, i) => (
-            <div key={stop.sequence ?? i} className={detailRow} style={{ color: 'var(--ink-muted)' }}>
-              <span>Stop {i + 1}</span>
-              <span className="text-right">{stop.address || stop.landmark || '—'}{stop.contact_name && <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{stop.contact_name}</span>}</span>
-            </div>
-          ))}
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Drop</span><span className="text-right">{order?.drop_title && <span className="block font-semibold" style={{ color: 'var(--ink)' }}>{order.drop_title}</span>}{order?.daddress || '—'}{order?.drop_name && <span className="block text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>{order.drop_name}</span>}</span></div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Vehicle</span><span>{order?.category || '—'}</span></div>
-          <div className={detailRow} style={{ color: 'var(--ink-muted)' }}><span>Fare</span><span className="font-mono-data">{order?.fare != null ? `₹${order.fare}` : '—'}</span></div>
-        </div>
+        <DriverDetailsSection
+          driver={cand}
+          title="Trial driver"
+          blockStyle={block}
+          onRefreshDistance={refreshDistance}
+          refreshing={refreshing}
+        />
+        <OrderDetailsSection
+          order={order}
+          orderId={c.order_id}
+          blockStyle={block}
+        />
       </div>
       {!online && (
         <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
@@ -279,6 +403,11 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
   }, [riders, dailyRiders, riderSource, riderQuery])
 
   const isOpen = c.status === 'open'
+  const hasTrialOffer = isOpen && !readOnly && !summaryOnly && Boolean(c.candidate)
+  const order = detail?.order || c.order
+  const assignedDriver = detail?.assigned_driver || c.assigned_driver
+  const block = { borderColor: 'var(--border)', background: 'var(--bg)' }
+
   return (
     <div className="rounded-2xl border p-4" style={{ background: 'var(--surface)', borderColor: c.queue_state === 'escalated' ? 'var(--danger)' : 'var(--border)' }}>
       <button type="button" onClick={toggle} aria-expanded={summaryOnly ? undefined : open} disabled={summaryOnly} className={`flex w-full flex-wrap items-center gap-3 text-left${summaryOnly ? ' cursor-default' : ''}`}>
@@ -293,10 +422,21 @@ function CaseCard({ c, onChanged, readOnly, summaryOnly }) {
         {c.first_action_at ? ` · first action ${formatDateTime(c.first_action_at)}` : ' · no action yet'}
       </div>
 
-      {isOpen && !readOnly && !summaryOnly && c.candidate && <TrialDriverOffer c={c} onChanged={onChanged} />}
+      {hasTrialOffer && <TrialDriverOffer c={c} onChanged={onChanged} />}
 
       {open && !summaryOnly && (
         <div className="mt-4 grid gap-4">
+          {!hasTrialOffer && (order || assignedDriver) && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {assignedDriver ? (
+                <DriverDetailsSection driver={assignedDriver} title="Assigned driver" blockStyle={block} />
+              ) : null}
+              {order ? (
+                <OrderDetailsSection order={order} orderId={c.order_id} blockStyle={block} />
+              ) : null}
+            </div>
+          )}
+
           {isOpen && !readOnly && (
             <>
               <form onSubmit={submitAction} className="grid gap-2">

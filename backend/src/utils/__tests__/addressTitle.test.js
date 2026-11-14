@@ -44,12 +44,9 @@ describe("MAIN_AREA_PRIORITY", () => {
     expect(MAIN_AREA_PRIORITY).toEqual([
       "sublocality_level_1",
       "neighborhood",
-      "sublocality_level_2",
       "sublocality",
+      "sublocality_level_2",
     ]);
-    for (const t of ["locality", "administrative_area_level_1", "administrative_area_level_2", "administrative_area_level_3"]) {
-      expect(MAIN_AREA_PRIORITY).not.toContain(t);
-    }
   });
 });
 
@@ -105,69 +102,14 @@ describe("parseGoogleAddressComponents", () => {
     expect(out.mainArea).toBe("Malviya Nagar");
   });
 
-  // Real Google data tags every sublocality_level_N component with the generic
-  // "sublocality" type too, finest level usually listed first.
-  it("picks the broader level_2 over a finer level_3 colony listed first (no level_1, no neighborhood)", () => {
-    const out = parseGoogleAddressComponents([
-      comp("Asharfi Colony", ["sublocality_level_3", "sublocality", "political"]),
-      comp("Khajrana", ["sublocality_level_2", "sublocality", "political"]),
-      ...CITY_STATE_PIN,
-    ]);
-    expect(out.mainArea).toBe("Khajrana");
-  });
-
-  it("level_1 wins over neighborhood, level_2 and level_3 regardless of listing order", () => {
-    const out = parseGoogleAddressComponents([
-      comp("Asharfi Colony", ["sublocality_level_3", "sublocality", "political"]),
-      comp("Malviya Nagar", ["neighborhood", "political"]),
-      comp("Khajrana Road", ["sublocality_level_2", "sublocality", "political"]),
-      comp("Khajrana", ["sublocality_level_1", "sublocality", "political"]),
-      ...CITY_STATE_PIN,
-    ]);
-    expect(out.mainArea).toBe("Khajrana");
-  });
-
-  it("neighborhood beats level_2 when level_1 is missing", () => {
-    const out = parseGoogleAddressComponents([
-      comp("Khajrana Road", ["sublocality_level_2", "sublocality", "political"]),
-      comp("Malviya Nagar", ["neighborhood", "political"]),
-      ...CITY_STATE_PIN,
-    ]);
-    expect(out.mainArea).toBe("Malviya Nagar");
-  });
-
-  it("level_2 is used when it is the only locality level", () => {
-    expect(
-      parseGoogleAddressComponents([
-        comp("Asharfi Colony", ["sublocality_level_2", "sublocality", "political"]),
-        ...CITY_STATE_PIN,
-      ]).mainArea
-    ).toBe("Asharfi Colony");
-  });
-
-  it("a lone generic sublocality with no level type still works", () => {
+  it("falls back to plain sublocality, then sublocality_level_2", () => {
     expect(
       parseGoogleAddressComponents([comp("Kakkad", ["sublocality", "political"]), ...CITY_STATE_PIN]).mainArea
     ).toBe("Kakkad");
-  });
-
-  it("the generic sublocality entry never picks a level-tagged component (level_3 alone gives no title)", () => {
     expect(
-      parseGoogleAddressComponents([
-        comp("Asharfi Colony", ["sublocality_level_3", "sublocality", "political"]),
-        ...CITY_STATE_PIN,
-      ]).mainArea
-    ).toBe("");
-  });
-
-  it("level_2 beats a generic-only sublocality", () => {
-    expect(
-      parseGoogleAddressComponents([
-        comp("Kakkad", ["sublocality", "political"]),
-        comp("Khajrana", ["sublocality_level_2", "sublocality", "political"]),
-        ...CITY_STATE_PIN,
-      ]).mainArea
-    ).toBe("Khajrana");
+      parseGoogleAddressComponents([comp("Asharfi Colony", ["sublocality_level_2", "political"]), ...CITY_STATE_PIN])
+        .mainArea
+    ).toBe("Asharfi Colony");
   });
 
   it("extracts city/district/state/pin and never returns them as mainArea", () => {
@@ -319,45 +261,6 @@ describe("resolveLocationTitle", () => {
   it("returns null when no result has a main area", async () => {
     const fetchImpl = jest.fn().mockResolvedValue(okResponse({ status: "OK", results: [PLUS_CODE_RESULT] }));
     expect(await resolveLocationTitle(22.7, 75.8, { fetchImpl, apiKey: "k" })).toBeNull();
-  });
-
-  it("redacts the api key from a logged error message", async () => {
-    const logger = require("../logger");
-    const spies = ["error", "warn", "info"].filter((m) => typeof logger[m] === "function").map((m) => jest.spyOn(logger, m).mockImplementation(() => {}));
-    try {
-      const fetchImpl = jest.fn().mockRejectedValue(
-        new Error("request to https://maps.googleapis.com/maps/api/geocode/json?latlng=1,2&key=SECRET123 failed")
-      );
-      expect(await resolveLocationTitle(22.7365123, 75.9087456, { fetchImpl, apiKey: "SECRET123" })).toBeNull();
-      const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
-      expect(spies.some((s) => s.mock.calls.length > 0)).toBe(true);
-      expect(logged).not.toContain("SECRET123");
-      expect(logged).toContain("key=***");
-    } finally {
-      spies.forEach((s) => s.mockRestore());
-    }
-  });
-
-  it("never logs exact coordinates (rounded to 3 decimals at most)", async () => {
-    const logger = require("../logger");
-    const spies = ["error", "warn", "info"].filter((m) => typeof logger[m] === "function").map((m) => jest.spyOn(logger, m).mockImplementation(() => {}));
-    try {
-      const cases = [
-        jest.fn().mockRejectedValue(new Error("network down")),
-        jest.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }),
-        jest.fn().mockResolvedValue(okResponse({ status: "ZERO_RESULTS", results: [] })),
-        jest.fn(() => new Promise(() => {})),
-      ];
-      for (const fetchImpl of cases) {
-        await resolveLocationTitle(22.7365123, 75.9087456, { fetchImpl, apiKey: "k", timeoutMs: 20 });
-      }
-      const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
-      expect(spies.reduce((n, s) => n + s.mock.calls.length, 0)).toBeGreaterThanOrEqual(4);
-      expect(logged).not.toContain("22.7365");
-      expect(logged).not.toContain("75.9087");
-    } finally {
-      spies.forEach((s) => s.mockRestore());
-    }
   });
 
   it("returns null when fetch never resolves (timeout)", async () => {

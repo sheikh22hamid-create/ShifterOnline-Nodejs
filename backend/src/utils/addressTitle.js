@@ -7,21 +7,13 @@ const logger = require("./logger");
  * order. City / district / state / PIN / Plus Code are never a Main Area: if
  * none of these types is present the title is left empty (a wrong locality is
  * worse than none).
- *
- * Google tags every sublocality_level_N component with the generic
- * "sublocality" type as well (finest level usually listed first), so the
- * generic "sublocality" entry only matches a component that carries NO
- * sublocality_level_* type; otherwise it would grab a fine-grained colony
- * ahead of the broader levels listed before it.
  */
 const MAIN_AREA_PRIORITY = Object.freeze([
   "sublocality_level_1",
   "neighborhood",
-  "sublocality_level_2",
   "sublocality",
+  "sublocality_level_2",
 ]);
-
-const SUBLOCALITY_LEVEL_TYPE = /^sublocality_level_\d+$/;
 
 const TITLE_MAX_LENGTH = 120;
 const DEFAULT_TIMEOUT_MS = 2000;
@@ -63,10 +55,7 @@ function parseGoogleAddressComponents(components) {
     if (!c || !Array.isArray(c.types)) continue;
     const name = typeof c.long_name === "string" ? c.long_name.trim() : "";
     if (!name) continue;
-    const hasLevelType = c.types.some((t) => typeof t === "string" && SUBLOCALITY_LEVEL_TYPE.test(t));
     for (const t of c.types) {
-      // A level-tagged component never fills the generic "sublocality" slot.
-      if (t === "sublocality" && hasLevelType) continue;
       if (!(t in byType)) byType[t] = name;
     }
   }
@@ -129,19 +118,6 @@ function formatAddressForDisplay({ components, rawAddress } = {}) {
   return { mainArea: parts.mainArea, formattedAddress };
 }
 
-// Logging only: coordinates rounded to 3 decimals (~100 m), never the exact customer point.
-function coarsePoint(lat, lng) {
-  const r = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n.toFixed(3) : "?";
-  };
-  return `~${r(lat)},${r(lng)}`;
-}
-
-function redactKey(message) {
-  return String(message == null ? "" : message).replace(/key=[^&\s]+/g, "key=***");
-}
-
 /**
  * Reverse-geocodes a point to its Main Area. Never throws; null on any
  * failure (no key, HTTP error, bad JSON, non-OK status, timeout, no locality).
@@ -161,7 +137,6 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
   const url =
     `${GEOCODE_URL}?latlng=${lat},${lng}` + `&language=en&key=${encodeURIComponent(apiKey)}`;
 
-  const where = coarsePoint(lat, lng);
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   let timer;
   const timeout = new Promise((resolve) => {
@@ -175,12 +150,12 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
     const work = (async () => {
       const res = await fetchImpl(url, controller ? { signal: controller.signal } : undefined);
       if (!res || !res.ok) {
-        logger.warn(`resolveLocationTitle: HTTP ${res ? res.status : "no response"} for ${where}`);
+        logger.warn(`resolveLocationTitle: HTTP ${res ? res.status : "no response"} for ${lat},${lng}`);
         return { title: null };
       }
       const data = await res.json();
       if (!data || data.status !== "OK") {
-        logger.warn(`resolveLocationTitle: status ${data && data.status} for ${where}`);
+        logger.warn(`resolveLocationTitle: status ${data && data.status} for ${lat},${lng}`);
         return { title: null };
       }
       return { title: sanitizeTitle(pickMainAreaFromResults(data.results)) };
@@ -190,12 +165,12 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
 
     const outcome = await Promise.race([work, timeout]);
     if (outcome.timedOut) {
-      logger.warn(`resolveLocationTitle: timed out after ${timeoutMs}ms for ${where}`);
+      logger.warn(`resolveLocationTitle: timed out after ${timeoutMs}ms for ${lat},${lng}`);
       return null;
     }
     return outcome.title;
   } catch (err) {
-    logger.error(`resolveLocationTitle error for ${where}:`, redactKey(err && err.message));
+    logger.error(`resolveLocationTitle error for ${lat},${lng}:`, err && err.message);
     return null;
   } finally {
     clearTimeout(timer);

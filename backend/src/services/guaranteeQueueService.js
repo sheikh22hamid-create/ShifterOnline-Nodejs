@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const adminSocket = require("../sockets/adminSocket");
+const { haversineKm } = require("../utils/geoDistance");
 const rules = require("./guaranteeQueueRules");
 const queueSettings = require("./guaranteeQueueSettings");
 const outsideCandidates = require("./guaranteeOutsideCandidateService");
@@ -589,8 +590,50 @@ const CASE_FIELDS = {
 
 const ORDER_FIELDS = {
   id: true, category: true, paddress: true, daddress: true, pickup_title: true, drop_title: true, pick_name: true, drop_name: true, plat: true, plong: true, dlat: true, dlong: true,
-  total_dcharge: true, distance: true,
+  total_dcharge: true, distance: true, rid: true,
 };
+
+/**
+ * Calculates or formats the total trip distance for an order.
+ * Reuses the existing booking route distance (`order.distance`) if valid (> 0).
+ * If missing, falls back to haversine straight-line distance if valid coordinates are present.
+ * The source/kind is clearly identified ("road" vs "straight_line") so they are never interchanged.
+ * Safely returns null on missing/invalid distance and coordinates (never fabricates).
+ */
+function resolveTripDistance(order) {
+  if (!order) return { distance_km: null, distance_text: null, distance_kind: null };
+  const rawDist = Number(order.distance);
+  if (Number.isFinite(rawDist) && rawDist > 0) {
+    const km = Number(rawDist.toFixed(2));
+    return {
+      distance_km: km,
+      distance_text: `${km} KM`,
+      distance_kind: "road",
+    };
+  }
+  const plat = Number(order.plat);
+  const plong = Number(order.plong);
+  const dlat = Number(order.dlat);
+  const dlong = Number(order.dlong);
+  if (
+    Number.isFinite(plat) &&
+    Number.isFinite(plong) &&
+    Number.isFinite(dlat) &&
+    Number.isFinite(dlong) &&
+    (plat !== 0 || plong !== 0) &&
+    (dlat !== 0 || dlong !== 0)
+  ) {
+    const straightKm = Number(haversineKm(plat, plong, dlat, dlong).toFixed(2));
+    if (straightKm > 0) {
+      return {
+        distance_km: straightKm,
+        distance_text: `${straightKm} KM`,
+        distance_kind: "straight_line",
+      };
+    }
+  }
+  return { distance_km: null, distance_text: null, distance_kind: null };
+}
 
 /**
  * Was each live candidate already in the Drivers Fleet (tbl_rider, matched by normalised mobile) BEFORE the bot registered
@@ -620,7 +663,7 @@ async function fleetRegistrationOf(live) {
   return out;
 }
 
-/** Adds the live Trial Driver (with an online flag) and the order's key details to each case, in a few queries. */
+/** Adds the live Trial Driver (with an online flag), assigned driver (if assigned), and the order's key details to each case, in a few queries. */
 async function attachOffer(cases) {
   if (!cases.length) return cases;
   const live = await prisma.guarantee_outside_candidate.findMany({ where: { case_id: { in: cases.map((c) => c.id) }, active: 1 } });
@@ -630,6 +673,17 @@ async function attachOffer(cases) {
   const riderBy = new Map(riders.map((r) => [r.id, r]));
   const orders = await prisma.pkg_order.findMany({ where: { id: { in: cases.map((c) => c.order_id) } }, select: ORDER_FIELDS });
   const orderBy = new Map(orders.map((o) => [o.id, o]));
+
+  // Assigned drivers for cases where a driver is already assigned to the order
+  const assignedRiderIds = orders.map((o) => o.rid).filter((id) => id && id > 0);
+  const assignedRiders = assignedRiderIds.length
+    ? await prisma.tbl_rider.findMany({
+        where: { id: { in: assignedRiderIds } },
+        select: { id: true, full_name: true, fmobile: true, vehicle_no: true, vehicle: true, status: true, a_status: true },
+      })
+    : [];
+  const assignedRiderBy = new Map(assignedRiders.map((r) => [r.id, r]));
+
   // Extra stops between pickup and drop, one query for every case. Best-effort: a missing stops table (older DB) must
   // not take the whole queue down, the card just shows no stops.
   const stopsBy = new Map();
@@ -651,6 +705,8 @@ async function attachOffer(cases) {
     const l = liveBy.get(c.id);
     const r = l ? riderBy.get(l.rider_id) : null;
     const o = orderBy.get(c.order_id);
+    const ar = o && o.rid ? assignedRiderBy.get(o.rid) : null;
+    const dist = resolveTripDistance(o);
     return {
       ...c,
       candidate: l ? {
@@ -660,7 +716,25 @@ async function attachOffer(cases) {
         distance: candidateDistance.present(distanceBy.get(l.id)), // null = unavailable (never guessed)
         already_registered: fleetBy.get(l.id) ?? null, // true = was already in the Drivers Fleet; null = unknown
       } : null,
-      order: o ? { ...o, fare: o.total_dcharge == null ? null : Number(o.total_dcharge), stops: stopsBy.get(o.id) || [] } : null,
+      assigned_driver: ar ? {
+        rider_id: ar.id,
+        name: ar.full_name || 'Driver',
+        mobile: ar.fmobile || '',
+        vehicle_number: ar.vehicle_no || '',
+        vehicle_name: o.category || ar.vehicle || '',
+        online: Boolean(ar.a_status === 1 && ar.status === 1),
+      } : null,
+      order: o ? {
+        ...o,
+        fare: o.total_dcharge == null ? null : Number(o.total_dcharge),
+        pickup_title: o.pickup_title || null,
+        drop_title: o.drop_title || null,
+        distance: o.distance == null ? null : Number(o.distance),
+        trip_distance_km: dist.distance_km,
+        trip_distance_text: dist.distance_text,
+        trip_distance_kind: dist.distance_kind,
+        stops: stopsBy.get(o.id) || [],
+      } : null,
     };
   });
 }
@@ -675,7 +749,7 @@ async function getCaseDetail(orderId, actor) {
     prisma.booking_guarantee_audit.findMany({ where: { case_id: row.id }, orderBy: { id: "asc" } }),
   ]);
   const [withOffer] = await attachOffer([full]);
-  return { case: withOffer, assignments, actions, audit, candidate: withOffer.candidate, order: withOffer.order };
+  return { case: withOffer, assignments, actions, audit, candidate: withOffer.candidate, assigned_driver: withOffer.assigned_driver, order: withOffer.order };
 }
 
 async function listMyCases(adminId) {
@@ -691,7 +765,11 @@ async function listMyCases(adminId) {
   const awayCases = away.length
     ? await prisma.booking_guarantee_case.findMany({ where: { id: { in: away.map((a) => a.case_id) } }, select: CASE_FIELDS })
     : [];
-  return { active: await attachOffer(active), recent, reassigned: awayCases };
+  const [activeWithOffer, recentWithOffer] = await Promise.all([
+    attachOffer(active),
+    attachOffer(recent),
+  ]);
+  return { active: activeWithOffer, recent: recentWithOffer, reassigned: awayCases };
 }
 
 async function maybeRemind(c, city, now) {
