@@ -33,6 +33,8 @@ async function getDriverQueue(req, res) {
         o_status: true,
         paddress: true,
         daddress: true,
+        pickup_title: true,
+        drop_title: true,
         pick_name: true,
         drop_name: true,
         distance: true,

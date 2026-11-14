@@ -16,7 +16,7 @@ const tripLifecycle = () => require("./tripLifecycle");
 
 const EXPIRE_REASON = "No driver accepted in the booking window";
 const LIST_FIELDS = {
-  id: true, category: true, paddress: true, daddress: true, plat: true, plong: true, dlat: true, dlong: true,
+  id: true, category: true, paddress: true, daddress: true, pickup_title: true, drop_title: true, plat: true, plong: true, dlat: true, dlong: true,
   distance: true, total_dcharge: true, description: true, schedule_date_time: true,
   next_day_live_at: true, next_day_live_until: true, next_day_model1_fare: true, next_day_discount_percent: true,
   package_weight: true, odate: true, rid: true,

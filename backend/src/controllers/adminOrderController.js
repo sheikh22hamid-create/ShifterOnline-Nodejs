@@ -96,6 +96,8 @@ async function list(req, res) {
         total_dcharge: String(o.total_dcharge),
         paddress: o.paddress,
         daddress: o.daddress,
+        pickup_title: o.pickup_title || "",
+        drop_title: o.drop_title || "",
         category: o.category,
         booking_type: o.booking_type,
         schedule_date_time: o.schedule_date_time,
@@ -763,7 +765,9 @@ async function assignNextDayBatch(req, res) {
           .map((o) => ({
             order_id: o.id,
             pickup_address: o.paddress,
+            pickup_title: o.pickup_title || "",
             drop_address: o.daddress,
+            drop_title: o.drop_title || "",
             sequence: sequence.find((s) => Number(s.order_id) === o.id)?.position ?? 0,
             fare: o.total_dcharge,
           }));

@@ -174,6 +174,8 @@ async function activeTrips(req, res) {
         total_dcharge: String(o.total_dcharge),
         paddress: o.paddress,
         daddress: o.daddress,
+        pickup_title: o.pickup_title || "",
+        drop_title: o.drop_title || "",
         plat: o.plat,
         plong: o.plong,
         dlat: o.dlat,
