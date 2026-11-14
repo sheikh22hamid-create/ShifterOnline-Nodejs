@@ -6,6 +6,7 @@ const { istNow } = require("../utils/istTime");
 const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
+const { resolveSideTitle } = require("./orderAreaTitles");
 
 // Early Drop: the customer asks to be dropped before the booked destination.
 // When the driver taps Complete while still this far from the booked drop, the
@@ -161,7 +162,8 @@ async function refundWalletDifference(tx, order, fareDiff, { newFare, pointsAmou
  */
 async function applyEarlyDrop(order, riderId, point, distanceM) {
   const fare = await computeEarlyDropFare(order, point);
-  const address = await reverseGeocode(point);
+  // Both lookups run before the transaction opens; a failed title lookup stores null, never the booked drop's title.
+  const [address, dropTitle] = await Promise.all([reverseGeocode(point), resolveSideTitle(point.lat, point.lng)]);
   const fareDiff = fare.oldFare - fare.newFare;
 
   await prisma.$transaction(async (tx) => {
@@ -171,6 +173,7 @@ async function applyEarlyDrop(order, riderId, point, distanceM) {
         dlat: String(point.lat),
         dlong: String(point.lng),
         daddress: address,
+        drop_title: dropTitle,
         distance: fare.newDistance,
         d_charge: fare.newFare,
         total_dcharge: fare.newFare,
