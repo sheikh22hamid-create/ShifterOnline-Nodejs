@@ -3,6 +3,7 @@ const router = express.Router();
 const whatsappClient = require("../whatsapp/client");
 const notifications = require("../whatsapp/notifications");
 const customerHandler = require("../whatsapp/handlers/customerHandler");
+const { WHATSAPP_TEMPLATES } = require("../whatsapp/templates");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const rateLimiter = require("../middleware/rateLimiter");
@@ -141,6 +142,125 @@ router.post(
     } catch (err) {
       logger.error("Error sending manual WhatsApp notification:", err);
       return res.status(500).json({ Result: false, success: false, msg: err.message || "Failed to send message" });
+    }
+  }
+);
+
+/**
+ * GET /api/v1/whatsapp/templates
+ * Returns pre-built marketing, onboarding, and reminder WhatsApp templates.
+ * Requires Authentication + Super Admin / Admin / Executive.
+ */
+router.get("/templates", auth, authorize("superadmin", "admin", "executive"), (req, res) => {
+  return res.json({
+    Result: true,
+    success: true,
+    data: WHATSAPP_TEMPLATES,
+  });
+});
+
+/**
+ * POST /api/v1/whatsapp/send-broadcast
+ * Send single or bulk WhatsApp outreach messages with anti-ban pacing delays.
+ * Requires Authentication + Super Admin / Admin / Executive.
+ */
+router.post(
+  "/send-broadcast",
+  auth,
+  authorize("superadmin", "admin", "executive"),
+  rateLimiter({ windowMs: 60 * 1000, max: 15, message: "Broadcast rate limit reached. Please wait a minute." }),
+  async (req, res) => {
+    try {
+      const { recipients, message, campaignName } = req.body;
+
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ Result: false, success: false, msg: "Message text is required" });
+      }
+
+      const cleanMessage = message.trim();
+      if (cleanMessage.length > 2000) {
+        return res.status(400).json({ Result: false, success: false, msg: "Message exceeds maximum 2000 characters" });
+      }
+
+      // Parse and normalize phone list
+      let rawList = [];
+      if (Array.isArray(recipients)) {
+        rawList = recipients;
+      } else if (typeof recipients === "string") {
+        rawList = recipients.split(/[\n,;]+/);
+      } else {
+        return res.status(400).json({ Result: false, success: false, msg: "Recipients must be an array or comma-separated list of phone numbers" });
+      }
+
+      const normalizedMap = new Map();
+      for (const item of rawList) {
+        const cleaned = validatePhoneNumber(item);
+        if (cleaned) {
+          normalizedMap.set(cleaned, true);
+        }
+      }
+
+      const uniqueNumbers = Array.from(normalizedMap.keys());
+      if (uniqueNumbers.length === 0) {
+        return res.status(400).json({ Result: false, success: false, msg: "No valid 10-15 digit phone numbers provided" });
+      }
+
+      if (uniqueNumbers.length > 100) {
+        return res.status(400).json({ Result: false, success: false, msg: "Batch limit exceeded (maximum 100 phone numbers allowed per broadcast)" });
+      }
+
+      // Check bot connectivity
+      const botStatus = whatsappClient.getBotStatus();
+      if (botStatus?.status !== "CONNECTED") {
+        return res.status(503).json({
+          Result: false,
+          success: false,
+          msg: `WhatsApp bot is currently ${botStatus?.status || "DISCONNECTED"}. Please connect your WhatsApp account in WhatsApp Account settings first.`,
+        });
+      }
+
+      logger.info(
+        `[AUDIT] WhatsApp broadcast started by ${req.user.username} (${req.user.id}, role: ${req.user.role}). Total: ${uniqueNumbers.length} recipients. Campaign: ${campaignName || "General"}`
+      );
+
+      const results = [];
+      let sentCount = 0;
+      let failedCount = 0;
+
+      for (let i = 0; i < uniqueNumbers.length; i++) {
+        const phone = uniqueNumbers[i];
+        try {
+          const sent = await notifications.sendWhatsAppNotification(phone, cleanMessage);
+          if (sent) {
+            sentCount++;
+            results.push({ phone, status: "sent" });
+          } else {
+            failedCount++;
+            results.push({ phone, status: "failed", reason: "Delivery failed" });
+          }
+        } catch (err) {
+          failedCount++;
+          results.push({ phone, status: "failed", reason: err.message || "Send error" });
+        }
+
+        // Anti-ban pacing delay: sleep 1.2s between messages if there are multiple
+        if (i < uniqueNumbers.length - 1) {
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+
+      return res.json({
+        Result: true,
+        success: true,
+        msg: `Broadcast finished: ${sentCount} sent, ${failedCount} failed out of ${uniqueNumbers.length}`,
+        total: uniqueNumbers.length,
+        sent: sentCount,
+        failed: failedCount,
+        results,
+      });
+    } catch (err) {
+      logger.error("Error executing WhatsApp broadcast:", err);
+      return res.status(500).json({ Result: false, success: false, msg: err.message || "Failed to execute WhatsApp broadcast" });
     }
   }
 );
