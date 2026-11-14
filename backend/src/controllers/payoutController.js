@@ -132,7 +132,9 @@ async function approve(req, res) {
       return res.status(403).json({ success: false, message: FORBIDDEN_MESSAGE });
     }
 
-    if (!razorpayx.isConfigured()) {
+    // The webhook secret is required too: without it payout.processed /
+    // payout.reversed events are refused and payouts only resolve via sync.
+    if (!razorpayx.isConfigured() || !razorpayx.isWebhookConfigured()) {
       return res.status(503).json({ success: false, message: "RazorpayX payouts are not configured." });
     }
 
@@ -157,6 +159,26 @@ async function approve(req, res) {
       return res.status(422).json({ success: false, message: result.reason });
     }
 
+    // submitPayout may already have applied a final state (RazorpayX answered
+    // processed / failed straight away). applyPayoutState then notified the
+    // driver and admin socket itself, so answer with that state and don't
+    // follow a "Payout failed" with "on its way".
+    if (result.outcome === "accepted") {
+      const fresh = await prisma.driver_withdraw_requests.findUnique({ where: { id } });
+      if (fresh?.status === "paid") {
+        const utr = fresh.utr ? ` (UTR ${fresh.utr})` : "";
+        return res.status(200).json({ success: true, status: "paid", message: `Payout paid by RazorpayX${utr}` });
+      }
+      if (fresh?.status === "failed") {
+        const why = fresh.failure_reason ? `: ${fresh.failure_reason}` : "";
+        return res.status(200).json({
+          success: true,
+          status: "failed",
+          message: `Payout failed at RazorpayX${why}. The amount was returned to the driver's wallet.`,
+        });
+      }
+    }
+
     const amount = Number(withdrawal.amount);
     try {
       adminSocket.notifyPayoutUpdate({ id, rider_id: rider.id, city_id: cityId, status: "processing", amount });
@@ -168,13 +190,25 @@ async function approve(req, res) {
       await notifyPayoutApproved(rider, amount);
       return res.status(200).json({ success: true, status: "processing", message: "Payout sent to RazorpayX" });
     }
-    return res
-      .status(202)
-      .json({ success: true, status: "processing", message: "Payout submitted; confirmation pending" });
+    // Unknown outcome: the request stays processing (wallet debited, no
+    // refund); the reason is also stored in failure_reason on the row.
+    return res.status(202).json({
+      success: true,
+      status: "processing",
+      message: "Payout submitted; confirmation pending",
+      reason: result.reason ?? null,
+    });
   } catch (err) {
     return internalError(res, err, `payouts.approve (withdrawal #${req.params.id})`);
   }
 }
+
+const SYNC_MESSAGES = {
+  paid: "Payout confirmed paid.",
+  processing: "Still processing at RazorpayX. Check again later.",
+  failed: "RazorpayX reports this payout failed. The amount was returned to the driver's wallet.",
+  refused: "Payout was not sent. The request is back to pending and the amount was returned.",
+};
 
 async function sync(req, res) {
   try {
@@ -188,13 +222,20 @@ async function sync(req, res) {
     if (cityScope(req, withdrawal, rider).forbidden) {
       return res.status(403).json({ success: false, message: FORBIDDEN_MESSAGE });
     }
-    // syncWithdrawal reports a misleading "refused" for non-processing rows.
-    if (withdrawal.status !== "processing") {
-      return res.status(409).json({ success: false, message: "Only processing payouts can be checked" });
+    // syncWithdrawal reports a misleading "refused" for other rows. A paid
+    // row with a payout id can still be re-checked: a reversal after
+    // processing is refunded once by applyPayoutState.
+    const checkable =
+      withdrawal.status === "processing" || (withdrawal.status === "paid" && Boolean(withdrawal.razorpay_payout_id));
+    if (!checkable) {
+      return res.status(409).json({
+        success: false,
+        message: "Only processing payouts, or paid payouts with a RazorpayX payout id, can be checked",
+      });
     }
 
     const status = await payoutService.syncWithdrawal(id);
-    return res.status(200).json({ success: true, status });
+    return res.status(200).json({ success: true, status, message: SYNC_MESSAGES[status] ?? null });
   } catch (err) {
     return internalError(res, err, "payouts.sync");
   }

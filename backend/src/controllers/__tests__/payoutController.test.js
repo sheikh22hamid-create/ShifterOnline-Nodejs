@@ -16,7 +16,7 @@ jest.mock("../../services/withdrawalPayout", () => ({
   resolveDestination: jest.fn(),
   revertToPending: jest.fn(),
 }));
-jest.mock("../../utils/razorpayx", () => ({ isConfigured: jest.fn() }));
+jest.mock("../../utils/razorpayx", () => ({ isConfigured: jest.fn(), isWebhookConfigured: jest.fn() }));
 
 const prisma = require("../../config/db");
 const logger = require("../../utils/logger");
@@ -45,7 +45,11 @@ describe("payoutController.approve", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     razorpayx.isConfigured.mockReturnValue(true);
-    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(PENDING);
+    razorpayx.isWebhookConfigured.mockReturnValue(true);
+    // First read: the pending request; re-read after submit: still processing.
+    prisma.driver_withdraw_requests.findUnique
+      .mockResolvedValueOnce(PENDING)
+      .mockResolvedValue({ ...PENDING, status: "processing" });
     prisma.tbl_rider.findUnique.mockResolvedValue(RIDER);
     prisma.tbl_rnoti.create.mockResolvedValue({});
     pushNotifier.notifyDriverWalletTransaction.mockResolvedValue(undefined);
@@ -61,6 +65,16 @@ describe("payoutController.approve", () => {
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith({ success: false, message: "RazorpayX payouts are not configured." });
     expect(payoutService.resolveDestination).not.toHaveBeenCalled();
+    expect(payoutService.claimAndDebit).not.toHaveBeenCalled();
+    expect(payoutService.submitPayout).not.toHaveBeenCalled();
+  });
+
+  it("answers 503 and writes nothing when the RazorpayX webhook secret is missing", async () => {
+    razorpayx.isWebhookConfigured.mockReturnValue(false);
+    const res = mockRes();
+    await approve(approveReq(), res);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.json).toHaveBeenCalledWith({ success: false, message: "RazorpayX payouts are not configured." });
     expect(payoutService.claimAndDebit).not.toHaveBeenCalled();
     expect(payoutService.submitPayout).not.toHaveBeenCalled();
   });
@@ -139,20 +153,53 @@ describe("payoutController.approve", () => {
     expect(adminSocket.notifyPayoutUpdate).not.toHaveBeenCalled();
   });
 
-  it("answers 202, tells the admin socket, and does not notify the driver on an unknown outcome", async () => {
+  it("answers 202 with the reason, tells the admin socket, and does not notify the driver on an unknown outcome", async () => {
     payoutService.submitPayout.mockResolvedValue({ outcome: "unknown", reason: "timeout" });
     const res = mockRes();
     await approve(approveReq(), res);
     expect(res.status).toHaveBeenCalledWith(202);
     expect(res.json).toHaveBeenCalledWith({
-      success: true, status: "processing", message: "Payout submitted; confirmation pending",
+      success: true, status: "processing", message: "Payout submitted; confirmation pending", reason: "timeout",
     });
     expect(adminSocket.notifyPayoutUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 55, status: "processing" }));
     expect(prisma.tbl_rnoti.create).not.toHaveBeenCalled();
     expect(pushNotifier.notifyDriverWalletTransaction).not.toHaveBeenCalled();
   });
 
+  it("accepted but already processed (paid) -> answers paid, no 'on its way' notification, no processing socket", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockReset();
+    prisma.driver_withdraw_requests.findUnique
+      .mockResolvedValueOnce(PENDING)
+      .mockResolvedValue({ ...PENDING, status: "paid", utr: "UTR9" });
+    const res = mockRes();
+    await approve(approveReq(), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({ success: true, status: "paid", message: "Payout paid by RazorpayX (UTR UTR9)" });
+    expect(prisma.tbl_rnoti.create).not.toHaveBeenCalled();
+    expect(pushNotifier.notifyDriverWalletTransaction).not.toHaveBeenCalled();
+    expect(adminSocket.notifyPayoutUpdate).not.toHaveBeenCalled();
+  });
+
+  it("accepted but already failed -> answers failed with the reason, no 'on its way' notification", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockReset();
+    prisma.driver_withdraw_requests.findUnique
+      .mockResolvedValueOnce(PENDING)
+      .mockResolvedValue({ ...PENDING, status: "failed", failure_reason: "Beneficiary bank offline" });
+    const res = mockRes();
+    await approve(approveReq(), res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      status: "failed",
+      message: "Payout failed at RazorpayX: Beneficiary bank offline. The amount was returned to the driver's wallet.",
+    });
+    expect(prisma.tbl_rnoti.create).not.toHaveBeenCalled();
+    expect(pushNotifier.notifyDriverWalletTransaction).not.toHaveBeenCalled();
+    expect(adminSocket.notifyPayoutUpdate).not.toHaveBeenCalled();
+  });
+
   it("refuses with 409 before any claim when the request isn't pending", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockReset();
     prisma.driver_withdraw_requests.findUnique.mockResolvedValue({ ...PENDING, status: "processing" });
     const res = mockRes();
     await approve(approveReq(), res);
@@ -173,6 +220,7 @@ describe("payoutController.approve", () => {
   });
 
   it("answers 404 for an unknown request", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockReset();
     prisma.driver_withdraw_requests.findUnique.mockResolvedValue(null);
     const res = mockRes();
     await approve(approveReq(), res);
@@ -207,15 +255,44 @@ describe("payoutController.sync", () => {
     await sync(approveReq(), res);
     expect(payoutService.syncWithdrawal).toHaveBeenCalledWith(55);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ success: true, status: "paid" });
+    expect(res.json).toHaveBeenCalledWith({ success: true, status: "paid", message: "Payout confirmed paid." });
   });
 
-  it("answers 409 and never syncs a request that isn't processing", async () => {
-    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(PENDING);
+  it.each([
+    ["processing", "Still processing at RazorpayX. Check again later."],
+    ["failed", "RazorpayX reports this payout failed. The amount was returned to the driver's wallet."],
+    ["refused", "Payout was not sent. The request is back to pending and the amount was returned."],
+  ])("returns a message for a %s result", async (status, message) => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue({ ...PENDING, status: "processing" });
+    payoutService.syncWithdrawal.mockResolvedValue(status);
+    const res = mockRes();
+    await sync(approveReq(), res);
+    expect(res.json).toHaveBeenCalledWith({ success: true, status, message });
+  });
+
+  it("re-checks a paid request that has a RazorpayX payout id", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue({ ...PENDING, status: "paid", razorpay_payout_id: "pout_1" });
+    payoutService.syncWithdrawal.mockResolvedValue("failed");
+    const res = mockRes();
+    await sync(approveReq(), res);
+    expect(payoutService.syncWithdrawal).toHaveBeenCalledWith(55);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true, status: "failed" }));
+  });
+
+  it.each([
+    ["pending", {}],
+    ["paid without a payout id", { status: "paid", razorpay_payout_id: null }],
+    ["failed", { status: "failed", razorpay_payout_id: "pout_1" }],
+  ])("answers 409 and never syncs a %s request", async (_label, patch) => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue({ ...PENDING, ...patch });
     const res = mockRes();
     await sync(approveReq(), res);
     expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith({ success: false, message: "Only processing payouts can be checked" });
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: "Only processing payouts, or paid payouts with a RazorpayX payout id, can be checked",
+    });
     expect(payoutService.syncWithdrawal).not.toHaveBeenCalled();
   });
 
