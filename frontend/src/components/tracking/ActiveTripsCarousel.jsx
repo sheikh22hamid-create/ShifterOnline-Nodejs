@@ -41,7 +41,7 @@ export default function ActiveTripsCarousel({ trips, selectedOrderId, onSelect, 
                 <div className="mt-1.5 flex items-center gap-1 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
                   <Bike size={11} /> {driverLabel}
                 </div>
-                <AreaTitle title={trip.drop_title} className="mt-1" />
+                <AreaTitle title={trip.drop_title} address={trip.daddress} className="mt-1" />
                 <div className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
                   <MapPin size={11} /> {truncate(trip.daddress, 30)}
                 </div>

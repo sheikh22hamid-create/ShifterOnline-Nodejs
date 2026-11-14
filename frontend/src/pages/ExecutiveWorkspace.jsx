@@ -17,6 +17,7 @@ import {
   groupActiveCases,
   validateAction,
 } from '../utils/guaranteeActions'
+import { extractAreaFromAddress, formatTripDistance } from '../utils/addressUtils'
 
 const STATE_LABEL = { unassigned: 'Unassigned', assigned: 'New assignment', in_progress: 'In progress', escalated: 'Escalated' }
 const STATE_TONE = { unassigned: 'neutral', assigned: 'info', in_progress: 'brand', escalated: 'danger' }
@@ -28,26 +29,10 @@ const inputClass = 'rounded-lg border px-3 py-2 text-[13px]'
 
 const detailRow = 'flex justify-between gap-3 text-[13px]'
 
-function formatTripDistance(order) {
-  if (!order) return null
-  if (order.trip_distance_text) {
-    return {
-      text: order.trip_distance_text,
-      kind: order.trip_distance_kind || 'road',
-    }
-  }
-  const dist = Number(order.distance)
-  if (Number.isFinite(dist) && dist > 0) {
-    const formatted = dist % 1 === 0 ? dist.toFixed(1) : dist.toFixed(2)
-    return {
-      text: `${formatted} KM`,
-      kind: 'road',
-    }
-  }
-  return null
-}
 
 function OrderDetailsSection({ order, orderId, blockStyle }) {
+  const pickupArea = order?.pickup_title || extractAreaFromAddress(order?.paddress)
+  const dropArea = order?.drop_title || extractAreaFromAddress(order?.daddress)
   const distInfo = formatTripDistance(order)
   return (
     <div className="grid gap-2 rounded-lg border p-3" style={blockStyle}>
@@ -60,14 +45,14 @@ function OrderDetailsSection({ order, orderId, blockStyle }) {
       <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
         <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Pickup</span>
         <div className="text-right max-w-[70%]">
-          {order?.pickup_title ? (
+          {pickupArea ? (
             <div className="text-[13px] font-bold leading-snug" style={{ color: 'var(--ink)' }}>
               <span className="text-[11px] font-semibold uppercase tracking-wider mr-1 opacity-70">Main Area:</span>
-              {order.pickup_title}
+              {pickupArea}
             </div>
           ) : null}
           <div className="text-[12.5px] leading-snug mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-            {order?.pickup_title && <span className="text-[11px] mr-1 opacity-70">Address:</span>}
+            {pickupArea && <span className="text-[11px] mr-1 opacity-70">Address:</span>}
             {order?.paddress || '—'}
           </div>
           {order?.pick_name && <span className="block text-[11.5px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>{order.pick_name}</span>}
@@ -89,14 +74,14 @@ function OrderDetailsSection({ order, orderId, blockStyle }) {
       <div className={detailRow} style={{ color: 'var(--ink-muted)' }}>
         <span className="font-semibold text-[12px] uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>Drop</span>
         <div className="text-right max-w-[70%]">
-          {order?.drop_title ? (
+          {dropArea ? (
             <div className="text-[13px] font-bold leading-snug" style={{ color: 'var(--ink)' }}>
               <span className="text-[11px] font-semibold uppercase tracking-wider mr-1 opacity-70">Main Area:</span>
-              {order.drop_title}
+              {dropArea}
             </div>
           ) : null}
           <div className="text-[12.5px] leading-snug mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-            {order?.drop_title && <span className="text-[11px] mr-1 opacity-70">Address:</span>}
+            {dropArea && <span className="text-[11px] mr-1 opacity-70">Address:</span>}
             {order?.daddress || '—'}
           </div>
           {order?.drop_name && <span className="block text-[11.5px] mt-0.5" style={{ color: 'var(--ink-faint)' }}>{order.drop_name}</span>}

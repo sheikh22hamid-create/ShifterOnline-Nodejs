@@ -6,6 +6,7 @@ const {
   pickMainAreaFromResults,
   formatAddressForDisplay,
   resolveLocationTitle,
+  extractAreaFromAddress,
 } = require("../addressTitle");
 
 const comp = (long_name, types) => ({ long_name, short_name: long_name, types });
@@ -268,5 +269,37 @@ describe("resolveLocationTitle", () => {
     const started = Date.now();
     expect(await resolveLocationTitle(22.7, 75.8, { fetchImpl, apiKey: "k", timeoutMs: 20 })).toBeNull();
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe("extractAreaFromAddress", () => {
+  it("extracts locality from plus code formatted address", () => {
+    expect(extractAreaFromAddress("M22Q+354, Suket, Rajasthan, 326530, India")).toBe("Suket");
+    expect(extractAreaFromAddress("J2XQ+P3G, Suket, Rajasthan, 326530, India")).toBe("Suket");
+    expect(extractAreaFromAddress("FWR7+2BQ, Khajrana, Indore, Madhya Pradesh")).toBe("Khajrana");
+    expect(extractAreaFromAddress("M23J+GP, Rampuriya, Rajasthan, 326530, India")).toBe("Rampuriya");
+  });
+
+  it("skips house/unit numbers to find the locality", () => {
+    expect(extractAreaFromAddress("C29, Talawali Chanda, Indore, Madhya Pradesh")).toBe("Talawali Chanda");
+    expect(extractAreaFromAddress("Flat 401, Vijay Nagar, Indore")).toBe("Vijay Nagar");
+    expect(extractAreaFromAddress("Plot 12, Malviya Nagar, Jaipur, Rajasthan")).toBe("Malviya Nagar");
+  });
+
+  it("skips landmark prefixes like near/opp or shop points when followed by locality", () => {
+    expect(extractAreaFromAddress("Bunty shoes point, Suket, Rajasthan")).toBe("Suket");
+    expect(extractAreaFromAddress("Near Radisson Square, Vijay Nagar, Indore")).toBe("Vijay Nagar");
+  });
+
+  it("handles normal locality and street addresses", () => {
+    expect(extractAreaFromAddress("Asharfi Colony, Near Main Road, Indore, Madhya Pradesh")).toBe("Asharfi Colony");
+    expect(extractAreaFromAddress("Malviya Nagar, Near Main Road, Indore, Madhya Pradesh")).toBe("Malviya Nagar");
+  });
+
+  it("returns null safely for empty or non-string inputs", () => {
+    expect(extractAreaFromAddress(null)).toBeNull();
+    expect(extractAreaFromAddress("")).toBeNull();
+    expect(extractAreaFromAddress("   ")).toBeNull();
+    expect(extractAreaFromAddress(12345)).toBeNull();
   });
 });
