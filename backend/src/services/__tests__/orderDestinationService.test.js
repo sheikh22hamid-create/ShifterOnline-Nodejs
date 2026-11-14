@@ -1,3 +1,7 @@
+jest.mock("../orderAreaTitles", () => ({
+  resolveOrderTitles: jest.fn(),
+  resolveSideTitle: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("../referralPointsRefund", () => ({ reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../config/db", () => {
   const mockPrisma = {
@@ -276,6 +280,44 @@ describe("orderDestinationService", () => {
         })
       );
       expect(prisma.driver_trip_event.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("confirmDestinationChange — Main Area title", () => {
+    const { resolveSideTitle } = require("../orderAreaTitles");
+    const run = () => orderDestinationService.confirmDestinationChange({
+      uid: 55, orderId: 101, newDlat: "23.1814539", newDlong: "75.7849781", newDaddress: "Freeganj, Ujjain",
+    });
+    beforeEach(() => {
+      prisma.pkg_order.findUnique.mockResolvedValue(mockActiveOrder);
+      prisma.pkg_order.update.mockResolvedValue({ ...mockActiveOrder, driver_earning: 165 });
+      prisma.tbl_rider.findUnique.mockResolvedValue(null);
+    });
+
+    it("stores the new drop's title, leaves pickup_title alone and keeps the coordinates exactly as sent", async () => {
+      resolveSideTitle.mockResolvedValueOnce("Ujjain");
+      await run();
+      expect(resolveSideTitle).toHaveBeenCalledWith("23.1814539", "75.7849781");
+      const { data } = prisma.pkg_order.update.mock.calls[0][0];
+      expect(data.drop_title).toBe("Ujjain");
+      expect(data).not.toHaveProperty("pickup_title");
+      expect(data.dlat).toBe("23.1814539");
+      expect(data.dlong).toBe("75.7849781");
+      expect(data.daddress).toBe("Freeganj, Ujjain");
+    });
+
+    it("clears the drop title (never keeps the old one) when the lookup fails", async () => {
+      resolveSideTitle.mockResolvedValueOnce(null);
+      await run();
+      const { data } = prisma.pkg_order.update.mock.calls[0][0];
+      expect(data).toHaveProperty("drop_title", null);
+      expect(data).not.toHaveProperty("pickup_title");
+    });
+
+    it("looks the title up before the row-locking transaction opens", async () => {
+      resolveSideTitle.mockResolvedValueOnce("Ujjain");
+      await run();
+      expect(resolveSideTitle.mock.invocationCallOrder[0]).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
     });
   });
 });

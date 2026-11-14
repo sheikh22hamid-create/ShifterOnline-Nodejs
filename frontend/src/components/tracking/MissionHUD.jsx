@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Phone, MessageSquare, Package, UserRound, Bike, CheckCircle2, Circle, ChevronUp, ChevronDown } from 'lucide-react'
 import Badge from '../common/Badge'
 import { formatDistanceKm, formatEta, formatDateTime } from '../../utils/format'
+import AreaTitle from '../orders/AreaTitle'
 
 function Field({ label, value }) {
   return (
@@ -174,11 +175,13 @@ export default function MissionHUD({ trip, phase, speedKmh, liveMetrics, loading
         <div className="mt-2 space-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {trip.paddress && (
             <div className="truncate">
+              <AreaTitle title={trip.pickup_title} />
               <strong style={{ color: 'var(--ink)' }}>Pickup:</strong> {trip.paddress}
             </div>
           )}
           {trip.daddress && (
             <div className="truncate">
+              <AreaTitle title={trip.drop_title} />
               <strong style={{ color: 'var(--ink)' }}>Drop:</strong> {trip.daddress}
             </div>
           )}

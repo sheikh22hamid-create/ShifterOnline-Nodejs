@@ -297,6 +297,8 @@ public class OrderOverlayService extends Service {
         String pickupAddress = intent.getStringExtra("pickup_address");
         String finalDropAddress = intent.getStringExtra("delivery_address");
         String rawStops = intent.getStringExtra("stops");
+        String pickupTitle = intent.getStringExtra("pickup_title");
+        String dropTitle = intent.getStringExtra("drop_title");
         String deliveryAddress = finalDropAddress;
         String tripDistanceKm = intent.getStringExtra("distance");
         String packageId = intent.getStringExtra("package_id");
@@ -375,6 +377,9 @@ public class OrderOverlayService extends Service {
                 penaltyPct,
                 penaltyAmount
         );
+
+        // Main Area titles (blank/absent -> rows stay hidden, popup unchanged)
+        com.shifter.driver.utility.OrderDialogHelper.applyAreaTitles(view, pickupTitle, dropTitle);
 
         // 2. Configure Multi-stop timeline
         configureRouteTimeline(view, rawStops, finalDropAddress, tripDistanceKm);

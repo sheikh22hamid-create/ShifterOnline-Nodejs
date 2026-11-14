@@ -8,6 +8,7 @@ const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRout
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
+const { resolveSideTitle } = require("./orderAreaTitles");
 
 function isValidCoord(val, min, max) {
   const num = Number(val);
@@ -128,6 +129,10 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     throw new Error("INVALID_ADDRESS");
   }
 
+  // Main Area title for the new drop, looked up before the row lock is taken so no network call holds the
+  // transaction open. A failed lookup stores null rather than keeping the old point's title.
+  const dropTitle = await resolveSideTitle(newDlat, newDlong);
+
   const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM pkg_order WHERE id = ${numericOrderId} FOR UPDATE`;
 
@@ -172,6 +177,7 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
         dlat: String(newDlat),
         dlong: String(newDlong),
         daddress: cleanAddress,
+        drop_title: dropTitle,
         distance: newDistance,
         d_charge: newFare,
         total_dcharge: newFare,

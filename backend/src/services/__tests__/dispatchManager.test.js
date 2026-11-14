@@ -301,6 +301,38 @@ describe("dispatchManager overlapping batch cascade", () => {
     }
   });
 
+  it("adds pickup_title/drop_title to the driver payload and keeps addresses and coordinates unchanged", async () => {
+    const titled = { ...order, paddress: "12 Some Road, Sector 5, Delhi", daddress: "9 Other Lane, Noida", pickup_title: "Sector 5", drop_title: "Noida" };
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...titled });
+    await dispatchManager.startDispatch(titled);
+    await flush();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.payload.pickup_title).toBe("Sector 5");
+      expect(request.payload.drop_title).toBe("Noida");
+      expect(request.payload.pickup_address).toBe("12 Some Road, Sector 5, Delhi");
+      expect(request.payload.delivery_address).toBe("9 Other Lane, Noida");
+      expect(request.payload.pickup_latitude).toBe(String(titled.plat));
+      expect(request.payload.delivery_longitude).toBe(String(titled.dlong));
+    }
+  });
+
+  it("sends empty-string pickup_title/drop_title when the order has none", async () => {
+    const untitled = { ...order, pickup_title: null, drop_title: undefined };
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...untitled });
+    await dispatchManager.startDispatch(untitled);
+    await flush();
+
+    const requests = emitted.filter((e) => e.event === "order:request");
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.payload.pickup_title).toBe("");
+      expect(request.payload.drop_title).toBe("");
+    }
+  });
+
   it("adds the goods type to the driver payload and order_details", async () => {
     const goodsOrder = { ...order, goods_type_name: "Clothing", goods_type_other: null };
     prisma.pkg_order.findUnique.mockResolvedValue({ ...goodsOrder });

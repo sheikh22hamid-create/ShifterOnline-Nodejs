@@ -147,6 +147,18 @@
                             android:textSize="12sp"
                             android:textStyle="bold" />
                         <TextView
+                            android:id="@+id/txt_pickup_area"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:singleLine="true"
+                            android:textColor="#0F172A"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                        <TextView
                             android:id="@+id/txt_pickup_address"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -281,6 +293,18 @@
                             android:textColor="#7C3AED"
                             android:textSize="12sp"
                             android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/txt_drop_area"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:singleLine="true"
+                            android:textColor="#0F172A"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
                         <TextView
                             android:id="@+id/txt_drop_address"
                             android:layout_width="match_parent"

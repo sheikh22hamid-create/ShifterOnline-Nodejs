@@ -96,6 +96,8 @@ async function list(req, res) {
         total_dcharge: String(o.total_dcharge),
         paddress: o.paddress,
         daddress: o.daddress,
+        pickup_title: o.pickup_title || "",
+        drop_title: o.drop_title || "",
         category: o.category,
         booking_type: o.booking_type,
         schedule_date_time: o.schedule_date_time,
@@ -297,6 +299,10 @@ async function update(req, res) {
     }
     if (data.distance !== undefined) data.distance = Number(data.distance);
     if (data.total_dcharge !== undefined) data.total_dcharge = Number(data.total_dcharge);
+    // The admin edits the address text only (coordinates stay as they are), so the stored Main
+    // Area title for a changed side can no longer be trusted: clear it rather than show a stale one.
+    if (data.paddress !== undefined && data.paddress !== order.paddress) data.pickup_title = null;
+    if (data.daddress !== undefined && data.daddress !== order.daddress) data.drop_title = null;
 
     const updated = await prisma.pkg_order.update({ where: { id }, data });
     if (data.dmobile !== undefined) {
@@ -763,7 +769,9 @@ async function assignNextDayBatch(req, res) {
           .map((o) => ({
             order_id: o.id,
             pickup_address: o.paddress,
+            pickup_title: o.pickup_title || "",
             drop_address: o.daddress,
+            drop_title: o.drop_title || "",
             sequence: sequence.find((s) => Number(s.order_id) === o.id)?.position ?? 0,
             fare: o.total_dcharge,
           }));

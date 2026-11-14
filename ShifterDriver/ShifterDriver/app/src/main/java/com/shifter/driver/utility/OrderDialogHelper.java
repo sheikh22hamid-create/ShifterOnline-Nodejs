@@ -113,6 +113,8 @@ public class OrderDialogHelper {
         String pickupAddress = getMapValue(orderData, "pickup_address", null);
         String deliveryAddress = getMapValue(orderData, "delivery_address", null);
         String rawStops = getMapValue(orderData, "stops", null);
+        String pickupTitle = getMapValue(orderData, "pickup_title", "");
+        String dropTitle = getMapValue(orderData, "drop_title", "");
         String tripDistanceKm = getMapValue(orderData, "distance", null);
         String packageId = getMapValue(orderData, "package_id", null);
         String modelName = getMapValue(orderData, "model_name", getMapValue(orderData, "driver_title", getMapValue(orderData, "package_name", null)));
@@ -163,6 +165,9 @@ public class OrderDialogHelper {
                 penaltyPct,
                 penaltyAmount
         );
+
+        // Main Area titles (blank/absent -> rows stay hidden, popup unchanged)
+        applyAreaTitles(view, pickupTitle, dropTitle);
 
         // 2. Configure Multi-stop timeline
         configureRouteTimeline(view, rawStops, deliveryAddress, tripDistanceKm);
@@ -451,6 +456,30 @@ public class OrderDialogHelper {
             }
         } catch (Exception ignored) {
             // Keep the normal pickup/drop layout if the socket payload is malformed.
+        }
+    }
+
+    /**
+     * Shows the Main Area title above the pickup / drop address in the
+     * incoming-request popup (dialog_new_order.xml). Shared by the dialog and
+     * the overlay service. A null/blank title (old payload without the keys, or
+     * an unknown area) keeps its row hidden so the popup looks exactly as before.
+     */
+    public static void applyAreaTitles(android.view.View root, String pickupTitle, String dropTitle) {
+        if (root == null) return;
+        bindAreaTitle(root.findViewById(com.shifter.driver.R.id.txt_pickup_area), pickupTitle);
+        bindAreaTitle(root.findViewById(com.shifter.driver.R.id.txt_drop_area), dropTitle);
+    }
+
+    private static void bindAreaTitle(android.widget.TextView tv, String title) {
+        if (tv == null) return;
+        String t = title != null ? title.trim() : "";
+        if (t.isEmpty() || "null".equalsIgnoreCase(t)) {
+            tv.setText("");
+            tv.setVisibility(android.view.View.GONE);
+        } else {
+            tv.setText(t);
+            tv.setVisibility(android.view.View.VISIBLE);
         }
     }
 

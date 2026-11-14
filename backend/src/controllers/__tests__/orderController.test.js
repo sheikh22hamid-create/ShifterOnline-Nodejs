@@ -41,6 +41,10 @@ jest.mock("../../services/orderPickupService", () => ({
   previewPickupChange: jest.fn(),
   confirmPickupChange: jest.fn(),
 }));
+jest.mock("../../services/orderAreaTitles", () => ({
+  resolveOrderTitles: jest.fn().mockResolvedValue({ pickup_title: null, drop_title: null }),
+  resolveSideTitle: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("../../services/orderStopsService", () => ({
   previewAddStop: jest.fn(),
   confirmAddStop: jest.fn(),
@@ -548,6 +552,66 @@ describe("orderController.createOrder (HTTP handler) — photos pass-through", (
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: "SETTLEMENT_PENDING" }));
     expect(prisma.pkg_order.create).not.toHaveBeenCalled();
     settlementService.findBlockingSettlement.mockRestore();
+  });
+});
+
+describe("orderController create — Main Area titles", () => {
+  const orderAreaTitles = require("../../services/orderAreaTitles");
+  const body = {
+    uid: 1, category: "Bike", delivery_type: [6], booking_type: 1,
+    plat: "22.719568123456", plong: "75.857727654321", paddress: "12, AB Road, Vijay Nagar, Indore", pick_name: "P", pmobile: "999", pick_type: "",
+    dlat: "23.1814539", dlong: "75.7849781", daddress: "Freeganj, Ujjain", drop_name: "D", dmobile: "888", drop_type: "",
+    package_weight: "2 Kg", package_cost: 100, description: "",
+    p_method_id: 1, transaction_id: "", extra_mile_charge: 0, cou_id: 0, cou_amt: 0, radius_km: 10, city_id: 2,
+  };
+  const res = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 5 });
+    prisma.tbl_package.findMany.mockResolvedValue([{ id: 6, per_km_charge: 10, sort_order: 1 }]);
+    prisma.tbl_user.findUnique.mockResolvedValue({ city_id: 2 });
+    pricingEngine.priceForPackage.mockReturnValue({ fare: 50, driverEarning: 40, commission: 5 });
+    prisma.pkg_order.create.mockResolvedValue({ id: 901, booking_type: 1 });
+  });
+
+  it("stores the resolved titles with the exact request coordinates, passing optional client titles through", async () => {
+    orderAreaTitles.resolveOrderTitles.mockResolvedValueOnce({ pickup_title: "Vijay Nagar", drop_title: "Ujjain" });
+    const r = res();
+    await createOrder({ body: { ...body, pickup_title: "Vijay Nagar", drop_title: "Ujjain" } }, r);
+
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(orderAreaTitles.resolveOrderTitles).toHaveBeenCalledWith({
+      plat: "22.719568123456", plong: "75.857727654321", dlat: "23.1814539", dlong: "75.7849781",
+      clientPickupTitle: "Vijay Nagar", clientDropTitle: "Ujjain",
+    });
+    const { data } = prisma.pkg_order.create.mock.calls[0][0];
+    expect(data).toEqual(expect.objectContaining({
+      pickup_title: "Vijay Nagar", drop_title: "Ujjain",
+      plat: "22.719568123456", plong: "75.857727654321", dlat: "23.1814539", dlong: "75.7849781",
+      paddress: "12, AB Road, Vijay Nagar, Indore", daddress: "Freeganj, Ujjain",
+    }));
+    expect(orderAreaTitles.resolveOrderTitles.mock.invocationCallOrder[0])
+      .toBeLessThan(prisma.pkg_order.create.mock.invocationCallOrder[0]);
+  });
+
+  it("still books, with both titles null, when the lookup finds nothing", async () => {
+    orderAreaTitles.resolveOrderTitles.mockResolvedValueOnce({ pickup_title: null, drop_title: null });
+    const r = res();
+    await createOrder({ body }, r);
+
+    expect(r.status).toHaveBeenCalledWith(200);
+    expect(orderAreaTitles.resolveOrderTitles).toHaveBeenCalledWith(expect.objectContaining({ clientPickupTitle: undefined, clientDropTitle: undefined }));
+    expect(prisma.pkg_order.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ pickup_title: null, drop_title: null, plat: "22.719568123456", dlong: "75.7849781" }),
+    });
+  });
+
+  it("does not look up titles for a booking refused before creation", async () => {
+    const r = res();
+    await createOrder({ body: { ...body, delivery_type: [] } }, r);
+    expect(r.status).toHaveBeenCalledWith(400);
+    expect(orderAreaTitles.resolveOrderTitles).not.toHaveBeenCalled();
   });
 });
 

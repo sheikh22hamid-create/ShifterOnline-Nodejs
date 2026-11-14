@@ -10,6 +10,10 @@ jest.mock("../../config/db", () => ({
   driver_trip_event: { upsert: jest.fn() },
   $transaction: jest.fn(),
 }));
+jest.mock("../orderAreaTitles", () => ({
+  resolveOrderTitles: jest.fn(),
+  resolveSideTitle: jest.fn().mockResolvedValue(null),
+}));
 jest.mock("../pricingEngine", () => ({ priceForPackageId: jest.fn() }));
 jest.mock("../orderRouteRepricing", () => ({
   getDriverRealDistanceKm: jest.fn().mockResolvedValue(1),
@@ -158,6 +162,35 @@ describe("earlyDropService", () => {
       await early.applyEarlyDrop({ ...order, p_method_id: -2, trans_id: "wallet" }, 9, { lat: 22.75, lng: 75.9 }, 7000);
 
       expect(prisma.tbl_user.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { wallet: { increment: 80 } } });
+    });
+  });
+
+
+  describe("applyEarlyDrop — Main Area title", () => {
+    const { resolveSideTitle } = require("../orderAreaTitles");
+    beforeEach(() => {
+      computeRouteDistanceKm.mockResolvedValue(6);
+      pricingEngine.priceForPackageId.mockResolvedValue({ fare: 120, driverEarning: 108, commission: 10 });
+    });
+
+    it("stores the actual drop point's title, leaves pickup_title alone and keeps the point unchanged", async () => {
+      resolveSideTitle.mockResolvedValueOnce("Bhawarkua");
+      await early.applyEarlyDrop(order, 9, { lat: 22.712345678, lng: 75.876543219 }, 7000);
+      expect(resolveSideTitle).toHaveBeenCalledWith(22.712345678, 75.876543219);
+      const { data } = prisma.pkg_order.update.mock.calls[0][0];
+      expect(data.drop_title).toBe("Bhawarkua");
+      expect(data).not.toHaveProperty("pickup_title");
+      expect(data.dlat).toBe("22.712345678");
+      expect(data.dlong).toBe("75.876543219");
+    });
+
+    it("clears the drop title when the lookup fails, and looks it up before the transaction opens", async () => {
+      resolveSideTitle.mockResolvedValueOnce(null);
+      await early.applyEarlyDrop(order, 9, { lat: 22.75, lng: 75.9 }, 7000);
+      const { data } = prisma.pkg_order.update.mock.calls[0][0];
+      expect(data).toHaveProperty("drop_title", null);
+      expect(data).not.toHaveProperty("pickup_title");
+      expect(resolveSideTitle.mock.invocationCallOrder[0]).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
     });
   });
 });

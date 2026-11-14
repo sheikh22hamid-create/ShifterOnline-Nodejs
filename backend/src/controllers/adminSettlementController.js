@@ -148,7 +148,7 @@ async function detail(req, res) {
         events,
         receiver_pay,
         order: order && {
-          id: order.id, paddress: order.paddress, daddress: order.daddress, d_charge: order.d_charge,
+          id: order.id, paddress: order.paddress, daddress: order.daddress, pickup_title: order.pickup_title || "", drop_title: order.drop_title || "", d_charge: order.d_charge,
           total_dcharge: order.total_dcharge, commission: order.commission, o_status: order.o_status,
         },
       },

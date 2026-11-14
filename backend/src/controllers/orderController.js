@@ -34,6 +34,7 @@ const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
+const { resolveOrderTitles } = require("../services/orderAreaTitles");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const { getAdvancePaymentTimeoutMinutes } = require("../utils/advancePaymentTimeout");
 const { getScheduledMinAdvanceMinutes, getScheduledConfirmLeadMinutes } = require("../utils/scheduledConfirmSettings");
@@ -281,6 +282,9 @@ async function createOrderCore({
   agreedFare = null, skipDispatch = false, customiseOrderId = null,
   // Low Fare Booking: the customer's { date: "YYYY-MM-DD", from: "HH:MM", until: "HH:MM" } pickup window.
   lowFareWindow = null,
+  // Main Area titles (spec 2026-11-14): optional titles the client already knows; sanitised by the resolver, which
+  // otherwise reverse-geocodes the coordinates. Never blocks the booking.
+  clientPickupTitle, clientDropTitle,
 }) {
   if (
     !uid ||
@@ -614,6 +618,8 @@ async function createOrderCore({
 
 
   const stopCharge = validStops.length * stopSettings.extraStopCharge;
+  // Read-only on the coordinates; resolves to nulls on any failure, so it can never fail the booking.
+  const areaTitles = await resolveOrderTitles({ plat, plong, dlat, dlong, clientPickupTitle, clientDropTitle });
   let order;
   try {
   order = await prisma.pkg_order.create({
@@ -629,6 +635,8 @@ async function createOrderCore({
       dlong: String(dlong),
       paddress: paddress || null,
       daddress: daddress || null,
+      pickup_title: areaTitles.pickup_title,
+      drop_title: areaTitles.drop_title,
       pmobile: pmobile || null,
       send_sender_whatsapp: sendSenderWhatsapp === true,
       send_receiver_whatsapp: sendReceiverWhatsapp === true,
@@ -857,7 +865,7 @@ async function createOrder(req, res) {
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
       receiver_pays, receiver_commission_percent, free_booking, send_sender_whatsapp, send_receiver_whatsapp,
-      low_fare_date, low_fare_from, low_fare_until,
+      low_fare_date, low_fare_from, low_fare_until, pickup_title, drop_title,
     } = req.body;
 
     const result = await createOrderCore({
@@ -875,6 +883,7 @@ async function createOrder(req, res) {
       sendSenderWhatsapp: send_sender_whatsapp === true || send_sender_whatsapp === "true" || send_sender_whatsapp === 1 || send_sender_whatsapp === "1",
       sendReceiverWhatsapp: send_receiver_whatsapp === true || send_receiver_whatsapp === "true" || send_receiver_whatsapp === 1 || send_receiver_whatsapp === "1",
       freeBooking: free_booking === true || free_booking === "true" || free_booking === 1 || free_booking === "1",
+      clientPickupTitle: pickup_title, clientDropTitle: drop_title,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
@@ -1122,6 +1131,8 @@ async function getOrderDetails(req, res) {
           customer_dname: order.drop_name,
           customer_paddress: order.paddress,
           customer_daddress: order.daddress,
+          pickup_title: order.pickup_title || "",
+          drop_title: order.drop_title || "",
           customer_pmobile: order.pmobile,
           customer_dmobile: order.dmobile,
           plat: order.plat,
@@ -2017,6 +2028,8 @@ async function getMapInfo(req, res) {
       customer_paddress: order.paddress,
       customer_pmobile: order.pmobile,
       customer_daddress: order.daddress,
+      pickup_title: order.pickup_title || "",
+      drop_title: order.drop_title || "",
       customer_dmobile: order.dmobile,
       cust_address_plat: order.plat,
       cust_address_plong: order.plong,

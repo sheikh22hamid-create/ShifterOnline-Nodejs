@@ -11,6 +11,7 @@ const { haversineKm } = require("../utils/geoDistance");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
+const { resolveSideTitle } = require("./orderAreaTitles");
 
 // Pickup can move while the order is still pending (0), while the driver is
 // en route to it (1), or even after the driver has already arrived and is
@@ -126,6 +127,9 @@ async function previewPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
  */
 async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddress }) {
   const { numericOrderId, numericUid, cleanAddress } = assertUsable({ orderId, uid, newPlat, newPlong, newPaddress });
+  // Main Area title for the new pickup, looked up before the row lock is taken so no network call holds the
+  // transaction open. A failed lookup stores null rather than keeping the old point's title.
+  const pickupTitle = await resolveSideTitle(newPlat, newPlong);
 
   const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM pkg_order WHERE id = ${numericOrderId} FOR UPDATE`;
@@ -165,6 +169,7 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
       plat: String(newPlat),
       plong: String(newPlong),
       paddress: cleanAddress,
+      pickup_title: pickupTitle,
       distance: newDistance,
       d_charge: newFare,
       total_dcharge: newFare,
