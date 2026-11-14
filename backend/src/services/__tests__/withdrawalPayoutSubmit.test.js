@@ -306,8 +306,9 @@ describe("submitPayout", () => {
     const out = await submitPayout(55);
 
     expect(out).toEqual({ outcome: "refused", reason: MISMATCH });
+    // requireNoFundAccount guard: a concurrent submit that got further blocks the revert.
     expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
-      where: { id: 55, status: "processing" },
+      where: { id: 55, status: "processing", razorpay_fund_account_id: null, razorpay_payout_id: null },
       data: { status: "pending", failure_reason: MISMATCH },
     });
     expect(razorpayx.createContact).not.toHaveBeenCalled();
@@ -323,6 +324,153 @@ describe("submitPayout", () => {
     expect(prisma.driver_withdraw_requests.updateMany).not.toHaveBeenCalled();
     expect(razorpayx.createContact).not.toHaveBeenCalled();
     expect(razorpayx.createPayout).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitPayout: never refund once a payout attempt may exist", () => {
+  const PENDING_WHERE = { id: 55, status: "processing" };
+  const GUARDED_WHERE = { ...PENDING_WHERE, razorpay_fund_account_id: null, razorpay_payout_id: null };
+
+  function failureReasonWrites() {
+    return prisma.driver_withdraw_requests.updateMany.mock.calls.filter(
+      ([arg]) => arg.data && "failure_reason" in arg.data && !("status" in arg.data)
+    );
+  }
+
+  it("(a) re-submit with stored fund account + changed UPI: no destination check, no revert, pays the stored fund account", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_fund_account_id: "fa_1" }));
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ upi_id: "new@okaxis" }));
+
+    const out = await submitPayout(55);
+
+    expect(out).toEqual({ outcome: "accepted" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+    expect(prisma.tbl_bank_account.findFirst).not.toHaveBeenCalled();
+    expect(razorpayx.createContact).not.toHaveBeenCalled();
+    expect(razorpayx.createFundAccount).not.toHaveBeenCalled();
+    expect(razorpayx.createPayout).toHaveBeenCalledWith({
+      fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-55",
+    });
+  });
+
+  it("(a) re-submit with stored fund account + changed UPI + unknown payout result -> unknown, no revert", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_fund_account_id: "fa_1" }));
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ upi_id: "new@okaxis" }));
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: false, reason: "timeout" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason: "timeout" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+  });
+
+  it("(b) re-submit (fund account stored) + definitive createPayout refusal -> records reason, stays processing, unknown", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_fund_account_id: "fa_1" }));
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Different request body sent for the same Idempotency Header" });
+
+    const out = await submitPayout(55);
+
+    expect(out).toEqual({ outcome: "unknown", reason: "Different request body sent for the same Idempotency Header" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+    expect(failureReasonWrites()).toEqual([[{
+      where: PENDING_WHERE,
+      data: { failure_reason: "Different request body sent for the same Idempotency Header" },
+    }]]);
+  });
+
+  it("(b) the recorded failure_reason is clipped to 255 chars", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_fund_account_id: "fa_1" }));
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "x".repeat(300) });
+
+    await submitPayout(55);
+
+    expect(failureReasonWrites()[0][0].data.failure_reason).toHaveLength(255);
+  });
+
+  it("(c) re-submit (payout id stored, no fund account) + definitive refusal -> no revert, reason recorded, unknown", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pout_webhook" }));
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Insufficient balance" });
+
+    const out = await submitPayout(55);
+
+    expect(out).toEqual({ outcome: "unknown", reason: "Insufficient balance" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+    expect(failureReasonWrites()).toEqual([[{ where: PENDING_WHERE, data: { failure_reason: "Insufficient balance" } }]]);
+  });
+
+  it("(c) re-submit (payout id stored) + definitive createFundAccount error -> no revert, unknown", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pout_webhook" }));
+    razorpayx.createFundAccount.mockResolvedValue({ ok: false, definitive: true, reason: "Invalid VPA" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason: "Invalid VPA" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+  });
+
+  it("(c) re-submit (payout id stored) + destination mismatch -> no revert, unknown, nothing sent", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pout_webhook" }));
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ upi_id: "new@okaxis" }));
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason: MISMATCH });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
+    expect(razorpayx.createPayout).not.toHaveBeenCalled();
+  });
+
+  it("(d) first attempt + definitive createPayout refusal -> unguarded revert, refused", async () => {
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Insufficient balance" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "Insufficient balance" });
+    expect(revertCalls()).toEqual([[{ where: PENDING_WHERE, data: { status: "pending", failure_reason: "Insufficient balance" } }]]);
+  });
+
+  it("(d) first attempt + destination mismatch -> guarded revert, refused", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue(rider({ upi_id: "new@okaxis" }));
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: MISMATCH });
+    expect(revertCalls()).toEqual([[{ where: GUARDED_WHERE, data: { status: "pending", failure_reason: MISMATCH } }]]);
+  });
+
+  it("(e) first attempt + definitive createFundAccount error -> guarded revert, refused", async () => {
+    razorpayx.createFundAccount.mockResolvedValue({ ok: false, definitive: true, reason: "Invalid VPA" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "Invalid VPA" });
+    expect(revertCalls()).toEqual([[{ where: GUARDED_WHERE, data: { status: "pending", failure_reason: "Invalid VPA" } }]]);
+  });
+
+  it("(e) first attempt + definitive createContact error -> guarded revert, refused", async () => {
+    razorpayx.createContact.mockResolvedValue({ ok: false, definitive: true, reason: "Invalid contact" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "Invalid contact" });
+    expect(revertCalls()).toEqual([[{ where: GUARDED_WHERE, data: { status: "pending", failure_reason: "Invalid contact" } }]]);
+  });
+
+  it("(f) racing submit stored a fund account first: guarded revert matches 0 rows -> unknown, no refund", async () => {
+    razorpayx.createFundAccount.mockResolvedValue({ ok: false, definitive: true, reason: "Invalid VPA" });
+    prisma.driver_withdraw_requests.updateMany.mockImplementation(async ({ where }) =>
+      ({ count: "razorpay_fund_account_id" in where ? 0 : 1 })
+    );
+
+    const out = await submitPayout(55);
+
+    expect(out).toEqual({ outcome: "unknown", reason: "request is no longer processing" });
+    expect(walletWriteCount()).toBe(0);
+  });
+
+  it("(f) first attempt that lost the fund-account store race never reverts on a definitive payout refusal", async () => {
+    prisma.driver_withdraw_requests.findUnique
+      .mockResolvedValueOnce(withdrawal())
+      .mockResolvedValue(withdrawal({ razorpay_fund_account_id: "fa_winner" }));
+    prisma.driver_withdraw_requests.updateMany.mockImplementation(async ({ data }) =>
+      ({ count: data.razorpay_fund_account_id ? 0 : 1 })
+    );
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Insufficient balance" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "unknown", reason: "Insufficient balance" });
+    expect(revertCalls()).toHaveLength(0);
+    expect(walletWriteCount()).toBe(0);
   });
 });
 

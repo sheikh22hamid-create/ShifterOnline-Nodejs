@@ -139,14 +139,23 @@ async function claimAndDebit(withdrawalId) {
  * Nothing was sent (definitive refusal): processing -> pending with the
  * reason, and refund the debit. Returns false (no refund) if the request was
  * not processing.
+ *
+ * options.requireNoFundAccount: also require that no fund account and no
+ * payout id are stored, so a revert from the destination check or the
+ * contact/fund-account steps can never fire after another submit got further.
  */
-async function revertToPending(withdrawalId, reason) {
+async function revertToPending(withdrawalId, reason, options = {}) {
   let withdrawal;
   let amount;
+  const where = { id: withdrawalId, status: "processing" };
+  if (options.requireNoFundAccount === true) {
+    where.razorpay_fund_account_id = null;
+    where.razorpay_payout_id = null;
+  }
   try {
     await prisma.$transaction(async (tx) => {
       const moved = await tx.driver_withdraw_requests.updateMany({
-        where: { id: withdrawalId, status: "processing" },
+        where,
         data: { status: "pending", failure_reason: clip(reason, 255) },
       });
       if (moved.count !== 1) throw new Rollback("not_processing");
@@ -276,42 +285,69 @@ function contactName(rider) {
   return `Driver #${rider.id}`;
 }
 
-// Only a Razorpay result with ok:false + definitive:true proves nothing was
-// sent, so only that refunds. Anything else leaves the request processing.
-async function handleFailure(withdrawalId, result) {
-  if (result.definitive === true) {
-    const reverted = await revertToPending(withdrawalId, result.reason);
-    if (reverted) return { outcome: "refused", reason: result.reason };
-    return { outcome: "unknown", reason: "request is no longer processing" };
-  }
-  return { outcome: "unknown", reason: result.reason };
+// Re-submit path: an earlier attempt may already have sent money, so a
+// refusal is only recorded on the still-processing row; never refunded.
+async function recordFailure(withdrawalId, reason) {
+  await prisma.driver_withdraw_requests.updateMany({
+    where: { id: withdrawalId, status: "processing" },
+    data: { failure_reason: clip(reason, 255) },
+  });
+  return { outcome: "unknown", reason };
+}
+
+// Only a Razorpay result with ok:false + definitive:true on a FIRST attempt
+// proves nothing was sent, so only that refunds. Anything else leaves the
+// request processing.
+//   resubmit: an earlier attempt may exist -> record reason, never revert.
+//   requireNoFundAccount: revert only if no other submit stored a fund
+//   account / payout id meanwhile (steps before this call's own store).
+async function handleFailure(withdrawalId, result, { resubmit, requireNoFundAccount } = {}) {
+  if (result.definitive !== true) return { outcome: "unknown", reason: result.reason };
+  if (resubmit) return recordFailure(withdrawalId, result.reason);
+  const reverted = requireNoFundAccount
+    ? await revertToPending(withdrawalId, result.reason, { requireNoFundAccount: true })
+    : await revertToPending(withdrawalId, result.reason);
+  if (reverted) return { outcome: "refused", reason: result.reason };
+  return { outcome: "unknown", reason: "request is no longer processing" };
 }
 
 /**
  * Send the payout for a request that is already processing (claimed and
  * debited). Safe to repeat: the payout uses reference/idempotency key
  * "wd-<id>", and stored ids are only ever written when still null.
+ *
+ * Once a fund account or payout id is stored, an earlier attempt may have
+ * sent money: such a re-submit skips the destination check (the stored fund
+ * account fixes the destination) and never reverts or refunds.
  */
 async function submitPayout(withdrawalId) {
   const withdrawal = await prisma.driver_withdraw_requests.findUnique({ where: { id: withdrawalId } });
   if (!withdrawal || withdrawal.status !== "processing") {
     return { outcome: "unknown", reason: "request is not processing" };
   }
+  const resubmit = Boolean(withdrawal.razorpay_fund_account_id || withdrawal.razorpay_payout_id);
   const rider = await prisma.tbl_rider.findUnique({ where: { id: withdrawal.rider_id } });
   if (!rider) {
     logger.error(`withdrawalPayout: rider ${withdrawal.rider_id} not found for withdrawal ${withdrawalId}`);
     return { outcome: "unknown", reason: "driver not found" };
   }
 
-  const dest = await resolveDestination(withdrawal, rider);
-  if (!dest.ok) {
-    const reverted = await revertToPending(withdrawalId, dest.message);
-    if (reverted) return { outcome: "refused", reason: dest.message };
-    return { outcome: "unknown", reason: "request is no longer processing" };
-  }
-
   let fundAccountId = withdrawal.razorpay_fund_account_id;
+  let method = withdrawal.payout_method;
+  let raced = false;
   if (!fundAccountId) {
+    // No stored fund account: one has to be created from the driver's
+    // current details, so they must still match the request's snapshot.
+    const dest = await resolveDestination(withdrawal, rider);
+    if (!dest.ok) {
+      if (resubmit) return recordFailure(withdrawalId, dest.message);
+      const reverted = await revertToPending(withdrawalId, dest.message, { requireNoFundAccount: true });
+      if (reverted) return { outcome: "refused", reason: dest.message };
+      return { outcome: "unknown", reason: "request is no longer processing" };
+    }
+    method = dest.method;
+    const preStoreFailure = { resubmit, requireNoFundAccount: true };
+
     let contactId = rider.razorpay_contact_id;
     if (!contactId) {
       const contact = await razorpayx.createContact({
@@ -319,7 +355,7 @@ async function submitPayout(withdrawalId) {
         mobile: rider.fmobile,
         referenceId: `rider-${rider.id}`,
       });
-      if (!contact.ok) return handleFailure(withdrawalId, contact);
+      if (!contact.ok) return handleFailure(withdrawalId, contact, preStoreFailure);
       contactId = contact.id;
       await prisma.tbl_rider.updateMany({
         where: { id: rider.id, razorpay_contact_id: null },
@@ -329,7 +365,7 @@ async function submitPayout(withdrawalId) {
 
     const { ok: _ok, ...destination } = dest;
     const fundAccount = await razorpayx.createFundAccount({ contactId, ...destination });
-    if (!fundAccount.ok) return handleFailure(withdrawalId, fundAccount);
+    if (!fundAccount.ok) return handleFailure(withdrawalId, fundAccount, preStoreFailure);
     fundAccountId = fundAccount.id;
     const stored = await prisma.driver_withdraw_requests.updateMany({
       where: { id: withdrawalId, razorpay_fund_account_id: null },
@@ -337,19 +373,23 @@ async function submitPayout(withdrawalId) {
     });
     if (stored.count !== 1) {
       // A concurrent submit stored one first: use it, so both calls send the
-      // same payout body under the same idempotency key.
+      // same payout body under the same idempotency key. That other submit
+      // may already have sent money, so from here this call never refunds.
       const fresh = await prisma.driver_withdraw_requests.findUnique({ where: { id: withdrawalId } });
       if (fresh?.razorpay_fund_account_id) fundAccountId = fresh.razorpay_fund_account_id;
+      raced = true;
     }
   }
 
   const payout = await razorpayx.createPayout({
     fundAccountId,
     amountRupees: Number(withdrawal.amount),
-    method: dest.method,
+    method,
     referenceId: `wd-${withdrawalId}`,
   });
-  if (!payout.ok) return handleFailure(withdrawalId, payout);
+  // First attempt: this call stored the fund account itself just above, so
+  // the revert is not guarded on it being null.
+  if (!payout.ok) return handleFailure(withdrawalId, payout, { resubmit: resubmit || raced });
 
   const stored = await prisma.driver_withdraw_requests.updateMany({
     where: { id: withdrawalId, razorpay_payout_id: null },
