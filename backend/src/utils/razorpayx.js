@@ -32,6 +32,15 @@ function verifyWebhookSignature(rawBody, signature) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// The one rule for "Razorpay genuinely rejected this request" (callers refund
+// on definitive). 408/409 = outcome unknown or same idempotency key in flight,
+// 429 = rate limit, 401/403 = credential/permission problem; none of these
+// prove the payout was not made. Body must also be a Razorpay error object.
+const NON_DEFINITIVE_4XX = new Set([408, 409, 429, 401, 403]);
+function isDefinitiveRejection(status, data) {
+  return status >= 400 && status < 500 && !NON_DEFINITIVE_4XX.has(status) && Boolean(data && data.error);
+}
+
 // Single place for auth, timeout and definitive / non-definitive classification.
 async function request(label, method, path, { body, headers } = {}) {
   if (!isConfigured()) {
@@ -61,8 +70,11 @@ async function request(label, method, path, { body, headers } = {}) {
   }
   if (!resp.ok) {
     logger.error(`${label}: RazorpayX API error (HTTP ${resp.status}):`, data);
-    if (resp.status >= 400 && resp.status < 500 && data) {
-      return { ok: false, definitive: true, reason: data?.error?.description || "RazorpayX rejected the request" };
+    if (resp.status === 401 || resp.status === 403) {
+      return { ok: false, definitive: false, reason: "RazorpayX rejected our credentials or permissions" };
+    }
+    if (isDefinitiveRejection(resp.status, data)) {
+      return { ok: false, definitive: true, reason: data.error.description || "RazorpayX rejected the request" };
     }
     return { ok: false, definitive: false, reason: data?.error?.description || "RazorpayX error. Try again." };
   }
@@ -72,12 +84,18 @@ async function request(label, method, path, { body, headers } = {}) {
   return { ok: true, data };
 }
 
+function missingId(label, r) {
+  if (r.data.id) return null;
+  logger.error(`${label}: RazorpayX response had no id.`);
+  return { ok: false, definitive: false, reason: "RazorpayX returned a response without an id" };
+}
+
 async function createContact({ name, mobile, referenceId }) {
   const r = await request("razorpayx.createContact", "POST", "/contacts", {
     body: { name, contact: mobile, type: "vendor", reference_id: referenceId },
   });
   if (!r.ok) return r;
-  return { ok: true, id: r.data.id };
+  return missingId("razorpayx.createContact", r) || { ok: true, id: r.data.id };
 }
 
 async function createFundAccount({ contactId, method, upiId, accountName, accountNumber, ifsc }) {
@@ -91,7 +109,7 @@ async function createFundAccount({ contactId, method, upiId, accountName, accoun
         };
   const r = await request("razorpayx.createFundAccount", "POST", "/fund_accounts", { body });
   if (!r.ok) return r;
-  return { ok: true, id: r.data.id };
+  return missingId("razorpayx.createFundAccount", r) || { ok: true, id: r.data.id };
 }
 
 async function createPayout({ fundAccountId, amountRupees, method, referenceId }) {
@@ -109,6 +127,8 @@ async function createPayout({ fundAccountId, amountRupees, method, referenceId }
     },
   });
   if (!r.ok) return r;
+  const bad = missingId("razorpayx.createPayout", r);
+  if (bad) return bad;
   return { ok: true, id: r.data.id, status: r.data.status, utr: r.data.utr ?? null };
 }
 

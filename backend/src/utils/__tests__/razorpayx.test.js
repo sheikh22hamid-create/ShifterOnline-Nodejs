@@ -88,6 +88,28 @@ describe("razorpayx client", () => {
         .toEqual({ ok: false, definitive: true, reason: "Invalid VPA" });
     });
 
+    it.each([408, 409, 429, 401, 403])("treats %i as non-definitive even with a Razorpay error body", async (status) => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status, json: async () => ({ error: { description: "secret detail" } }) });
+      const r = await rx.createPayout({ fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-5" });
+      expect(r).toMatchObject({ ok: false, definitive: false });
+      if (status === 401 || status === 403) {
+        expect(r.reason).toBe("RazorpayX rejected our credentials or permissions");
+      }
+    });
+
+    it("treats a 400 without an error object as non-definitive", async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ message: "WAF block" }) });
+      expect(await rx.createPayout({ fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-5" }))
+        .toMatchObject({ ok: false, definitive: false });
+    });
+
+    it("never returns ok:true without an id on 2xx", async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: "processing" }) });
+      expect(await rx.createContact({ name: "Ravi Kumar", mobile: "9", referenceId: "r" })).toMatchObject({ ok: false, definitive: false });
+      expect(await rx.createFundAccount({ contactId: "c", method: "upi", upiId: "a@b" })).toMatchObject({ ok: false, definitive: false });
+      expect(await rx.createPayout({ fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-5" })).toMatchObject({ ok: false, definitive: false });
+    });
+
     it("classifies 5xx, network error and non-JSON body as non-definitive", async () => {
       const args = { fundAccountId: "fa_1", amountRupees: 2, method: "upi", referenceId: "wd-5" };
       global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: { description: "boom" } }) });
