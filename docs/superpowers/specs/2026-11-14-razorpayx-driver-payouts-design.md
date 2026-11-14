@@ -12,7 +12,7 @@ Today a driver's wallet withdrawal is a request that an admin approves, and then
 - The driver's ledger is never debited without a payout in flight, and never loses money if the payout fails: failed or reversed payouts return the amount to the ledger.
 - A payout can never be sent twice for one request, even with double clicks, retries or timeouts.
 - The admin Payouts screen shows the real state (processing / paid with UTR / failed with reason).
-- Rollout is safe: a switch, default OFF, which keeps today's manual flow exactly as it is.
+- No on/off switch: approve always pays through RazorpayX (owner's decision). If RazorpayX is not configured, approve refuses and changes nothing.
 
 ## Non-goals
 
@@ -47,9 +47,9 @@ Owner picked **A**.
 
 ## Design
 
-### Switch and config
-- app_settings key `razorpayx_payouts_enabled` (default OFF). OFF → `approve` behaves exactly as today (manual, optional reference/proof).
-- ON but RazorpayX env not configured → approve refuses with a clear message and changes nothing.
+### Config (no switch)
+- There is no on/off setting. `approve` always pays through RazorpayX; the old manual path (admin enters a reference/proof) is removed. Old requests already marked `approved` stay as history.
+- RazorpayX env not configured → approve refuses with a clear message and changes nothing (nothing is debited).
 - Env: `RAZORPAYX_KEY_ID`, `RAZORPAYX_KEY_SECRET`, `RAZORPAYX_ACCOUNT_NUMBER` (the RazorpayX account to pay from), `RAZORPAYX_WEBHOOK_SECRET`. Added to `.env.example`. These are separate from the existing collection keys.
 
 ### Data (one migration)
@@ -58,7 +58,7 @@ Owner picked **A**.
 - `tbl_rider`: add `razorpay_contact_id` (nullable) so each driver is created as a Razorpay contact once.
 - A small table (or column) to remember processed webhook event ids so a repeated delivery is ignored.
 
-### Approve flow (switch ON)
+### Approve flow
 1. Guards as today (request exists, city scope, status is `pending`).
 2. Destination check: take the request's `payout_method`, read the driver's *current* saved UPI/bank, and compare with the request's `payout_detail` snapshot (UPI id; bank last 4 digits). If they differ, refuse: "Driver changed payout details after requesting — reject and ask them to request again." The money never goes to details the driver didn't have when requesting.
 3. Claim atomically: `updateMany` where id and status = `pending` → `processing`. Zero rows → 409 (double click / race).
@@ -81,8 +81,8 @@ Owner picked **A**.
 
 ### Admin screen (frontend `Payouts.jsx`, `PayoutApproveModal.jsx`, `payoutStatus.js`)
 - New statuses and filters: processing (warning), paid (success), failed (danger); existing approved/rejected unchanged.
-- Approve modal (switch ON): text becomes "Sends ₹X to the driver's UPI/bank immediately via Razorpay"; the manual reference/proof inputs are hidden (the UTR comes from Razorpay). Switch OFF: modal unchanged.
-- Rows show UTR, failure reason, and the "Check status" action for `processing`. The API returns the switch state so the UI knows which modal to show.
+- Approve modal: text becomes "Sends ₹X to the driver's UPI/bank immediately via Razorpay"; the manual reference/proof inputs are removed (the UTR comes from Razorpay).
+- Rows show UTR, failure reason, and the "Check status" action for `processing`.
 - The existing admin socket event `notifyPayoutUpdate` is fired on every status change so the list updates live.
 
 ### Driver side
@@ -96,12 +96,12 @@ Owner picked **A**.
 - Secrets stay in env, are never logged, never returned to the browser.
 
 ## Testing
-- Jest tests in the repo's existing `__tests__` style with `fetch` mocked: approve happy path, validation/destination-mismatch refusal, double-claim race, definitive refusal refunds and returns to `pending`, unknown outcome keeps `processing`, webhook signature (good/bad), processed, failed/reversed refund exactly once, repeated event ignored, switch OFF unchanged.
-- Dev end-to-end only with RazorpayX **test mode** keys; no real money until the owner flips the switch on prod.
+- Jest tests in the repo's existing `__tests__` style with `fetch` mocked: approve happy path, validation/destination-mismatch refusal, double-claim race, definitive refusal refunds and returns to `pending`, unknown outcome keeps `processing`, missing RazorpayX config refuses without debiting, webhook signature (good/bad), processed, failed/reversed refund exactly once, repeated event ignored.
+- Dev end-to-end only with RazorpayX **test mode** keys; no real money moves until prod gets live keys.
 
 ## Rollout
 - Migration file added; applied to dev by hand (dev DB convention); **not** applied to prod by me — the owner runs it before deploying, together with the other pending prod SQL.
-- Backend and admin frontend deploy with the switch OFF; the owner enables it after RazorpayX is funded and the webhook URL + IP allowlist are set up.
+- With no switch, the feature is live as soon as the backend and admin frontend deploy to prod, so deploy only after RazorpayX is funded, the live keys are in the prod env, and the webhook URL + IP allowlist are set up. Until then approve on prod just refuses with a "payouts not configured" message and no driver is debited.
 
 ## Left to the builder
 - Exact Razorpay field names, the idempotency window and the webhook payload shape (verify against the live reference).
