@@ -31,6 +31,7 @@ export default function WhatsAppBroadcast() {
   const { hasRole, user } = useAuth()
   const toast = useToast()
   const canSend = hasRole('superadmin', 'admin', 'executive')
+  const isSuperAdmin = hasRole('superadmin')
 
   // WhatsApp bot connection state
   const [botStatus, setBotStatus] = useState({
@@ -289,14 +290,16 @@ export default function WhatsAppBroadcast() {
             Check Bot
           </button>
 
-          <Link
-            to="/cms/whatsapp-account"
-            className="flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-[var(--surface-raised)]"
-            style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
-          >
-            <Smartphone size={14} />
-            Bot Session
-          </Link>
+          {isSuperAdmin && (
+            <Link
+              to="/cms/whatsapp-account"
+              className="flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-[var(--surface-raised)]"
+              style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+            >
+              <Smartphone size={14} />
+              Bot Session
+            </Link>
+          )}
         </div>
       </div>
 
@@ -306,15 +309,17 @@ export default function WhatsAppBroadcast() {
           <div className="flex items-center gap-2.5">
             <AlertTriangle size={18} className="shrink-0 text-amber-600" />
             <span>
-              <strong>WhatsApp Bot is currently offline or disconnected.</strong> To send messages, please pair or scan the QR code in the WhatsApp Account settings.
+              <strong>WhatsApp Bot is currently offline or disconnected.</strong> {isSuperAdmin ? 'To send messages, please pair or scan the QR code in the WhatsApp Account settings.' : 'Please ask a Super Admin to pair or connect the WhatsApp bot session.'}
             </span>
           </div>
-          <Link
-            to="/cms/whatsapp-account"
-            className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 font-semibold text-white transition-opacity hover:opacity-90"
-          >
-            Connect Bot
-          </Link>
+          {isSuperAdmin && (
+            <Link
+              to="/cms/whatsapp-account"
+              className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              Connect Bot
+            </Link>
+          )}
         </div>
       )}
 

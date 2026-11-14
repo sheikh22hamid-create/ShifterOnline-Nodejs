@@ -22,16 +22,27 @@ function validatePhoneNumber(phone) {
 
 /**
  * GET /api/v1/whatsapp/status
- * Returns connection status, connected phone number, and QR/Pairing codes.
- * Requires Authentication + Super Admin Role.
+ * Returns connection status and connected phone number.
+ * Pairing/QR codes are only returned to Super Admin.
+ * Requires Authentication + Super Admin / Admin / Executive.
  */
-router.get("/status", auth, authorize("superadmin"), (req, res) => {
+router.get("/status", auth, authorize("superadmin", "admin", "executive"), (req, res) => {
   try {
     const statusData = whatsappClient.getBotStatus();
+    const isSuperAdmin = req.user && req.user.role === "superadmin";
+
+    // For non-superadmin (admin, executive), omit sensitive pairing & QR credentials
+    const data = isSuperAdmin
+      ? statusData
+      : {
+          status: statusData.status,
+          connectedPhone: statusData.connectedPhone,
+        };
+
     return res.json({
       Result: true,
       success: true,
-      data: statusData,
+      data,
     });
   } catch (err) {
     logger.error("Error fetching WhatsApp bot status:", err);
