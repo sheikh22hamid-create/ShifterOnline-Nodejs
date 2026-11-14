@@ -125,4 +125,8 @@ module.exports = {
   // rejects a duplicate rider+date), so an hourly sweep rather than a single
   // precise midnight cron is safe and self-healing across restarts.
   DAILY_DRIVER_AUTO_ENROLL_SWEEP_INTERVAL_MS: 60 * 60 * 1000,
+
+  // RazorpayX payouts stuck in `processing` (missed webhook): re-check status
+  // every 5 min — see withdrawalPayout.sweepStuckPayouts.
+  WITHDRAWAL_PAYOUT_SWEEP_INTERVAL_MS: 5 * 60 * 1000,
 };

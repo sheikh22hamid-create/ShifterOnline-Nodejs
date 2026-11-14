@@ -304,6 +304,20 @@ async function notifyDriverWalletTransaction(fcmToken, type, amountText, remark)
   );
 }
 
+/**
+ * RazorpayX confirmed a driver withdrawal reached the bank (withdrawalPayout
+ * paid state). Not a wallet change - the wallet was debited (and announced)
+ * when the admin approved - so it must not read as a second "Wallet debited".
+ */
+async function notifyDriverPayoutSent(fcmToken, amountText, utr) {
+  return sendPushNotification(
+    fcmToken,
+    "Payout sent",
+    `${amountText} has been sent to your account${utr ? ` (UTR ${utr})` : ""}.`,
+    { type: "payout_sent", amount: String(amountText), utr: utr ? String(utr) : "" }
+  );
+}
+
 /** Any customer-wallet ledger change (admin credit/debit, referral bonus, refund, ...) - see services/walletNotifier.js. */
 async function notifyCustomerWalletTransaction(fcmToken, type, amountText, remark) {
   const isCredit = type === "credit";
@@ -459,6 +473,7 @@ module.exports = {
   notifyAmountRewardPlanAssigned,
   notifyDriverModel1Suspended,
   notifyDriverWalletTransaction,
+  notifyDriverPayoutSent,
   notifyCustomerWalletTransaction,
   notifyCustomerFreeBookingRefunded,
   notifyDriverKycDocumentDecision,

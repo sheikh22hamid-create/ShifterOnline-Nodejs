@@ -3,8 +3,6 @@ import api from '../../services/api'
 import Modal from '../common/Modal'
 
 export default function PayoutApproveModal({ open, payout, onClose, onDone }) {
-  const [transactionReference, setTransactionReference] = useState('')
-  const [paymentProofUrl, setPaymentProofUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -12,13 +10,17 @@ export default function PayoutApproveModal({ open, payout, onClose, onDone }) {
     setSubmitting(true)
     setError('')
     try {
-      await api.post(`/payouts/${payout.id}/approve`, {
-        transaction_reference: transactionReference || undefined,
-        payment_proof_url: paymentProofUrl || undefined,
-      })
-      onDone()
-      setTransactionReference('')
-      setPaymentProofUrl('')
+      const response = await api.post(`/payouts/${payout.id}/approve`, {})
+      const data = response.data || {}
+      if (response.status === 202) {
+        // Outcome unknown: the wallet is debited but RazorpayX has not
+        // confirmed. Not a success - show it as a warning with the reason.
+        onDone(`${data.message || 'Payout submitted; confirmation pending'}${data.reason ? ` (${data.reason})` : ''}. Use "Check status" later.`, 'warning')
+      } else if (data.status === 'failed') {
+        onDone(data.message, 'error')
+      } else {
+        onDone(data.message, 'success')
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Could not approve this payout.')
     } finally {
@@ -53,32 +55,10 @@ export default function PayoutApproveModal({ open, payout, onClose, onDone }) {
           {error}
         </div>
       )}
-      <p className="mb-3 text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-        Approving debits <span className="font-mono-data">₹{payout?.amount}</span> from the driver's ledger and marks
-        this withdrawal request as paid.
+      <p className="text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+        Sends <span className="font-mono-data">₹{payout?.amount}</span> to the driver's UPI/bank immediately via
+        Razorpay. This can't be undone once the bank accepts it.
       </p>
-      <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="txn-ref">
-        Transaction reference (optional)
-      </label>
-      <input
-        id="txn-ref"
-        value={transactionReference}
-        onChange={(e) => setTransactionReference(e.target.value)}
-        placeholder="e.g. UTR98342084923"
-        className="mb-3 w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-      />
-      <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink-muted)' }} htmlFor="proof-url">
-        Payment proof URL (optional)
-      </label>
-      <input
-        id="proof-url"
-        value={paymentProofUrl}
-        onChange={(e) => setPaymentProofUrl(e.target.value)}
-        placeholder="/uploads/payouts/proof.jpg"
-        className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }}
-      />
     </Modal>
   )
 }

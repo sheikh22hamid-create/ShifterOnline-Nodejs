@@ -13,7 +13,16 @@ const cloudinaryStorage = require("./utils/cloudinaryStorage");
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+app.use(
+  express.json({
+    limit: "50mb",
+    // Keep the exact bytes for the RazorpayX webhook: its HMAC is computed over
+    // the raw body, which JSON re-serialisation would not reproduce.
+    verify: (req, res, buf) => {
+      if (req.originalUrl.startsWith("/api/webhooks/razorpayx")) req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Every uploaded file (KYC docs, vehicle/bank photos, bill uploads, kit
@@ -54,6 +63,7 @@ const locationRoutes = require("./routes/locationRoutes");
 
 const whatsappRoutes = require("./routes/whatsappRoutes");
 const { pageRouter: receiverPayPage, apiRouter: receiverPayApi } = require("./routes/receiverPayRoutes");
+const razorpayxWebhookRoutes = require("./routes/razorpayxWebhookRoutes");
 const { pageRouter: trackPage, apiRouter: trackApi } = require("./routes/trackRoutes");
 const { pageRouter: routeSharePage, apiRouter: routeShareApi } = require("./routes/routeShareRoutes");
 
@@ -67,6 +77,7 @@ app.use("/track", trackPage);
 app.use("/api/track", trackApi);
 app.use("/route", routeSharePage);
 app.use("/api/route", routeShareApi);
+app.use("/api/webhooks/razorpayx", razorpayxWebhookRoutes);
 app.use("/api/rider", riderRoutes);
 app.use("/rider", riderRoutes);
 app.use("/api/location", locationRoutes);
