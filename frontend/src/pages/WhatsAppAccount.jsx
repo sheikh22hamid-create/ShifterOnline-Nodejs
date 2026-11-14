@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Smartphone,
   QrCode,
@@ -13,7 +14,8 @@ import {
   Info,
   KeyRound,
   MessageSquare,
-  Sparkles
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react'
 import QRCode from 'react-qr-code'
 import api from '../services/api'
@@ -481,6 +483,31 @@ export default function WhatsAppAccount() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* WhatsApp Outreach & Templates Feature Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border p-5 surface-card border-emerald-500/30 bg-emerald-500/5">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
+            <Sparkles size={22} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--ink)' }}>
+              Looking for WhatsApp Outreach, Templates & Bulk Messaging?
+            </h3>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Send pre-built message templates (App Download, Driver Onboarding, Sales Reminders) to single or multiple customer/driver numbers with live phone preview.
+            </p>
+          </div>
+        </div>
+
+        <Link
+          to="/marketing/whatsapp-broadcast"
+          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+        >
+          <span>Open WhatsApp Outreach</span>
+          <ExternalLink size={13} />
+        </Link>
       </div>
 
       {/* Manual Test Notification Tool */}
