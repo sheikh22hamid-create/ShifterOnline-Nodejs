@@ -1093,12 +1093,15 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
                             binding.txtMit.setText("Express deliver");
                         }
 
-                        // Keep the active order available through the Continue Delivery card.
+                        // Auto-start active order: redirect immediately to OrderDetailsActivity
                         String status = homeData.getOrderHistory().getStatus();
-                        if (getActivity() != null && !"Completed".equalsIgnoreCase(status) && !"Cancelled".equalsIgnoreCase(status)) {
+                        if (getActivity() != null && isAdded() && !getActivity().isFinishing() && !"Completed".equalsIgnoreCase(status) && !"Cancelled".equalsIgnoreCase(status)) {
                             sessionManager.setActiveOrder(homeData.getOrderHistory());
                             isUpdateHome = false;
-
+                            Intent intent = new Intent(getActivity(), OrderDetailsActivity.class);
+                            intent.putExtra("myclass", homeData.getOrderHistory());
+                            startActivity(intent);
+                            return;
                         } else {
                             sessionManager.clearActiveOrder();
                         }
@@ -1590,7 +1593,7 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             updateNegativeWalletBanner();
         }
         updateStatusControlUI(isOnline ? STATUS_ONLINE : STATUS_OFFLINE);
-        if (isUpdateHome) {
+        if (isUpdateHome || sessionManager.getActiveOrder() == null) {
             getHome();
         }
         setupMonthlyDriverUI();

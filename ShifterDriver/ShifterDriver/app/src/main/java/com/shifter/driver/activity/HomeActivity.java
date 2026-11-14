@@ -260,11 +260,18 @@ public class HomeActivity extends BaseActivity {
             if (showDialog) {
                 String orderId = intent.getStringExtra(EXTRA_ORDER_ID);
                 if (orderId != null && !orderId.isEmpty()) {
-                    Log.d(TAG, "Showing order dialog from notification click for order_id: " + orderId);
                     java.util.Map<String, String> data = getMapFromIntent(intent);
-                    // Post with a small delay so the Activity window is fully attached
-                    // before we try to show a dialog (important when app was killed).
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> showOrderDialog(orderId, data), 600);
+                    boolean isDirect = data != null && ("true".equalsIgnoreCase(data.get("is_direct_assign"))
+                            || "true".equalsIgnoreCase(data.get("is_manual_assign")));
+                    if (isDirect) {
+                        com.shifter.driver.utility.OrderDialogHelper.dismissIfShowing(orderId);
+                        com.shifter.driver.utility.OrderDialogHelper.startOrderDetailsActivity(this, orderId, data);
+                    } else {
+                        Log.d(TAG, "Showing order dialog from notification click for order_id: " + orderId);
+                        // Post with a small delay so the Activity window is fully attached
+                        // before we try to show a dialog (important when app was killed).
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> showOrderDialog(orderId, data), 600);
+                    }
                 }
             }
         }

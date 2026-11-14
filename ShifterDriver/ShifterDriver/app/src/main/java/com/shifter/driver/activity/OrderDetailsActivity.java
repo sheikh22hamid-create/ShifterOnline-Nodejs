@@ -794,6 +794,21 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         }
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        PDOrderItem freshItem = intent.getParcelableExtra("myclass");
+        if (freshItem != null) {
+            orderItem = freshItem;
+            new SessionManager(this).setActiveOrder(orderItem);
+            if (!isWaitingForPayment && binding != null) {
+                setupUI();
+                applyTripProgress();
+            }
+        }
+    }
+
     /**
      * Same exemption checks as isAdvancePaymentRequired() (monthly driver,
      * scheduled booking type, already-paid, already past the acceptance

@@ -603,33 +603,49 @@ public class OrderDialogHelper {
         if (data == null) data = new java.util.HashMap<>();
         
         double plat = 0.0, plong = 0.0, dlat = 0.0, dlong = 0.0;
-        try { plat  = Double.parseDouble(getMapValue(data, "plat",  "0")); } catch (Exception ignored) {}
-        try { plong = Double.parseDouble(getMapValue(data, "plong", "0")); } catch (Exception ignored) {}
-        try { dlat  = Double.parseDouble(getMapValue(data, "dlat",  "0")); } catch (Exception ignored) {}
-        try { dlong = Double.parseDouble(getMapValue(data, "dlong", "0")); } catch (Exception ignored) {}
+        try { plat  = Double.parseDouble(getMapValue(data, "plat",  getMapValue(data, "pickup_latitude",  getMapValue(data, "pick_lat", "0")))); } catch (Exception ignored) {}
+        try { plong = Double.parseDouble(getMapValue(data, "plong", getMapValue(data, "pickup_longitude", getMapValue(data, "pick_long", "0")))); } catch (Exception ignored) {}
+        try { dlat  = Double.parseDouble(getMapValue(data, "dlat",  getMapValue(data, "delivery_latitude", getMapValue(data, "drop_lat", "0")))); } catch (Exception ignored) {}
+        try { dlong = Double.parseDouble(getMapValue(data, "dlong", getMapValue(data, "delivery_longitude", getMapValue(data, "drop_long", "0")))); } catch (Exception ignored) {}
         
+        String customerName = getMapValue(data, "customer_name", getMapValue(data, "pickup_name", getMapValue(data, "pick_name", "Customer")));
+        String pickupAddress = getMapValue(data, "pickup_address", getMapValue(data, "paddress", getMapValue(data, "pick_address", "")));
+        String deliveryAddress = getMapValue(data, "delivery_address", getMapValue(data, "daddress", getMapValue(data, "drop_address", "")));
+        String customerPhone = getMapValue(data, "customer_pmobile", getMapValue(data, "customer_phone", getMapValue(data, "pmobile", "")));
+        String status = getMapValue(data, "status", getMapValue(data, "o_status", "Processing"));
+        String orderUserId = getMapValue(data, "order_user_id", getMapValue(data, "uid", getMapValue(data, "user_id", "")));
+        String earning = getMapValue(data, "estimated_earning", getMapValue(data, "driver_earning", getMapValue(data, "total", "0")));
+        String distance = getMapValue(data, "distance", "0");
+        String paymentStatus = getMapValue(data, "payment_status", "1");
+
         com.shifter.driver.model.PDOrderItem orderItem = new com.shifter.driver.model.PDOrderItem(
                 orderId,
                 getMapValue(data, "order_flow_id", "1"),          
-                getMapValue(data, "customer_name",  "Customer"),  
+                customerName,  
                 getMapValue(data, "drop_name",      ""),
-                getMapValue(data, "pickup_address", ""),          
-                getMapValue(data, "delivery_address", ""),        
-                getMapValue(data, "customer_pmobile", ""),
+                pickupAddress,          
+                deliveryAddress,        
+                customerPhone,
                 getMapValue(data, "customer_dmobile", ""),
                 getMapValue(data, "pick_type",  ""),
                 getMapValue(data, "drop_type",  ""),
                 plat, plong, dlat, dlong,
-                getMapValue(data, "estimated_earning", "0"),      
-                getMapValue(data, "distance",          "0"),
+                earning,      
+                distance,
                 getMapValue(data, "time_duration",     "0"),
                 getMapValue(data, "order_date",        ""),
                 getMapValue(data, "order_details",     ""),
-                getMapValue(data, "status",            ""),
-                getMapValue(data, "order_user_id",     ""),
+                status,
+                orderUserId,
                 "0.00", "0.00", "0.00", "0.00", "0.00", "0", "0.00",
-                getMapValue(data, "payment_status", "0")
+                paymentStatus
         );
+        orderItem.setCustomerPaddress(pickupAddress);
+        orderItem.setCustomerDaddress(deliveryAddress);
+        orderItem.setPlat(plat);
+        orderItem.setPlong(plong);
+        orderItem.setDlat(dlat);
+        orderItem.setDlong(dlong);
         orderItem.setAdvancePayment(getMapValue(data, "advance_payment", "0"));
         orderItem.setGoodsType(getMapValue(data, "goods_type", ""));
         orderItem.setTier(getMapValue(data, "tier", ""));

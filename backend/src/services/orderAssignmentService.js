@@ -122,12 +122,41 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
 
   try {
     const io = getIO();
-    io.to(`driver_${riderId}`).emit("order:assigned", {
-      order_id: updatedOrder.id,
-      pickup_address: updatedOrder.paddress,
-      delivery_address: updatedOrder.daddress,
-      driver_earning: String(fare),
-    });
+    const directPayload = {
+      order_id: String(updatedOrder.id),
+      rider_id: String(riderId),
+      pickup_address: updatedOrder.paddress || updatedOrder.pick_address || "",
+      pickup_title: updatedOrder.pickup_title || "",
+      delivery_address: updatedOrder.daddress || updatedOrder.drop_address || "",
+      drop_title: updatedOrder.drop_title || "",
+      pickup_name: updatedOrder.pick_name || updatedOrder.pickup_name || "Pickup",
+      drop_name: updatedOrder.drop_name || "Drop Off",
+      customer_name: updatedOrder.customer_name || updatedOrder.pick_name || "Customer",
+      customer_phone: updatedOrder.pmobile || updatedOrder.customer_pmobile || "",
+      pickup_latitude: String(updatedOrder.plat || updatedOrder.pick_lat || "0"),
+      pickup_longitude: String(updatedOrder.plong || updatedOrder.pick_long || "0"),
+      delivery_latitude: String(updatedOrder.dlat || updatedOrder.drop_lat || "0"),
+      delivery_longitude: String(updatedOrder.dlong || updatedOrder.drop_long || "0"),
+      plat: String(updatedOrder.plat || updatedOrder.pick_lat || "0"),
+      plong: String(updatedOrder.plong || updatedOrder.pick_long || "0"),
+      dlat: String(updatedOrder.dlat || updatedOrder.drop_lat || "0"),
+      dlong: String(updatedOrder.dlong || updatedOrder.drop_long || "0"),
+      paddress: updatedOrder.paddress || updatedOrder.pick_address || "",
+      daddress: updatedOrder.daddress || updatedOrder.drop_address || "",
+      customer_pmobile: updatedOrder.pmobile || updatedOrder.customer_pmobile || "",
+      order_user_id: String(updatedOrder.uid || ""),
+      status: updatedOrder.o_status || "Processing",
+      payment_status: "1",
+      advance_payment: "0",
+      distance: String(updatedOrder.distance || "0"),
+      estimated_earning: String(fare || updatedOrder.total_dcharge || updatedOrder.d_charge || "0"),
+      driver_earning: String(fare || updatedOrder.total_dcharge || updatedOrder.d_charge || "0"),
+      stops: typeof updatedOrder.stops === "string" ? updatedOrder.stops : JSON.stringify(updatedOrder.stops || []),
+      is_direct_assign: "true",
+      is_manual_assign: "true",
+      order_flow_id: String(updatedOrder.flow_id || updatedOrder.order_status || "1"),
+    };
+    io.to(`driver_${riderId}`).emit("order:assigned", directPayload);
     dispatchManager.emitDirectAssign(riderId, updatedOrder);
     io.to(`customer_${updatedOrder.uid}`).emit("order:assigned", {
       order_id: updatedOrder.id,

@@ -225,6 +225,15 @@ public class SocketOrderRouter {
         putIfPresent(out, "dlong", data, "delivery_longitude");
         putIfPresent(out, "dlong", data, "dlong");
         putIfPresent(out, "customer_pmobile", data, "customer_phone");
+        putIfPresent(out, "customer_pmobile", data, "pmobile");
+        putIfPresent(out, "customer_name", data, "customer_name");
+        putIfPresent(out, "customer_name", data, "pickup_name");
+        putIfPresent(out, "customer_name", data, "pick_name");
+        putIfPresent(out, "status", data, "status");
+        putIfPresent(out, "status", data, "o_status");
+        putIfPresent(out, "payment_status", data, "payment_status");
+        putIfPresent(out, "is_direct_assign", data, "is_direct_assign");
+        putIfPresent(out, "is_manual_assign", data, "is_manual_assign");
         putIfPresent(out, "order_date", data, "pickup_time");
         putIfPresent(out, "order_date", data, "schedule_date_time");
         putIfPresent(out, "estimated_earning", data, "driver_earning");
