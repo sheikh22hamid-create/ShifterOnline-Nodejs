@@ -13,6 +13,7 @@ import AssignDriverModal from './AssignDriverModal'
 import CancelOrderModal from './CancelOrderModal'
 import InvoiceModal from './InvoiceModal'
 import OrderRouteMap from './OrderRouteMap'
+import AreaTitle from './AreaTitle'
 
 const EDIT_FIELDS = [
   { key: 'paddress', label: 'Pickup address' },
@@ -457,6 +458,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                     <MapPin size={13} /> Route & Distance
                   </h3>
                   <div className="surface-card space-y-2.5 rounded-xl p-3.5">
+                    <AreaTitle title={order.pickup_title} />
                     <Field label="Pickup Location" value={order.paddress} />
                     {order.pickup_eta_minutes > 0 && (
                       <Field
@@ -480,6 +482,7 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                         }
                       />
                     )}
+                    <AreaTitle title={order.drop_title} />
                     <Field label="Delivery Location" value={order.daddress} />
                     {order.stops?.length > 0 && (
                       <div className="mt-3 rounded-lg border border-[var(--line)] p-3">

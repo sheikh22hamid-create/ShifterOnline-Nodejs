@@ -6,6 +6,7 @@ import Drawer from '../common/Drawer'
 import Badge from '../common/Badge'
 import ReceiverPayPanel from './ReceiverPayPanel'
 import { formatCurrency, formatDateTime } from '../../utils/format'
+import AreaTitle from '../orders/AreaTitle'
 
 const OUTCOME_DESCRIPTIONS = {
   cash_received: {
@@ -272,10 +273,12 @@ export default function SettlementDetailDrawer({ settlementId, open, onClose, on
               <div className="space-y-2 text-[12.5px]">
                 <div>
                   <span className="font-semibold text-emerald-600">Pickup:</span>{' '}
+                  <AreaTitle title={order.pickup_title} />
                   <span style={{ color: 'var(--ink)' }}>{order.paddress || '—'}</span>
                 </div>
                 <div>
                   <span className="font-semibold text-rose-600">Drop:</span>{' '}
+                  <AreaTitle title={order.drop_title} />
                   <span style={{ color: 'var(--ink)' }}>{order.daddress || '—'}</span>
                 </div>
               </div>

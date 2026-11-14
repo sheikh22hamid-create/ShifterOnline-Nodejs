@@ -8,6 +8,7 @@ import Badge from '../components/common/Badge'
 import AssignScheduledDriverModal from '../components/orders/AssignScheduledDriverModal'
 import { orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
 import { formatCurrency, truncate } from '../utils/format'
+import AreaTitle from '../components/orders/AreaTitle'
 
 export default function ScheduledOrders() {
   const toast = useToast()
@@ -78,6 +79,7 @@ export default function ScheduledOrders() {
                       {o.category}
                     </td>
                     <td className="max-w-[220px] truncate px-4 py-2.5" style={{ color: 'var(--ink-muted)' }} title={o.paddress}>
+                      <AreaTitle title={o.pickup_title} />
                       {truncate(o.paddress, 32)}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>

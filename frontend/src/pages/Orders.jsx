@@ -9,6 +9,7 @@ import OrderDetailDrawer from '../components/orders/OrderDetailDrawer'
 import GuaranteeCountdown from '../components/orders/GuaranteeCountdown'
 import { ORDER_STATUS_FILTERS, orderStatusTone, orderStatusLabel } from '../utils/orderStatus'
 import { formatCurrency, formatDateTime, truncate } from '../utils/format'
+import AreaTitle from '../components/orders/AreaTitle'
 
 const LIMIT = 20
 
@@ -165,6 +166,7 @@ export default function Orders() {
                       {formatCurrency(o.total_dcharge)}
                     </td>
                     <td className="max-w-[200px] truncate px-4 py-2.5" style={{ color: 'var(--ink-muted)' }} title={o.paddress}>
+                      <AreaTitle title={o.pickup_title} />
                       {truncate(o.paddress, 32)}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>

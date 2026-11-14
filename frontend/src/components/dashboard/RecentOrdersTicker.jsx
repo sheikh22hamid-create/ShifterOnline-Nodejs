@@ -7,6 +7,7 @@ import useApiQuery from '../../hooks/useApiQuery'
 import Badge from '../common/Badge'
 import { orderStatusTone, orderStatusLabel } from '../../utils/orderStatus'
 import { formatCurrency, truncate } from '../../utils/format'
+import AreaTitle from '../orders/AreaTitle'
 
 export default function RecentOrdersTicker() {
   const { socket } = useSocket()
@@ -69,6 +70,7 @@ export default function RecentOrdersTicker() {
                     {o.customer_name || 'Unknown'}
                   </span>
                 </div>
+                <AreaTitle title={[o.pickup_title, o.drop_title].filter(Boolean).join(' → ')} />
                 <div className="truncate text-[11px]" style={{ color: 'var(--ink-faint)' }}>
                   {truncate(o.paddress, 18)} <span aria-hidden>&rarr;</span> {truncate(o.daddress, 18)}
                 </div>
