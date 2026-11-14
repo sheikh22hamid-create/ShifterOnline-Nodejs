@@ -9,6 +9,20 @@ import PayoutRejectModal from '../components/payouts/PayoutRejectModal'
 import { PAYOUT_STATUS_FILTERS, payoutStatusTone } from '../utils/payoutStatus'
 import { formatCurrency, formatDateTime } from '../utils/format'
 
+const NOTICE_STYLES = {
+  error: { background: 'var(--danger-soft)', borderColor: 'var(--danger-soft-border)', color: 'var(--danger)' },
+  warning: { background: 'var(--warning-soft)', borderColor: 'var(--warning-soft-border)', color: 'var(--warning)' },
+  success: { background: 'var(--success-soft)', borderColor: 'var(--border)', color: 'var(--success)' },
+}
+
+// Tone for a "Check status" result: only a confirmed payment is green.
+const SYNC_TONES = { paid: 'success', processing: 'warning', refused: 'warning', failed: 'error' }
+
+// A processing payout, or a paid one RazorpayX can still reverse.
+function canCheckStatus(p) {
+  return p.status === 'processing' || (p.status === 'paid' && Boolean(p.razorpay_payout_id))
+}
+
 export default function Payouts() {
   const [status, setStatus] = useState('')
   const [approveTarget, setApproveTarget] = useState(null)
@@ -25,7 +39,12 @@ export default function Payouts() {
   async function handleSync(p) {
     setSyncingIds((ids) => [...ids, p.id])
     try {
-      await api.post(`/payouts/${p.id}/sync`)
+      const res = await api.post(`/payouts/${p.id}/sync`)
+      const result = res.data?.status
+      setNotice({
+        tone: SYNC_TONES[result] || 'warning',
+        text: `Payout #${p.id}: ${res.data?.message || `status ${result || 'unknown'}`}`,
+      })
       refetch()
     } catch (err) {
       setNotice({ tone: 'error', text: err.response?.data?.message || 'Could not check this payout.' })
@@ -68,11 +87,7 @@ export default function Payouts() {
         <div
           role="status"
           className="mt-4 flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-[12.5px]"
-          style={
-            notice.tone === 'error'
-              ? { background: 'var(--danger-soft)', borderColor: 'var(--danger-soft-border)', color: 'var(--danger)' }
-              : { background: 'var(--success-soft)', borderColor: 'var(--border)', color: 'var(--success)' }
-          }
+          style={NOTICE_STYLES[notice.tone] || NOTICE_STYLES.success}
         >
           <span>{notice.text}</span>
           <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="shrink-0">
@@ -184,7 +199,7 @@ export default function Payouts() {
                           </button>
                         </div>
                       )}
-                      {p.status === 'processing' && (
+                      {canCheckStatus(p) && (
                         <div className="flex justify-end">
                           <button
                             type="button"
@@ -209,9 +224,9 @@ export default function Payouts() {
         open={Boolean(approveTarget)}
         payout={approveTarget}
         onClose={() => setApproveTarget(null)}
-        onDone={(message) => {
+        onDone={(message, tone) => {
           setApproveTarget(null)
-          setNotice(message ? { tone: 'success', text: message } : null)
+          setNotice(message ? { tone: tone || 'success', text: message } : null)
           refetch()
         }}
       />

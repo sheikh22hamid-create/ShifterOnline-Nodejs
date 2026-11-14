@@ -11,7 +11,16 @@ export default function PayoutApproveModal({ open, payout, onClose, onDone }) {
     setError('')
     try {
       const response = await api.post(`/payouts/${payout.id}/approve`, {})
-      onDone(response.data?.message)
+      const data = response.data || {}
+      if (response.status === 202) {
+        // Outcome unknown: the wallet is debited but RazorpayX has not
+        // confirmed. Not a success - show it as a warning with the reason.
+        onDone(`${data.message || 'Payout submitted; confirmation pending'}${data.reason ? ` (${data.reason})` : ''}. Use "Check status" later.`, 'warning')
+      } else if (data.status === 'failed') {
+        onDone(data.message, 'error')
+      } else {
+        onDone(data.message, 'success')
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Could not approve this payout.')
     } finally {
