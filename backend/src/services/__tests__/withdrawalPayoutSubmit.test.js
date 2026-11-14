@@ -261,10 +261,13 @@ describe("submitPayout", () => {
     const out = await submitPayout(55);
 
     expect(out).toEqual({ outcome: "refused", reason: "Insufficient balance" });
+    // clearFundAccount: guarded on no payout id, clears the fund account this call stored.
     expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
-      where: { id: 55, status: "processing" },
-      data: { status: "pending", failure_reason: "Insufficient balance" },
+      where: { id: 55, status: "processing", razorpay_payout_id: null },
+      data: { status: "pending", failure_reason: "Insufficient balance", razorpay_fund_account_id: null },
     });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledTimes(1);
     expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
       where: { id: 7 }, data: { wallet_balance: { increment: 2 } },
     });
@@ -419,11 +422,54 @@ describe("submitPayout: never refund once a payout attempt may exist", () => {
     expect(razorpayx.createPayout).not.toHaveBeenCalled();
   });
 
-  it("(d) first attempt + definitive createPayout refusal -> unguarded revert, refused", async () => {
+  it("(d) first attempt + definitive createPayout refusal -> clearFundAccount revert, refused", async () => {
     razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Insufficient balance" });
 
     expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "Insufficient balance" });
-    expect(revertCalls()).toEqual([[{ where: PENDING_WHERE, data: { status: "pending", failure_reason: "Insufficient balance" } }]]);
+    expect(revertCalls()).toEqual([[{
+      where: { ...PENDING_WHERE, razorpay_payout_id: null },
+      data: { status: "pending", failure_reason: "Insufficient balance", razorpay_fund_account_id: null },
+    }]]);
+  });
+
+  it("(round 2 b) first-attempt payout refusal whose revert matches 0 rows (payout id appeared) -> unknown, no refund", async () => {
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Insufficient balance" });
+    prisma.driver_withdraw_requests.updateMany.mockImplementation(async ({ data }) =>
+      ({ count: data.status === "pending" ? 0 : 1 })
+    );
+
+    const out = await submitPayout(55);
+
+    expect(out).toEqual({ outcome: "unknown", reason: "request is no longer processing" });
+    expect(revertCalls()[0][0].where).toEqual({ ...PENDING_WHERE, razorpay_payout_id: null });
+    expect(walletWriteCount()).toBe(0);
+  });
+
+  it("(round 2 c) refused, then re-approved: second attempt is a clean first attempt and reverts again (never stranded)", async () => {
+    // Stateful row: the guarded updateMany calls are applied to it like the DB would.
+    let row = withdrawal();
+    const matches = (where) => Object.entries(where).every(([k, v]) => row[k] === v);
+    prisma.driver_withdraw_requests.findUnique.mockImplementation(async () => ({ ...row }));
+    prisma.driver_withdraw_requests.updateMany.mockImplementation(async ({ where, data }) => {
+      if (!matches(where)) return { count: 0 };
+      row = { ...row, ...data };
+      return { count: 1 };
+    });
+    razorpayx.createPayout.mockResolvedValue({ ok: false, definitive: true, reason: "Insufficient balance" });
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "Insufficient balance" });
+    expect(row.status).toBe("pending");
+    expect(row.razorpay_fund_account_id).toBeNull();
+
+    // Admin re-approves: claimAndDebit moves the row back to processing.
+    row = { ...row, status: "processing", failure_reason: null };
+
+    expect(await submitPayout(55)).toEqual({ outcome: "refused", reason: "Insufficient balance" });
+    expect(razorpayx.createFundAccount).toHaveBeenCalledTimes(2);
+    expect(row.status).toBe("pending");
+    expect(row.razorpay_fund_account_id).toBeNull();
+    expect(failureReasonWrites()).toHaveLength(0);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(2);
   });
 
   it("(d) first attempt + destination mismatch -> guarded revert, refused", async () => {

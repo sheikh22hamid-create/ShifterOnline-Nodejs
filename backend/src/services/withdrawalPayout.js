@@ -143,21 +143,27 @@ async function claimAndDebit(withdrawalId) {
  * options.requireNoFundAccount: also require that no fund account and no
  * payout id are stored, so a revert from the destination check or the
  * contact/fund-account steps can never fire after another submit got further.
+ *
+ * options.clearFundAccount: also clear the stored fund account (and require
+ * no payout id), so a later re-approval is a clean first attempt. Only for a
+ * definitive createPayout refusal on a first attempt.
  */
 async function revertToPending(withdrawalId, reason, options = {}) {
   let withdrawal;
   let amount;
   const where = { id: withdrawalId, status: "processing" };
+  const data = { status: "pending", failure_reason: clip(reason, 255) };
   if (options.requireNoFundAccount === true) {
     where.razorpay_fund_account_id = null;
     where.razorpay_payout_id = null;
   }
+  if (options.clearFundAccount === true) {
+    where.razorpay_payout_id = null;
+    data.razorpay_fund_account_id = null;
+  }
   try {
     await prisma.$transaction(async (tx) => {
-      const moved = await tx.driver_withdraw_requests.updateMany({
-        where,
-        data: { status: "pending", failure_reason: clip(reason, 255) },
-      });
+      const moved = await tx.driver_withdraw_requests.updateMany({ where, data });
       if (moved.count !== 1) throw new Rollback("not_processing");
 
       withdrawal = await tx.driver_withdraw_requests.findUnique({ where: { id: withdrawalId } });
@@ -301,12 +307,14 @@ async function recordFailure(withdrawalId, reason) {
 //   resubmit: an earlier attempt may exist -> record reason, never revert.
 //   requireNoFundAccount: revert only if no other submit stored a fund
 //   account / payout id meanwhile (steps before this call's own store).
+//   Otherwise (first-attempt createPayout refusal): clear the fund account
+//   this call stored, so a re-approval starts as a clean first attempt.
 async function handleFailure(withdrawalId, result, { resubmit, requireNoFundAccount } = {}) {
   if (result.definitive !== true) return { outcome: "unknown", reason: result.reason };
   if (resubmit) return recordFailure(withdrawalId, result.reason);
   const reverted = requireNoFundAccount
     ? await revertToPending(withdrawalId, result.reason, { requireNoFundAccount: true })
-    : await revertToPending(withdrawalId, result.reason);
+    : await revertToPending(withdrawalId, result.reason, { clearFundAccount: true });
   if (reverted) return { outcome: "refused", reason: result.reason };
   return { outcome: "unknown", reason: "request is no longer processing" };
 }

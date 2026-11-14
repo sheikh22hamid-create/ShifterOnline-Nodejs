@@ -326,6 +326,31 @@ describe("revertToPending", () => {
     expect(adminSocket.notifyPayoutUpdate).not.toHaveBeenCalled();
   });
 
+  it("clearFundAccount: guards on no payout id and clears the stored fund account; refunds once", async () => {
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "pending" }));
+
+    const ok = await revertToPending(55, "Insufficient balance", { clearFundAccount: true });
+
+    expect(ok).toBe(true);
+    expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
+      where: { id: 55, status: "processing", razorpay_payout_id: null },
+      data: { status: "pending", failure_reason: "Insufficient balance", razorpay_fund_account_id: null },
+    });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("clearFundAccount: 0 rows matched (payout id appeared) -> false, no wallet or ledger writes", async () => {
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 0 });
+
+    const ok = await revertToPending(55, "Insufficient balance", { clearFundAccount: true });
+
+    expect(ok).toBe(false);
+    expect(walletWriteCount()).toBe(0);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+  });
+
   it("without options the claim is guarded on status only (unchanged)", async () => {
     prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
     prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ status: "pending" }));
