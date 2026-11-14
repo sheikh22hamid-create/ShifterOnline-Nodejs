@@ -102,7 +102,7 @@ describe("applyPayoutState", () => {
 
     expect(out).toBe("paid");
     expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
-      where: { id: 55, status: "processing" },
+      where: { id: 55, status: "processing", razorpay_payout_id: null },
       data: expect.objectContaining({
         status: "paid", utr: "UTR123", razorpay_payout_id: "pout_1", payout_processed_at: expect.any(Date),
       }),
@@ -136,7 +136,7 @@ describe("applyPayoutState", () => {
 
     expect(out).toBe("failed");
     expect(prisma.driver_withdraw_requests.updateMany).toHaveBeenCalledWith({
-      where: { id: 55, status: { in: ["processing", "paid"] } },
+      where: { id: 55, status: { in: ["processing", "paid"] }, razorpay_payout_id: null },
       data: expect.objectContaining({ status: "failed", failure_reason: "Beneficiary bank down" }),
     });
     expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
@@ -241,6 +241,62 @@ describe("applyPayoutState", () => {
     }
     expect(prisma.driver_withdraw_requests.updateMany).not.toHaveBeenCalled();
     expect(walletWriteCount()).toBe(0);
+  });
+});
+
+describe("applyPayoutState payout id matching", () => {
+  it.each(["reversed", "processed"])("stored pay_A, event pay_B %s -> ignored with no writes", async (status) => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pay_A" }));
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await applyPayoutState({ withdrawalId: 55, payoutId: "pay_B", status, utr: "U", failureReason: "x" })).toBe("ignored");
+    expect(prisma.driver_withdraw_requests.updateMany).not.toHaveBeenCalled();
+    expect(walletWriteCount()).toBe(0);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
+    expect(prisma.tbl_rnoti.create).not.toHaveBeenCalled();
+    expect(adminSocket.notifyPayoutUpdate).not.toHaveBeenCalled();
+  });
+
+  it("stored pay_A, event pay_A reversed -> failed with one refund, where matches the stored id", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pay_A" }));
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await applyPayoutState({ withdrawalId: 55, payoutId: "pay_A", status: "reversed", failureReason: "x" })).toBe("failed");
+    const call = prisma.driver_withdraw_requests.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual(expect.objectContaining({ id: 55, razorpay_payout_id: "pay_A" }));
+    expect(call.data).not.toHaveProperty("razorpay_payout_id");
+    expect(prisma.tbl_rider.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tbl_wallet_history.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("no stored id, event pay_A processed -> paid, adopts the id guarded by razorpay_payout_id null", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: null }));
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await applyPayoutState({ withdrawalId: 55, payoutId: "pay_A", status: "processed", utr: "U" })).toBe("paid");
+    const call = prisma.driver_withdraw_requests.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual(expect.objectContaining({ razorpay_payout_id: null }));
+    expect(call.data.razorpay_payout_id).toBe("pay_A");
+  });
+
+  it("stored id, event without payoutId -> processed normally without overwriting the stored id", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pay_A" }));
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 1 });
+
+    expect(await applyPayoutState({ withdrawalId: 55, status: "processed", utr: "U" })).toBe("paid");
+    const call = prisma.driver_withdraw_requests.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual(expect.objectContaining({ razorpay_payout_id: "pay_A" }));
+    expect(call.data).not.toHaveProperty("razorpay_payout_id");
+    expect(call.data.utr).toBe("U");
+  });
+
+  it("guarded update count 0 on a matching id (concurrent change) -> ignored, no refund", async () => {
+    prisma.driver_withdraw_requests.findUnique.mockResolvedValue(withdrawal({ razorpay_payout_id: "pay_A" }));
+    prisma.driver_withdraw_requests.updateMany.mockResolvedValue({ count: 0 });
+
+    expect(await applyPayoutState({ withdrawalId: 55, payoutId: "pay_A", status: "failed" })).toBe("ignored");
+    expect(walletWriteCount()).toBe(0);
+    expect(prisma.tbl_wallet_history.create).not.toHaveBeenCalled();
   });
 });
 

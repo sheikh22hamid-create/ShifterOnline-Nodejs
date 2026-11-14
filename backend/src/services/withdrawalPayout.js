@@ -176,12 +176,21 @@ async function applyPayoutState({ withdrawalId, payoutId, status, utr, failureRe
   if (!withdrawal) return "ignored";
   const amount = Number(withdrawal.amount);
 
+  // An event for a different payout than the one stored (e.g. a late event
+  // for an earlier attempt after revert + re-approve) must never touch this
+  // request. With no stored id yet the event's id is adopted (the webhook can
+  // beat approve storing it); a stored id is never overwritten. The guarded
+  // updateMany also matches on the id so a concurrent change can't slip in.
+  const storedPayoutId = withdrawal.razorpay_payout_id ?? null;
+  if (storedPayoutId && payoutId && payoutId !== storedPayoutId) return "ignored";
+  const payoutIdWhere = { razorpay_payout_id: storedPayoutId };
+  const payoutIdData = !storedPayoutId && payoutId ? { razorpay_payout_id: payoutId } : {};
+
   if (isPaid) {
     if (withdrawal.status !== "processing") return "ignored";
-    const data = { status: "paid", utr: clip(utr, 64), payout_processed_at: new Date() };
-    if (payoutId) data.razorpay_payout_id = payoutId;
+    const data = { status: "paid", utr: clip(utr, 64), payout_processed_at: new Date(), ...payoutIdData };
     const moved = await prisma.driver_withdraw_requests.updateMany({
-      where: { id: withdrawalId, status: "processing" },
+      where: { id: withdrawalId, status: "processing", ...payoutIdWhere },
       data,
     });
     if (moved.count !== 1) return "ignored";
@@ -201,10 +210,9 @@ async function applyPayoutState({ withdrawalId, payoutId, status, utr, failureRe
   if (withdrawal.status !== "processing" && withdrawal.status !== "paid") return "ignored";
   try {
     await prisma.$transaction(async (tx) => {
-      const data = { status: "failed", failure_reason: clip(failureReason || `Payout ${status}`, 255) };
-      if (payoutId) data.razorpay_payout_id = payoutId;
+      const data = { status: "failed", failure_reason: clip(failureReason || `Payout ${status}`, 255), ...payoutIdData };
       const moved = await tx.driver_withdraw_requests.updateMany({
-        where: { id: withdrawalId, status: { in: ["processing", "paid"] } },
+        where: { id: withdrawalId, status: { in: ["processing", "paid"] }, ...payoutIdWhere },
         data,
       });
       // Count decides who owns the refund: a repeat or a racing caller gets 0.
