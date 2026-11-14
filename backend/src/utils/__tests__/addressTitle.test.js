@@ -159,6 +159,18 @@ describe("formatAddressForDisplay", () => {
     expect(out.formattedAddress).toBe("Asharfi Colony, Khajrana, Indore");
   });
 
+  it("strips only the code token from a compound plus code, keeping the city", () => {
+    expect(formatAddressForDisplay({ rawAddress: "7JMH+4X Indore, Madhya Pradesh, India" }).formattedAddress).toBe(
+      "Indore, Madhya Pradesh, India"
+    );
+  });
+
+  it("strips a space-separated leading plus code without losing the first locality", () => {
+    expect(formatAddressForDisplay({ rawAddress: "pwd40+ Asharfi Colony, Khajrana" }).formattedAddress).toBe(
+      "Asharfi Colony, Khajrana"
+    );
+  });
+
   it("leaves a raw address without a plus code unchanged", () => {
     const out = formatAddressForDisplay({ rawAddress: "Asharfi Colony, Khajrana, Indore" });
     expect(out).toEqual({ mainArea: "", formattedAddress: "Asharfi Colony, Khajrana, Indore" });

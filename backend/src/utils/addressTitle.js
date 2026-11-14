@@ -88,9 +88,15 @@ function pickMainAreaFromResults(results) {
 
 function stripLeadingPlusCode(rawAddress) {
   if (typeof rawAddress !== "string") return "";
-  const parts = rawAddress.split(",").map((p) => p.trim());
-  if (parts.length && isPlusCode(parts[0])) parts.shift();
-  return parts.filter(Boolean).join(", ");
+  let text = rawAddress.trim();
+  // Remove only the leading Plus Code token, then any comma/space left after it.
+  const m = text.match(/^([^\s,]+)[\s,]*/);
+  if (m && PLUS_CODE_TOKEN.test(m[1])) text = text.slice(m[0].length);
+  return text
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join(", ");
 }
 
 /**
