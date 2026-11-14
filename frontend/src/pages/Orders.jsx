@@ -166,7 +166,7 @@ export default function Orders() {
                       {formatCurrency(o.total_dcharge)}
                     </td>
                     <td className="max-w-[200px] truncate px-4 py-2.5" style={{ color: 'var(--ink-muted)' }} title={o.paddress}>
-                      <AreaTitle title={o.pickup_title} />
+                      <AreaTitle title={o.pickup_title} address={o.paddress} />
                       {truncate(o.paddress, 32)}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>

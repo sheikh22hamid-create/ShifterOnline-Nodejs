@@ -1,6 +1,11 @@
 jest.mock("../../utils/addressTitle", () => ({
   resolveLocationTitle: jest.fn(),
   sanitizeTitle: jest.fn((v) => (typeof v === "string" && v.trim() ? v.trim() : null)),
+  extractAreaFromAddress: jest.fn((addr) => {
+    if (typeof addr === "string" && addr.includes("Suket")) return "Suket";
+    if (typeof addr === "string" && addr.includes("Khajrana")) return "Khajrana";
+    return null;
+  }),
 }));
 const { resolveLocationTitle } = require("../../utils/addressTitle");
 const { resolveSideTitle, resolveOrderTitles } = require("../orderAreaTitles");
@@ -56,5 +61,18 @@ describe("orderAreaTitles", () => {
     expect(input).toEqual(copy);
     expect(Object.keys(r).sort()).toEqual(["drop_title", "pickup_title"]);
     expect(resolveLocationTitle).toHaveBeenCalledWith("22.7196", "75.8577");
+  });
+
+  test("falls back to raw address parsing when geocode returns null", async () => {
+    resolveLocationTitle.mockResolvedValue(null);
+    const r = await resolveOrderTitles({
+      plat: 1,
+      plong: 2,
+      dlat: 3,
+      dlong: 4,
+      paddress: "M22Q+354, Suket, Rajasthan, 326530, India",
+      daddress: "FWR7+2BQ, Khajrana, Indore, Madhya Pradesh",
+    });
+    expect(r).toEqual({ pickup_title: "Suket", drop_title: "Khajrana" });
   });
 });

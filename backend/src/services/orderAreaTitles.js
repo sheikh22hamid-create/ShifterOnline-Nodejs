@@ -1,4 +1,4 @@
-const { resolveLocationTitle, sanitizeTitle } = require("../utils/addressTitle");
+const { resolveLocationTitle, sanitizeTitle, extractAreaFromAddress } = require("../utils/addressTitle");
 
 function isFiniteCoord(v) {
   if (v === null || v === undefined || v === "") return false;
@@ -9,17 +9,24 @@ function isFiniteCoord(v) {
 /**
  * Main Area title for one side of an order. A non-empty client title wins
  * without a lookup; otherwise reverse-geocode. Coordinates are read only and
- * passed through untouched. Never throws.
+ * passed through untouched. If Google reverse-geocoding fails/returns null,
+ * falls back to parsing the locality from the raw address string. Never throws.
  */
-async function resolveSideTitle(lat, lng, clientTitle) {
+async function resolveSideTitle(lat, lng, clientTitle, rawAddress) {
   const client = sanitizeTitle(clientTitle);
   if (client) return client;
-  if (!isFiniteCoord(lat) || !isFiniteCoord(lng)) return null;
-  try {
-    return (await resolveLocationTitle(lat, lng)) || null;
-  } catch (_) {
-    return null;
+  if (isFiniteCoord(lat) && isFiniteCoord(lng)) {
+    try {
+      const geo = await resolveLocationTitle(lat, lng);
+      if (geo) return geo;
+    } catch (_) {}
   }
+  if (typeof rawAddress === "string" && rawAddress.trim()) {
+    try {
+      return extractAreaFromAddress(rawAddress);
+    } catch (_) {}
+  }
+  return null;
 }
 
 async function resolveOrderTitles({
@@ -29,10 +36,12 @@ async function resolveOrderTitles({
   dlong,
   clientPickupTitle,
   clientDropTitle,
+  paddress,
+  daddress,
 } = {}) {
   const [pickup_title, drop_title] = await Promise.all([
-    resolveSideTitle(plat, plong, clientPickupTitle),
-    resolveSideTitle(dlat, dlong, clientDropTitle),
+    resolveSideTitle(plat, plong, clientPickupTitle, paddress),
+    resolveSideTitle(dlat, dlong, clientDropTitle, daddress),
   ]);
   return { pickup_title, drop_title };
 }

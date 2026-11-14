@@ -21,6 +21,7 @@ const outsideDriver = require("../services/outsideDriverService");
 const { buildRoute } = require("../services/tripRouteService");
 const orderAssignment = require("../services/orderAssignmentService");
 const lowFareRules = require("../services/lowFareRules");
+const { extractAreaFromAddress } = require("../utils/addressTitle");
 
 const STATUS_MAP = {
   pending: "Pending",
@@ -96,8 +97,8 @@ async function list(req, res) {
         total_dcharge: String(o.total_dcharge),
         paddress: o.paddress,
         daddress: o.daddress,
-        pickup_title: o.pickup_title || "",
-        drop_title: o.drop_title || "",
+        pickup_title: o.pickup_title || extractAreaFromAddress(o.paddress) || "",
+        drop_title: o.drop_title || extractAreaFromAddress(o.daddress) || "",
         category: o.category,
         booking_type: o.booking_type,
         schedule_date_time: o.schedule_date_time,
@@ -150,10 +151,15 @@ async function getOne(req, res) {
 
     const pickupEta = buildEtaView(order, await getPickupEtaRow(id));
 
+    const pickupTitle = order.pickup_title || extractAreaFromAddress(order.paddress) || null;
+    const dropTitle = order.drop_title || extractAreaFromAddress(order.daddress) || null;
+
     return res.status(200).json({
       success: true,
       data: {
         ...order,
+        pickup_title: pickupTitle,
+        drop_title: dropTitle,
         ...pickupEta,
         customer,
         rider: rider

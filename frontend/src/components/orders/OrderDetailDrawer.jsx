@@ -14,6 +14,7 @@ import CancelOrderModal from './CancelOrderModal'
 import InvoiceModal from './InvoiceModal'
 import OrderRouteMap from './OrderRouteMap'
 import AreaTitle from './AreaTitle'
+import { extractAreaFromAddress, formatTripDistance } from '../../utils/addressUtils'
 
 const EDIT_FIELDS = [
   { key: 'paddress', label: 'Pickup address' },
@@ -94,6 +95,9 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
   const isTerminal = order && ['Completed', 'Cancelled'].includes(order.o_status)
   const isUnassigned = order && (!order.rid || order.rid === 0) && order.o_status === 'Pending'
   const milestones = buildMilestones(order)
+  const pickupArea = order ? (order.pickup_title || extractAreaFromAddress(order.paddress)) : null
+  const dropArea = order ? (order.drop_title || extractAreaFromAddress(order.daddress)) : null
+  const distInfo = order ? formatTripDistance(order) : null
 
   return (
     <>
@@ -457,9 +461,29 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                   <h3 className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     <MapPin size={13} /> Route & Distance
                   </h3>
-                  <div className="surface-card space-y-2.5 rounded-xl p-3.5">
-                    <AreaTitle title={order.pickup_title} />
-                    <Field label="Pickup Location" value={order.paddress} />
+                  <div className="surface-card space-y-3 rounded-xl p-3.5">
+                    {/* Pickup Location */}
+                    <div>
+                      <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--ink-faint)' }}>
+                        Pickup Location
+                      </div>
+                      {pickupArea && (
+                        <div className="text-[13px] font-bold leading-snug mb-1" style={{ color: 'var(--ink)' }}>
+                          <span className="text-[11px] font-semibold uppercase tracking-wider mr-1 opacity-70">Main Area:</span>
+                          {pickupArea}
+                        </div>
+                      )}
+                      <div className="text-[12.5px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+                        {pickupArea && <span className="text-[11px] mr-1 opacity-70 font-medium">Address:</span>}
+                        {order.paddress || '—'}
+                      </div>
+                      {order.pick_name && (
+                        <div className="text-[11.5px] mt-1" style={{ color: 'var(--ink-faint)' }}>
+                          Contact: {order.pick_name} {order.pmobile ? `(${order.pmobile})` : ''}
+                        </div>
+                      )}
+                    </div>
+
                     {order.pickup_eta_minutes > 0 && (
                       <Field
                         label="Pickup ETA (Google + buffer)"
@@ -482,24 +506,68 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                         }
                       />
                     )}
-                    <AreaTitle title={order.drop_title} />
-                    <Field label="Delivery Location" value={order.daddress} />
+
                     {order.stops?.length > 0 && (
-                      <div className="mt-3 rounded-lg border border-[var(--line)] p-3">
+                      <div className="rounded-lg border border-[var(--line)] p-3">
                         <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Extra stops</div>
                         <div className="space-y-2">
                           {order.stops.map((stop) => (
                             <div key={stop.id || stop.sequence} className="text-sm">
                               <span className="mr-2 font-mono text-xs text-[var(--muted)]">STOP {stop.sequence}</span>
                               {stop.address || 'Address unavailable'}
+                              {stop.contact_name && <span className="block text-[11.5px] text-[var(--ink-faint)]">{stop.contact_name}</span>}
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
-                      <Field label="Road Distance" value={`${order.distance} km`} />
-                      {order.extra_mile_charge > 0 && <Field label="Extra Mile Charge" value={formatCurrency(order.extra_mile_charge)} />}
+
+                    {/* Delivery / Drop Location */}
+                    <div className="border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
+                      <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--ink-faint)' }}>
+                        Delivery Location
+                      </div>
+                      {dropArea && (
+                        <div className="text-[13px] font-bold leading-snug mb-1" style={{ color: 'var(--ink)' }}>
+                          <span className="text-[11px] font-semibold uppercase tracking-wider mr-1 opacity-70">Main Area:</span>
+                          {dropArea}
+                        </div>
+                      )}
+                      <div className="text-[12.5px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+                        {dropArea && <span className="text-[11px] mr-1 opacity-70 font-medium">Address:</span>}
+                        {order.daddress || '—'}
+                      </div>
+                      {order.drop_name && (
+                        <div className="text-[11.5px] mt-1" style={{ color: 'var(--ink-faint)' }}>
+                          Contact: {order.drop_name} {order.dmobile ? `(${order.dmobile})` : ''}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Total Trip Distance */}
+                    <div className="border-t pt-2.5 flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+                      <div>
+                        <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-faint)' }}>
+                          Total Trip Distance
+                        </div>
+                        <div className="text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                          {distInfo?.kind === 'straight_line' ? 'Straight-line distance' : 'Road route distance'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {distInfo ? (
+                          <span className="inline-block font-mono-data text-[13px] font-bold px-2 py-0.5 rounded" style={{ background: 'var(--brand-soft, rgba(37,99,235,0.08))', color: 'var(--brand, #2563eb)' }}>
+                            {distInfo.text}
+                          </span>
+                        ) : (
+                          <span className="text-[12px]" style={{ color: 'var(--ink-faint)' }}>Distance unavailable</span>
+                        )}
+                        {order.extra_mile_charge > 0 && (
+                          <div className="text-[11.5px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                            Extra Mile: {formatCurrency(order.extra_mile_charge)}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </section>

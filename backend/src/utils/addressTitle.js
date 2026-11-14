@@ -177,7 +177,82 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
   }
 }
 
+
+const INDIAN_STATES = new Set([
+  "andhra pradesh", "ap",
+  "arunachal pradesh",
+  "assam",
+  "bihar", "br",
+  "chhattisgarh", "cg",
+  "goa",
+  "gujarat", "gj",
+  "haryana", "hr",
+  "himachal pradesh", "hp",
+  "jharkhand", "jh",
+  "karnataka", "ka",
+  "kerala", "kl",
+  "madhya pradesh", "mp",
+  "maharashtra", "mh",
+  "manipur",
+  "meghalaya",
+  "mizoram",
+  "nagaland",
+  "odisha", "or",
+  "punjab", "pb",
+  "rajasthan", "rj",
+  "sikkim",
+  "tamil nadu", "tn",
+  "telangana", "ts",
+  "tripura",
+  "uttar pradesh", "up",
+  "uttarakhand", "uk",
+  "west bengal", "wb",
+  "delhi", "nct of delhi",
+  "chandigarh",
+  "jammu and kashmir", "jk",
+  "ladakh",
+  "puducherry",
+  "india", "bharat",
+]);
+
+const UNIT_NUMBER_REGEX = /^(?:(?:plot|h\.?no\.?|flat|room|block|sector|shop|house|building)\s*#?\s*[a-z0-9\/-]+|#?[a-z0-9\/-]*\d[a-z0-9\/-]*)$/i;
+const LANDMARK_PREFIX_REGEX = /^(?:near|opp|opposite|behind|beside|in front of)\b|\b(?:point|store|shop|hospital|hotel|restaurant|mall|plaza|complex)\b/i;
+const ROAD_REGEX = /\b(?:road|rd|marg|street|lane|gali|highway|bypass)\b/i;
+
+/**
+ * Extracts a recognizable Main Area / Locality name from a raw address string.
+ * Used as a zero-dependency fallback when Google Maps Geocoding API is unavailable,
+ * unconfigured, or returns no locality.
+ */
+function extractAreaFromAddress(rawAddress) {
+  if (typeof rawAddress !== "string") return null;
+  const cleaned = rawAddress.trim();
+  if (!cleaned) return null;
+
+  const parts = cleaned.split(",").map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return null;
+
+  const candidates = [];
+  for (const part of parts) {
+    if (isPlusCode(part)) continue;
+    const lower = part.toLowerCase().replace(/[\d\s]+$/g, "").trim();
+    if (INDIAN_STATES.has(lower) || /^\d{5,6}$/.test(part) || /^(india|bharat)$/i.test(part)) continue;
+    candidates.push(part);
+  }
+  if (!candidates.length) return null;
+
+  let idx = 0;
+  if (candidates.length > 1 && UNIT_NUMBER_REGEX.test(candidates[idx])) {
+    idx++;
+  }
+  if (candidates.length > idx + 1 && (ROAD_REGEX.test(candidates[idx]) || LANDMARK_PREFIX_REGEX.test(candidates[idx]))) {
+    idx++;
+  }
+  return sanitizeTitle(candidates[idx] || candidates[0]);
+}
+
 module.exports = {
+  extractAreaFromAddress,
   MAIN_AREA_PRIORITY,
   isPlusCode,
   sanitizeTitle,
