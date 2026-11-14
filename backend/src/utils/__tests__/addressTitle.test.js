@@ -321,6 +321,45 @@ describe("resolveLocationTitle", () => {
     expect(await resolveLocationTitle(22.7, 75.8, { fetchImpl, apiKey: "k" })).toBeNull();
   });
 
+  it("redacts the api key from a logged error message", async () => {
+    const logger = require("../logger");
+    const spies = ["error", "warn", "info"].filter((m) => typeof logger[m] === "function").map((m) => jest.spyOn(logger, m).mockImplementation(() => {}));
+    try {
+      const fetchImpl = jest.fn().mockRejectedValue(
+        new Error("request to https://maps.googleapis.com/maps/api/geocode/json?latlng=1,2&key=SECRET123 failed")
+      );
+      expect(await resolveLocationTitle(22.7365123, 75.9087456, { fetchImpl, apiKey: "SECRET123" })).toBeNull();
+      const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
+      expect(spies.some((s) => s.mock.calls.length > 0)).toBe(true);
+      expect(logged).not.toContain("SECRET123");
+      expect(logged).toContain("key=***");
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
+  });
+
+  it("never logs exact coordinates (rounded to 3 decimals at most)", async () => {
+    const logger = require("../logger");
+    const spies = ["error", "warn", "info"].filter((m) => typeof logger[m] === "function").map((m) => jest.spyOn(logger, m).mockImplementation(() => {}));
+    try {
+      const cases = [
+        jest.fn().mockRejectedValue(new Error("network down")),
+        jest.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }),
+        jest.fn().mockResolvedValue(okResponse({ status: "ZERO_RESULTS", results: [] })),
+        jest.fn(() => new Promise(() => {})),
+      ];
+      for (const fetchImpl of cases) {
+        await resolveLocationTitle(22.7365123, 75.9087456, { fetchImpl, apiKey: "k", timeoutMs: 20 });
+      }
+      const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
+      expect(spies.reduce((n, s) => n + s.mock.calls.length, 0)).toBeGreaterThanOrEqual(4);
+      expect(logged).not.toContain("22.7365");
+      expect(logged).not.toContain("75.9087");
+    } finally {
+      spies.forEach((s) => s.mockRestore());
+    }
+  });
+
   it("returns null when fetch never resolves (timeout)", async () => {
     const fetchImpl = jest.fn(() => new Promise(() => {}));
     const started = Date.now();

@@ -129,6 +129,19 @@ function formatAddressForDisplay({ components, rawAddress } = {}) {
   return { mainArea: parts.mainArea, formattedAddress };
 }
 
+// Logging only: coordinates rounded to 3 decimals (~100 m), never the exact customer point.
+function coarsePoint(lat, lng) {
+  const r = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toFixed(3) : "?";
+  };
+  return `~${r(lat)},${r(lng)}`;
+}
+
+function redactKey(message) {
+  return String(message == null ? "" : message).replace(/key=[^&\s]+/g, "key=***");
+}
+
 /**
  * Reverse-geocodes a point to its Main Area. Never throws; null on any
  * failure (no key, HTTP error, bad JSON, non-OK status, timeout, no locality).
@@ -148,6 +161,7 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
   const url =
     `${GEOCODE_URL}?latlng=${lat},${lng}` + `&language=en&key=${encodeURIComponent(apiKey)}`;
 
+  const where = coarsePoint(lat, lng);
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   let timer;
   const timeout = new Promise((resolve) => {
@@ -161,12 +175,12 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
     const work = (async () => {
       const res = await fetchImpl(url, controller ? { signal: controller.signal } : undefined);
       if (!res || !res.ok) {
-        logger.warn(`resolveLocationTitle: HTTP ${res ? res.status : "no response"} for ${lat},${lng}`);
+        logger.warn(`resolveLocationTitle: HTTP ${res ? res.status : "no response"} for ${where}`);
         return { title: null };
       }
       const data = await res.json();
       if (!data || data.status !== "OK") {
-        logger.warn(`resolveLocationTitle: status ${data && data.status} for ${lat},${lng}`);
+        logger.warn(`resolveLocationTitle: status ${data && data.status} for ${where}`);
         return { title: null };
       }
       return { title: sanitizeTitle(pickMainAreaFromResults(data.results)) };
@@ -176,12 +190,12 @@ async function resolveLocationTitle(lat, lng, opts = {}) {
 
     const outcome = await Promise.race([work, timeout]);
     if (outcome.timedOut) {
-      logger.warn(`resolveLocationTitle: timed out after ${timeoutMs}ms for ${lat},${lng}`);
+      logger.warn(`resolveLocationTitle: timed out after ${timeoutMs}ms for ${where}`);
       return null;
     }
     return outcome.title;
   } catch (err) {
-    logger.error(`resolveLocationTitle error for ${lat},${lng}:`, err && err.message);
+    logger.error(`resolveLocationTitle error for ${where}:`, redactKey(err && err.message));
     return null;
   } finally {
     clearTimeout(timer);
