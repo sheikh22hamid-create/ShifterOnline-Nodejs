@@ -258,6 +258,8 @@ model pkg_order {
   trans_id               String?            @db.Text
   daddress               String?            @db.Text
   paddress               String?            @db.Text
+  pickup_title           String?            @db.VarChar(120)
+  drop_title             String?            @db.VarChar(120)
   pmobile                String?            @db.Text
   dmobile                String?            @db.Text
   description            String?            @db.Text
