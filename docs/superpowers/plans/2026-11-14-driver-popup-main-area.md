@@ -15,7 +15,7 @@
 - Coordinates (`plat/plong/dlat/dlong`) are never rounded, replaced or changed by any title code; title functions return text only.
 - Column / payload key names: `pickup_title`, `drop_title`. DB: `VARCHAR(120) NULL` on `pkg_order`. Payload value is `""` when unknown.
 - Lookup ceiling 2000 ms, pickup and drop in parallel, never throws, never blocks a booking; no cache.
-- Main Area comes only from component types in the code constant `MAIN_AREA_PRIORITY` (default order: `sublocality_level_1`, `neighborhood`, `sublocality`, `sublocality_level_2`). City/district/state/PIN/Plus Code are never a Main Area. No locality → null.
+- Main Area comes only from component types in the code constant `MAIN_AREA_PRIORITY` (default order: `sublocality_level_1`, `neighborhood`, `sublocality_level_2`, `sublocality`; the generic `sublocality` entry matches only components with no `sublocality_level_*` type, since Google tags level components with `sublocality` too). City/district/state/PIN/Plus Code are never a Main Area. No locality → null.
 - A failed recompute on a pickup/drop change sets that side's title to NULL (never keeps the old one).
 - Stored/sent address strings are not rewritten.
 - Migrations are hand-applied SQL (never `migrate deploy`); no DATABASE_URL is available to agents, so the migration is committed but NOT applied; the owner applies it to dev first.

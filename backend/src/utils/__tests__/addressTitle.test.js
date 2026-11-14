@@ -44,9 +44,12 @@ describe("MAIN_AREA_PRIORITY", () => {
     expect(MAIN_AREA_PRIORITY).toEqual([
       "sublocality_level_1",
       "neighborhood",
-      "sublocality",
       "sublocality_level_2",
+      "sublocality",
     ]);
+    for (const t of ["locality", "administrative_area_level_1", "administrative_area_level_2", "administrative_area_level_3"]) {
+      expect(MAIN_AREA_PRIORITY).not.toContain(t);
+    }
   });
 });
 
@@ -102,14 +105,69 @@ describe("parseGoogleAddressComponents", () => {
     expect(out.mainArea).toBe("Malviya Nagar");
   });
 
-  it("falls back to plain sublocality, then sublocality_level_2", () => {
+  // Real Google data tags every sublocality_level_N component with the generic
+  // "sublocality" type too, finest level usually listed first.
+  it("picks the broader level_2 over a finer level_3 colony listed first (no level_1, no neighborhood)", () => {
+    const out = parseGoogleAddressComponents([
+      comp("Asharfi Colony", ["sublocality_level_3", "sublocality", "political"]),
+      comp("Khajrana", ["sublocality_level_2", "sublocality", "political"]),
+      ...CITY_STATE_PIN,
+    ]);
+    expect(out.mainArea).toBe("Khajrana");
+  });
+
+  it("level_1 wins over neighborhood, level_2 and level_3 regardless of listing order", () => {
+    const out = parseGoogleAddressComponents([
+      comp("Asharfi Colony", ["sublocality_level_3", "sublocality", "political"]),
+      comp("Malviya Nagar", ["neighborhood", "political"]),
+      comp("Khajrana Road", ["sublocality_level_2", "sublocality", "political"]),
+      comp("Khajrana", ["sublocality_level_1", "sublocality", "political"]),
+      ...CITY_STATE_PIN,
+    ]);
+    expect(out.mainArea).toBe("Khajrana");
+  });
+
+  it("neighborhood beats level_2 when level_1 is missing", () => {
+    const out = parseGoogleAddressComponents([
+      comp("Khajrana Road", ["sublocality_level_2", "sublocality", "political"]),
+      comp("Malviya Nagar", ["neighborhood", "political"]),
+      ...CITY_STATE_PIN,
+    ]);
+    expect(out.mainArea).toBe("Malviya Nagar");
+  });
+
+  it("level_2 is used when it is the only locality level", () => {
+    expect(
+      parseGoogleAddressComponents([
+        comp("Asharfi Colony", ["sublocality_level_2", "sublocality", "political"]),
+        ...CITY_STATE_PIN,
+      ]).mainArea
+    ).toBe("Asharfi Colony");
+  });
+
+  it("a lone generic sublocality with no level type still works", () => {
     expect(
       parseGoogleAddressComponents([comp("Kakkad", ["sublocality", "political"]), ...CITY_STATE_PIN]).mainArea
     ).toBe("Kakkad");
+  });
+
+  it("the generic sublocality entry never picks a level-tagged component (level_3 alone gives no title)", () => {
     expect(
-      parseGoogleAddressComponents([comp("Asharfi Colony", ["sublocality_level_2", "political"]), ...CITY_STATE_PIN])
-        .mainArea
-    ).toBe("Asharfi Colony");
+      parseGoogleAddressComponents([
+        comp("Asharfi Colony", ["sublocality_level_3", "sublocality", "political"]),
+        ...CITY_STATE_PIN,
+      ]).mainArea
+    ).toBe("");
+  });
+
+  it("level_2 beats a generic-only sublocality", () => {
+    expect(
+      parseGoogleAddressComponents([
+        comp("Kakkad", ["sublocality", "political"]),
+        comp("Khajrana", ["sublocality_level_2", "sublocality", "political"]),
+        ...CITY_STATE_PIN,
+      ]).mainArea
+    ).toBe("Khajrana");
   });
 
   it("extracts city/district/state/pin and never returns them as mainArea", () => {

@@ -7,13 +7,21 @@ const logger = require("./logger");
  * order. City / district / state / PIN / Plus Code are never a Main Area: if
  * none of these types is present the title is left empty (a wrong locality is
  * worse than none).
+ *
+ * Google tags every sublocality_level_N component with the generic
+ * "sublocality" type as well (finest level usually listed first), so the
+ * generic "sublocality" entry only matches a component that carries NO
+ * sublocality_level_* type; otherwise it would grab a fine-grained colony
+ * ahead of the broader levels listed before it.
  */
 const MAIN_AREA_PRIORITY = Object.freeze([
   "sublocality_level_1",
   "neighborhood",
-  "sublocality",
   "sublocality_level_2",
+  "sublocality",
 ]);
+
+const SUBLOCALITY_LEVEL_TYPE = /^sublocality_level_\d+$/;
 
 const TITLE_MAX_LENGTH = 120;
 const DEFAULT_TIMEOUT_MS = 2000;
@@ -55,7 +63,10 @@ function parseGoogleAddressComponents(components) {
     if (!c || !Array.isArray(c.types)) continue;
     const name = typeof c.long_name === "string" ? c.long_name.trim() : "";
     if (!name) continue;
+    const hasLevelType = c.types.some((t) => typeof t === "string" && SUBLOCALITY_LEVEL_TYPE.test(t));
     for (const t of c.types) {
+      // A level-tagged component never fills the generic "sublocality" slot.
+      if (t === "sublocality" && hasLevelType) continue;
       if (!(t in byType)) byType[t] = name;
     }
   }
