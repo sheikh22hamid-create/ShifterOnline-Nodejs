@@ -31,6 +31,7 @@ const {
   BOOKING_GUARANTEE_SWEEP_INTERVAL_MS,
   SYSTEM2_SWEEP_INTERVAL_MS,
   NEXT_DAY_SWEEP_INTERVAL_MS,
+  WITHDRAWAL_PAYOUT_SWEEP_INTERVAL_MS,
 } = require("./config/constants");
 
 const PORT = process.env.PORT || 5000;
@@ -88,6 +89,18 @@ setInterval(() => {
     .catch((err) => logger.error("next-day offer sweep failed:", err))
     .finally(() => { nextDaySweepRunning = false; });
 }, NEXT_DAY_SWEEP_INTERVAL_MS);
+
+// RazorpayX driver payouts stuck in `processing` (missed webhook): poll status. No-op when RazorpayX is unconfigured.
+const withdrawalPayout = require("./services/withdrawalPayout");
+let payoutSweepRunning = false;
+setInterval(() => {
+  if (payoutSweepRunning) return;
+  payoutSweepRunning = true;
+  withdrawalPayout
+    .sweepStuckPayouts()
+    .catch((err) => logger.error("sweepStuckPayouts failed:", err))
+    .finally(() => { payoutSweepRunning = false; });
+}, WITHDRAWAL_PAYOUT_SWEEP_INTERVAL_MS);
 
 // Customer no-show auto-cancel — see tripLifecycle.sweepOverduePickups doc
 // comment for why this is a periodic DB-anchored sweep rather than a
