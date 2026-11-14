@@ -103,6 +103,11 @@ Owner picked **A**.
 - Migration file added; applied to dev by hand (dev DB convention); **not** applied to prod by me — the owner runs it before deploying, together with the other pending prod SQL.
 - With no switch, the feature is live as soon as the backend and admin frontend deploy to prod, so deploy only after RazorpayX is funded, the live keys are in the prod env, and the webhook URL + IP allowlist are set up. Until then approve on prod just refuses with a "payouts not configured" message and no driver is debited.
 
+## Rollback
+- Rolling the backend back to a build from before this feature, with the migration already applied, breaks reads of `driver_withdraw_requests`: the old Prisma client does not know the `processing` / `paid` / `failed` enum values and throws on any row holding one (the admin Payouts list, the driver withdrawal history, the finance report). The new nullable columns are harmless to the old client.
+- So before rolling back code: make sure no row is `processing` (let the sweeper or "Check status" settle them), then either keep the new build's Prisma client or move `paid` rows to `approved` and `failed` rows to `rejected` by hand (their refunds are already in the ledger) before shrinking the enum. Do not drop the new columns while any payout is in flight — `razorpay_payout_id` is what ties a webhook to its request.
+- The migration file itself is left unchanged on purpose: editing it would change Prisma's recorded checksum.
+
 ## Left to the builder
 - Exact Razorpay field names, the idempotency window and the webhook payload shape (verify against the live reference).
 - Where the sweeper lives, if the repo has a job runner.
