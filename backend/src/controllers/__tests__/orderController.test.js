@@ -384,6 +384,21 @@ describe("orderController.createOrderCore", () => {
       );
     });
 
+    it("looks up the area titles before any points are settled or spent, keeping the spend-to-create window short", async () => {
+      const orderAreaTitles = require("../../services/orderAreaTitles");
+      const pointsExpiry = require("../../services/pointsExpiryService");
+      prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 100 });
+      prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });
+
+      await createOrderCore({ ...baseInput, useReferralPoints: true });
+
+      const lookup = orderAreaTitles.resolveOrderTitles.mock.invocationCallOrder[0];
+      expect(lookup).toBeDefined();
+      expect(lookup).toBeLessThan(pointsExpiry.settleUserStrict.mock.invocationCallOrder[0]);
+      expect(lookup).toBeLessThan(prisma.tbl_user.updateMany.mock.invocationCallOrder[0]);
+      expect(lookup).toBeLessThan(prisma.pkg_order.create.mock.invocationCallOrder[0]);
+    });
+
     it("uses only what's available when the customer has fewer points than the cap", async () => {
       prisma.tbl_user.findUnique.mockResolvedValue({ referral_points: 2 });
       prisma.tbl_user.updateMany.mockResolvedValue({ count: 1 });

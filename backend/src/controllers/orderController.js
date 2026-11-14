@@ -554,6 +554,11 @@ async function createOrderCore({
     }
   }
 
+  // Main Area titles: read-only on the coordinates; resolves to nulls on any failure, so it can never fail
+  // the booking. Looked up here, after validation but before any points are settled or spent, so the slow
+  // network call (up to ~2 s) does not sit between spending points and creating the order.
+  const areaTitles = await resolveOrderTitles({ plat, plong, dlat, dlong, clientPickupTitle, clientDropTitle });
+
   let referralPointsUsed = 0;
   let referralPointsAmount = 0;
   let pointsLedger = null; // written only once the order row exists
@@ -618,8 +623,6 @@ async function createOrderCore({
 
 
   const stopCharge = validStops.length * stopSettings.extraStopCharge;
-  // Read-only on the coordinates; resolves to nulls on any failure, so it can never fail the booking.
-  const areaTitles = await resolveOrderTitles({ plat, plong, dlat, dlong, clientPickupTitle, clientDropTitle });
   let order;
   try {
   order = await prisma.pkg_order.create({
