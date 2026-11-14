@@ -127,6 +127,32 @@ describe("financeLedgerController", () => {
       // Direct Expenses: 60 (PG fee)
       // Net Profit = 1050 - 60 = 990
       expect(json.summary.net_operating_profit).toBe(990);
+
+      // Payout figures flow through unchanged.
+      expect(json.driver_accounts.driver_wallet_settlement.pending_payouts).toBe(600);
+      expect(json.driver_accounts.driver_wallet_settlement.settled_in_period).toBe(1500);
+    });
+
+    it("counts RazorpayX 'paid' payouts as settled and 'processing' as in-flight (not settled)", async () => {
+      prisma.$queryRaw.mockResolvedValue([{}]);
+      prisma.pkg_order.findMany.mockResolvedValue([]);
+      prisma.tbl_user.findMany.mockResolvedValue([]);
+      prisma.tbl_rider.findMany.mockResolvedValue([]);
+      prisma.tbl_payment_list.findMany.mockResolvedValue([]);
+
+      const res = mockRes();
+      await getLedgerOverview({ query: { period: "this_month" }, user: { role: "superadmin" } }, res);
+      expect(res.status).toHaveBeenCalledWith(200);
+
+      const payoutSql = prisma.$queryRaw.mock.calls
+        .map(([strings]) => strings.join("?"))
+        .find((sql) => sql.includes("FROM driver_withdraw_requests"));
+      expect(payoutSql).toBeDefined();
+      const compact = payoutSql.replace(/\s+/g, " ");
+      expect(compact).toContain("status IN ('pending','processing') THEN amount");
+      expect(compact).toContain("status IN ('pending','processing') THEN 1");
+      expect(compact).toContain("status IN ('approved','paid') AND (COALESCE(payout_processed_at, created_at) BETWEEN");
+      expect(compact).not.toMatch(/status = 'approved'/);
     });
   });
 

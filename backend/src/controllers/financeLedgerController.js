@@ -157,13 +157,24 @@ async function getLedgerOverview(req, res) {
       ${riderWhereCity}
     `;
 
-    // 6. Driver Withdrawal Requests (Pending vs Approved Payouts in period)
+    // 6. Driver Withdrawal Requests (Pending vs Settled Payouts in period)
+    // Status buckets (RazorpayX payouts, spec 2026-11-14):
+    //  - settled = 'approved' (legacy manual payouts) + 'paid' (RazorpayX
+    //    confirmed processed), dated by payout_processed_at when known.
+    //  - 'processing' = already debited from the driver's wallet but not yet
+    //    confirmed by RazorpayX (it may still fail and be refunded). It is NOT
+    //    settled, so it is not subtracted from the bank float; it counts with
+    //    pending as money still owed to drivers. Since it is no longer in
+    //    wallet_balance, adding it to the settlement payable does not double
+    //    count it. ('pending' is still in wallet_balance - pre-existing
+    //    behaviour, unchanged here.)
+    //  - 'failed' / 'rejected' were refunded / never debited: excluded.
     const [payoutRows] = await prisma.$queryRaw`
       SELECT
-        COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS pending_settlement_payouts,
-        COUNT(CASE WHEN status = 'pending' THEN 1 END) AS pending_payout_count,
-        COALESCE(SUM(CASE WHEN status = 'approved' AND (created_at BETWEEN ${start} AND ${end}) THEN amount ELSE 0 END), 0) AS approved_settled_payouts,
-        COUNT(CASE WHEN status = 'approved' AND (created_at BETWEEN ${start} AND ${end}) THEN 1 END) AS approved_payout_count
+        COALESCE(SUM(CASE WHEN status IN ('pending','processing') THEN amount ELSE 0 END), 0) AS pending_settlement_payouts,
+        COUNT(CASE WHEN status IN ('pending','processing') THEN 1 END) AS pending_payout_count,
+        COALESCE(SUM(CASE WHEN status IN ('approved','paid') AND (COALESCE(payout_processed_at, created_at) BETWEEN ${start} AND ${end}) THEN amount ELSE 0 END), 0) AS approved_settled_payouts,
+        COUNT(CASE WHEN status IN ('approved','paid') AND (COALESCE(payout_processed_at, created_at) BETWEEN ${start} AND ${end}) THEN 1 END) AS approved_payout_count
       FROM driver_withdraw_requests
       WHERE 1=1
         ${cityWithdrawFilter}
@@ -272,6 +283,7 @@ async function getLedgerOverview(req, res) {
 
     // Bank / Nodal Account Float estimation
     // Inflows (Online collections + Wallet deposits) - Outflows (Settled payouts + PG fees + Refunds)
+    // approved + paid only; processing payouts are in pendingSettlementPayouts (see query 6).
     const settledPayouts = round2(payoutRows?.approved_settled_payouts || 0);
     const bankNodalEstimatedFloat = round2(
       Math.max(0, onlineGmv + advanceBookingLiability - settledPayouts - razorpayPgCharges - refundsPayable)
