@@ -183,6 +183,16 @@ model driver_withdraw_requests {
   // change later.
   payout_method String?                          @db.VarChar(10)
   payout_detail String?                          @db.VarChar(255)
+
+  // RazorpayX payout tracking (spec 2026-11-14).
+  razorpay_payout_id       String?   @db.VarChar(64)
+  razorpay_fund_account_id String?   @db.VarChar(64)
+  utr                      String?   @db.VarChar(64)
+  failure_reason           String?   @db.VarChar(255)
+  payout_started_at        DateTime? @db.DateTime(0)
+  payout_processed_at      DateTime? @db.DateTime(0)
+
+  @@index([razorpay_payout_id], map: "idx_dwr_razorpay_payout_id")
 }
 
 model make_list_item {
@@ -1123,6 +1133,7 @@ model tbl_referral_setting {
 
 model tbl_rider {
   id                     Int                            @id @default(autoincrement())
+  razorpay_contact_id    String?                        @db.VarChar(64)
   first_name             String?                        @db.Text
   last_name              String?                        @db.Text
   full_name              String?                        @db.VarChar(150)
@@ -1813,6 +1824,9 @@ enum driver_withdraw_requests_status {
   pending
   approved
   rejected
+  processing
+  paid
+  failed
 }
 
 enum admin_role {
