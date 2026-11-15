@@ -2,7 +2,7 @@ const multer = require("multer");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
-const { formatPkgOrderForDriver } = require("./driverOrderHistoryController");
+const { formatPkgOrderForDriver, loadBookingUsers } = require("./driverOrderHistoryController");
 const { formatBuyOrderForDriver } = require("./legacyOrderController");
 const deviceSessionService = require("../services/deviceSessionService");
 const { uniqueRefferCode } = require("./riderAuthController");
@@ -135,6 +135,7 @@ async function homeData(req, res) {
         planNameCache: {},
         globalComm: Number(setting?.rider_commission ?? 10),
         receiverModeByOrder: {}, // an active order has no settlement yet
+        bookingUsersById: await loadBookingUsers([row.uid]),
       });
     }
 

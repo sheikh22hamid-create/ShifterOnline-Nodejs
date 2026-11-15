@@ -198,6 +198,58 @@
                             android:textStyle="bold" />
                     </LinearLayout>
                 </RelativeLayout>
+                <!-- Booking User Details: the Customer App account that created this booking (not the pickup / drop contact) -->
+                <LinearLayout
+                    android:id="@+id/layout_booking_user"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/box_boder"
+                    android:backgroundTint="#F8FAFC"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="10dp"
+                    android:visibility="gone">
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/booking_user_details"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/txt_booking_user_name"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textColor="#1E293B"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/txt_booking_user_mobile"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:textColor="@color/home_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                    <ImageView
+                        android:id="@+id/img_booking_user_call"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_pill_credit"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_call_dark"
+                        android:visibility="gone"
+                        app:tint="#00C853" />
+                </LinearLayout>
                 <!-- Row 2: 3-Column Stats Card (Distance, Est Time, Earning) -->
                 <LinearLayout
                     android:layout_width="match_parent"

@@ -75,6 +75,13 @@ public class PDOrderItem implements Parcelable {
 	@SerializedName("order_user_id")
 	private final String orderUserid;
 
+	/** The Customer App account that created the booking (separate from the pickup / drop contacts). */
+	@SerializedName("booking_user_name")
+	private String bookingUserName;
+
+	@SerializedName("booking_user_mobile")
+	private String bookingUserMobile;
+
 	@SerializedName("loading_charge")
 	private final String loadingCharge;
 
@@ -320,6 +327,8 @@ public class PDOrderItem implements Parcelable {
 		bookingType = in.readString();
 		pMethodId = in.readString();
 		tier = in.readString();
+		bookingUserName = in.readString();
+		bookingUserMobile = in.readString();
 	}
 
 	public static final Creator<PDOrderItem> CREATOR = new Creator<PDOrderItem>() {
@@ -660,7 +669,13 @@ public class PDOrderItem implements Parcelable {
 		parcel.writeString(bookingType);
 		parcel.writeString(pMethodId);
 		parcel.writeString(tier);
+		parcel.writeString(bookingUserName);
+		parcel.writeString(bookingUserMobile);
 	}
+
+	public String getBookingUserName() { return bookingUserName; }
+
+	public String getBookingUserMobile() { return bookingUserMobile; }
 
 	public void setDlat(double dlat) {
 		this.dlat = dlat;

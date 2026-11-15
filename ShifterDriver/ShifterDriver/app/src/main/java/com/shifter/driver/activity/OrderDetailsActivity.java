@@ -1306,6 +1306,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         binding.txtOrderid.setText(getString(R.string.order_id) + " #" + orderItem.getId());
         binding.txtDatetime.setText(getString(R.string.date) + " " + orderItem.getOrderDate());
         binding.txtUname.setText(orderItem.getPickName());
+        bindBookingUser();
         binding.txtKm.setText(orderItem.getDistance() + " Km");
 
         binding.txtEarning.setText(
@@ -2375,6 +2376,33 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         if (orderItem == null) return false;
         JsonObject cached = com.shifter.driver.utility.TripProgressClient.cached(this, orderItem.getId());
         return cached != null && cached.has("otp_verified") && cached.get("otp_verified").getAsBoolean();
+    }
+
+    /**
+     * Booking User Details: the Customer App account that created the booking, kept apart from the pickup / drop /
+     * stop contacts. Shown only when the server sent it (it only does for the driver the order is assigned to).
+     */
+    private void bindBookingUser() {
+        String name = orderItem == null ? null : orderItem.getBookingUserName();
+        String mobile = orderItem == null ? null : orderItem.getBookingUserMobile();
+        boolean hasName = name != null && !name.trim().isEmpty() && !"null".equalsIgnoreCase(name.trim());
+        boolean hasMobile = mobile != null && !mobile.trim().isEmpty() && !"null".equalsIgnoreCase(mobile.trim());
+        if (!hasName && !hasMobile) {
+            binding.layoutBookingUser.setVisibility(View.GONE);
+            return;
+        }
+        binding.layoutBookingUser.setVisibility(View.VISIBLE);
+        binding.txtBookingUserName.setText(hasName ? name.trim() : getString(R.string.booking_user_name_unknown));
+        binding.txtBookingUserMobile.setText(hasMobile ? mobile.trim() : "");
+        binding.txtBookingUserMobile.setVisibility(hasMobile ? View.VISIBLE : View.GONE);
+        binding.imgBookingUserCall.setVisibility(hasMobile ? View.VISIBLE : View.GONE);
+        final String dial = hasMobile ? mobile.trim() : null;
+        binding.imgBookingUserCall.setOnClickListener(v -> {
+            if (dial == null) return;
+            Intent intent = new Intent(Intent.ACTION_DIAL);
+            intent.setData(Uri.parse("tel:" + dial));
+            startActivity(intent);
+        });
     }
 
     private void updateTripControls() {

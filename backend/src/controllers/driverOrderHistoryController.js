@@ -28,6 +28,28 @@ function fail(res, msg, code = 401) {
   return res.status(200).json({ ResponseCode: String(code), Result: "false", ResponseMsg: msg });
 }
 
+// The Customer App account that created each booking (Booking User Details on the driver's ride screen). Read from the
+// account profile, never from the pickup/drop contact fields, so the two are never mixed. Only called for orders already
+// assigned to the asking driver (pkg_history is scoped by rid; homeData by the driver's active order). A failed lookup
+// just leaves the section out - it must never break the order list.
+async function loadBookingUsers(uids) {
+  const ids = [...new Set((uids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+  if (!ids.length) return {};
+  try {
+    const users = await prisma.tbl_user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, mobile: true } });
+    return Object.fromEntries(users.map((u) => [Number(u.id), { name: String(u.name || "").trim(), mobile: formatMobile(u.mobile) }]));
+  } catch (err) {
+    logger.error("driverOrderHistoryController.loadBookingUsers failed:", err);
+    return {};
+  }
+}
+
+// tbl_user.mobile is a FLOAT column: print it as a plain integer string, never "9.9999E9" or "9999900009.0".
+function formatMobile(m) {
+  const n = Number(m);
+  return Number.isFinite(n) && n > 0 ? String(Math.round(n)) : "";
+}
+
 // --- rider_api/pkg_history.php ---
 async function pkgHistoryDriver(req, res) {
   try {
@@ -107,7 +129,8 @@ async function pkgHistoryDriver(req, res) {
       receiverMarkupByOrder = {};
     }
 
-    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm, receiverModeByOrder, receiverMarkupByOrder }));
+    const bookingUsersById = await loadBookingUsers(rows.map((r) => r.uid));
+    const history = rows.map((row) => formatPkgOrderForDriver(row, { stopsByOrder, benefitByOrder, planNameCache, globalComm, receiverModeByOrder, receiverMarkupByOrder, bookingUsersById }));
 
     return res.status(200).json({ OrderHistory: history, ResponseCode: "200", Result: "true", ResponseMsg: "Order History Get Successfully!!!" });
   } catch (err) {
@@ -199,6 +222,9 @@ function formatPkgOrderForDriver(row, ctx) {
   return {
     id: row.id,
     order_user_id: row.uid,
+    // Who booked it: the Customer App account holder (separate from the pickup / drop / stop contacts below).
+    booking_user_name: (ctx.bookingUsersById && ctx.bookingUsersById[Number(row.uid)]?.name) || "",
+    booking_user_mobile: (ctx.bookingUsersById && ctx.bookingUsersById[Number(row.uid)]?.mobile) || "",
     status: row.o_status,
     order_date: row.odate,
     cancel_reason: row.o_status === "Cancelled" ? row.cancel_reason || "" : "",
@@ -313,4 +339,4 @@ function formatPkgOrderForDriver(row, ctx) {
   };
 }
 
-module.exports = { pkgHistoryDriver, formatPkgOrderForDriver };
+module.exports = { pkgHistoryDriver, formatPkgOrderForDriver, loadBookingUsers };
