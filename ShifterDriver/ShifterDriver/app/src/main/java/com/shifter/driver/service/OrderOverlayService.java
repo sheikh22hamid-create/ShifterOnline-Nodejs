@@ -570,9 +570,11 @@ public class OrderOverlayService extends Service {
                 String d = (tripDistanceKm != null && !tripDistanceKm.trim().isEmpty()) ? tripDistanceKm.trim() : "";
                 if (!d.isEmpty()) {
                     if (!d.toLowerCase().contains("km")) d += " km";
-                    dropTitle.setText("FINAL DROP (Stop " + (count + 1) + ") • (" + d + " from pickup)");
+                    dropTitle.setText("FINAL DROP (Stop " + (count + 1) + ")");
+                    com.shifter.driver.utility.DistanceChip.show(root.findViewById(R.id.txt_drop_distance), d, "From your pickup");
                 } else {
                     dropTitle.setText("FINAL DROP (Stop " + (count + 1) + ")");
+                    com.shifter.driver.utility.DistanceChip.hide(root.findViewById(R.id.txt_drop_distance));
                 }
             }
         } catch (Exception ignored) {

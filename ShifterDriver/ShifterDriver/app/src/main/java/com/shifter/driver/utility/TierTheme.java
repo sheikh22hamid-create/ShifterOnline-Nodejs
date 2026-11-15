@@ -356,11 +356,15 @@ public class TierTheme {
         TextView txtPickup = view.findViewById(R.id.txt_pickup_address);
         Double distToPickup = OrderVoiceAnnouncer.distanceToPickupKm(pickupLat, pickupLng, driverLocation);
 
+        TextView chipPickup = view.findViewById(R.id.txt_pickup_distance);
         if (txtPickupTitle != null) {
             if (distToPickup != null && distToPickup > 0.05) {
-                txtPickupTitle.setText(String.format(Locale.US, "PICKUP • (%.1f km from your location)", distToPickup));
+                // same value and "%.1f km" formatting as before, now shown as the highlighted chip
+                txtPickupTitle.setText("PICKUP");
+                DistanceChip.show(chipPickup, String.format(Locale.US, "%.1f km", distToPickup), "From your location");
             } else {
                 txtPickupTitle.setText("PICKUP LOCATION");
+                DistanceChip.hide(chipPickup);
             }
         }
         if (txtPickup != null) {
@@ -372,12 +376,15 @@ public class TierTheme {
         TextView txtDrop = view.findViewById(R.id.txt_drop_address);
         String tripDist = (distanceKm != null && !distanceKm.trim().isEmpty()) ? distanceKm.trim() : "";
 
+        TextView chipDrop = view.findViewById(R.id.txt_drop_distance);
         if (txtDropTitle != null) {
             if (!tripDist.isEmpty()) {
                 String d = tripDist.toLowerCase().contains("km") ? tripDist : tripDist + " km";
-                txtDropTitle.setText("DROP • (" + d + " from pickup)");
+                txtDropTitle.setText("DROP");
+                DistanceChip.show(chipDrop, d, "From your pickup");
             } else {
                 txtDropTitle.setText("DROP LOCATION");
+                DistanceChip.hide(chipDrop);
             }
         }
         if (txtDrop != null) {

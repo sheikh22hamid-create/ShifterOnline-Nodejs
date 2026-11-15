@@ -449,9 +449,11 @@ public class OrderDialogHelper {
                 String d = (tripDistanceKm != null && !tripDistanceKm.trim().isEmpty()) ? tripDistanceKm.trim() : "";
                 if (!d.isEmpty()) {
                     if (!d.toLowerCase().contains("km")) d += " km";
-                    dropTitle.setText("FINAL DROP (Stop " + (count + 1) + ") • (" + d + " from pickup)");
+                    dropTitle.setText("FINAL DROP (Stop " + (count + 1) + ")");
+                    DistanceChip.show(root.findViewById(com.shifter.driver.R.id.txt_drop_distance), d, "From your pickup");
                 } else {
                     dropTitle.setText("FINAL DROP (Stop " + (count + 1) + ")");
+                    DistanceChip.hide(root.findViewById(com.shifter.driver.R.id.txt_drop_distance));
                 }
             }
         } catch (Exception ignored) {
