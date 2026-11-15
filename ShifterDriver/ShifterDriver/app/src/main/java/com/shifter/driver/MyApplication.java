@@ -40,6 +40,7 @@ public class MyApplication extends Application {
         mContext = this;
         FirebaseApp.initializeApp(this);
         createOrderNotificationChannels();
+        com.shifter.driver.utility.OfflineAlerts.reconcile(this); // rebuild the Offline Alerts timer from saved settings
         OrderVoiceAnnouncer.init(this);
         FirebaseMessaging.getInstance().subscribeToTopic("appTopic");
 

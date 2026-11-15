@@ -365,6 +365,17 @@
         </service>
 
         <!-- ========= RECEIVER ========= -->
+        <activity
+            android:name="com.shifter.driver.activity.OfflineAlertsActivity"
+            android:exported="false" />
+        <receiver
+            android:name="com.shifter.driver.service.OfflineAlertReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name="com.shifter.driver.service.SmsReceiver"
             android:exported="true">

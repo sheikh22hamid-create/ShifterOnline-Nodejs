@@ -130,6 +130,8 @@ public class LocationUpdateService extends Service {
         
         createLocationCallback();
         com.shifter.driver.utility.FloatingBubbleController.sync(this);
+        // Online: Offline Alerts stop at once.
+        com.shifter.driver.utility.OfflineAlerts.onOnline(this);
     }
 
     @Override
@@ -422,6 +424,8 @@ public class LocationUpdateService extends Service {
         Log.d(TAG, "Service onDestroy");
         // Offline: the floating bubble goes away at once.
         com.shifter.driver.utility.FloatingBubbleController.hide(this);
+        // Offline: the Offline Alerts timer starts (no-op when switched off or logged out).
+        com.shifter.driver.utility.OfflineAlerts.onOffline(this);
         stopLocationUpdates();
         stopForeground(true);
         

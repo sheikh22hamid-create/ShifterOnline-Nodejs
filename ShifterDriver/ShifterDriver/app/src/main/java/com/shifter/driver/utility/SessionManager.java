@@ -100,6 +100,7 @@ public class SessionManager {
         mEditor.clear();
         mEditor.commit();
         FloatingBubbleController.hide(context);
+        OfflineAlerts.cancel(context); // a logged-out driver gets no reminders
     }
 
     public static String activeOrder = "active_order";

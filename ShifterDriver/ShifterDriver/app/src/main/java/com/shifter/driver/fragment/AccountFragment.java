@@ -87,6 +87,15 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         binding.lvlLanguage.setOnClickListener(this::onBindClick);
         binding.lvlPremiumPlans.setOnClickListener(this::onBindClick);
         binding.lvlReferEarn.setOnClickListener(this::onBindClick);
+        binding.lvlOfflineAlerts.setOnClickListener(v -> startActivity(new Intent(requireContext(), com.shifter.driver.activity.OfflineAlertsActivity.class)));
+        binding.swOfflineAlerts.setOnCheckedChangeListener((button, checked) -> {
+            if (!button.isPressed()) return; // only the driver's own tap, not the refresh in onResume
+            com.shifter.driver.utility.OfflineAlerts.setEnabled(requireContext(), checked);
+            if (checked && !androidx.core.app.NotificationManagerCompat.from(requireContext()).areNotificationsEnabled()) {
+                if (android.os.Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 5301);
+                Toast.makeText(requireContext(), R.string.offline_alerts_notifications_off, Toast.LENGTH_LONG).show();
+            }
+        });
         binding.lvlTraining.setOnClickListener(this::onBindClick);
         binding.lvlTestRide.setOnClickListener(v -> {
             if (sessionManager.getActiveOrder() != null) {
@@ -138,6 +147,7 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
     @Override
     public void onResume() {
         super.onResume();
+        if (binding != null) binding.swOfflineAlerts.setChecked(com.shifter.driver.utility.OfflineAlerts.isEnabled(requireContext()));
         if (sessionManager != null) {
             user = sessionManager.getUserDetails();
             if (user != null && binding != null) {

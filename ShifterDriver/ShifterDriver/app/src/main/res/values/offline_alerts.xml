@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="offline_alerts_title">Offline Alerts</string>
+    <string name="offline_alerts_subtitle">Get alerts when you are offline</string>
+    <string name="offline_alerts_channel">Offline alerts</string>
+    <string name="offline_alerts_channel_desc">Reminds you to go online when you have been offline</string>
+    <string name="offline_alerts_notification_title">You are offline</string>
+    <string name="offline_alerts_notification_text">Go online to start receiving orders.</string>
+    <string name="offline_alerts_interval_label">Remind me every (minutes)</string>
+    <string name="offline_alerts_interval_hint">e.g. 10</string>
+    <string name="offline_alerts_save">Save</string>
+    <string name="offline_alerts_saved">Offline Alerts saved</string>
+    <string name="offline_alerts_invalid">Enter a number of minutes between 1 and 1440</string>
+    <string name="offline_alerts_info">While you are offline and this is ON, you get a notification with a sound at this interval. It stops as soon as you go online. In battery saver mode a reminder can come a little late.</string>
+    <string name="offline_alerts_notifications_off">Notifications are switched off for this app. Turn them on in phone Settings to get offline alerts.</string>
+</resources>
