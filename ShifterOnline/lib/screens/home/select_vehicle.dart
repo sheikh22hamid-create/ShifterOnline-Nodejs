@@ -25,6 +25,7 @@ import 'add_stops_screen.dart';
 import 'vehicle_booking_animation.dart';
 import 'confirm_order_map.dart';
 import 'coupon_sheet.dart';
+import 'gst_details_section.dart';
 import 'package:goParcel/services/booking_guarantee_api_service.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
 import 'vehicle_details_screen.dart';
@@ -114,6 +115,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   double _referralPointValue = 1;
   double _referralPointsAvailable = 0;
   bool _useReferralPoints = false;
+  // Verified GST details to put on this booking's invoice (null = book without GST, which is the normal case).
+  Map<String, dynamic>? _gstDetails;
   Map<String, dynamic>? _appliedCoupon;
   List<Map<String, dynamic>> _goodsTypes = [];
   int? _goodsTypeId;
@@ -1050,6 +1053,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'transaction_id': '${payValue == -2 ? 'wallet' : 'cash'}_${DateTime.now().millisecondsSinceEpoch}',
       'extra_mile_charge': 0, 'cou_id': _appliedCoupon == null ? 0 : (int.tryParse(_appliedCoupon!['id'].toString()) ?? 0), 'cou_amt': 0, 'radius_km': _selectedRadiusKm,
       if (_useReferralPoints && _referralRedeemablePoints > 0) 'use_referral_points': true,
+      if (_gstDetails != null) 'gst_number': _text(_gstDetails!['gstin']),
       'send_sender_whatsapp': _pickupData['send_whatsapp'] == true,
       'send_receiver_whatsapp': _dropData['send_whatsapp'] == true,
       if (receiverOn) 'receiver_pays': true,
@@ -2109,6 +2113,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           ]),
         ),
       ),
+      const SizedBox(height: 10),
+      GstDetailsSection(uid: _storage.read('Uid'), onChanged: (details) => setState(() => _gstDetails = details)),
       const SizedBox(height: 14),
       Text('Goods type (optional)', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)),
       const SizedBox(height: 8),

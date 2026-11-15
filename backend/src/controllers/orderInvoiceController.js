@@ -1,3 +1,5 @@
+const gstService = require("../services/gstService");
+const { rcmSummary } = require("../services/invoiceRcm");
 const crypto = require("crypto");
 const PDFDocument = require("pdfkit");
 const prisma = require("../config/db");
@@ -121,10 +123,16 @@ async function loadInvoiceData(uid, orderId) {
   // customer's actual payable is the fare minus the coins value.
   const total = Math.max(0, fareTotal - coinsAmount - couponAmount).toFixed(2);
 
+  const status = String(row.o_status || "Pending");
+  // GST details only when the customer gave a GSTIN that was verified (null otherwise: no section is drawn).
+  const gst = await gstService.getOrderGst(row.id);
+  // RCM 5% of the final total fare: shown for information on a completed ride, never charged, never stored.
+  const rcm = rcmSummary(fareTotal, status);
+
   return {
-    row, bookingId, orderDate, status: String(row.o_status || "Pending"),
+    row, bookingId, orderDate, status,
     riderName, riderVehicleNo, riderRating, paymentMethodName,
-    charges, fareTotal, coinsAmount, coinsPoints, total,
+    charges, fareTotal, coinsAmount, coinsPoints, total, gst, rcm,
   };
 }
 
@@ -139,7 +147,7 @@ async function renderInvoice(req, res) {
   try {
     const data = await loadInvoiceData(uid, orderId);
     if (!data) return res.status(404).send("Invoice not found.");
-    const { row, bookingId, orderDate, riderName, riderVehicleNo, riderRating, paymentMethodName, charges, fareTotal, coinsAmount, coinsPoints, total } = data;
+    const { row, bookingId, orderDate, riderName, riderVehicleNo, riderRating, paymentMethodName, charges, fareTotal, coinsAmount, coinsPoints, total, gst, rcm } = data;
 
     const statusRaw = String(row.o_status || "").toLowerCase();
     const isGood = statusRaw === "completed" || statusRaw === "delivered";
@@ -163,6 +171,29 @@ async function renderInvoice(req, res) {
         </div>`;
       })
       .join("");
+
+    // Only a verified GSTIN produces a GST block; without one nothing about GST is drawn.
+    const gstBlock = gst
+      ? `<div class="section">
+      <div class="section-label">GST details</div>
+      <div class="fare-row"><span class="fare-label">GSTIN</span><span class="fare-amt mono">${esc(gst.gstin)}</span></div>
+      <div class="fare-row"><span class="fare-label">Business name</span><span class="fare-amt">${esc(gst.legal_name)}</span></div>
+      ${gst.trade_name && gst.trade_name !== gst.legal_name ? `<div class="fare-row"><span class="fare-label">Trade name</span><span class="fare-amt">${esc(gst.trade_name)}</span></div>` : ""}
+      ${gst.address ? `<div class="fare-row"><span class="fare-label">Address</span><span class="fare-amt">${esc(gst.address)}</span></div>` : ""}
+      ${gst.state ? `<div class="fare-row"><span class="fare-label">State</span><span class="fare-amt">${esc(gst.state)}${gst.state_code ? ` (${esc(gst.state_code)})` : ""}</span></div>` : ""}
+    </div>`
+      : "";
+
+    // RCM summary: for information only, outside the fare and the total paid.
+    const rcmBlock = rcm
+      ? `<div class="section">
+      <div class="section-label">RCM summary</div>
+      <div class="fare-row"><span class="fare-label">Final total fare</span><span class="fare-amt mono">₹${rcm.finalTotalFare.toFixed(2)}</span></div>
+      <div class="fare-row"><span class="fare-label">RCM rate</span><span class="fare-amt mono">${rcm.ratePercent}%</span></div>
+      <div class="fare-row"><span class="fare-label">RCM amount</span><span class="fare-amt mono">₹${rcm.amount.toFixed(2)}</span></div>
+      <div class="paid-via" style="text-align:left;line-height:1.5">For information only. This amount is not charged to you and is not part of the fare or the total paid above.</div>
+    </div>`
+      : "";
 
     const coinsNote = coinsAmount > 0
       ? `<div class="paid-via" style="text-align:left;line-height:1.5">Coins: you redeemed ${coinsPoints} referral points worth ₹${coinsAmount.toFixed(2)} against this ride. The trip fare was ₹${fareTotal.toFixed(2)}; the coins value is deducted from it, so you pay ₹${total}.</div>`
@@ -284,6 +315,8 @@ async function renderInvoice(req, res) {
 
     <div class="perf"></div>
 
+    ${gstBlock}
+
     <div class="section">
       <div class="section-label">Fare breakdown</div>
       ${chargeRows || `<div class="fare-row"><span class="fare-label"><i class="dot"></i>Trip fare</span><span class="fare-amt mono">₹${total}</span></div>`}
@@ -294,6 +327,8 @@ async function renderInvoice(req, res) {
       <div class="paid-via">Paid via ${esc(paymentMethodName)}</div>
       ${coinsNote}
     </div>
+
+    ${rcmBlock}
 
     <div class="actions">
       <a class="dl-btn" id="dl-pdf" href="${esc(pdfHref)}" download="Invoice-${esc(bookingId)}.pdf">Download PDF</a>
@@ -379,6 +414,16 @@ function drawInvoicePdf(doc, d) {
   if (d.riderName) {
     section("DRIVER", `${d.riderName}${d.riderVehicleNo ? `  |  ${d.riderVehicleNo}` : ""}  |  Rating ${d.riderRating}`);
   }
+  if (d.gst) {
+    // Only a verified GSTIN draws a GST block.
+    section("GST DETAILS", [
+      `GSTIN: ${d.gst.gstin}`,
+      `Business name: ${d.gst.legal_name}`,
+      d.gst.trade_name && d.gst.trade_name !== d.gst.legal_name ? `Trade name: ${d.gst.trade_name}` : "",
+      d.gst.address ? `Address: ${d.gst.address}` : "",
+      d.gst.state ? `State: ${d.gst.state}${d.gst.state_code ? ` (${d.gst.state_code})` : ""}` : "",
+    ].filter(Boolean).join("\n"));
+  }
   doc.moveDown(0.2); rule();
 
   doc.font("Helvetica-Bold").fontSize(10).fillColor(muted).text("FARE BREAKDOWN", L, doc.y);
@@ -397,6 +442,19 @@ function drawInvoicePdf(doc, d) {
     doc.moveDown(0.4);
     doc.font("Helvetica").fontSize(9).fillColor(muted).text(
       `Coins: you redeemed ${d.coinsPoints} referral points worth ${money(d.coinsAmount)} against this ride. The trip fare was ${money(d.fareTotal)}; the coins value is deducted from it, so you pay ${money(d.total)}.`,
+      L, doc.y, { width: W });
+  }
+
+  if (d.rcm) {
+    // RCM summary: for information only, below and outside the total paid.
+    doc.moveDown(0.8); rule();
+    doc.font("Helvetica-Bold").fontSize(10).fillColor(muted).text("RCM SUMMARY", L, doc.y);
+    doc.moveDown(0.5);
+    row("Final total fare", money(d.rcm.finalTotalFare));
+    row("RCM rate", `${d.rcm.ratePercent}%`);
+    row("RCM amount", money(d.rcm.amount));
+    doc.font("Helvetica").fontSize(9).fillColor(muted).text(
+      "For information only. This amount is not charged to you and is not part of the fare or the total paid above.",
       L, doc.y, { width: W });
   }
 

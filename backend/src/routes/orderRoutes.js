@@ -7,6 +7,7 @@ const orderAvailabilityController = require("../controllers/orderAvailabilityCon
 const orderInvoiceController = require("../controllers/orderInvoiceController");
 const settlementController = require("../controllers/settlementController");
 const freeBookingController = require("../controllers/freeBookingController");
+const gstController = require("../controllers/gstController");
 const bookingGuaranteeController = require("../controllers/bookingGuaranteeController");
 
 const router = express.Router();
@@ -17,6 +18,9 @@ router.post("/fare-estimate", orderController.fareEstimate);
 router.post("/distance", orderController.distanceEstimate);
 router.post("/packagelist", orderController.packageListEstimate);
 router.post("/create", orderController.createOrder);
+router.post("/gst/verify", gstController.verify);
+router.post("/gst/profile", gstController.profile);
+router.post("/gst/remove", gstController.remove);
 router.post("/free-booking/check", freeBookingController.check);
 router.post("/free-booking/status", freeBookingController.status);
 router.post("/guarantee-quote", bookingGuaranteeController.quote);

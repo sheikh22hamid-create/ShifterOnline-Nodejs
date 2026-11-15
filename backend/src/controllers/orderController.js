@@ -33,6 +33,7 @@ const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
 const globalIndia = require("../services/globalIndiaService");
+const gstService = require("../services/gstService");
 const globalIndiaRules = require("../services/globalIndiaRules");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
@@ -277,7 +278,7 @@ async function createOrderCore({
   pMethodId, transactionId, extraMileCharge, couId, couAmt, radiusKm, radiusRangeRaw, radiusChargeRaw,
   cityId, photos, distance, totalDcharge, dCharge, scheduleDateTime, schedule_date_time,
   stops = [], useReferralPoints = false, body_type, bodyType, goodsTypeId, goodsTypeOther,
-  receiverPays = false, receiverCommissionPercent,
+  receiverPays = false, receiverCommissionPercent, gstNumber = null,
   freeBooking = false, sendSenderWhatsapp = false, sendReceiverWhatsapp = false,
   // Customise Order (spec 2026-10-26): the fare was negotiated, so it replaces the rate-card fare, the driver search is
   // skipped (the driver is already chosen) and the ride keeps a permanent link back to the negotiation.
@@ -644,10 +645,14 @@ async function createOrderCore({
   const stopCharge = validStops.length * stopSettings.extraStopCharge;
   // Read-only on the coordinates; resolves to nulls on any failure, so it can never fail the booking.
   const areaTitles = await resolveOrderTitles({ plat, plong, dlat, dlong, clientPickupTitle, clientDropTitle });
+  // Optional GST details (spec 2026-11-15): only a GSTIN this customer already verified (their profile, or a fresh cache
+  // entry) is attached, read from the database with no provider call, so booking is never slowed or blocked by GST.
+  const gstDetails = gstNumber ? await gstService.resolveStored(uid, gstNumber).catch(() => null) : null;
   let order;
   try {
   order = await prisma.pkg_order.create({
     data: {
+      ...(gstDetails ? { gst_number: gstDetails.gstin } : {}),
       uid: Number(uid),
       category,
       o_status: "Pending",
@@ -871,6 +876,9 @@ async function createOrderCore({
     logger.error(`createOrderCore: admin socket notify failed for order ${order.id}:`, err);
   }
 
+  // The verified GST details are snapshotted on the booking so its invoice never changes with the profile (best effort).
+  if (gstDetails) await gstService.attachToOrder(order.id, uid, gstDetails);
+
   // Low Fare: drivers of this vehicle can see the order from now on (details only until its window opens).
   if (lowFare) {
     require("../services/lowFareService").notifyNew(order)
@@ -889,7 +897,7 @@ async function createOrder(req, res) {
       schedule_date_time, scheduleDateTime, use_referral_points,
       stops, body_type, bodyType, goods_type_id, goods_type_other,
       receiver_pays, receiver_commission_percent, free_booking, send_sender_whatsapp, send_receiver_whatsapp,
-      low_fare_date, low_fare_from, low_fare_until, pickup_title, drop_title,
+      low_fare_date, low_fare_from, low_fare_until, pickup_title, drop_title, gst_number,
     } = req.body;
 
     const result = await createOrderCore({
@@ -907,7 +915,7 @@ async function createOrder(req, res) {
       sendSenderWhatsapp: send_sender_whatsapp === true || send_sender_whatsapp === "true" || send_sender_whatsapp === 1 || send_sender_whatsapp === "1",
       sendReceiverWhatsapp: send_receiver_whatsapp === true || send_receiver_whatsapp === "true" || send_receiver_whatsapp === 1 || send_receiver_whatsapp === "1",
       freeBooking: free_booking === true || free_booking === "true" || free_booking === 1 || free_booking === "1",
-      clientPickupTitle: pickup_title, clientDropTitle: drop_title,
+      clientPickupTitle: pickup_title, clientDropTitle: drop_title, gstNumber: gst_number || null,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
