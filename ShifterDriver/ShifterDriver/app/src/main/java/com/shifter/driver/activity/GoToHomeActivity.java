@@ -1,5 +1,6 @@
 package com.shifter.driver.activity;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.location.Address;
@@ -23,12 +24,19 @@ import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
+import com.google.android.libraries.places.api.Places;
+import com.google.android.libraries.places.api.model.Place;
+import com.google.android.libraries.places.widget.Autocomplete;
+import com.google.android.libraries.places.widget.AutocompleteActivity;
+import com.google.android.libraries.places.widget.model.AutocompleteActivityMode;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.shifter.driver.R;
 import com.shifter.driver.locationservice.LocationUpdateService;
 import com.shifter.driver.utility.GoToHomeClient;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -45,14 +53,17 @@ public class GoToHomeActivity extends LocaleAwareActivity {
     private static final int TEXT_MUTED = Color.rgb(100, 116, 139);
     private static final int GREEN = Color.parseColor("#059669");
     private static final int ORANGE = Color.parseColor("#FF5E1E");
+    private static final int REQ_SEARCH = 5101;
 
     private LinearLayout content;
     private TextView statusText, detailText, homeText, messageText;
-    private Button saveHomeBtn, gpsBtn, toggleBtn;
+    private Button saveHomeBtn, gpsBtn, toggleBtn, searchBtn;
     private MapView mapView;
     private GoogleMap map;
     private JsonObject state;
     private LatLng pendingHome;
+    /** Address of a place picked from search; null when the point came from the map / GPS (then it is geocoded on save). */
+    private String pendingAddress;
     private Marker pendingMarker;
     private boolean busy;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -102,10 +113,15 @@ public class GoToHomeActivity extends LocaleAwareActivity {
         messageText.setPadding(0, dp(6), 0, 0);
         content.addView(messageText);
 
+        searchBtn = button("🔍 Search your home address or area", v -> openSearch());
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.topMargin = dp(12);
+        content.addView(searchBtn, slp);
+
         mapView = new MapView(this);
         mapView.onCreate(null);
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300));
-        mlp.topMargin = dp(12);
+        mlp.topMargin = dp(8);
         content.addView(mapView, mlp);
         mapView.onStart();
         mapView.onResume();
@@ -114,24 +130,25 @@ public class GoToHomeActivity extends LocaleAwareActivity {
             map = g;
             map.getUiSettings().setZoomControlsEnabled(true);
             mapView.setOnTouchListener((v, e) -> { v.getParent().requestDisallowInterceptTouchEvent(true); return false; });
-            map.setOnMapClickListener(p -> { if (!busy) setPending(p); });
+            map.setOnMapClickListener(p -> { if (!busy) { pendingAddress = null; setPending(p); } });
             map.setOnMarkerDragListener(new GoogleMap.OnMarkerDragListener() {
                 public void onMarkerDragStart(Marker m) {}
                 public void onMarkerDrag(Marker m) {}
-                public void onMarkerDragEnd(Marker m) { pendingHome = m.getPosition(); updateButtons(); }
+                public void onMarkerDragEnd(Marker m) { pendingHome = m.getPosition(); pendingAddress = null; updateButtons(); }
             });
             Location fix = LocationUpdateService.getLocation();
             if (fix != null && fix.hasAccuracy()) map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(fix.getLatitude(), fix.getLongitude()), 12));
             draw();
         });
 
-        homeText = text("Tap the map to choose your home, or use your current location.", 13, TEXT_DARK, false);
+        homeText = text("Search your address, tap the map, or use your current location.", 13, TEXT_DARK, false);
         homeText.setPadding(0, dp(10), 0, 0);
         content.addView(homeText);
 
         gpsBtn = button("📍 Use my current location", v -> {
             Location fix = LocationUpdateService.getLocation();
             if (fix == null || !fix.hasAccuracy()) { toast("Current location not available yet. Turn on GPS and retry."); return; }
+            pendingAddress = null;
             setPending(new LatLng(fix.getLatitude(), fix.getLongitude()));
             if (map != null) map.animateCamera(CameraUpdateFactory.newLatLngZoom(pendingHome, 15));
         });
@@ -142,6 +159,39 @@ public class GoToHomeActivity extends LocaleAwareActivity {
         content.addView(toggleBtn);
 
         load();
+    }
+
+    /** Google Places search (full-screen suggestions). The picked place moves the map and drops the draggable marker. */
+    private void openSearch() {
+        if (busy) return;
+        try {
+            if (!Places.isInitialized()) Places.initialize(getApplicationContext(), getString(R.string.google_maps_key));
+            Intent i = new Autocomplete.IntentBuilder(AutocompleteActivityMode.FULLSCREEN,
+                    Arrays.asList(Place.Field.ID, Place.Field.NAME, Place.Field.ADDRESS, Place.Field.LAT_LNG))
+                    .setCountry("IN")
+                    .build(this);
+            startActivityForResult(i, REQ_SEARCH);
+        } catch (Exception e) {
+            toast("Search is not available right now. You can still tap the map to choose your home.");
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_SEARCH) return;
+        if (resultCode == RESULT_OK && data != null) {
+            Place place = Autocomplete.getPlaceFromIntent(data);
+            if (place.getLatLng() == null) { toast("Could not read that place. Try another one or tap the map."); return; }
+            String addr = place.getAddress() != null ? place.getAddress() : "";
+            if (addr.isEmpty() && place.getName() != null) addr = place.getName();
+            pendingAddress = addr;
+            setPending(place.getLatLng());
+            if (map != null) map.animateCamera(CameraUpdateFactory.newLatLngZoom(place.getLatLng(), 16));
+            homeText.setText("Selected: " + (addr.isEmpty() ? "chosen place" : addr) + " - drag the pin to fine-tune, then Save.");
+        } else if (resultCode == AutocompleteActivity.RESULT_ERROR) {
+            toast("Search failed. Check your internet and try again, or tap the map.");
+        }
     }
 
     private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_LONG).show(); }
@@ -207,7 +257,12 @@ public class GoToHomeActivity extends LocaleAwareActivity {
             if (state.has("last_refresh_status") && !state.get("last_refresh_status").isJsonNull() && !"ok".equals(state.get("last_refresh_status").getAsString()))
                 sb.append("Last refresh failed. Keep GPS on; we will retry shortly.\n");
         }
-        sb.append(flag("standard_tier_on") ? "Standard Tier: ON" : "Standard Tier: OFF (you can switch it ON or OFF from Home at any time)");
+        String tierName = "Standard Tier";
+        if (state.has("standard_tier") && state.get("standard_tier").isJsonObject()) {
+            JsonObject t = state.getAsJsonObject("standard_tier");
+            if (t.has("title") && !t.get("title").isJsonNull() && !t.get("title").getAsString().isEmpty()) tierName = t.get("title").getAsString();
+        }
+        sb.append(flag("standard_tier_on") ? tierName + ": ON" : tierName + ": OFF (you can switch it ON or OFF from Home at any time)");
         detailText.setText(sb.toString());
         if (state.has("home") && !state.get("home").isJsonNull()) {
             JsonObject h = state.getAsJsonObject("home");
@@ -224,6 +279,7 @@ public class GoToHomeActivity extends LocaleAwareActivity {
     private void updateButtons() {
         saveHomeBtn.setEnabled(!busy && pendingHome != null);
         gpsBtn.setEnabled(!busy);
+        if (searchBtn != null) searchBtn.setEnabled(!busy);
         toggleBtn.setEnabled(!busy && flag("enabled_by_admin"));
     }
 
@@ -232,10 +288,11 @@ public class GoToHomeActivity extends LocaleAwareActivity {
     private void saveHome() {
         if (busy || pendingHome == null) return;
         final LatLng p = pendingHome;
+        final String picked = pendingAddress;
         setBusy(true);
         worker.execute(() -> {
-            String address = "";
-            try {
+            String address = picked == null ? "" : picked;
+            if (address.isEmpty()) try {
                 List<Address> r = new Geocoder(this, Locale.getDefault()).getFromLocation(p.latitude, p.longitude, 1);
                 if (r != null && !r.isEmpty() && r.get(0).getMaxAddressLineIndex() >= 0) address = r.get(0).getAddressLine(0);
             } catch (Exception ignored) { /* address is optional */ }
@@ -251,6 +308,7 @@ public class GoToHomeActivity extends LocaleAwareActivity {
                     setBusy(false);
                     if (error != null) { messageText.setText(error); return; }
                     pendingHome = null;
+                    pendingAddress = null;
                     if (pendingMarker != null) { pendingMarker.remove(); pendingMarker = null; }
                     apply(data);
                     toast("Home location saved");

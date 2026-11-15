@@ -6,7 +6,6 @@ const REFRESH_MS = 2 * 60 * 60 * 1000;      // next refresh after a successful r
 const RETRY_MS = 10 * 60 * 1000;            // retry after a failed refresh (no hammering of the routes API)
 const STALE_GRACE_MS = 15 * 60 * 1000;      // a route older than refresh + grace gets NO priority
 const MAX_ROUTE_KM = 100;                   // a home farther than this by road is not a "going home" trip (stops priority abuse)
-const STANDARD_TIER_PACKAGE_ID = 6;         // Model One; same as constants.MODEL_1_PACKAGE_ID
 
 const toPoint = (lat, lng) => ({ lat: Number(lat), lng: Number(lng) });
 const validHome = (lat, lng) => validPoint(toPoint(lat, lng)) && !(Number(lat) === 0 && Number(lng) === 0);
@@ -50,4 +49,26 @@ function thin(geometry, max = 400) {
   return out;
 }
 
-module.exports = { CORRIDOR_KM, REFRESH_MS, RETRY_MS, STALE_GRACE_MS, MAX_ROUTE_KM, STANDARD_TIER_PACKAGE_ID, validHome, isRouteValid, evaluate, prioritize, thin };
+/**
+ * The driver's Standard Tier: of the active models for the driver's vehicle (preferring the driver's own city when
+ * any model is configured for it), the one with the lowest fare, i.e. the top/fastest model. Nothing is named or
+ * numbered here, so it follows whatever the admin configured per vehicle. A model whose rate is 0 is treated as
+ * not yet priced and is only used when no model has a rate. Ties fall back to the admin's sort order, then id.
+ * `packages` are { id, per_km_charge, min_charge, sort_order, city_id }. Returns the package or null.
+ */
+function pickStandardTier(packages, cityId) {
+  const all = Array.isArray(packages) ? packages : [];
+  const inCity = cityId == null ? [] : all.filter((p) => String(p.city_id) === String(cityId));
+  const pool = inCity.length ? inCity : all;
+  if (!pool.length) return null;
+  const priced = pool.filter((p) => Number(p.per_km_charge) > 0);
+  const byFare = (a, b) =>
+    Number(a.per_km_charge) - Number(b.per_km_charge) ||
+    Number(a.min_charge) - Number(b.min_charge) ||
+    Number(a.sort_order) - Number(b.sort_order) ||
+    Number(a.id) - Number(b.id);
+  const bySort = (a, b) => Number(a.sort_order) - Number(b.sort_order) || Number(a.id) - Number(b.id);
+  return [...(priced.length ? priced : pool)].sort(priced.length ? byFare : bySort)[0];
+}
+
+module.exports = { CORRIDOR_KM, REFRESH_MS, RETRY_MS, STALE_GRACE_MS, MAX_ROUTE_KM, pickStandardTier, validHome, isRouteValid, evaluate, prioritize, thin };

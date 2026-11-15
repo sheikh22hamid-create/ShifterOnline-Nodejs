@@ -1584,6 +1584,8 @@ public class HomeFragment extends Fragment implements RecentOrderHomeAdapter.Rec
             if (!isAdded() || binding == null) return;
             String subtitle = "Get orders on your way home";
             if (data != null && data.has("active") && data.get("active").getAsBoolean()) subtitle = "Active · orders towards home get priority";
+            // Enabling Go to Home may have switched the Standard Tier model ON server side: reload the model list.
+            if (data != null && data.has("active") && data.get("active").getAsBoolean()) getPackageList();
             binding.txtGoToHomeSubtitle.setText(subtitle);
         });
         NodeSocketManager.getInstance().addConnectionListener(connectionListener);

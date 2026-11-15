@@ -50,3 +50,23 @@ test("thin keeps both ends and caps the size", () => {
   expect(t[0]).toEqual(g[0]);
   expect(t[99]).toEqual(g[999]);
 });
+
+describe("pickStandardTier", () => {
+  const rules2 = require("../goToHomeRules");
+  const pkg = (id, per_km, min, sort, city = "1") => ({ id, per_km_charge: String(per_km), min_charge: String(min), sort_order: sort, city_id: city });
+  test("picks the lowest-fare model, whatever its id or name", () => {
+    expect(rules2.pickStandardTier([pkg(90, 30, 300, 3), pkg(77, 21, 220, 1), pkg(12, 25, 250, 2)], 1).id).toBe(77);
+  });
+  test("prefers the driver's own city when a model exists for it", () => {
+    expect(rules2.pickStandardTier([pkg(1, 10, 100, 1, "2"), pkg(2, 20, 200, 1, "1")], 1).id).toBe(2);
+    expect(rules2.pickStandardTier([pkg(1, 10, 100, 1, "2")], 1).id).toBe(1);
+  });
+  test("ignores an unpriced (0) model while a priced one exists, then falls back to sort order", () => {
+    expect(rules2.pickStandardTier([pkg(1, 0, 0, 1), pkg(2, 20, 200, 2)], 1).id).toBe(2);
+    expect(rules2.pickStandardTier([pkg(5, 0, 0, 2), pkg(4, 0, 0, 1)], 1).id).toBe(4);
+  });
+  test("ties on fare go to the admin's sort order; nothing to pick gives null", () => {
+    expect(rules2.pickStandardTier([pkg(2, 20, 200, 2), pkg(1, 20, 200, 1)], 1).id).toBe(1);
+    expect(rules2.pickStandardTier([], 1)).toBeNull();
+  });
+});

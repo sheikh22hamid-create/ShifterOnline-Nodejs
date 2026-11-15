@@ -3,6 +3,8 @@ const mockPrisma = {
   driver_go_to_home: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn(), upsert: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
   tbl_rider_delivery_type: { findFirst: jest.fn(), updateMany: jest.fn() },
+  pkg_category: { findFirst: jest.fn() },
+  tbl_package: { findMany: jest.fn() },
   pkg_order_stops: { findMany: jest.fn() },
   $queryRaw: jest.fn(),
   $transaction: jest.fn(),
@@ -15,13 +17,19 @@ jest.mock("../favoriteRouteService", () => ({ roadRoute: (...a) => mockRoadRoute
 const svc = require("../goToHomeService");
 const rider = { id: 7, city_id: 1 };
 const home = { rider_id: 7, active: false, home_lat: 22.7, home_lng: 75.9, home_address: "Home" };
-const fixAt = () => ({ rlats: "22.80", rlongs: "75.80", rloc_updated_at: new Date() });
+const fixAt = () => ({ rlats: "22.80", rlongs: "75.80", rloc_updated_at: new Date(), vehicle: "Truck", city_id: 1 });
 const route = { geometry: [{ lat: 22.8, lng: 75.8 }, { lat: 22.7, lng: 75.9 }], distance_km: 14 };
 
 beforeEach(() => {
   jest.resetAllMocks();
   mockPrisma.app_settings.findFirst.mockResolvedValue(null); // switch missing = ON
   mockPrisma.$transaction.mockImplementation((fn) => fn(mockPrisma));
+  mockPrisma.pkg_category.findFirst.mockResolvedValue({ id: 3 });
+  // two models for the vehicle: the cheaper one (id 41) is the Standard Tier, whatever its name or id
+  mockPrisma.tbl_package.findMany.mockResolvedValue([
+    { id: 42, title: "Model 2", per_km_charge: "18", min_charge: "200", sort_order: 2, city_id: "1" },
+    { id: 41, title: "Model 1", per_km_charge: "15", min_charge: "180", sort_order: 1, city_id: "1" },
+  ]);
   mockPrisma.tbl_rider_delivery_type.findFirst.mockResolvedValue({ status: 1 });
   mockPrisma.tbl_rider_delivery_type.updateMany.mockResolvedValue({ count: 0 });
   mockPrisma.driver_go_to_home.updateMany.mockResolvedValue({ count: 1 });
@@ -36,7 +44,7 @@ describe("enable", () => {
     mockRoadRoute.mockResolvedValue(route);
     await svc.enable(rider);
     const tier = mockPrisma.tbl_rider_delivery_type.updateMany.mock.calls[0][0];
-    expect(tier.where).toEqual({ rider_id: 7, delivery_type: "6", status: { not: 1 } });
+    expect(tier.where).toEqual({ rider_id: 7, delivery_type: "41", OR: [{ status: { not: 1 } }, { status: null }] });
     expect(tier.data).toEqual({ status: 1 });
     const saved = mockPrisma.driver_go_to_home.update.mock.calls[0][0].data;
     expect(saved.active).toBe(true);

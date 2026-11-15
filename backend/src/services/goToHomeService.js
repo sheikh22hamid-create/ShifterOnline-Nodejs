@@ -5,7 +5,7 @@ const rules = require("./goToHomeRules");
 
 // Go to Home (spec 2026-10-30): a driver saves a home, switches the mode on, and drivers whose route to home passes
 // within 5 km of an order's DROP are put first in that order's driver search. The route is rebuilt from the driver's
-// live position every 2 hours by a server-side sweep. Standard Tier is switched ON once at enable time and never again.
+// live position every 2 hours by a server-side sweep. Standard Tier (the driver's own lowest-fare model) is switched ON once at enable time and never again.
 // Best effort in dispatch: any failure here leaves normal driver selection untouched.
 
 const SETTING_KEY = "go_to_home_enabled";
@@ -45,14 +45,31 @@ async function buildRoute(from, home, cityId) {
   return route;
 }
 
-async function standardTierOn(riderId) {
-  const row = await prisma.tbl_rider_delivery_type.findFirst({ where: { rider_id: riderId, delivery_type: String(rules.STANDARD_TIER_PACKAGE_ID) } });
-  return !row || row.status === 1; // a missing row means "never touched" = ON (dispatch treats it as eligible)
+/** The driver's own Standard Tier package (see rules.pickStandardTier), or null when the vehicle has no active model. */
+async function standardTierFor(riderId) {
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { vehicle: true, city_id: true } });
+  if (!rider?.vehicle) return null;
+  const category = await prisma.pkg_category.findFirst({ where: { cat_name: rider.vehicle, cat_status: 1 } });
+  if (!category) return null;
+  const packages = await prisma.tbl_package.findMany({
+    where: { cat_id: category.id, status: 1 },
+    select: { id: true, title: true, driver_title: true, per_km_charge: true, min_charge: true, sort_order: true, city_id: true },
+  });
+  return rules.pickStandardTier(packages, rider.city_id);
+}
+
+async function standardTierState(riderId) {
+  const tier = await standardTierFor(riderId);
+  if (!tier) return { package_id: null, title: "", on: false };
+  const row = await prisma.tbl_rider_delivery_type.findFirst({ where: { rider_id: riderId, delivery_type: String(tier.id) } });
+  // a missing row means "never touched" = ON (dispatch treats it as eligible, the driver's list seeds it ON)
+  return { package_id: tier.id, title: tier.driver_title || tier.title || "", on: !row || row.status === 1 };
 }
 
 async function present(riderId, row) {
   const now = new Date();
   const valid = rules.isRouteValid(row, now);
+  const tier = await standardTierState(riderId);
   return {
     enabled_by_admin: await isEnabled(),
     has_home: Boolean(row && rules.validHome(row.home_lat, row.home_lng)),
@@ -67,7 +84,8 @@ async function present(riderId, row) {
     current: row?.route_from_lat != null ? { lat: num(row.route_from_lat), lng: num(row.route_from_lng) } : null,
     corridor_km: rules.CORRIDOR_KM,
     last_refresh_status: row?.last_refresh_status || null,
-    standard_tier_on: await standardTierOn(riderId),
+    standard_tier_on: tier.on,
+    standard_tier: tier,
   };
 }
 
@@ -119,6 +137,7 @@ async function enable(rider) {
   if (!from) fail("We could not get your current location. Turn on GPS, open the app and retry.", 409);
   const home = { lat: num(existing.home_lat), lng: num(existing.home_lng) };
   const route = await buildRoute(from, home, rider.city_id); // throws a 4xx/5xx with a retryable message
+  const tier = await standardTierFor(rider.id); // null when the vehicle has no active model: nothing to switch
 
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM tbl_rider WHERE id = ${rider.id} FOR UPDATE`;
@@ -130,11 +149,14 @@ async function enable(rider) {
         next_refresh_at: new Date(now.getTime() + rules.REFRESH_MS), last_refresh_status: "ok", last_refresh_at: now,
       },
     });
-    // Only OFF -> ON; an already-ON (or never-touched) Standard Tier gets no write at all.
-    await tx.tbl_rider_delivery_type.updateMany({
-      where: { rider_id: rider.id, delivery_type: String(rules.STANDARD_TIER_PACKAGE_ID), status: { not: 1 } },
-      data: { status: 1 },
-    });
+    // Only OFF -> ON (a NULL status counts as OFF); an already-ON (or never-touched) Standard Tier gets no write,
+    // and no other model is touched.
+    if (tier) {
+      await tx.tbl_rider_delivery_type.updateMany({
+        where: { rider_id: rider.id, delivery_type: String(tier.id), OR: [{ status: { not: 1 } }, { status: null }] },
+        data: { status: 1 },
+      });
+    }
   });
   hint.value = true;
   return getState(rider);
