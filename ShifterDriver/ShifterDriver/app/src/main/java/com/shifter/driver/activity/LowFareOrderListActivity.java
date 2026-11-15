@@ -187,7 +187,12 @@ public class LowFareOrderListActivity extends LocaleAwareActivity implements Get
         }
         // accept
         if (ok) {
-            Toast.makeText(this, "Order accepted. It is now in your active order.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Order accepted. Opening your trip.", Toast.LENGTH_LONG).show();
+            // Same hand-off Customise Orders use: fetch the ride and open the normal Trip Details screen.
+            // If it cannot be fetched the Continue Delivery card on Home still works.
+            if (result.has("order_id") && !result.get("order_id").isJsonNull()) {
+                com.shifter.driver.utility.CustomiseTripLauncher.open(this, result.get("order_id").getAsString());
+            }
             finish();
             return;
         }
