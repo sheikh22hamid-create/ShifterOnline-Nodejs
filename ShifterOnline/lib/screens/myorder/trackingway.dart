@@ -109,6 +109,33 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // Latest driver position from the Node socket.
   double? liveDriverLat;
+
+  /// True from the moment the assigned driver cancels / is unassigned until a new driver is assigned: the same order
+  /// is being searched again, so the screen says so and shows a progress bar instead of the old driver.
+  bool _reSearching = false;
+
+  /// Drops the previous driver from what the screen shows (right away, without waiting for the refresh) and switches
+  /// the order to "searching". The refresh that follows brings the real state from the server.
+  void _startReSearching() {
+    if (!mounted) return;
+    setState(() {
+      _reSearching = true;
+      liveDriverLat = null;
+      liveDriverLng = null;
+      if (orderProduc is Map) {
+        for (final key in const [
+          "rider_name", "rider_mobile", "rider_img", "rider_star", "vehicle_no", "rider_lats", "rider_longs",
+          "pickup_deadline_at", "pickup_eta_minutes", "pickup_distance_km",
+        ]) {
+          orderProduc[key] = null;
+        }
+        orderProduc["rider_id"] = 0;
+        orderProduc["Order_Status"] = "Pending";
+        orderProduc["Order_flow_id"] = 0;
+        orderProduc["pickup_eta_expired"] = false;
+      }
+    });
+  }
   double? liveDriverLng;
 
   // Live tracking map: the marker's CURRENT rendered position (mid-animation
@@ -224,6 +251,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       // listener doesn't also navigate to a second TrackingWay instance.
       ScheduledOrderWatch.remove(orderid);
       debugPrint("🔔 order:assigned (tracking screen refresh): $data");
+      if (_reSearching) setState(() => _reSearching = false);
       final assignedLat = double.tryParse(data['rider_lat']?.toString() ?? '');
       final assignedLng = double.tryParse(data['rider_lng']?.toString() ?? '');
       if (assignedLat != null && assignedLng != null) {
@@ -272,6 +300,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint('[TrackingWay] order:driver_cancelled: $data');
 
+      // The same booking is searched again (backend re-live): show that at once instead of the old driver.
+      if (data['searching_for_new_driver'] == true || data['refund_status']?.toString() == 'order_relive') {
+        _startReSearching();
+      }
+
       // Refresh the order details immediately instead of leaving the old
       // accepted/processing state on screen.
       pageRefresh();
@@ -294,6 +327,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     }, onDriverUnassigned: (data) {
       if (!mounted || data['order_id']?.toString() != orderid) return;
       debugPrint('[TrackingWay] order:driver_unassigned: $data');
+      _startReSearching();
       ApiWrapper.showToastMessage(
         'Driver was unassigned. Searching for another driver for your order.'.tr,
       );
@@ -5103,12 +5137,23 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             : "",
       );
     }
+    if (_reSearching) {
+      return _HeroState(
+        lead: "Driver cancelled. ".tr,
+        accent: "Finding a new driver".tr,
+        sub: "We are searching again for your same order. You do not need to book again.".tr,
+        color: linercolor,
+        headerSub: "Finding a new driver for your order".tr,
+        searching: true,
+      );
+    }
     return _HeroState(
       lead: "Finding your ".tr,
       accent: "driver".tr,
       sub: "Please wait while we assign a driver".tr,
       color: linercolor,
       headerSub: "Finding a driver for your order".tr,
+      searching: true,
     );
   }
 
@@ -5171,6 +5216,18 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       Text(
                         h.etaFoot,
                         style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium", fontSize: 12.5),
+                      ),
+                    if (h.searching)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10, right: 6),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            minHeight: 4,
+                            color: linercolor,
+                            backgroundColor: linercolor.withOpacity(0.15),
+                          ),
+                        ),
                       ),
                     if (h.etaNote.isNotEmpty)
                       Padding(
@@ -9214,6 +9271,7 @@ class _HeroState {
   final String etaValue;
   final String etaFoot;
   final String etaNote;
+  final bool searching;
 
   const _HeroState({
     required this.lead,
@@ -9225,5 +9283,6 @@ class _HeroState {
     this.etaValue = "",
     this.etaFoot = "",
     this.etaNote = "",
+    this.searching = false,
   });
 }
