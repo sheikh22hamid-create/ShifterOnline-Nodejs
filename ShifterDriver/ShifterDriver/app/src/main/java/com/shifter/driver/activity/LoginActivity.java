@@ -67,12 +67,25 @@ public class LoginActivity extends LocaleAwareActivity implements GetResult.MyLi
     private static final String TERMS_URL = "https://shifteronline.com/terms_conditions.php";
     private static final String PRIVACY_URL = "https://shifteronline.com/privacy_policy.php";
 
+    private com.shifter.driver.utility.AppUpdateHelper appUpdateHelper;
+
+    @Override
+    protected void onDestroy() {
+        if (appUpdateHelper != null) appUpdateHelper.unregister();
+        super.onDestroy();
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.M)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         binding = ActivityLoginBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        // Logged-out launch: check for a Play Store update here (a logged-in launch checks in HomeActivity). Optional popup,
+        // once per app session; a failed or offline check shows nothing.
+        appUpdateHelper = new com.shifter.driver.utility.AppUpdateHelper(this);
+        if (savedInstanceState == null) appUpdateHelper.checkForUpdate();
 
         // Safe View: Set light status bar with dark icons
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
