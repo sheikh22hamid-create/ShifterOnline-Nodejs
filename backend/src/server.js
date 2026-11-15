@@ -162,6 +162,13 @@ setInterval(() => {
   );
 }, 60 * 1000);
 
+// Payment auto-received after the driver's 15-minute countdown - see settlementSweep.autoReceiveDue.
+setInterval(() => {
+  require("./services/settlementSweep").autoReceiveDue().catch((err) =>
+    logger.error("autoReceiveDue interval failed:", err)
+  );
+}, 30 * 1000);
+
 // Scheduled ("later today", booking_type=2) orders — customer reminder +
 // due-time driver dispatch. Node port of cron_schedule_order_notify.php;
 // see tripLifecycle.sendScheduledOrderReminders/dispatchDueScheduledOrders

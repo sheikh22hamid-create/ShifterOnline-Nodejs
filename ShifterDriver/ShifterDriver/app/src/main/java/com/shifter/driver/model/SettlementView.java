@@ -35,6 +35,10 @@ public class SettlementView implements Serializable {
     @SerializedName("pending_since")
     private String pendingSince;
 
+    /** Seconds the server says are left before this payment is automatically marked received; null = no countdown. */
+    @SerializedName("auto_receive_seconds_left")
+    private Integer autoReceiveSecondsLeft;
+
     @SerializedName("dispute_reason")
     private String disputeReason;
 
@@ -123,6 +127,10 @@ public class SettlementView implements Serializable {
 
     public void setConfirmedAt(String confirmedAt) {
         this.confirmedAt = confirmedAt;
+    }
+
+    public Integer getAutoReceiveSecondsLeft() {
+        return autoReceiveSecondsLeft;
     }
 
     public String getPendingSince() {

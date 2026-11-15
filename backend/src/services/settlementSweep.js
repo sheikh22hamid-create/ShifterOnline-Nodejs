@@ -89,4 +89,40 @@ async function sweepSettlements(now = new Date()) {
   return { reminded, escalated };
 }
 
-module.exports = { sweepSettlements };
+/**
+ * Auto-received: marks every pending, eligible settlement whose countdown is over as received (the driver never
+ * tapped). Runs on a short interval. A failure leaves the row pending, is logged, and is simply retried on the next
+ * run; the guarded transition makes a retry (or a driver tap in between) safe. Server-side only: the app's timer is
+ * a display, never the trigger.
+ */
+async function autoReceiveDue(now = new Date()) {
+  const settings = await getSettlementSettings();
+  if (!settings.enabled || !(settings.autoReceiveMinutes > 0)) return { received: 0, failed: 0 };
+  const settlementService = require("./settlementService");
+  const cutoff = new Date(now.getTime() - settings.autoReceiveMinutes * 60000);
+  const rows = await prisma.order_settlement.findMany({
+    where: {
+      status: "pending",
+      pending_since: { lte: cutoff },
+      payer: { not: "receiver" },
+      OR: [{ customer_choice: null }, { customer_choice: { not: "online" } }],
+    },
+    orderBy: { pending_since: "asc" },
+    take: BATCH,
+    select: { id: true },
+  });
+  let received = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      const out = await settlementService.autoMarkReceived({ settlementId: row.id, minutes: settings.autoReceiveMinutes, now: now.getTime() });
+      if (!out.alreadyDone) received++;
+    } catch (err) {
+      failed++;
+      logger.error(`autoReceiveDue: settlement ${row.id} not auto-received (will retry):`, err);
+    }
+  }
+  return { received, failed };
+}
+
+module.exports = { sweepSettlements, autoReceiveDue };

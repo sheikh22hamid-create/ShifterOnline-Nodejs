@@ -67,6 +67,10 @@ public class TripPaymentActivity extends LocaleAwareActivity {
 
     private final Handler pollHandler = new Handler(Looper.getMainLooper());
     private Runnable pollRunnable;
+    // Auto-received countdown: the server sends the seconds left, this only displays them (the server does the marking).
+    private final Handler autoReceiveHandler = new Handler(Looper.getMainLooper());
+    private Runnable autoReceiveTick;
+    private long autoReceiveEndsAt = 0L; // SystemClock.elapsedRealtime() based, immune to phone clock changes
     private NodeSocketManager.SettlementUpdatedListener socketListener;
     private boolean isFetchingOrderDetails = false;
     private boolean receiverBusy = false;
@@ -381,6 +385,46 @@ public class TripPaymentActivity extends LocaleAwareActivity {
         pollHandler.postDelayed(pollRunnable, 8000);
     }
 
+    /** Shows / re-anchors the countdown from the server's seconds-left value; null hides it. */
+    private void bindAutoReceive(Integer secondsLeft) {
+        if (secondsLeft == null) {
+            stopAutoReceive();
+            return;
+        }
+        autoReceiveEndsAt = android.os.SystemClock.elapsedRealtime() + secondsLeft * 1000L;
+        binding.txtAutoReceive.setVisibility(View.VISIBLE);
+        if (autoReceiveTick == null) {
+            autoReceiveTick = new Runnable() {
+                @Override
+                public void run() {
+                    if (isFinishing() || isDestroyed()) return;
+                    long leftMs = autoReceiveEndsAt - android.os.SystemClock.elapsedRealtime();
+                    if (leftMs <= 0) {
+                        binding.txtAutoReceive.setText("Marking the payment as received...");
+                        autoReceiveTick = null;
+                        // The server marks it; ask for the new state now instead of waiting for the next poll.
+                        loadSettlementState(false);
+                        return;
+                    }
+                    long s = (leftMs + 999) / 1000;
+                    binding.txtAutoReceive.setText(String.format(Locale.getDefault(),
+                            "\u23F1  Payment will be automatically marked as received in %02d:%02d minutes.", s / 60, s % 60));
+                    autoReceiveHandler.postDelayed(this, 1000);
+                }
+            };
+            autoReceiveHandler.post(autoReceiveTick);
+        }
+    }
+
+    private void stopAutoReceive() {
+        if (autoReceiveTick != null) {
+            autoReceiveHandler.removeCallbacks(autoReceiveTick);
+            autoReceiveTick = null;
+        }
+        autoReceiveEndsAt = 0L;
+        if (binding != null) binding.txtAutoReceive.setVisibility(View.GONE);
+    }
+
     private void stopPolling() {
         if (pollRunnable != null) {
             pollHandler.removeCallbacks(pollRunnable);
@@ -545,6 +589,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
 
         if (settlement.isPending()) {
             startPolling();
+            bindAutoReceive(settlement.getAutoReceiveSecondsLeft());
             binding.btnReceived.setEnabled(true);
             binding.btnReceived.setText("Received " + formattedAmount);
             binding.btnReceived.setBackgroundColor(Color.parseColor("#15803D"));
@@ -599,6 +644,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
             }
         } else {
             stopPolling();
+            stopAutoReceive();
             binding.btnReportProblem.setVisibility(View.GONE);
             binding.txtGraceWarning.setVisibility(View.GONE);
             binding.layoutReceiverActions.setVisibility(View.GONE);
@@ -813,6 +859,7 @@ public class TripPaymentActivity extends LocaleAwareActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopPolling();
+        stopAutoReceive();
         if (socketListener != null) {
             NodeSocketManager.getInstance().removeSettlementUpdatedListener(socketListener);
             socketListener = null;

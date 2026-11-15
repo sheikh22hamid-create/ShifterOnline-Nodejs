@@ -53,8 +53,25 @@ function assertCustomerPaysItself(s) {
   }
 }
 
+// Auto-received (spec 2026-11-15): a plain cash/UPI payment the driver never confirms is marked received by the
+// system `minutes` after the trip ended (pending_since, saved on the server, so an app restart or refresh never
+// resets it). Not for a payment the customer is settling online, nor for a receiver-pays order, nor anything that is
+// not simply waiting (disputed, waived, already received/paid). 0 minutes = switched off.
+function autoReceiveEligible(s, minutes) {
+  return Number(minutes) > 0 && s.status === STATUS.PENDING && (s.payer || "customer") !== "receiver" && s.customer_choice !== "online";
+}
+
+/** Whole seconds until the auto-receive (never negative), or null when it does not apply to this settlement. */
+function autoReceiveSecondsLeft(s, minutes, now = Date.now()) {
+  if (!autoReceiveEligible(s, minutes)) return null;
+  const dueAt = new Date(s.pending_since).getTime() + Number(minutes) * 60000;
+  return Math.max(0, Math.ceil((dueAt - now) / 1000));
+}
+
 function publicView(s) {
   return {
+    // Seconds left on the driver's countdown, measured by the server (no phone-clock dependence); null = no countdown.
+    auto_receive_seconds_left: autoReceiveSecondsLeft(s, settlementSettings.autoReceiveCached()),
     settlement_id: s.id,
     order_id: s.order_id,
     status: s.status,
@@ -296,31 +313,58 @@ async function getPublicViewForOrder(orderId) {
   }
 }
 
+// The Received transition, shared by the driver's tap and the auto-receive. PRECONDITION: `s` is the FOR UPDATE-locked
+// row and is PENDING. All wallet movements are idempotent per settlement effect (moveWallet).
+async function applyCashReceived(tx, notifications, s, { actor, actorId = null, confirmedBy, note = null }) {
+  const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.CASH);
+  notifications.push(...n);
+  const receiverPatch = {};
+  if (s.payer === "receiver") {
+    await receiverWalletCredits.applyReceiverCredits(tx, s, { includeMarkup: true, notifications });
+    await receiverWalletCredits.markReceiverRow(tx, s.order_id, "paid");
+    Object.assign(receiverPatch, { receiver_credited: true });
+  }
+  const now = new Date();
+  const updated = await tx.order_settlement.update({
+    where: { id: s.id },
+    data: {
+      status: STATUS.CASH_RECEIVED, method: "cash", wallet_effect: EFFECT.CASH, effect_seq: effectSeq,
+      confirmed_by: confirmedBy, confirmed_at: now, updated_at: now,
+      ...receiverPatch,
+    },
+  });
+  await logEvent(tx, s, { actor, actorId, from: s.status, to: STATUS.CASH_RECEIVED, note });
+  return updated;
+}
+
 async function markCashReceived({ orderId, riderId }) {
   return runTransition(async (tx, notifications) => {
     const s = await lockByOrderId(tx, orderId);
     assertParty(s, "driver", riderId);
     if (s.status === STATUS.CASH_RECEIVED) return { settlement: s, alreadyDone: true };
     if (s.status !== STATUS.PENDING) throw new SettlementError("INVALID_STATE", stateMessage(s.status));
-    const { effectSeq, notifications: n } = await changeWalletEffect(tx, s, EFFECT.CASH);
-    notifications.push(...n);
-    const receiverPatch = {};
-    if (s.payer === "receiver") {
-      await receiverWalletCredits.applyReceiverCredits(tx, s, { includeMarkup: true, notifications });
-      await receiverWalletCredits.markReceiverRow(tx, s.order_id, "paid");
-      Object.assign(receiverPatch, { receiver_credited: true });
-    }
-    const now = new Date();
-    const updated = await tx.order_settlement.update({
-      where: { id: s.id },
-      data: {
-        status: STATUS.CASH_RECEIVED, method: "cash", wallet_effect: EFFECT.CASH, effect_seq: effectSeq,
-        confirmed_by: "driver", confirmed_at: now, updated_at: now,
-        ...receiverPatch,
-      },
-    });
-    await logEvent(tx, s, { actor: "driver", actorId: riderId, from: s.status, to: STATUS.CASH_RECEIVED });
-    return { settlement: updated };
+    return { settlement: await applyCashReceived(tx, notifications, s, { actor: "driver", actorId: riderId, confirmedBy: "driver" }) };
+  });
+}
+
+/**
+ * The system marks a still-pending payment received once its countdown is over. Re-checks everything under the row
+ * lock, so a driver's own tap, a second sweep run or a second server instance can never apply it twice: whoever
+ * gets the lock second sees a non-pending row and does nothing (alreadyDone). Same wallet effect, ledger rows and
+ * socket update as the driver's tap.
+ */
+async function autoMarkReceived({ settlementId, minutes, now = Date.now() }) {
+  return runTransition(async (tx, notifications) => {
+    const s = await lockById(tx, settlementId);
+    if (!s || s.status !== STATUS.PENDING) return { settlement: s, alreadyDone: true };
+    if (autoReceiveSecondsLeft(s, minutes, now) !== 0) return { settlement: s, alreadyDone: true }; // not due, or not eligible
+    const order = await tx.pkg_order.findUnique({ where: { id: s.order_id }, select: { o_status: true } });
+    if (!order || String(order.o_status || "").trim().toLowerCase() === "cancelled") return { settlement: s, alreadyDone: true };
+    return {
+      settlement: await applyCashReceived(tx, notifications, s, {
+        actor: "system", confirmedBy: "system", note: `Automatically marked as received after ${minutes} minutes`,
+      }),
+    };
   });
 }
 
@@ -526,6 +570,9 @@ async function findBlockingSettlement(uid) {
 }
 
 module.exports = {
+  autoMarkReceived,
+  autoReceiveEligible,
+  autoReceiveSecondsLeft,
   STATUS, EFFECT, OUTCOME_EFFECT, ADMIN_OUTCOMES, SettlementError,
   round2, stateMessage, publicView, emitSettlementUpdated, assertParty,
   effectOps, changeWalletEffect, lockByOrderId, lockById, logEvent, runTransition,

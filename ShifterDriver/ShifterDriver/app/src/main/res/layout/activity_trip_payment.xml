@@ -988,6 +988,20 @@
             app:cornerRadius="12dp"
             app:backgroundTint="#15803D" />
 
+        <!-- Auto-received countdown (server-driven; hidden when it does not apply) -->
+        <TextView
+            android:id="@+id/txt_auto_receive"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_auto_receive_notice"
+            android:gravity="center_vertical"
+            android:padding="12dp"
+            android:text=""
+            android:textColor="#9A3412"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
         <!-- Receiver-pays actions (visible only in receiver mode + pending) -->
         <LinearLayout
             android:id="@+id/layout_receiver_actions"

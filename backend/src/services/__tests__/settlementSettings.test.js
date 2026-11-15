@@ -11,7 +11,7 @@ describe("settlementSettings", () => {
     prisma.app_settings.findMany.mockResolvedValue([]);
     expect(await getSettlementSettings()).toEqual({
       enabled: false, reminderMinutes: [10, 30], escalateAfterMinutes: 60,
-      driverBlockGraceMinutes: 10, disputeWindowHours: 48,
+      driverBlockGraceMinutes: 10, disputeWindowHours: 48, autoReceiveMinutes: 15,
     });
   });
 
@@ -23,7 +23,7 @@ describe("settlementSettings", () => {
     }));
     expect(await getSettlementSettings()).toEqual({
       enabled: true, reminderMinutes: [5, 15, 45], escalateAfterMinutes: 90,
-      driverBlockGraceMinutes: 20, disputeWindowHours: 24,
+      driverBlockGraceMinutes: 20, disputeWindowHours: 24, autoReceiveMinutes: 15,
     });
   });
 
