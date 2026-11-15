@@ -1304,7 +1304,7 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
         updateTripControls();
         binding.txtOrderid.setText(getString(R.string.order_id) + " #" + orderItem.getId());
-        binding.txtDatetime.setText(getString(R.string.date) + " " + orderItem.getOrderDate());
+        binding.txtDatetime.setText(getString(R.string.date) + " " + com.shifter.driver.utility.OrderDateFormat.toIst(orderItem.getOrderDate()));
         binding.txtUname.setText(orderItem.getPickName());
         bindBookingUser();
         binding.txtKm.setText(orderItem.getDistance() + " Km");
