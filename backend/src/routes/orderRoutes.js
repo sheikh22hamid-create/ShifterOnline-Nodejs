@@ -22,6 +22,7 @@ router.post("/free-booking/status", freeBookingController.status);
 router.post("/guarantee-quote", bookingGuaranteeController.quote);
 router.post("/details", orderController.getOrderDetails);
 router.post("/customer-cancel", orderController.customerCancel);
+router.post("/replace-driver", orderController.replaceDriver);
 router.post("/schedule-confirmations", orderController.getPendingScheduleConfirmations);
 router.post("/schedule-confirm", orderController.respondScheduleConfirmation);
 router.post("/driver-cancel", orderController.driverCancel);

@@ -1174,6 +1174,23 @@ async function customerCancel(req, res) {
   }
 }
 
+async function replaceDriver(req, res) {
+  try {
+    const { uid, order_id } = req.body || {};
+    if (!uid || !order_id) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: "uid and order_id are required" });
+    }
+    const result = await require("../services/driverReplaceService").replaceDriver(Number(uid), Number(order_id));
+    if (!result.success) {
+      return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });
+    }
+    return res.status(200).json({ ResponseCode: "200", Result: "true", ResponseMsg: result.msg, replaced: Boolean(result.replaced), cancelled: Boolean(result.cancelled) });
+  } catch (err) {
+    logger.error("replaceDriver failed:", err);
+    return res.status(500).json({ ResponseCode: "500", Result: "false", ResponseMsg: "Internal server error" });
+  }
+}
+
 // Scheduled-ride confirmation prompt ("Do you still want to continue?") -
 // see tripLifecycle.sendScheduledOrderReminders.
 async function getPendingScheduleConfirmations(req, res) {
@@ -2400,6 +2417,7 @@ module.exports = {
   respondScheduleConfirmation,
   getOrderDetails,
   customerCancel,
+  replaceDriver,
   driverCancel,
   verifyPickupOtp,
   checkPickupAmount,

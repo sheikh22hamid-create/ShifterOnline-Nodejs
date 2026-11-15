@@ -152,6 +152,7 @@ class Config {
   static const String nodeOrderDetails = "api/order/details";
   static const String nodeGuaranteeQuote = "api/order/guarantee-quote";
   static const String nodeOrderCancel = "api/order/customer-cancel";
+  static const String nodeReplaceDriver = "api/order/replace-driver";
   static const String nodeDestinationPreview = "api/order/destination-change/preview";
   static const String nodeDestinationConfirm = "api/order/destination-change/confirm";
   static const String nodePickupPreview = "api/order/pickup-change/preview";

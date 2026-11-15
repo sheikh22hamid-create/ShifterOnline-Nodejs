@@ -4949,6 +4949,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   /// Backend says the driver missed the pickup ETA (Google + buffer): customer may cancel free.
   bool get _pickupEtaExpired => orderProduc?["pickup_eta_expired"] == true;
 
+  /// Replace Driver is offered in the Cancel Order popup once a driver is assigned and until the goods are picked up
+  /// (the backend enforces the same rule and the replacement limit).
+  bool get _canReplaceDriver {
+    if (widget.type != "Pickup") return false;
+    final riderId = (orderProduc?["rider_id"] ?? buyMapinfo?["rider_id"] ?? "").toString().trim();
+    if (riderId.isEmpty || riderId == "0" || riderId == "null") return false;
+    final status = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
+    return status == "processing" || status == "pickup";
+  }
+
   /// What the hero card (and the header subtitle) say for the trip's current stage.
   _HeroState _heroState() {
     final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
@@ -6893,6 +6903,27 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           SizedBox(height: 10),
                         ],
                       ],
+                      if (_canReplaceDriver) ...[
+                        SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Get.back();
+                              _confirmReplaceDriver();
+                            },
+                            icon: Icon(Icons.swap_horiz, color: linercolor),
+                            label: Text(
+                              "Replace Driver".tr,
+                              style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold"),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: linercolor),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
                       SizedBox(height: 15),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -6975,6 +7006,54 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         );
       },
     );
+  }
+
+  //! ------------ Replace Driver -------------
+  Future<void> _confirmReplaceDriver() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: notifier.getBgColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text("Replace Driver".tr, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')),
+        content: Text(
+          "We will find you a new driver and take the advance payment again. If you replace the driver once more before the ride is complete, the order will be cancelled and cancellation charges apply."
+              .tr,
+          style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 14),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text("No".tr)),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text("Replace".tr)),
+        ],
+      ),
+    );
+    if (go == true) _replaceDriver();
+  }
+
+  bool _replacingDriver = false;
+
+  void _replaceDriver() {
+    if (_replacingDriver) return; // one request at a time: a double tap must not count as a second replace
+    _replacingDriver = true;
+    var uid = getdata.read("Uid") ?? "";
+    var orderId = getdata.read("OrderID") ?? "0";
+    final data = {
+      "uid": int.tryParse(uid.toString()) ?? 0,
+      "order_id": int.tryParse(orderId.toString()) ?? 0,
+    };
+    ApiWrapper.dataPostNode(Config.nodeReplaceDriver, data).then((val) {
+      if (val != null && val is Map) {
+        final ok = val['ResponseCode'] == "200" && val['Result'] == "true";
+        ApiWrapper.showToastMessage(val["ResponseMsg"] ?? (ok ? "Done".tr : "Could not replace the driver".tr));
+        if (ok && val['cancelled'] == true) {
+          Get.offAll(() => Bottombar());
+          return;
+        }
+      }
+    }).catchError((e) {
+      debugPrint("Replace driver failed: $e");
+      ApiWrapper.showToastMessage("Could not replace the driver".tr);
+    }).whenComplete(() => _replacingDriver = false);
   }
 
   //! ------------ item Order Canceled -------------
