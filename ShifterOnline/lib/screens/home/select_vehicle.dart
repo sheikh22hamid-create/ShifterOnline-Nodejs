@@ -1,3 +1,4 @@
+import 'package:goParcel/utils/model_toggle_rules.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -698,6 +699,15 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
     if (!mounted || seq != _guaranteeRequestSeq) return;
     setState(() => _guaranteeAmount = amount);
+  }
+
+  /// Linked model toggles (see model_toggle_rules.dart): ON turns ON everything above, OFF turns OFF everything
+  /// below. The lowest ON model is the one that is booked; the models above it are searched too.
+  void _toggleModel(int index, bool on) {
+    final next = applyModelToggle(lowestOnIndex: _selectedModelIndex, index: index, on: on, count: _models.length);
+    if (next == _selectedModelIndex) return;
+    setState(() => _selectedModelIndex = next);
+    _refreshGuaranteeQuote();
   }
 
   /// True when no available model ranks above [selectedModel] - derived from the loaded model list, not a fixed position.
@@ -2024,9 +2034,11 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       else if (_isTwoWheeler(selected))
         _twoWheelerBodyTypeNotice(),
       const SizedBox(height: 16), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 8),
+      if (!_loadingModels && _models.length > 1) Text('Turn a model ON to include every model above it. Turn it OFF to switch off every model below it too.', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+      if (!_loadingModels && _models.isNotEmpty && _selectedModelIndex == null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('Turn ON at least one delivery option to continue.', style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12))),
       if (_loadingModels) const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator())),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: Colors.red.shade600, fontFamily: 'Gilroy_Medium', fontSize: 12)),
-      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final fare = _modelFare(model)!; return InkWell(onTap: () { setState(() => _selectedModelIndex = index); _refreshGuaranteeQuote(); }, child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : Colors.transparent, borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : notifier.bordecolor)), child: Row(children: [Icon(selectedModel ? Icons.radio_button_checked : Icons.radio_button_off, color: selectedModel ? linercolor : greaycolor, size: 20), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
+      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final selectedModel = index == _selectedModelIndex; final modelOn = isModelOn(_selectedModelIndex, index); final fare = _modelFare(model)!; return InkWell(onTap: () => _toggleModel(index, !modelOn), child: Container(margin: const EdgeInsets.only(top: 7), padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11), decoration: BoxDecoration(color: selectedModel ? linercolor.withOpacity(.10) : (modelOn ? linercolor.withOpacity(.04) : Colors.transparent), borderRadius: BorderRadius.circular(12), border: Border.all(color: selectedModel ? linercolor : (modelOn ? linercolor.withOpacity(.45) : notifier.bordecolor))), child: Row(children: [SizedBox(height: 24, child: Switch(value: modelOn, activeColor: linercolor, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, onChanged: (value) => _toggleModel(index, value))), const SizedBox(width: 6), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Text(_modelTitle(model), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)), if (_currentBookingType == 3) ...[const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: linercolor.withOpacity(0.15), borderRadius: BorderRadius.circular(5)), child: Text('Next Day Saver', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 10.5)))]]), if (_text(model['description']).isNotEmpty) Text(_text(model['description']), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11))])), Text('₹${fare.toStringAsFixed(0)}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14))]))); }),
       if (_selectedModel != null) ...[const SizedBox(height: 14), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
         if ((_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) || (_useReferralPoints && _referralRedeemablePoints > 0)) ...[
           if (_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) ...[
