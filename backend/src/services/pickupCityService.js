@@ -1,10 +1,16 @@
 const prisma = require("../config/db");
 const { isInsideZone } = require("./geofenceService");
 const serviceAreaSettings = require("./serviceAreaSettings");
+const globalIndia = require("./globalIndiaService");
 
 // Pickup -> city resolution shared by the vehicle list (orderAvailabilityController.availableVehicles)
 // and order creation, so both decide System 1 / System 2 from the SAME city (the pickup's), not the
 // customer's registered city.
+//
+// Global India fallback (spec 2026-11-15, switch global_india_fallback_enabled, OFF by default): when ON the pickup is
+// decided from the current geofences first - an active city's geofence, else Global India for any point inside India,
+// else (outside India) not serviceable. See globalIndiaService. When OFF, or while no Global India city is set up, the
+// original resolution below runs unchanged.
 //
 // Matches the first active `service_zone` containing the pickup. When no zone matches, falls back to
 // the first active city (the long-standing availableVehicles behaviour). `serviceable` is false only
@@ -22,6 +28,14 @@ async function lookupZones() {
 }
 
 async function resolvePickupArea(lat, lng) {
+  const global = await globalIndia.resolve(lat, lng).catch(() => null);
+  if (global && (global.kind === "city" || global.kind === "global")) {
+    return { serviceable: true, cityId: global.cityId, cityName: global.cityName, zoneId: global.zoneId, zoneName: global.zoneName };
+  }
+  if (global && global.kind === "outside_india") {
+    return { serviceable: false, cityId: 0, cityName: "", zoneId: 0, zoneName: "" };
+  }
+
   let cityId = 0;
   let cityName = "";
   let zoneId = 0;
@@ -61,6 +75,10 @@ async function resolvePickupCityId(lat, lng) {
   const pickupLat = Number(lat);
   const pickupLng = Number(lng);
   if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) return null;
+
+  const global = await globalIndia.resolve(pickupLat, pickupLng).catch(() => null);
+  if (global && (global.kind === "city" || global.kind === "global")) return global.cityId > 0 ? global.cityId : null;
+  if (global && global.kind === "outside_india") return null;
 
   const zones = await lookupZones();
   for (const zone of zones) {

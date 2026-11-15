@@ -32,6 +32,8 @@ const pickupOtpShareService = require("../services/pickupOtpShareService");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const orderSearchRules = require("../services/orderSearchRules");
 const { resolvePickupCityId } = require("../services/pickupCityService");
+const globalIndia = require("../services/globalIndiaService");
+const globalIndiaRules = require("../services/globalIndiaRules");
 const { resolveGoodsType, formatGoodsType } = require("../services/goodsTypeService");
 const { resolveCoupon } = require("../services/couponService");
 const { resolveOrderTitles } = require("../services/orderAreaTitles");
@@ -374,6 +376,28 @@ async function createOrderCore({
 
   const resolvedCityId = cityId ? Number(cityId) : (customer?.city_id ?? null);
 
+  // Global India fallback (spec 2026-11-15, OFF unless global_india_fallback_enabled): the pickup's CURRENT geofences decide
+  // which city (or Global India) serves this booking. Decided here, on the server, for every new booking, so a stale
+  // vehicle list or a client-sent city can never apply another area's rate card. Outside India the pickup is not
+  // serviceable (the same message the vehicle list gives).
+  let pickupServingCityId = null;
+  const globalPick = await globalIndia.resolve(plat, plong).catch((err) => {
+    logger.error("createOrderCore: global India resolve failed, using the original city resolution:", err);
+    return null;
+  });
+  if (globalPick) {
+    if (globalPick.kind === "outside_india") {
+      return { ok: false, code: "SERVICE_AREA", msg: "Service is not available at this pickup location yet.", area_code: "OUTSIDE_INDIA", which: "pickup" };
+    }
+    if (globalPick.kind === "city" || globalPick.kind === "global") {
+      const wrongArea = validPackages.filter((pkg) => !globalIndiaRules.packageServesCity(pkg.city_id, globalPick.cityId));
+      if (wrongArea.length > 0) {
+        return { ok: false, code: "PICKUP_AREA_CHANGED", msg: "Your pickup area has changed, so these vehicles and fares no longer apply. Please refresh the vehicle list and choose again." };
+      }
+      pickupServingCityId = globalPick.cityId;
+    }
+  }
+
   const firstTierPackageId = orderedPackageIds[0];
   const firstPkg = packagesById.get(firstTierPackageId);
   const { distanceKm } = distanceResult;
@@ -404,7 +428,7 @@ async function createOrderCore({
   // System 2 searches the city's radius; a city without one uses the default, never the client's radius.
   const dispatchRadiusKm = system2 ? (citySearch.searchRadiusKm ?? SEARCH_RADIUS_KM) : resolvedRadiusKm;
   // A System 2 order belongs to the city whose switch decided it (guarantee gate + admin city scoping).
-  const orderCityId = system2 ? searchCityId : resolvedCityId;
+  const orderCityId = system2 ? searchCityId : (pickupServingCityId ?? resolvedCityId);
 
   const firstVehicleSlabConfig = await pricingEngine.resolveVehicleSlabConfig(
     slabPricingConfig?.slabRates,
@@ -891,6 +915,9 @@ async function createOrder(req, res) {
     }
     if (!result.ok && result.code === "SERVICE_AREA") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg, code: "SERVICE_AREA", area_code: result.area_code, which: result.which });
+    }
+    if (!result.ok && result.code === "PICKUP_AREA_CHANGED") {
+      return res.status(409).json({ ResponseCode: "409", Result: "false", code: "PICKUP_AREA_CHANGED", ResponseMsg: result.msg });
     }
     if (!result.ok && result.code === "INVALID_COUPON") {
       return res.status(400).json({ ResponseCode: "400", Result: "false", ResponseMsg: result.msg });

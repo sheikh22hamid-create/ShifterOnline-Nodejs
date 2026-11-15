@@ -30,6 +30,7 @@ const multer = require("multer");
 const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const serviceZoneController = require("../controllers/serviceZoneController");
 const noEntryZoneController = require("../controllers/noEntryZoneController");
+const globalIndiaController = require("../controllers/globalIndiaController");
 const monthlyDriverController = require("../controllers/monthlyDriverController");
 const orderQueueController = require("../controllers/orderQueueController");
 const adminSearchController = require("../controllers/adminSearchController");
@@ -86,6 +87,11 @@ router.get("/no-entry-zones", auth, authorize(...RIDER_ROLES), scopeFilter, noEn
 router.post("/no-entry-zones", auth, authorize("superadmin", "admin"), scopeFilter, noEntryZoneController.create);
 router.put("/no-entry-zones/:id", auth, authorize("superadmin", "admin"), scopeFilter, noEntryZoneController.update);
 router.delete("/no-entry-zones/:id", auth, authorize("superadmin", "admin"), scopeFilter, noEntryZoneController.remove);
+
+// Global India fallback (spec 2026-11-15): super admin only. No geofence is drawn for it; see globalIndiaService.
+router.get("/global-india", auth, authorize("superadmin"), globalIndiaController.status);
+router.put("/global-india", auth, authorize("superadmin"), globalIndiaController.update);
+router.post("/global-india/check", auth, authorize("superadmin"), globalIndiaController.check);
 
 // --- Monthly Dedicated Drivers & Duty Tracking ------------------------------
 router.get("/monthly-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, monthlyDriverController.listMonthlyDrivers);

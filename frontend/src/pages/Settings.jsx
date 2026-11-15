@@ -253,6 +253,159 @@ function PaymentGateways() {
   )
 }
 
+// Global India fallback (spec 2026-11-15): the switch and the Global India city, a coverage monitor (each city's
+// geofences and when they last changed) and a "who serves this pickup?" checker. Super admin only (the API answers 403
+// to anyone else and the panel then stays hidden). There is no geofence to draw for Global India: its area is India minus
+// every active city geofence, worked out for each pickup.
+function GlobalIndiaCoverage() {
+  const toast = useToast()
+  const fetcher = useCallback(() => api.get('/global-india').then((res) => res.data.data), [])
+  const { data, loading, error, refetch } = useApiQuery(fetcher)
+  const [saving, setSaving] = useState(false)
+  const [cityChoice, setCityChoice] = useState('')
+  const [lat, setLat] = useState('')
+  const [lng, setLng] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [result, setResult] = useState(null)
+
+  if (loading) return null
+  if (error || !data) return null
+
+  async function save(payload, okMessage) {
+    setSaving(true)
+    try {
+      await api.put('/global-india', payload)
+      toast.success(okMessage)
+      refetch()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not save.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function check(e) {
+    e.preventDefault()
+    setChecking(true)
+    setResult(null)
+    try {
+      const res = await api.post('/global-india/check', { lat, lng })
+      setResult(res.data.data)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not check this location.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const describe = (r) => {
+    if (r.result === 'city') return `${r.city_name} (city geofence "${r.geofence?.name}")`
+    if (r.result === 'global') return `Global India (${r.city_name})`
+    if (r.result === 'outside_india') return 'Outside India: not serviceable, Global India does not apply'
+    return 'Inside India, but no Global India city is set up'
+  }
+
+  return (
+    <section className="surface-card rounded-xl p-4">
+      <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
+        Global India coverage
+      </h3>
+      <p className="mb-3 text-[12px]" style={{ color: 'var(--ink-muted)' }}>{data.coverage_text}</p>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+        <span className="rounded-full border px-2.5 py-0.5 text-[11.5px] font-semibold" style={{ borderColor: 'var(--border)', color: data.enabled ? '#15803D' : 'var(--ink-faint)' }}>
+          {data.enabled ? 'Fallback ON' : 'Fallback OFF'}
+        </span>
+        <span style={{ color: 'var(--ink-muted)' }}>
+          Global India city: <strong>{data.global_city ? data.global_city.title : 'not set'}</strong>
+        </span>
+        <button
+          type="button"
+          disabled={saving || (!data.enabled && !data.ready)}
+          onClick={() => save({ enabled: !data.enabled }, data.enabled ? 'Global India fallback turned off.' : 'Global India fallback turned on.')}
+          className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+        >
+          {data.enabled ? 'Turn off' : 'Turn on'}
+        </button>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <div>
+          <Label htmlFor="global-city">Which city is Global India?</Label>
+          <select
+            id="global-city"
+            className="rounded-lg border px-2.5 py-1.5 text-[13px] outline-none"
+            style={FIELD_STYLE}
+            value={cityChoice}
+            onChange={(e) => setCityChoice(e.target.value)}
+          >
+            <option value="">Choose a city…</option>
+            {data.cities.filter((c) => c.active).map((c) => (
+              <option key={c.id} value={c.id}>{c.title}{c.is_global ? ' (current)' : ''}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          disabled={saving || !cityChoice}
+          onClick={() => save({ city_id: Number(cityChoice) }, 'Global India city saved.')}
+          className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+        >
+          Save city
+        </button>
+      </div>
+
+      <div className="mb-4 overflow-x-auto">
+        <table className="w-full text-left text-[12.5px]">
+          <thead style={{ color: 'var(--ink-faint)' }}>
+            <tr><th className="py-1 pr-3">City</th><th className="py-1 pr-3">Status</th><th className="py-1 pr-3">Geofences</th><th className="py-1">Geofence last changed</th></tr>
+          </thead>
+          <tbody>
+            {data.cities.map((c) => (
+              <tr key={c.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                <td className="py-1.5 pr-3 font-medium">{c.title}{c.is_global ? ' (Global India)' : ''}</td>
+                <td className="py-1.5 pr-3">{c.active ? 'Active' : 'Inactive'}</td>
+                <td className="py-1.5 pr-3">{c.is_global ? 'none needed' : c.geofences}</td>
+                <td className="py-1.5">{c.geofence_last_changed ? new Date(c.geofence_last_changed).toLocaleString() : '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+          India boundary: {data.boundary.polygons} areas, {data.boundary.points} points (Natural Earth). Overlapping geofences: the smallest area wins.
+        </p>
+      </div>
+
+      <form onSubmit={check} className="flex flex-wrap items-end gap-2">
+        <div>
+          <Label htmlFor="gi-lat">Check a pickup: latitude</Label>
+          <Input id="gi-lat" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="22.7196" />
+        </div>
+        <div>
+          <Label htmlFor="gi-lng">longitude</Label>
+          <Input id="gi-lng" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="75.8577" />
+        </div>
+        <button
+          type="submit"
+          disabled={checking || !lat || !lng}
+          className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+          style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+        >
+          {checking ? 'Checking…' : 'Who serves this?'}
+        </button>
+      </form>
+      {result && (
+        <p className="mt-2 text-[13px]" style={{ color: 'var(--ink)' }}>
+          Served by: <strong>{describe(result)}</strong>
+          {!result.switch_enabled && <span style={{ color: 'var(--ink-faint)' }}> (fallback is off, so bookings still use the old city rules)</span>}
+        </p>
+      )}
+    </section>
+  )
+}
+
 function Model1SuspendedDrivers() {
   const toast = useToast()
   const fetcher = useCallback(() => api.get('/riders/model1-suspended').then((res) => res.data.data), [])
@@ -1748,6 +1901,7 @@ function SettingsForm({ data, onSaved }) {
 
         <PaymentGateways />
 
+        <GlobalIndiaCoverage />
         <Model1SuspendedDrivers />
 
         {/* Bottom Save Action Bar */}

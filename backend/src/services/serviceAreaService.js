@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const rules = require("./serviceAreaRules");
 const settings = require("./serviceAreaSettings");
+const globalIndia = require("./globalIndiaService");
 
 // City-wise coverage and vehicle No Entry validation (spec 2026-10-29). One place used by the order API (the final
 // word) and by the validate-location endpoint the apps call early. With the switch off nothing is checked at all.
@@ -27,10 +28,17 @@ async function validateLocation({ lat, lng, kind, category }) {
   const zones = await prisma.service_zone.findMany({ where: { status: 1, zone_kind: "coverage" } });
   // A coverage zone not tied to a city cannot be matched with No Entry rules, so it does not count as coverage.
   const covering = zones.filter((zone) => Number.isInteger(zone.city_id) && zone.city_id > 0 && rules.containsPoint(zone, lat, lng));
+  let cityIds = [...new Set(covering.map((zone) => zone.city_id).filter((id) => Number.isInteger(id) && id > 0))];
   if (covering.length === 0) {
-    return { ok: false, enforced: true, code: "NO_SERVICE_ZONE", message: rules.messageFor(where, "NO_SERVICE_ZONE") };
+    // Global India fallback (spec 2026-11-15): no city geofence covers this place but it is inside India, so Global India
+    // serves it and its own No Entry rules apply. With the fallback off, or outside India, it is not serviceable as before.
+    const global = await globalIndia.resolve(lat, lng).catch(() => null);
+    if (global && (global.kind === "city" || global.kind === "global") && global.cityId > 0) {
+      cityIds = [global.cityId];
+    } else {
+      return { ok: false, enforced: true, code: "NO_SERVICE_ZONE", message: rules.messageFor(where, "NO_SERVICE_ZONE") };
+    }
   }
-  const cityIds = [...new Set(covering.map((zone) => zone.city_id).filter((id) => Number.isInteger(id) && id > 0))];
 
   const categoryId = await resolveCategoryId(category);
   const categoryGiven = category !== null && category !== undefined && String(category).trim() !== "";
