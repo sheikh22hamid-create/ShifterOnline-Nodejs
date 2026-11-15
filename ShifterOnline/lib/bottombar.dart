@@ -14,6 +14,7 @@ import 'package:goParcel/screens/myorder/myorder.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/screens/profile/myprofile.dart';
 import 'package:goParcel/utils/customewidget/customwidgets.dart';
+import 'package:goParcel/services/notification_router.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
 import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:provider/provider.dart';
@@ -49,6 +50,9 @@ class BottombarState extends State<Bottombar> {
     _selectedIndex = widget.tabIndex ?? 0;
     debugPrint("========== _select Index ========= $_selectedIndex");
     isLogin = getdata.read("firstLogin") ?? false;
+    // Notification taps that arrived before the app was up (killed / splash) or before login are opened from here.
+    NotificationRouter.markReady(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => NotificationRouter.openPending());
     pageListApiController.pageListApi();
     getCurrentData();
     _listenForScheduledOrderAssignment();
@@ -165,6 +169,7 @@ class BottombarState extends State<Bottombar> {
 
   @override
   void dispose() {
+    NotificationRouter.markReady(false); // Home is gone (e.g. logout): taps are parked until it is back
     _scheduledOrderSubscription?.dispose();
     super.dispose();
   }
