@@ -3,6 +3,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const { formatPkgOrderForDriver, loadBookingUsers } = require("./driverOrderHistoryController");
+const { pkgStats, buyStats } = require("../services/driverEarningsStats");
 const { formatBuyOrderForDriver } = require("./legacyOrderController");
 const deviceSessionService = require("../services/deviceSessionService");
 const { uniqueRefferCode } = require("./riderAuthController");
@@ -31,43 +32,11 @@ async function homeData(req, res) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    async function pkgStats(from, to) {
-      const rows = await prisma.$queryRaw`
-        SELECT COUNT(*) AS total_order,
-          IFNULL(ROUND(SUM(
-            CASE
-              WHEN COALESCE(driver_earning, 0) > 0 THEN driver_earning
-              WHEN COALESCE(total_dcharge, 0) > 0 THEN (total_dcharge - (total_dcharge * COALESCE(commission, 0) / 100))
-              ELSE (COALESCE(d_charge, 0) - (COALESCE(d_charge, 0) * COALESCE(commission, 0) / 100)) + COALESCE(extra_mile_charge, 0)
-            END
-          ), 2), 0) AS earning
-        FROM pkg_order
-        WHERE rid = ${rid}
-          AND (LOWER(TRIM(o_status)) = 'completed' OR order_status = 4 OR order_status = 5)
-          AND COALESCE(ddate, odate) BETWEEN ${from} AND ${to}
-      `;
-      return rows[0] || { total_order: 0, earning: 0 };
-    }
-
-    async function buyStats(from, to) {
-      const rows = await prisma.$queryRaw`
-        SELECT COUNT(*) AS total_order,
-          IFNULL(ROUND(SUM(
-            (COALESCE(d_charge, 0) - (COALESCE(d_charge, 0) * COALESCE(commission, 0) / 100)) + COALESCE(extra_mile_charge, 0) + COALESCE(item_total, 0)
-          ), 2), 0) AS earning
-        FROM buy_order
-        WHERE rid = ${rid}
-          AND (LOWER(TRIM(o_status)) = 'completed' OR flow_id = 4 OR flow_id = 5)
-          AND order_date BETWEEN ${from} AND ${to}
-      `;
-      return rows[0] || { total_order: 0, earning: 0 };
-    }
-
     const [pkgToday, buyToday, pkgMonth, buyMonth] = await Promise.all([
-      pkgStats(todayStart, todayEnd),
-      buyStats(todayStart, todayEnd),
-      pkgStats(monthStart, monthEnd),
-      buyStats(monthStart, monthEnd),
+      pkgStats(rid, todayStart, todayEnd),
+      buyStats(rid, todayStart, todayEnd),
+      pkgStats(rid, monthStart, monthEnd),
+      buyStats(rid, monthStart, monthEnd),
     ]);
 
     const todayOrder = Number(pkgToday.total_order || 0) + Number(buyToday.total_order || 0);
