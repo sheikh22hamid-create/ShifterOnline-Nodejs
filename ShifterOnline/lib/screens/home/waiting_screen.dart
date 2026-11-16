@@ -371,7 +371,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
       _handedOffToTracking = true;
       clearPersistedWaitingOrder();
       if (data['free_booking'] is Map && (data['free_booking']['is_free'] == true || data['free_booking']['is_free'] == 'true')) {
-        ApiWrapper.showToastMessage("🎉 Free Ride Chance Won! Full fare will be credited to your wallet upon completion.".tr);
+        ApiWrapper.showToastMessage("Free Ride Chance Won! Full fare will be credited to your wallet upon completion.".tr);
       }
       // The assignment event is the first authoritative place where the
       // advance amount is available. Pass it forward so payment can render

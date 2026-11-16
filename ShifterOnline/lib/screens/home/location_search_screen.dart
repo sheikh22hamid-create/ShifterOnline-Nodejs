@@ -573,8 +573,8 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     final Color indicatorColor = _isAddress
         ? themeColor
         : (_isPickup
-            ? const Color(0xff10B981) // Green
-            : const Color(0xffEF4444)); // Red
+            ? const Color(0xff16A34A) // Green (pickup)
+            : const Color(0xffFF6B35)); // Brand orange (drop/stop), matches the route card
 
     final p = AppPalette.current;
     final String title = _isAddress

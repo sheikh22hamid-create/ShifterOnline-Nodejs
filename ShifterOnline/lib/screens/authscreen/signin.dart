@@ -714,14 +714,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   width: double.infinity,
                                   height: 52,
                                   decoration: BoxDecoration(
-                                    gradient: isPhoneValid
-                                        ? const LinearGradient(
-                                            colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                          )
-                                        : null,
-                                    color: isPhoneValid ? null : const Color(0xFFCFD6DC),
+                                    color: isPhoneValid ? const Color(0xFFFF6B35) : const Color(0xFFCFD6DC),
                                     borderRadius: BorderRadius.circular(14),
                                     boxShadow: isPhoneValid
                                         ? [
@@ -1158,14 +1151,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       width: double.infinity,
                       height: 52,
                       decoration: BoxDecoration(
-                        gradient: isOtpComplete
-                            ? const LinearGradient(
-                                colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              )
-                            : null,
-                        color: isOtpComplete ? null : const Color(0xFFCFD6DC),
+                        color: isOtpComplete ? const Color(0xFFFF6B35) : const Color(0xFFCFD6DC),
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: isOtpComplete
                             ? [

@@ -1279,7 +1279,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  "Order Confirmed! 🎉",
+                  "Order Confirmed!",
                   style: TextStyle(
                     fontSize: 20,
                     fontFamily: 'Gilroy_Bold',
@@ -1526,7 +1526,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                       ),
                       const SizedBox(width: 8),
                       // Kept prominent so customers find it: brand outline + tint.
-                      PressableScale(
+                      Flexible(
+                      child: PressableScale(
                         onTap: _openSearchAreaSheet,
                         child: Container(
                           height: 40,
@@ -1541,12 +1542,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                             children: [
                               Icon(Icons.radar_rounded, color: p.brand, size: 18),
                               const SizedBox(width: 6),
-                              Text('Search area: @km km'.trParams({'km': '$_selectedRadiusKm'}),
-                                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
+                              Flexible(
+                                child: Text('Search area: @km km'.trParams({'km': '$_selectedRadiusKm'}),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
+                              ),
                               Icon(Icons.keyboard_arrow_down_rounded, color: p.ink, size: 20),
                             ],
                           ),
                         ),
+                      ),
                       ),
                     ],
                   ),

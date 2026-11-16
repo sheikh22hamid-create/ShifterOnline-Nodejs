@@ -733,7 +733,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                                       Icon(Icons.add_rounded, color: linercolor, size: 14),
                                       const SizedBox(width: 2),
                                       Text(
-                                        "Add Money",
+                                        "Add Money".tr,
                                         style: TextStyle(
                                           color: linercolor,
                                           fontFamily: 'Gilroy_Bold',
@@ -1041,17 +1041,16 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
               const SizedBox(width: 8),
               if (trailing != null) ...[
                 trailing,
-                const SizedBox(width: 8),
-              ],
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: p.surface,
-                  border: Border.all(color: isSelected ? p.brand : p.line, width: isSelected ? 6 : 2),
+              ] else
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: p.surface,
+                    border: Border.all(color: isSelected ? p.brand : p.line, width: isSelected ? 6 : 2),
+                  ),
                 ),
-              ),
             ],
           ),
         ),

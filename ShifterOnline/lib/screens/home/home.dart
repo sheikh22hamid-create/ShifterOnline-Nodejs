@@ -599,11 +599,7 @@ class _HomeState extends State<Home> {
                 height: 62,
                 width: 62,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xffFFB800), Color(0xffFF8C00)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Color(0xffFFB800),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -932,13 +928,7 @@ class _HomeState extends State<Home> {
                         height: 60,
                         width: 60,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: isClaimed
-                                ? [const Color(0xFF16A34A), const Color(0xFF22C55E)]
-                                : [linercolor, const Color(0xFFFF8C38)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: isClaimed ? const Color(0xFF16A34A) : linercolor,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
@@ -958,7 +948,7 @@ class _HomeState extends State<Home> {
 
                       // Title
                       Text(
-                        isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone Offer",
+                        isClaimed ? "Milestone Unlocked!" : "Exclusive Ride Milestone Offer",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'Gilroy_Bold',
@@ -976,7 +966,7 @@ class _HomeState extends State<Home> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          isClaimed ? "✅ Plan Active on Your Account" : (urgency.isNotEmpty ? "⚡ $urgency" : "🎁 Limited Time Reward"),
+                          isClaimed ? "Plan Active on Your Account" : (urgency.isNotEmpty ? "$urgency" : "Limited Time Reward"),
                           style: TextStyle(
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 12,
@@ -1052,14 +1042,7 @@ class _HomeState extends State<Home> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              linercolor.withOpacity(0.08),
-                              linercolor.withOpacity(0.02),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: linercolor.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: linercolor.withOpacity(0.28), width: 1.2),
                         ),
@@ -3178,14 +3161,7 @@ class _HomeState extends State<Home> {
                             padding: EdgeInsets.symmetric(
                                 horizontal: 18, vertical: 16),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Color(0xff7B2FF7),
-                                  Color(0xffb34eff),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
+                              color: Color(0xff7B2FF7),
                               borderRadius: BorderRadius.circular(18),
                               boxShadow: [
                                 BoxShadow(

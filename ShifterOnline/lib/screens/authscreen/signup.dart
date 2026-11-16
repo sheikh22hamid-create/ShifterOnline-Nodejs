@@ -758,14 +758,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 22),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _Tokens.primaryBg,
-                  Colors.white,
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
+              color: _Tokens.primaryBg,
               borderRadius: BorderRadius.circular(24),
             ),
             child: const BrandIllustration(kind: BrandIllustrationKind.otp, height: 130),
@@ -908,14 +901,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
           Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _Tokens.primaryBg,
-                  Colors.white,
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
+              color: _Tokens.primaryBg,
               borderRadius: BorderRadius.circular(24),
             ),
             child: Row(
@@ -1349,11 +1335,7 @@ class _PrimaryCtaState extends State<_PrimaryCta> {
           width: double.infinity,
           height: 54,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [_Tokens.primaryLight, _Tokens.primary],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
+            color: _Tokens.primaryLight,
             borderRadius: BorderRadius.circular(14),
             boxShadow: _Tokens.cta,
           ),

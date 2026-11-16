@@ -461,11 +461,7 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [linercolor, linercolor.withOpacity(0.85)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: linercolor,
                 ),
                 padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + 16,
@@ -621,11 +617,7 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green.shade700, Colors.green.shade500],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.green.shade700,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -984,16 +976,14 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 5),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.orange.shade600, Colors.orange.shade400],
-                    ),
+                    color: Colors.orange.shade600,
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(18),
                       bottomLeft: Radius.circular(12),
                     ),
                   ),
                   child: const Text(
-                    "🔥 Popular",
+                    "Popular",
                     style: TextStyle(
                       color: Colors.white,
                       fontFamily: 'Gilroy_Bold',

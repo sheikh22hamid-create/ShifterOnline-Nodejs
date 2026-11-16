@@ -272,7 +272,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                "✅ $accepted $typeName contact(s) successfully submit ho gaye hain!",
+                "$accepted $typeName contact(s) successfully submit ho gaye hain!",
                 style: const TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 14,
@@ -291,7 +291,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
               if (skipped.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(
-                  "⚠️ ${skipped.length} contact(s) skip huye:",
+                  "${skipped.length} contact(s) skip huye:",
                   style: const TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 13,
@@ -467,7 +467,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          "👤 Customer",
+                          "Customer",
                           style: TextStyle(
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 13,
@@ -504,7 +504,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          "🚚 Driver Partner",
+                          "Driver Partner",
                           style: TextStyle(
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 13,
@@ -522,8 +522,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
           const SizedBox(height: 8),
           Text(
             isCustomer
-                ? "💡 सामान / शिफ्टिंग बुक करने वाले दोस्तों या ग्राहकों के लिए Customer चुनें।"
-                : "💡 गाड़ी, टेम्पो, छोटा हाथी चलाने वाले ड्राइवर साथियों के लिए Driver चुनें।",
+                ? "सामान / शिफ्टिंग बुक करने वाले दोस्तों या ग्राहकों के लिए Customer चुनें।"
+                : "गाड़ी, टेम्पो, छोटा हाथी चलाने वाले ड्राइवर साथियों के लिए Driver चुनें।",
             style: const TextStyle(
               fontFamily: 'Gilroy_Medium',
               fontSize: 11,
@@ -1088,7 +1088,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
     } else if (status == "converted") {
       badgeBg = const Color(0xFFDCFCE7);
       badgeText = const Color(0xFF16A34A);
-      badgeLabel = "🎉 Rewarded";
+      badgeLabel = "Rewarded";
       description = "1st Ride completed! 100 Reward Points added to your wallet.";
     } else if (status == "rejected") {
       badgeBg = const Color(0xFFFEE2E2);
@@ -1161,7 +1161,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isDriver ? "🚚 Driver" : "👤 Customer",
+                  isDriver ? "Driver" : "Customer",
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 11,
