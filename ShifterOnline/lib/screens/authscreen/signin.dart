@@ -728,7 +728,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   ),
                                   child: Center(
                                     child: _isSendingOtp
-                                        ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                                        ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
                                         : Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: const [
@@ -737,12 +737,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                                 style: TextStyle(
                                                   fontFamily: 'Gilroy_Bold',
                                                   fontSize: 16,
-                                                  color: Colors.white,
+                                                  color: Color(0xFF1A0B04),
                                                 ),
                                               ),
                                               SizedBox(width: 8),
                                               Icon(Icons.arrow_forward_rounded,
-                                                  size: 18, color: Colors.white),
+                                                  size: 18, color: Color(0xFF1A0B04)),
                                             ],
                                           ),
                                   ),
@@ -1165,7 +1165,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       ),
                       child: Center(
                         child: _isVerifying
-                            ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                            ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
                             : Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: const [
@@ -1174,12 +1174,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                     style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 16,
-                                      color: Colors.white,
+                                      color: Color(0xFF1A0B04),
                                     ),
                                   ),
                                   SizedBox(width: 8),
                                   Icon(Icons.arrow_forward_rounded,
-                                      size: 18, color: Colors.white),
+                                      size: 18, color: Color(0xFF1A0B04)),
                                 ],
                               ),
                       ),

@@ -39,6 +39,16 @@ void main() {
     expect(theme.useMaterial3, isFalse);
   });
 
+  test('inputs are not force-filled (screens with dark text colours keep their own background)', () {
+    expect(theme.inputDecorationTheme.filled, isFalse);
+  });
+
+  test('greaycolor follows dark mode', () {
+    notifier.setIsDark = true;
+    addTearDown(() => notifier.setIsDark = false);
+    expect(greaycolor, AppPalette.dark.inkSubtle);
+  });
+
   test('global colour variables follow the tokens', () {
     expect(greaycolor, p.inkSubtle);
     expect(contrastRatio(greaycolor, Colors.white), greaterThanOrEqualTo(4.5));

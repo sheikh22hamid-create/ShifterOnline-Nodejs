@@ -205,7 +205,7 @@ class _MyProfileState extends State<MyProfile> {
         ((int.tryParse(notifData["unread_count"]?.toString() ?? "0") ?? 0) > 0);
 
     return Scaffold(
-      backgroundColor: AppPalette.current.canvas,
+      backgroundColor: AppPalette.light.canvas,
       body: RefreshIndicator(
         onRefresh: fetchProfileOverview,
         color: const Color(0xFFFA4500),
@@ -279,7 +279,7 @@ class _MyProfileState extends State<MyProfile> {
     required String tagline,
     required bool hasUnreadNotif,
   }) {
-    final p = AppPalette.current;
+    final p = AppPalette.light;
     final initials = name
         .trim()
         .split(RegExp(r'\s+'))
@@ -521,7 +521,7 @@ class _MyProfileState extends State<MyProfile> {
                 style: TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 16.5,
-                  color: AppPalette.current.ink,
+                  color: AppPalette.light.ink,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -621,7 +621,7 @@ class _MyProfileState extends State<MyProfile> {
                     children: [
                       Text(
                         title.tr,
-                        style: AppText.bodyStrong(AppPalette.current.ink).copyWith(fontSize: 14.5),
+                        style: AppText.bodyStrong(AppPalette.light.ink).copyWith(fontSize: 14.5),
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -686,7 +686,7 @@ class _MyProfileState extends State<MyProfile> {
           // Premium: highlighted row. Height follows its content (no fixed height), so there is no empty space.
           Container(
             decoration: BoxDecoration(
-              color: AppPalette.current.warningTint,
+              color: AppPalette.light.warningTint,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: const Color(0xFFFED7AA), width: 1.2),
               boxShadow: [
@@ -737,7 +737,7 @@ class _MyProfileState extends State<MyProfile> {
                                     style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 15,
-                                      color: AppPalette.current.ink,
+                                      color: AppPalette.light.ink,
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -946,7 +946,7 @@ class _MyProfileState extends State<MyProfile> {
               style: TextStyle(
                 fontFamily: "Gilroy_Bold",
                 fontSize: 18,
-                color: AppPalette.current.ink,
+                color: AppPalette.light.ink,
               ),
             ),
             const SizedBox(height: 5),
@@ -976,7 +976,7 @@ class _MyProfileState extends State<MyProfile> {
                     style: TextStyle(
                       fontFamily: "Gilroy_Bold",
                       fontSize: 17,
-                      color: AppPalette.current.ink,
+                      color: AppPalette.light.ink,
                     ),
                   ),
                 ],
@@ -1195,19 +1195,19 @@ class _MyProfileState extends State<MyProfile> {
                   children: [
                     Text(
                       title.tr,
-                      style: AppText.bodyStrong(AppPalette.current.ink).copyWith(fontSize: 14.5),
+                      style: AppText.bodyStrong(AppPalette.light.ink).copyWith(fontSize: 14.5),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle.tr,
-                      style: AppText.caption(AppPalette.current.inkSubtle).copyWith(fontSize: 11.5),
+                      style: AppText.caption(AppPalette.light.inkSubtle).copyWith(fontSize: 11.5),
                     ),
                   ],
                 ),
               ),
 
               const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded, color: AppPalette.current.inkSubtle, size: 22),
+              Icon(Icons.chevron_right_rounded, color: AppPalette.light.inkSubtle, size: 22),
             ],
           ),
         ),
@@ -1311,7 +1311,7 @@ class _MyProfileState extends State<MyProfile> {
                 style: TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 18,
-                  color: AppPalette.current.ink,
+                  color: AppPalette.light.ink,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1334,7 +1334,7 @@ class _MyProfileState extends State<MyProfile> {
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 14.5,
-                    color: AppPalette.current.ink,
+                    color: AppPalette.light.ink,
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
@@ -1366,7 +1366,7 @@ class _MyProfileState extends State<MyProfile> {
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 14.5,
-                    color: AppPalette.current.ink,
+                    color: AppPalette.light.ink,
                   ),
                 ),
                 trailing: CupertinoSwitch(
@@ -1474,7 +1474,7 @@ class _MyProfileState extends State<MyProfile> {
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 20,
-                    color: AppPalette.current.ink,
+                    color: AppPalette.light.ink,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1629,7 +1629,7 @@ class _MyProfileState extends State<MyProfile> {
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
-                                      color: AppPalette.current.ink,
+                                      color: AppPalette.light.ink,
                                     ),
                                   ),
                                   const SizedBox(width: 6),

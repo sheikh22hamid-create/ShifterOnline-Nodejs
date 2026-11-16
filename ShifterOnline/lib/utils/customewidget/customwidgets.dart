@@ -24,14 +24,14 @@ appButton({VoidCallback? onTap, String? tital}) {
       height: Get.height / 18,
       width: Get.width / 1.2,
       decoration: BoxDecoration(
-        color: const Color(0xfffa5700),
-        borderRadius: BorderRadius.circular(15),
+        color: linercolor,
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Center(
         child: Text(
           tital!,
           style: TextStyle(
-            color: whitecolor,
+            color: const Color(0xFF1A0B04),
             fontSize: Get.height / 50,
             fontFamily: 'Gilroy_Medium',
           ),
@@ -65,7 +65,7 @@ appButton1({
           tital!,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: textColor ?? whitecolor,
+            color: textColor ?? ((buttonbgColor == null || buttonbgColor == linercolor) ? const Color(0xFF1A0B04) : whitecolor),
             fontSize: 16,
             fontFamily: 'Gilroy_Bold',
           ),

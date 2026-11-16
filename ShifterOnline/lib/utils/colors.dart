@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import '../theme/app_tokens.dart';
 
 // मुख्य Theme Color - इसे change करके app का primary color बदल सकते हैं
 Color linercolor = const Color(0xffFF6B35); // Changed from blue to orange
@@ -9,7 +10,8 @@ Color litelinercolor = const Color(0xffFF6B35).withOpacity(0.2); // Updated to m
 
 Color lightbgcolor = const Color(0xFFF7F7F7);
 
-Color greaycolor = const Color(0xff636977); // = AppPalette.light.inkSubtle (redesign 2026-11-16)
+/// Secondary text colour; follows dark mode (AppPalette inkSubtle).
+Color get greaycolor => AppPalette.current.inkSubtle;
 
 Color whitecolor = Colors.white;
 

@@ -68,8 +68,7 @@ ThemeData buildAppTheme() {
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: p.surface,
+      filled: false,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       hintStyle: TextStyle(fontFamily: medium, fontSize: 14, color: p.inkSubtle),
       labelStyle: TextStyle(fontFamily: medium, fontSize: 13, color: p.inkMuted),

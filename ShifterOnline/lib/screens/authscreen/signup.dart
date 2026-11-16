@@ -1341,7 +1341,7 @@ class _PrimaryCtaState extends State<_PrimaryCta> {
           ),
           child: Center(
             child: widget.loading
-                ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
                 : Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1350,12 +1350,12 @@ class _PrimaryCtaState extends State<_PrimaryCta> {
                         style: const TextStyle(
                           fontFamily: 'Gilroy_Bold',
                           fontSize: 16,
-                          color: Colors.white,
+                          color: Color(0xFF1A0B04),
                         ),
                       ),
                       if (widget.icon != null) ...[
                         const SizedBox(width: 8),
-                        Icon(widget.icon, size: 18, color: Colors.white),
+                        Icon(widget.icon, size: 18, color: Color(0xFF1A0B04)),
                       ],
                     ],
                   ),
