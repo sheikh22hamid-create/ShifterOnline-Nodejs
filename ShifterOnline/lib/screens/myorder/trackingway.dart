@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, prefer_typing_uninitialized_variables
 
+import 'package:goParcel/theme/app_tokens.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
@@ -665,97 +666,85 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   // ── 1. TOP HEADER ─────────────────────────────────────────────────────────
 
   Widget _buildModernHeader() {
-    return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 6,
-        left: 16,
-        right: 16,
-        bottom: 14,
-      ),
-      decoration: BoxDecoration(
-        color: linercolor,
-        gradient: LinearGradient(
-          colors: [linercolor, const Color(0xFFFF7A45)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    final p = AppPalette.current;
+    Widget roundButton({required Widget child, required VoidCallback? onTap, required String label}) => Semantics(
+          button: true,
+          label: label,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: p.canvas, shape: BoxShape.circle),
+              child: child,
+            ),
+          ),
+        );
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+      child: Container(
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top + 6,
+          left: 16,
+          right: 16,
+          bottom: 12,
         ),
-      ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: () {
-              _handleBackNavigation();
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+        decoration: BoxDecoration(
+          color: p.surface,
+          border: Border(bottom: BorderSide(color: p.divider)),
+        ),
+        child: Row(
+          children: [
+            roundButton(
+              label: 'Back'.tr,
+              onTap: () {
+                _handleBackNavigation();
+              },
+              child: Icon(Icons.arrow_back_rounded, color: p.ink, size: 22),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Order #${orderProduc?["order_id"] ?? getdata.read("OrderID") ?? "0"}",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: "Gilroy_Bold",
-                    fontSize: 22,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "Order #${orderProduc?["order_id"] ?? getdata.read("OrderID") ?? "0"}",
+                    style: AppText.section(p.ink).copyWith(fontSize: 19),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  orderProduc == null ? "Track and manage your order".tr : _heroState().headerSub,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
-                    fontFamily: "Gilroy_Medium",
-                    fontSize: 11.5,
+                  const SizedBox(height: 2),
+                  Text(
+                    orderProduc == null ? "Track and manage your order".tr : _heroState().headerSub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption(p.inkSubtle),
                   ),
-                ),
-              ],
-            ),
-          ),
-          // [ ↻ Refresh ]
-          InkWell(
-            onTap: isLoading ? null : () => pageRefresh(),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
+                ],
               ),
+            ),
+            // [ ↻ Refresh ]
+            roundButton(
+              label: 'Refresh'.tr,
+              onTap: isLoading ? null : () => pageRefresh(),
               child: isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: p.brand),
                     )
-                  : const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                  : Icon(Icons.refresh_rounded, color: p.ink, size: 20),
             ),
-          ),
-          const SizedBox(width: 8),
-          // [ ? Help ]
-          InkWell(
-            onTap: () => _showHelpAndSupportSheet(),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.help_outline_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            // [ ? Help ]
+            roundButton(
+              label: 'Help'.tr,
+              onTap: () => _showHelpAndSupportSheet(),
+              child: Icon(Icons.support_agent_rounded, color: p.ink, size: 20),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -5167,11 +5156,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [linercolor.withOpacity(0.12), linercolor.withOpacity(0.03)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: AppPalette.current.brandTint,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: linercolor.withOpacity(0.18)),
       ),
@@ -5529,11 +5514,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [const Color(0xFFFFB74D).withOpacity(0.16), const Color(0xFFFFB74D).withOpacity(0.05)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: AppPalette.current.warningTint,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFFFB74D).withOpacity(0.35)),
           ),
@@ -6104,7 +6085,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         return false;
       },
       child: Scaffold(
-        backgroundColor: linercolor,
+        backgroundColor: AppPalette.current.canvas,
         body: Column(
           children: [
             _buildModernHeader(),

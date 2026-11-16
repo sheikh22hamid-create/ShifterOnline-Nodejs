@@ -381,11 +381,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [linercolor.withOpacity(0.14), linercolor.withOpacity(0.04)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: linercolor.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: linercolor.withOpacity(0.3)),
                 ),
