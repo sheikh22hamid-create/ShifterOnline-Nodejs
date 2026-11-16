@@ -21,6 +21,11 @@ import '../../Api/config.dart';
 import '../../utils/colors.dart';
 import '../../utils/location_intent_handler.dart';
 import 'location_confirm_map_screen.dart';
+import 'widgets/place_list_tile.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_skeleton.dart';
+import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/pressable_scale.dart';
 
 class LocationSearchScreen extends StatefulWidget {
   final String locationType; // 'Pickup', 'Drop', 'Stop'
@@ -571,47 +576,28 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
             ? const Color(0xff10B981) // Green
             : const Color(0xffEF4444)); // Red
 
+    final p = AppPalette.current;
+    final String title = _isAddress
+        ? "Add New Address".tr
+        : (_isPickup
+            ? "Select Pickup Location".tr
+            : (_isDrop ? "Select Drop Location".tr : "Select Stop @n".trParams({'n': '${widget.stopIndex + 1}'})));
+
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        backgroundColor: notifier.getBgColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: notifier.text),
-          onPressed: () => Get.back(),
-        ),
-        titleSpacing: 0,
-        title: Text(
-          _isAddress
-              ? "Add New Address".tr
-              : (_isPickup
-                  ? "Select Pickup Location"
-                  : (_isDrop ? "Select Drop Location" : "Select Stop ${widget.stopIndex + 1}")),
-          style: TextStyle(
-            color: notifier.text,
-            fontFamily: 'Gilroy_Bold',
-            fontSize: 17,
-          ),
-        ),
-      ),
+      backgroundColor: p.canvas,
+      appBar: AppTopBar(title: title, onBack: () => Get.back()),
       body: SafeArea(
         top: false,
         bottom: true,
         child: Column(
           children: [
-            // ── Header Search Container ──────────────────────────────────────
+            // ── Header: pickup summary + search field ─────────────────────────
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
               decoration: BoxDecoration(
-                color: notifier.getBgColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                color: p.surface,
+                border: Border(bottom: BorderSide(color: p.divider)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,112 +605,91 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                   // If Drop mode and pickupData provided: show pickup summary card
                   if (!_isPickup && widget.pickupData != null) ...[
                     Container(
-                      margin: const EdgeInsets.only(bottom: 12),
+                      margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
-                        color: notifier.lightBgColor,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: notifier.bordecolor),
+                        color: p.canvas,
+                        borderRadius: BorderRadius.circular(AppRadius.input),
                       ),
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Color(0xff10B981),
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: p.success,
                               shape: BoxShape.circle,
+                              boxShadow: [BoxShadow(color: p.successTint, spreadRadius: 4)],
                             ),
-                            child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 14),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  "${widget.pickupData?['c_name'] ?? 'Pickup Contact'} · ${widget.pickupData?['c_number'] ?? ''}",
+                                  "${widget.pickupData?['c_name'] ?? 'Pickup Contact'.tr} · ${widget.pickupData?['c_number'] ?? ''}",
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 13,
-                                    color: notifier.text,
-                                  ),
+                                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   widget.pickupData?['address']?.toString() ?? '',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Medium',
-                                    fontSize: 11.5,
-                                    color: greaycolor,
-                                  ),
+                                  style: AppText.caption(p.inkSubtle),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Icon(Icons.chevron_right_rounded, color: greaycolor, size: 20),
                         ],
                       ),
                     ),
                   ],
 
                   // ── Search Input Field ────────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.only(left: 14, right: 6),
                     decoration: BoxDecoration(
-                      color: _isListening ? themeColor.withOpacity(0.06) : notifier.getBgColor,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _isListening ? Colors.red : themeColor,
-                        width: _isListening ? 2 : 1.5,
-                      ),
+                      color: p.surface,
+                      borderRadius: BorderRadius.circular(AppRadius.input),
+                      border: Border.all(color: _isListening ? p.danger : p.brand, width: _isListening ? 2 : 1.5),
+                      boxShadow: [BoxShadow(color: _isListening ? p.dangerTint : p.brandTint, spreadRadius: 4)],
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: _isListening ? Colors.red : indicatorColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            _isListening
-                                ? Icons.mic_rounded
-                                : (_isPickup ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded),
-                            color: Colors.white,
-                            size: 15,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
+                        _isListening
+                            ? Icon(Icons.mic_rounded, color: p.danger, size: 18)
+                            : Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: indicatorColor,
+                                  shape: _isPickup ? BoxShape.circle : BoxShape.rectangle,
+                                  borderRadius: _isPickup ? null : BorderRadius.circular(3),
+                                ),
+                              ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
                             controller: _searchController,
                             focusNode: _focusNode,
                             onChanged: _onSearchChanged,
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 15,
-                              color: notifier.text,
-                            ),
+                            style: AppText.bodyStrong(p.ink),
                             decoration: InputDecoration(
-                              hintText: searchPlaceholder,
-                              hintStyle: TextStyle(
-                                fontFamily: _isListening ? 'Gilroy_Bold' : 'Gilroy_Medium',
-                                fontSize: 14.5,
-                                color: _isListening ? Colors.red.shade700 : greaycolor.withOpacity(0.8),
-                              ),
+                              hintText: searchPlaceholder.tr,
+                              hintStyle: AppText.body(_isListening ? p.danger : p.inkSubtle).copyWith(fontSize: 14.5),
                               border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 15),
                             ),
                           ),
                         ),
                         if (_searchController.text.isNotEmpty)
                           IconButton(
-                            icon: Icon(Icons.cancel_rounded, color: greaycolor, size: 20),
+                            tooltip: 'Clear'.tr,
+                            icon: Icon(Icons.cancel_rounded, color: p.inkSubtle, size: 20),
                             onPressed: () {
                               _searchController.clear();
                               _onSearchChanged('');
@@ -732,20 +697,45 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                           ),
 
                         // Voice Search Mic Button
-                        GestureDetector(
+                        PressableScale(
                           onTap: _toggleListening,
+                          semanticLabel: 'Search by voice'.tr,
                           child: Container(
-                            padding: const EdgeInsets.all(6),
+                            width: 40,
+                            height: 40,
                             decoration: BoxDecoration(
-                              color: _isListening ? Colors.red.withOpacity(0.18) : Colors.transparent,
-                              shape: BoxShape.circle,
+                              color: _isListening ? p.dangerTint : p.brandTint,
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Icon(
                               _isListening ? Icons.graphic_eq_rounded : Icons.mic_rounded,
-                              color: _isListening ? Colors.red : themeColor,
-                              size: 24,
+                              color: _isListening ? p.danger : p.brand,
+                              size: 22,
                             ),
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Quick actions: map + WhatsApp ─────────────────────────
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _searchActionChip(
+                          p,
+                          icon: Icon(Icons.map_outlined, color: p.brand, size: 17),
+                          label: "Select on map".tr,
+                          onTap: _selectOnMap,
+                        ),
+                        const SizedBox(width: 8),
+                        _searchActionChip(
+                          p,
+                          icon: SvgPicture.asset('assets/whatsapp_logo.svg', width: 18, height: 18),
+                          label: "Import from WhatsApp".tr,
+                          onTap: _importFromWhatsApp,
                         ),
                       ],
                     ),
@@ -754,192 +744,37 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
               ),
             ),
 
-            // ── Quick Location Action Options (Current Location & Map) ─────────
+            // ── Current location row ─────────────────────────────────────────
             Container(
-              color: notifier.getBgColor,
-              child: Column(
-                children: [
-                  // 1. Current Location Option (Highlight for Pickup)
-                  InkWell(
-                    onTap: _useCurrentLocation,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: notifier.bordecolor, width: 0.8),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: themeColor.withOpacity(0.12),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.my_location_rounded,
-                              color: themeColor,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      _isPickup ? "Your Current Location" : "Use Current Location",
-                                      style: TextStyle(
-                                        fontFamily: 'Gilroy_Bold',
-                                        fontSize: 14.5,
-                                        color: themeColor,
-                                      ),
-                                    ),
-                                    if (_isDetectingLocation) ...[
-                                      const SizedBox(width: 8),
-                                      SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: themeColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _currentAddress.isNotEmpty
-                                      ? _currentAddress
-                                      : (_isDetectingLocation ? "Detecting GPS location..." : "Tap to use device current location"),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Medium',
-                                    fontSize: 11.5,
-                                    color: greaycolor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.chevron_right_rounded, color: greaycolor, size: 20),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // 2. "Select on Map" Action Button
-                  InkWell(
-                    onTap: _selectOnMap,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: notifier.bordecolor, width: 1),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: themeColor.withOpacity(0.08),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.map_rounded,
-                              color: themeColor,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              "Select on map",
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 14,
-                                color: notifier.text,
-                              ),
-                            ),
-                          ),
-                          Icon(Icons.chevron_right_rounded, color: greaycolor, size: 20),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // 3. "Import from WhatsApp" Action Button
-                  InkWell(
-                    onTap: _importFromWhatsApp,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            const Color(0xff25D366).withOpacity(0.06),
-                            const Color(0xff128C7E).withOpacity(0.04),
-                          ],
-                        ),
-                        border: Border(
-                          bottom: BorderSide(color: notifier.bordecolor, width: 1),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          // WhatsApp Real Logo (SVG)
-                          SvgPicture.asset(
-                            'assets/whatsapp_logo.svg',
-                            width: 36,
-                            height: 36,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Import from WhatsApp",
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 14,
-                                    color: Color(0xff075E54),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  "Tap a location shared on WhatsApp",
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Medium',
-                                    fontSize: 11.5,
-                                    color: greaycolor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right_rounded, color: Color(0xff25D366), size: 20),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              color: p.surface,
+              margin: const EdgeInsets.only(top: 10),
+              child: PlaceListTile(
+                title: (_isPickup ? "Your Current Location" : "Use Current Location").tr,
+                subtitle: _currentAddress.isNotEmpty
+                    ? _currentAddress
+                    : (_isDetectingLocation
+                        ? "Detecting GPS location...".tr
+                        : "Tap to use device current location".tr),
+                icon: Icons.my_location_rounded,
+                onTap: _useCurrentLocation,
+                trailing: _isDetectingLocation
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: p.brand))
+                    : Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
               ),
             ),
 
             // ── Body Results / Recents ───────────────────────────────────────
             Expanded(
               child: _isSearching
-                  ? Center(
-                      child: CircularProgressIndicator(color: themeColor),
+                  ? ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: const [
+                        AppSkeleton(height: 56),
+                        SizedBox(height: 10),
+                        AppSkeleton(height: 56),
+                        SizedBox(height: 10),
+                        AppSkeleton(height: 56),
+                      ],
                     )
                   : _searchController.text.trim().isNotEmpty
                       ? _buildPredictionsList(notifier, themeColor)
@@ -951,74 +786,70 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     );
   }
 
-  // ── Predictions List ───────────────────────────────────────────────────
-  Widget _buildPredictionsList(ColorNotifier notifier, Color themeColor) {
-    if (_predictions.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  Widget _searchActionChip(AppPalette p, {required Widget icon, required String label, required VoidCallback onTap}) {
+    return PressableScale(
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: p.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.location_off_rounded, size: 48, color: greaycolor.withOpacity(0.5)),
-            const SizedBox(height: 10),
-            Text(
-              "No places found",
-              style: TextStyle(
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 15,
-                color: notifier.text,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Try searching with a different keyword or area",
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 12,
-                color: greaycolor,
-              ),
-            ),
+            icon,
+            const SizedBox(width: 6),
+            Text(label, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
           ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _searchEmptyState(AppPalette p, IconData icon, String title, String body) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle),
+              child: Icon(icon, size: 30, color: p.inkSubtle),
+            ),
+            const SizedBox(height: 12),
+            Text(title, textAlign: TextAlign.center, style: AppText.bodyStrong(p.ink)),
+            const SizedBox(height: 4),
+            Text(body, textAlign: TextAlign.center, style: AppText.caption(p.inkSubtle)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Predictions List ───────────────────────────────────────────────────
+  Widget _buildPredictionsList(ColorNotifier notifier, Color themeColor) {
+    final p = AppPalette.current;
+    if (_predictions.isEmpty) {
+      return _searchEmptyState(p, Icons.location_off_rounded, "No places found".tr,
+          "Try searching with a different keyword or area".tr);
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    return _placeListCard(
+      p,
       itemCount: _predictions.length,
-      separatorBuilder: (_, __) => Divider(color: notifier.bordecolor, height: 1),
-      itemBuilder: (context, index) {
+      itemBuilder: (index) {
         final item = _predictions[index];
-        final mainText = item['main_text'] ?? '';
-        final secondaryText = item['secondary_text'] ?? '';
-
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-          leading: Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: notifier.lightBgColor,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.location_pin, color: themeColor, size: 18),
-          ),
-          title: Text(
-            mainText,
-            style: TextStyle(
-              fontFamily: 'Gilroy_Bold',
-              fontSize: 14.5,
-              color: notifier.text,
-            ),
-          ),
-          subtitle: secondaryText.isNotEmpty
-              ? Text(
-                  secondaryText,
-                  style: TextStyle(
-                    fontFamily: 'Gilroy_Medium',
-                    fontSize: 12,
-                    color: greaycolor,
-                  ),
-                )
-              : null,
+        return PlaceListTile(
+          title: item['main_text'] ?? '',
+          subtitle: item['secondary_text'] ?? '',
+          highlight: _searchController.text,
+          icon: Icons.location_on_outlined,
           onTap: () => _selectPrediction(item),
         );
       },
@@ -1027,77 +858,25 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
   // ── Recent Searches List ───────────────────────────────────────────────
   Widget _buildRecentSearchesList(ColorNotifier notifier, Color themeColor) {
+    final p = AppPalette.current;
     if (_recentSearches.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_rounded, size: 48, color: greaycolor.withOpacity(0.4)),
-            const SizedBox(height: 10),
-            Text(
-              "Search your destination",
-              style: TextStyle(
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 15,
-                color: notifier.text,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Type an address or choose current location above",
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 12,
-                color: greaycolor,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _searchEmptyState(p, Icons.search_rounded, "Search your destination".tr,
+          "Type an address or choose current location above".tr);
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    return _placeListCard(
+      p,
+      header: "RECENT".tr,
       itemCount: _recentSearches.length,
-      separatorBuilder: (_, __) => Divider(color: notifier.bordecolor, height: 1),
-      itemBuilder: (context, index) {
+      itemBuilder: (index) {
         final item = _recentSearches[index];
         final name = item['name'] ?? item['address'] ?? '';
         final address = item['address'] ?? '';
-
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: notifier.lightBgColor,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.history_rounded, color: greaycolor, size: 20),
-          ),
-          title: Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: 'Gilroy_Bold',
-              fontSize: 14,
-              color: notifier.text,
-            ),
-          ),
-          subtitle: address.isNotEmpty
-              ? Text(
-                  address,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'Gilroy_Medium',
-                    fontSize: 12,
-                    color: greaycolor,
-                  ),
-                )
-              : null,
-          trailing: Icon(Icons.chevron_right_rounded, color: greaycolor, size: 20),
+        return PlaceListTile(
+          title: name,
+          subtitle: address,
+          icon: Icons.history_rounded,
+          trailing: Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
           onTap: () {
             final lat = (item['lat'] as num?)?.toDouble() ?? 0.0;
             final lng = (item['lng'] as num?)?.toDouble() ?? 0.0;
@@ -1110,6 +889,35 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
           },
         );
       },
+    );
+  }
+
+  Widget _placeListCard(AppPalette p,
+      {String? header, required int itemCount, required Widget Function(int index) itemBuilder}) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      children: [
+        if (header != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(header, style: AppText.caption(p.inkSubtle).copyWith(fontFamily: 'Gilroy_Bold', letterSpacing: 0.4)),
+          ),
+        Container(
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: p.line),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < itemCount; i++) ...[
+                if (i > 0) Divider(height: 1, indent: 62, color: p.divider),
+                itemBuilder(i),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 
