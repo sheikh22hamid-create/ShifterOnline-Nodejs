@@ -5,6 +5,7 @@ import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/app_buttons.dart';
 import '../../../theme/widgets/app_segmented.dart';
 import '../../../theme/widgets/pressable_scale.dart';
+import 'stop_swap_list.dart';
 
 /// Floating route card on Home: pickup, stops, drop, booking mode and the "Choose vehicle" action.
 /// Presentational only — every tap goes to a callback owned by home.dart.
@@ -14,6 +15,7 @@ class HomeRouteCard extends StatelessWidget {
     required this.pickupAddress,
     required this.dropAddress,
     required this.stops,
+    this.onStopSwap,
     required this.canAddStop,
     required this.bookingType,
     required this.scheduleEnabled,
@@ -30,7 +32,10 @@ class HomeRouteCard extends StatelessWidget {
 
   final String? pickupAddress;
   final String? dropAddress;
-  final List<String> stops;
+  /// The stop maps from home.dart (`address` key); the same objects so drag-to-swap can identify them.
+  final List<Map<String, dynamic>> stops;
+  /// When set, stops can be long-pressed and dragged onto each other to swap (existing StopSwapList).
+  final void Function(Map<String, dynamic> source, Map<String, dynamic> target)? onStopSwap;
   final bool canAddStop;
   /// 1 = Now, 2 = Schedule, 3 = Low Fare (next day).
   final int bookingType;
@@ -67,22 +72,20 @@ class HomeRouteCard extends StatelessWidget {
             textColor: p.ink,
             onTap: onPickupTap,
           ),
-          for (var i = 0; i < stops.length; i++) ...[
-            const _Connector(),
-            _RouteRow(
-              marker: _HollowDot(color: p.inkSubtle),
-              label: 'Stop @n'.trParams({'n': '${i + 1}'}),
-              text: stops[i],
-              textColor: p.ink,
-              onTap: () => onStopTap(i),
-              trailing: _IconAction(
-                icon: Icons.close_rounded,
-                semanticLabel: 'Remove stop @n'.trParams({'n': '${i + 1}'}),
-                onTap: () => onStopDelete(i),
-              ),
-            ),
-          ],
           const _Connector(),
+          if (stops.isNotEmpty && onStopSwap != null)
+            StopSwapList<Map<String, dynamic>>(
+              items: stops,
+              onSwap: onStopSwap!,
+              separator: const _Connector(),
+              itemBuilder: (context, stop, index, wrapDragBody) => _stopRow(p, stop, index, wrapDragBody),
+            )
+          else
+            for (var i = 0; i < stops.length; i++) ...[
+              if (i > 0) const _Connector(),
+              _stopRow(p, stops[i], i, null),
+            ],
+          if (stops.isNotEmpty) const _Connector(),
           _RouteRow(
             marker: _Dot(color: p.brand, ring: p.brandTint, square: true),
             label: 'Drop'.tr,
@@ -125,6 +128,23 @@ class HomeRouteCard extends StatelessWidget {
   }
 }
 
+extension on HomeRouteCard {
+  Widget _stopRow(AppPalette p, Map<String, dynamic> stop, int i, Widget Function(Widget body)? wrapDragBody) =>
+      _RouteRow(
+        marker: _HollowDot(color: p.inkSubtle),
+        label: 'Stop @n'.trParams({'n': '${i + 1}'}),
+        text: stop['address']?.toString() ?? 'Selected location'.tr,
+        textColor: p.ink,
+        onTap: () => onStopTap(i),
+        wrapDragBody: wrapDragBody,
+        trailing: _IconAction(
+          icon: Icons.close_rounded,
+          semanticLabel: 'Remove stop @n'.trParams({'n': '${i + 1}'}),
+          onTap: () => onStopDelete(i),
+        ),
+      );
+}
+
 class _RouteRow extends StatelessWidget {
   const _RouteRow({
     required this.marker,
@@ -133,6 +153,7 @@ class _RouteRow extends StatelessWidget {
     required this.textColor,
     required this.onTap,
     this.trailing,
+    this.wrapDragBody,
   });
 
   final Widget marker;
@@ -141,14 +162,16 @@ class _RouteRow extends StatelessWidget {
   final Color textColor;
   final VoidCallback onTap;
   final Widget? trailing;
+  final Widget Function(Widget body)? wrapDragBody;
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
+    final wrap = wrapDragBody ?? (Widget body) => body;
     return Row(
       children: [
         Expanded(
-          child: PressableScale(
+          child: wrap(PressableScale(
             onTap: onTap,
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 64),
@@ -176,7 +199,7 @@ class _RouteRow extends StatelessWidget {
                 ),
               ),
             ),
-          ),
+          )),
         ),
         if (trailing != null) Padding(padding: const EdgeInsetsDirectional.only(end: 10), child: trailing),
       ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/home/widgets/home_route_card.dart';
+import 'package:goParcel/screens/home/widgets/stop_swap_list.dart';
 import 'package:goParcel/theme/app_tokens.dart';
 
 class _Calls {
@@ -29,6 +30,7 @@ HomeRouteCard _card(
   String? pickup = 'Sector 18, Noida',
   String? drop,
   List<String> stops = const [],
+  void Function(Map<String, dynamic>, Map<String, dynamic>)? onStopSwap,
   bool canAddStop = true,
   int bookingType = 1,
   bool scheduleEnabled = true,
@@ -36,7 +38,8 @@ HomeRouteCard _card(
     HomeRouteCard(
       pickupAddress: pickup,
       dropAddress: drop,
-      stops: stops,
+      stops: [for (final s in stops) <String, dynamic>{'address': s}],
+      onStopSwap: onStopSwap,
       canAddStop: canAddStop,
       bookingType: bookingType,
       scheduleEnabled: scheduleEnabled,
@@ -77,6 +80,15 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Add a stop'));
     await tester.pumpAndSettle();
     expect(c.log, ['pickup', 'drop', 'stop1', 'delete0', 'add']);
+  });
+
+  testWidgets('with onStopSwap the stops render inside the drag-to-swap list and still tap', (tester) async {
+    final c = _Calls();
+    await tester.pumpWidget(_host(_card(c, drop: 'Sector 63', stops: const ['Stop A', 'Stop B'], onStopSwap: (_, __) {})));
+    expect(find.byType(StopSwapList<Map<String, dynamic>>), findsOneWidget);
+    await tester.tap(find.text('Stop A'));
+    await tester.pumpAndSettle();
+    expect(c.log, ['stop0']);
   });
 
   testWidgets('canAddStop false hides + Stop', (tester) async {
