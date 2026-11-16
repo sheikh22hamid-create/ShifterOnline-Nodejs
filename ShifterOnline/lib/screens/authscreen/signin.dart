@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, unused_local_variable
 
+import 'package:goParcel/theme/widgets/brand_illustration.dart';
 import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/gestures.dart';
@@ -586,7 +587,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
 
                               // Heading
                               const Text(
-                                'Welcome Back 👋',
+                                'Welcome Back',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 26,
@@ -973,11 +974,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                   const SizedBox(height: 16),
 
                   // 3D OTP Illustration
-                  Image.asset(
-                    'assets/otp_illustration.jpg',
-                    height: 175,
-                    fit: BoxFit.contain,
-                  ),
+                  const BrandIllustration(kind: BrandIllustrationKind.otp, height: 175),
 
                   const SizedBox(height: 24),
 

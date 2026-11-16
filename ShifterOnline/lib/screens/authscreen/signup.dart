@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:goParcel/theme/widgets/brand_illustration.dart';
 import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -544,7 +545,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                           ),
                           const SizedBox(height: 14),
                           const Text(
-                            'Welcome to\nShifter Online 👋',
+                            'Welcome to\nShifter Online',
                             style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
                               fontSize: 23,
@@ -574,11 +575,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                     const SizedBox(width: 4),
                     Expanded(
                       flex: 5,
-                      child: Image.asset(
-                        'assets/delivery_mascot.jpg',
-                        height: 255,
-                        fit: BoxFit.contain,
-                      ),
+                      child: const BrandIllustration(kind: BrandIllustrationKind.delivery, height: 255),
                     ),
                   ],
                 ),
@@ -683,12 +680,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                 // Footer graphic
                 ClipRRect(
                   borderRadius: BorderRadius.circular(_Tokens.radius),
-                  child: Image.asset(
-                    'assets/delivery_van_footer.jpg',
-                    height: 76,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
+                  child: const BrandIllustration(kind: BrandIllustrationKind.delivery, height: 76),
                 ),
                 const SizedBox(height: 8),
                 const Center(
@@ -776,11 +768,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
               ),
               borderRadius: BorderRadius.circular(24),
             ),
-            child: Image.asset(
-              'assets/otp_illustration.jpg',
-              height: 130,
-              fit: BoxFit.contain,
-            ),
+            child: const BrandIllustration(kind: BrandIllustrationKind.otp, height: 130),
           ),
 
           const SizedBox(height: 18),
@@ -946,7 +934,6 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                               color: _Tokens.textPrimary,
                             ),
                           ),
-                          Text('🎉', style: TextStyle(fontSize: 20)),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -962,11 +949,7 @@ class _SignUpState extends State<SignUp> with CodeAutoFill {
                     ],
                   ),
                 ),
-                Image.asset(
-                  'assets/profile_illustration.jpg',
-                  height: 95,
-                  fit: BoxFit.contain,
-                ),
+                const SizedBox(width: 95, child: BrandIllustration(kind: BrandIllustrationKind.profile, height: 95)),
               ],
             ),
           ),
