@@ -15,6 +15,10 @@ import 'package:goParcel/utils/colors.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
 import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:lottie/lottie.dart';
+import 'package:flutter/services.dart';
+import 'package:goParcel/screens/home/widgets/radar_pulse.dart';
+import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/widgets/pressable_scale.dart';
 
 class WaitingScreen extends StatefulWidget {
   final String orderId;
@@ -460,16 +464,17 @@ class _WaitingScreenState extends State<WaitingScreen> {
   /// The Booking Guarantee card under the timer: the compensation amount, the referral condition still
   /// pending, or "no compensation" — all from backend data.
   Widget _buildGuaranteeCard() {
+    final p = AppPalette.current;
     final IconData icon;
     final Color tone;
     final Color background;
     final List<Widget> lines;
-    const bold = TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14.5, color: Color(0xFF1F2937));
-    const soft = TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: Color(0xFF6B7280));
+    final bold = AppText.bodyStrong(p.ink).copyWith(fontSize: 14.5);
+    final soft = AppText.caption(p.inkMuted).copyWith(fontSize: 12.5);
     if (_searchGuarantee == 'locked') {
       icon = Icons.hourglass_bottom_rounded;
-      tone = const Color(0xFFF59E0B);
-      background = const Color(0xFFFFF4DC);
+      tone = p.warning;
+      background = p.warningTint;
       final n = _referralsNeeded > 0 ? _referralsNeeded : 1;
       lines = [
         Text("Complete required referrals to unlock compensation benefit.".tr, style: bold),
@@ -478,16 +483,16 @@ class _WaitingScreenState extends State<WaitingScreen> {
       ];
     } else if (_guaranteeAmount > 0) {
       icon = Icons.verified_user_rounded;
-      tone = const Color(0xFF2E9E5B);
-      background = const Color(0xFFE6F6EC);
+      tone = p.successText;
+      background = p.successTint;
       lines = [
         Text("If we can't find a driver, you will receive compensation of".tr, style: bold),
-        Text(rupeesText(_guaranteeAmount), style: bold.copyWith(color: const Color(0xFF2E9E5B), fontSize: 16)),
+        Text(rupeesText(_guaranteeAmount), style: bold.copyWith(color: p.successText, fontSize: 16)),
       ];
     } else {
-      icon = Icons.info_rounded;
-      tone = const Color(0xFF6B7280);
-      background = const Color(0xFFF3F4F6);
+      icon = Icons.info_outline_rounded;
+      tone = p.inkMuted;
+      background = p.surface;
       lines = [
         Text("If we can't find a driver, no compensation is available for this booking.".tr, style: bold),
       ];
@@ -495,12 +500,16 @@ class _WaitingScreenState extends State<WaitingScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tone.withValues(alpha: 0.2)),
+      ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(color: tone.withOpacity(0.18), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: tone.withValues(alpha: 0.14), shape: BoxShape.circle),
             child: Icon(icon, color: tone, size: 24),
           ),
           const SizedBox(width: 12),
@@ -529,232 +538,165 @@ class _WaitingScreenState extends State<WaitingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.current;
+    final isDark = notifier.getIsDark == true;
+    Widget pill({required IconData icon, required String text, double fontSize = 15}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: p.line),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: p.brand, size: 20),
+              const SizedBox(width: 8),
+              Text(text, style: AppText.bodyStrong(p.ink).copyWith(fontSize: fontSize)),
+            ],
+          ),
+        );
+
     return WillPopScope(
       onWillPop: () async {
         _navigateBackToHome();
         return false;
       },
-      child: Scaffold(
-        body: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              linercolor.withOpacity(0.7),
-              linercolor,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // AppBar with back button & Home shortcut
-              const SocketStatusBanner(),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    InkWell(
-                      onTap: _navigateBackToHome,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: _navigateBackToHome,
-                      icon: const Icon(Icons.home_rounded, color: Colors.white, size: 18),
-                      label: Text(
-                        "Home".tr,
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Bold',
-                          fontSize: 14,
-                          color: Colors.white,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+            .copyWith(statusBarColor: Colors.transparent),
+        child: Scaffold(
+          backgroundColor: p.canvas,
+          body: SafeArea(
+            child: Column(
+              children: [
+                const SocketStatusBanner(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      PressableScale(
+                        onTap: _navigateBackToHome,
+                        semanticLabel: 'Back'.tr,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle, border: Border.all(color: p.line)),
+                          child: Icon(Icons.arrow_back_rounded, color: p.ink, size: 22),
                         ),
                       ),
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      TextButton.icon(
+                        onPressed: _navigateBackToHome,
+                        icon: Icon(Icons.home_outlined, color: p.ink, size: 18),
+                        label: Text("Home".tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
+                        style: TextButton.styleFrom(
+                          backgroundColor: p.surface,
+                          minimumSize: const Size(44, 44),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            side: BorderSide(color: p.line),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // The booked vehicle, animated (Bike / E-Loader / 3 Wheeler / 4 Wheeler); the
-                        // generic Lottie below is only the fallback when the vehicle is not known.
-                        if (_vehicleName.isNotEmpty)
-                          VehicleBookingAnimation(vehicleName: _vehicleName, height: 170)
-                        else
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Lottie.asset(
-                            'assets/pickup&drop.json',
-                            height: 180,
-                            errorBuilder: (context, error, stackTrace) {
-                              return SizedBox(
-                                height: 150,
-                                child: Center(
-                                  child: CircularProgressIndicator(color: Colors.white),
+                        // The booked vehicle, animated (Bike / E-Loader / 3 Wheeler / 4 Wheeler) inside the radar;
+                        // the generic Lottie is only the fallback when the vehicle is not known.
+                        RadarPulse(
+                          color: p.brand,
+                          size: 260,
+                          child: _vehicleName.isNotEmpty
+                              ? VehicleBookingAnimation(vehicleName: _vehicleName, height: 120)
+                              : Lottie.asset(
+                                  'assets/pickup&drop.json',
+                                  height: 130,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return SizedBox(
+                                      height: 120,
+                                      child: Center(child: CircularProgressIndicator(color: p.brand)),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
                         ),
-                        const SizedBox(height: 25),
-                        
+                        const SizedBox(height: 8),
                         Text(
                           "Finding Your Driver...".tr,
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy_Bold',
-                            fontSize: 26,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
-                          ),
+                          style: AppText.title(p.ink).copyWith(fontSize: 24),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 16),
-                        
+                        const SizedBox(height: 8),
                         Text(
                           "Please wait while we connect you with the nearest available delivery partner.".tr,
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy_Medium',
-                            fontSize: 16,
-                            color: Colors.white70,
-                            height: 1.4,
-                          ),
+                          style: AppText.body(p.inkMuted).copyWith(height: 1.4),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 25),
-                        
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.white.withOpacity(0.4)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.receipt_long, color: Colors.white, size: 22),
-                              const SizedBox(width: 10),
-                              Text(
-                                "Order ID: #${widget.orderId}",
-                                style: const TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
+                        const SizedBox(height: 18),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            pill(icon: Icons.receipt_long_outlined, text: "Order ID: #${widget.orderId}"),
+                            pill(
+                              icon: Icons.access_time_rounded,
+                              text: _timerDeadline != null ? _formatRemaining() : "—",
+                              fontSize: 18,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 15),
-
-                        // ── Waiting Time Countdown
+                        const SizedBox(height: 6),
                         Text(
                           "Searching for a driver".tr,
-                          style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: Colors.white70),
+                          style: AppText.caption(p.inkSubtle),
                         ),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.18),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.white.withOpacity(0.35)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.access_time_rounded, color: Colors.white, size: 22),
-                              const SizedBox(width: 10),
-                              Text(
-                                _timerDeadline != null ? _formatRemaining() : "—",
-                                style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 22, color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 18),
                         _buildGuaranteeCard(),
-
                         const SizedBox(height: 20),
 
                         // ── Cancel Order Button
                         SizedBox(
                           width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
+                          height: 52,
+                          child: OutlinedButton(
                             onPressed: _isCancelling ? null : _showCancelDialog,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white.withOpacity(0.2),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.5),
-                              ),
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: p.surface,
+                              foregroundColor: p.danger,
+                              side: BorderSide(color: p.danger.withValues(alpha: 0.5), width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
                             child: _isCancelling
-                                ? const SizedBox(
+                                ? SizedBox(
                                     height: 24,
                                     width: 24,
-                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                    child: CircularProgressIndicator(color: p.danger, strokeWidth: 2.5),
                                   )
                                 : Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      const Icon(Icons.cancel_outlined, color: Colors.white, size: 22),
+                                      Icon(Icons.close_rounded, color: p.danger, size: 20),
                                       const SizedBox(width: 8),
-                                      Text(
-                                        "Cancel Order".tr,
-                                        style: const TextStyle(
-                                          fontFamily: 'Gilroy_Bold',
-                                          fontSize: 16,
-                                          color: Colors.white,
-                                        ),
-                                      ),
+                                      Text("Cancel Order".tr, style: AppText.bodyStrong(p.danger).copyWith(fontSize: 16)),
                                     ],
                                   ),
                           ),
                         ),
-                        const SizedBox(height: 30),
                       ],
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       ),
     );
