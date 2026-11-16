@@ -34,13 +34,11 @@
 4. Dark mode on → new widgets use the dark palette, no white-on-white. (Tests in Tasks 1 and 2.)
 5. "Reduce motion" on → header truck and fade-ups don't animate. (Test in Task 4.)
 
-## Open questions for the owner (do not build until answered)
+## Owner answers (2026-11-16)
 
-These spec items have **no existing data/entry point**, so per spec §6 "Mockup elements that need an existing data source" they are left out of Plan 1:
-
-- Wallet balance chip on Home — Home does not load the wallet balance today.
-- Booking Guarantee strip on Home — the quote API needs vehicle `package_ids`, which Home doesn't have.
-- "Buy Anything" and "Offers & Coupons" tiles — `BuyAnythingSelect` and `OfferPage` exist but nothing in the app navigates to them today (possibly switched off on purpose).
+- **Wallet balance chip on Home: YES.** Home reuses the existing wallet-history call (`ApiWrapper.dataPostNode(Config.nodeWalletHistory, {mobile, wallet_type: 'user', from_date: '', to_date: '', txn_type: <wallet_page default>})`, reading `wallet_balance`) — see Task 4. Fails quietly: chip hidden when the call fails.
+- **Booking Guarantee strip on Home: NO** (quote needs vehicle `package_ids`); guarantee stays on vehicle + finding-driver screens.
+- **Buy Anything: stays out for now.** Offers & Coupons not answered → also stays out (both screens unreachable today).
 
 ---
 
@@ -156,7 +154,8 @@ testWidgets('components use dark palette when notifier is dark', ...)        // 
 
 **Interfaces:**
 - Consumes: Task 1–2 tokens/widgets.
-- Produces: `HomeHeader({required String? address, required VoidCallback onLocationTap, required VoidCallback onNotificationTap})` — `brandTint` band; label "Picking up from".tr; address (null/empty → "Location".tr) with pin + chevron, max 1 line ellipsis; 44×44 notification button (`semanticLabel` "Notifications".tr); heading "What are we moving today?".tr (`AppText.hero`); animated truck on a dashed road inside its own `RepaintBoundary` (7 s loop; static when reduce motion). Bottom padding 92 so the route card can overlap by 72.
+- Also create `ShifterOnline/lib/services/wallet_balance_service.dart`: `double? parseWalletBalance(dynamic response)` (null unless `Result` is true/"true" and `wallet_balance` parses) and `class WalletBalanceService { static Future<double?> fetch(); }` (reads `UserLogin.mobile` from `GetStorage`, same body as `wallet_page.dart` ~151–157; any error → null). Tests: `parseWalletBalance({'Result': true, 'wallet_balance': '240.5'}) == 240.5`; `{'Result': 'false', ...}` → null; `null` → null; `{'Result': true, 'wallet_balance': 'abc'}` → null.
+- Produces: `HomeHeader({required String? address, required VoidCallback onLocationTap, required VoidCallback onNotificationTap, double? walletBalance, VoidCallback? onWalletTap})` — wallet chip ("₹240" style, `rupeesText`-like formatting, wallet icon in brand) shown left of the bell only when `walletBalance != null`; `brandTint` band; label "Picking up from".tr; address (null/empty → "Location".tr) with pin + chevron, max 1 line ellipsis; 44×44 notification button (`semanticLabel` "Notifications".tr); heading "What are we moving today?".tr (`AppText.hero`); animated truck on a dashed road inside its own `RepaintBoundary` (7 s loop; static when reduce motion). Bottom padding 92 so the route card can overlap by 72.
 
 - [ ] **Step 1: Failing tests:**
 
@@ -166,6 +165,7 @@ testWidgets('tapping notifications calls onNotificationTap', ...)
 testWidgets('null address shows "Location"', ...)
 testWidgets('long address at width 320, textScale 1.3 does not overflow', ...) // expect(tester.takeException(), isNull)
 testWidgets('reduce motion: truck does not animate', ...)                      // disableAnimations → hasScheduledFrame false after pump
+testWidgets('wallet chip hidden when walletBalance is null; shown and tappable when set', ...)
 ```
 
 - [ ] **Step 2: Run** `flutter test test/home/home_header_test.dart` — FAIL.
@@ -282,7 +282,7 @@ testWidgets('active order strip: Track calls onTrack; message hidden when empty'
 **Interfaces:**
 - Consumes: Tasks 4–7 widgets.
 - Mapping (old handler → new widget prop; handlers are passed, never rewritten):
-  - `HomeHeader.address` ← `homeAddress`; `onLocationTap` ← `_changePickupLocation`; `onNotificationTap` ← `() => Get.to(Notifications())`.
+  - `HomeHeader.address` ← `homeAddress`; `onLocationTap` ← `_changePickupLocation`; `onNotificationTap` ← `() => Get.to(Notifications())`; `walletBalance` ← new state `double? _walletBalance` loaded once in `initState` (and on return from the wallet page) via `WalletBalanceService.fetch()`; `onWalletTap` ← open the existing wallet page the same way the app already does elsewhere (if none, `Get.to` the wallet page class), then refresh `_walletBalance`.
   - `HomeRouteCard`: `pickupAddress` ← `_confirmedPickupAddress`; `dropAddress` ← `_confirmedDropAddress`; `stops` ← `_extraStops` addresses; `canAddStop` ← `_extraStops.length < _maxExtraStops`; `onPickupTap` ← `_changePickupLocation`; `onDropTap` ← the current drop row handler (line ~2328); `onStopTap` ← `_editExtraStop`; `onStopDelete` ← `(i) => setState(() => _extraStops.removeAt(i))`; `onAddStop` ← `_addExtraStop`; `bookingType` ← `_selectedBookingType`; `scheduleEnabled` ← `_scheduleBookingEnabled`; `onNow` ← `() => setState(() => _selectedBookingType = 1)`; `onSchedule` ← `_handleScheduleBookingTap`; `onLowFare` ← `_handleNextDayDeliveryTap`; `onChooseVehicle` ← `_openVehicleSelection`.
   - `HomeActiveOrderStrip` ← data and Track body from `_buildActiveOrderCard` (keep `save('OrderID', orderId)` + `Get.to(() => TrackingWay(...))` exactly).
   - `HomeVehicleRow.vehicles` ← existing `wheelerItems` / `wheelerImages`; `onTap` ← `_openVehicleSelection`.
