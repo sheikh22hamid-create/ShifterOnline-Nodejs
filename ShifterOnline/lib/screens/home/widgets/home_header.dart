@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/pressable_scale.dart';
 import '../../../utils/booking_guarantee.dart' show rupeesText;
+import '../../../utils/colors.dart' show notifier;
 
 /// Top of the Home tab: pickup location, wallet chip, notifications, heading and the moving truck.
 /// Presentational only — every tap goes to a callback owned by home.dart.
@@ -23,11 +25,22 @@ class HomeHeader extends StatelessWidget {
   final double? walletBalance;
   final VoidCallback? onWalletTap;
 
+  /// The pickup the customer chose wins over the GPS reverse-geocoded address.
+  static String? pickupLine({required String? confirmedPickup, required String? gpsAddress}) =>
+      (confirmedPickup != null && confirmedPickup.trim().isNotEmpty) ? confirmedPickup : gpsAddress;
+
+  /// How far the route card overlaps the bottom of this header (home.dart uses the same value).
+  static const double overlap = 72;
+
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
     final shownAddress = (address == null || address!.trim().isEmpty) ? 'Location'.tr : address!;
-    return ClipRect(
+    final isDark = notifier.getIsDark == true;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+          .copyWith(statusBarColor: Colors.transparent),
+      child: ClipRect(
       child: ColoredBox(
         color: p.brandTint,
         child: Stack(
@@ -44,7 +57,7 @@ class HomeHeader extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: EdgeInsets.fromLTRB(20, 14 + MediaQuery.paddingOf(context).top, 20, 92),
+              padding: EdgeInsets.fromLTRB(20, 14 + MediaQuery.paddingOf(context).top, 20, overlap + 56),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -127,9 +140,17 @@ class HomeHeader extends StatelessWidget {
                 ],
               ),
             ),
-            const Positioned(left: 0, right: 0, bottom: 18, height: 44, child: RepaintBoundary(child: _TruckRoad())),
+            const Positioned(
+              key: ValueKey('home-header-truck'),
+              left: 0,
+              right: 0,
+              bottom: overlap + 4,
+              height: 44,
+              child: RepaintBoundary(child: _TruckRoad()),
+            ),
           ],
         ),
+      ),
       ),
     );
   }

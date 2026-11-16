@@ -2700,14 +2700,15 @@ class _HomeState extends State<Home> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   HomeHeader(
-                    address: homeAddress,
+                    address: HomeHeader.pickupLine(
+                        confirmedPickup: _confirmedPickupAddress, gpsAddress: homeAddress),
                     onLocationTap: _changePickupLocation,
                     onNotificationTap: () => Get.to(Notifications()),
                     walletBalance: _walletBalance,
                     onWalletTap: _openWalletFromHome,
                   ),
                   Transform.translate(
-                    offset: const Offset(0, -72),
+                    offset: const Offset(0, -HomeHeader.overlap),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                           16, 0, 16, Get.height / 10 + MediaQuery.of(context).padding.bottom + 20),

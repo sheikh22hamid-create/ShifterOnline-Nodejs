@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/home/widgets/home_header.dart';
 import 'package:goParcel/services/wallet_balance_service.dart';
@@ -25,6 +26,25 @@ void main() {
       expect(parseWalletBalance(null), isNull);
       expect(parseWalletBalance({'Result': true, 'wallet_balance': 'abc'}), isNull);
     });
+  });
+
+  test('header shows the confirmed pickup when there is one, else the GPS address', () {
+    expect(HomeHeader.pickupLine(confirmedPickup: 'Sector 50', gpsAddress: 'Sector 18'), 'Sector 50');
+    expect(HomeHeader.pickupLine(confirmedPickup: null, gpsAddress: 'Sector 18'), 'Sector 18');
+  });
+
+  testWidgets('truck sits above the 72px zone the route card overlaps', (tester) async {
+    await tester.pumpWidget(_host(HomeHeader(address: 'x', onLocationTap: () {}, onNotificationTap: () {})));
+    final header = tester.getRect(find.byType(HomeHeader));
+    final truck = tester.getRect(find.byKey(const ValueKey('home-header-truck')));
+    expect(truck.bottom, lessThanOrEqualTo(header.bottom - 72));
+  });
+
+  testWidgets('header asks for dark status-bar icons in light mode', (tester) async {
+    await tester.pumpWidget(_host(HomeHeader(address: 'x', onLocationTap: () {}, onNotificationTap: () {})));
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+        find.descendant(of: find.byType(HomeHeader), matching: find.byType(AnnotatedRegion<SystemUiOverlayStyle>)));
+    expect(region.value.statusBarIconBrightness, Brightness.dark);
   });
 
   testWidgets('tapping the address calls onLocationTap', (tester) async {
