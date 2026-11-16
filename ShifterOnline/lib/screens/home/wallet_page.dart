@@ -13,6 +13,8 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../../Api/Api_wrapper.dart';
 import '../../../Api/config.dart';
 import '../../../utils/colors.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -741,268 +743,191 @@ class _WalletPageState extends State<WalletPage> {
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final p = AppPalette.current;
+    final filtered = filterTxnType.isNotEmpty || filterFromDate != null || filterToDate != null;
     return Scaffold(
-      backgroundColor: linercolor,
+      backgroundColor: p.canvas,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: linercolor,
-        centerTitle: true,
-        title: Text(
-          "Wallet / Ledger".tr,
-          style: TextStyle(
-            color: whitecolor,
-            fontFamily: 'Gilroy_Bold',
-          ),
-        ),
+        backgroundColor: p.brandTint,
+        centerTitle: false,
+        title: Text("Wallet / Ledger".tr, style: AppText.title(p.ink)),
       ),
-      body: Container(
-        width: Get.width,
-        decoration: BoxDecoration(
-          color: notifier.lightBgColor,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-        ),
-        child: isLoading
-            ? Center(child: CircularProgressIndicator(color: notifier.darklinercolor))
-            : Column(
-          children: [
-            // Wallet Balance Card
-            Container(
-              margin: EdgeInsets.all(16),
-              padding: EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [linercolor, Color(0xFF6C63FF)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: linercolor.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    "Ledger Balance".tr,
-                    style: TextStyle(
-                      color: whitecolor.withOpacity(0.8),
-                      fontSize: 16,
-                      fontFamily: 'Gilroy_Medium',
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    "₹${walletBalance.toStringAsFixed(2)}",
-                    style: TextStyle(
-                      color: whitecolor,
-                      fontSize: 36,
-                      fontFamily: 'Gilroy_Bold',
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () => Get.to(() => const ReferralPointsScreen()),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+      body: isLoading
+          ? ListView(
+              padding: const EdgeInsets.all(16),
+              children: const [
+                AppSkeleton(height: 200, radius: 20),
+                SizedBox(height: 16),
+                AppSkeleton(height: 64),
+                SizedBox(height: 10),
+                AppSkeleton(height: 64),
+              ],
+            )
+          : Column(
+              children: [
+                // Balance header
+                Container(
+                  width: double.infinity,
+                  color: p.brandTint,
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Ledger Balance".tr, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
+                      const SizedBox(height: 2),
+                      Text("₹${walletBalance.toStringAsFixed(2)}",
+                          style: AppText.title(p.ink).copyWith(fontSize: 36, letterSpacing: -0.5)),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () => Get.to(() => const ReferralPointsScreen()),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.stars_rounded, color: Colors.amber, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            "Points: $walletPoints".tr,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontFamily: 'Gilroy_Bold',
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _showAddMoneyDialog,
-                      icon: Icon(Icons.add, size: 20),
-                      label: Text("Add Money".tr),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: whitecolor,
-                        foregroundColor: linercolor,
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Transaction History Header
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Text(
-                    "Transaction History".tr,
-                    style: TextStyle(
-                      color: notifier.text,
-                      fontSize: 18,
-                      fontFamily: 'Gilroy_Bold',
-                    ),
-                  ),
-                  Spacer(),
-                  IconButton(
-                    onPressed: _showFilterDialog,
-                    icon: Icon(
-                      (filterTxnType.isNotEmpty || filterFromDate != null || filterToDate != null)
-                          ? Icons.filter_alt
-                          : Icons.filter_alt_outlined, 
-                      color: notifier.darklinercolor
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _getWalletHistory,
-                    icon: Icon(Icons.refresh, color: notifier.darklinercolor),
-                  ),
-                ],
-              ),
-            ),
-
-            // Transaction History List
-            Expanded(
-              child: isHistoryLoading
-                  ? Center(child: CircularProgressIndicator(color: notifier.darklinercolor))
-                  : walletHistory.isEmpty
-                  ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.history, size: 60, color: greaycolor),
-                    SizedBox(height: 10),
-                    Text(
-                      "No transactions yet".tr,
-                      style: TextStyle(
-                        color: greaycolor,
-                        fontSize: 16,
-                        fontFamily: 'Gilroy_Medium',
-                      ),
-                    ),
-                  ],
-                ),
-              )
-                  : ListView.separated(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                itemCount: walletHistory.length,
-                physics: BouncingScrollPhysics(),
-                itemBuilder: (context, index) {
-                  var transaction = walletHistory[index];
-                  return Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: notifier.getBgColor,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: notifier.bordecolor),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: transaction["type"] == "credit"
-                                ? Colors.green.withOpacity(0.1)
-                                : Colors.red.withOpacity(0.1),
-                            shape: BoxShape.circle,
+                            color: p.surface,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: p.line),
                           ),
-                          child: Icon(
-                            transaction["type"] == "credit"
-                                ? Icons.arrow_downward
-                                : Icons.arrow_upward,
-                            color: transaction["type"] == "credit"
-                                ? Colors.green
-                                : Colors.red,
-                            size: 20,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                "${transaction["remark"] ?? "Transaction"}",
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 14,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                DateFormat("MMM dd, yyyy - hh:mm a").format(
-                                    DateTime.parse(transaction["created_at"])
-                                ),
-                                style: TextStyle(
-                                  color: greaycolor,
-                                  fontSize: 12,
-                                  fontFamily: 'Gilroy_Medium',
-                                ),
-                              ),
+                              Icon(Icons.toll_outlined, color: p.warning, size: 18),
+                              const SizedBox(width: 6),
+                              Text("Points: $walletPoints".tr,
+                                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
+                              const SizedBox(width: 4),
+                              Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 18),
                             ],
                           ),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              "₹${transaction["amount"]}",
-                              style: TextStyle(
-                                color: transaction["type"] == "credit"
-                                    ? Colors.green
-                                    : Colors.red,
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              transaction["type"] == "credit" ? "Credit" : "Debit",
-                              style: TextStyle(
-                                color: transaction["type"] == "credit"
-                                    ? Colors.green
-                                    : Colors.red,
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton.icon(
+                          onPressed: _showAddMoneyDialog,
+                          icon: const Icon(Icons.add, size: 20),
+                          label: Text("Add Money".tr, style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16)),
                         ),
-                      ],
-                    ),
-                  );
-                },
-                separatorBuilder: (BuildContext context, int index) {
-                  return SizedBox(height: 8);
-                },
-              ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Transaction History Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+                  child: Row(
+                    children: [
+                      Text("Transaction History".tr, style: AppText.section(p.ink)),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Filter'.tr,
+                        onPressed: _showFilterDialog,
+                        icon: Icon(filtered ? Icons.filter_alt : Icons.filter_alt_outlined,
+                            color: filtered ? p.brand : p.ink),
+                      ),
+                      IconButton(
+                        tooltip: 'Refresh'.tr,
+                        onPressed: _getWalletHistory,
+                        icon: Icon(Icons.refresh, color: p.ink),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Transaction History List
+                Expanded(
+                  child: isHistoryLoading
+                      ? ListView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: const [
+                            AppSkeleton(height: 64),
+                            SizedBox(height: 8),
+                            AppSkeleton(height: 64),
+                            SizedBox(height: 8),
+                            AppSkeleton(height: 64),
+                          ],
+                        )
+                      : walletHistory.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 72,
+                                    height: 72,
+                                    decoration: BoxDecoration(
+                                        color: p.surface, shape: BoxShape.circle, border: Border.all(color: p.line)),
+                                    child: Icon(Icons.history, size: 32, color: p.inkSubtle),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text("No transactions yet".tr, style: AppText.bodyStrong(p.ink)),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              itemCount: walletHistory.length,
+                              physics: const BouncingScrollPhysics(),
+                              itemBuilder: (context, index) {
+                                var transaction = walletHistory[index];
+                                final credit = transaction["type"] == "credit";
+                                final fg = credit ? p.successText : p.danger;
+                                return Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: p.surface,
+                                    borderRadius: BorderRadius.circular(AppRadius.card),
+                                    border: Border.all(color: p.line),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: BoxDecoration(
+                                          color: credit ? p.successTint : p.dangerTint,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(credit ? Icons.arrow_downward : Icons.arrow_upward, color: fg, size: 18),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text("${transaction["remark"] ?? "Transaction"}",
+                                                style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              DateFormat("MMM dd, yyyy - hh:mm a")
+                                                  .format(DateTime.parse(transaction["created_at"])),
+                                              style: AppText.caption(p.inkSubtle),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text("${credit ? '+' : '−'} ₹${transaction["amount"]}",
+                                              style: AppText.bodyStrong(fg).copyWith(fontSize: 15)),
+                                          Text((credit ? "Credit" : "Debit").tr, style: AppText.caption(fg)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                              separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 8),
+                            ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
     );
   }
 }
