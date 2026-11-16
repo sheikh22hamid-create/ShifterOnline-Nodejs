@@ -2402,7 +2402,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // ── 4. LIVE DRIVER TRACKING MAP CARD ──────────────────────────────────────
 
-  Widget _buildLiveTrackingCard() {
+  /// [hero] = full-bleed map behind the tracking sheet (active orders);
+  /// [bottomInset] keeps markers out from under that sheet.
+  Widget _buildLiveTrackingCard({bool hero = false, double bottomInset = 0}) {
     final pLat = double.tryParse(orderProduc?['plat']?.toString() ?? '');
     final pLng = double.tryParse(orderProduc?['plong']?.toString() ?? '');
     final hasCoords = pLat != null && pLng != null;
@@ -2428,6 +2430,131 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           type: widget.type,
           initialOrderData: Map<String, dynamic>.from(orderProduc ?? {}),
         ));
+
+    final p = AppPalette.current;
+    final floatShadow = [
+      BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 3)),
+    ];
+
+    Widget etaChip(LatLng? driverPos) {
+      if (driverPos == null || status == "Completed" || status == "Cancelled") {
+        return const SizedBox.shrink();
+      }
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(16), boxShadow: floatShadow),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.two_wheeler_rounded, color: p.brand, size: 22),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(chipTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: p.ink, fontFamily: "Gilroy_Bold", fontSize: 13)),
+                  if (chipSub.isNotEmpty)
+                    Text(chipSub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: p.inkSubtle, fontFamily: "Gilroy_Medium", fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget openMapsChip() => Semantics(
+          button: true,
+          child: InkWell(
+            onTap: openLive,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(20), boxShadow: floatShadow),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.map_outlined, size: 16, color: p.brandText),
+                  const SizedBox(width: 5),
+                  Text("Open in Maps".tr,
+                      style: TextStyle(color: p.brandText, fontFamily: "Gilroy_Bold", fontSize: 12.5)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.open_in_new_rounded, size: 13, color: p.brandText),
+                ],
+              ),
+            ),
+          ),
+        );
+
+    if (hero) {
+      if (!hasCoords) {
+        return Container(
+          color: p.brandTint,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.location_searching_rounded, size: 34, color: p.brand),
+              const SizedBox(height: 8),
+              Text(
+                "Driver location will be visible once assigned".tr,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.inkMuted, fontFamily: "Gilroy_Medium", fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      }
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: ValueListenableBuilder<LatLng?>(
+              valueListenable: _driverMapPositionNotifier,
+              builder: (context, driverPos, _) {
+                return GoogleMap(
+                  initialCameraPosition: CameraPosition(target: driverPos ?? LatLng(pLat, pLng), zoom: 13),
+                  markers: _buildMapMarkers(),
+                  padding: EdgeInsets.only(top: 64, bottom: bottomInset),
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  rotateGesturesEnabled: false,
+                  tiltGesturesEnabled: false,
+                  mapToolbarEnabled: false,
+                  onMapCreated: (controller) {
+                    _liveMapController = controller;
+                    _fitMapToMarkers();
+                  },
+                );
+              },
+            ),
+          ),
+          Positioned(
+            top: 12,
+            left: 12,
+            right: 12,
+            child: ValueListenableBuilder<LatLng?>(
+              valueListenable: _driverMapPositionNotifier,
+              builder: (context, driverPos, _) => Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: Align(alignment: Alignment.centerLeft, child: etaChip(driverPos))),
+                  const SizedBox(width: 8),
+                  openMapsChip(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     return Container(
       width: double.infinity,
@@ -5983,12 +6110,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final status = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     final isFinished = status == "completed" || status == "cancelled" || status == "cancel";
 
-    Widget content = SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    // Active order: Porter-style map hero with the cards in a draggable sheet
+    // (driver + OTP first). Finished orders keep the plain scrolling page.
+    final sections = <Widget>[
           if (status == "cancelled" || status == "cancel") ...[
             _buildOrderSummaryCard(),
             const SizedBox(height: 14),
@@ -5996,19 +6120,22 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           ] else
             _buildHeroCard(),
           const SizedBox(height: 14),
-          if (!isFinished) ...[
-            RepaintBoundary(child: _buildLiveTrackingCard()),
-            const SizedBox(height: 14),
-          ],
           // Completed or cancelled trip: the route the driver actually drove (up to the cancellation) + distance.
           if ((status == "completed" || status == "cancelled" || status == "cancel") && orderid != "0" && orderid.isNotEmpty) ...[
             OrderRouteMap(key: ValueKey("route_$orderid"), orderId: orderid, embedded: true),
             const SizedBox(height: 14),
           ],
-          _buildRouteCard(),
-          const SizedBox(height: 14),
-          _buildOtpAndRiderSection(),
-          const SizedBox(height: 14),
+          if (!isFinished) ...[
+            _buildOtpAndRiderSection(),
+            const SizedBox(height: 14),
+            _buildRouteCard(),
+            const SizedBox(height: 14),
+          ] else ...[
+            _buildRouteCard(),
+            const SizedBox(height: 14),
+            _buildOtpAndRiderSection(),
+            const SizedBox(height: 14),
+          ],
           // The hero card already says where the trip is; keep the extra
           // guidance card only for the two stages that need an instruction.
           if (status == "pickup" || orderProduc?["trip_progress"]?["arrived_drop"] == true) ...[
@@ -6057,9 +6184,66 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           const SizedBox(height: 8),
           _buildActionsArea(),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
-        ],
-      ),
-    );
+    ];
+
+    Widget content;
+    if (isFinished) {
+      content = SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        physics: const BouncingScrollPhysics(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
+      );
+    } else {
+      final p = AppPalette.current;
+      content = LayoutBuilder(
+        builder: (context, box) {
+          const initial = 0.56;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: _buildLiveTrackingCard(hero: true, bottomInset: box.maxHeight * initial),
+                ),
+              ),
+              DraggableScrollableSheet(
+                initialChildSize: initial,
+                minChildSize: 0.3,
+                maxChildSize: 1.0,
+                snap: true,
+                snapSizes: const [initial],
+                builder: (context, scroll) => Container(
+                  decoration: BoxDecoration(
+                    color: p.canvas,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 16, offset: const Offset(0, -2)),
+                    ],
+                  ),
+                  child: SingleChildScrollView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(2)),
+                          ),
+                        ),
+                        ...sections,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
 
     if (_isAdvancePaymentRequiredForOrder) {
       return ImageFiltered(
@@ -6093,24 +6277,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             Expanded(
               child: Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: notifier.lightBgColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                  child: isLoading && orderProduc == null
-                      ? _buildSkeletonLoader()
-                      : orderProduc == null
-                          ? _buildErrorState()
-                          : _buildMainContent(context),
-                ),
+                color: AppPalette.current.canvas,
+                child: isLoading && orderProduc == null
+                    ? _buildSkeletonLoader()
+                    : orderProduc == null
+                        ? _buildErrorState()
+                        : _buildMainContent(context),
               ),
             ),
           ],
