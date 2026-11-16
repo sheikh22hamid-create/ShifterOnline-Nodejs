@@ -17,6 +17,10 @@ import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_buttons.dart';
+import '../../theme/widgets/pressable_scale.dart';
+import 'widgets/pin_drop_marker.dart';
 
 class LocationConfirmMapScreen extends StatefulWidget {
   final String locationType; // 'Pickup', 'Drop', 'Stop'
@@ -404,19 +408,35 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
   @override
   Widget build(BuildContext context) {
     final notifier = Provider.of<ColorNotifier>(context, listen: true);
-    final themeColor = notifier.darklinercolor;
-    final indicatorColor = _isAddress
-        ? themeColor
-        : (_isPickup ? const Color(0xff10B981) : const Color(0xffEF4444));
+    final p = AppPalette.current;
+    final indicatorColor = _isAddress ? p.brand : (_isPickup ? p.success : p.brand);
+    final mapHeight = MediaQuery.of(context).size.height * 0.52;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    Widget roundMapButton({required IconData icon, required VoidCallback onTap, required String label, Color? color}) =>
+        PressableScale(
+          onTap: onTap,
+          semanticLabel: label,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: p.surface,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 12, offset: const Offset(0, 4))],
+            ),
+            child: Icon(icon, color: color ?? p.ink, size: 22),
+          ),
+        );
 
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
+      backgroundColor: p.canvas,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // ── 1. Full Google Map ──────────────────────────────────────────
           SizedBox(
-            height: MediaQuery.of(context).size.height * 0.52,
+            height: mapHeight,
             width: double.infinity,
             child: GoogleMap(
               initialCameraPosition: CameraPosition(
@@ -434,88 +454,35 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
             ),
           ),
 
-          // ── 2. Centered Pin Marker Pointer ───────────────────────────────
+          // ── 2. Centered Pin Marker (tip on the map centre) ───────────────
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: MediaQuery.of(context).size.height * 0.52,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 36),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: indicatorColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isPickup
-                        ? Icons.arrow_upward_rounded
-                        : (_isDrop ? Icons.arrow_downward_rounded : Icons.location_on_rounded),
-                    color: Colors.white,
-                    size: 24,
-                  ),
+            height: mapHeight,
+            child: IgnorePointer(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: PinDropMarker.height - 10),
+                  child: PinDropMarker(color: indicatorColor),
                 ),
               ),
             ),
           ),
 
-          // ── 3. Top Floating App Bar / Controls ──────────────────────────
+          // ── 3. Top Floating Controls ────────────────────────────────────
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Back Button
-                  InkWell(
-                    onTap: () => Get.back(),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: notifier.getBgColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(Icons.arrow_back_rounded, color: notifier.text, size: 22),
-                    ),
-                  ),
-
-                  // GPS Recenter Button
-                  InkWell(
-                    onTap: _recenterToGps,
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: notifier.getBgColor,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Icon(Icons.my_location_rounded, color: themeColor, size: 22),
-                    ),
-                  ),
+                  roundMapButton(icon: Icons.arrow_back_rounded, label: 'Back'.tr, onTap: () => Get.back()),
+                  roundMapButton(
+                      icon: Icons.my_location_rounded,
+                      label: 'Use my current location'.tr,
+                      color: p.brand,
+                      onTap: _recenterToGps),
                 ],
               ),
             ),
@@ -527,27 +494,20 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
             child: Container(
               height: MediaQuery.of(context).size.height * 0.58,
               width: double.infinity,
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                MediaQuery.of(context).padding.bottom > 0
-                    ? MediaQuery.of(context).padding.bottom + 8
-                    : 16,
-              ),
+              padding: EdgeInsets.fromLTRB(16, 8, 16, bottomInset > 0 ? bottomInset + 8 : 16),
               decoration: BoxDecoration(
-                color: notifier.getBgColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.16),
-                    blurRadius: 20,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
+                color: p.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, -8))],
               ),
               child: Column(
                 children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(2)),
+                  ),
                   // Scrollable form fields
                   Expanded(
                     child: SingleChildScrollView(
@@ -555,83 +515,49 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Top Address Row + Change Button
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: notifier.lightBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: notifier.bordecolor),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: indicatorColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    _isAddress
-                                        ? Icons.location_on_rounded
-                                        : (_isPickup ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded),
-                                    color: Colors.white,
-                                    size: 14,
-                                  ),
+                          // Address + Change
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: _isPickup && !_isAddress ? p.successTint : p.brandTint,
+                                  shape: BoxShape.circle,
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _isGeocoding
-                                            ? "Locating address..."
-                                            : (_currentPlaceName.isNotEmpty ? _currentPlaceName : "Selected Location"),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontFamily: 'Gilroy_Bold',
-                                          fontSize: 15,
-                                          color: notifier.text,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _isGeocoding ? "Please wait..." : _currentAddress,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontFamily: 'Gilroy_Medium',
-                                          fontSize: 12,
-                                          color: greaycolor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                OutlinedButton(
-                                  onPressed: () => Get.back(),
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: themeColor, width: 1.2),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  child: Text(
-                                    "Change",
-                                    style: TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 12,
-                                      color: themeColor,
+                                child: Icon(Icons.location_on_outlined, color: indicatorColor, size: 18),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isGeocoding
+                                          ? "Locating address...".tr
+                                          : (_currentPlaceName.isNotEmpty ? _currentPlaceName : "Selected Location".tr),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppText.bodyStrong(p.ink).copyWith(fontSize: 16),
                                     ),
-                                  ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _isGeocoding ? "Please wait...".tr : _currentAddress,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppText.caption(p.inkSubtle),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 8),
+                              TextButton(
+                                onPressed: () => Get.back(),
+                                style: TextButton.styleFrom(minimumSize: const Size(44, 44), foregroundColor: p.brandText),
+                                child: Text("Change".tr, style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 13)),
+                              ),
+                            ],
                           ),
 
                           const SizedBox(height: 14),
@@ -639,34 +565,8 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                           // House / Building / Flat input
                           TextField(
                             controller: _houseNoController,
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              color: notifier.text,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: "House / Flat / Block / Floor No. (Optional)",
-                              hintStyle: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 13,
-                                color: greaycolor,
-                              ),
-                              filled: true,
-                              fillColor: notifier.lightBgColor,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: notifier.bordecolor),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: notifier.bordecolor),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: themeColor, width: 1.5),
-                              ),
-                            ),
+                            style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
+                            decoration: appInputDecoration(hint: "House / Flat / Block / Floor No. (Optional)".tr),
                           ),
 
                           if (!widget.locationOnly) ...[
@@ -674,12 +574,8 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
 
                           // Section Heading: Contact Details
                           Text(
-                            _isAddress ? "Contact Details" : (_isPickup ? "Sender Details" : (_isDrop ? "Receiver Details" : "Contact Details")),
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              color: notifier.text,
-                            ),
+                            (_isAddress ? "Contact Details" : (_isPickup ? "Sender Details" : (_isDrop ? "Receiver Details" : "Contact Details"))).tr,
+                            style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
                           ),
 
                           const SizedBox(height: 10),
@@ -687,34 +583,10 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                           // Contact Name Input
                           TextField(
                             controller: _nameController,
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              color: notifier.text,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: _isAddress ? "Contact Name" : (_isPickup ? "Sender's Name" : "Receiver's Name"),
-                              labelStyle: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 13,
-                                color: greaycolor,
-                              ),
-                              prefixIcon: Icon(Icons.person_outline_rounded, color: themeColor, size: 20),
-                              filled: true,
-                              fillColor: notifier.lightBgColor,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: notifier.bordecolor),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: notifier.bordecolor),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: themeColor, width: 1.5),
-                              ),
+                            style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
+                            decoration: appInputDecoration(
+                              label: (_isAddress ? "Contact Name" : (_isPickup ? "Sender's Name" : "Receiver's Name")).tr,
+                              prefixIcon: Icon(Icons.person_outline_rounded, color: p.inkSubtle, size: 20),
                             ),
                           ),
 
@@ -737,55 +609,31 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                                 });
                               }
                             },
-                            style: TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              color: notifier.text,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: _isAddress ? "Contact Mobile" : (_isPickup ? "Sender's Mobile" : "Receiver's Mobile"),
-                              labelStyle: TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 13,
-                                color: greaycolor,
-                              ),
-                              prefixIcon: Icon(Icons.phone_outlined, color: themeColor, size: 20),
+                            style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
+                            decoration: appInputDecoration(
+                              label: (_isAddress ? "Contact Mobile" : (_isPickup ? "Sender's Mobile" : "Receiver's Mobile")).tr,
+                              prefixIcon: Icon(Icons.phone_outlined, color: p.inkSubtle, size: 20),
                               // Pick from (and search) the phone book instead of typing.
                               suffixIcon: IconButton(
                                 tooltip: 'Choose from phone book'.tr,
-                                icon: Icon(Icons.contacts_rounded, color: themeColor, size: 22),
+                                icon: Icon(Icons.contacts_rounded, color: p.brand, size: 22),
                                 onPressed: _pickFromPhoneBook,
-                              ),
-                              filled: true,
-                              fillColor: notifier.lightBgColor,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: notifier.bordecolor),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: notifier.bordecolor),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(color: themeColor, width: 1.5),
                               ),
                             ),
                           ),
 
-                          // Optional WhatsApp opt-in (sender only, default unchecked)
+                          // Optional WhatsApp opt-in (default unchecked)
                           if (!_isAddress) ...[
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             InkWell(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(AppRadius.input),
                               onTap: () => setState(() => _sendWhatsapp = !_sendWhatsapp),
                               child: Container(
+                                constraints: const BoxConstraints(minHeight: 48),
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: themeColor.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: themeColor.withOpacity(0.25)),
+                                  color: p.successTint,
+                                  borderRadius: BorderRadius.circular(AppRadius.input),
                                 ),
                                 child: Row(
                                   children: [
@@ -794,26 +642,20 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                                       height: 22,
                                       child: Checkbox(
                                         value: _sendWhatsapp,
-                                        activeColor: themeColor,
+                                        activeColor: p.success,
                                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
                                         onChanged: (val) => setState(() => _sendWhatsapp = val ?? false),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.chat_rounded, color: Color(0xff25D366), size: 22),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
                                         // A stop has no OTP of its own, so its label only promises the booking info.
                                         (_isPickup || _isDrop
                                             ? "Send booking info & OTP on this WhatsApp number"
                                             : "Send booking info on this WhatsApp number").tr,
-                                        style: TextStyle(
-                                          fontFamily: 'Gilroy_Medium',
-                                          fontSize: 12.5,
-                                          color: notifier.text,
-                                        ),
+                                        style: AppText.caption(p.ink).copyWith(fontSize: 13),
                                       ),
                                     ),
                                   ],
@@ -828,8 +670,8 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                             InkWell(
                               borderRadius: BorderRadius.circular(8),
                               onTap: () => _toggleUseMyNumber(null),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(minHeight: 44),
                                 child: Row(
                                   children: [
                                     SizedBox(
@@ -837,19 +679,18 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                                       height: 22,
                                       child: Checkbox(
                                         value: _useMyNumber,
-                                        activeColor: themeColor,
+                                        activeColor: p.brand,
+                                        checkColor: p.onBrand,
                                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
                                         onChanged: (val) => _toggleUseMyNumber(val),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "Use my mobile number ($_myMobile)",
-                                      style: TextStyle(
-                                        fontFamily: 'Gilroy_Medium',
-                                        fontSize: 12.5,
-                                        color: notifier.text,
+                                    const SizedBox(width: 10),
+                                    Flexible(
+                                      child: Text(
+                                        "Use my mobile number (@n)".trParams({'n': _myMobile}),
+                                        style: AppText.caption(p.ink).copyWith(fontSize: 13),
                                       ),
                                     ),
                                   ],
@@ -861,22 +702,15 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                           const SizedBox(height: 12),
 
                           // "Save as" chips (Home, Shop, Other)
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              Text(
-                                "Save as: ",
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 12.5,
-                                  color: greaycolor,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _buildTagChip("Home", Icons.home_rounded, notifier, themeColor),
-                              const SizedBox(width: 8),
-                              _buildTagChip("Shop", Icons.storefront_rounded, notifier, themeColor),
-                              const SizedBox(width: 8),
-                              _buildTagChip("Other", Icons.location_on_rounded, notifier, themeColor),
+                              Text("Save as".tr, style: AppText.caption(p.inkMuted).copyWith(fontFamily: 'Gilroy_Bold')),
+                              _buildTagChip("Home", Icons.home_outlined, notifier, p.brand),
+                              _buildTagChip("Shop", Icons.storefront_outlined, notifier, p.brand),
+                              _buildTagChip("Other", Icons.location_on_outlined, notifier, p.brand),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -889,41 +723,28 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                   const SizedBox(height: 8),
 
                   // Pinned Confirm and Proceed Button (always above navigation bar)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isSavingAddress ? null : _confirmAndProceed,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: themeColor,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: _isSavingAddress
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                            )
-                          : Text(
-                              widget.locationOnly
+                  _isSavingAddress
+                      ? Container(
+                          height: 54,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(color: p.brand, borderRadius: BorderRadius.circular(14)),
+                          child: SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(color: p.onBrand, strokeWidth: 2.5),
+                          ),
+                        )
+                      : AppPrimaryButton(
+                          label: (widget.locationOnly
                                   ? "Confirm Location"
                                   : _isAddress
-                                  ? "Save Address"
-                                  : (_isPickup
-                                      ? "Confirm & Continue"
-                                      : (_isDrop ? "Confirm & Proceed to Vehicles" : "Confirm Stop")),
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 16,
-                                color: Colors.white,
-                              ),
-                            ),
-                    ),
-                  ),
+                                      ? "Save Address"
+                                      : (_isPickup
+                                          ? "Confirm & Continue"
+                                          : (_isDrop ? "Confirm & Proceed to Vehicles" : "Confirm Stop")))
+                              .tr,
+                          onPressed: _isSavingAddress ? null : _confirmAndProceed,
+                        ),
                 ],
               ),
             ),
@@ -934,35 +755,28 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
   }
 
   Widget _buildTagChip(String label, IconData icon, ColorNotifier notifier, Color themeColor) {
+    final p = AppPalette.current;
     final isSelected = _selectedTag == label;
-    return InkWell(
+    return PressableScale(
       onTap: () => setState(() => _selectedTag = label),
-      borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: isSelected ? themeColor.withOpacity(0.12) : notifier.lightBgColor,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? themeColor : notifier.bordecolor,
-            width: 1.2,
-          ),
+          color: isSelected ? p.brandTint : p.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: isSelected ? p.brand : p.line, width: isSelected ? 1.5 : 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected ? themeColor : notifier.text,
-            ),
+            Icon(icon, size: 15, color: isSelected ? p.brand : p.ink),
             const SizedBox(width: 6),
             Text(
-              label,
-              style: TextStyle(
+              label.tr,
+              style: AppText.caption(p.ink).copyWith(
                 fontFamily: isSelected ? 'Gilroy_Bold' : 'Gilroy_Medium',
-                fontSize: 12.5,
-                color: isSelected ? themeColor : notifier.text,
+                fontSize: 13,
               ),
             ),
           ],

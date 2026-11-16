@@ -107,6 +107,29 @@ class AppSpace {
   static const double xs = 4, s = 8, m = 12, l = 16, xl = 20, xxl = 24;
 }
 
+/// Text field look for the redesigned screens: rounded 12, thin line border, brand when focused.
+InputDecoration appInputDecoration({String? label, String? hint, Widget? prefixIcon, Widget? suffixIcon}) {
+  final p = AppPalette.current;
+  OutlineInputBorder border(Color c, double w) =>
+      OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c, width: w));
+  return InputDecoration(
+    labelText: label,
+    hintText: hint,
+    prefixIcon: prefixIcon,
+    suffixIcon: suffixIcon,
+    filled: true,
+    fillColor: p.surface,
+    labelStyle: AppText.caption(p.inkMuted).copyWith(fontSize: 13),
+    hintStyle: AppText.body(p.inkSubtle).copyWith(fontSize: 14),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    border: border(p.line, 1),
+    enabledBorder: border(p.line, 1),
+    focusedBorder: border(p.brand, 1.5),
+    errorBorder: border(p.danger, 1),
+    focusedErrorBorder: border(p.danger, 1.5),
+  );
+}
+
 class AppText {
   static const String _regular = 'Gilroy_Regular';
   static const String _medium = 'Gilroy_Medium';
