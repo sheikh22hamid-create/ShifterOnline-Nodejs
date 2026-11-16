@@ -2,6 +2,7 @@
 
 import 'package:goParcel/theme/app_tokens.dart';
 import 'package:goParcel/screens/myorder/tracking_rules.dart';
+import 'package:goParcel/screens/myorder/widgets/trip_complete_widgets.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
@@ -4723,17 +4724,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_isUnrated()) ...[
-            appButton1(
-              tital: "Order Review".tr,
-              buttonbgColor: linercolor,
-              bordecolor: linercolor,
-              onTap: () {
-                _openCustomerFeedbackSheet();
-              },
-            ),
-            const SizedBox(height: 12),
-          ],
+          // Rating lives in the RateTripCard just above this card.
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -6095,13 +6086,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     if (s == "completed") {
       if (!_isUnrated()) return const SizedBox.shrink();
-      return appButton1(
-        tital: "Order Review".tr,
-        buttonbgColor: linercolor,
-        bordecolor: linercolor,
-        onTap: () {
-          _openCustomerFeedbackSheet();
-        },
+      return RateTripCard(
+        driverName: _feedbackDriverName(),
+        vehicleName: (orderProduc?["category"] ?? "").toString(),
+        onRate: (stars) => _openCustomerFeedbackSheet(manual: true, rating: stars),
       );
     }
     if (s == "cancelled" || s == "cancel") return const SizedBox.shrink();
@@ -6111,17 +6099,36 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     return _buildMoreOptionsRow();
   }
 
+  /// "Order #1015 · Mon, 16 Nov, 2026 • 09:22 AM" under the trip-complete tick.
+  String _tripCompleteSubtitle() {
+    final id = orderProduc?["order_id"] ?? orderid;
+    final date = _formatOrderDate(orderProduc?["order_date"]?.toString());
+    return date.isEmpty ? "${"Order".tr} #$id" : "${"Order".tr} #$id · $date";
+  }
+
   Widget _buildMainContent(BuildContext context) {
     final status = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     final isFinished = status == "completed" || status == "cancelled" || status == "cancel";
 
     // Active order: Porter-style map hero with the cards in a draggable sheet
     // (driver + OTP first). Finished orders keep the plain scrolling page.
+    final isCompleted = status == "completed";
+    final rateCard = isCompleted ? _buildActionsArea() : null;
+    final hasRateCard = rateCard != null && rateCard is! SizedBox;
     final sections = <Widget>[
           if (status == "cancelled" || status == "cancel") ...[
             _buildOrderSummaryCard(),
             const SizedBox(height: 14),
             _buildStatusTimeline(),
+          ] else if (isCompleted) ...[
+            // Trip complete (mockup 7): tick header, what was paid, then the rating card.
+            TripCompleteHeader(subtitle: _tripCompleteSubtitle()),
+            const SizedBox(height: 14),
+            _buildPaymentSummaryCard(),
+            if (hasRateCard) ...[
+              const SizedBox(height: 14),
+              rateCard,
+            ],
           ] else
             _buildHeroCard(),
           const SizedBox(height: 14),
@@ -6151,8 +6158,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             _buildWaitingCard(),
             const SizedBox(height: 14),
           ],
-          _buildPaymentSummaryCard(),
-          const SizedBox(height: 14),
+          if (!isCompleted) ...[
+            _buildPaymentSummaryCard(),
+            const SizedBox(height: 14),
+          ],
           if (status == "completed") ...[
             Builder(
               builder: (context) {
@@ -6186,8 +6195,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             ),
             const SizedBox(height: 12),
           ],
-          const SizedBox(height: 8),
-          _buildActionsArea(),
+          if (!isCompleted) ...[
+            const SizedBox(height: 8),
+            _buildActionsArea(),
+          ],
           SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
     ];
 
@@ -9102,12 +9113,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     Future.delayed(const Duration(milliseconds: 600), _openCustomerFeedbackSheet);
   }
 
-  void _openCustomerFeedbackSheet() {
-    if (_feedbackSheetShown || !mounted) return;
+  String _feedbackDriverName() =>
+      (orderProduc?["rider_title"] ?? orderProduc?["rider_name"] ?? "").toString();
+
+  /// [manual] = the customer tapped Rate / a star (always opens); [rating] pre-selects stars.
+  void _openCustomerFeedbackSheet({bool manual = false, int? rating}) {
+    if (!canOpenFeedback(shownBefore: _feedbackSheetShown, manual: manual) || !mounted) return;
     final uidInt = int.tryParse(uid.toString()) ?? 0;
     final orderIdInt = int.tryParse(orderid.toString()) ?? 0;
     final riderIdInt = int.tryParse((orderProduc?["rider_id"] ?? "0").toString()) ?? 0;
-    final driverName = (orderProduc?["rider_title"] ?? orderProduc?["rider_name"] ?? "").toString();
+    final driverName = _feedbackDriverName();
 
     if (uidInt <= 0 || orderIdInt <= 0) return;
     _feedbackSheetShown = true;
@@ -9118,6 +9133,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       uid: uidInt,
       riderId: riderIdInt,
       driverName: driverName,
+      vehicleName: (orderProduc?["category"] ?? "").toString(),
+      initialRating: rating,
       onSubmitted: () {
         if (orderProduc is Map) {
           orderProduc["is_rate"] = "1";

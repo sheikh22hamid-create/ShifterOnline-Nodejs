@@ -5,6 +5,13 @@ class LocalString extends Translations {
   @override
   Map<String, Map<String, String>> get keys => {
         "en_US": {
+          // Customer UI redesign (2026-11-16) — Trip complete
+          "Delivered successfully": "Delivered successfully",
+          "Tap a star to rate": "Tap a star to rate",
+          "Delivery partner": "Delivery partner",
+          "Close": "Close",
+          "What went well or needs improvement?": "What went well or needs improvement?",
+          "How was your trip?": "How was your trip?",
           // Customer UI redesign (2026-11-16) — Home
           "Picking up from": "Picking up from",
           "What are we moving today?": "What are we moving today?",

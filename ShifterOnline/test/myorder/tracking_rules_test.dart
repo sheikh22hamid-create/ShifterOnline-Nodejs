@@ -17,6 +17,12 @@ void main() {
     expect(showRiderCard(status: 'Processing', riderId: '0'), isTrue);
   });
 
+  test('feedback sheet auto-opens only once, but a tap always opens it', () {
+    expect(canOpenFeedback(shownBefore: false, manual: false), isTrue);
+    expect(canOpenFeedback(shownBefore: true, manual: false), isFalse);
+    expect(canOpenFeedback(shownBefore: true, manual: true), isTrue);
+  });
+
   test('completed order with a driver shows the card', () {
     expect(showRiderCard(status: 'Completed', riderId: '7'), isTrue);
   });
