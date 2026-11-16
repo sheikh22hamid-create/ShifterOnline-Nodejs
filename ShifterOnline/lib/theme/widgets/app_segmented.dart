@@ -51,7 +51,8 @@ class AppSegmented<T> extends StatelessWidget {
                       Flexible(
                         child: Text(
                           s.label,
-                          maxLines: 1,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
                           overflow: TextOverflow.ellipsis,
                           style: AppText.caption(p.ink).copyWith(
                             fontSize: 13,
