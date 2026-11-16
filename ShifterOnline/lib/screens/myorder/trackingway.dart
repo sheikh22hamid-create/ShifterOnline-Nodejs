@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use, prefer_typing_uninitialized_variables
 
 import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/screens/myorder/tracking_rules.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
@@ -3048,7 +3049,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           _buildShareTrackingCard(),
           const SizedBox(height: 14),
         ],
-        _buildRiderDetailsCard(),
+        if (showRiderCard(
+          status: status,
+          riderId: (orderProduc?["rider_id"] ?? buyMapinfo?["rider_id"] ?? "").toString(),
+        ))
+          _buildRiderDetailsCard(),
       ],
     );
   }
