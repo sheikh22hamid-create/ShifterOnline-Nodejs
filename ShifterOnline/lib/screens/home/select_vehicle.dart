@@ -1530,6 +1530,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                       Flexible(
                       child: PressableScale(
                         onTap: _openSearchAreaSheet,
+                        semanticLabel: 'Search area: @km km'.trParams({'km': '$_selectedRadiusKm'}),
                         child: Container(
                           height: 40,
                           padding: const EdgeInsets.fromLTRB(10, 0, 8, 0),
@@ -1544,7 +1545,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                               Icon(Icons.radar_rounded, color: p.brand, size: 18),
                               const SizedBox(width: 6),
                               Flexible(
-                                child: Text('Search area: @km km'.trParams({'km': '$_selectedRadiusKm'}),
+                                // Short label: the full "Search area: N km" was cut off next to the title.
+                                child: Text('$_selectedRadiusKm km',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),

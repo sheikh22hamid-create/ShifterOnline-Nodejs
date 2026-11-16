@@ -23,6 +23,16 @@ void main() {
     expect(canOpenFeedback(shownBefore: true, manual: true), isTrue);
   });
 
+  test('order date from the server (UTC) is shown in the phone local time', () {
+    const raw = '2026-11-16T15:05:33.000Z';
+    final local = DateTime.parse(raw).toLocal();
+    final hh = (local.hour % 12 == 0 ? 12 : local.hour % 12).toString().padLeft(2, '0');
+    expect(formatOrderDate(raw), contains('$hh:${local.minute.toString().padLeft(2, '0')}'));
+    expect(formatOrderDate(''), '');
+    expect(formatOrderDate(null), '');
+    expect(formatOrderDate('not a date'), 'not a date');
+  });
+
   test('completed order with a driver shows the card', () {
     expect(showRiderCard(status: 'Completed', riderId: '7'), isTrue);
   });

@@ -1,5 +1,16 @@
 /// Small display rules for the order tracking screen, kept out of the widget so they can be tested.
 
+import 'package:intl/intl.dart';
+
+/// "Mon, 16 Nov, 2026 • 08:35 PM". The server sends UTC ("...Z"), so convert to the phone's time first.
+/// Text that is not a date is shown as it came.
+String formatOrderDate(String? raw) {
+  if (raw == null || raw.isEmpty) return '';
+  final dt = DateTime.tryParse(raw);
+  if (dt == null) return raw;
+  return DateFormat('EEE, d MMM, yyyy • hh:mm a').format(dt.toLocal());
+}
+
 bool _hasRider(String riderId) {
   final id = riderId.trim();
   return id.isNotEmpty && id != '0' && id != 'null';

@@ -595,15 +595,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // ── HELPER FORMATTERS & STATUS MAPPINGS ───────────────────────────────────
 
-  String _formatOrderDate(String? rawDate) {
-    if (rawDate == null || rawDate.isEmpty) return "";
-    try {
-      final dt = DateTime.parse(rawDate);
-      return DateFormat("EEE, d MMM, yyyy • hh:mm a").format(dt);
-    } catch (_) {
-      return rawDate;
-    }
-  }
+  String _formatOrderDate(String? rawDate) => formatOrderDate(rawDate);
 
   int _getCurrentStepIndex(String? status) {
     final s = (status ?? "").toLowerCase().trim();
