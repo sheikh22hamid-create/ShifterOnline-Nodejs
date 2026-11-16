@@ -31,6 +31,13 @@ import 'package:goParcel/utils/booking_guarantee.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 import '../myorder/trackingway.dart';
+import 'widgets/vehicle_option_card.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_buttons.dart';
+import '../../theme/widgets/app_info_banner.dart';
+import '../../theme/widgets/app_skeleton.dart';
+import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/pressable_scale.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
   final Map<String, dynamic> pickup;
@@ -1482,24 +1489,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = AppPalette.current;
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        backgroundColor: notifier.lightBgColor,
-        foregroundColor: notifier.text,
-        elevation: 0,
-        leading: IconButton(
-          onPressed: Get.back,
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Select vehicle', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 20)),
-            Text('Choose the best option for your delivery', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12)),
-          ],
-        ),
-        actions: [IconButton(onPressed: () {}, icon: const Icon(Icons.help_outline_rounded))],
+      backgroundColor: p.canvas,
+      appBar: AppTopBar(
+        title: 'Select vehicle'.tr,
+        subtitle: 'Choose the best option for your delivery'.tr,
+        onBack: Get.back,
       ),
       body: SafeArea(
         top: false,
@@ -1521,39 +1517,33 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Available vehicles near pickup', style: TextStyle(color: notifier.text, fontSize: 17, fontFamily: 'Gilroy_Bold')),
-                            const SizedBox(height: 4),
-                            Text('Based on drivers within $_selectedRadiusKm km', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+                            Text('Available vehicles near pickup'.tr, style: AppText.section(p.ink)),
+                            const SizedBox(height: 2),
+                            Text('Based on drivers within @km km'.trParams({'km': '$_selectedRadiusKm'}),
+                                style: AppText.caption(p.inkSubtle).copyWith(fontSize: 11)),
                           ],
                         ),
                       ),
-                      // Highlighted so users spot it quickly: orange tint + border, soft glow, filled icon badge.
-                      InkWell(
+                      const SizedBox(width: 8),
+                      // Kept prominent so customers find it: brand outline + tint.
+                      PressableScale(
                         onTap: _openSearchAreaSheet,
-                        borderRadius: BorderRadius.circular(30),
                         child: Container(
-                          padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
+                          height: 40,
+                          padding: const EdgeInsets.fromLTRB(10, 0, 8, 0),
                           decoration: BoxDecoration(
-                            color: linercolor.withOpacity(notifier.isDark ? 0.16 : 0.08),
-                            border: Border.all(color: linercolor, width: 1.6),
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(color: linercolor.withOpacity(0.28), blurRadius: 14, spreadRadius: 1, offset: const Offset(0, 3)),
-                            ],
+                            color: p.brandTint,
+                            border: Border.all(color: p.brand, width: 1.5),
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
-                                height: 30,
-                                width: 30,
-                                decoration: BoxDecoration(color: linercolor, shape: BoxShape.circle),
-                                child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 18),
-                              ),
-                              const SizedBox(width: 8),
-                              Text('Search area: $_selectedRadiusKm km', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13.5)),
-                              const SizedBox(width: 2),
-                              Icon(Icons.chevron_right_rounded, color: linercolor, size: 22),
+                              Icon(Icons.radar_rounded, color: p.brand, size: 18),
+                              const SizedBox(width: 6),
+                              Text('Search area: @km km'.trParams({'km': '$_selectedRadiusKm'}),
+                                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
+                              Icon(Icons.keyboard_arrow_down_rounded, color: p.ink, size: 20),
                             ],
                           ),
                         ),
@@ -1593,48 +1583,32 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }
 
   Widget _freeRideChanceLockedBanner() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.lock_outline_rounded, color: Colors.orange.shade800, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Free Ride Chance Locked'.tr,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.orange.shade800),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _freeRideChanceMessage ?? 'Complete a successful referral to unlock your next free ride.'.tr,
-                  style: TextStyle(color: notifier.text, fontSize: 11, height: 1.3),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: AppInfoBanner(
+        tone: AppBannerTone.warning,
+        icon: Icons.lock_outline_rounded,
+        title: 'Free Ride Chance Locked'.tr,
+        text: _freeRideChanceMessage ?? 'Complete a successful referral to unlock your next free ride.'.tr,
       ),
     );
   }
 
-  Widget _loadingVehicles() => Container(height: 142, alignment: Alignment.center, decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(16)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: linercolor)), const SizedBox(width: 10), Text('Finding vehicles near pickup...', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 13))]));
+  Widget _loadingVehicles() => SizedBox(
+        height: 142,
+        child: Row(children: [
+          const Expanded(child: AppSkeleton(height: 142, radius: 18)),
+          const SizedBox(width: 10),
+          const Expanded(child: AppSkeleton(height: 142, radius: 18)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Center(
+              child: Text('Finding vehicles near pickup...'.tr,
+                  textAlign: TextAlign.center, style: AppText.caption(AppPalette.current.inkSubtle)),
+            ),
+          ),
+        ]),
+      );
 
   Widget _routeSummary() {
     String contactLine(Map<String, dynamic> data, String fallback) {
@@ -1945,74 +1919,39 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final available = _isAvailable(option['availability']);
     final selected = index == _selectedIndex && available;
     final image = _image(option);
-    return Opacity(
-      opacity: available ? 1 : 0.45,
-      child: InkWell(
-        onTap: available
-            ? () {
-                setState(() {
-                  _selectedIndex = index;
-                  _selectedModelIndex = null;
-                  final allowed = _getAllowedBodyTypes(_vehicles[index]);
-                  if (allowed.isEmpty || (_selectedBodyType != 'any' && !allowed.contains(_selectedBodyType))) {
-                    _selectedBodyType = 'any';
-                  }
-                });
-                _autoScrollPending = true;
-                _scrollToVehicleDetails();
-                _loadModelsForSelectedVehicle();
-              }
-            : () {
-                Get.snackbar(
-                  'Driver Unavailable',
-                  'No ${_vehicleName(option)} drivers found within $_selectedRadiusKm km. Please select an available vehicle or tap "Search area" to expand radius.',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: notifier.isDark ? const Color(0xff2A2A2A) : Colors.white,
-                  colorText: notifier.text,
-                  icon: const Icon(Icons.info_outline_rounded, color: Colors.orange),
-                  margin: const EdgeInsets.all(16),
-                  borderRadius: 12,
-                  duration: const Duration(seconds: 3),
-                );
-              },
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          width: 112,
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 7),
-          decoration: BoxDecoration(
-            color: selected ? linercolor.withOpacity(.06) : notifier.getBgColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? linercolor
-                  : (available ? notifier.bordecolor : notifier.bordecolor.withOpacity(0.4)),
-              width: selected ? 1.6 : 1,
-            ),
-          ),
-          child: Column(children: [
-            Expanded(
-              child: image.isEmpty
-                  ? Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)
-                  : FadeInImage.assetNetwork(placeholder: 'assets/loading.gif', image: Config.resolveImageUrl(image), fit: BoxFit.contain, imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 38)),
-            ),
-            Row(children: [
-              Expanded(child: Text(_vehicleName(option), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: available ? notifier.text : greaycolor, fontSize: 12, fontFamily: 'Gilroy_Bold'))),
-              if (selected) Icon(Icons.check_circle_rounded, color: linercolor, size: 17),
-            ]),
-            const SizedBox(height: 3),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                available ? _startingFare(option) : _unavailableReason(option),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: available ? greaycolor : const Color(0xffE53935), fontSize: 10, fontFamily: 'Gilroy_Medium'),
-              ),
-            ),
-          ]),
-        ),
-      ),
+    return VehicleOptionCard(
+      name: _vehicleName(option),
+      imageUrl: image.isEmpty ? null : Config.resolveImageUrl(image),
+      caption: available ? _startingFare(option) : _unavailableReason(option),
+      selected: selected,
+      available: available,
+      onTap: available
+          ? () {
+              setState(() {
+                _selectedIndex = index;
+                _selectedModelIndex = null;
+                final allowed = _getAllowedBodyTypes(_vehicles[index]);
+                if (allowed.isEmpty || (_selectedBodyType != 'any' && !allowed.contains(_selectedBodyType))) {
+                  _selectedBodyType = 'any';
+                }
+              });
+              _autoScrollPending = true;
+              _scrollToVehicleDetails();
+              _loadModelsForSelectedVehicle();
+            }
+          : () {
+              Get.snackbar(
+                'Driver Unavailable',
+                'No ${_vehicleName(option)} drivers found within $_selectedRadiusKm km. Please select an available vehicle or tap "Search area" to expand radius.',
+                snackPosition: SnackPosition.BOTTOM,
+                backgroundColor: notifier.isDark ? const Color(0xff2A2A2A) : Colors.white,
+                colorText: notifier.text,
+                icon: const Icon(Icons.info_outline_rounded, color: Colors.orange),
+                margin: const EdgeInsets.all(16),
+                borderRadius: 12,
+                duration: const Duration(seconds: 3),
+              );
+            },
     );
   }
 
@@ -2367,26 +2306,23 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
   Widget _bottomCta() => Container(
-    padding: EdgeInsets.fromLTRB(15, 12, 15, 12 + MediaQuery.of(context).padding.bottom),
-    decoration: BoxDecoration(color: notifier.getBgColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(.10), blurRadius: 16, offset: const Offset(0, -5))]),
+    padding: EdgeInsets.fromLTRB(16, 14, 16, 14 + MediaQuery.of(context).padding.bottom),
+    decoration: BoxDecoration(
+      color: AppPalette.current.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 24, offset: const Offset(0, -8))],
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         if (guaranteeLine(_guaranteeAmount) != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Icon(Icons.verified_user_outlined, size: 16, color: linercolor),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    guaranteeLine(_guaranteeAmount)!.tr,
-                    style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 12.5),
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.only(bottom: 10),
+            child: AppInfoBanner(
+              tone: AppBannerTone.success,
+              icon: Icons.verified_user_outlined,
+              text: guaranteeLine(_guaranteeAmount)!.tr,
             ),
           ),
         if (_currentBookingType == 3 && _lowFare != null) ...[
@@ -2505,7 +2441,26 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           ),
           const SizedBox(height: 10),
         ],
-        Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: notifier.text, fontSize: 17, fontFamily: 'Gilroy_Bold')), Text('${_vehicleName(_selected!)} · ${_modelTitle(_selectedModel!)}', style: TextStyle(color: greaycolor, fontSize: 12, fontFamily: 'Gilroy_Medium'))])), SizedBox(width: 160, height: 50, child: ElevatedButton.icon(onPressed: _booking ? null : _bookSelected, icon: const Icon(Icons.arrow_forward_rounded, size: 19), iconAlignment: IconAlignment.end, label: Text(_booking ? 'Booking...' : (_currentBookingType == 3 ? 'Book Next Day' : 'Book now')), style: ElevatedButton.styleFrom(backgroundColor: linercolor, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))) ]),
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}',
+                  style: AppText.title(AppPalette.current.ink).copyWith(fontSize: 19)),
+              Text('${_vehicleName(_selected!)} · ${_modelTitle(_selectedModel!)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption(AppPalette.current.inkSubtle)),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 170,
+            child: AppPrimaryButton(
+              label: (_booking ? 'Booking...' : (_currentBookingType == 3 ? 'Book Next Day' : 'Book now')).tr,
+              onPressed: _booking ? null : _bookSelected,
+            ),
+          ),
+        ]),
       ],
     ),
   );
