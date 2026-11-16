@@ -1,3 +1,4 @@
+import 'package:goParcel/theme/app_theme.dart';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -62,13 +63,7 @@ class _MyAppState extends State<MyApp> {
       child: GetMaterialApp(
         themeMode: ThemeMode.light,
         translations: LocalString(),
-        theme: ThemeData(
-          fontFamily: "Gilroy_Regular",
-          useMaterial3: false,
-          splashColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-        ),
+        theme: buildAppTheme(),
         debugShowCheckedModeBanner: false,
         home: SplashScreen(),
         locale: resolveAppLocale(getdata.read("lan2")?.toString()),
