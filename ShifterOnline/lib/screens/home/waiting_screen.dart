@@ -126,89 +126,94 @@ class _WaitingScreenState extends State<WaitingScreen> {
   }
 
   void _showCancelDialog() {
+    final p = AppPalette.light;
     showDialog(
       context: context,
       builder: (context) {
         return Dialog(
-          backgroundColor: Colors.white,
+          backgroundColor: p.surface,
           insetPadding: const EdgeInsets.symmetric(horizontal: 22),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.campaign_rounded, color: Color(0xFFE53935), size: 28),
-                    const SizedBox(width: 8),
-                    Text("Cancel Order?".tr, style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 22, color: Color(0xFF1F2937))),
-                  ],
+                Center(
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(color: p.dangerTint, shape: BoxShape.circle),
+                    child: Icon(Icons.campaign_rounded, color: p.danger, size: 28),
+                  ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+                Center(
+                  child: Text("Cancel Order?".tr, style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 21, color: p.ink)),
+                ),
+                const SizedBox(height: 4),
                 Center(
                   child: Text(
                     "Wait! You Could Still Get Extra Benefits!".tr,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 15, color: Color(0xFFE53935)),
+                    style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14.5, color: p.brandText),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 14),
                 Text("If you wait a little longer, you may get:".tr,
-                    style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: Color(0xFF4B5563))),
+                    style: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: p.inkMuted)),
                 const SizedBox(height: 10),
                 _cancelBenefit(
                   icon: Icons.currency_rupee_rounded,
-                  color: const Color(0xFF2E9E5B),
-                  background: const Color(0xFFE6F6EC),
+                  color: p.successText,
+                  background: p.successTint,
                   title: "100% Booking Refund".tr,
                   body: "Your booking may be confirmed with a full refund.".tr,
                 ),
                 const SizedBox(height: 10),
                 _cancelBenefit(
                   icon: Icons.verified_user_rounded,
-                  color: const Color(0xFF2563EB),
-                  background: const Color(0xFFE6EFFC),
+                  color: p.brandText,
+                  background: p.brandTint,
                   title: "Get Compensation Benefit".tr,
                   body: "Don't lose chance for compensation benefit.".tr,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Text("Do you still want to cancel this order?".tr,
-                    style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: Color(0xFF1F2937))),
+                    style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: p.ink)),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFE5E7EB),
+                          backgroundColor: p.brand,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         onPressed: () => Navigator.pop(context),
                         child: Text("No, Keep Booking".tr,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: Color(0xFF374151), fontFamily: 'Gilroy_Bold', fontSize: 14)),
+                            style: TextStyle(color: p.onBrand, fontFamily: 'Gilroy_Bold', fontSize: 14)),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFEF2B2D),
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: p.danger,
+                          side: BorderSide(color: p.danger.withOpacity(0.5)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         ),
                         onPressed: () {
                           Navigator.pop(context);
                           pksCancleOrder(comment: "Cancelled by user during driver search");
                         },
                         child: Text("Yes, Cancel".tr,
-                            style: const TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 14)),
+                            style: TextStyle(color: p.danger, fontFamily: 'Gilroy_Bold', fontSize: 14)),
                       ),
                     ),
                   ],
@@ -230,22 +235,23 @@ class _WaitingScreenState extends State<WaitingScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(14)),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 24),
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 15, color: color)),
+                Text(title, style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14.5, color: color)),
                 const SizedBox(height: 2),
-                Text(body, style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: Color(0xFF4B5563))),
+                Text(body, style: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: AppPalette.light.inkMuted)),
               ],
             ),
           ),

@@ -18,6 +18,7 @@ import '../../utils/receiver_pay_options.dart';
 import 'wallet_page.dart';
 import 'widgets/booking_guidelines.dart';
 import '../../theme/app_tokens.dart';
+import 'widgets/booking_option_widgets.dart';
 import '../../theme/widgets/app_top_bar.dart';
 import '../../theme/widgets/pressable_scale.dart';
 
@@ -861,28 +862,33 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   }
 
   Widget _buildReceiverPayCard() {
-    final notifier = Provider.of<ColorNotifier>(context, listen: false);
+    Provider.of<ColorNotifier>(context, listen: false);
+    final pal = AppPalette.current;
     final reason = _receiverReason;
     final active = _receiverPays && reason == null;
+    TextStyle note() => TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3, color: pal.inkSubtle);
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       decoration: BoxDecoration(
-        color: active ? linercolor.withValues(alpha: 0.08) : notifier.getBgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: active ? linercolor : notifier.bordecolor.withValues(alpha: 0.8),
-          width: active ? 1.5 : 1,
-        ),
+        color: active ? pal.brandTint : pal.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: active ? pal.brand : pal.line, width: active ? 1.5 : 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.person_pin_circle_rounded,
-                  color: active ? linercolor : greaycolor, size: 22),
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: active ? pal.surface : pal.canvas, shape: BoxShape.circle),
+                child: Icon(Icons.person_pin_circle_rounded, color: active ? pal.brandText : pal.inkMuted, size: 20),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -890,28 +896,16 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                   children: [
                     Text(
                       "Receiver pays".tr,
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 13.5,
-                        color: notifier.text,
-                      ),
+                      style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: pal.ink),
                     ),
                     if (reason != null) ...[
-                      const SizedBox(height: 1.5),
-                      Text(
-                        reason.tr,
-                        style: TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: greaycolor,
-                        ),
-                      ),
+                      const SizedBox(height: 2),
+                      Text(reason.tr, style: note()),
                     ],
                   ],
                 ),
               ),
               Switch(
-                activeThumbColor: linercolor,
                 value: active,
                 onChanged: reason != null
                     ? null
@@ -923,65 +917,44 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             ],
           ),
           if (active) ...[
-            const SizedBox(height: 6),
-            Text(
-              "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 11.5,
-                color: greaycolor,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              "Your commission (added to the receiver's total)".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 12.5,
-                color: notifier.text,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: percentChoices(_receiverConfig.maxPercent).map((p) {
-                final label = p == p.roundToDouble()
-                    ? "${p.toInt()}%"
-                    : "${p.toStringAsFixed(1)}%";
-                return ChoiceChip(
-                  label: Text(label),
-                  selected: _receiverPercent == p,
-                  selectedColor: linercolor.withValues(alpha: .15),
-                  onSelected: (_) => setState(() => _receiverPercent = p),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              "Commission applies whether the receiver pays cash or online.".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 11.5,
-                color: greaycolor,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Receiver gets a WhatsApp link to pay (no app needed).".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 11.5,
-                color: greaycolor,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              "+91 ${normalizeIndianMobile(widget.dropMobile)}",
-              style: TextStyle(
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 12.5,
-                color: linercolor,
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 6),
+                  Text(
+                    "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.".tr,
+                    style: note(),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Your commission (added to the receiver's total)".tr,
+                    style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 13, color: pal.ink),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: percentChoices(_receiverConfig.maxPercent).map((p) {
+                      final label = p == p.roundToDouble() ? "${p.toInt()}%" : "${p.toStringAsFixed(1)}%";
+                      return BookingChoicePill(
+                        label: label,
+                        selected: _receiverPercent == p,
+                        onTap: () => setState(() => _receiverPercent = p),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  Text("Commission applies whether the receiver pays cash or online.".tr, style: note()),
+                  const SizedBox(height: 4),
+                  Text("Receiver gets a WhatsApp link to pay (no app needed).".tr, style: note()),
+                  const SizedBox(height: 2),
+                  Text(
+                    "+91 ${normalizeIndianMobile(widget.dropMobile)}",
+                    style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 13, color: pal.brandText),
+                  ),
+                ],
               ),
             ),
           ],
