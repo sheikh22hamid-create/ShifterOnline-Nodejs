@@ -367,4 +367,39 @@ router.post(
   }
 );
 
+/**
+ * GET /api/v1/whatsapp/webhook
+ * Meta WhatsApp Cloud API Webhook verification challenge.
+ */
+router.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  const expectedToken = process.env.WHATSAPP_CLOUD_VERIFY_TOKEN || "shifter_trial_wa_2026";
+
+  if (mode === "subscribe" && token === expectedToken) {
+    logger.info("WhatsApp Cloud API webhook verified successfully");
+    return res.status(200).send(challenge);
+  }
+
+  logger.warn(`WhatsApp webhook verification failed. Token mismatch: received=${token}, expected=${expectedToken}`);
+  return res.sendStatus(403);
+});
+
+/**
+ * POST /api/v1/whatsapp/webhook
+ * Receives incoming messages and interactive button clicks from WhatsApp Cloud API.
+ */
+router.post("/webhook", (req, res) => {
+  try {
+    const body = req.body;
+    logger.info(`WhatsApp Cloud webhook received: ${JSON.stringify(body)}`);
+    return res.status(200).send("EVENT_RECEIVED");
+  } catch (err) {
+    logger.error("Error processing WhatsApp webhook payload:", err);
+    return res.sendStatus(500);
+  }
+});
+
 module.exports = router;
