@@ -162,10 +162,24 @@ async function loginByOtp(req, res) {
     if (!mobile) return fail(res, "Something Went Wrong!");
     if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
 
-    const user = await prisma.tbl_user.findFirst({
-      where: { mobile: Number(mobile), status: 1 },
-    });
-    if (!user) return fail(res, "No account found. Please create an account first!");
+    // UserExists lets the app tell "new user → profile details" apart from any other failure.
+    const user = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
+    if (!user) {
+      return res.status(200).json({
+        ResponseCode: "401",
+        Result: "false",
+        ResponseMsg: "No account found. Please create an account first!",
+        UserExists: false,
+      });
+    }
+    if (user.status !== 1) {
+      return res.status(200).json({
+        ResponseCode: "401",
+        Result: "false",
+        ResponseMsg: "This account is deactivated. Please contact support.",
+        UserExists: true,
+      });
+    }
     if (!(await otpService.hasRecentVerifiedOtp(mobile))) return fail(res, OTP_NOT_VERIFIED_MSG);
 
     const data = {};

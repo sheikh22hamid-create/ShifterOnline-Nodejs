@@ -57,6 +57,31 @@ describe("loginByOtp requires a verified OTP", () => {
   });
 });
 
+describe("loginByOtp account lookup", () => {
+  it("flags UserExists:false when no account has this mobile", async () => {
+    prisma.tbl_user.findFirst.mockResolvedValue(null);
+
+    const res = mockRes();
+    await loginByOtp({ body: { mobile: "9876543210", ccode: "+91" } }, res);
+
+    expect(body(res)).toMatchObject({ Result: "false", UserExists: false });
+  });
+
+  it("refuses a deactivated account without sending it to sign-up", async () => {
+    prisma.tbl_user.findFirst.mockResolvedValue({ id: 7, mobile: 9876543210, status: 0, wallet: 0 });
+
+    const res = mockRes();
+    await loginByOtp({ body: { mobile: "9876543210", ccode: "+91" } }, res);
+
+    expect(body(res)).toMatchObject({
+      Result: "false",
+      UserExists: true,
+      ResponseMsg: expect.stringMatching(/deactivated/i),
+    });
+    expect(body(res).UserLogin).toBeUndefined();
+  });
+});
+
 describe("register requires a verified OTP", () => {
   it("does not create an account when the OTP was never verified", async () => {
     otpService.hasRecentVerifiedOtp.mockResolvedValue(false);
