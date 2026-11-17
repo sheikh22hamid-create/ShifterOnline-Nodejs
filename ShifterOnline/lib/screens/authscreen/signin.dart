@@ -27,6 +27,7 @@ import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import '../../utils/node_socket_manager.dart';
 import 'complete_profile.dart';
+import 'widgets/profile_form_widgets.dart';
 import 'widgets/delivery_login_hero.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -674,21 +675,19 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                             setState(() => _numberError = null);
                                           }
                                         },
+                                        // Same weight/size as the +91 prefix so
+                                        // the number reads as one line.
                                         style: const TextStyle(
-                                          fontFamily: 'Gilroy_Medium',
+                                          fontFamily: 'Gilroy_Bold',
                                           fontSize: 15,
+                                          letterSpacing: 0.8,
                                           color: Color(0xFF111827),
                                         ),
-                                        decoration: const InputDecoration(
-                                          hintText: 'Enter mobile number',
-                                          hintStyle: TextStyle(
-                                            fontFamily: 'Gilroy_Medium',
-                                            fontSize: 14,
-                                            color: Color(0xFF9CA3AF),
-                                          ),
-                                          border: InputBorder.none,
-                                          counterText: '',
-                                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                                        cursorColor: const Color(0xFFFA4500),
+                                        decoration: borderlessInputDecoration(
+                                          hint: 'Enter mobile number',
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(vertical: 16),
                                         ),
                                       ),
                                     ),

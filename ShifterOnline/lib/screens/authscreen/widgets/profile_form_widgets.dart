@@ -58,6 +58,32 @@ class CityModel {
   CityModel({required this.id, required this.title});
 }
 
+/// Decoration for a TextField that sits inside its own styled box. The app
+/// theme outlines every field (enabled + focused), so all borders are cleared
+/// here; clearing only `border` leaves a second box drawn inside ours.
+InputDecoration borderlessInputDecoration({
+  String? hint,
+  TextStyle? hintStyle,
+  EdgeInsetsGeometry contentPadding = const EdgeInsets.symmetric(vertical: 15),
+}) {
+  return InputDecoration(
+    hintText: hint,
+    hintStyle: hintStyle ??
+        const TextStyle(
+            fontFamily: 'Gilroy_Medium', fontSize: 14, color: Color(0xFF9CA3AF)),
+    filled: false,
+    isDense: true,
+    counterText: '',
+    contentPadding: contentPadding,
+    border: InputBorder.none,
+    enabledBorder: InputBorder.none,
+    focusedBorder: InputBorder.none,
+    errorBorder: InputBorder.none,
+    disabledBorder: InputBorder.none,
+    focusedErrorBorder: InputBorder.none,
+  );
+}
+
 class ProfileFormErrors {
   final String? name;
   final String? email;
@@ -239,15 +265,16 @@ class ReferralAccordion extends StatelessWidget {
                           fontSize: 14,
                           letterSpacing: 1.5,
                         ),
-                        decoration: const InputDecoration(
-                          hintText: 'ENTER CODE',
-                          hintStyle: TextStyle(
+                        decoration: borderlessInputDecoration(
+                          hint: 'ENTER CODE',
+                          hintStyle: const TextStyle(
                             fontFamily: 'Gilroy_Medium',
                             fontSize: 13,
                             letterSpacing: 0,
                             color: Color(0xFFBBBBBB),
                           ),
-                          border: InputBorder.none,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 13),
                         ),
                       ),
                     ),
@@ -370,6 +397,10 @@ class _CitySheetState extends State<CitySheet> {
                   filled: true,
                   fillColor: AuthTokens.inputFill,
                   border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),

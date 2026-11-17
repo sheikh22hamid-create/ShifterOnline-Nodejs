@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/authscreen/widgets/profile_form_widgets.dart';
+import 'package:goParcel/theme/app_theme.dart';
 
 void main() {
   final indore = CityModel(id: '1', title: 'Indore');
@@ -44,4 +45,27 @@ void main() {
     expect(find.text('Indore'), findsOneWidget);
     expect(find.text('Bhopal'), findsNothing);
   });
+
+  // The app theme outlines every field (enabled/focused). Fields that sit in
+  // their own styled box must draw none, or a second box shows up inside.
+  for (final focused in [false, true]) {
+    testWidgets('borderless field draws no theme outline (focused: $focused)',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: TextField(
+            autofocus: focused,
+            decoration: borderlessInputDecoration(hint: 'Enter mobile number'),
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      final d = tester.widget<InputDecorator>(find.byType(InputDecorator)).decoration;
+      expect(d.enabledBorder, InputBorder.none);
+      expect(d.focusedBorder, InputBorder.none);
+      expect(d.contentPadding, const EdgeInsets.symmetric(vertical: 15));
+    });
+  }
 }
