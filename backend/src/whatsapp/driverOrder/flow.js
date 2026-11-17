@@ -1,0 +1,260 @@
+// WhatsApp Trial Order (spec 2026-11-17, section 3): the driver conversation for a driver_channel='whatsapp' order.
+// A thin adapter: every message re-reads the order from the DB (stepResolver), and a reply maps to exactly ONE of
+// the calls the driver app makes (tripLifecycle.updateStatus / driverTripService.progressTrip / driverCancel /
+// settlementService.markCashReceived). The bot never advances a step itself and keeps no step state of its own -
+// whatsapp_driver_session only holds a pending HAAN confirmation and send/reply bookkeeping.
+const prisma = require("../../config/db");
+const logger = require("../../utils/logger");
+const { RIDER_LOCATION_FRESHNESS_MS } = require("../../config/constants");
+const { normalizeToLast10Digits } = require("../../utils/phone");
+const messages = require("./messages");
+const { resolveStep, stepId, isCashSettlementPending } = require("./stepResolver");
+
+// Lazy: these services sit in a large require graph that also reaches the WhatsApp client; resolving them on use
+// keeps a load-order cycle from ever handing this module a half-initialised exports object.
+const tripLifecycle = () => require("../../services/tripLifecycle");
+const driverTripService = () => require("../../services/driverTripService");
+const settlementService = () => require("../../services/settlementService");
+const dropOtp = () => require("../../services/dropOtp");
+const notifications = () => require("../notifications");
+
+const DRIVER_CANCEL_REASON = "Cancelled by driver on WhatsApp";
+const OTP_RE = /^\d{4,6}$/;
+// Same as the driver app: a driver may cancel only before pickup is complete.
+const CANCELLABLE_STEPS = new Set(["go_pickup", "pickup_otp", "loading"]);
+const EARLY_DROP_STEPS = new Set(["at_drop", "drop_otp"]);
+// Same messages orderController.orderStatusChangeLegacy shows for driverCancel's error codes.
+const CANCEL_ERRORS = {
+  ORDER_NOT_FOUND: "Order not found",
+  NOT_ASSIGNED_DRIVER: "You are not assigned to this order",
+  ORDER_NOT_CANCELLABLE: "Order can no longer be cancelled",
+};
+
+// Same cash test tripLifecycle.updateStatus uses when it decides a settlement is due.
+const isCashBooking = (order) =>
+  Number(order.p_method_id) === 2 || Number(order.p_method_id) === 0 || String(order.trans_id || "").toLowerCase().startsWith("cash");
+
+/** "  paisa  mila " -> "PAISAMILA", "48 21" -> "4821". */
+const normalizeReply = (text) => String(text ?? "").trim().toUpperCase().replace(/\s+/g, "");
+
+async function loadContext(orderId) {
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
+  if (!order) return null;
+  const session = await prisma.whatsapp_driver_session.findUnique({ where: { order_id: orderId } });
+  // The session remembers which driver this conversation belongs to, so a cancel / re-live (rid back to 0) or a
+  // reassignment is seen as "this driver's order is gone" instead of acting for whoever holds it now.
+  const riderId = Number(session?.rider_id || order.rid) || 0;
+  const [rider, stops, progress, timer, settlement] = await Promise.all([
+    riderId
+      ? prisma.tbl_rider.findUnique({
+          where: { id: riderId },
+          select: { id: true, fmobile: true, full_name: true, rlats: true, rlongs: true, rloc_updated_at: true },
+        })
+      : null,
+    prisma.pkg_order_stops.findMany({ where: { order_id: orderId }, orderBy: [{ sequence: "asc" }, { id: "asc" }] }),
+    prisma.driver_trip_progress.findUnique({ where: { order_id: orderId } }),
+    riderId ? prisma.pkg_order_wait_timer.findUnique({ where: { order_id_rid: { order_id: orderId, rid: riderId } } }) : null,
+    order.o_status === "Completed" ? prisma.order_settlement.findUnique({ where: { order_id: orderId } }) : null,
+  ]);
+  const dropOtpRequired = Number(order.order_status) === 3 ? await dropOtp().isRequired(order) : false;
+  const assignedToRider = riderId > 0 && Number(order.rid) === riderId;
+  const step = assignedToRider
+    ? resolveStep({ order, progress, stops, timer, dropOtpRequired, settlement })
+    : { key: "cancelled" };
+  return { order, rider, riderId, stops, progress, timer, dropOtpRequired, settlement, session, step };
+}
+
+/** The driver's last known position, only when fresh (same 2-minute rule as dispatch); otherwise omitted. */
+function freshLocation(rider) {
+  if (!rider?.rloc_updated_at) return { lat: undefined, lng: undefined };
+  if (Date.now() - new Date(rider.rloc_updated_at).getTime() > RIDER_LOCATION_FRESHNESS_MS) return { lat: undefined, lng: undefined };
+  const lat = Number(rider.rlats), lng = Number(rider.rlongs);
+  if (rider.rlats == null || rider.rlongs == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return { lat: undefined, lng: undefined };
+  return { lat, lng };
+}
+
+/** The single step -> backend-call mapping. null = this reply does nothing on this step. */
+function planFor(step, reply) {
+  switch (step.key) {
+    case "go_pickup": return reply === "1" ? { status: "arrived" } : null;
+    case "pickup_otp": return OTP_RE.test(reply) ? { verifyOtp: reply } : null;
+    case "loading": return reply === "2" ? { status: "pickup" } : null;
+    case "go_stop": return reply === "3" ? { status: `arrived_stop_${step.stopNumber}` } : null;
+    case "at_stop": return reply === "4" ? { status: `complete_stop_${step.stopNumber}` } : null;
+    case "go_drop": return reply === "5" ? { status: "arrived_drop" } : null;
+    case "at_drop": return reply === "6" ? { status: "complete" } : null;
+    case "drop_otp": return OTP_RE.test(reply) ? { status: "complete", dropOtp: reply } : null;
+    default: return null;
+  }
+}
+
+/**
+ * Runs the backend call for `reply` on the context's CURRENT step - shared by the driver's WhatsApp reply and the
+ * executive's "next step" override, so both always do exactly what the driver app would.
+ * Returns { type: 'invalid' } | { type: 'refused', msg } | { type: 'early_drop_required', result, dropOtp } |
+ *         { type: 'advanced', result }.
+ */
+async function performStepAction(ctx, { reply, earlyDrop = false } = {}) {
+  const plan = planFor(ctx.step, reply);
+  if (!plan) return { type: "invalid" };
+  const orderId = ctx.order.id;
+  const riderId = ctx.riderId;
+  try {
+    if (plan.verifyOtp) {
+      const { lat, lng } = freshLocation(ctx.rider);
+      const result = await driverTripService().progressTrip({ orderId, riderId, action: "verify_otp", otp: plan.verifyOtp, lat, lng });
+      return { type: "advanced", result };
+    }
+    let opts = {};
+    if (plan.status === "complete") {
+      opts = { ...freshLocation(ctx.rider), dropOtp: plan.dropOtp, ...(earlyDrop ? { earlyDrop: true } : {}) };
+    }
+    const result = await tripLifecycle().updateStatus(orderId, riderId, plan.status, opts);
+    if (result?.early_drop_required) return { type: "early_drop_required", result, dropOtp: plan.dropOtp ?? null };
+    if (!result?.success) return { type: "refused", msg: result?.msg };
+    return { type: "advanced", result };
+  } catch (err) {
+    if (err?.statusCode) return { type: "refused", msg: err.message };
+    throw err;
+  }
+}
+
+async function updateSession(orderId, data) {
+  await prisma.whatsapp_driver_session.updateMany({ where: { order_id: orderId }, data });
+}
+
+async function completionMessage(ctx) {
+  const { order, settlement } = ctx;
+  const cashPending = isCashSettlementPending(settlement);
+  let walletCredit = null;
+  if (!cashPending && !isCashBooking(order)) {
+    // Exactly what tripLifecycle credited for a wallet-paid order (fare minus commission), if anything.
+    const credit = await prisma.tbl_wallet_history.findFirst({
+      where: { payment_id: `wallet_order_credit:${order.id}`, type: "credit", wallet_type: "driver" },
+    });
+    walletCredit = credit ? Number(credit.amount) : null;
+  }
+  const amountDue = cashPending
+    ? Number(settlement.amount_due) + (settlement.payer === "receiver" ? Number(settlement.receiver_markup || 0) : 0)
+    : null;
+  return messages.join(
+    messages.completed({ final_fare: order.total_dcharge, isCash: cashPending || isCashBooking(order), amountDue, walletCredit }),
+    messages.appNudge()
+  );
+}
+
+async function runStepAction(ctx, input) {
+  const outcome = await performStepAction(ctx, input);
+  if (outcome.type === "invalid") return { text: messages.invalidReply(ctx.step.key, ctx), step: ctx.step };
+  if (outcome.type === "refused") return { text: messages.backendRefused(outcome.msg, ctx.step.key, ctx), step: ctx.step };
+  if (outcome.type === "early_drop_required") {
+    await updateSession(ctx.order.id, { pending_confirm: "early_drop", pending_otp: outcome.dropOtp });
+    return { text: messages.earlyDropConfirm(outcome.result), step: ctx.step };
+  }
+  const next = await loadContext(ctx.order.id);
+  const justCompleted = ctx.order.o_status !== "Completed" && next.order.o_status === "Completed" && next.step.key !== "cancelled";
+  return { text: justCompleted ? await completionMessage(next) : messages.stepPrompt(next.step.key, next), step: next.step };
+}
+
+async function driverCancelReply(ctx) {
+  try {
+    const result = await tripLifecycle().driverCancel(ctx.order.id, ctx.riderId, DRIVER_CANCEL_REASON);
+    return result?.requires_admin_approval ? messages.cancelRequested() : messages.cancelled();
+  } catch (err) {
+    if (!CANCEL_ERRORS[err?.message]) logger.error(`whatsapp driver cancel failed for order ${ctx.order.id}:`, err);
+    return messages.backendRefused(CANCEL_ERRORS[err?.message] || "Order cancel nahi ho saka", ctx.step.key, ctx);
+  }
+}
+
+async function cashReceivedReply(ctx) {
+  try {
+    await settlementService().markCashReceived({ orderId: ctx.order.id, riderId: ctx.riderId });
+    return messages.join(messages.cashThanks(), messages.appNudge());
+  } catch (err) {
+    if (err?.name === "SettlementError") return messages.backendRefused(err.message, ctx.step.key, ctx);
+    throw err;
+  }
+}
+
+async function replyFor(ctx, word) {
+  const { step, session } = ctx;
+  const pending = session?.pending_confirm || null;
+
+  if (word === "HAAN" && pending === "cancel" && CANCELLABLE_STEPS.has(step.key)) {
+    await updateSession(ctx.order.id, { pending_confirm: null, pending_otp: null });
+    return { text: await driverCancelReply(ctx) };
+  }
+  if (word === "HAAN" && pending === "early_drop" && EARLY_DROP_STEPS.has(step.key)) {
+    const reply = step.key === "drop_otp" ? session.pending_otp : "6";
+    await updateSession(ctx.order.id, { pending_confirm: null, pending_otp: null });
+    return runStepAction(ctx, { reply, earlyDrop: true });
+  }
+  // Any other reply drops a pending confirmation: HAAN only ever confirms the question asked just before it.
+  if (pending || session?.pending_otp) await updateSession(ctx.order.id, { pending_confirm: null, pending_otp: null });
+
+  if (step.key === "cancelled") return { text: messages.cancelled() };
+  if (step.key === "done") return { text: messages.appNudge() };
+  if (word === "0" || word === "HELP") return { text: messages.stepPrompt(step.key, ctx), step };
+  if (word === "CANCEL" && CANCELLABLE_STEPS.has(step.key)) {
+    await updateSession(ctx.order.id, { pending_confirm: "cancel" });
+    return { text: messages.cancelConfirm(), step };
+  }
+  if (step.key === "await_cash") {
+    return word === "PAISAMILA" ? { text: await cashReceivedReply(ctx) } : { text: messages.invalidReply(step.key, ctx), step };
+  }
+  return runStepAction(ctx, { reply: word });
+}
+
+/** Handles one WhatsApp message from the order's driver; returns the reply text (the caller sends it). */
+async function handleDriverReply({ orderId, riderId, text }) {
+  const ctx = await loadContext(orderId);
+  if (!ctx) return messages.cancelled();
+  if (Number(riderId) !== ctx.riderId) return messages.cancelled();
+  const now = new Date();
+  await updateSession(orderId, { last_reply_at: now });
+  const { text: reply, step } = await replyFor(ctx, normalizeReply(text));
+  // The reply carries this step's instruction, so the proactive sender must not repeat it.
+  if (step) await updateSession(orderId, { last_step: stepId(step), last_prompt_at: now });
+  return reply;
+}
+
+/** First message after a WhatsApp assign: order card + the current step. Returns whether it was sent. */
+async function startOrder(orderId) {
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, rid: true, driver_channel: true } });
+  if (!order || order.driver_channel !== "whatsapp" || !order.rid) return false;
+  const rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { id: true, fmobile: true } });
+  if (!rider) return false;
+  // (Re)binds the conversation to the order's assigned driver; a reassignment starts with a clean session.
+  const phone = normalizeToLast10Digits(rider.fmobile);
+  await prisma.whatsapp_driver_session.upsert({
+    where: { order_id: orderId },
+    create: { order_id: orderId, rider_id: order.rid, phone },
+    update: { rider_id: order.rid, phone, pending_confirm: null, pending_otp: null, last_step: null, last_prompt_at: null, alerted_step: null },
+  });
+  const ctx = await loadContext(orderId);
+  if (!ctx || !ctx.rider) return false;
+  const sent = await notifications().sendWhatsAppNotification(
+    ctx.rider.fmobile,
+    messages.join(messages.orderCard(ctx.order, ctx.stops, ctx.rider), messages.stepPrompt(ctx.step.key, ctx))
+  );
+  if (sent) await updateSession(orderId, { last_step: stepId(ctx.step), last_prompt_at: new Date() });
+  else logger.warn(`whatsapp startOrder: order card not delivered for order ${orderId}`);
+  return sent;
+}
+
+/**
+ * Proactively tells the driver the current step after a change made elsewhere (app, Live Location auto-arrival,
+ * executive, customer). Skips a step the driver was already told about unless reason === 'changed' (the step is the
+ * same but its details changed, e.g. a new pickup address). Returns whether a message was sent.
+ */
+async function sendCurrentStep(orderId, { reason } = {}) {
+  const ctx = await loadContext(orderId);
+  if (!ctx || ctx.order.driver_channel !== "whatsapp" || !ctx.rider) return false;
+  const id = stepId(ctx.step);
+  if (ctx.session?.last_step === id && reason !== "changed") return false;
+  const sent = await notifications().sendWhatsAppNotification(ctx.rider.fmobile, messages.stepPrompt(ctx.step.key, ctx));
+  if (sent) await updateSession(orderId, { last_step: id, last_prompt_at: new Date() });
+  return sent;
+}
+
+module.exports = { loadContext, startOrder, handleDriverReply, sendCurrentStep, performStepAction };
