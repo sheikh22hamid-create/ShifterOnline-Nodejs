@@ -34,6 +34,8 @@ async function attachCityNames(rows) {
   return rows.map((r) => ({ ...r, city_name: r.city_id ? nameById[r.city_id] || null : null }));
 }
 
+const TRIAL_STATUSES = new Set(["none", "active", "exhausted", "blocked", "upgraded"]);
+
 async function list(req, res) {
   try {
     const where = {};
@@ -41,6 +43,8 @@ async function list(req, res) {
     if (req.query.status !== undefined) where.status = parseInt(req.query.status, 10);
     if (req.query.a_status !== undefined) where.a_status = parseInt(req.query.a_status, 10);
     if (req.query.verification_status) where.verification_status = req.query.verification_status;
+    // Trial Drivers list for the manual-assign picker (offline ones too: they can be given a WhatsApp order).
+    if (TRIAL_STATUSES.has(req.query.trial_status)) where.trial_status = req.query.trial_status;
     if (req.query.search) {
       where.OR = [
         { full_name: { contains: req.query.search } },
@@ -99,6 +103,7 @@ async function list(req, res) {
         payment_complete: Number(r.payment_complete) === 1,
         body_type: r.body_type || "both",
         active_categories: categoriesByRider[r.id] || [],
+        trial_status: r.trial_status,
       };
     });
 

@@ -1,9 +1,12 @@
 // "All drivers | Daily Drivers (n)" filter shown on the manual-assign pickers for scheduled, next-day and
 // Booking Guarantee orders, so the admin can hand the order to a Daily Driver first.
-export default function DriverSourceTabs({ value, onChange, dailyCount, loading = false }) {
+// showDaily=false hides the Daily tab; showTrial adds "Trial Drivers" (AssignDriverModal: offline Trial Drivers can take
+// a WhatsApp order).
+export default function DriverSourceTabs({ value, onChange, dailyCount, loading = false, showDaily = true, showTrial = false }) {
   const tabs = [
     { id: 'all', label: 'All drivers' },
-    { id: 'daily', label: loading ? 'Daily Drivers…' : `Daily Drivers (${dailyCount})` },
+    ...(showTrial ? [{ id: 'trial', label: 'Trial Drivers' }] : []),
+    ...(showDaily ? [{ id: 'daily', label: loading ? 'Daily Drivers…' : `Daily Drivers (${dailyCount})` }] : []),
   ]
   return (
     <div className="mb-3 flex gap-2" role="tablist" aria-label="Driver filter">
