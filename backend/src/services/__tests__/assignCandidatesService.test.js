@@ -33,10 +33,13 @@ describe("listCandidates", () => {
     const rows = await svc.listCandidates(order, { source: "all" });
     expect(rows.map((r) => r.id)).toEqual([2, 1]);
     expect(whatsappTrialSettings.eligibility).not.toHaveBeenCalled(); // no Trial Driver among them
-    expect(rows[0]).toMatchObject({ other_city: true, online: true });
+    expect(rows[0]).toMatchObject({ other_city: true, online: true, wallet_balance: null });
+    expect(rows[1].wallet_balance).toBe("0");
     expect(rows[0].distance_km).toBeCloseTo(0.7, 0);
     const where = prisma.tbl_rider.findMany.mock.calls[0][0].where;
     expect(where).toMatchObject({ status: 1, vehicle: "Bike", a_status: 1 });
+    expect(where.AND[0].OR[0]).toEqual({ city_id: 2 });
+    expect(prisma.tbl_rider.findMany.mock.calls[0][0].take).toBe(500);
   });
 
   it("Trial: active Trial Drivers, offline too; other-city ones need a location within 24 h near the pickup", async () => {
@@ -55,7 +58,22 @@ describe("listCandidates", () => {
   it("passes the search text to name / mobile / plate", async () => {
     prisma.tbl_rider.findMany.mockResolvedValue([]);
     await svc.listCandidates(order, { source: "all", search: "637" });
-    expect(prisma.tbl_rider.findMany.mock.calls[0][0].where.OR).toHaveLength(3);
+    expect(prisma.tbl_rider.findMany.mock.calls[0][0].where.AND[1].OR).toHaveLength(3);
+  });
+});
+
+describe("mayAssignOtherCity", () => {
+  const live = { ...near, rloc_updated_at: new Date(NOW - 30 * 1000) };
+  const hoursOld = { ...near, rloc_updated_at: new Date(NOW - 3 * 3600 * 1000) };
+  it("app channel needs a live location; same vehicle only", () => {
+    expect(svc.mayAssignOtherCity(order, rider(live), "app")).toBe(true);
+    expect(svc.mayAssignOtherCity(order, rider(hoursOld), "app")).toBe(false);
+    expect(svc.mayAssignOtherCity(order, rider({ ...live, vehicle: "3 Wheeler" }), "app")).toBe(false);
+  });
+  it("the 24 h window only for an active Trial Driver over WhatsApp", () => {
+    expect(svc.mayAssignOtherCity(order, rider({ ...hoursOld, trial_status: "active" }), "whatsapp")).toBe(true);
+    expect(svc.mayAssignOtherCity(order, rider({ ...hoursOld, trial_status: "none" }), "whatsapp")).toBe(false);
+    expect(svc.mayAssignOtherCity(order, rider({ ...hoursOld, trial_status: "active" }), "app")).toBe(false);
   });
 });
 
