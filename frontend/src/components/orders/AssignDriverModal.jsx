@@ -22,13 +22,11 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
 
   const fetcher = useCallback(() => {
     if (!open || !order) return Promise.resolve([])
+    // The order's city plus drivers of other cities near the pickup (as dispatch offers it), same vehicle only.
     // Trial tab lists offline Trial Drivers too: they can be given the order over WhatsApp.
-    const filter = trialTab ? { trial_status: 'active' } : { a_status: 1 }
     return api
-      .get('/riders', { params: { status: 1, ...filter, search: debouncedSearch || undefined, city_id: order.city_id || undefined } })
-      // The rider list endpoint has no vehicle-type filter — narrow to the
-      // order's own category client-side.
-      .then((res) => res.data.data.filter((d) => d.vehicle === order.category))
+      .get(`/orders/${order.id}/assign-candidates`, { params: { source: trialTab ? 'trial' : 'all', search: debouncedSearch || undefined } })
+      .then((res) => res.data.data)
   }, [open, order, debouncedSearch, trialTab])
   const { data, loading, error: loadError } = useApiQuery(fetcher)
   const allDrivers = data ?? []
@@ -134,7 +132,7 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
             {showDaily
               ? `No available Daily Drivers for this ${order?.category} order.`
               : trialTab
-                ? `No active ${order?.category} Trial Drivers found.`
+                ? `No active ${order?.category} Trial Drivers in this city or near the pickup.`
                 : `No online, approved ${order?.category} drivers found nearby.`}
           </p>
         )}
@@ -160,6 +158,8 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
                 <div className="font-mono-data text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
                   {d.fmobile} · {d.vehicle_no || 'no plate'}
                   {trialTab && (d.online ? ' · online' : ' · offline')}
+                  {d.distance_km != null && ` · ${d.distance_km} km`}
+                  {d.other_city && ' · other city'}
                 </div>
               </div>
               <div className="font-mono-data text-[12px]" style={{ color: 'var(--ink-muted)' }}>
@@ -172,7 +172,7 @@ export default function AssignDriverModal({ open, order, onClose, onAssigned }) 
       {isTrial && (
         <div className="mt-3 grid gap-1.5 rounded-lg border px-3 py-2.5" style={{ borderColor: 'var(--border)' }}>
           <span className="text-[12px] font-semibold" style={{ color: 'var(--ink-muted)' }}>Order kaise complete hoga?</span>
-          <DriverChannelChoice riderId={selectedId} value={channel} onChange={setChannel} disabled={submitting} />
+          <DriverChannelChoice riderId={selectedId} value={channel} onChange={setChannel} disabled={submitting} eligibility={selected?.whatsapp} />
           {viaWhatsapp && (
             <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>{WHATSAPP_HELP_TEXT}</span>
           )}

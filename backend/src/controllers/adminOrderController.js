@@ -20,6 +20,7 @@ const freeBookingService = require("../services/freeBookingService");
 const outsideDriver = require("../services/outsideDriverService");
 const { buildRoute } = require("../services/tripRouteService");
 const orderAssignment = require("../services/orderAssignmentService");
+const assignCandidatesService = require("../services/assignCandidatesService");
 const lowFareRules = require("../services/lowFareRules");
 const { extractAreaFromAddress } = require("../utils/addressTitle");
 
@@ -272,7 +273,8 @@ async function assignRider(req, res) {
       order,
       riderId,
       actor: req.user,
-      isRiderForbidden: (rider) => isScopedOut(req, rider.city_id),
+      // A driver registered in another city may take the order when near its pickup (dispatch offers it the same way).
+      isRiderForbidden: (rider) => isScopedOut(req, rider.city_id) && !assignCandidatesService.isNearPickup(order, rider),
       channel: req.body.channel,
     });
     if (!result.ok) {
@@ -281,6 +283,26 @@ async function assignRider(req, res) {
     return res.status(200).json({ success: true, message: "Driver assigned", data: { ...result.order, package: result.pkg } });
   } catch (err) {
     return internalError(res, err, "orders.assignRider");
+  }
+}
+
+/**
+ * GET /admin/orders/:id/assign-candidates?source=all|trial&search= - drivers for the Assign Driver popup: the order's
+ * city plus other-city drivers near the pickup. Order city scope as assignRider.
+ */
+async function assignCandidates(req, res) {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const order = orderId ? await prisma.pkg_order.findUnique({ where: { id: orderId } }) : null;
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    if (isScopedOut(req, order.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
+    }
+    const source = req.query.source === "trial" ? "trial" : "all";
+    const data = await assignCandidatesService.listCandidates(order, { source, search: req.query.search });
+    return res.json({ success: true, data });
+  } catch (err) {
+    return internalError(res, err, "orders.assignCandidates");
   }
 }
 
@@ -905,6 +927,6 @@ async function assignNextDayBatch(req, res) {
 }
 
 module.exports = {
-  list, getOne, route, assignRider, outsideDriverLookup, outsideDriverVehicles, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
+  list, getOne, route, assignRider, assignCandidates, outsideDriverLookup, outsideDriverVehicles, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
   listNextDay, suggestNextDaySequence, assignNextDayBatch, whatsappStatus, whatsappStep, whatsappEligibility,
 };
