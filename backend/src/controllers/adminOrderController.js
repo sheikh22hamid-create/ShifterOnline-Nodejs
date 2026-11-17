@@ -273,6 +273,7 @@ async function assignRider(req, res) {
       riderId,
       actor: req.user,
       isRiderForbidden: (rider) => isScopedOut(req, rider.city_id),
+      channel: req.body.channel,
     });
     if (!result.ok) {
       return res.status(result.status).json({ success: false, message: result.message });
