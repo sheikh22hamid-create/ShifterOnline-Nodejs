@@ -16,6 +16,11 @@ import '../../services/settlement_api_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/receiver_pay_options.dart';
 import 'wallet_page.dart';
+import 'widgets/booking_guidelines.dart';
+import '../../theme/app_tokens.dart';
+import 'widgets/booking_option_widgets.dart';
+import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/pressable_scale.dart';
 
 class ConfirmOrderMap extends StatefulWidget {
   final double startLat;
@@ -468,34 +473,10 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
 
     return Scaffold(
       backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Confirm Booking",
-              style: TextStyle(
-                color: notifier.text,
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 18,
-              ),
-            ),
-            Text(
-              "Review route & select payment method",
-              style: TextStyle(
-                color: greaycolor,
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: notifier.lightBgColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: notifier.text),
-          onPressed: () => Get.back(),
-        ),
+      appBar: AppTopBar(
+        title: "Confirm Booking".tr,
+        subtitle: "Review route & select payment method".tr,
+        onBack: () => Get.back(),
       ),
       body: SafeArea(
         top: false,
@@ -753,7 +734,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                                       Icon(Icons.add_rounded, color: linercolor, size: 14),
                                       const SizedBox(width: 2),
                                       Text(
-                                        "Add Money",
+                                        "Add Money".tr,
                                         style: TextStyle(
                                           color: linercolor,
                                           fontFamily: 'Gilroy_Bold',
@@ -776,46 +757,19 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
 
                   // Terms & Notice
                   // ── BOOKING GUIDELINES / IMPORTANT NOTICE ─────────────
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xffFFF7ED),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xffFED7AA)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xffC2410C)),
-                            const SizedBox(width: 6),
-                            Text(
-                              "Important Booking Guidelines".tr,
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 12.5,
-                                color: Color(0xff9A3412),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: BookingGuidelines(
+                      title: "Important Booking Guidelines".tr,
+                      items: [
                         if (_bookingGuidelines == null) ...[
-                          _buildGuidelineRow(Icons.no_accounts_outlined, "Fare does not include loading / unloading labour charges.".tr),
-                          const SizedBox(height: 5),
-                          _buildGuidelineRow(Icons.local_parking_outlined, "Toll, state taxes & parking charges to be borne by customer.".tr),
-                          const SizedBox(height: 5),
+                          (icon: Icons.no_accounts_outlined, text: "Fare does not include loading / unloading labour charges.".tr),
+                          (icon: Icons.local_parking_outlined, text: "Toll, state taxes & parking charges to be borne by customer.".tr),
                         ] else
-                          for (final guideline in _bookingGuidelines!) ...[
-                            _buildGuidelineRow(Icons.info_outline_rounded, guideline),
-                            const SizedBox(height: 5),
-                          ],
-                        _buildGuidelineRow(
-                          Icons.warning_amber_rounded,
-                          _restrictedItems.isEmpty
+                          for (final guideline in _bookingGuidelines!) (icon: Icons.info_outline_rounded, text: guideline),
+                        (
+                          icon: Icons.warning_amber_rounded,
+                          text: _restrictedItems.isEmpty
                               ? "No toxic, hazardous, illegal, or explosive items permitted.".tr
                               : "${"Restricted items (not allowed):".tr} ${_restrictedItems.join(', ')}",
                         ),
@@ -844,7 +798,7 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                   // ── CONFIRM & PLACE ORDER BUTTON ──────────────────────────
                   SizedBox(
                     width: double.infinity,
-                    height: 50,
+                    height: 54,
                     child: ElevatedButton(
                       onPressed: (_isProcessing ||
                               (_paymentWallet == 0 && _paymentCod == 0) ||
@@ -856,33 +810,39 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                           : _handleConfirmOrder,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: (_selectedPaymentMethod == 1 && isWalletInsufficient)
-                            ? Colors.amber.shade800
-                            : linercolor,
-                        foregroundColor: Colors.white,
+                            ? Colors.amber.shade700
+                            : AppPalette.current.brand,
+                        foregroundColor: AppPalette.current.onBrand,
+                        disabledBackgroundColor: AppPalette.current.brand.withValues(alpha: 0.4),
+                        disabledForegroundColor: AppPalette.current.onBrand.withValues(alpha: 0.7),
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       child: _isProcessing
-                          ? const SizedBox(
+                          ? SizedBox(
                               height: 22,
                               width: 22,
                               child: CircularProgressIndicator(
-                                color: Colors.white,
+                                color: AppPalette.current.onBrand,
                                 strokeWidth: 2.4,
                               ),
                             )
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Text(
-                                  (_selectedPaymentMethod == 1 && isWalletInsufficient)
-                                      ? "Add Money to Wallet"
-                                      : "Confirm & Place Order · ${widget.currency}${widget.deliveryFees.toStringAsFixed(2)}",
-                                  style: const TextStyle(
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 15,
+                                Flexible(
+                                  child: Text(
+                                    (_selectedPaymentMethod == 1 && isWalletInsufficient)
+                                        ? "Add Money to Wallet".tr
+                                        : "${"Confirm & Place Order".tr} · ${widget.currency}${widget.deliveryFees.toStringAsFixed(2)}",
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontFamily: 'Gilroy_Bold',
+                                      fontSize: 16,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 6),
@@ -902,28 +862,33 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
   }
 
   Widget _buildReceiverPayCard() {
-    final notifier = Provider.of<ColorNotifier>(context, listen: false);
+    Provider.of<ColorNotifier>(context, listen: false);
+    final pal = AppPalette.current;
     final reason = _receiverReason;
     final active = _receiverPays && reason == null;
+    TextStyle note() => TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3, color: pal.inkSubtle);
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
       decoration: BoxDecoration(
-        color: active ? linercolor.withValues(alpha: 0.08) : notifier.getBgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: active ? linercolor : notifier.bordecolor.withValues(alpha: 0.8),
-          width: active ? 1.5 : 1,
-        ),
+        color: active ? pal.brandTint : pal.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: active ? pal.brand : pal.line, width: active ? 1.5 : 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.person_pin_circle_rounded,
-                  color: active ? linercolor : greaycolor, size: 22),
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: active ? pal.surface : pal.canvas, shape: BoxShape.circle),
+                child: Icon(Icons.person_pin_circle_rounded, color: active ? pal.brandText : pal.inkMuted, size: 20),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -931,28 +896,16 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
                   children: [
                     Text(
                       "Receiver pays".tr,
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 13.5,
-                        color: notifier.text,
-                      ),
+                      style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: pal.ink),
                     ),
                     if (reason != null) ...[
-                      const SizedBox(height: 1.5),
-                      Text(
-                        reason.tr,
-                        style: TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: greaycolor,
-                        ),
-                      ),
+                      const SizedBox(height: 2),
+                      Text(reason.tr, style: note()),
                     ],
                   ],
                 ),
               ),
               Switch(
-                activeThumbColor: linercolor,
                 value: active,
                 onChanged: reason != null
                     ? null
@@ -964,65 +917,44 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
             ],
           ),
           if (active) ...[
-            const SizedBox(height: 6),
-            Text(
-              "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 11.5,
-                color: greaycolor,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              "Your commission (added to the receiver's total)".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 12.5,
-                color: notifier.text,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: percentChoices(_receiverConfig.maxPercent).map((p) {
-                final label = p == p.roundToDouble()
-                    ? "${p.toInt()}%"
-                    : "${p.toStringAsFixed(1)}%";
-                return ChoiceChip(
-                  label: Text(label),
-                  selected: _receiverPercent == p,
-                  selectedColor: linercolor.withValues(alpha: .15),
-                  onSelected: (_) => setState(() => _receiverPercent = p),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              "Commission applies whether the receiver pays cash or online.".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 11.5,
-                color: greaycolor,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Receiver gets a WhatsApp link to pay (no app needed).".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                fontSize: 11.5,
-                color: greaycolor,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              "+91 ${normalizeIndianMobile(widget.dropMobile)}",
-              style: TextStyle(
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 12.5,
-                color: linercolor,
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 6),
+                  Text(
+                    "Receiver pays the fare at drop. Your advance is refunded to your wallet when they pay.".tr,
+                    style: note(),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "Your commission (added to the receiver's total)".tr,
+                    style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 13, color: pal.ink),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: percentChoices(_receiverConfig.maxPercent).map((p) {
+                      final label = p == p.roundToDouble() ? "${p.toInt()}%" : "${p.toStringAsFixed(1)}%";
+                      return BookingChoicePill(
+                        label: label,
+                        selected: _receiverPercent == p,
+                        onTap: () => setState(() => _receiverPercent = p),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  Text("Commission applies whether the receiver pays cash or online.".tr, style: note()),
+                  const SizedBox(height: 4),
+                  Text("Receiver gets a WhatsApp link to pay (no app needed).".tr, style: note()),
+                  const SizedBox(height: 2),
+                  Text(
+                    "+91 ${normalizeIndianMobile(widget.dropMobile)}",
+                    style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 13, color: pal.brandText),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1039,102 +971,63 @@ class _ConfirmOrderMapState extends State<ConfirmOrderMap> {
     required VoidCallback onTap,
     Widget? trailing,
   }) {
-    final notifier = Provider.of<ColorNotifier>(context, listen: false);
+    final p = AppPalette.current;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: isSelected ? linercolor.withOpacity(0.08) : notifier.getBgColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? linercolor : notifier.bordecolor.withOpacity(0.8),
-            width: isSelected ? 1.5 : 1,
+    return Semantics(
+      selected: isSelected,
+      inMutuallyExclusiveGroup: true,
+      child: PressableScale(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? p.brandTint : p.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: isSelected ? p.brand : p.line, width: isSelected ? 1.5 : 1),
           ),
-        ),
-        child: Row(
-          children: [
-            // Icon in circle
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isSelected ? linercolor.withOpacity(0.18) : notifier.lightBgColor,
-                shape: BoxShape.circle,
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isSelected ? p.surface : p.canvas,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: isSelected ? p.brand : p.inkMuted, size: 20),
               ),
-              child: Icon(
-                icon,
-                color: isSelected ? linercolor : greaycolor,
-                size: 20,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title.tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: AppText.caption(p.inkMuted)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-
-            // Title & Subtitle
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 13.5,
-                      color: notifier.text,
-                    ),
-                  ),
-                  const SizedBox(height: 1.5),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontFamily: 'Gilroy_Medium',
-                      fontSize: 11.5,
-                      color: isSelected ? linercolor : greaycolor,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            if (trailing != null) ...[
               const SizedBox(width: 8),
-              trailing,
-            ] else ...[
-              const SizedBox(width: 8),
-              Icon(
-                isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: isSelected ? linercolor : greaycolor.withOpacity(0.6),
-                size: 21,
-              ),
+              if (trailing != null) ...[
+                trailing,
+              ] else
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: p.surface,
+                    border: Border.all(color: isSelected ? p.brand : p.line, width: isSelected ? 6 : 2),
+                  ),
+                ),
             ],
-          ],
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _buildGuidelineRow(IconData icon, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 14, color: const Color(0xffC2410C)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontFamily: 'Gilroy_Medium',
-              color: Color(0xff7C2D12),
-              height: 1.25,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

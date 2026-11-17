@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:provider/provider.dart';
 import '../../services/free_booking_api_service.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/pressable_scale.dart';
 import '../../utils/colors.dart';
 import '../customise/my_customise_orders.dart';
 
@@ -247,6 +249,48 @@ Future<void> showHomeInfoDialog({
   );
 }
 
+/// Text for the Free Ride Chance banner on Home. Chance-based wording only — never "first booking free".
+class FreeRideBannerCopy {
+  const FreeRideBannerCopy({required this.heading, required this.subtitle, this.progress});
+
+  final String heading;
+  final String subtitle;
+  /// 0..1 referral progress, shown only while the next chance is locked.
+  final double? progress;
+}
+
+FreeRideBannerCopy freeRideBannerCopy({
+  required String state,
+  required String message,
+  required int referralsRequired,
+  required int referralsDone,
+}) {
+  switch (state) {
+    case 'locked':
+      final required = referralsRequired > 0 ? referralsRequired : 1;
+      final done = referralsDone.clamp(0, required);
+      final left = required - done;
+      return FreeRideBannerCopy(
+        heading: 'Your next booking could be free'.tr,
+        subtitle: left == 1
+            ? 'Refer 1 more friend to unlock'.tr
+            : 'Refer @left more friends to unlock'.trParams({'left': '$left'}),
+        progress: done / required,
+      );
+    case 'available':
+    case 'unlocked':
+      return FreeRideBannerCopy(
+        heading: 'Your next booking could be free'.tr,
+        subtitle: "You have a chance to book with our company's free drivers.".tr,
+      );
+    default:
+      return FreeRideBannerCopy(
+        heading: 'Free Ride Chance'.tr,
+        subtitle: message.isNotEmpty ? message : 'Free Ride Chance is not available right now.'.tr,
+      );
+  }
+}
+
 /// "Free Ride Chance" tile: replaces the old status card on the Home page. It loads the same Free Booking
 /// status the card used and, on tap, shows the matching message (locked -> the existing referral share,
 /// not used yet -> how the free booking works). Open to general and premium customers alike.
@@ -262,6 +306,7 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
   String _message = '';
   int _referralsRequired = 0;
   int _referralsDone = 0;
+  bool _loaded = false;
 
   @override
   void initState() {
@@ -279,6 +324,7 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
       _message = result['message'] as String;
       _referralsRequired = result['referrals_required'] as int;
       _referralsDone = result['referrals_done'] as int;
+      _loaded = true;
     });
   }
 
@@ -442,12 +488,104 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
 
   @override
   Widget build(BuildContext context) {
-    return HomeOptionTile(
-      icon: Icons.bolt_rounded,
-      gradient: const [Color(0xffFF8A3D), Color(0xfff26522)],
-      borderColor: const Color(0xfff26522).withOpacity(0.4),
-      title: 'Free Ride Chance'.tr,
-      onTap: _onTap,
+    final copy = _loaded
+        ? freeRideBannerCopy(
+            state: _state,
+            message: _message,
+            referralsRequired: _referralsRequired,
+            referralsDone: _referralsDone)
+        : FreeRideBannerCopy(heading: 'Free Ride Chance'.tr, subtitle: '');
+    return _FreeRideBanner(copy: copy, onTap: _onTap);
+  }
+}
+
+class _FreeRideBanner extends StatelessWidget {
+  const _FreeRideBanner({required this.copy, required this.onTap});
+
+  final FreeRideBannerCopy copy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.current;
+    const deepText = Color(0xFF3B1404);
+    return PressableScale(
+      onTap: onTap,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        constraints: const BoxConstraints(minHeight: 160),
+        decoration: BoxDecoration(color: p.brand, borderRadius: BorderRadius.circular(AppRadius.hero)),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -40,
+              top: -40,
+              child: Container(
+                width: 170,
+                height: 170,
+                decoration: const BoxDecoration(color: Color(0xFFFF8A5C), shape: BoxShape.circle),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                              color: const Color(0xFFFFD7C4), borderRadius: BorderRadius.circular(6)),
+                          child: Text('FREE RIDE CHANCE'.tr,
+                              style: AppText.caption(deepText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11)),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(copy.heading, style: AppText.section(p.onBrand).copyWith(fontSize: 21, height: 1.2)),
+                        if (copy.subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(copy.subtitle,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.caption(deepText).copyWith(fontSize: 13, fontFamily: 'Gilroy_Bold')),
+                        ],
+                        if (copy.progress != null) ...[
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              value: copy.progress,
+                              minHeight: 6,
+                              backgroundColor: Colors.white.withValues(alpha: 0.45),
+                              valueColor: const AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Container(
+                          height: 40,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          alignment: Alignment.center,
+                          decoration:
+                              BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.input)),
+                          child: Text('View details'.tr,
+                              style: AppText.bodyStrong(p.onBrand).copyWith(fontSize: 13)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const ExcludeSemantics(
+                    child: Icon(Icons.card_giftcard_rounded, size: 72, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -455,6 +593,9 @@ class _FreeRideChanceTileState extends State<FreeRideChanceTile> {
 /// "Customise Order (with bargaining)" tile: opens the customer's negotiated orders and the form to post a new one.
 class CustomiseOrderTile extends StatelessWidget {
   const CustomiseOrderTile({super.key});
+
+  /// Same destination as tapping the tile; used by the Home "More on Shifter" grid.
+  static void open() => Get.to(() => const MyCustomiseOrders());
 
   @override
   Widget build(BuildContext context) {
@@ -464,7 +605,7 @@ class CustomiseOrderTile extends StatelessWidget {
       borderColor: const Color(0xff7B2FF7).withOpacity(0.3),
       title: 'Customise Order'.tr,
       subtitle: '(name your price)'.tr,
-      onTap: () => Get.to(() => const MyCustomiseOrders()),
+      onTap: open,
     );
   }
 }

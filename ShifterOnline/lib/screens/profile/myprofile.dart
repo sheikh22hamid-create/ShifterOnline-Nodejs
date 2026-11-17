@@ -28,6 +28,7 @@ import 'favorite_drivers.dart';
 import 'premium_plans_screen.dart';
 import 'LeadReferralScreen.dart';
 import '../../utils/Calculation.dart';
+import '../../theme/app_tokens.dart';
 
 class MyProfile extends StatefulWidget {
   const MyProfile({super.key});
@@ -178,7 +179,7 @@ class _MyProfileState extends State<MyProfile> {
     String completionTitle = "Complete your profile";
     String completionPrompt = "Add your email and details for a better experience.";
     if (completionPercent >= 100) {
-      completionTitle = "Profile 100% Completed! 🎉";
+      completionTitle = "Profile 100% Completed!";
       completionPrompt = "All details & addresses are verified and up to date.";
     } else if (!hasName) {
       completionPrompt = "Add your full name to personalize your account.";
@@ -204,7 +205,7 @@ class _MyProfileState extends State<MyProfile> {
         ((int.tryParse(notifData["unread_count"]?.toString() ?? "0") ?? 0) > 0);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
+      backgroundColor: AppPalette.light.canvas,
       body: RefreshIndicator(
         onRefresh: fetchProfileOverview,
         color: const Color(0xFFFA4500),
@@ -278,46 +279,47 @@ class _MyProfileState extends State<MyProfile> {
     required String tagline,
     required bool hasUnreadNotif,
   }) {
-    const radius = BorderRadius.only(
-      bottomLeft: Radius.circular(32),
-      bottomRight: Radius.circular(32),
-    );
-
-    Widget bubble(double size, double opacity) => Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withOpacity(opacity),
-          ),
+    final p = AppPalette.light;
+    final initials = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+    Widget initialsAvatar() => Container(
+          color: p.brand,
+          alignment: Alignment.center,
+          child: Text(initials.isEmpty ? 'S' : initials,
+              style: AppText.title(p.onBrand).copyWith(fontSize: 28)),
         );
 
     Widget roundIconButton({required IconData icon, required VoidCallback onTap, bool dot = false}) {
       return GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.20),
+            color: p.surface,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.35)),
+            border: Border.all(color: p.brand.withValues(alpha: 0.25)),
           ),
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Icon(icon, color: Colors.white, size: 22),
+              Icon(icon, color: p.ink, size: 22),
               if (dot)
                 Positioned(
-                  top: 9,
-                  right: 10,
+                  top: 10,
+                  right: 11,
                   child: Container(
                     width: 9,
                     height: 9,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFE14D),
+                      color: p.brand,
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFFA4500), width: 1.5),
+                      border: Border.all(color: p.surface, width: 1.5),
                     ),
                   ),
                 ),
@@ -334,78 +336,55 @@ class _MyProfileState extends State<MyProfile> {
 
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFFF6A2B), Color(0xFFFA4500), Color(0xFFE63E00)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(color: Color(0x40FA4500), blurRadius: 18, offset: Offset(0, 8)),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Stack(
-          children: [
-            // Soft decorative circles (brand pattern, no text so nothing collides with the content)
-            Positioned(right: -46, top: -34, child: bubble(160, 0.10)),
-            Positioned(right: 60, top: 70, child: bubble(54, 0.07)),
-            Positioned(left: -56, bottom: -70, child: bubble(180, 0.07)),
-
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Top bar: title + actions
-                    Row(
+      color: p.brandTint,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top bar: title + actions
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "My Profile".tr,
-                                style: const TextStyle(
-                                  fontFamily: 'Gilroy_Bold',
-                                  fontSize: 26,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                "Manage your account and preferences".tr,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Medium',
-                                  fontSize: 12.5,
-                                  color: Colors.white.withOpacity(0.88),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        roundIconButton(icon: Icons.settings_outlined, onTap: _showSettingsBottomSheet),
-                        const SizedBox(width: 10),
-                        roundIconButton(
-                          icon: Icons.notifications_outlined,
-                          dot: hasUnreadNotif,
-                          onTap: () => Get.to(() => const Notifications()),
+                        Text("My Profile".tr, style: AppText.title(p.ink).copyWith(fontSize: 24)),
+                        const SizedBox(height: 2),
+                        Text(
+                          "Manage your account and preferences".tr,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption(p.inkMuted),
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(width: 10),
+                  roundIconButton(icon: Icons.settings_outlined, onTap: _showSettingsBottomSheet),
+                  const SizedBox(width: 10),
+                  roundIconButton(
+                    icon: Icons.notifications_outlined,
+                    dot: hasUnreadNotif,
+                    onTap: () => Get.to(() => const Notifications()),
+                  ),
+                ],
+              ),
 
-                    const SizedBox(height: 22),
+              const SizedBox(height: 20),
 
-                    // Identity: avatar + name / phone / verified. Full width, so a long name is not cut off.
+              // Identity: avatar + name / phone / verified
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.hero),
+                  border: Border.all(color: p.line),
+                ),
+                child: Column(
+                  children: [
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -414,54 +393,37 @@ class _MyProfileState extends State<MyProfile> {
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
-                              Container(
-                                height: 86,
-                                width: 86,
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.18),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                  ],
-                                ),
+                              SizedBox(
+                                height: 72,
+                                width: 72,
                                 child: ClipOval(
                                   child: Config.isValidImageUrl(rImg)
                                       ? Image.network(
                                           Config.resolveImageUrl(rImg),
                                           fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => Image.asset(
-                                            "assets/signin_hero_mascot.jpg",
-                                            fit: BoxFit.cover,
-                                          ),
+                                          errorBuilder: (context, error, stackTrace) => initialsAvatar(),
                                         )
-                                      : Image.asset("assets/signin_hero_mascot.jpg", fit: BoxFit.cover),
+                                      : initialsAvatar(),
                                 ),
                               ),
                               Positioned(
-                                bottom: 0,
-                                right: 0,
+                                bottom: -2,
+                                right: -2,
                                 child: Container(
-                                  height: 28,
-                                  width: 28,
+                                  height: 26,
+                                  width: 26,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF111827),
+                                    color: p.ink,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
+                                    border: Border.all(color: p.surface, width: 2),
                                   ),
-                                  child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 13),
+                                  child: Icon(Icons.camera_alt_rounded, color: p.surface, size: 12),
                                 ),
                               ),
                             ],
                           ),
                         ),
-
-                        const SizedBox(width: 16),
-
+                        const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,56 +435,26 @@ class _MyProfileState extends State<MyProfile> {
                                       name,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontFamily: 'Gilroy_Bold',
-                                        fontSize: 22,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: -0.2,
-                                      ),
+                                      style: AppText.title(p.ink).copyWith(fontSize: 20),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  const Icon(Icons.verified_rounded, color: Colors.white, size: 19),
+                                  Icon(Icons.verified_rounded, color: p.success, size: 18),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(Icons.phone_rounded, color: Colors.white.withOpacity(0.9), size: 14),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    "$ccode $mobile",
-                                    style: const TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 14,
-                                      color: Colors.white,
-                                      letterSpacing: 0.3,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 3),
+                              Text("$ccode $mobile", style: AppText.bodyStrong(p.inkMuted).copyWith(fontSize: 14)),
+                              const SizedBox(height: 6),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(color: p.successTint, borderRadius: BorderRadius.circular(8)),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 13),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      "Phone Verified",
-                                      style: TextStyle(
-                                        fontFamily: 'Gilroy_Bold',
-                                        fontSize: 11,
-                                        color: Color(0xFF16A34A),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
+                                  children: [
+                                    Icon(Icons.check_circle_rounded, color: p.successText, size: 13),
+                                    const SizedBox(width: 4),
+                                    Text("Phone Verified".tr,
+                                        style: AppText.caption(p.successText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11)),
                                   ],
                                 ),
                               ),
@@ -531,48 +463,33 @@ class _MyProfileState extends State<MyProfile> {
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 16),
-
-                    // Tagline (user's own line from the backend), calm and readable instead of squeezed italics.
-                    Text(
-                      tagline,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 12.5,
-                        color: Colors.white.withOpacity(0.9),
-                        height: 1.35,
+                    if (tagline.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          tagline,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption(p.inkMuted).copyWith(fontSize: 12.5, height: 1.35),
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Edit Profile: full-width white button, clear primary action of the header.
+                    ],
+                    const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
                       height: 44,
-                      child: ElevatedButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: openEditProfile,
-                        icon: const Icon(Icons.edit_rounded, size: 17),
-                        label: Text(
-                          "Edit Profile".tr,
-                          style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, fontWeight: FontWeight.w700),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFFFA4500),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
+                        icon: const Icon(Icons.edit_outlined, size: 17),
+                        label: Text("Edit Profile".tr),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -601,10 +518,10 @@ class _MyProfileState extends State<MyProfile> {
             children: [
               Text(
                 title.tr,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 16.5,
-                  color: Color(0xFF0F172A),
+                  color: AppPalette.light.ink,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -704,12 +621,7 @@ class _MyProfileState extends State<MyProfile> {
                     children: [
                       Text(
                         title.tr,
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Bold',
-                          fontSize: 14.5,
-                          color: Color(0xFF0F172A),
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style: AppText.bodyStrong(AppPalette.light.ink).copyWith(fontSize: 14.5),
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -774,11 +686,7 @@ class _MyProfileState extends State<MyProfile> {
           // Premium: highlighted row. Height follows its content (no fixed height), so there is no empty space.
           Container(
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFFF7ED), Color(0xFFFFE9D2)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: AppPalette.light.warningTint,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: const Color(0xFFFED7AA), width: 1.2),
               boxShadow: [
@@ -802,11 +710,7 @@ class _MyProfileState extends State<MyProfile> {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: const Color(0xFFF59E0B),
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
@@ -830,10 +734,10 @@ class _MyProfileState extends State<MyProfile> {
                                     premiumTitle,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 15,
-                                      color: Color(0xFF0F172A),
+                                      color: AppPalette.light.ink,
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -1039,10 +943,10 @@ class _MyProfileState extends State<MyProfile> {
             const SizedBox(height: 14),
             Text(
               "Customer Care Support".tr,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: "Gilroy_Bold",
                 fontSize: 18,
-                color: Color(0xFF0F172A),
+                color: AppPalette.light.ink,
               ),
             ),
             const SizedBox(height: 5),
@@ -1069,10 +973,10 @@ class _MyProfileState extends State<MyProfile> {
                   const SizedBox(width: 8),
                   Text(
                     customerCareNumber,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: "Gilroy_Bold",
                       fontSize: 17,
-                      color: Color(0xFF0F172A),
+                      color: AppPalette.light.ink,
                     ),
                   ),
                 ],
@@ -1291,32 +1195,19 @@ class _MyProfileState extends State<MyProfile> {
                   children: [
                     Text(
                       title.tr,
-                      style: const TextStyle(
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 14.5,
-                        color: Color(0xFF0F172A),
-                        fontWeight: FontWeight.w800,
-                      ),
+                      style: AppText.bodyStrong(AppPalette.light.ink).copyWith(fontSize: 14.5),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle.tr,
-                      style: const TextStyle(
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 11.5,
-                        color: Color(0xFF64748B),
-                      ),
+                      style: AppText.caption(AppPalette.light.inkSubtle).copyWith(fontSize: 11.5),
                     ),
                   ],
                 ),
               ),
 
               const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: Color(0xFF94A3B8),
-                size: 22,
-              ),
+              Icon(Icons.chevron_right_rounded, color: AppPalette.light.inkSubtle, size: 22),
             ],
           ),
         ),
@@ -1417,10 +1308,10 @@ class _MyProfileState extends State<MyProfile> {
               const SizedBox(height: 18),
               Text(
                 "App Preferences".tr,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 18,
-                  color: Color(0xFF0F172A),
+                  color: AppPalette.light.ink,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1440,10 +1331,10 @@ class _MyProfileState extends State<MyProfile> {
                 ),
                 title: Text(
                   "Language".tr,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 14.5,
-                    color: Color(0xFF0F172A),
+                    color: AppPalette.light.ink,
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
@@ -1472,10 +1363,10 @@ class _MyProfileState extends State<MyProfile> {
                 ),
                 title: Text(
                   "Dark Mode".tr,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 14.5,
-                    color: Color(0xFF0F172A),
+                    color: AppPalette.light.ink,
                   ),
                 ),
                 trailing: CupertinoSwitch(
@@ -1580,10 +1471,10 @@ class _MyProfileState extends State<MyProfile> {
                 const SizedBox(height: 12),
                 Text(
                   "Refer & Earn".tr,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 20,
-                    color: Color(0xFF0F172A),
+                    color: AppPalette.light.ink,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1732,13 +1623,13 @@ class _MyProfileState extends State<MyProfile> {
                             children: [
                               Row(
                                 children: [
-                                  const Text(
+                                  Text(
                                     "Refer from Phone Contacts",
                                     style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF0F172A),
+                                      color: AppPalette.light.ink,
                                     ),
                                   ),
                                   const SizedBox(width: 6),

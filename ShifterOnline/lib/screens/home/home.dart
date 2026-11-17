@@ -44,7 +44,20 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sql;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
-import 'widgets/stop_swap_list.dart';
+import 'widgets/home_header.dart';
+import 'widgets/home_route_card.dart';
+import 'widgets/home_vehicle_row.dart';
+import 'widgets/home_more_grid.dart';
+import 'widgets/home_active_order_strip.dart';
+import 'package:goParcel/screens/home/wallet_page.dart';
+import 'package:goParcel/screens/home/referral_points_screen.dart';
+import 'package:goParcel/screens/profile/favorite_drivers.dart';
+import 'package:goParcel/screens/profile/faq.dart';
+import 'package:goParcel/services/wallet_balance_service.dart';
+import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/widgets/app_card.dart';
+import 'package:goParcel/theme/widgets/app_skeleton.dart';
+import 'package:goParcel/theme/widgets/section_header.dart';
 
 class ItemListDelet {
   static Future<Database> database() async {
@@ -330,13 +343,9 @@ class _HomeState extends State<Home> {
 
   Widget _buildQuickLocations() {
     if (_isLoadingSavedLocations) {
-      return Container(
-        height: 82,
-        margin: const EdgeInsets.only(bottom: 17),
-        decoration: BoxDecoration(
-          color: notifier.getBgColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 17),
+        child: AppSkeleton(height: 82, radius: 16),
       );
     }
 
@@ -346,38 +355,13 @@ class _HomeState extends State<Home> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Quick Locations",
-                style: TextStyle(
-                  color: notifier.text,
-                  fontSize: 18,
-                  fontFamily: "Gilroy_Bold",
-                ),
-              ),
-              InkWell(
-                onTap: () async {
-                  await Get.to(() => const AddressListPage());
-                  _loadSavedLocations();
-                },
-                child: Row(
-                  children: [
-                    Text(
-                      "View all",
-                      style: TextStyle(
-                        color: greaycolor,
-                        fontSize: 14,
-                        fontFamily: "Gilroy_Medium",
-                      ),
-                    ),
-                    Icon(Icons.chevron_right_rounded,
-                        color: greaycolor, size: 20),
-                  ],
-                ),
-              ),
-            ],
+          SectionHeader(
+            title: "Saved places".tr,
+            actionLabel: "View all".tr,
+            onAction: () async {
+              await Get.to(() => const AddressListPage());
+              _loadSavedLocations();
+            },
           ),
           const SizedBox(height: 9),
           SizedBox(
@@ -389,11 +373,11 @@ class _HomeState extends State<Home> {
               itemBuilder: (context, index) {
                 if (index == locations.length) {
                   return _quickLocationCard(
-                    title: "Add New",
-                    subtitle: "Save for later",
-                    icon: const Icon(Icons.add_rounded,
-                        color: Color(0xFF2563EB), size: 28),
-                    background: const Color(0xFFEAF0FF),
+                    title: "Add New".tr,
+                    subtitle: "Save for later".tr,
+                    icon: Icon(Icons.add_rounded,
+                        color: AppPalette.current.ink, size: 26),
+                    background: AppPalette.current.canvas,
                     onTap: _addQuickLocation,
                   );
                 }
@@ -403,7 +387,7 @@ class _HomeState extends State<Home> {
                   title: _quickLocationTitle(location),
                   subtitle: location["address"]?.toString() ?? "",
                   icon: Image.asset(_quickLocationIcon(location), height: 26),
-                  background: const Color(0xFFFFEEEE),
+                  background: AppPalette.current.brandTint,
                   onTap: () => _selectSavedDropLocation(location),
                 );
               },
@@ -421,23 +405,17 @@ class _HomeState extends State<Home> {
     required Color background,
     required VoidCallback onTap,
   }) {
+    final p = AppPalette.current;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       child: Container(
         width: 154,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-          color: notifier.getBgColor,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: notifier.bordecolor.withOpacity(.65)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(.035),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          color: p.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: p.line),
         ),
         child: Row(
           children: [
@@ -460,22 +438,14 @@ class _HomeState extends State<Home> {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: notifier.text,
-                      fontSize: 13,
-                      fontFamily: "Gilroy_Bold",
-                    ),
+                    style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: greaycolor,
-                      fontSize: 11,
-                      fontFamily: "Gilroy_Medium",
-                    ),
+                    style: AppText.caption(p.inkSubtle).copyWith(fontSize: 11),
                   ),
                 ],
               ),
@@ -629,11 +599,7 @@ class _HomeState extends State<Home> {
                 height: 62,
                 width: 62,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xffFFB800), Color(0xffFF8C00)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  color: Color(0xffFFB800),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -662,8 +628,8 @@ class _HomeState extends State<Home> {
                   color: const Color(0xffFFF4E5),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  "\u{2B50} Premium Exclusive Feature",
+                child: Text(
+                  "Premium Exclusive Feature".tr,
                   style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 12,
@@ -815,141 +781,77 @@ class _HomeState extends State<Home> {
       subtitleText = "Complete ₹$minAmount in rides (single or multiple) & get $planName FREE";
     }
 
+    final p = AppPalette.current;
+    final accent = isClaimed ? p.successText : p.warning;
+    final accentTint = isClaimed ? p.successTint : p.warningTint;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+      padding: const EdgeInsets.only(bottom: 14.0),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         onTap: () => _showRewardMilestoneDetails(reward),
-        child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: isClaimed
-                  ? [const Color(0xFF16A34A), const Color(0xFF22C55E)]
-                  : [linercolor, const Color(0xFFFF8C38)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        child: Row(
+          children: [
+            Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(color: accentTint, borderRadius: BorderRadius.circular(12)),
+              child: Icon(
+                isClaimed ? Icons.verified_rounded : Icons.card_giftcard_rounded,
+                color: accent,
+                size: 22,
+              ),
             ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: (isClaimed ? const Color(0xFF16A34A) : linercolor).withOpacity(0.28),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isClaimed
-                        ? [const Color(0xFF10B981), const Color(0xFF34D399)]
-                        : [const Color(0xFFFFB800), const Color(0xFFFF8C00)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  isClaimed ? Icons.verified_rounded : Icons.card_giftcard_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            isClaimed ? "Milestone Unlocked! 🎉" : "Ride Milestone Offer",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          isClaimed ? "Milestone Unlocked!" : "Ride Milestone Offer",
+                          style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        if (urgency.isNotEmpty && !isClaimed) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              urgency,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
+                      ),
+                      if (urgency.isNotEmpty && !isClaimed) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: p.brandTint, borderRadius: BorderRadius.circular(6)),
+                          child: Text(urgency,
+                              style: AppText.caption(p.brandText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 10)),
+                        ),
                       ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitleText,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.92),
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 12,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (!isClaimed && currentSpend > 0) ...[
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: (progressPercent / 100.0).clamp(0.0, 1.0),
-                          backgroundColor: Colors.white.withOpacity(0.28),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                          minHeight: 4,
-                        ),
-                      ),
                     ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitleText,
+                    style: AppText.caption(p.inkMuted),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (!isClaimed && currentSpend > 0) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: (progressPercent / 100.0).clamp(0.0, 1.0),
+                        backgroundColor: p.divider,
+                        valueColor: AlwaysStoppedAnimation<Color>(p.brand),
+                        minHeight: 5,
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  color: Colors.white,
-                  size: 12,
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right_rounded, color: p.inkSubtle),
+          ],
         ),
       ),
     );
@@ -1026,13 +928,7 @@ class _HomeState extends State<Home> {
                         height: 60,
                         width: 60,
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: isClaimed
-                                ? [const Color(0xFF16A34A), const Color(0xFF22C55E)]
-                                : [linercolor, const Color(0xFFFF8C38)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: isClaimed ? const Color(0xFF16A34A) : linercolor,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
@@ -1052,7 +948,7 @@ class _HomeState extends State<Home> {
 
                       // Title
                       Text(
-                        isClaimed ? "Milestone Unlocked! 🎉" : "Exclusive Ride Milestone Offer",
+                        isClaimed ? "Milestone Unlocked!" : "Exclusive Ride Milestone Offer",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'Gilroy_Bold',
@@ -1070,7 +966,7 @@ class _HomeState extends State<Home> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          isClaimed ? "✅ Plan Active on Your Account" : (urgency.isNotEmpty ? "⚡ $urgency" : "🎁 Limited Time Reward"),
+                          isClaimed ? "Plan Active on Your Account" : (urgency.isNotEmpty ? "$urgency" : "Limited Time Reward"),
                           style: TextStyle(
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 12,
@@ -1146,14 +1042,7 @@ class _HomeState extends State<Home> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              linercolor.withOpacity(0.08),
-                              linercolor.withOpacity(0.02),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: linercolor.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(color: linercolor.withOpacity(0.28), width: 1.2),
                         ),
@@ -1451,198 +1340,6 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildDeliveryOptionsRow() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: Column(
-        children: [
-          Row(
-        children: [
-          // -- Free Ride Chance (Half width) -----------------
-          const Expanded(child: FreeRideChanceTile()),
-          const SizedBox(width: 10),
-
-          // -- Next Day Delivery (Half width) ----------------
-          Expanded(
-            child: InkWell(
-              onTap: _handleNextDayDeliveryTap,
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                decoration: BoxDecoration(
-                  color: notifier.getBgColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xffFFB800).withOpacity(0.4),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      height: 38,
-                      width: 38,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xffFFB800), Color(0xfff26522)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 22),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  "Next Day",
-                                  style: TextStyle(
-                                    color: notifier.text,
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 13,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xffFFF4E5),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  "\u{2B50} VIP",
-                                  style: TextStyle(
-                                    fontFamily: 'Gilroy_Bold',
-                                    fontSize: 8.5,
-                                    color: Color(0xffD97706),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "Tomorrow \u00B7 Super Saver",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: greaycolor,
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-        ],
-      ),
-          const SizedBox(height: 10),
-          Row(
-        children: [
-          // -- Schedule Booking (Half width) -----------------
-          if (_scheduleBookingEnabled) Expanded(
-            child: InkWell(
-              onTap: _handleScheduleBookingTap,
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                decoration: BoxDecoration(
-                  color: notifier.getBgColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xff3976d3).withOpacity(0.35),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      height: 38,
-                      width: 38,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xff4A90E2), Color(0xff3976d3)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 20),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            "Schedule",
-                            style: TextStyle(
-                              color: notifier.text,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 13,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "Pick Date & Time",
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: greaycolor,
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          if (_scheduleBookingEnabled) const SizedBox(width: 10),
-
-          // -- Custom Order (Half width, coming soon) --------
-          const Expanded(child: CustomiseOrderTile()),
-        ],
-      ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _handleScheduleBookingTap() async {
     setState(() {
@@ -2191,320 +1888,6 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildRouteSelectionCard() {
-    final pickupAddress =
-        _confirmedPickupAddress ?? 'Detecting current location...';
-    final dropAddress = _confirmedDropAddress ?? 'Select drop location';
-    final drop = _confirmedDropAddress;
-    final pickupType =
-        _confirmedPickupData?["type"]?.toString().toLowerCase().trim() ?? '';
-    final routeSubtitle = [
-      'Pickup',
-      for (var index = 0; index < _extraStops.length; index++)
-        'Stop ${index + 1}',
-      'Drop',
-    ].join(' \u2192 ');
-    final pickupIsCurrent = pickupType == 'current location' ||
-        pickupType == 'current' ||
-        (currentLat != null &&
-            currentLong != null &&
-            double.tryParse(
-                    _confirmedPickupData?['lat_map']?.toString() ?? '') ==
-                currentLat &&
-            double.tryParse(
-                    _confirmedPickupData?['long_map']?.toString() ?? '') ==
-                currentLong);
-
-    Widget connector() => Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: Container(
-            width: 1.5,
-            height: 15,
-            color: const Color(0xffd9dee5),
-          ),
-        );
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.fromLTRB(18, 19, 14, 17),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xff263238).withOpacity(.06),
-            blurRadius: 18,
-            offset: const Offset(0, 7),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Delivery Route',
-                      style: TextStyle(
-                        color: notifier.text,
-                        fontSize: 20,
-                        fontFamily: 'Gilroy_Bold',
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      routeSubtitle,
-                      style: TextStyle(
-                        color: greaycolor,
-                        fontSize: 13,
-                        fontFamily: 'Gilroy_Medium',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xfffff0e9),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Text(
-                  _maxExtraStops - _extraStops.length == 0
-                      ? 'No stops left'
-                      : '${_maxExtraStops - _extraStops.length} ${_maxExtraStops - _extraStops.length == 1 ? 'stop' : 'stops'} left',
-                  style: TextStyle(
-                    color: Color(0xfff26522),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 19),
-          _routeTimelineRow(
-            icon: Icons.inventory_2_rounded,
-            iconColor: const Color(0xff46a45a),
-            title: 'Pickup',
-            subtitle: pickupIsCurrent ? 'Current location' : 'Pickup location',
-            address: pickupAddress,
-            addressFontSize: 13,
-            onTap: _changePickupLocation,
-          ),
-          connector(),
-          StopSwapList<Map<String, dynamic>>(
-            items: _extraStops,
-            onSwap: _swapExtraStops,
-            separator: connector(),
-            itemBuilder: (context, stop, index, wrapDragBody) => _routeTimelineRow(
-              icon: Icons.location_on_rounded,
-              iconColor: index == 0
-                  ? const Color(0xfff27b38)
-                  : const Color(0xff3976d3),
-              title: 'Stop ${index + 1}',
-              subtitle: 'Additional stop',
-              address: stop['address']?.toString() ??
-                  'Selected location',
-              addressFontSize: 13,
-              onTap: () => _editExtraStop(index),
-              onDelete: () => setState(() => _extraStops.removeAt(index)),
-              wrapDragBody: wrapDragBody,
-            ),
-          ),
-          _routeTimelineRow(
-            icon: Icons.location_on_rounded,
-            iconColor: const Color(0xffe55353),
-            title: 'Drop',
-            subtitle: drop == null ? 'Choose final destination' : 'Final drop-off',
-            address: dropAddress,
-            addressFontSize: 13,
-            onTap: drop == null
-                ? _startDropSelection
-                : () => _editRouteLocation('Drop'),
-          ),
-          const SizedBox(height: 16),
-          InkWell(
-            onTap: _extraStops.length < _maxExtraStops ? _addExtraStop : null,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: const Color(0xfffff0e9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.add_location_alt_outlined,
-                      color: Color(0xfff26522),
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '+ Add another stop',
-                          style: TextStyle(
-                            color: Color(0xfff26522),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'You can add up to $_maxExtraStops ${_maxExtraStops == 1 ? 'stop' : 'stops'}',
-                          style: TextStyle(
-                            color: greaycolor,
-                            fontSize: 12,
-                            fontFamily: 'Gilroy_Medium',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded,
-                      color: Color(0xff8b949e), size: 22),
-                ],
-              ),
-            ),
-          ),
-          if (drop != null) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _openVehicleSelection,
-                icon: const Icon(Icons.local_shipping_rounded, size: 20, color: Colors.white),
-                label: const Text(
-                  'View Vehicles',
-                  style: TextStyle(
-                    fontFamily: 'Gilroy_Bold',
-                    fontSize: 15,
-                    color: Colors.white,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xfff26522),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _routeTimelineRow({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required String address,
-    double addressFontSize = 11,
-    VoidCallback? onTap,
-    VoidCallback? onDelete,
-    Widget Function(Widget body)? wrapDragBody,
-  }) {
-    final body = Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 33,
-              height: 33,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: iconColor, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: notifier.text,
-                      fontSize: 14,
-                      fontFamily: 'Gilroy_Bold',
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: greaycolor,
-                      fontSize: 11,
-                      fontFamily: 'Gilroy_Medium',
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    address,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: greaycolor.withOpacity(.78),
-                      fontSize: addressFontSize,
-                      fontFamily: 'Gilroy_Regular',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(child: wrapDragBody?.call(body) ?? body),
-            if (onDelete != null)
-              IconButton(
-                onPressed: onDelete,
-                tooltip: 'Remove stop',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-                splashRadius: 16,
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: Color(0xffe55353),
-                  size: 19,
-                ),
-              )
-            else
-              const Icon(Icons.chevron_right_rounded,
-                  color: Color(0xff8b949e), size: 22),
-          ],
-        ),
-      ),
-    );
-  }
 
   Map<String, dynamic>? _activeHomeOrder() {
     if (resultData is! Map || !_homeOrderStatusChecked) return null;
@@ -2589,75 +1972,6 @@ class _HomeState extends State<Home> {
     setState(() => _homeOrderStatusChecked = true);
   }
 
-  Widget _buildActiveOrderCard() {
-    final order = _activeHomeOrder();
-    if (order == null) return const SizedBox.shrink();
-
-    final isBuyOrder = order['_isBuyOrder'] == true;
-    final status = order['status']?.toString() ?? 'In progress';
-    final message = order['flow_msg']?.toString().trim() ?? '';
-    final orderId = order['id']?.toString() ?? '';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: notifier.getBgColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xffff6a2a).withOpacity(.22)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            height: 40,
-            width: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xffff6a2a).withOpacity(.12),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.local_shipping_rounded,
-                color: Color(0xffff6a2a), size: 22),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Order #$orderId',
-                  style: TextStyle(
-                      color: notifier.text,
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 15)),
-              const SizedBox(height: 3),
-              Text(status,
-                  style: const TextStyle(
-                      color: Color(0xffe65c20),
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 12)),
-            ]),
-          ),
-          TextButton(
-            onPressed: () {
-              save('OrderID', orderId);
-              Get.to(() => TrackingWay(
-                    type: isBuyOrder ? 'Store' : 'Pickup',
-                    isback: true,
-                  ));
-            },
-            child: const Text('Track'),
-          ),
-        ]),
-        if (message.isNotEmpty) ...[
-          const SizedBox(height: 11),
-          Text(message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: greaycolor,
-                  fontFamily: 'Gilroy_Medium',
-                  fontSize: 13)),
-        ],
-      ]),
-    );
-  }
 
   Widget _locationRow(
       {required bool pickup,
@@ -2818,6 +2132,7 @@ class _HomeState extends State<Home> {
       });
     });
     _loadSavedLocations();
+    _loadWalletBalance();
     debugPrint("======= currentLat ======== $currentLat");
     debugPrint("======= currentLong ======= $currentLong");
 
@@ -3179,167 +2494,224 @@ class _HomeState extends State<Home> {
   List wheelerItems = [];
   List wheelerImages = [];
 
-  String _getWelcomeText() {
-    try {
-      final userData = getdata.read("UserLogin");
-      if (userData == null || userData is! Map || userData["name"] == null) {
-        return "${"Welcome".tr}, \u{1F44B}";
-      }
-      return "${"Welcome".tr}, ${userData["name"].toString()} \u{1F44B}";
-    } catch (e) {
-      return "${"Welcome".tr}, \u{1F44B}";
-    }
+
+  // ---------------- Redesigned Home (UI only; handlers below are the existing ones) ----------------
+
+  double? _walletBalance;
+
+  Future<void> _loadWalletBalance() async {
+    final balance = await WalletBalanceService.fetch();
+    if (mounted) setState(() => _walletBalance = balance);
+  }
+
+  Future<void> _openWalletFromHome() async {
+    await Get.to(() => const WalletPage());
+    _loadWalletBalance();
+  }
+
+  Widget _buildHomeSkeleton() {
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(16, 24 + MediaQuery.of(context).padding.top, 16, 16),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppSkeleton(width: 180, height: 18),
+          SizedBox(height: 12),
+          AppSkeleton(width: 240, height: 30),
+          SizedBox(height: 24),
+          AppSkeleton(height: 210, radius: 20),
+          SizedBox(height: 20),
+          AppSkeleton(height: 150, radius: 18),
+          SizedBox(height: 20),
+          AppSkeleton(height: 160, radius: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeRouteCard() {
+    final drop = _confirmedDropAddress;
+    return HomeRouteCard(
+      pickupAddress: _confirmedPickupAddress,
+      dropAddress: drop,
+      stops: _extraStops,
+      onStopSwap: _swapExtraStops,
+      canAddStop: _extraStops.length < _maxExtraStops,
+      bookingType: _selectedBookingType,
+      scheduleEnabled: _scheduleBookingEnabled,
+      onPickupTap: _changePickupLocation,
+      onDropTap: drop == null ? _startDropSelection : () => _editRouteLocation('Drop'),
+      onStopTap: _editExtraStop,
+      onStopDelete: (index) => setState(() => _extraStops.removeAt(index)),
+      onAddStop: _addExtraStop,
+      onNow: () => setState(() => _selectedBookingType = 1),
+      onSchedule: _handleScheduleBookingTap,
+      onLowFare: _handleNextDayDeliveryTap,
+      onChooseVehicle: _openVehicleSelection,
+    );
+  }
+
+  Widget _buildActiveOrderStrip() {
+    final order = _activeHomeOrder();
+    if (order == null) return const SizedBox.shrink();
+    final isBuyOrder = order['_isBuyOrder'] == true;
+    final orderId = order['id']?.toString() ?? '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: HomeActiveOrderStrip(
+        orderId: orderId,
+        status: order['status']?.toString() ?? 'In progress',
+        message: order['flow_msg']?.toString().trim(),
+        onTrack: () {
+          save('OrderID', orderId);
+          Get.to(() => TrackingWay(
+                type: isBuyOrder ? 'Store' : 'Pickup',
+                isback: true,
+              ));
+        },
+      ),
+    );
+  }
+
+  List<HomeVehicle> _homeVehicles() => [
+        for (var i = 0; i < wheelerItems.length; i++)
+          HomeVehicle(
+            name: '${wheelerItems[i]}',
+            imageUrl: i < wheelerImages.length && wheelerImages[i] != null
+                ? Config.resolveImageUrl(wheelerImages[i])
+                : null,
+          ),
+      ];
+
+  List<HomeMoreItem> _homeMoreItems() => [
+        HomeMoreItem(
+          label: 'Customise Order'.tr,
+          icon: Icons.sell_outlined,
+          tint: const Color(0xFFFFF0E9),
+          iconColor: const Color(0xFFD9480F),
+          onTap: CustomiseOrderTile.open,
+        ),
+        HomeMoreItem(
+          label: 'Premium Plans'.tr,
+          icon: Icons.workspace_premium_outlined,
+          tint: const Color(0xFFFFF6DB),
+          iconColor: const Color(0xFF9A6700),
+          onTap: () => Get.to(() => const PremiumPlansScreen()),
+        ),
+        HomeMoreItem(
+          label: 'Favourite Drivers'.tr,
+          icon: Icons.favorite_border_rounded,
+          tint: const Color(0xFFF1ECFB),
+          iconColor: const Color(0xFF6B3FC2),
+          onTap: () => Get.to(() => const FavoriteDriversScreen()),
+        ),
+        HomeMoreItem(
+          label: 'Reward Points'.tr,
+          icon: Icons.toll_outlined,
+          tint: const Color(0xFFFFF6DB),
+          iconColor: const Color(0xFF9A6700),
+          onTap: () => Get.to(() => const ReferralPointsScreen()),
+        ),
+        HomeMoreItem(
+          label: 'Saved Addresses'.tr,
+          icon: Icons.bookmark_border_rounded,
+          tint: const Color(0xFFEAF1FB),
+          iconColor: const Color(0xFF2457A6),
+          onTap: () async {
+            await Get.to(() => const AddressListPage());
+            _loadSavedLocations();
+          },
+        ),
+        HomeMoreItem(
+          label: 'Help & FAQs'.tr,
+          icon: Icons.support_agent_rounded,
+          tint: const Color(0xFFE7F5EC),
+          iconColor: const Color(0xFF15803D),
+          onTap: () => Get.to(() => Faq()),
+        ),
+      ];
+
+  Widget _buildHowToUseCard() {
+    final p = AppPalette.current;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        onTap: () async {
+          try {
+            final Uri url = Uri.parse(_howToUseLink);
+            if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+              debugPrint('Could not launch $url');
+            }
+          } catch (e) {
+            debugPrint('Could not parse/launch url $_howToUseLink: $e');
+          }
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: p.dangerTint, borderRadius: BorderRadius.circular(12)),
+              child: Icon(Icons.play_arrow_rounded, color: p.danger, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(howToUseTitle.tr,
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
+            ),
+            Icon(Icons.chevron_right_rounded, color: p.inkSubtle),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final palette = AppPalette.current;
 
     return Scaffold(
-      backgroundColor: linercolor,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        elevation: 0,
-        toolbarHeight: 70,
-        backgroundColor: linercolor,
-        title: ListTile(
-          contentPadding: EdgeInsets.only(bottom: 5),
-          title: Text(
-            _getWelcomeText(),
-            style: TextStyle(
-              color: whitecolor,
-              fontSize: 20,
-              fontFamily: 'Gilroy_Bold',
-            ),
-          ),
-          // Space kam karne ke liye yeh changes
-          subtitle: Padding(
-            padding: EdgeInsets.zero, // <- top: 0 ki jagah zero use karo
-            child: Row(
-              children: [
-                Image.asset(
-                  "assets/location_drop.png",
-                  color: whitecolor.withOpacity(0.8),
-                  height: 18,
-                ),
-                SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    (homeAddress == null || homeAddress.isEmpty)
-                        ? "Location".tr
-                        : homeAddress,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: whitecolor.withOpacity(0.8),
-                      fontSize: 13,
-                      fontFamily: 'Gilroy_Medium',
-                    ),
+      backgroundColor: palette.canvas,
+      body: isLoding
+          ? _buildHomeSkeleton()
+          : SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  HomeHeader(
+                    address: HomeHeader.pickupLine(
+                        confirmedPickup: _confirmedPickupAddress, gpsAddress: homeAddress),
+                    onLocationTap: _changePickupLocation,
+                    onNotificationTap: () => Get.to(Notifications()),
+                    walletBalance: _walletBalance,
+                    onWalletTap: _openWalletFromHome,
                   ),
-                ),
-              ],
-            ),
-          ),
-          trailing: InkWell(
-            onTap: () {
-              Get.to(Notifications());
-            },
-            child: Container(
-              height: 50,
-              width: 50,
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: whitecolor.withOpacity(0.2),
-              ),
-              child: Image.asset(
-                "assets/Notification.png",
-                color: whitecolor,
-              ),
-            ),
-          ),
-        ),
-      ),
-      body: Container(
-        height: Get.height,
-        width: Get.width,
-        decoration: BoxDecoration(
-          color: notifier.lightBgColor,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(22),
-            topRight: Radius.circular(22),
-          ),
-        ),
-        child: isLoding
-            ? Center(
-                child:
-                    CircularProgressIndicator(color: notifier.darklinercolor))
-            : SingleChildScrollView(
-                physics: BouncingScrollPhysics(),
-                padding: EdgeInsets.all(15.0),
-                child: Padding(
-                  padding: EdgeInsets.only(
-                      bottom: Get.height / 10 +
-                          MediaQuery.of(context).padding.bottom +
-                          20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (showHowToUse)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 15.0),
-                          child: InkWell(
-                            onTap: () async {
-                              try {
-                                final Uri url = Uri.parse(_howToUseLink);
-                                if (!await launchUrl(url,
-                                    mode: LaunchMode.externalApplication)) {
-                                  debugPrint('Could not launch $url');
-                                }
-                              } catch (e) {
-                                debugPrint('Could not parse/launch url $_howToUseLink: $e');
-                              }
-                            },
-                            child: Container(
-                              width: Get.width,
-                              padding: EdgeInsets.symmetric(
-                                  vertical: 12, horizontal: 15),
-                              decoration: BoxDecoration(
-                                color: Color(0xFFFF0000), // YouTube red
-                                borderRadius: BorderRadius.circular(15),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Color(0xFFFF0000).withOpacity(0.3),
-                                    blurRadius: 10,
-                                    offset: Offset(0, 5),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.play_circle_fill,
-                                      color: Colors.white, size: 28),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    howToUseTitle.tr,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 18,
-                                      fontFamily: 'Gilroy_Bold',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      const SizedBox(height: 4),
-                      _buildActiveOrderCard(),
+                  Transform.translate(
+                    offset: const Offset(0, -HomeHeader.overlap),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                          16, 0, 16, Get.height / 10 + MediaQuery.of(context).padding.bottom + 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      _buildHomeRouteCard(),
+                      const SizedBox(height: 16),
+                      _buildActiveOrderStrip(),
                       _buildRewardMilestoneCard(),
-                      _buildDeliveryOptionsRow(),
-                      _buildRouteSelectionCard(),
+                      HomeVehicleRow(
+                        vehicles: _homeVehicles(),
+                        onTap: _confirmedDropData == null ? _startDropSelection : _openVehicleSelection,
+                      ),
+                      const SizedBox(height: 20),
+                      const FreeRideChanceTile(),
+                      const SizedBox(height: 20),
+                      HomeMoreGrid(items: _homeMoreItems()),
+                      const SizedBox(height: 20),
+                      if (showHowToUse) _buildHowToUseCard(),
                       _buildQuickLocations(),
                       const SizedBox(height: 4),
                       // Wheeler Selection Section (shown after route selection)
@@ -3789,14 +3161,7 @@ class _HomeState extends State<Home> {
                             padding: EdgeInsets.symmetric(
                                 horizontal: 18, vertical: 16),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Color(0xff7B2FF7),
-                                  Color(0xffb34eff),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
+                              color: Color(0xff7B2FF7),
                               borderRadius: BorderRadius.circular(18),
                               boxShadow: [
                                 BoxShadow(
@@ -4074,8 +3439,10 @@ class _HomeState extends State<Home> {
                     ],
                   ),
                 ),
-              ),
-      ),
+                ),
+              ],
+            ),
+          ),
     );
   }
 
