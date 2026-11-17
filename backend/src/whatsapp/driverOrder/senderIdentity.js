@@ -24,38 +24,53 @@ function phoneFromMessage(msg) {
   return phoneFromJid(key.senderPn) || phoneFromJid(key.remoteJidAlt) || null;
 }
 
+const SESSION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ACTIVE = 0, AWAITING_CASH = 1, GONE = 2;
+
+/** How a session's order should route: active > awaiting cash > cancelled/reassigned; null = do not route. */
+function routeRank(order, riderId, pendingCash) {
+  if (!order) return null;
+  if (order.o_status === "Cancelled" || Number(order.rid) !== Number(riderId)) return GONE;
+  if (order.o_status === "Completed") return pendingCash.has(order.id) ? AWAITING_CASH : null;
+  return [1, 2, 3].includes(Number(order.order_status)) ? ACTIVE : null;
+}
+
 /**
- * The WhatsApp-channel order this phone's driver is running: the latest active one, else the latest Completed one
- * whose cash settlement is still pending (the driver still has to reply PAISA MILA). null = not a routed driver.
+ * The WhatsApp-channel order this phone's driver is talking about, found through whatsapp_driver_session (indexed by
+ * phone - an ordinary customer only costs one small lookup). Only sessions active in the last 24 h count, latest
+ * first. Priority: an active order, else a Completed one still awaiting the driver's cash confirmation (PAISA MILA),
+ * else one cancelled or taken away from this driver - the flow then answers "order cancel ho gaya".
+ * Returns { orderId, riderId } (riderId = the session's driver) or null.
  */
 async function findActiveWhatsAppOrder(phone10) {
   if (!/^\d{10}$/.test(String(phone10 || ""))) return null;
-  const riders = await prisma.tbl_rider.findMany({
-    where: { fmobile: { in: [phone10, `91${phone10}`, `+91${phone10}`] } },
-    select: { id: true },
+  const sessions = await prisma.whatsapp_driver_session.findMany({
+    where: { phone: phone10, updated_at: { gte: new Date(Date.now() - SESSION_WINDOW_MS) } },
+    orderBy: { updated_at: "desc" },
+    select: { order_id: true, rider_id: true },
   });
-  if (riders.length === 0) return null;
-  const rid = { in: riders.map((r) => r.id) };
+  if (sessions.length === 0) return null;
 
-  const active = await prisma.pkg_order.findFirst({
-    where: { rid, driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
-    orderBy: { id: "desc" },
-    select: { id: true, rid: true },
+  const orders = await prisma.pkg_order.findMany({
+    where: { id: { in: sessions.map((s) => s.order_id) } },
+    select: { id: true, rid: true, order_status: true, o_status: true },
   });
-  if (active) return { orderId: active.id, riderId: active.rid };
-
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  const completedIds = orders.filter((o) => o.o_status === "Completed").map((o) => o.id);
   // `method` is null until settled, and Prisma's `not: 'online'` would drop NULLs - so filter with the shared rule.
-  const pending = (await prisma.order_settlement.findMany({
-    where: { rid, status: "pending" },
-    select: { order_id: true, status: true, method: true },
-  })).filter(isCashSettlementPending);
-  if (pending.length === 0) return null;
-  const awaitingCash = await prisma.pkg_order.findFirst({
-    where: { id: { in: pending.map((s) => s.order_id) }, rid, driver_channel: "whatsapp", o_status: "Completed" },
-    orderBy: { id: "desc" },
-    select: { id: true, rid: true },
-  });
-  return awaitingCash ? { orderId: awaitingCash.id, riderId: awaitingCash.rid } : null;
+  const pendingCash = new Set(completedIds.length
+    ? (await prisma.order_settlement.findMany({
+        where: { order_id: { in: completedIds }, status: "pending" },
+        select: { order_id: true, status: true, method: true },
+      })).filter(isCashSettlementPending).map((s) => s.order_id)
+    : []);
+
+  let best = null;
+  for (const s of sessions) {
+    const rank = routeRank(byId.get(s.order_id), s.rider_id, pendingCash);
+    if (rank !== null && (!best || rank < best.rank)) best = { rank, orderId: s.order_id, riderId: s.rider_id };
+  }
+  return best ? { orderId: best.orderId, riderId: best.riderId } : null;
 }
 
 module.exports = { phoneFromMessage, findActiveWhatsAppOrder };

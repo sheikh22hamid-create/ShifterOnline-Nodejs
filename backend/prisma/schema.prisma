@@ -2577,4 +2577,5 @@ model whatsapp_driver_session {
   updated_at       DateTime  @updatedAt
 
   @@index([rider_id])
+  @@index([phone])
 }

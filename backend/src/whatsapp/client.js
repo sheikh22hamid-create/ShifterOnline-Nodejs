@@ -61,10 +61,18 @@ function unwrapContent(message) {
   return content || null;
 }
 
-/** The map pin / Live Location payload of a message, or null. */
-function locationContent(message) {
+// Messages older than this are not acted on (reconnect / offline catch-up).
+const STALE_MESSAGE_SEC = 120;
+
+/** The Live Location (GPS share) payload of a message, or null. */
+function liveLocationContent(message) {
+  return unwrapContent(message)?.liveLocationMessage || null;
+}
+
+/** True when the message was forwarded from another chat (WhatsApp marks it in the payload's contextInfo). */
+function isForwarded(message) {
   const content = unwrapContent(message);
-  return content?.liveLocationMessage || content?.locationMessage || null;
+  return Object.values(content || {}).some((part) => part && typeof part === "object" && part.contextInfo?.isForwarded);
 }
 
 // Helper to extract text content from standard, ephemeral, or viewOnce WhatsApp messages
@@ -115,28 +123,38 @@ function dedupId(msg) {
   return `${id}:live:${seq}:${live.degreesLatitude},${live.degreesLongitude}`;
 }
 
-/** "LOCATION_PIN:22.7,75.8[:name]" -> { lat, lng } (numbers), else null. */
-function parseLocationPin(text) {
-  if (typeof text !== "string" || !text.startsWith("LOCATION_PIN:")) return null;
-  const [lat, lng] = text.slice("LOCATION_PIN:".length).split(":")[0].split(",").map(Number);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-}
+// riderId -> { shareId, seq } of the newest Live Location update stamped with its arrival time.
+const lastLiveUpdate = new Map();
 
 /**
- * When the position was observed. A Live Location update is stamped on arrival: its messageTimestamp can be the
- * time the share started, which would make every update look old to the trip's arrival check.
+ * When a Live Location position was observed. An update's messageTimestamp can be the time the share STARTED, so a
+ * real-time update that is newer than the last one processed for this rider's share (higher sequenceNumber, or a new
+ * share) is stamped on arrival. Anything else - an offline/append batch, an update past the stale cutoff, a repeated
+ * or lower sequence - keeps its real messageTimestamp, so progressTrip's leg-start guards still apply to it.
+ * null = no trustworthy time (no messageTimestamp and not eligible for the arrival time): the update is dropped.
  */
-function locationTimestampMs(msg) {
-  if (unwrapContent(msg.message)?.liveLocationMessage) return Date.now();
+function liveLocationTimestampMs({ msg, live, riderId, realtime }) {
   const sec = messageTimestampSec(msg);
-  return sec ? sec * 1000 : Date.now();
+  const stale = Boolean(sec) && Math.floor(Date.now() / 1000) - sec > STALE_MESSAGE_SEC;
+  const seq = Number(live.sequenceNumber?.low ?? live.sequenceNumber);
+  const shareId = msg.key?.id;
+  const last = lastLiveUpdate.get(riderId);
+  const newer = Number.isFinite(seq) && (!last || last.shareId !== shareId || seq > last.seq);
+  if (realtime && !stale && newer) {
+    lastLiveUpdate.set(riderId, { shareId, seq });
+    return Date.now();
+  }
+  return sec ? sec * 1000 : null;
 }
 
 /**
  * WhatsApp Trial Order: sends a trial driver's message to their WhatsApp order's flow. Returns true when the sender
  * is such a driver (the message is then fully handled here), false for everyone else (normal bot handling).
+ * Location comes ONLY from a real liveLocationMessage (a GPS share): a static pin can be dropped anywhere on the map
+ * and a forwarded message is someone else's, so neither has any effect; typed "LOCATION_PIN:..." is just text.
+ * realtime: false for messages from an offline/append batch.
  */
-async function routeDriverMessage({ msg, text, sock: socket }) {
+async function routeDriverMessage({ msg, text, sock: socket, realtime = true }) {
   const phone = senderIdentity.phoneFromMessage(msg);
   if (!phone) return false;
   let active;
@@ -149,9 +167,20 @@ async function routeDriverMessage({ msg, text, sock: socket }) {
   if (!active) return false;
   const { orderId, riderId } = active;
 
-  const location = parseLocationPin(text);
-  if (location) {
-    await driverOrderFlow.handleDriverLocation({ orderId, riderId, ...location, timestampMs: locationTimestampMs(msg) });
+  const content = unwrapContent(msg.message);
+  if (isForwarded(msg.message) || content?.locationMessage) {
+    logger.debug(`WhatsApp trial driver ${phone} (order ${orderId}): forwarded message or static pin ignored`);
+    return true;
+  }
+  const live = content?.liveLocationMessage;
+  if (live) {
+    const lat = Number(live.degreesLatitude), lng = Number(live.degreesLongitude);
+    const timestampMs = liveLocationTimestampMs({ msg, live, riderId, realtime });
+    if (timestampMs === null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      logger.debug(`WhatsApp trial driver ${phone} (order ${orderId}): live location update without a usable time/position dropped`);
+      return true;
+    }
+    await driverOrderFlow.handleDriverLocation({ orderId, riderId, lat, lng, timestampMs });
     return true;
   }
   // Sticker, reaction, voice note...: nothing the flow can act on, and the customer menu must not answer it either.
@@ -163,7 +192,9 @@ async function routeDriverMessage({ msg, text, sock: socket }) {
     reply = await driverOrderFlow.handleDriverReply({ orderId, riderId, text });
   } catch (err) {
     logger.error(`WhatsApp driver reply failed for order ${orderId}:`, err);
-    reply = `⚠️ Abhi aapka message process nahi ho saka. Thodi der baad dobara bhejein.\n\n${driverMessages.HELPLINE}`;
+    reply = `⚠️ Abhi aapka message process nahi ho saka. Thodi der baad dobara bhejein.
+
+${driverMessages.HELPLINE}`;
   }
   if (reply) await socket.sendMessage(msg.key.remoteJid, { text: reply });
   return true;
@@ -174,7 +205,7 @@ async function routeLiveLocationUpdates(updates, socket) {
   for (const { key, update } of updates || []) {
     if (!key || key.fromMe || !update?.message) continue;
     const message = update.message.editedMessage?.message || update.message;
-    if (!unwrapContent(message)?.liveLocationMessage) continue;
+    if (!liveLocationContent(message)) continue;
     const msg = { key, message, messageTimestamp: update.messageTimestamp };
     if (isDuplicateMessage(dedupId(msg))) continue;
     try {
@@ -279,14 +310,14 @@ async function initWhatsAppBot() {
     // Incoming & Outgoing Messages Handler
     sock.ev.on("messages.upsert", async (m) => {
       // Only real-time notify events reach the bot. Other batches (offline delivery / append) are used for one
-      // thing only: a WhatsApp trial driver's shared location, so a Live Location update is never lost.
+      // thing only: a WhatsApp trial driver's Live Location (keeping its real timestamp - see liveLocationTimestampMs).
       const realtime = !m.type || m.type === "notify";
 
       for (const msg of m.messages || []) {
         try {
           if (!msg.message) continue;
-          const isLocation = Boolean(locationContent(msg.message));
-          if (!realtime && (!isLocation || msg.key?.fromMe)) continue;
+          const isLiveLocation = Boolean(liveLocationContent(msg.message));
+          if (!realtime && (!isLiveLocation || msg.key?.fromMe)) continue;
 
           const msgId = msg.key?.id;
           if (isDuplicateMessage(dedupId(msg))) {
@@ -294,13 +325,13 @@ async function initWhatsAppBot() {
             continue;
           }
 
-          // Skip stale/old messages (e.g. older than 2 minutes on reconnect/sync). A location share is kept for now:
-          // a Live Location update can carry the share's original timestamp, and a trial driver's position still
-          // counts - it is dropped below unless the sender is routed to a WhatsApp order.
+          // Skip stale/old messages (e.g. older than 2 minutes on reconnect/sync). A Live Location update is kept for
+          // now: it can carry the share's original timestamp. It is dropped below unless the sender is a routed trial
+          // driver, and then it keeps that real (old) timestamp - see liveLocationTimestampMs.
           const nowSec = Math.floor(Date.now() / 1000);
           const msgTimestamp = messageTimestampSec(msg);
-          const isStale = Boolean(msgTimestamp && (nowSec - msgTimestamp) > 120);
-          if (isStale && !isLocation) {
+          const isStale = Boolean(msgTimestamp && (nowSec - msgTimestamp) > STALE_MESSAGE_SEC);
+          if (isStale && !isLiveLocation) {
             logger.debug(`Skipping stale old message (${nowSec - msgTimestamp}s old): ${msgId}`);
             continue;
           }
@@ -350,7 +381,7 @@ async function initWhatsAppBot() {
 
           // 1b. A trial driver running a WhatsApp-channel order: every message (including "stop"/"start"/"hi") goes
           // to the order flow - never the chat-pause commands, the customer menu or the AI.
-          if (await routeDriverMessage({ msg, text: textMessage, sock })) continue;
+          if (await routeDriverMessage({ msg, text: textMessage, sock, realtime })) continue;
           if (!realtime || isStale) continue;
 
           // 2. Check if this specific personal chat is paused

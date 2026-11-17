@@ -17,5 +17,6 @@ CREATE TABLE IF NOT EXISTS `whatsapp_driver_session` (
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` DATETIME(3) NOT NULL,
   PRIMARY KEY (`order_id`),
-  INDEX `whatsapp_driver_session_rider_id_idx` (`rider_id`)
+  INDEX `whatsapp_driver_session_rider_id_idx` (`rider_id`),
+  INDEX `whatsapp_driver_session_phone_idx` (`phone`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
