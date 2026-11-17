@@ -16,21 +16,26 @@ export const WHATSAPP_HELP_TEXT = 'The order and every step will be sent to the 
  * App / WhatsApp choice for assigning an order to a Trial Driver. Defaults to App; the WhatsApp radio is enabled only
  * when the backend says this rider is eligible. A failed eligibility check never blocks the App path.
  */
-export default function DriverChannelChoice({ riderId, value, onChange, disabled }) {
-  const [elig, setElig] = useState(null) // { riderId, eligible, reason, done } | { riderId, error: true }
+// eligibility: optional { eligible, reason, whatsapp_orders_done } already loaded by the caller (the Assign popup gets it
+// with the driver list, which also covers drivers of another city near the pickup); then no request is made.
+export default function DriverChannelChoice({ riderId, value, onChange, disabled, eligibility }) {
+  const [fetched, setFetched] = useState(null) // { riderId, eligible, reason, done } | { riderId, error: true }
 
   useEffect(() => {
-    if (!riderId) return undefined
+    if (!riderId || eligibility) return undefined
     let cancelled = false
     api.get(`/riders/${riderId}/whatsapp-eligibility`)
       .then((res) => {
         const d = res.data?.data || {}
-        if (!cancelled) setElig({ riderId, eligible: Boolean(d.eligible), reason: d.reason, done: Number(d.whatsapp_orders_done) || 0 })
+        if (!cancelled) setFetched({ riderId, eligible: Boolean(d.eligible), reason: d.reason, done: Number(d.whatsapp_orders_done) || 0 })
       })
-      .catch(() => { if (!cancelled) setElig({ riderId, error: true }) })
+      .catch(() => { if (!cancelled) setFetched({ riderId, error: true }) })
     return () => { cancelled = true }
-  }, [riderId])
+  }, [riderId, eligibility])
 
+  const elig = eligibility
+    ? { riderId, eligible: Boolean(eligibility.eligible), reason: eligibility.reason, done: Number(eligibility.whatsapp_orders_done) || 0 }
+    : fetched
   const current = elig?.riderId === riderId ? elig : null
   const whatsappAllowed = Boolean(current?.eligible)
   let note = null
