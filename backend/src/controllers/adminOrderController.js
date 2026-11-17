@@ -306,7 +306,9 @@ async function whatsappStatus(req, res) {
   try {
     const orderId = await guardWhatsappOrder(req, res);
     if (orderId === null) return undefined;
-    return res.json({ success: true, data: await whatsappFlow().statusForExecutive(orderId) });
+    const data = await whatsappFlow().statusForExecutive(orderId);
+    if (!data) return res.status(404).json({ success: false, message: "Order not found" });
+    return res.json({ success: true, data });
   } catch (err) {
     return internalError(res, err, "orders.whatsappStatus");
   }
@@ -330,6 +332,11 @@ async function whatsappEligibility(req, res) {
   try {
     const riderId = parseInt(req.params.id, 10);
     if (!riderId) return res.status(400).json({ success: false, message: "Invalid rider id" });
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { id: true, city_id: true } });
+    if (!rider) return res.status(404).json({ success: false, message: "Driver not found" });
+    if (isScopedOut(req, rider.city_id)) {
+      return res.status(403).json({ success: false, message: "Forbidden: driver is outside your assigned city" });
+    }
     const data = await require("../services/whatsappTrialSettings").eligibility(riderId);
     return res.json({ success: true, data });
   } catch (err) {

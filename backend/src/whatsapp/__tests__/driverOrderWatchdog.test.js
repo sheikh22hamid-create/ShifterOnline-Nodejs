@@ -2,7 +2,7 @@
 // step, or when the bot is disconnected while a WhatsApp order is active.
 jest.mock("../../config/db", () => ({
   pkg_order: { findMany: jest.fn() },
-  whatsapp_driver_session: { updateMany: jest.fn() },
+  whatsapp_driver_session: { findMany: jest.fn(), updateMany: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
@@ -36,6 +36,7 @@ beforeEach(() => {
   };
   steps = { 1: { key: "go_pickup" } };
   prisma.pkg_order.findMany.mockResolvedValue([{ id: 1, city_id: 3, rid: 55 }]);
+  prisma.whatsapp_driver_session.findMany.mockImplementation(async () => Object.keys(sessions).map((id) => ({ order_id: Number(id) })));
   prisma.whatsapp_driver_session.updateMany.mockImplementation(async ({ where, data }) => {
     Object.assign(sessions[where.order_id], data);
     return { count: 1 };
@@ -48,11 +49,19 @@ const silentAlerts = () => adminSocket.notifyDispatchAlert.mock.calls.filter(([,
 const offlineAlerts = () => adminSocket.notifyDispatchAlert.mock.calls.filter(([, , , extra]) => extra?.kind === "whatsapp_bot_offline");
 
 describe("silence alert", () => {
-  it("queries only active WhatsApp trips", async () => {
+  it("is driven by the session table: active trips fetched by primary key only", async () => {
+    sessions[7] = { order_id: 7 };
     await watchdog.tick(T0);
+    expect(prisma.whatsapp_driver_session.findMany).toHaveBeenCalledWith({ select: { order_id: true } });
     expect(prisma.pkg_order.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
+      where: { id: { in: [1, 7] }, driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
     }));
+  });
+
+  it("no sessions: no order query at all", async () => {
+    sessions = {};
+    await watchdog.tick(T0);
+    expect(prisma.pkg_order.findMany).not.toHaveBeenCalled();
   });
 
   it("not before 10 minutes of silence", async () => {
@@ -91,8 +100,35 @@ describe("silence alert", () => {
     expect(silentAlerts()).toHaveLength(1);
   });
 
+  it("a fresh Live Location counts as activity only on driving steps", async () => {
+    sessions[1].last_location_at = new Date(T0 + 8 * MIN);
+    for (const key of ["go_pickup", "go_drop"]) {
+      steps[1] = { key };
+      await watchdog.tick(T0 + 12 * MIN);
+    }
+    steps[1] = { key: "go_stop", stopNumber: 1 };
+    await watchdog.tick(T0 + 12 * MIN);
+    expect(silentAlerts()).toHaveLength(0);
+    await watchdog.tick(T0 + 18 * MIN + 1000); // location now 10 min old as well
+    expect(silentAlerts()).toHaveLength(1);
+  });
+
+  it.each(["loading", "at_drop", "pickup_otp"])("Live Location does not count on %s", async (key) => {
+    steps[1] = { key };
+    sessions[1].last_location_at = new Date(T0 + 8 * MIN);
+    await watchdog.tick(T0 + 12 * MIN);
+    expect(silentAlerts()).toHaveLength(1);
+  });
+
+  it("alerted_step is written before the alert: a failed write raises no alert (no per-minute re-alert)", async () => {
+    prisma.whatsapp_driver_session.updateMany.mockRejectedValue(new Error("db down"));
+    await watchdog.tick(T0 + 11 * MIN);
+    expect(silentAlerts()).toHaveLength(0);
+    expect(logger.error).toHaveBeenCalled();
+  });
+
   it("no session (order card never sent) or a cancelled step: no silence alert", async () => {
-    delete sessions[1];
+    flow.loadContext.mockImplementationOnce(async (id) => ({ order: { id }, step: { key: "go_pickup" }, session: null }));
     await watchdog.tick(T0 + 60 * MIN);
     sessions[1] = { order_id: 1, last_reply_at: null, last_prompt_at: null, created_at: new Date(T0), alerted_step: null };
     steps[1] = { key: "cancelled" };
@@ -101,6 +137,7 @@ describe("silence alert", () => {
   });
 
   it("one failing order does not stop the others; a failing tick never throws", async () => {
+    sessions[9] = { order_id: 9 };
     prisma.pkg_order.findMany.mockResolvedValue([{ id: 9, city_id: 3 }, { id: 1, city_id: 3 }]);
     flow.loadContext.mockImplementation(async (id) => {
       if (id === 9) throw new Error("boom");
@@ -116,14 +153,14 @@ describe("silence alert", () => {
 
   it("overlapping ticks are skipped", async () => {
     let release;
-    prisma.pkg_order.findMany.mockImplementationOnce(() => new Promise((r) => { release = () => r([]); }));
+    prisma.whatsapp_driver_session.findMany.mockImplementationOnce(() => new Promise((r) => { release = () => r([]); }));
     const first = watchdog.tick(T0);
     await watchdog.tick(T0);
-    expect(prisma.pkg_order.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.whatsapp_driver_session.findMany).toHaveBeenCalledTimes(1);
     release();
     await first;
     await watchdog.tick(T0);
-    expect(prisma.pkg_order.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.whatsapp_driver_session.findMany).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -141,6 +178,14 @@ describe("bot offline alert", () => {
     client.getBotStatus.mockReturnValue({ status: "AWAITING_QR_SCAN" });
     await watchdog.tick(T0 + 3 * MIN);
     expect(offlineAlerts()).toHaveLength(2);
+  });
+
+  it("while the bot is offline only the offline alert fires, no silence alert", async () => {
+    client.getBotStatus.mockReturnValue({ status: "DISCONNECTED" });
+    await watchdog.tick(T0 + 30 * MIN);
+    expect(offlineAlerts()).toHaveLength(1);
+    expect(silentAlerts()).toHaveLength(0);
+    expect(flow.loadContext).not.toHaveBeenCalled();
   });
 
   it("no active WhatsApp order: no alert", async () => {

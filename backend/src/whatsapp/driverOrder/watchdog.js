@@ -27,6 +27,9 @@ function botConnected() {
 
 const ms = (d) => (d ? new Date(d).getTime() : 0);
 
+// On a driving leg the driver has no step reply to send for a while; a fresh Live Location shows they are on it.
+const DRIVING_STEPS = new Set(["go_pickup", "go_stop", "go_drop"]);
+
 async function checkSilence(order, now) {
   const ctx = await flow().loadContext(order.id);
   const session = ctx?.session;
@@ -34,14 +37,17 @@ async function checkSilence(order, now) {
   if (!session || ctx.step.key === "cancelled") return;
   const current = stepId(ctx.step);
   if (session.alerted_step === current) return;
-  const since = Math.max(ms(session.last_reply_at), ms(session.last_prompt_at), ms(session.created_at));
+  const activity = [session.last_reply_at, session.last_prompt_at, session.created_at];
+  if (DRIVING_STEPS.has(ctx.step.key)) activity.push(session.last_location_at);
+  const since = Math.max(...activity.map(ms));
   if (now - since <= SILENCE_MS) return;
+  // Recorded first: if this write fails there is no alert, rather than an alert every minute.
+  await prisma.whatsapp_driver_session.updateMany({ where: { order_id: order.id }, data: { alerted_step: current } });
   adminSocket().notifyDispatchAlert(
     order.id, order.city_id,
     `WhatsApp driver hasn't replied for 10 min on order #${order.id} (${stepLabel(ctx.step)}). Call the driver.`,
     { kind: "whatsapp_driver_silent", step: current, rider_id: ctx.riderId }
   );
-  await prisma.whatsapp_driver_session.updateMany({ where: { order_id: order.id }, data: { alerted_step: current } });
 }
 
 /**
@@ -53,10 +59,15 @@ async function tick(now = Date.now()) {
   if (running) return;
   running = true;
   try {
-    const orders = await prisma.pkg_order.findMany({
-      where: { driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
-      select: { id: true, city_id: true, rid: true },
-    });
+    // Driven from the session table (one row per WhatsApp order) so the order lookup is by primary key only.
+    const sessions = await prisma.whatsapp_driver_session.findMany({ select: { order_id: true } });
+    const ids = sessions.map((s) => s.order_id);
+    const orders = ids.length
+      ? await prisma.pkg_order.findMany({
+        where: { id: { in: ids }, driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
+        select: { id: true, city_id: true, rid: true },
+      })
+      : [];
     const connected = botConnected();
     if (connected) offlineAlerted.clear();
     const activeIds = new Set(orders.map((o) => o.id));
@@ -72,7 +83,8 @@ async function tick(now = Date.now()) {
             { kind: "whatsapp_bot_offline" }
           );
         }
-        await checkSilence(order, now);
+        // While the bot is down the driver can't reply or get prompts: only the offline alert applies.
+        if (connected) await checkSilence(order, now);
       } catch (err) {
         logger.error(`whatsapp watchdog: order ${order.id} check failed:`, err);
       }

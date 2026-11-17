@@ -1,6 +1,6 @@
 // WhatsApp Trial Order, Task 8: admin endpoints for a WhatsApp order's status, the manual "next step" and a
 // rider's WhatsApp eligibility. The WhatsApp modules are mocked: the controller must reach them lazily.
-jest.mock("../../config/db", () => ({ pkg_order: { findUnique: jest.fn() } }));
+jest.mock("../../config/db", () => ({ pkg_order: { findUnique: jest.fn() }, tbl_rider: { findUnique: jest.fn() } }));
 jest.mock("../../services/dispatchManager", () => ({}));
 jest.mock("../../services/pricingEngine", () => ({}));
 jest.mock("../../services/pushNotifier", () => ({}));
@@ -22,6 +22,7 @@ const req = (o = {}) => ({ params: { id: "877" }, body: {}, user: exec, ...o });
 beforeEach(() => {
   jest.resetAllMocks();
   prisma.pkg_order.findUnique.mockResolvedValue({ id: 877, city_id: 3 });
+  prisma.tbl_rider.findUnique.mockResolvedValue({ id: 55, city_id: 3 });
 });
 
 describe("GET /admin/orders/:id/whatsapp-status", () => {
@@ -44,6 +45,14 @@ describe("GET /admin/orders/:id/whatsapp-status", () => {
     r = res();
     await whatsappStatus(req(), r);
     expect(r.status).toHaveBeenCalledWith(404);
+  });
+
+  it("a null status (order vanished meanwhile) is 404", async () => {
+    flow.statusForExecutive.mockResolvedValue(null);
+    const r = res();
+    await whatsappStatus(req(), r);
+    expect(r.status).toHaveBeenCalledWith(404);
+    expect(r.json).toHaveBeenCalledWith({ success: false, message: "Order not found" });
   });
 });
 
@@ -80,6 +89,28 @@ describe("GET /admin/riders/:id/whatsapp-eligibility", () => {
     await whatsappEligibility(req({ params: { id: "55" } }), r);
     expect(whatsappTrialSettings.eligibility).toHaveBeenCalledWith(55);
     expect(r.json).toHaveBeenCalledWith({ success: true, data: { eligible: true, reason: null, whatsapp_orders_done: 1 } });
+  });
+
+  it("a rider in another city is forbidden; a missing rider is 404", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 55, city_id: 4 });
+    let r = res();
+    await whatsappEligibility(req({ params: { id: "55" } }), r);
+    expect(r.status).toHaveBeenCalledWith(403);
+    expect(whatsappTrialSettings.eligibility).not.toHaveBeenCalled();
+
+    prisma.tbl_rider.findUnique.mockResolvedValue(null);
+    r = res();
+    await whatsappEligibility(req({ params: { id: "55" } }), r);
+    expect(r.status).toHaveBeenCalledWith(404);
+    expect(whatsappTrialSettings.eligibility).not.toHaveBeenCalled();
+  });
+
+  it("a superadmin sees any city's rider", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 55, city_id: 4 });
+    whatsappTrialSettings.eligibility.mockResolvedValue({ eligible: false, reason: "not_trial" });
+    const r = res();
+    await whatsappEligibility(req({ params: { id: "55" }, user: { id: 1, role: "superadmin" } }), r);
+    expect(r.json).toHaveBeenCalledWith({ success: true, data: { eligible: false, reason: "not_trial" } });
   });
 
   it("an invalid rider id is 400", async () => {
