@@ -1,6 +1,7 @@
 jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   pkg_order: { findUnique: jest.fn() },
+  whatsapp_driver_session: { findUnique: jest.fn() },
 }));
 
 const prisma = require("../../config/db");
@@ -45,12 +46,27 @@ describe("trialOrderTracker.recordTrialOrderCompletion", () => {
     });
   });
   it("does not count a WhatsApp-channel order", async () => {
-    prisma.pkg_order.findUnique.mockResolvedValue({ driver_channel: "whatsapp" });
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 77, rid: 4, driver_channel: "whatsapp" });
+    prisma.whatsapp_driver_session.findUnique.mockResolvedValue({ rider_id: 4 });
     prisma.tbl_rider.findUnique.mockResolvedValue({
       id: 4, trial_status: "active", trial_orders_allowed: 1, trial_orders_completed: 0, a_status: 1,
     });
     await recordTrialOrderCompletion(4, 77);
     expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+  });
+
+  it("counts a re-lived order an app driver completed although driver_channel still says 'whatsapp'", async () => {
+    // The WhatsApp driver (session rider 4) cancelled, the order re-searched and app driver 8 completed it.
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 79, rid: 8, driver_channel: "whatsapp" });
+    prisma.whatsapp_driver_session.findUnique.mockResolvedValue({ rider_id: 4 });
+    prisma.tbl_rider.findUnique.mockResolvedValue({
+      id: 8, trial_status: "active", trial_orders_allowed: 3, trial_orders_completed: 0, a_status: 1,
+    });
+    await recordTrialOrderCompletion(8, 79);
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: 8 },
+      data: { trial_orders_completed: 1, trial_status: "active", a_status: 1 },
+    });
   });
 
   it("counts an app-channel order and exhausts at allowed 1", async () => {

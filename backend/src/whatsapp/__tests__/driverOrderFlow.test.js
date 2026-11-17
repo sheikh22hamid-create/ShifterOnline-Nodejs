@@ -355,6 +355,15 @@ describe("sendCurrentStep", () => {
     await flow.sendCurrentStep(ORDER_ID, { reason: "changed" });
     expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
   });
+
+  it("is a no-op once the order passed to another driver (re-live / replace), or with no session", async () => {
+    db.order.rid = 99;
+    await flow.sendCurrentStep(ORDER_ID, { reason: "changed" });
+    db.order.rid = RIDER_ID;
+    db.session = null;
+    await flow.sendCurrentStep(ORDER_ID, { reason: "changed" });
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
 });
 
 describe("handleDriverLocation", () => {
@@ -395,6 +404,17 @@ describe("handleDriverLocation", () => {
     await locate();
     expect(notifications.sendWhatsAppNotification).toHaveBeenCalledWith("9876543210", messages.stepPrompt("pickup_otp", await ctxFor()));
     expect(db.session.last_step).toBe("pickup_otp");
+  });
+
+  it("an auto-arrival the driver's own reply already announced is not sent again", async () => {
+    progressTrip.mockImplementation(async () => {
+      Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
+      db.progress = { stop_step: 0, otp_verified_at: null };
+      db.session.last_step = "pickup_otp"; // a simultaneous reply recorded the new step first
+      return {};
+    });
+    await locate();
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
   });
 
   it("an older fix than the stored one does not move the driver back, but still reaches the trip sync", async () => {
@@ -626,6 +646,24 @@ describe("notifyOrderChanged (changes made outside the WhatsApp flow)", () => {
     await notify("progress");
     await notify("progress");
     expect(sent()).toEqual([messages.cancelled()]);
+  });
+
+  it("re-lived and claimed by an app driver: only the old driver's one cancelled notice, never a step or order card", async () => {
+    Object.assign(db.order, { rid: 99, order_status: 2, o_status: "Pickup" }); // channel still 'whatsapp' in the DB
+    db.progress = { otp_verified_at: null };
+    await notify("cancelled");
+    await notify("progress");
+    await notify("route_changed");
+    expect(sent()).toEqual([messages.cancelled()]);
+    expect(notifications.sendWhatsAppNotification).toHaveBeenCalledWith("9876543210", messages.cancelled());
+  });
+
+  it("without a session the order's app driver is never messaged on WhatsApp", async () => {
+    Object.assign(db.order, { rid: 99, order_status: 2, o_status: "Pickup" });
+    db.progress = { otp_verified_at: null };
+    db.session = null;
+    for (const kind of ["progress", "route_changed", "cancelled"]) await notify(kind);
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
   });
 
   it("never throws: a failing loadContext / send is logged and swallowed", async () => {

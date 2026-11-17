@@ -3,6 +3,7 @@ jest.mock("../../config/db", () => ({
   pkg_order_wait_timer: { findFirst: jest.fn() },
   driver_trip_progress: { findUnique: jest.fn() },
   tbl_rider: { findUnique: jest.fn() },
+  whatsapp_driver_session: { findUnique: jest.fn() },
   pickup_otp_share: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
 }));
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
@@ -31,6 +32,7 @@ beforeEach(() => {
   prisma.pickup_otp_share.create.mockImplementation(async ({ data }) => ({ id: 55, status: "pending", attempts: 1, ...data }));
   prisma.pickup_otp_share.updateMany.mockResolvedValue({ count: 1 });
   prisma.pickup_otp_share.update.mockResolvedValue({ id: 55 });
+  prisma.whatsapp_driver_session.findUnique.mockResolvedValue({ rider_id: 7 });
 });
 
 describe("share on a WhatsApp-channel order", () => {
@@ -67,6 +69,15 @@ describe("share on a WhatsApp-channel order", () => {
     prisma.pickup_otp_share.findUnique.mockResolvedValue({ id: 55, status: "delivered" });
     expect(await service.share({ uid: 3, orderId: 100 })).toEqual({ ok: true, msg: service.MSG.SENT });
     expect(dispatchManager.emitDriverEvent).toHaveBeenCalled();
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+
+  it("a re-lived order now held by an app driver uses the app path, though driver_channel still says 'whatsapp'", async () => {
+    // The session belongs to the old WhatsApp driver (rider 6); app driver 7 holds the order now.
+    prisma.whatsapp_driver_session.findUnique.mockResolvedValue({ rider_id: 6 });
+    prisma.pickup_otp_share.findUnique.mockResolvedValue({ id: 55, status: "delivered" });
+    expect(await service.share({ uid: 3, orderId: 100 })).toEqual({ ok: true, msg: service.MSG.SENT });
+    expect(dispatchManager.emitDriverEvent).toHaveBeenCalledWith(7, "pickup_otp:shared", { order_id: 100, share_id: 55 });
     expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
   });
 });

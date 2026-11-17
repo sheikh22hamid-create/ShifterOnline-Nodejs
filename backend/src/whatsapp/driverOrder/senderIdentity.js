@@ -29,8 +29,10 @@ const ACTIVE = 0, AWAITING_CASH = 1, GONE = 2;
 
 /**
  * How a session's order should route: active > awaiting cash > cancelled/reassigned; null = do not route.
- * The "cancelled" notice is bounded by created_at - when startOrder bound this driver to the order - because every
- * driver reply writes the session (updated_at), which would otherwise renew the window forever.
+ * Only the "cancelled" notice has a 24 h window, bounded by created_at - when startOrder bound this driver to the
+ * order - because every driver reply writes the session (updated_at), which would otherwise renew the window forever
+ * (created_at <= updated_at, so this also bounds updated_at). An active order or one awaiting PAISA MILA routes
+ * however long its session has been quiet.
  */
 function routeRank(order, session, pendingCash, windowStart) {
   if (!order) return null;
@@ -43,9 +45,8 @@ function routeRank(order, session, pendingCash, windowStart) {
 
 /**
  * The WhatsApp-channel order this phone's driver is talking about, found through whatsapp_driver_session (indexed by
- * phone - an ordinary customer only costs one small lookup). Only sessions active in the last 24 h count, latest
- * first. Priority: an active order, else a Completed one still awaiting the driver's cash confirmation (PAISA MILA),
- * else one cancelled or taken away from this driver - the flow then answers "order cancel ho gaya" - but only for a
+ * phone - an ordinary customer only costs one small lookup), latest first. Priority: an active order, else a
+ * Completed one still awaiting the driver's cash confirmation (PAISA MILA), else one cancelled or taken away from this driver - the flow then answers "order cancel ho gaya" - but only for a
  * session bound to the driver (created_at) within the last 24 h.
  * Returns { orderId, riderId } (riderId = the session's driver) or null.
  */
@@ -53,7 +54,7 @@ async function findActiveWhatsAppOrder(phone10) {
   if (!/^\d{10}$/.test(String(phone10 || ""))) return null;
   const windowStart = new Date(Date.now() - SESSION_WINDOW_MS);
   const sessions = await prisma.whatsapp_driver_session.findMany({
-    where: { phone: phone10, updated_at: { gte: windowStart } },
+    where: { phone: phone10 },
     orderBy: { updated_at: "desc" },
     select: { order_id: true, rider_id: true, created_at: true },
   });

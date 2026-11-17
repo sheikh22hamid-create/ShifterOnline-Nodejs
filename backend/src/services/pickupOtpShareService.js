@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { getPickupOtpTimeoutMinutes } = require("../utils/pickupOtpTimeout");
 const dispatchManager = require("./dispatchManager");
+const { isWhatsappDriver } = require("./whatsappTrialSettings");
 
 // Pickup OTP share: the customer sends the pickup OTP to the assigned driver's app (spec 2026-10-29). Sharing never
 // verifies the OTP (driverTripService 'verify_otp' still does); it only records that the customer was ready and
@@ -113,7 +114,7 @@ async function share({ uid, orderId }) {
     row = await prisma.pickup_otp_share.update({ where: { id: row.id }, data: { attempts: { increment: 1 }, status: "pending" } });
   }
 
-  if (row.status !== "delivered" && order.driver_channel === "whatsapp") {
+  if (row.status !== "delivered" && (await isWhatsappDriver(order))) {
     // WhatsApp-channel driver: the OTP goes straight to their chat, and a successful send counts as delivered.
     if (!(await sendOtpOnWhatsapp(order))) {
       await prisma.pickup_otp_share.update({ where: { id: row.id }, data: { status: "failed" } });

@@ -9,6 +9,7 @@ const { RIDER_LOCATION_FRESHNESS_MS } = require("../../config/constants");
 const { normalizeToLast10Digits } = require("../../utils/phone");
 const messages = require("./messages");
 const { resolveStep, stepId, stepLabel, isCashSettlementPending, cashPayable } = require("./stepResolver");
+const { isWhatsappDriver } = require("../../services/whatsappTrialSettings");
 
 // Lazy: these services sit in a large require graph that also reaches the WhatsApp client; resolving them on use
 // keeps a load-order cycle from ever handing this module a half-initialised exports object.
@@ -276,7 +277,7 @@ async function startOrder(orderId) {
  */
 async function sendCurrentStep(orderId, { reason } = {}) {
   const ctx = await loadContext(orderId);
-  if (!ctx || ctx.order.driver_channel !== "whatsapp" || !ctx.rider) return false;
+  if (!ctx || !ctx.rider || !(await isWhatsappDriver(ctx.order, ctx.session))) return false;
   const id = stepId(ctx.step);
   if (ctx.session?.last_step === id && reason !== "changed") return false;
   return sendAndRecord(ctx, messages.stepPrompt(ctx.step.key, ctx), id);
@@ -297,7 +298,9 @@ const COMPLETED_STEPS = new Set(["done", "await_cash"]);
  * callers that cannot tell whether anything changed, e.g. the app's periodic trip sync); a newly completed order gets
  * the completion summary instead, once. 'route_changed' -> the order card again (new pickup / drop / stop) + the
  * current step. 'cancelled' -> cancelled(), once. A cancelled order is only ever told it is cancelled, once.
- * No-op unless the order is a WhatsApp-channel order. Fire-and-forget: never throws (errors are logged), resolves to
+ * No-op unless the order is a WhatsApp-channel order. Step / route messages go only while the order's driver is the
+ * WhatsApp driver (isWhatsappDriver): after a re-live the next driver may run it from the app. The cancelled notice
+ * goes to the session's (old) driver. Fire-and-forget: never throws (errors are logged), resolves to
  * whether a message was sent.
  */
 async function notifyOrderChanged(orderId, { kind, onlyNewStep = false } = {}) {
@@ -316,6 +319,7 @@ async function notifyOrderChanged(orderId, { kind, onlyNewStep = false } = {}) {
       return await sendAndRecord(ctx, messages.cancelled(), "cancelled");
     }
     if (kind === "cancelled") return false; // the order is still this driver's: nothing was cancelled for them
+    if (!(await isWhatsappDriver(ctx.order, ctx.session))) return false;
     const current = stepId(ctx.step);
     if (kind === "route_changed") {
       const text = messages.join(messages.orderCard(ctx.order, ctx.stops, ctx.rider, { updated: true }), messages.stepPrompt(ctx.step.key, ctx));
@@ -375,7 +379,8 @@ async function handleDriverLocation({ orderId, riderId, lat, lng, timestampMs })
 
     await driverTripService().progressTrip({ orderId, riderId: ctx.riderId, action: "sync", samples: [{ lat: la, lng: lo, timestamp: at }] });
     const next = await loadContext(orderId);
-    if (next && stepId(next.step) !== stepId(ctx.step)) await sendCurrentStep(orderId, { reason: "changed" });
+    // No reason 'changed': a reply handled meanwhile may already have told the driver this step.
+    if (next && stepId(next.step) !== stepId(ctx.step)) await sendCurrentStep(orderId);
   } catch (err) {
     logger.error(`whatsapp driver location failed for order ${orderId}:`, err);
   }
@@ -385,11 +390,14 @@ const OTP_STEPS = { pickup_otp: "Enter the pickup OTP", drop_otp: "Enter the dro
 // No forward action: the executive has nothing to push (a stuck 'unknown' step needs a call, not a guess).
 const NOTHING_TO_ADVANCE = new Set(["cancelled", "done", "unknown"]);
 
-/** What the executive sees for an order's WhatsApp channel; null when the order doesn't exist. */
+/**
+ * What the executive sees for an order's WhatsApp channel; null when the order doesn't exist. An order whose
+ * WhatsApp driver is gone (re-live / replace: driver_channel still 'whatsapp') reads as an app order.
+ */
 async function statusForExecutive(orderId) {
-  const head = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, driver_channel: true } });
+  const head = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, rid: true, driver_channel: true } });
   if (!head) return null;
-  const channel = head.driver_channel || "app";
+  const channel = (await isWhatsappDriver(head)) ? "whatsapp" : (head.driver_channel === "whatsapp" ? "app" : head.driver_channel || "app");
   if (channel !== "whatsapp") {
     return { channel, step: null, step_label: null, last_reply_at: null, last_location_at: null, last_prompt_at: null, needs_otp: false };
   }

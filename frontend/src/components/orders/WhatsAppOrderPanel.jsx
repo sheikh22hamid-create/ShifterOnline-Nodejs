@@ -50,9 +50,11 @@ export default function WhatsAppOrderPanel({ orderId, onStepDone }) {
 
   const step = status?.step || ''
   const stepKey = step.split(':')[0]
-  const terminal = TERMINAL_STEPS.has(stepKey)
+  // Not (or no longer) run on WhatsApp - e.g. re-lived and taken by an app driver: nothing to watch.
+  const notWhatsapp = Boolean(status) && status.channel !== 'whatsapp'
+  const terminal = notWhatsapp || TERMINAL_STEPS.has(stepKey)
 
-  // Poll every 5 s until the order is done or cancelled; skip ticks while a step request is in flight.
+  // Poll every 5 s until the order is done, cancelled or off WhatsApp; skip ticks while a step request is in flight.
   useEffect(() => {
     load()
   }, [load])
@@ -83,7 +85,7 @@ export default function WhatsAppOrderPanel({ orderId, onStepDone }) {
   if (!status && !loadError) {
     return <div className="text-[12.5px]" style={{ color: 'var(--ink-faint)' }}>Loading WhatsApp status…</div>
   }
-  if (status && status.channel !== 'whatsapp') return null
+  if (notWhatsapp) return null
 
   const lastReply = ago(status?.last_reply_at, now)
   const lastLocation = ago(status?.last_location_at, now)

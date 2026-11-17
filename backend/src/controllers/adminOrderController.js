@@ -417,6 +417,17 @@ async function cancel(req, res) {
     });
     // A Customise Order ride cancelled by an admin closes its negotiation too (never relisted).
     await require("../services/customiseCancelService").closeIfCustomise(order);
+    if (!wasUnassigned) {
+      // A WhatsApp-channel driver has no app to see the cancel: tell them on WhatsApp (no-op for an app driver).
+      // Fire-and-forget: the bot never blocks or fails the cancel.
+      try {
+        Promise.resolve(whatsappFlow().notifyOrderChanged(id, { kind: "cancelled" })).catch((waErr) => {
+          logger.warn(`cancel: WhatsApp driver notice failed for order ${id}: ${waErr?.message}`);
+        });
+      } catch (waErr) {
+        logger.warn(`cancel: WhatsApp driver notice failed for order ${id}: ${waErr?.message}`);
+      }
+    }
 
     if (wasUnassigned) {
       dispatchManager.stopDispatch(id, "cancelled_by_user");

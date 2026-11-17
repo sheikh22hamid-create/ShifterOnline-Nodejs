@@ -4,6 +4,7 @@
 const prisma = require("../../config/db");
 const logger = require("../../utils/logger");
 const { stepId, stepLabel } = require("./stepResolver");
+const { isWhatsappDriver } = require("../../services/whatsappTrialSettings");
 
 const flow = () => require("./flow");
 const adminSocket = () => require("../../sockets/adminSocket");
@@ -60,14 +61,19 @@ async function tick(now = Date.now()) {
   running = true;
   try {
     // Driven from the session table (one row per WhatsApp order) so the order lookup is by primary key only.
-    const sessions = await prisma.whatsapp_driver_session.findMany({ select: { order_id: true } });
-    const ids = sessions.map((s) => s.order_id);
-    const orders = ids.length
+    const sessions = await prisma.whatsapp_driver_session.findMany({ select: { order_id: true, rider_id: true } });
+    const sessionOf = new Map(sessions.map((s) => [s.order_id, s]));
+    const candidates = sessions.length
       ? await prisma.pkg_order.findMany({
-        where: { id: { in: ids }, driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
+        where: { id: { in: [...sessionOf.keys()] }, driver_channel: "whatsapp", order_status: { in: [1, 2, 3] }, o_status: { notIn: ["Completed", "Cancelled"] } },
         select: { id: true, city_id: true, rid: true },
       })
       : [];
+    // Only orders their WhatsApp driver still holds: after a re-live / replace the next driver may be on the app.
+    const orders = [];
+    for (const o of candidates) {
+      if (await isWhatsappDriver({ ...o, driver_channel: "whatsapp" }, sessionOf.get(o.id) || null)) orders.push(o);
+    }
     const connected = botConnected();
     if (connected) offlineAlerted.clear();
     const activeIds = new Set(orders.map((o) => o.id));

@@ -23,6 +23,8 @@ jest.mock("../../services/bookingGuaranteeService", () => ({
   closeOnCancel: jest.fn().mockResolvedValue(true),
 }));
 
+jest.mock("../../whatsapp/driverOrder/flow", () => ({ notifyOrderChanged: jest.fn() }));
+
 const prisma = require("../../config/db");
 const pricingEngine = require("../../services/pricingEngine");
 const walletPrepayment = require("../../services/walletPrepaymentRefund");
@@ -159,5 +161,30 @@ describe("adminOrderController.cancel - Customise Order", () => {
     prisma.pkg_order.findUnique.mockResolvedValue(order());
     await cancel(req(), res());
     expect(closeIfCustomise).toHaveBeenCalledWith(expect.not.objectContaining({ customise_order_id: 5 }));
+  });
+});
+
+describe("adminOrderController.cancel - WhatsApp driver", () => {
+  const flow = require("../../whatsapp/driverOrder/flow");
+  beforeEach(() => flow.notifyOrderChanged.mockResolvedValue(true));
+
+  it("an assigned order tells its (WhatsApp) driver it was cancelled", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ driver_channel: "whatsapp" }));
+    await cancel(req(), res());
+    expect(flow.notifyOrderChanged).toHaveBeenCalledWith(468, { kind: "cancelled" });
+  });
+
+  it("an unassigned order has no driver to tell", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(order({ rid: 0, order_status: 0, o_status: "Pending" }));
+    await cancel(req(), res());
+    expect(flow.notifyOrderChanged).not.toHaveBeenCalled();
+  });
+
+  it("a failing notice never blocks the cancel", async () => {
+    flow.notifyOrderChanged.mockRejectedValue(new Error("bot down"));
+    prisma.pkg_order.findUnique.mockResolvedValue(order());
+    const r = res();
+    await cancel(req(), r);
+    expect(r.status).toHaveBeenCalledWith(200);
   });
 });

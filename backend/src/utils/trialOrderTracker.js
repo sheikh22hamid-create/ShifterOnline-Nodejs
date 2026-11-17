@@ -1,17 +1,19 @@
 const prisma = require("../config/db");
+const { isWhatsappDriver } = require("../services/whatsappTrialSettings");
 
 // Called once per completed order (from tripLifecycle.js). A no-op for any
 // rider not currently in an active trial - trial and KYC verification are
 // independent axes, see driverApproval.js for the KYC side.
-// WhatsApp-channel orders (pkg_order.driver_channel = 'whatsapp') never consume
-// the trial allowance. orderId is optional; without it the old behaviour holds.
+// Orders the driver ran over WhatsApp (isWhatsappDriver) never consume the trial
+// allowance; a re-lived order an app driver finished does, whatever driver_channel
+// still says. orderId is optional; without it the old behaviour holds.
 async function recordTrialOrderCompletion(riderId, orderId) {
   if (orderId != null) {
     const order = await prisma.pkg_order.findUnique({
       where: { id: orderId },
-      select: { driver_channel: true },
+      select: { id: true, rid: true, driver_channel: true },
     });
-    if (order && order.driver_channel === "whatsapp") return;
+    if (order && (await isWhatsappDriver(order))) return;
   }
   const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId } });
   if (!rider || rider.trial_status !== "active") return;

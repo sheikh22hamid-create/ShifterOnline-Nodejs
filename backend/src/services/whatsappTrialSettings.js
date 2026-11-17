@@ -34,8 +34,33 @@ async function eligibility(riderId) {
   const rider = await prisma.tbl_rider.findUnique({ where: { id: riderId }, select: { id: true, trial_status: true } });
   if (!rider) return out(false, "not_found");
   if (rider.trial_status !== "active") return out(false, "not_trial");
-  const done = await prisma.pkg_order.count({ where: { rid: riderId, driver_channel: "whatsapp", o_status: "Completed" } });
+  // Only orders this rider really ran on WhatsApp (their own session): a re-lived order an app driver completed keeps
+  // driver_channel='whatsapp' in the DB but was not a WhatsApp order for anyone.
+  const sessions = await prisma.whatsapp_driver_session.findMany({ where: { rider_id: riderId }, select: { order_id: true } });
+  const done = sessions.length
+    ? await prisma.pkg_order.count({
+      where: { id: { in: sessions.map((s) => s.order_id) }, rid: riderId, driver_channel: "whatsapp", o_status: "Completed" },
+    })
+    : 0;
   return out(true, null, done);
 }
 
-module.exports = { isEnabled, eligibility, SETTING_KEY };
+/**
+ * Is this order run over WhatsApp by the driver who holds it now? pkg_order.driver_channel is written only when an
+ * order is assigned and outlives that driver (driver cancel re-live, replace, approved cancel request, guarantee
+ * recovery): the next driver may claim it from the app on any path. So the order counts as WhatsApp-run only while
+ * the WhatsApp session - bound by startOrder to the WhatsApp driver - belongs to the assigned driver.
+ * order needs { id, rid, driver_channel }. session: the order's whatsapp_driver_session row (or null) if the caller
+ * already loaded it; omitted -> read here.
+ */
+async function isWhatsappDriver(order, session) {
+  if (!order || order.driver_channel !== "whatsapp") return false;
+  const rid = Number(order.rid) || 0;
+  if (rid <= 0) return false;
+  const row = session !== undefined
+    ? session
+    : await prisma.whatsapp_driver_session.findUnique({ where: { order_id: Number(order.id) }, select: { rider_id: true } });
+  return Boolean(row) && Number(row.rider_id) === rid;
+}
+
+module.exports = { isEnabled, eligibility, isWhatsappDriver, SETTING_KEY };

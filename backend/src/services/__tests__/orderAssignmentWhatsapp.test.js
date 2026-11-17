@@ -7,7 +7,7 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../dispatchManager", () => ({ stopDispatch: jest.fn(), emitDirectAssign: jest.fn() }));
 jest.mock("../pricingEngine", () => ({ priceForPackageId: jest.fn(), getActiveCustomerPlan: jest.fn() }));
-jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn() }));
+jest.mock("../../sockets/adminSocket", () => ({ notifyOrderStatusUpdate: jest.fn(), notifyDispatchAlert: jest.fn() }));
 jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn(() => ({ to: () => ({ emit: jest.fn() }) })) }));
 jest.mock("../bookingGuaranteeService", () => ({ closeOnAssign: jest.fn() }));
 jest.mock("../guaranteeQueueService", () => ({ recordAssignmentAction: jest.fn() }));
@@ -19,6 +19,7 @@ const prisma = require("../../config/db");
 const pricingEngine = require("../pricingEngine");
 const settings = require("../whatsappTrialSettings");
 const flow = require("../../whatsapp/driverOrder/flow");
+const adminSocket = require("../../sockets/adminSocket");
 const { assignRiderToOrder } = require("../orderAssignmentService");
 
 const ORDER = { id: 901, rid: 0, order_status: 0, delivery_type: 5, uid: 3, distance: 4, radius_range: 1, extra_mile_charge: 0 };
@@ -94,5 +95,25 @@ describe("assignRiderToOrder channel", () => {
   it("still succeeds when startOrder rejects", async () => {
     flow.startOrder.mockRejectedValue(new Error("boom"));
     expect((await assignRiderToOrder(base({ channel: "whatsapp" }))).ok).toBe(true);
+  });
+
+  it.each([
+    ["throws", () => flow.startOrder.mockImplementation(() => { throw new Error("session upsert failed"); })],
+    ["rejects", () => flow.startOrder.mockRejectedValue(new Error("session upsert failed"))],
+  ])("raises the whatsapp_send_failed alert when startOrder %s", async (_how, arrange) => {
+    arrange();
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...ORDER, city_id: 4, rid: 55, order_status: 1, o_status: "Processing" });
+    await assignRiderToOrder(base({ channel: "whatsapp" }));
+    await new Promise((r) => setImmediate(r));
+    expect(adminSocket.notifyDispatchAlert).toHaveBeenCalledWith(
+      901, 4, "WhatsApp order message could not be sent to the driver of order #901. Call the driver.", { kind: "whatsapp_send_failed" }
+    );
+  });
+
+  it("no alert when startOrder succeeds", async () => {
+    flow.startOrder.mockResolvedValue(true);
+    await assignRiderToOrder(base({ channel: "whatsapp" }));
+    await new Promise((r) => setImmediate(r));
+    expect(adminSocket.notifyDispatchAlert).not.toHaveBeenCalled();
   });
 });

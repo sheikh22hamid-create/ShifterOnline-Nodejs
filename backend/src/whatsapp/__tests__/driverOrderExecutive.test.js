@@ -114,6 +114,15 @@ describe("statusForExecutive", () => {
     db.order = null;
     expect(await flow.statusForExecutive(ORDER_ID)).toBeNull();
   });
+
+  it("a re-lived order an app driver now holds reads as an app order, though driver_channel still says 'whatsapp'", async () => {
+    Object.assign(db.order, { rid: 99, order_status: 2, o_status: "Pickup" }); // session stays with the old driver 55
+    expect(await flow.statusForExecutive(ORDER_ID)).toEqual({
+      channel: "app", step: null, step_label: null, last_reply_at: null, last_location_at: null, last_prompt_at: null, needs_otp: false,
+    });
+    Object.assign(db.order, { rid: 0, order_status: 0, o_status: "Pending" }); // re-searching: no driver yet
+    expect(await flow.statusForExecutive(ORDER_ID)).toMatchObject({ channel: "app", step: null });
+  });
 });
 
 describe("advanceAsExecutive", () => {

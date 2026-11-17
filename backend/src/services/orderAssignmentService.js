@@ -201,13 +201,21 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
   }
 
   if (channel === "whatsapp") {
-    // Fire-and-forget: a WhatsApp failure must never fail an assign that already happened.
-    try {
-      Promise.resolve(require("../whatsapp/driverOrder/flow").startOrder(orderId)).catch((waErr) => {
-        logger.error(`assignRider: whatsapp startOrder failed for order ${orderId}:`, waErr);
-      });
-    } catch (waErr) {
+    // Fire-and-forget: a WhatsApp failure must never fail an assign that already happened. A startOrder that fails
+    // outright (e.g. the session upsert) raises the same executive alert as an undelivered order card.
+    const startFailed = (waErr) => {
       logger.error(`assignRider: whatsapp startOrder failed for order ${orderId}:`, waErr);
+      try {
+        adminSocket.notifyDispatchAlert(orderId, updatedOrder?.city_id ?? order.city_id,
+          `WhatsApp order message could not be sent to the driver of order #${orderId}. Call the driver.`, { kind: "whatsapp_send_failed" });
+      } catch (alertErr) {
+        logger.error(`assignRider: whatsapp send-failed alert not raised for order ${orderId}:`, alertErr);
+      }
+    };
+    try {
+      Promise.resolve(require("../whatsapp/driverOrder/flow").startOrder(orderId)).catch(startFailed);
+    } catch (waErr) {
+      startFailed(waErr);
     }
   }
 

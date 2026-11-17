@@ -88,14 +88,27 @@ describe("senderIdentity.findActiveWhatsAppOrder", () => {
   };
   const find = () => senderIdentity.findActiveWhatsAppOrder("9876543210");
 
-  it("looks up sessions by phone updated within 24 h, latest first, and returns the active order", async () => {
+  it("looks up sessions by phone, latest first, and returns the active order", async () => {
     seedSessions([session(877)], [{ id: 877, rid: 55, order_status: 2, o_status: "Pickup" }]);
     await expect(find()).resolves.toEqual({ orderId: 877, riderId: 55 });
     const args = prisma.whatsapp_driver_session.findMany.mock.calls[0][0];
-    expect(args.where.phone).toBe("9876543210");
-    expect(Date.now() - args.where.updated_at.gte.getTime()).toBeGreaterThanOrEqual(24 * HOUR - 1000);
-    expect(Date.now() - args.where.updated_at.gte.getTime()).toBeLessThanOrEqual(24 * HOUR + 1000);
+    expect(args.where).toEqual({ phone: "9876543210" });
     expect(args.orderBy).toEqual({ updated_at: "desc" });
+  });
+
+  it("an active order or one awaiting cash routes however long its session has been quiet", async () => {
+    seedSessions([session(877, 55, 30 * HOUR)], [{ id: 877, rid: 55, order_status: 3, o_status: "Ongoing" }]);
+    await expect(find()).resolves.toEqual({ orderId: 877, riderId: 55 });
+    seedSessions([session(880, 55, 30 * HOUR)], [{ id: 880, rid: 55, order_status: 4, o_status: "Completed" }],
+      [{ order_id: 880, status: "pending", method: null }]);
+    await expect(find()).resolves.toEqual({ orderId: 880, riderId: 55 });
+  });
+
+  it("a cancelled / reassigned order with a session older than 24 h does not route", async () => {
+    seedSessions([session(877, 55, 30 * HOUR)], [{ id: 877, rid: 55, order_status: 5, o_status: "Cancelled" }]);
+    await expect(find()).resolves.toBeNull();
+    seedSessions([session(877, 55, 30 * HOUR)], [{ id: 877, rid: 0, order_status: 0, o_status: "Pending" }]);
+    await expect(find()).resolves.toBeNull();
   });
 
   it("unknown phone -> null, no rider scan and no order lookup", async () => {
@@ -104,8 +117,7 @@ describe("senderIdentity.findActiveWhatsAppOrder", () => {
     expect(prisma.pkg_order.findMany).not.toHaveBeenCalled();
   });
 
-  it("a session older than 24 h is not returned by the query -> null", async () => {
-    // The 24 h window is in the query; a cancelled order whose session is older simply isn't found.
+  it("no session for the phone -> null", async () => {
     seedSessions([], [{ id: 877, rid: 0, order_status: 0, o_status: "Cancelled" }]);
     await expect(find()).resolves.toBeNull();
   });
