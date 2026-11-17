@@ -7,6 +7,7 @@ import useRealtimeSync from '../hooks/useRealtimeSync'
 import Badge from '../components/common/Badge'
 import GuaranteeCountdown from '../components/orders/GuaranteeCountdown'
 import DriverSourceTabs from '../components/orders/DriverSourceTabs'
+import DriverChannelChoice, { WHATSAPP_HELP_TEXT } from '../components/orders/DriverChannelChoice'
 import { formatDateTime } from '../utils/format'
 import {
   ACTIONS,
@@ -183,6 +184,10 @@ function TrialDriverOffer({ c, onChanged }) {
   const cand = c.candidate
   const order = c.order
   const online = Boolean(cand?.online)
+  // App or WhatsApp, per candidate: a new candidate always starts on App.
+  const [channelPick, setChannelPick] = useState({ riderId: null, channel: 'app' })
+  const channel = channelPick.riderId === cand?.rider_id ? channelPick.channel : 'app'
+  const viaWhatsapp = channel === 'whatsapp'
 
   // The driver installs the app and goes online after the executive's call: keep checking until they do.
   useEffect(() => {
@@ -195,8 +200,8 @@ function TrialDriverOffer({ c, onChanged }) {
     if (busy) return
     setBusy(true)
     try {
-      await api.post(`/orders/${c.order_id}/assign-rider`, { rider_id: cand.rider_id })
-      toastRef.current.success(`Order #${c.order_id} assigned to ${cand.name || 'the driver'}`)
+      await api.post(`/orders/${c.order_id}/assign-rider`, viaWhatsapp ? { rider_id: cand.rider_id, channel: 'whatsapp' } : { rider_id: cand.rider_id })
+      toastRef.current.success(`Order #${c.order_id} assigned to ${cand.name || 'the driver'}${viaWhatsapp ? ' on WhatsApp' : ''}`)
     } catch (err) {
       toastRef.current.error(errMsg(err, 'Could not assign the driver'))
     } finally { setBusy(false); setConfirming(null); onChanged() }
@@ -243,14 +248,23 @@ function TrialDriverOffer({ c, onChanged }) {
           blockStyle={block}
         />
       </div>
-      {!online && (
+      <DriverChannelChoice
+        riderId={cand?.rider_id}
+        value={channel}
+        onChange={(next) => setChannelPick({ riderId: cand?.rider_id, channel: next })}
+        disabled={busy || Boolean(confirming)}
+      />
+      {viaWhatsapp && (
+        <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>{WHATSAPP_HELP_TEXT}</p>
+      )}
+      {!viaWhatsapp && !online && (
         <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
           Call the driver. They must install the Shifter app and go online with this mobile number. The order is assigned to them automatically the moment they go online; this page updates by itself.
         </p>
       )}
       {confirming === 'assign' && (
         <div className="rounded-lg border p-3 text-[13px]" style={{ borderColor: 'var(--warning)', background: 'var(--warning-soft)', color: 'var(--ink)' }}>
-          Assign order #{c.order_id} to <b>{cand.name || 'this driver'}</b>? This takes effect immediately and closes the guarantee case.
+          Assign order #{c.order_id} to <b>{cand.name || 'this driver'}</b>? This takes effect immediately and closes the guarantee case.{viaWhatsapp ? ' The order is sent to the driver on WhatsApp.' : ''}
           <div className="mt-2 flex gap-2">
             <button type="button" disabled={busy} onClick={assign} className="rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Confirm assign</button>
             <button type="button" disabled={busy} onClick={() => setConfirming(null)} className="rounded-lg border px-3 py-1.5 disabled:opacity-50" style={{ borderColor: 'var(--border)' }}>Back</button>
@@ -269,7 +283,7 @@ function TrialDriverOffer({ c, onChanged }) {
       )}
       {!confirming && (
         <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={busy || !online} onClick={() => setConfirming('assign')} title={online ? undefined : 'Available once the driver is online'} className="rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Assign Order to Driver</button>
+          <button type="button" disabled={busy || (!online && !viaWhatsapp)} onClick={() => setConfirming('assign')} title={online || viaWhatsapp ? undefined : 'Available once the driver is online'} className="rounded-lg px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>Assign Order to Driver</button>
           <button type="button" disabled={busy} onClick={() => setConfirming('reject')} className="rounded-lg border px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Not Convinced / Do Not Assign</button>
         </div>
       )}
