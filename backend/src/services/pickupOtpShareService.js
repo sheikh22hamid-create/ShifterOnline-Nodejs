@@ -73,6 +73,21 @@ async function waitForDelivery(shareId) {
   return false;
 }
 
+/** Sends the pickup OTP to a WhatsApp-channel driver's chat. True only when the send succeeded. */
+async function sendOtpOnWhatsapp(order) {
+  try {
+    const rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { id: true, fmobile: true } });
+    if (!rider?.fmobile) return false;
+    // Lazy requires: the whatsapp modules must not load (or form a cycle) when only app orders are served.
+    const { sendWhatsAppNotification } = require("../whatsapp/notifications");
+    const messages = require("../whatsapp/driverOrder/messages");
+    return (await sendWhatsAppNotification(rider.fmobile, messages.pickupOtpShared(order.otp))) === true;
+  } catch (err) {
+    logger.error(`pickupOtpShare: WhatsApp send to driver ${order.rid} failed for order ${order.id}:`, err);
+    return false;
+  }
+}
+
 /** Customer taps "Send OTP to Driver". Resolves { ok, msg } with the exact customer-facing message. */
 async function share({ uid, orderId }) {
   const numericUid = Number(uid);
@@ -98,7 +113,14 @@ async function share({ uid, orderId }) {
     row = await prisma.pickup_otp_share.update({ where: { id: row.id }, data: { attempts: { increment: 1 }, status: "pending" } });
   }
 
-  if (row.status !== "delivered") {
+  if (row.status !== "delivered" && order.driver_channel === "whatsapp") {
+    // WhatsApp-channel driver: the OTP goes straight to their chat, and a successful send counts as delivered.
+    if (!(await sendOtpOnWhatsapp(order))) {
+      await prisma.pickup_otp_share.update({ where: { id: row.id }, data: { status: "failed" } });
+      return { ok: false, msg: MSG.FAILED };
+    }
+    await prisma.pickup_otp_share.update({ where: { id: row.id }, data: { status: "delivered", delivered_at: new Date() } });
+  } else if (row.status !== "delivered") {
     try {
       dispatchManager.emitDriverEvent(order.rid, "pickup_otp:shared", { order_id: order.id, share_id: row.id });
     } catch (err) {

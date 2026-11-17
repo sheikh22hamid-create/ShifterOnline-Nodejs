@@ -144,7 +144,11 @@ function appNudge() {
   ].join("\n"));
 }
 
+function pickupOtpShared(otp) {
+  return join(`Customer ne Pickup OTP bheja: ${otp}. Isi ko reply mein bhejein.`);
+}
+
 module.exports = {
   HELPLINE, join, orderCard, stepPrompt, invalidReply, backendRefused, cancelConfirm, cancelled, cancelRequested,
-  earlyDropConfirm, completed, cashThanks, appNudge,
+  earlyDropConfirm, completed, cashThanks, appNudge, pickupOtpShared,
 };
