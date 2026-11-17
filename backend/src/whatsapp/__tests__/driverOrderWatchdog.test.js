@@ -7,7 +7,7 @@ jest.mock("../../config/db", () => ({
 jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 jest.mock("../../sockets/adminSocket", () => ({ notifyDispatchAlert: jest.fn() }));
 jest.mock("../client", () => ({ getBotStatus: jest.fn() }));
-jest.mock("../driverOrder/flow", () => ({ loadContext: jest.fn() }));
+jest.mock("../driverOrder/flow", () => ({ loadContext: jest.fn(), resumeAfterReconnect: jest.fn() }));
 
 const prisma = require("../../config/db");
 const logger = require("../../utils/logger");
@@ -197,6 +197,32 @@ describe("bot offline alert", () => {
     expect(offlineAlerts()).toHaveLength(1);
     expect(silentAlerts()).toHaveLength(0);
     expect(flow.loadContext).not.toHaveBeenCalled();
+  });
+
+  it("after a reconnect, each order that was active during the outage gets the resume message once", async () => {
+    flow.resumeAfterReconnect.mockResolvedValue(true);
+    client.getBotStatus.mockReturnValue({ status: "DISCONNECTED" });
+    await watchdog.tick(T0);
+    expect(flow.resumeAfterReconnect).not.toHaveBeenCalled();
+    client.getBotStatus.mockReturnValue({ status: "CONNECTED" });
+    await watchdog.tick(T0 + MIN);
+    await watchdog.tick(T0 + 2 * MIN);
+    expect(flow.resumeAfterReconnect.mock.calls).toEqual([[1]]);
+  });
+
+  it("no resume when the bot was never seen offline", async () => {
+    await watchdog.tick(T0);
+    await watchdog.tick(T0 + MIN);
+    expect(flow.resumeAfterReconnect).not.toHaveBeenCalled();
+  });
+
+  it("a failed resume is logged and does not stop the tick", async () => {
+    flow.resumeAfterReconnect.mockRejectedValue(new Error("send down"));
+    client.getBotStatus.mockReturnValue({ status: "DISCONNECTED" });
+    await watchdog.tick(T0);
+    client.getBotStatus.mockReturnValue({ status: "CONNECTED" });
+    await expect(watchdog.tick(T0 + MIN)).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalled();
   });
 
   it("no active WhatsApp order: no alert", async () => {

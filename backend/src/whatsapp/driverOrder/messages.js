@@ -151,11 +151,16 @@ function appNudge() {
   ].join("\n"));
 }
 
+/** Sent with the current step when the bot reconnects after an outage, so the driver knows where they stand. */
+function botBackOnline() {
+  return withHelp("✅ Shifter bot wapas chalu hai. Beech mein koi reply bheja tha to dobara bhejein.");
+}
+
 function pickupOtpShared(otp) {
   return join(`Customer ne Pickup OTP bheja: ${otp}. Isi ko reply mein bhejein.`);
 }
 
 module.exports = {
   HELPLINE, join, orderCard, stepPrompt, invalidReply, backendRefused, cancelConfirm, cancelled, cancelRequested,
-  earlyDropConfirm, completed, cashThanks, appNudge, pickupOtpShared,
+  earlyDropConfirm, completed, cashThanks, appNudge, pickupOtpShared, botBackOnline,
 };

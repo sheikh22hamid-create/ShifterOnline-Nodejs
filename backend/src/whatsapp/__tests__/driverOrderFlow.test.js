@@ -328,6 +328,31 @@ describe("startOrder", () => {
   });
 });
 
+describe("resumeAfterReconnect", () => {
+  beforeEach(() => {
+    Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
+    db.progress = { otp_verified_at: null };
+  });
+
+  it("tells the driver the bot is back plus the current step, even if that step was already sent", async () => {
+    db.session.last_step = "pickup_otp";
+    expect(await flow.resumeAfterReconnect(ORDER_ID)).toBe(true);
+    expect(notifications.sendWhatsAppNotification).toHaveBeenCalledWith(
+      "9876543210", messages.join(messages.botBackOnline(), messages.stepPrompt("pickup_otp", await ctxFor()))
+    );
+    expect(db.session.last_prompt_at).toBeInstanceOf(Date);
+  });
+
+  it("is a no-op for an app-channel order or a cancelled one", async () => {
+    db.order.driver_channel = "app";
+    expect(await flow.resumeAfterReconnect(ORDER_ID)).toBe(false);
+    db.order.driver_channel = "whatsapp";
+    Object.assign(db.order, { o_status: "Cancelled" });
+    expect(await flow.resumeAfterReconnect(ORDER_ID)).toBe(false);
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+});
+
 describe("sendCurrentStep", () => {
   beforeEach(() => {
     Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
