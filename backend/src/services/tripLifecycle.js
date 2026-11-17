@@ -1171,7 +1171,7 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // Fire-and-forget, same pattern as above - increments the driver's
     // trial-order counter and auto-blocks them once the trial limit is hit.
     // A no-op for any rider not currently in an active trial.
-    trialOrderTracker.recordTrialOrderCompletion(riderId).catch((err) => {
+    trialOrderTracker.recordTrialOrderCompletion(riderId, orderId).catch((err) => {
       logger.error(`recordTrialOrderCompletion error for rider ${riderId}:`, err);
     });
 
