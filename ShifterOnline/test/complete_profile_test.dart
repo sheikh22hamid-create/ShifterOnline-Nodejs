@@ -78,6 +78,28 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('back arrow and system back both return to Sign In',
+      (tester) async {
+    var exits = 0;
+    await tester.pumpWidget(_app(CompleteProfile(
+      mobile: '9876543210',
+      loadCities: _cities,
+      submit: (_) async => null,
+      onExit: () => exits++,
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+    await tester.pump();
+    expect(exits, 1);
+
+    // Profile Details is often the only route (Sign In was opened via offAll).
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(exits, 2);
+    expect(find.byType(CompleteProfile), findsOneWidget);
+  });
+
   testWidgets('expired OTP sends the user back to verify again', (tester) async {
     var expired = 0;
     await tester.pumpWidget(_app(CompleteProfile(

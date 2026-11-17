@@ -67,6 +67,20 @@ describe("loginByOtp account lookup", () => {
     expect(body(res)).toMatchObject({ Result: "false", UserExists: false });
   });
 
+  it("logs in the active row when an inactive duplicate of the mobile also exists", async () => {
+    const active = { id: 8, mobile: 9876543210, status: 1, wallet: 0 };
+    const inactive = { id: 7, mobile: 9876543210, status: 0, wallet: 0 };
+    prisma.tbl_user.findFirst.mockImplementation(({ where }) =>
+      Promise.resolve(where.status === 1 ? active : inactive)
+    );
+
+    const res = mockRes();
+    await loginByOtp({ body: { mobile: "9876543210", ccode: "+91" } }, res);
+
+    expect(body(res)).toMatchObject({ Result: "true" });
+    expect(body(res).UserLogin.id).toBe(8);
+  });
+
   it("refuses a deactivated account without sending it to sign-up", async () => {
     prisma.tbl_user.findFirst.mockResolvedValue({ id: 7, mobile: 9876543210, status: 0, wallet: 0 });
 

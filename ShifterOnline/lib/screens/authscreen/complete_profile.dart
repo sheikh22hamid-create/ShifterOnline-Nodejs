@@ -28,6 +28,10 @@ class CompleteProfile extends StatefulWidget {
   /// Called when register says the OTP is no longer verified.
   final VoidCallback? onSessionExpired;
 
+  /// Back arrow / system back. Default replaces this page with Sign In,
+  /// because Sign In was replaced (Get.off) and is often not under us.
+  final VoidCallback? onExit;
+
   const CompleteProfile({
     super.key,
     required this.mobile,
@@ -35,6 +39,7 @@ class CompleteProfile extends StatefulWidget {
     this.loadCities,
     this.submit,
     this.onSessionExpired,
+    this.onExit,
   });
 
   @override
@@ -84,7 +89,8 @@ class _CompleteProfileState extends State<CompleteProfile> {
       return [];
     }
     return (val['CityData'] as List)
-        .map((e) => CityModel(id: e['id'].toString(), title: e['title'].toString()))
+        .map((e) =>
+            CityModel(id: e['id'].toString(), title: e['title'].toString()))
         .toList();
   }
 
@@ -110,10 +116,16 @@ class _CompleteProfileState extends State<CompleteProfile> {
     Get.offAll(() => SignIn(paymenttype: widget.type));
   }
 
+  void _exit() {
+    if (_submitting) return;
+    (widget.onExit ?? () => Get.off(() => SignIn(paymenttype: widget.type)))();
+  }
+
   Future<void> _handleSubmit() async {
     if (_submitting) return;
     FocusScope.of(context).unfocus();
-    final errors = validateProfileForm(name: _name.text, email: _email.text, city: _city);
+    final errors =
+        validateProfileForm(name: _name.text, email: _email.text, city: _city);
     setState(() => _errors = errors);
     if (!errors.ok) return;
 
@@ -160,7 +172,8 @@ class _CompleteProfileState extends State<CompleteProfile> {
         child: Column(children: [
           ListTile(
             title: Text(title,
-                style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16)),
+                style:
+                    const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16)),
             trailing: IconButton(
                 icon: const Icon(Icons.close_rounded),
                 onPressed: () => Navigator.pop(ctx)),
@@ -184,7 +197,9 @@ class _CompleteProfileState extends State<CompleteProfile> {
         padding: const EdgeInsets.only(bottom: 8, left: 2),
         child: Text(text,
             style: const TextStyle(
-                fontFamily: 'Gilroy_Bold', fontSize: 13.5, color: Color(0xFF1F2937))),
+                fontFamily: 'Gilroy_Bold',
+                fontSize: 13.5,
+                color: Color(0xFF1F2937))),
       );
 
   Widget _input({
@@ -202,7 +217,8 @@ class _CompleteProfileState extends State<CompleteProfile> {
           color: AuthTokens.inputFill,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: error != null ? Colors.red.shade400 : const Color(0xFFE5E7EB),
+              color:
+                  error != null ? Colors.red.shade400 : const Color(0xFFE5E7EB),
               width: 1.2),
         ),
         child: Row(children: [
@@ -216,11 +232,15 @@ class _CompleteProfileState extends State<CompleteProfile> {
               keyboardType: keyboardType,
               textCapitalization: caps,
               style: const TextStyle(
-                  fontFamily: 'Gilroy_Medium', fontSize: 15, color: Color(0xFF111827)),
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 15,
+                  color: Color(0xFF111827)),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: const TextStyle(
-                    fontFamily: 'Gilroy_Medium', fontSize: 14, color: Color(0xFF9CA3AF)),
+                    fontFamily: 'Gilroy_Medium',
+                    fontSize: 14,
+                    color: Color(0xFF9CA3AF)),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 15),
               ),
@@ -233,7 +253,9 @@ class _CompleteProfileState extends State<CompleteProfile> {
           padding: const EdgeInsets.only(top: 6, left: 4),
           child: Text(error,
               style: TextStyle(
-                  fontFamily: 'Gilroy_Medium', fontSize: 12, color: Colors.red.shade500)),
+                  fontFamily: 'Gilroy_Medium',
+                  fontSize: 12,
+                  color: Colors.red.shade500)),
         ),
     ]);
   }
@@ -247,147 +269,167 @@ class _CompleteProfileState extends State<CompleteProfile> {
       decorationColor: AuthTokens.primary,
     );
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
-            child: Row(children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF111827)),
-                onPressed: () => Get.back(),
-              ),
-            ]),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Complete your profile',
-                    style: TextStyle(
-                        fontFamily: 'Gilroy_Bold',
-                        fontSize: 26,
-                        color: Color(0xFF111827),
-                        height: 1.2)),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.verified_rounded, size: 16, color: Color(0xFF059669)),
-                    const SizedBox(width: 6),
-                    Text('+91 ${widget.mobile} verified',
-                        style: const TextStyle(
-                            fontFamily: 'Gilroy_Bold',
-                            fontSize: 13,
-                            color: Color(0xFF065F46))),
-                  ]),
-                ),
-                const SizedBox(height: 8),
-                const Text('A few details and you are ready to book.',
-                    style: TextStyle(
-                        fontFamily: 'Gilroy_Medium', fontSize: 13.5, color: Color(0xFF6B7280))),
-                const SizedBox(height: 24),
-                _label('Full Name'),
-                _input(
-                  key: const Key('cp-name'),
-                  controller: _name,
-                  hint: 'Enter your full name',
-                  icon: Icons.person_outline_rounded,
-                  error: _errors.name,
-                  caps: TextCapitalization.words,
-                ),
-                const SizedBox(height: 16),
-                _label('Email (Optional)'),
-                _input(
-                  key: const Key('cp-email'),
-                  controller: _email,
-                  hint: 'Enter your email address',
-                  icon: Icons.mail_outline_rounded,
-                  error: _errors.email,
-                  keyboardType: TextInputType.emailAddress,
-                ),
-                const SizedBox(height: 16),
-                _label('City'),
-                CitySelector(selectedCity: _city, error: _errors.city, onTap: _openCitySheet),
-                const SizedBox(height: 16),
-                ReferralAccordion(
-                  expanded: _referralOpen,
-                  controller: _referral,
-                  focusNode: _referralFocus,
-                  onToggle: () => setState(() => _referralOpen = !_referralOpen),
-                ),
-                const SizedBox(height: 28),
-                GestureDetector(
-                  key: const Key('cp-submit'),
-                  onTap: _submitting ? null : _handleSubmit,
-                  child: Container(
-                    width: double.infinity,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AuthTokens.primaryLight,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: AuthTokens.cta,
-                    ),
-                    child: Center(
-                      child: _submitting
-                          ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
-                          : const Row(mainAxisSize: MainAxisSize.min, children: [
-                              Text('Create Account',
-                                  style: TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 16,
-                                      color: Color(0xFF1A0B04))),
-                              SizedBox(width: 8),
-                              Icon(Icons.arrow_forward_rounded,
-                                  size: 18, color: Color(0xFF1A0B04)),
-                            ]),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Center(
-                  child: RichText(
-                    textAlign: TextAlign.center,
-                    text: TextSpan(
-                      text: 'By creating an account you agree to our\n',
-                      style: const TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: Color(0xFF6B7280),
-                          height: 1.4),
-                      children: [
-                        TextSpan(
-                          text: 'Terms and Conditions',
-                          style: link,
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = () => _openWeb(
-                                'https://shifteronline.com/terms_conditions.php',
-                                'Terms and Conditions'),
-                        ),
-                        const TextSpan(text: ' and '),
-                        TextSpan(
-                          text: 'Privacy Policy',
-                          style: link,
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = () => _openWeb(
-                                'https://shifteronline.com/privacy_policy.php',
-                                'Privacy Policy'),
-                        ),
-                        const TextSpan(text: '.'),
-                      ],
-                    ),
-                  ),
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) _exit();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
+              child: Row(children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded,
+                      color: Color(0xFF111827)),
+                  onPressed: _exit,
                 ),
               ]),
             ),
-          ),
-        ]),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Complete your profile',
+                          style: TextStyle(
+                              fontFamily: 'Gilroy_Bold',
+                              fontSize: 26,
+                              color: Color(0xFF111827),
+                              height: 1.2)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.verified_rounded,
+                              size: 16, color: Color(0xFF059669)),
+                          const SizedBox(width: 6),
+                          Text('+91 ${widget.mobile} verified',
+                              style: const TextStyle(
+                                  fontFamily: 'Gilroy_Bold',
+                                  fontSize: 13,
+                                  color: Color(0xFF065F46))),
+                        ]),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('A few details and you are ready to book.',
+                          style: TextStyle(
+                              fontFamily: 'Gilroy_Medium',
+                              fontSize: 13.5,
+                              color: Color(0xFF6B7280))),
+                      const SizedBox(height: 24),
+                      _label('Full Name'),
+                      _input(
+                        key: const Key('cp-name'),
+                        controller: _name,
+                        hint: 'Enter your full name',
+                        icon: Icons.person_outline_rounded,
+                        error: _errors.name,
+                        caps: TextCapitalization.words,
+                      ),
+                      const SizedBox(height: 16),
+                      _label('Email (Optional)'),
+                      _input(
+                        key: const Key('cp-email'),
+                        controller: _email,
+                        hint: 'Enter your email address',
+                        icon: Icons.mail_outline_rounded,
+                        error: _errors.email,
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                      const SizedBox(height: 16),
+                      _label('City'),
+                      CitySelector(
+                          selectedCity: _city,
+                          error: _errors.city,
+                          onTap: _openCitySheet),
+                      const SizedBox(height: 16),
+                      ReferralAccordion(
+                        expanded: _referralOpen,
+                        controller: _referral,
+                        focusNode: _referralFocus,
+                        onToggle: () =>
+                            setState(() => _referralOpen = !_referralOpen),
+                      ),
+                      const SizedBox(height: 28),
+                      GestureDetector(
+                        key: const Key('cp-submit'),
+                        onTap: _submitting ? null : _handleSubmit,
+                        child: Container(
+                          width: double.infinity,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: AuthTokens.primaryLight,
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: AuthTokens.cta,
+                          ),
+                          child: Center(
+                            child: _submitting
+                                ? const SpinKitThreeBounce(
+                                    color: Color(0xFF1A0B04), size: 20)
+                                : const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                        Text('Create Account',
+                                            style: TextStyle(
+                                                fontFamily: 'Gilroy_Bold',
+                                                fontSize: 16,
+                                                color: Color(0xFF1A0B04))),
+                                        SizedBox(width: 8),
+                                        Icon(Icons.arrow_forward_rounded,
+                                            size: 18, color: Color(0xFF1A0B04)),
+                                      ]),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            text: 'By creating an account you agree to our\n',
+                            style: const TextStyle(
+                                fontFamily: 'Gilroy_Medium',
+                                fontSize: 11.5,
+                                color: Color(0xFF6B7280),
+                                height: 1.4),
+                            children: [
+                              TextSpan(
+                                text: 'Terms and Conditions',
+                                style: link,
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () => _openWeb(
+                                      'https://shifteronline.com/terms_conditions.php',
+                                      'Terms and Conditions'),
+                              ),
+                              const TextSpan(text: ' and '),
+                              TextSpan(
+                                text: 'Privacy Policy',
+                                style: link,
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () => _openWeb(
+                                      'https://shifteronline.com/privacy_policy.php',
+                                      'Privacy Policy'),
+                              ),
+                              const TextSpan(text: '.'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ]),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }

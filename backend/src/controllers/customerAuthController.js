@@ -163,7 +163,10 @@ async function loginByOtp(req, res) {
     if (!/^[6-9][0-9]{9}$/.test(mobile)) return fail(res, "Please enter a valid 10-digit mobile number!");
 
     // UserExists lets the app tell "new user → profile details" apart from any other failure.
-    const user = await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } });
+    // mobile is not unique: prefer the active row, fall back to any row (deactivated).
+    const user =
+      (await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile), status: 1 } })) ||
+      (await prisma.tbl_user.findFirst({ where: { mobile: Number(mobile) } }));
     if (!user) {
       return res.status(200).json({
         ResponseCode: "401",
