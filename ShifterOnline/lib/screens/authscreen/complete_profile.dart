@@ -235,15 +235,7 @@ class _CompleteProfileState extends State<CompleteProfile> {
                   fontFamily: 'Gilroy_Medium',
                   fontSize: 15,
                   color: Color(0xFF111827)),
-              decoration: InputDecoration(
-                hintText: hint,
-                hintStyle: const TextStyle(
-                    fontFamily: 'Gilroy_Medium',
-                    fontSize: 14,
-                    color: Color(0xFF9CA3AF)),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(vertical: 15),
-              ),
+              decoration: borderlessInputDecoration(hint: hint),
             ),
           ),
         ]),
