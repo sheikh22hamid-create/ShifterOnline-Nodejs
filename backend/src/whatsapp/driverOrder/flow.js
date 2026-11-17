@@ -309,7 +309,7 @@ async function notifyOrderChanged(orderId, { kind, onlyNewStep = false } = {}) {
     if (kind === "cancelled") return false; // the order is still this driver's: nothing was cancelled for them
     const current = stepId(ctx.step);
     if (kind === "route_changed") {
-      const text = messages.join(messages.orderCard(ctx.order, ctx.stops, ctx.rider), messages.stepPrompt(ctx.step.key, ctx));
+      const text = messages.join(messages.orderCard(ctx.order, ctx.stops, ctx.rider, { updated: true }), messages.stepPrompt(ctx.step.key, ctx));
       return await sendAndRecord(ctx, text, current);
     }
     if (kind !== "progress") return false;

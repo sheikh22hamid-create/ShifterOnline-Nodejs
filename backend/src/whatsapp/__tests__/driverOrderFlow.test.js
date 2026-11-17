@@ -445,6 +445,18 @@ describe("messages copy rules", () => {
     }
   });
 
+  it("the default order card is unchanged; the updated card keeps the route and fare but drops the new-order lines", () => {
+    const card = messages.orderCard(db.order, [], db.rider);
+    expect(card.startsWith(`Namaste Sultan! 🆕 *Shifter Order #${ORDER_ID}*`)).toBe(true);
+    expect(card).toContain("📡 Apni WhatsApp *Live Location* (8 ghante) is number pe share karein.");
+    expect(card).toContain("Har step ke baad bot aapko agla kaam batayega");
+    const updated = messages.orderCard(db.order, [{ address: "Palasia" }], db.rider, { updated: true });
+    expect(updated.startsWith(`✏️ *Order #${ORDER_ID} update hua* (customer ne badla)`)).toBe(true);
+    for (const part of ["Fare: ₹450", "*Pickup:*", "MG Road", "*Stop 1:*", "Palasia", "*Drop:*", "Vijay Nagar"]) expect(updated).toContain(part);
+    expect(updated).not.toMatch(/🆕|Namaste|Live Location|Har step ke baad/);
+    expect(updated.endsWith("📞 Help: 9109114515")).toBe(true);
+  });
+
   it("online completion names the wallet amount; the app nudge carries the link and login line", () => {
     expect(messages.completed({ final_fare: 450, isCash: false, walletCredit: 405 })).toContain("₹405 aapke Shifter wallet mein");
     const nudge = messages.appNudge();
@@ -570,8 +582,12 @@ describe("notifyOrderChanged (changes made outside the WhatsApp flow)", () => {
     db.session.last_step = "go_drop";
     await notify("route_changed");
     const ctx = await ctxFor();
-    expect(sent()).toEqual([messages.join(messages.orderCard(db.order, [], db.rider), messages.stepPrompt("go_drop", ctx))]);
+    expect(sent()).toEqual([messages.join(messages.orderCard(db.order, [], db.rider, { updated: true }), messages.stepPrompt("go_drop", ctx))]);
     expect(sent()[0]).toContain("Rau Circle");
+    expect(sent()[0]).toContain(`✏️ *Order #${ORDER_ID} update hua* (customer ne badla)`);
+    expect(sent()[0]).not.toContain("🆕");
+    expect(sent()[0]).not.toContain("Namaste");
+    expect(sent()[0]).not.toContain("Live Location");
     expect(sent()[0].match(/Help: 9109114515/g)).toHaveLength(1);
   });
 

@@ -36,18 +36,25 @@ const stopPlace = (s, n) => place(`Stop ${n}`, {
   name: s?.contact_name, phone: s?.contact_number, address: [s?.hno, s?.address, s?.landmark].filter(Boolean).join(", "), lat: s?.lat, lng: s?.lng,
 });
 
-function orderCard(order, stops = [], rider = null) {
+// updated: the same order's route changed (customer edited pickup / drop / stops) - says so instead of
+// announcing a new order, and leaves out the first-message greeting and Live Location request.
+function orderCard(order, stops = [], rider = null, { updated = false } = {}) {
+  const header = updated
+    ? `✏️ *Order #${order.id} update hua* (customer ne badla)`
+    : `${rider?.full_name ? `Namaste ${rider.full_name}! ` : ""}🆕 *Shifter Order #${order.id}*`;
   const lines = [
-    `${rider?.full_name ? `Namaste ${rider.full_name}! ` : ""}🆕 *Shifter Order #${order.id}*`,
+    header,
     `Fare: ${rupees(order.total_dcharge)}`,
     "",
     pickupPlace(order),
     ...stops.flatMap((s, i) => ["", stopPlace(s, i + 1)]),
     "",
     dropPlace(order),
-    "",
-    "📡 Apni WhatsApp *Live Location* (8 ghante) is number pe share karein.",
-    "Har step ke baad bot aapko agla kaam batayega - jawab mein sirf number bhejein.",
+    ...(updated ? [] : [
+      "",
+      "📡 Apni WhatsApp *Live Location* (8 ghante) is number pe share karein.",
+      "Har step ke baad bot aapko agla kaam batayega - jawab mein sirf number bhejein.",
+    ]),
   ];
   return withHelp(lines.join("\n"));
 }
