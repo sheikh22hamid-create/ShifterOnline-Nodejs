@@ -25,7 +25,7 @@ const chatControl = require("../chatControl");
 const botMenuEngine = require("../botMenuEngine");
 const flow = require("../driverOrder/flow");
 const senderIdentity = require("../driverOrder/senderIdentity");
-const { routeDriverMessage, routeLiveLocationUpdates } = require("../client");
+const { routeDriverMessage, routeLiveLocationUpdates, dedupId, isDuplicateMessage, isRepeatForNormalBot } = require("../client");
 
 const DRIVER_JID = "919876543210@s.whatsapp.net";
 
@@ -39,6 +39,11 @@ beforeEach(() => {
 });
 
 const fakeSock = () => ({ sendMessage: jest.fn().mockResolvedValue({}) });
+// The driver (rider 55) has a WhatsApp session for active order 877.
+const withSession = () => {
+  prisma.whatsapp_driver_session.findMany.mockResolvedValue([{ order_id: 877, rider_id: 55, phone: "9876543210", updated_at: new Date(), created_at: new Date() }]);
+  prisma.pkg_order.findMany.mockResolvedValue([{ id: 877, rid: 55, order_status: 2, o_status: "Pickup" }]);
+};
 const textMsg = (key = {}) => ({ key: { remoteJid: DRIVER_JID, id: "m1", ...key }, message: { conversation: "x" }, messageTimestamp: 1700000000 });
 
 describe("senderIdentity.phoneFromMessage", () => {
@@ -73,7 +78,9 @@ describe("senderIdentity.phoneFromMessage", () => {
 
 describe("senderIdentity.findActiveWhatsAppOrder", () => {
   const HOUR = 60 * 60 * 1000;
-  const session = (order_id, rider_id = 55, ageMs = HOUR) => ({ order_id, rider_id, phone: "9876543210", updated_at: new Date(Date.now() - ageMs) });
+  const session = (order_id, rider_id = 55, ageMs = HOUR, createdAgeMs = ageMs) => ({
+    order_id, rider_id, phone: "9876543210", updated_at: new Date(Date.now() - ageMs), created_at: new Date(Date.now() - createdAgeMs),
+  });
   const seedSessions = (sessions, orders, settlements = []) => {
     prisma.whatsapp_driver_session.findMany.mockResolvedValue(sessions);
     prisma.pkg_order.findMany.mockResolvedValue(orders);
@@ -117,6 +124,18 @@ describe("senderIdentity.findActiveWhatsAppOrder", () => {
     await expect(find()).resolves.toEqual({ orderId: 877, riderId: 55 });
   });
 
+  it("a cancelled order replied to recently but bound more than 24 h ago does not route (replies don't renew the window)", async () => {
+    seedSessions([session(877, 55, 5 * 60 * 1000, 30 * HOUR)], [{ id: 877, rid: 55, order_status: 5, o_status: "Cancelled" }]);
+    await expect(find()).resolves.toBeNull();
+    seedSessions([session(877, 55, 5 * 60 * 1000, 30 * HOUR)], [{ id: 877, rid: 0, order_status: 0, o_status: "Pending" }]);
+    await expect(find()).resolves.toBeNull();
+  });
+
+  it("an active order bound more than 24 h ago still routes while its session is in use", async () => {
+    seedSessions([session(877, 55, 5 * 60 * 1000, 30 * HOUR)], [{ id: 877, rid: 55, order_status: 3, o_status: "Ongoing" }]);
+    await expect(find()).resolves.toEqual({ orderId: 877, riderId: 55 });
+  });
+
   it("a re-lived / reassigned order (rid no longer this driver) routes with the session's rider", async () => {
     seedSessions([session(877)], [{ id: 877, rid: 0, order_status: 0, o_status: "Pending" }]);
     await expect(find()).resolves.toEqual({ orderId: 877, riderId: 55 });
@@ -152,10 +171,7 @@ describe("senderIdentity.findActiveWhatsAppOrder", () => {
 });
 
 describe("routeDriverMessage", () => {
-  const withActiveOrder = () => {
-    prisma.whatsapp_driver_session.findMany.mockResolvedValue([{ order_id: 877, rider_id: 55, phone: "9876543210", updated_at: new Date() }]);
-    prisma.pkg_order.findMany.mockResolvedValue([{ id: 877, rid: 55, order_status: 2, o_status: "Pickup" }]);
-  };
+  const withActiveOrder = withSession;
 
   it('a driver with an active WhatsApp order sending "stop" goes to the order flow, never pauses the chat', async () => {
     withActiveOrder();
@@ -337,5 +353,49 @@ describe("routeLiveLocationUpdates (Live Location delivered as messages.update)"
     ], fakeSock());
     expect(flow.handleDriverLocation).toHaveBeenCalledTimes(1);
     expect(flow.handleDriverLocation).toHaveBeenCalledWith(expect.objectContaining({ orderId: 877, riderId: 55, lat: 22.8, lng: 75.9 }));
+  });
+
+  it("treats them as non-realtime: the edit's own messageTimestamp is kept", async () => {
+    withSession();
+    const ts = Math.floor(Date.now() / 1000) - 5;
+    await routeLiveLocationUpdates([
+      { key: { remoteJid: DRIVER_JID, id: "m7" }, update: { messageTimestamp: ts, message: { liveLocationMessage: { degreesLatitude: 22.8, degreesLongitude: 75.9, sequenceNumber: 9 } } } },
+    ], fakeSock());
+    expect(flow.handleDriverLocation.mock.calls[0][0].timestampMs).toBe(ts * 1000);
+  });
+});
+
+describe("messages.upsert dedup: the wide live-location key is for routed drivers only", () => {
+  // Mirrors the handler: isDuplicateMessage(dedupId(msg)) first; routeDriverMessage; then isRepeatForNormalBot(msg).
+  const tick = (seq, lat) => ({
+    key: { remoteJid: "919999900001@s.whatsapp.net", id: "cust-share-1" },
+    message: { liveLocationMessage: { degreesLatitude: lat, degreesLongitude: 75.8, sequenceNumber: seq } },
+  });
+  async function reachesCustomerMenu(msg) {
+    if (isDuplicateMessage(dedupId(msg))) return false;
+    if (await routeDriverMessage({ msg, text: "LOCATION_PIN:x", sock: fakeSock() })) return false;
+    return !isRepeatForNormalBot(msg);
+  }
+
+  it("a customer's Live Location share reaches the menu once, not on every position tick", async () => {
+    expect(await reachesCustomerMenu(tick(1, 22.7))).toBe(true);
+    expect(await reachesCustomerMenu(tick(2, 22.71))).toBe(false);
+    expect(await reachesCustomerMenu(tick(3, 22.72))).toBe(false);
+  });
+
+  it("a routed driver's ticks with the same id all reach the flow", async () => {
+    withSession();
+    const msg = (seq, lat) => ({ key: { remoteJid: DRIVER_JID, id: "drv-share-1" }, messageTimestamp: Math.floor(Date.now() / 1000),
+      message: { liveLocationMessage: { degreesLatitude: lat, degreesLongitude: 75.8, sequenceNumber: seq } } });
+    for (const [seq, lat] of [[1, 22.7], [2, 22.71], [3, 22.72]]) {
+      expect(isDuplicateMessage(dedupId(msg(seq, lat)))).toBe(false);
+      await routeDriverMessage({ msg: msg(seq, lat), text: "", sock: fakeSock() });
+    }
+    expect(flow.handleDriverLocation).toHaveBeenCalledTimes(3);
+  });
+
+  it("non-location messages are not double-checked (their plain id was already deduped once)", () => {
+    expect(isRepeatForNormalBot({ key: { id: "text-1" }, message: { conversation: "hi" } })).toBe(false);
+    expect(isRepeatForNormalBot({ key: { id: "text-1" }, message: { conversation: "hi" } })).toBe(false);
   });
 });

@@ -236,11 +236,15 @@ async function startOrder(orderId) {
   const rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { id: true, fmobile: true } });
   if (!rider) return false;
   // (Re)binds the conversation to the order's assigned driver; a reassignment starts with a clean session.
+  // created_at = when this driver was bound: it bounds how long a cancelled order still routes to the flow.
   const phone = normalizeToLast10Digits(rider.fmobile);
   await prisma.whatsapp_driver_session.upsert({
     where: { order_id: orderId },
     create: { order_id: orderId, rider_id: order.rid, phone },
-    update: { rider_id: order.rid, phone, pending_confirm: null, pending_otp: null, last_step: null, last_prompt_at: null, alerted_step: null },
+    update: {
+      rider_id: order.rid, phone, pending_confirm: null, pending_otp: null, last_step: null, last_prompt_at: null, alerted_step: null,
+      created_at: new Date(),
+    },
   });
   const ctx = await loadContext(orderId);
   if (!ctx || !ctx.rider) return false;

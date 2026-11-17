@@ -123,6 +123,15 @@ function dedupId(msg) {
   return `${id}:live:${seq}:${live.degreesLatitude},${live.degreesLongitude}`;
 }
 
+/**
+ * For a message the driver routing did NOT take: the bot's original per-message-id dedup. A Live Location got past
+ * the wider dedupId key, so without this every position tick of a customer's share would reach the customer menu.
+ * Other messages were already deduped by their plain id.
+ */
+function isRepeatForNormalBot(msg) {
+  return liveLocationContent(msg.message) ? isDuplicateMessage(msg.key?.id) : false;
+}
+
 // riderId -> { shareId, seq } of the newest Live Location update stamped with its arrival time.
 const lastLiveUpdate = new Map();
 
@@ -210,7 +219,9 @@ async function routeLiveLocationUpdates(updates, socket) {
     const msg = { key, message, messageTimestamp: update.messageTimestamp };
     if (isDuplicateMessage(dedupId(msg))) continue;
     try {
-      await routeDriverMessage({ msg, text: extractMessageText(msg), sock: socket });
+      // realtime: false - Baileys emits these edits for offline catch-up too, and the update's messageTimestamp is
+      // the edit's own time (protocolMsg.timestampMs), so keeping it is accurate.
+      await routeDriverMessage({ msg, text: extractMessageText(msg), sock: socket, realtime: false });
     } catch (err) {
       logger.error("Error routing WhatsApp live location update:", err);
     }
@@ -383,6 +394,10 @@ async function initWhatsAppBot() {
           // 1b. A trial driver running a WhatsApp-channel order: every message (including "stop"/"start"/"hi") goes
           // to the order flow - never the chat-pause commands, the customer menu or the AI.
           if (await routeDriverMessage({ msg, text: textMessage, sock, realtime })) continue;
+          if (isRepeatForNormalBot(msg)) {
+            logger.debug(`Duplicate WhatsApp message skipped: ${msgId}`);
+            continue;
+          }
           if (!realtime || isStale) continue;
 
           // 2. Check if this specific personal chat is paused
@@ -632,4 +647,8 @@ module.exports = {
   chatControl,
   routeDriverMessage,
   routeLiveLocationUpdates,
+  // Exported for tests: the two dedup steps of the messages.upsert handler.
+  dedupId,
+  isDuplicateMessage,
+  isRepeatForNormalBot,
 };

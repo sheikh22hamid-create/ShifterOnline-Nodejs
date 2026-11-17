@@ -314,6 +314,13 @@ describe("startOrder", () => {
     expect(db.session.last_step).toBe("go_pickup");
   });
 
+  it("re-binding an existing session resets created_at (the cancelled-notice window starts at this driver's assign)", async () => {
+    db.session.created_at = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const before = Date.now();
+    await flow.startOrder(ORDER_ID);
+    expect(db.session.created_at.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
   it("does nothing for an app-channel order", async () => {
     db.order.driver_channel = "app";
     expect(await flow.startOrder(ORDER_ID)).toBe(false);
