@@ -26,6 +26,17 @@ function isNearPickup(order, rider, maxAgeMs = TRIAL_LOCATION_MAX_AGE_MS) {
   return km <= (Number(order.radius_range) || SEARCH_RADIUS_KM);
 }
 
+/**
+ * May an executive scoped to the order's city assign this driver registered elsewhere? Only the same vehicle as the
+ * order, near the pickup, with a live location (the dispatch freshness) - the 24 h window applies only to an active
+ * Trial Driver taking the order over WhatsApp (offline, so no live location). Mirrors what the popup lists.
+ */
+function mayAssignOtherCity(order, rider, channel = "app") {
+  if (rider.vehicle !== order.category) return false;
+  const offlineTrial = channel === "whatsapp" && rider.trial_status === "active";
+  return isNearPickup(order, rider, offlineTrial ? TRIAL_LOCATION_MAX_AGE_MS : RIDER_LOCATION_FRESHNESS_MS);
+}
+
 const riderName = (r) => r.full_name || [r.fname, r.lname].filter(Boolean).join(" ") || null;
 
 /**
@@ -38,12 +49,15 @@ const riderName = (r) => r.full_name || [r.fname, r.lname].filter(Boolean).join(
 async function listCandidates(order, { source = "all", search } = {}) {
   const trial = source === "trial";
   const where = { status: 1, vehicle: order.category, ...(trial ? { trial_status: "active" } : { a_status: 1 }) };
-  const q = String(search || "").trim();
-  if (q) where.OR = [{ full_name: { contains: q } }, { fmobile: { contains: q } }, { vehicle_no: { contains: q } }];
-
-  const riders = await prisma.tbl_rider.findMany({ where, orderBy: { id: "desc" } });
   const maxAge = trial ? TRIAL_LOCATION_MAX_AGE_MS : RIDER_LOCATION_FRESHNESS_MS;
   const now = Date.now();
+  // Other cities' drivers are read only when their location is recent enough to count (distance checked below).
+  const and = [{ OR: [{ city_id: order.city_id }, { rloc_updated_at: { gte: new Date(now - maxAge) } }] }];
+  const q = String(search || "").trim();
+  if (q) and.push({ OR: [{ full_name: { contains: q } }, { fmobile: { contains: q } }, { vehicle_no: { contains: q } }] });
+  where.AND = and;
+
+  const riders = await prisma.tbl_rider.findMany({ where, orderBy: { id: "desc" }, take: 500 });
 
   const rows = [];
   for (const r of riders) {
@@ -58,7 +72,8 @@ async function listCandidates(order, { source = "all", search } = {}) {
       vehicle: r.vehicle,
       vehicle_no: r.vehicle_no,
       city_id: r.city_id,
-      wallet_balance: r.wallet_balance,
+      // Another city's driver: only what is needed to pick and call them (no wallet).
+      wallet_balance: sameCity ? r.wallet_balance : null,
       trial_status: r.trial_status,
       online: r.a_status === 1,
       location_fresh: Boolean(fresh),
@@ -78,4 +93,4 @@ async function listCandidates(order, { source = "all", search } = {}) {
   return rows;
 }
 
-module.exports = { listCandidates, isNearPickup, distanceFromPickup, TRIAL_LOCATION_MAX_AGE_MS };
+module.exports = { listCandidates, isNearPickup, mayAssignOtherCity, distanceFromPickup, TRIAL_LOCATION_MAX_AGE_MS };

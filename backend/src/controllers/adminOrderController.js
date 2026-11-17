@@ -274,7 +274,7 @@ async function assignRider(req, res) {
       riderId,
       actor: req.user,
       // A driver registered in another city may take the order when near its pickup (dispatch offers it the same way).
-      isRiderForbidden: (rider) => isScopedOut(req, rider.city_id) && !assignCandidatesService.isNearPickup(order, rider),
+      isRiderForbidden: (rider) => isScopedOut(req, rider.city_id) && !assignCandidatesService.mayAssignOtherCity(order, rider, req.body.channel),
       channel: req.body.channel,
     });
     if (!result.ok) {

@@ -8,7 +8,7 @@ jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn() }));
 jest.mock("../../services/bookingGuaranteeService", () => ({}));
 jest.mock("../../services/guaranteeQueueService", () => ({ assertExecutiveMayAssign: jest.fn() }));
 jest.mock("../../services/orderAssignmentService", () => ({ assignRiderToOrder: jest.fn() }));
-jest.mock("../../services/assignCandidatesService", () => ({ listCandidates: jest.fn(), isNearPickup: jest.fn() }));
+jest.mock("../../services/assignCandidatesService", () => ({ listCandidates: jest.fn(), mayAssignOtherCity: jest.fn() }));
 
 const prisma = require("../../config/db");
 const orderAssignment = require("../../services/orderAssignmentService");
@@ -52,10 +52,13 @@ describe("assignRider rider city check", () => {
     await assignRider({ params: { id: "1027" }, body: { rider_id: 94 }, user: exec }, res());
     const { isRiderForbidden } = orderAssignment.assignRiderToOrder.mock.calls[0][0];
     const otherCity = { id: 94, city_id: 1 };
-    candidates.isNearPickup.mockReturnValue(true);
+    candidates.mayAssignOtherCity.mockReturnValue(true);
     expect(isRiderForbidden(otherCity)).toBe(false);
-    candidates.isNearPickup.mockReturnValue(false);
+    candidates.mayAssignOtherCity.mockReturnValue(false);
     expect(isRiderForbidden(otherCity)).toBe(true);
     expect(isRiderForbidden({ id: 9, city_id: 2 })).toBe(false);
+    candidates.mayAssignOtherCity.mockReturnValue(true);
+    isRiderForbidden(otherCity);
+    expect(candidates.mayAssignOtherCity).toHaveBeenLastCalledWith(order, otherCity, undefined);
   });
 });
