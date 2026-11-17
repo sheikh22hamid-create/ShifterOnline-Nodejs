@@ -75,6 +75,8 @@ async function tick(now = Date.now()) {
       if (await isWhatsappDriver({ ...o, driver_channel: "whatsapp" }, sessionOf.get(o.id) || null)) orders.push(o);
     }
     const connected = botConnected();
+    // Orders that were active while the bot was down get the "bot is back" message + their step once it reconnects.
+    const missedOutage = connected ? new Set(offlineAlerted) : new Set();
     if (connected) offlineAlerted.clear();
     const activeIds = new Set(orders.map((o) => o.id));
     for (const id of offlineAlerted) if (!activeIds.has(id)) offlineAlerted.delete(id);
@@ -89,6 +91,7 @@ async function tick(now = Date.now()) {
             { kind: "whatsapp_bot_offline" }
           );
         }
+        if (missedOutage.has(order.id)) await flow().resumeAfterReconnect(order.id);
         // While the bot is down the driver can't reply or get prompts: only the offline alert applies.
         if (connected) await checkSilence(order, now);
       } catch (err) {

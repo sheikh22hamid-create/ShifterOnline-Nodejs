@@ -283,6 +283,18 @@ async function sendCurrentStep(orderId, { reason } = {}) {
   return sendAndRecord(ctx, messages.stepPrompt(ctx.step.key, ctx), id);
 }
 
+/**
+ * After a bot outage: tells the WhatsApp driver the bot is back and repeats the current step (even if it was sent
+ * before the outage - replies sent meanwhile may have been lost). Skips cancelled / finished orders. Returns whether
+ * a message was sent.
+ */
+async function resumeAfterReconnect(orderId) {
+  const ctx = await loadContext(orderId);
+  if (!ctx || !ctx.rider || !(await isWhatsappDriver(ctx.order, ctx.session))) return false;
+  if (["cancelled", "done", "unknown"].includes(ctx.step.key)) return false;
+  return sendAndRecord(ctx, messages.join(messages.botBackOnline(), messages.stepPrompt(ctx.step.key, ctx)), stepId(ctx.step));
+}
+
 /** Sends one message to the context's driver; only a delivered message is recorded as the step they were told. */
 async function sendAndRecord(ctx, text, id) {
   const sent = await notifications().sendWhatsAppNotification(ctx.rider.fmobile, text);
@@ -470,5 +482,5 @@ async function advanceAsExecutive({ orderId, admin, otp }) {
 
 module.exports = {
   loadContext, startOrder, handleDriverReply, handleDriverLocation, sendCurrentStep, notifyOrderChanged, performStepAction,
-  statusForExecutive, advanceAsExecutive,
+  statusForExecutive, advanceAsExecutive, resumeAfterReconnect,
 };
