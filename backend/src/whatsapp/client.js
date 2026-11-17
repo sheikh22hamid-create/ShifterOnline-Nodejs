@@ -128,19 +128,20 @@ const lastLiveUpdate = new Map();
 
 /**
  * When a Live Location position was observed. An update's messageTimestamp can be the time the share STARTED, so a
- * real-time update that is newer than the last one processed for this rider's share (higher sequenceNumber, or a new
- * share) is stamped on arrival. Anything else - an offline/append batch, an update past the stale cutoff, a repeated
- * or lower sequence - keeps its real messageTimestamp, so progressTrip's leg-start guards still apply to it.
- * null = no trustworthy time (no messageTimestamp and not eligible for the arrival time): the update is dropped.
+ * real-time update whose sequenceNumber is strictly higher than the last one processed for this rider's share (or the
+ * first of a new share) is stamped on arrival - the rising sequence is the freshness proof, so no age cutoff applies.
+ * Anything else - an offline/append batch, a repeated or lower sequence, no sequenceNumber - keeps its real
+ * messageTimestamp, so progressTrip's leg-start guards still apply to it.
+ * null = no trustworthy time (not eligible for the arrival time and no messageTimestamp): the update is dropped.
  */
 function liveLocationTimestampMs({ msg, live, riderId, realtime }) {
   const sec = messageTimestampSec(msg);
-  const stale = Boolean(sec) && Math.floor(Date.now() / 1000) - sec > STALE_MESSAGE_SEC;
-  const seq = Number(live.sequenceNumber?.low ?? live.sequenceNumber);
+  const rawSeq = live.sequenceNumber?.low ?? live.sequenceNumber;
+  const seq = rawSeq == null ? NaN : Number(rawSeq); // Number(null) would be 0, a fake sequence
   const shareId = msg.key?.id;
   const last = lastLiveUpdate.get(riderId);
   const newer = Number.isFinite(seq) && (!last || last.shareId !== shareId || seq > last.seq);
-  if (realtime && !stale && newer) {
+  if (realtime && newer) {
     lastLiveUpdate.set(riderId, { shareId, seq });
     return Date.now();
   }
@@ -327,7 +328,7 @@ async function initWhatsAppBot() {
 
           // Skip stale/old messages (e.g. older than 2 minutes on reconnect/sync). A Live Location update is kept for
           // now: it can carry the share's original timestamp. It is dropped below unless the sender is a routed trial
-          // driver, and then it keeps that real (old) timestamp - see liveLocationTimestampMs.
+          // driver - see liveLocationTimestampMs for which time it then gets.
           const nowSec = Math.floor(Date.now() / 1000);
           const msgTimestamp = messageTimestampSec(msg);
           const isStale = Boolean(msgTimestamp && (nowSec - msgTimestamp) > STALE_MESSAGE_SEC);

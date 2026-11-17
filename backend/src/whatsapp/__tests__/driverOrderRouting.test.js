@@ -269,10 +269,29 @@ describe("routeDriverMessage", () => {
       expect(flow.handleDriverLocation.mock.calls[0][0].timestampMs).toBe(ts * 1000);
     });
 
-    it("a real-time update older than the 120 s cutoff keeps its real messageTimestamp", async () => {
+    it("a real-time update 10 min after the share started, with a higher sequence, is stamped on arrival", async () => {
       withActiveOrder();
-      const ts = nowSec() - 600;
-      await routeDriverMessage({ msg: liveMsg({ ts }), text: "", sock: fakeSock() });
+      const id = "share-long";
+      const started = nowSec() - 600;
+      await routeDriverMessage({ msg: liveMsg({ id, seq: 1, ts: started }), text: "", sock: fakeSock() });
+      const before = Date.now();
+      await routeDriverMessage({ msg: liveMsg({ id, seq: 40, ts: started }), text: "", sock: fakeSock() });
+      expect(flow.handleDriverLocation.mock.calls[1][0].timestampMs).toBeGreaterThanOrEqual(before);
+    });
+
+    it("a repeated sequence of a 10-min-old share keeps its real timestamp", async () => {
+      withActiveOrder();
+      const id = "share-long-repeat";
+      const started = nowSec() - 600;
+      await routeDriverMessage({ msg: liveMsg({ id, seq: 40, ts: started }), text: "", sock: fakeSock() });
+      await routeDriverMessage({ msg: liveMsg({ id, seq: 40, ts: started }), text: "", sock: fakeSock() });
+      expect(flow.handleDriverLocation.mock.calls[1][0].timestampMs).toBe(started * 1000);
+    });
+
+    it("a real-time update with no sequenceNumber keeps its real timestamp", async () => {
+      withActiveOrder();
+      const ts = nowSec() - 30;
+      await routeDriverMessage({ msg: liveMsg({ seq: null, ts }), text: "", sock: fakeSock() });
       expect(flow.handleDriverLocation.mock.calls[0][0].timestampMs).toBe(ts * 1000);
     });
 
