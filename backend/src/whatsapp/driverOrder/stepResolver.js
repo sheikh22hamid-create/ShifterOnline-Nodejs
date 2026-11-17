@@ -9,6 +9,14 @@ function isCashSettlementPending(settlement) {
   return settlement?.status === "pending" && settlement.method !== "online";
 }
 
+// What the driver must collect on a pending cash settlement: the same figure the driver app shows
+// (settlementService.publicView receiver_pay_total) - amount_due, plus the booker's commission when the receiver pays.
+function cashPayable(settlement) {
+  if (!settlement) return null;
+  const markup = settlement.payer === "receiver" ? Number(settlement.receiver_markup || 0) : 0;
+  return Math.round((Number(settlement.amount_due) + markup) * 100) / 100;
+}
+
 function resolveStep({ order, progress, stops = [], dropOtpRequired = false, settlement = null }) {
   if (!order || order.o_status === "Cancelled") return { key: "cancelled" };
   if (order.o_status === "Completed") return isCashSettlementPending(settlement) ? { key: "await_cash" } : { key: "done" };
@@ -35,4 +43,4 @@ function stepId(step) {
   return step.stopNumber ? `${step.key}:${step.stopNumber}` : step.key;
 }
 
-module.exports = { resolveStep, stepId, isCashSettlementPending };
+module.exports = { resolveStep, stepId, isCashSettlementPending, cashPayable };

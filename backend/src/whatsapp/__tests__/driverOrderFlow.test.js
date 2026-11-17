@@ -370,3 +370,82 @@ describe("messages copy rules", () => {
     expect(nudge).toContain("isi number se login karein, saare orders aur wallet app mein dikhenge");
   });
 });
+
+describe("performStepAction { advance: true } (shared with the executive override)", () => {
+  it("go_pickup -> arrived, and drops a stale pending CANCEL", async () => {
+    db.session.pending_confirm = "cancel";
+    tripLifecycle.updateStatus.mockResolvedValue({ success: true });
+    const outcome = await flow.performStepAction(await ctxFor(), { advance: true });
+    expect(outcome.type).toBe("advanced");
+    expect(tripLifecycle.updateStatus).toHaveBeenCalledWith(ORDER_ID, RIDER_ID, "arrived", {});
+    expect(db.session.pending_confirm).toBeNull();
+    expect(db.session.pending_otp).toBeNull();
+  });
+
+  it("pickup_otp -> verify_otp with the given otp; no otp is invalid", async () => {
+    Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
+    db.progress = { otp_verified_at: null };
+    progressTrip.mockResolvedValue({});
+    expect((await flow.performStepAction(await ctxFor(), { advance: true })).type).toBe("invalid");
+    expect(progressTrip).not.toHaveBeenCalled();
+    const outcome = await flow.performStepAction(await ctxFor(), { advance: true, otp: "4821" });
+    expect(outcome.type).toBe("advanced");
+    expect(progressTrip).toHaveBeenCalledWith(expect.objectContaining({ action: "verify_otp", otp: "4821", orderId: ORDER_ID, riderId: RIDER_ID }));
+  });
+
+  it("await_cash -> markCashReceived", async () => {
+    Object.assign(db.order, { order_status: 5, o_status: "Completed" });
+    db.settlement = { status: "pending", method: null, amount_due: 450 };
+    settlementService.markCashReceived.mockResolvedValue({});
+    const outcome = await flow.performStepAction(await ctxFor(), { advance: true });
+    expect(outcome.type).toBe("advanced");
+    expect(settlementService.markCashReceived).toHaveBeenCalledWith({ orderId: ORDER_ID, riderId: RIDER_ID });
+  });
+
+  it("await_cash: a SettlementError is a refusal", async () => {
+    Object.assign(db.order, { order_status: 5, o_status: "Completed" });
+    db.settlement = { status: "pending", method: null, amount_due: 450 };
+    settlementService.markCashReceived.mockRejectedValue(Object.assign(new Error("Payment is under dispute."), { name: "SettlementError" }));
+    expect(await flow.performStepAction(await ctxFor(), { advance: true })).toEqual({ type: "refused", msg: "Payment is under dispute." });
+  });
+
+  it("a cancelled step has no action: invalid, no backend call", async () => {
+    Object.assign(db.order, { rid: 0, order_status: 4, o_status: "Cancelled" });
+    expect((await flow.performStepAction(await ctxFor(), { advance: true })).type).toBe("invalid");
+    expect(tripLifecycle.updateStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("receiver-pays cash amount", () => {
+  it("completion message and await_cash prompt show the same payable amount (amount_due + receiver markup)", async () => {
+    Object.assign(db.order, { order_status: 3, o_status: "On_Route" });
+    db.progress = { stop_step: 1 };
+    tripLifecycle.updateStatus.mockImplementation(async () => {
+      Object.assign(db.order, { order_status: 5, o_status: "Completed" });
+      db.settlement = { status: "pending", method: null, amount_due: 400, payer: "receiver", receiver_markup: 20 };
+      return { success: true };
+    });
+    const completedText = await reply("6");
+    expect(completedText).toContain("₹420 cash lein");
+    const prompt = messages.stepPrompt("await_cash", await ctxFor());
+    expect(prompt).toContain("₹420 cash mila");
+    expect(await reply("help")).toContain("₹420 cash mila");
+  });
+});
+
+describe("last_step bookkeeping", () => {
+  it("cancelled / done / PAISA MILA replies record the step so sendCurrentStep doesn't resend it", async () => {
+    Object.assign(db.order, { order_status: 5, o_status: "Completed" });
+    db.settlement = { status: "pending", method: null, amount_due: 450 };
+    settlementService.markCashReceived.mockImplementation(async () => { db.settlement.status = "cash_received"; return {}; });
+    await reply("paisa mila");
+    expect(db.session.last_step).toBe("done");
+    expect(await flow.sendCurrentStep(ORDER_ID, { reason: "progress" })).toBe(false);
+
+    Object.assign(db.order, { rid: 0, order_status: 4, o_status: "Cancelled" });
+    await reply("1");
+    expect(db.session.last_step).toBe("cancelled");
+    expect(await flow.sendCurrentStep(ORDER_ID, { reason: "progress" })).toBe(false);
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+});

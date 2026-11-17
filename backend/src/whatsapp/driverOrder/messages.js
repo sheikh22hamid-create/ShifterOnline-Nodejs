@@ -1,6 +1,8 @@
 // WhatsApp Trial Order (spec 2026-11-17, section 3): every message the bot sends a WhatsApp-channel driver.
 // Hinglish, one next step per message, and every message ends with the helpline line. Pure string builders.
 
+const { cashPayable } = require("./stepResolver");
+
 const HELPLINE = "📞 Help: 9109114515";
 const DEFAULT_APP_URL = "https://play.google.com/store/apps/details?id=com.shifter.driver";
 
@@ -71,7 +73,7 @@ function stepBody(stepKey, ctx = {}) {
     case "drop_otp":
       return "🔑 Maal utarne ke baad receiver se *Drop OTP* lekar yahan bhejein (sirf number).";
     case "await_cash":
-      return `💵 Customer se ${rupees(ctx.settlement?.amount_due)} cash mila? Cash milne par *PAISA MILA* bhejein.`;
+      return `💵 Customer se ${rupees(cashPayable(ctx.settlement))} cash mila? Cash milne par *PAISA MILA* bhejein.`;
     case "cancelled":
       return stripHelp(cancelled());
     case "done":

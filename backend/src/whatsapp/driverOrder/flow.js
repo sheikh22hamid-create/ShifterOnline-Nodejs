@@ -8,7 +8,7 @@ const logger = require("../../utils/logger");
 const { RIDER_LOCATION_FRESHNESS_MS } = require("../../config/constants");
 const { normalizeToLast10Digits } = require("../../utils/phone");
 const messages = require("./messages");
-const { resolveStep, stepId, isCashSettlementPending } = require("./stepResolver");
+const { resolveStep, stepId, isCashSettlementPending, cashPayable } = require("./stepResolver");
 
 // Lazy: these services sit in a large require graph that also reaches the WhatsApp client; resolving them on use
 // keeps a load-order cycle from ever handing this module a half-initialised exports object.
@@ -73,33 +73,36 @@ function freshLocation(rider) {
   return { lat, lng };
 }
 
-/** The single step -> backend-call mapping. null = this reply does nothing on this step. */
-function planFor(step, reply) {
+/**
+ * The single step -> backend-call mapping, shared by the driver's replies and the executive's "next step" override.
+ * Input: { reply } (the driver's normalized text) or { advance: true, otp } (do this step's action; otp for an OTP
+ * step). null = nothing to do on this step.
+ */
+function planFor(step, { reply, advance = false, otp } = {}) {
+  const tapped = (token) => advance || reply === token;
+  const code = advance ? normalizeReply(otp) : reply;
   switch (step.key) {
-    case "go_pickup": return reply === "1" ? { status: "arrived" } : null;
-    case "pickup_otp": return OTP_RE.test(reply) ? { verifyOtp: reply } : null;
-    case "loading": return reply === "2" ? { status: "pickup" } : null;
-    case "go_stop": return reply === "3" ? { status: `arrived_stop_${step.stopNumber}` } : null;
-    case "at_stop": return reply === "4" ? { status: `complete_stop_${step.stopNumber}` } : null;
-    case "go_drop": return reply === "5" ? { status: "arrived_drop" } : null;
-    case "at_drop": return reply === "6" ? { status: "complete" } : null;
-    case "drop_otp": return OTP_RE.test(reply) ? { status: "complete", dropOtp: reply } : null;
+    case "go_pickup": return tapped("1") ? { status: "arrived" } : null;
+    case "pickup_otp": return OTP_RE.test(code) ? { verifyOtp: code } : null;
+    case "loading": return tapped("2") ? { status: "pickup" } : null;
+    case "go_stop": return tapped("3") ? { status: `arrived_stop_${step.stopNumber}` } : null;
+    case "at_stop": return tapped("4") ? { status: `complete_stop_${step.stopNumber}` } : null;
+    case "go_drop": return tapped("5") ? { status: "arrived_drop" } : null;
+    case "at_drop": return tapped("6") ? { status: "complete" } : null;
+    case "drop_otp": return OTP_RE.test(code) ? { status: "complete", dropOtp: code } : null;
+    case "await_cash": return tapped("PAISAMILA") ? { cashReceived: true } : null;
     default: return null;
   }
 }
 
-/**
- * Runs the backend call for `reply` on the context's CURRENT step - shared by the driver's WhatsApp reply and the
- * executive's "next step" override, so both always do exactly what the driver app would.
- * Returns { type: 'invalid' } | { type: 'refused', msg } | { type: 'early_drop_required', result, dropOtp } |
- *         { type: 'advanced', result }.
- */
-async function performStepAction(ctx, { reply, earlyDrop = false } = {}) {
-  const plan = planFor(ctx.step, reply);
-  if (!plan) return { type: "invalid" };
+async function runPlan(ctx, plan, earlyDrop) {
   const orderId = ctx.order.id;
   const riderId = ctx.riderId;
   try {
+    if (plan.cashReceived) {
+      const result = await settlementService().markCashReceived({ orderId, riderId });
+      return { type: "advanced", result };
+    }
     if (plan.verifyOtp) {
       const { lat, lng } = freshLocation(ctx.rider);
       const result = await driverTripService().progressTrip({ orderId, riderId, action: "verify_otp", otp: plan.verifyOtp, lat, lng });
@@ -114,9 +117,29 @@ async function performStepAction(ctx, { reply, earlyDrop = false } = {}) {
     if (!result?.success) return { type: "refused", msg: result?.msg };
     return { type: "advanced", result };
   } catch (err) {
-    if (err?.statusCode) return { type: "refused", msg: err.message };
+    // A 409 from progressTrip, or a SettlementError (wrong state / not this driver's payment), is a refusal.
+    if (err?.statusCode || err?.name === "SettlementError") return { type: "refused", msg: err.message };
     throw err;
   }
+}
+
+/**
+ * Runs the backend call for the context's CURRENT step - the one entry point for both the driver's WhatsApp reply
+ * and the executive's override, so both always do exactly what the driver app would.
+ * input: { reply, earlyDrop } or { advance: true, otp, earlyDrop }.
+ * Returns { type: 'invalid' } | { type: 'refused', msg } | { type: 'early_drop_required', result, dropOtp } |
+ *         { type: 'advanced', result, plan }.
+ * A step that advanced drops any pending CANCEL / early-drop confirmation: it was asked about an earlier step.
+ */
+async function performStepAction(ctx, input = {}) {
+  const plan = planFor(ctx.step, input);
+  if (!plan) return { type: "invalid" };
+  const outcome = await runPlan(ctx, plan, Boolean(input.earlyDrop));
+  if (outcome.type === "advanced") {
+    await updateSession(ctx.order.id, { pending_confirm: null, pending_otp: null });
+    return { ...outcome, plan };
+  }
+  return outcome;
 }
 
 async function updateSession(orderId, data) {
@@ -134,9 +157,7 @@ async function completionMessage(ctx) {
     });
     walletCredit = credit ? Number(credit.amount) : null;
   }
-  const amountDue = cashPending
-    ? Number(settlement.amount_due) + (settlement.payer === "receiver" ? Number(settlement.receiver_markup || 0) : 0)
-    : null;
+  const amountDue = cashPending ? cashPayable(settlement) : null;
   return messages.join(
     messages.completed({ final_fare: order.total_dcharge, isCash: cashPending || isCashBooking(order), amountDue, walletCredit }),
     messages.appNudge()
@@ -152,6 +173,7 @@ async function runStepAction(ctx, input) {
     return { text: messages.earlyDropConfirm(outcome.result), step: ctx.step };
   }
   const next = await loadContext(ctx.order.id);
+  if (outcome.plan.cashReceived) return { text: messages.join(messages.cashThanks(), messages.appNudge()), step: next.step };
   const justCompleted = ctx.order.o_status !== "Completed" && next.order.o_status === "Completed" && next.step.key !== "cancelled";
   return { text: justCompleted ? await completionMessage(next) : messages.stepPrompt(next.step.key, next), step: next.step };
 }
@@ -163,16 +185,6 @@ async function driverCancelReply(ctx) {
   } catch (err) {
     if (!CANCEL_ERRORS[err?.message]) logger.error(`whatsapp driver cancel failed for order ${ctx.order.id}:`, err);
     return messages.backendRefused(CANCEL_ERRORS[err?.message] || "Order cancel nahi ho saka", ctx.step.key, ctx);
-  }
-}
-
-async function cashReceivedReply(ctx) {
-  try {
-    await settlementService().markCashReceived({ orderId: ctx.order.id, riderId: ctx.riderId });
-    return messages.join(messages.cashThanks(), messages.appNudge());
-  } catch (err) {
-    if (err?.name === "SettlementError") return messages.backendRefused(err.message, ctx.step.key, ctx);
-    throw err;
   }
 }
 
@@ -192,15 +204,12 @@ async function replyFor(ctx, word) {
   // Any other reply drops a pending confirmation: HAAN only ever confirms the question asked just before it.
   if (pending || session?.pending_otp) await updateSession(ctx.order.id, { pending_confirm: null, pending_otp: null });
 
-  if (step.key === "cancelled") return { text: messages.cancelled() };
-  if (step.key === "done") return { text: messages.appNudge() };
+  if (step.key === "cancelled") return { text: messages.cancelled(), step };
+  if (step.key === "done") return { text: messages.appNudge(), step };
   if (word === "0" || word === "HELP") return { text: messages.stepPrompt(step.key, ctx), step };
   if (word === "CANCEL" && CANCELLABLE_STEPS.has(step.key)) {
     await updateSession(ctx.order.id, { pending_confirm: "cancel" });
     return { text: messages.cancelConfirm(), step };
-  }
-  if (step.key === "await_cash") {
-    return word === "PAISAMILA" ? { text: await cashReceivedReply(ctx) } : { text: messages.invalidReply(step.key, ctx), step };
   }
   return runStepAction(ctx, { reply: word });
 }
