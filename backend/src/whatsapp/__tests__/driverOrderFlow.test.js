@@ -531,3 +531,99 @@ describe("last_step bookkeeping", () => {
     expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
   });
 });
+
+describe("notifyOrderChanged (changes made outside the WhatsApp flow)", () => {
+  const notify = (kind, extra = {}) => flow.notifyOrderChanged(ORDER_ID, { kind, ...extra });
+  const sent = () => notifications.sendWhatsAppNotification.mock.calls.map(([, text]) => text);
+
+  it("is a no-op for an app-channel order", async () => {
+    db.order.driver_channel = "app";
+    for (const kind of ["progress", "route_changed", "cancelled"]) await notify(kind);
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+
+  it("'cancelled' sends cancelled() once, a second notify sends nothing", async () => {
+    Object.assign(db.order, { order_status: 4, o_status: "Cancelled" });
+    await notify("cancelled");
+    await notify("cancelled");
+    expect(sent()).toEqual([messages.cancelled()]);
+    expect(db.session.last_step).toBe("cancelled");
+  });
+
+  it("'cancelled' after the driver's own WhatsApp cancel sends nothing more", async () => {
+    tripLifecycle.driverCancel.mockImplementation(async () => { Object.assign(db.order, { rid: 0, order_status: 0, o_status: "Pending" }); return {}; });
+    await reply("cancel");
+    expect(await reply("haan")).toBe(messages.cancelled());
+    expect(db.session.last_step).toBe("cancelled");
+    await notify("cancelled");
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+
+  it("'cancelled' while the order is still this driver's (nothing cancelled for them) sends nothing", async () => {
+    await notify("cancelled");
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+
+  it("'route_changed' resends the order card with the new drop address + the current step", async () => {
+    Object.assign(db.order, { order_status: 3, o_status: "On_Route", daddress: "Rau Circle" });
+    db.progress = { stop_step: 0, otp_verified_at: new Date() };
+    db.session.last_step = "go_drop";
+    await notify("route_changed");
+    const ctx = await ctxFor();
+    expect(sent()).toEqual([messages.join(messages.orderCard(db.order, [], db.rider), messages.stepPrompt("go_drop", ctx))]);
+    expect(sent()[0]).toContain("Rau Circle");
+    expect(sent()[0].match(/Help: 9109114515/g)).toHaveLength(1);
+  });
+
+  it("'progress' sends the current step even when last_step is unchanged (reason 'changed')", async () => {
+    Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
+    db.progress = { otp_verified_at: null };
+    db.session.last_step = "pickup_otp";
+    await notify("progress");
+    expect(sent()).toEqual([messages.stepPrompt("pickup_otp", await ctxFor())]);
+  });
+
+  it("'progress' with onlyNewStep skips a step the driver was already told about, sends a new one", async () => {
+    Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
+    db.progress = { otp_verified_at: null };
+    db.session.last_step = "pickup_otp";
+    await notify("progress", { onlyNewStep: true });
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+    db.progress.otp_verified_at = new Date();
+    await notify("progress", { onlyNewStep: true });
+    expect(sent()).toEqual([messages.stepPrompt("loading", await ctxFor())]);
+    expect(db.session.last_step).toBe("loading");
+  });
+
+  it("'progress' after the order was completed elsewhere sends the completion summary once", async () => {
+    db.session.last_step = "at_drop";
+    Object.assign(db.order, { order_status: 5, o_status: "Completed" });
+    db.settlement = { status: "pending", method: null, amount_due: 450 };
+    await notify("progress");
+    await notify("progress");
+    expect(sent()).toEqual([messages.join(messages.completed({ final_fare: 450, isCash: true, amountDue: 450 }), messages.appNudge())]);
+    expect(db.session.last_step).toBe("await_cash");
+  });
+
+  it("'progress' on a cancelled order tells the driver it is cancelled, once", async () => {
+    Object.assign(db.order, { rid: 0, order_status: 4, o_status: "Cancelled" });
+    await notify("progress");
+    await notify("progress");
+    expect(sent()).toEqual([messages.cancelled()]);
+  });
+
+  it("never throws: a failing loadContext / send is logged and swallowed", async () => {
+    prisma.whatsapp_driver_session.findUnique.mockRejectedValue(new Error("db down"));
+    await expect(notify("progress")).resolves.toBe(false);
+    prisma.pkg_order.findUnique.mockRejectedValue(new Error("db down"));
+    await expect(notify("cancelled")).resolves.toBe(false);
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+
+  it("a failed send does not record the step", async () => {
+    Object.assign(db.order, { order_status: 4, o_status: "Cancelled" });
+    notifications.sendWhatsAppNotification.mockResolvedValue(false);
+    await notify("cancelled");
+    expect(db.session.last_step).toBeNull();
+  });
+});

@@ -88,6 +88,11 @@ async function approve({ requestId, adminId }) {
   }
   await events.logEvent({ riderId, orderId, tier: request.tier, event: events.EVENTS.CANCELLED, reason: "admin approved cancel request" });
 
+  // WhatsApp Trial Order: a WhatsApp-channel driver whose cancel request was approved is told the order is cancelled.
+  try {
+    require("../whatsapp/driverOrder/flow").notifyOrderChanged(orderId, { kind: "cancelled" }).catch(() => {});
+  } catch (_) { /* bot flow unavailable in this process */ }
+
   let order = await prisma.pkg_order.findUnique({ where: { id: orderId } });
   const dispatchManager = require("./dispatchManager");
   dispatchManager.emitCustomerEvent(order?.uid, "order:driver_unassigned", { order_id: String(orderId) });

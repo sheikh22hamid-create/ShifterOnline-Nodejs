@@ -196,7 +196,10 @@ async function replyFor(ctx, word) {
 
   if (word === "HAAN" && pending === "cancel" && CANCELLABLE_STEPS.has(step.key)) {
     await updateSession(ctx.order.id, { pending_confirm: null, pending_otp: null });
-    return { text: await driverCancelReply(ctx) };
+    const text = await driverCancelReply(ctx);
+    // Records "cancelled" once the cancel went through, so a later notifyOrderChanged doesn't repeat it.
+    const next = await loadContext(ctx.order.id);
+    return { text, step: next?.step };
   }
   if (word === "HAAN" && pending === "early_drop" && EARLY_DROP_STEPS.has(step.key)) {
     const reply = step.key === "drop_otp" ? session.pending_otp : "6";
@@ -267,9 +270,61 @@ async function sendCurrentStep(orderId, { reason } = {}) {
   if (!ctx || ctx.order.driver_channel !== "whatsapp" || !ctx.rider) return false;
   const id = stepId(ctx.step);
   if (ctx.session?.last_step === id && reason !== "changed") return false;
-  const sent = await notifications().sendWhatsAppNotification(ctx.rider.fmobile, messages.stepPrompt(ctx.step.key, ctx));
-  if (sent) await updateSession(orderId, { last_step: id, last_prompt_at: new Date() });
-  return sent;
+  return sendAndRecord(ctx, messages.stepPrompt(ctx.step.key, ctx), id);
+}
+
+/** Sends one message to the context's driver; only a delivered message is recorded as the step they were told. */
+async function sendAndRecord(ctx, text, id) {
+  const sent = await notifications().sendWhatsAppNotification(ctx.rider.fmobile, text);
+  if (sent) await updateSession(ctx.order.id, { last_step: id, last_prompt_at: new Date() });
+  return Boolean(sent);
+}
+
+const COMPLETED_STEPS = new Set(["done", "await_cash"]);
+
+/**
+ * The order changed outside this flow (driver app, executive, customer, a timeout sweep) - tell the WhatsApp driver.
+ * kind: 'progress' -> the current step (onlyNewStep: skip it when it is the step the driver was last told, for
+ * callers that cannot tell whether anything changed, e.g. the app's periodic trip sync); a newly completed order gets
+ * the completion summary instead, once. 'route_changed' -> the order card again (new pickup / drop / stop) + the
+ * current step. 'cancelled' -> cancelled(), once. A cancelled order is only ever told it is cancelled, once.
+ * No-op unless the order is a WhatsApp-channel order. Fire-and-forget: never throws (errors are logged), resolves to
+ * whether a message was sent.
+ */
+async function notifyOrderChanged(orderId, { kind, onlyNewStep = false } = {}) {
+  try {
+    const id = Number(orderId);
+    if (!Number.isSafeInteger(id) || id <= 0) return false;
+    // Cheap check first: this runs on every app-channel status change too.
+    const head = await prisma.pkg_order.findUnique({ where: { id }, select: { driver_channel: true } });
+    if (head?.driver_channel !== "whatsapp") return false;
+    const ctx = await loadContext(id);
+    if (!ctx || !ctx.rider) return false;
+    const lastStep = ctx.session?.last_step ?? null;
+
+    if (ctx.step.key === "cancelled") {
+      if (lastStep === "cancelled") return false;
+      return await sendAndRecord(ctx, messages.cancelled(), "cancelled");
+    }
+    if (kind === "cancelled") return false; // the order is still this driver's: nothing was cancelled for them
+    const current = stepId(ctx.step);
+    if (kind === "route_changed") {
+      const text = messages.join(messages.orderCard(ctx.order, ctx.stops, ctx.rider), messages.stepPrompt(ctx.step.key, ctx));
+      return await sendAndRecord(ctx, text, current);
+    }
+    if (kind !== "progress") return false;
+    if (COMPLETED_STEPS.has(ctx.step.key)) {
+      if (lastStep === current) return false;
+      // Already told it was completed (e.g. await_cash -> done after the cash was settled elsewhere): just the step.
+      if (COMPLETED_STEPS.has(lastStep)) return await sendAndRecord(ctx, messages.stepPrompt(ctx.step.key, ctx), current);
+      return await sendAndRecord(ctx, await completionMessage(ctx), current);
+    }
+    if (onlyNewStep && lastStep === current) return false;
+    return await sendAndRecord(ctx, messages.stepPrompt(ctx.step.key, ctx), current);
+  } catch (err) {
+    logger.error(`whatsapp notifyOrderChanged(${kind}) failed for order ${orderId}:`, err);
+    return false;
+  }
 }
 
 const isActiveTrip = (order) => [1, 2, 3].includes(Number(order.order_status)) && !["Completed", "Cancelled"].includes(order.o_status);
@@ -317,4 +372,6 @@ async function handleDriverLocation({ orderId, riderId, lat, lng, timestampMs })
   }
 }
 
-module.exports = { loadContext, startOrder, handleDriverReply, handleDriverLocation, sendCurrentStep, performStepAction };
+module.exports = {
+  loadContext, startOrder, handleDriverReply, handleDriverLocation, sendCurrentStep, notifyOrderChanged, performStepAction,
+};

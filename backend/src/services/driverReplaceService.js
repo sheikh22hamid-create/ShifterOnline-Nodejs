@@ -98,6 +98,10 @@ async function tellReplacedDriver(riderId, orderId) {
   } catch (err) {
     logger.error(`driverReplace: could not tell driver ${riderId} about order ${orderId}:`, err);
   }
+  // WhatsApp Trial Order: a replaced WhatsApp-channel driver is told the order is no longer theirs.
+  try {
+    require("../whatsapp/driverOrder/flow").notifyOrderChanged(Number(orderId), { kind: "cancelled" }).catch(() => {});
+  } catch (_) { /* bot flow unavailable in this process */ }
 }
 
 /**

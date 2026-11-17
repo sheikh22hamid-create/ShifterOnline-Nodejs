@@ -171,6 +171,11 @@ function registerOrderHandlers(io, socket) {
 
       if (!result.success) return;
 
+      // WhatsApp Trial Order: a WhatsApp-channel driver who moved the trip on in the app gets the next step on WhatsApp.
+      try {
+        require("../whatsapp/driverOrder/flow").notifyOrderChanged(Number(order_id), { kind: "progress" }).catch(() => {});
+      } catch (_) { /* bot flow unavailable in this process */ }
+
       const room = `order_${order_id}`;
       if (status === "complete") {
         io.to(room).emit("order:completed", {
