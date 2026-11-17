@@ -475,6 +475,7 @@ Future<bool> singUpApi(
   String? ptype,
   String cityId = '',
   String refferalCode = '',
+  ValueChanged<String>? onFailMessage,
 }) async {
   try {
     // Ensure FCM token is available
@@ -554,6 +555,7 @@ Future<bool> singUpApi(
       } else {
         final msg = value["ResponseMsg"]?.toString() ?? "Registration failed";
         ApiWrapper.showToastMessage(msg);
+        onFailMessage?.call(msg);
         return false;
       }
     } else {
