@@ -1,6 +1,6 @@
 jest.mock("../../config/db", () => ({
   pkg_order: { findUnique: jest.fn() },
-  tbl_rider: { findUnique: jest.fn() },
+  tbl_rider: { findUnique: jest.fn(), update: jest.fn() },
   pkg_order_stops: { findMany: jest.fn() },
   driver_trip_progress: { findUnique: jest.fn() },
   pkg_order_wait_timer: { findUnique: jest.fn() },
@@ -14,6 +14,8 @@ jest.mock("../../services/driverTripService", () => ({ progressTrip: jest.fn() }
 jest.mock("../../services/settlementService", () => ({ markCashReceived: jest.fn() }));
 jest.mock("../../services/dropOtp", () => ({ isRequired: jest.fn() }));
 jest.mock("../notifications", () => ({ sendWhatsAppNotification: jest.fn() }));
+jest.mock("../../sockets/socketServer", () => ({ getIO: jest.fn() }));
+jest.mock("../../services/liveDriverPositions", () => ({ record: jest.fn() }));
 
 const prisma = require("../../config/db");
 const tripLifecycle = require("../../services/tripLifecycle");
@@ -21,6 +23,8 @@ const { progressTrip } = require("../../services/driverTripService");
 const settlementService = require("../../services/settlementService");
 const dropOtp = require("../../services/dropOtp");
 const notifications = require("../notifications");
+const { getIO } = require("../../sockets/socketServer");
+const liveDriverPositions = require("../../services/liveDriverPositions");
 const messages = require("../driverOrder/messages");
 const flow = require("../driverOrder/flow");
 
@@ -343,6 +347,77 @@ describe("sendCurrentStep", () => {
     db.order.driver_channel = "app";
     await flow.sendCurrentStep(ORDER_ID, { reason: "changed" });
     expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleDriverLocation", () => {
+  let emit, to;
+  const locate = (patch = {}) =>
+    flow.handleDriverLocation({ orderId: ORDER_ID, riderId: RIDER_ID, lat: 22.7, lng: 75.8, timestampMs: Date.now(), ...patch });
+
+  beforeEach(() => {
+    emit = jest.fn();
+    to = jest.fn(() => ({ emit }));
+    getIO.mockReturnValue({ to });
+    prisma.tbl_rider.update.mockResolvedValue({});
+    progressTrip.mockResolvedValue({});
+    db.session.last_step = "go_pickup";
+  });
+
+  it("stores the position, streams it to the order room, records the session and syncs the trip", async () => {
+    const ts = Date.now() - 1000;
+    await locate({ timestampMs: ts });
+    expect(prisma.tbl_rider.update).toHaveBeenCalledWith({
+      where: { id: RIDER_ID },
+      data: { rlats: "22.7", rlongs: "75.8", rloc_updated_at: new Date(ts) },
+    });
+    expect(liveDriverPositions.record).toHaveBeenCalledWith(RIDER_ID, 22.7, 75.8, 0, ts);
+    expect(to).toHaveBeenCalledWith(`order_${ORDER_ID}`);
+    expect(emit).toHaveBeenCalledWith("driver:location_stream", { order_id: ORDER_ID, rider_id: RIDER_ID, lat: 22.7, lng: 75.8, heading: 0 });
+    expect(db.session.last_location_at).toBeInstanceOf(Date);
+    expect(progressTrip).toHaveBeenCalledWith({ orderId: ORDER_ID, riderId: RIDER_ID, action: "sync", samples: [{ lat: 22.7, lng: 75.8, timestamp: ts }] });
+    expect(notifications.sendWhatsAppNotification).not.toHaveBeenCalled();
+  });
+
+  it("an auto-arrival from the sync sends the new step", async () => {
+    progressTrip.mockImplementation(async () => {
+      Object.assign(db.order, { order_status: 2, o_status: "Pickup" });
+      db.progress = { stop_step: 0, otp_verified_at: null };
+      return {};
+    });
+    await locate();
+    expect(notifications.sendWhatsAppNotification).toHaveBeenCalledWith("9876543210", messages.stepPrompt("pickup_otp", await ctxFor()));
+    expect(db.session.last_step).toBe("pickup_otp");
+  });
+
+  it("an older fix than the stored one does not move the driver back, but still reaches the trip sync", async () => {
+    const ts = new Date(db.rider.rloc_updated_at).getTime() - 60 * 1000;
+    await locate({ timestampMs: ts });
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+    expect(progressTrip).toHaveBeenCalledWith(expect.objectContaining({ samples: [{ lat: 22.7, lng: 75.8, timestamp: ts }] }));
+  });
+
+  it("a future timestamp is clamped to now", async () => {
+    await locate({ timestampMs: Date.now() + 10 * 60 * 1000 });
+    expect(progressTrip.mock.calls[0][0].samples[0].timestamp).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("does nothing for invalid coordinates, another driver, or a finished order", async () => {
+    await locate({ lat: "abc" });
+    await locate({ lat: 95 });
+    await locate({ riderId: 99 });
+    Object.assign(db.order, { o_status: "Completed", order_status: 4 });
+    await locate();
+    expect(prisma.tbl_rider.update).not.toHaveBeenCalled();
+    expect(progressTrip).not.toHaveBeenCalled();
+  });
+
+  it("errors are logged, never thrown (socket server down, sync refused)", async () => {
+    getIO.mockImplementation(() => { throw new Error("Socket.io not initialized"); });
+    progressTrip.mockRejectedValue(Object.assign(new Error("Trip belongs to a different driver"), { statusCode: 409 }));
+    await expect(locate()).resolves.toBeUndefined();
+    expect(prisma.tbl_rider.update).toHaveBeenCalled();
   });
 });
 

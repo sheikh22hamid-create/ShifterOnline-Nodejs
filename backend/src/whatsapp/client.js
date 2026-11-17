@@ -9,6 +9,9 @@ const customerHandler = require("./handlers/customerHandler");
 const driverHandler = require("./handlers/driverHandler");
 const notifications = require("./notifications");
 const botMenuEngine = require("./botMenuEngine");
+const senderIdentity = require("./driverOrder/senderIdentity");
+const driverOrderFlow = require("./driverOrder/flow");
+const driverMessages = require("./driverOrder/messages");
 
 let sock = null;
 let latestQrCode = null;
@@ -46,6 +49,139 @@ function clearAuthDirectory() {
     }
   } catch (err) {
     logger.error("Failed to clear .wa_auth directory:", err);
+  }
+}
+
+// Unwraps ephemeral (disappearing) and view-once wrappers to the real message content.
+function unwrapContent(message) {
+  let content = message;
+  if (content?.ephemeralMessage?.message) content = content.ephemeralMessage.message;
+  if (content?.viewOnceMessage?.message) content = content.viewOnceMessage.message;
+  if (content?.viewOnceMessageV2?.message) content = content.viewOnceMessageV2.message;
+  return content || null;
+}
+
+/** The map pin / Live Location payload of a message, or null. */
+function locationContent(message) {
+  const content = unwrapContent(message);
+  return content?.liveLocationMessage || content?.locationMessage || null;
+}
+
+// Helper to extract text content from standard, ephemeral, or viewOnce WhatsApp messages
+function extractMessageText(msg) {
+  if (!msg || !msg.message) return "";
+  const content = unwrapContent(msg.message);
+
+  // Handle Native WhatsApp Location Share (Map Pin)
+  if (content.locationMessage) {
+    const lat = content.locationMessage.degreesLatitude;
+    const lng = content.locationMessage.degreesLongitude;
+    const name = content.locationMessage.name || content.locationMessage.address || "";
+    return `LOCATION_PIN:${lat},${lng}${name ? `:${name}` : ""}`;
+  }
+  if (content.liveLocationMessage) {
+    const lat = content.liveLocationMessage.degreesLatitude;
+    const lng = content.liveLocationMessage.degreesLongitude;
+    const caption = content.liveLocationMessage.caption || "";
+    return `LOCATION_PIN:${lat},${lng}${caption ? `:${caption}` : ""}`;
+  }
+
+  return (
+    content.conversation ||
+    content.extendedTextMessage?.text ||
+    content.imageMessage?.caption ||
+    content.documentMessage?.caption ||
+    content.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+    ""
+  );
+}
+
+/** msg.messageTimestamp in seconds (a number or a protobuf Long `{ low }`); 0 when absent. */
+function messageTimestampSec(msg) {
+  return typeof msg.messageTimestamp === "number"
+    ? msg.messageTimestamp
+    : Number(msg.messageTimestamp?.low || msg.messageTimestamp || 0);
+}
+
+/**
+ * Dedup key. Live Location updates may reuse the share's message id, so they are keyed by sequence number and
+ * position as well - an exact repeat is still skipped, a new position is not.
+ */
+function dedupId(msg) {
+  const id = msg.key?.id;
+  const live = unwrapContent(msg.message)?.liveLocationMessage;
+  if (!id || !live) return id;
+  const seq = live.sequenceNumber?.low ?? live.sequenceNumber ?? "";
+  return `${id}:live:${seq}:${live.degreesLatitude},${live.degreesLongitude}`;
+}
+
+/** "LOCATION_PIN:22.7,75.8[:name]" -> { lat, lng } (numbers), else null. */
+function parseLocationPin(text) {
+  if (typeof text !== "string" || !text.startsWith("LOCATION_PIN:")) return null;
+  const [lat, lng] = text.slice("LOCATION_PIN:".length).split(":")[0].split(",").map(Number);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+/**
+ * When the position was observed. A Live Location update is stamped on arrival: its messageTimestamp can be the
+ * time the share started, which would make every update look old to the trip's arrival check.
+ */
+function locationTimestampMs(msg) {
+  if (unwrapContent(msg.message)?.liveLocationMessage) return Date.now();
+  const sec = messageTimestampSec(msg);
+  return sec ? sec * 1000 : Date.now();
+}
+
+/**
+ * WhatsApp Trial Order: sends a trial driver's message to their WhatsApp order's flow. Returns true when the sender
+ * is such a driver (the message is then fully handled here), false for everyone else (normal bot handling).
+ */
+async function routeDriverMessage({ msg, text, sock: socket }) {
+  const phone = senderIdentity.phoneFromMessage(msg);
+  if (!phone) return false;
+  let active;
+  try {
+    active = await senderIdentity.findActiveWhatsAppOrder(phone);
+  } catch (err) {
+    logger.error(`WhatsApp driver routing lookup failed for ${phone}:`, err);
+    return false;
+  }
+  if (!active) return false;
+  const { orderId, riderId } = active;
+
+  const location = parseLocationPin(text);
+  if (location) {
+    await driverOrderFlow.handleDriverLocation({ orderId, riderId, ...location, timestampMs: locationTimestampMs(msg) });
+    return true;
+  }
+  // Sticker, reaction, voice note...: nothing the flow can act on, and the customer menu must not answer it either.
+  if (!text) return true;
+
+  logger.info(`📲 WhatsApp trial driver ${phone} (order ${orderId}): "${text}"`);
+  let reply;
+  try {
+    reply = await driverOrderFlow.handleDriverReply({ orderId, riderId, text });
+  } catch (err) {
+    logger.error(`WhatsApp driver reply failed for order ${orderId}:`, err);
+    reply = `⚠️ Abhi aapka message process nahi ho saka. Thodi der baad dobara bhejein.\n\n${driverMessages.HELPLINE}`;
+  }
+  if (reply) await socket.sendMessage(msg.key.remoteJid, { text: reply });
+  return true;
+}
+
+/** messages.update entries carrying a Live Location (directly or as an edit of the share) -> routeDriverMessage. */
+async function routeLiveLocationUpdates(updates, socket) {
+  for (const { key, update } of updates || []) {
+    if (!key || key.fromMe || !update?.message) continue;
+    const message = update.message.editedMessage?.message || update.message;
+    if (!unwrapContent(message)?.liveLocationMessage) continue;
+    const msg = { key, message, messageTimestamp: update.messageTimestamp };
+    if (isDuplicateMessage(dedupId(msg))) continue;
+    try {
+      await routeDriverMessage({ msg, text: extractMessageText(msg), sock: socket });
+    } catch (err) {
+      logger.error("Error routing WhatsApp live location update:", err);
+    }
   }
 }
 
@@ -140,68 +276,31 @@ async function initWhatsAppBot() {
       }
     });
 
-    // Helper to extract text content from standard, ephemeral, or viewOnce WhatsApp messages
-    function extractMessageText(msg) {
-      if (!msg || !msg.message) return "";
-      let content = msg.message;
-
-      // Handle Ephemeral / Disappearing Messages
-      if (content.ephemeralMessage?.message) {
-        content = content.ephemeralMessage.message;
-      }
-      // Handle View Once Messages
-      if (content.viewOnceMessage?.message) {
-        content = content.viewOnceMessage.message;
-      }
-      if (content.viewOnceMessageV2?.message) {
-        content = content.viewOnceMessageV2.message;
-      }
-
-      // Handle Native WhatsApp Location Share (Map Pin)
-      if (content.locationMessage) {
-        const lat = content.locationMessage.degreesLatitude;
-        const lng = content.locationMessage.degreesLongitude;
-        const name = content.locationMessage.name || content.locationMessage.address || "";
-        return `LOCATION_PIN:${lat},${lng}${name ? `:${name}` : ""}`;
-      }
-      if (content.liveLocationMessage) {
-        const lat = content.liveLocationMessage.degreesLatitude;
-        const lng = content.liveLocationMessage.degreesLongitude;
-        const caption = content.liveLocationMessage.caption || "";
-        return `LOCATION_PIN:${lat},${lng}${caption ? `:${caption}` : ""}`;
-      }
-
-      return (
-        content.conversation ||
-        content.extendedTextMessage?.text ||
-        content.imageMessage?.caption ||
-        content.documentMessage?.caption ||
-        content.documentWithCaptionMessage?.message?.documentMessage?.caption ||
-        ""
-      );
-    }
-
     // Incoming & Outgoing Messages Handler
     sock.ev.on("messages.upsert", async (m) => {
-      // Only process real-time user notification events, skip history sync/append
-      if (m.type && m.type !== "notify") {
-        return;
-      }
+      // Only real-time notify events reach the bot. Other batches (offline delivery / append) are used for one
+      // thing only: a WhatsApp trial driver's shared location, so a Live Location update is never lost.
+      const realtime = !m.type || m.type === "notify";
 
       for (const msg of m.messages || []) {
         try {
           if (!msg.message) continue;
+          const isLocation = Boolean(locationContent(msg.message));
+          if (!realtime && (!isLocation || msg.key?.fromMe)) continue;
 
           const msgId = msg.key?.id;
-          if (isDuplicateMessage(msgId)) {
+          if (isDuplicateMessage(dedupId(msg))) {
             logger.debug(`Duplicate WhatsApp message skipped: ${msgId}`);
             continue;
           }
 
-          // Skip stale/old messages (e.g. older than 2 minutes on reconnect/sync)
+          // Skip stale/old messages (e.g. older than 2 minutes on reconnect/sync). A location share is kept for now:
+          // a Live Location update can carry the share's original timestamp, and a trial driver's position still
+          // counts - it is dropped below unless the sender is routed to a WhatsApp order.
           const nowSec = Math.floor(Date.now() / 1000);
-          const msgTimestamp = typeof msg.messageTimestamp === "number" ? msg.messageTimestamp : Number(msg.messageTimestamp?.low || msg.messageTimestamp || 0);
-          if (msgTimestamp && (nowSec - msgTimestamp) > 120) {
+          const msgTimestamp = messageTimestampSec(msg);
+          const isStale = Boolean(msgTimestamp && (nowSec - msgTimestamp) > 120);
+          if (isStale && !isLocation) {
             logger.debug(`Skipping stale old message (${nowSec - msgTimestamp}s old): ${msgId}`);
             continue;
           }
@@ -249,6 +348,11 @@ async function initWhatsAppBot() {
             continue;
           }
 
+          // 1b. A trial driver running a WhatsApp-channel order: every message (including "stop"/"start"/"hi") goes
+          // to the order flow - never the chat-pause commands, the customer menu or the AI.
+          if (await routeDriverMessage({ msg, text: textMessage, sock })) continue;
+          if (!realtime || isStale) continue;
+
           // 2. Check if this specific personal chat is paused
           if (chatControl.isChatPaused(senderPhone || remoteJid)) {
             // Check if contact sent /start or start to resume the bot
@@ -291,6 +395,16 @@ async function initWhatsAppBot() {
         } catch (msgErr) {
           logger.error("Error processing single upsert message:", msgErr);
         }
+      }
+    });
+
+    // Live Location updates: Baileys emits a decoded message through messages.upsert, but an update modelled as an
+    // edit of the original share arrives as messages.update - route those for trial drivers too.
+    sock.ev.on("messages.update", async (updates) => {
+      try {
+        await routeLiveLocationUpdates(updates, sock);
+      } catch (err) {
+        logger.error("Error routing WhatsApp live location update:", err);
       }
     });
 
@@ -484,4 +598,6 @@ module.exports = {
   logoutWhatsAppBot,
   switchWhatsAppAccount,
   chatControl,
+  routeDriverMessage,
+  routeLiveLocationUpdates,
 };

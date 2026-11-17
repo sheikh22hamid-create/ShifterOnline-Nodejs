@@ -17,6 +17,8 @@ const driverTripService = () => require("../../services/driverTripService");
 const settlementService = () => require("../../services/settlementService");
 const dropOtp = () => require("../../services/dropOtp");
 const notifications = () => require("../notifications");
+const socketServer = () => require("../../sockets/socketServer");
+const liveDriverPositions = () => require("../../services/liveDriverPositions");
 
 const DRIVER_CANCEL_REASON = "Cancelled by driver on WhatsApp";
 const OTP_RE = /^\d{4,6}$/;
@@ -266,4 +268,49 @@ async function sendCurrentStep(orderId, { reason } = {}) {
   return sent;
 }
 
-module.exports = { loadContext, startOrder, handleDriverReply, sendCurrentStep, performStepAction };
+const isActiveTrip = (order) => [1, 2, 3].includes(Number(order.order_status)) && !["Completed", "Cancelled"].includes(order.o_status);
+
+/** Same room + payload as trackingSocket's driver:location_ping, so the customer map moves the same way. */
+function streamLocation(orderId, riderId, lat, lng) {
+  try {
+    socketServer().getIO().to(`order_${orderId}`).emit("driver:location_stream", { order_id: orderId, rider_id: riderId, lat, lng, heading: 0 });
+  } catch (err) {
+    logger.warn(`whatsapp driver location: stream for order ${orderId} not sent: ${err.message}`);
+  }
+}
+
+/**
+ * A location the order's driver shared on WhatsApp (pin or Live Location): stored like an app ping, streamed to the
+ * customer, and fed to the trip sync, which may auto-arrive the driver - the new step is then sent to them.
+ * Errors are logged, never thrown (the caller is the WhatsApp message loop).
+ */
+async function handleDriverLocation({ orderId, riderId, lat, lng, timestampMs }) {
+  try {
+    const la = Number(lat), lo = Number(lng);
+    if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) return;
+    const ctx = await loadContext(orderId);
+    if (!ctx || Number(riderId) !== ctx.riderId || ctx.step.key === "cancelled" || !isActiveTrip(ctx.order)) return;
+    const now = Date.now();
+    const at = Number.isFinite(Number(timestampMs)) && Number(timestampMs) > 0 ? Math.min(Number(timestampMs), now) : now;
+
+    // An older fix (e.g. a delayed WhatsApp delivery) must not move the driver back past a newer app/WhatsApp ping.
+    const storedAt = ctx.rider?.rloc_updated_at ? new Date(ctx.rider.rloc_updated_at).getTime() : 0;
+    if (at >= storedAt) {
+      await prisma.tbl_rider.update({
+        where: { id: ctx.riderId },
+        data: { rlats: String(la), rlongs: String(lo), rloc_updated_at: new Date(at) },
+      });
+      liveDriverPositions().record(ctx.riderId, la, lo, 0, at);
+      streamLocation(orderId, ctx.riderId, la, lo);
+    }
+    await updateSession(orderId, { last_location_at: new Date(now) });
+
+    await driverTripService().progressTrip({ orderId, riderId: ctx.riderId, action: "sync", samples: [{ lat: la, lng: lo, timestamp: at }] });
+    const next = await loadContext(orderId);
+    if (next && stepId(next.step) !== stepId(ctx.step)) await sendCurrentStep(orderId, { reason: "changed" });
+  } catch (err) {
+    logger.error(`whatsapp driver location failed for order ${orderId}:`, err);
+  }
+}
+
+module.exports = { loadContext, startOrder, handleDriverReply, handleDriverLocation, sendCurrentStep, performStepAction };
