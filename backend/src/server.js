@@ -49,6 +49,8 @@ server.listen(PORT, () => {
   // Initialize WhatsApp Bot Client
   if (process.env.DISABLE_WHATSAPP_BOT !== "true") {
     initWhatsAppBot().catch((err) => logger.error("WhatsApp Bot startup error:", err));
+    // WhatsApp Trial Order: silent-driver / bot-offline alerts, only in the process that runs the bot.
+    require("./whatsapp/driverOrder/watchdog").start();
   }
 });
 

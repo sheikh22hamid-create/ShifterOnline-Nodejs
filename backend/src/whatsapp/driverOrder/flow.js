@@ -8,7 +8,7 @@ const logger = require("../../utils/logger");
 const { RIDER_LOCATION_FRESHNESS_MS } = require("../../config/constants");
 const { normalizeToLast10Digits } = require("../../utils/phone");
 const messages = require("./messages");
-const { resolveStep, stepId, isCashSettlementPending, cashPayable } = require("./stepResolver");
+const { resolveStep, stepId, stepLabel, isCashSettlementPending, cashPayable } = require("./stepResolver");
 
 // Lazy: these services sit in a large require graph that also reaches the WhatsApp client; resolving them on use
 // keeps a load-order cycle from ever handing this module a half-initialised exports object.
@@ -19,6 +19,7 @@ const dropOtp = () => require("../../services/dropOtp");
 const notifications = () => require("../notifications");
 const socketServer = () => require("../../sockets/socketServer");
 const liveDriverPositions = () => require("../../services/liveDriverPositions");
+const adminSocket = () => require("../../sockets/adminSocket");
 
 const DRIVER_CANCEL_REASON = "Cancelled by driver on WhatsApp";
 const OTP_RE = /^\d{4,6}$/;
@@ -234,7 +235,7 @@ async function handleDriverReply({ orderId, riderId, text }) {
 
 /** First message after a WhatsApp assign: order card + the current step. Returns whether it was sent. */
 async function startOrder(orderId) {
-  const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, rid: true, driver_channel: true } });
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, rid: true, city_id: true, driver_channel: true } });
   if (!order || order.driver_channel !== "whatsapp" || !order.rid) return false;
   const rider = await prisma.tbl_rider.findUnique({ where: { id: order.rid }, select: { id: true, fmobile: true } });
   if (!rider) return false;
@@ -256,7 +257,15 @@ async function startOrder(orderId) {
     messages.join(messages.orderCard(ctx.order, ctx.stops, ctx.rider), messages.stepPrompt(ctx.step.key, ctx))
   );
   if (sent) await updateSession(orderId, { last_step: stepId(ctx.step), last_prompt_at: new Date() });
-  else logger.warn(`whatsapp startOrder: order card not delivered for order ${orderId}`);
+  else {
+    logger.warn(`whatsapp startOrder: order card not delivered for order ${orderId}`);
+    try {
+      adminSocket().notifyDispatchAlert(orderId, order.city_id,
+        `WhatsApp order message could not be sent to the driver of order #${orderId}. Call the driver.`, { kind: "whatsapp_send_failed" });
+    } catch (err) {
+      logger.error(`whatsapp startOrder: send-failed alert not raised for order ${orderId}:`, err);
+    }
+  }
   return sent;
 }
 
@@ -372,6 +381,86 @@ async function handleDriverLocation({ orderId, riderId, lat, lng, timestampMs })
   }
 }
 
+const OTP_STEPS = { pickup_otp: "Enter the pickup OTP", drop_otp: "Enter the drop OTP" };
+// No forward action: the executive has nothing to push (a stuck 'unknown' step needs a call, not a guess).
+const NOTHING_TO_ADVANCE = new Set(["cancelled", "done", "unknown"]);
+
+/** What the executive sees for an order's WhatsApp channel; null when the order doesn't exist. */
+async function statusForExecutive(orderId) {
+  const head = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, driver_channel: true } });
+  if (!head) return null;
+  const channel = head.driver_channel || "app";
+  if (channel !== "whatsapp") {
+    return { channel, step: null, step_label: null, last_reply_at: null, last_location_at: null, last_prompt_at: null, needs_otp: false };
+  }
+  const ctx = await loadContext(orderId);
+  if (!ctx) return null;
+  const s = ctx.session;
+  return {
+    channel,
+    step: stepId(ctx.step),
+    step_label: stepLabel(ctx.step),
+    last_reply_at: s?.last_reply_at ?? null,
+    last_location_at: s?.last_location_at ?? null,
+    last_prompt_at: s?.last_prompt_at ?? null,
+    needs_otp: Boolean(OTP_STEPS[ctx.step.key]),
+  };
+}
+
+/**
+ * The executive's "next step" for a stuck WhatsApp driver: does exactly what the driver's next valid reply would
+ * (performStepAction - the same step -> backend-call mapping), records it in order_status_history with the admin's
+ * id, and tells the driver the new step (or the completion summary). An early drop is never confirmed from here:
+ * the fare changes, so only the driver may agree to it.
+ * Returns { ok: true, message, step, step_label } or { ok: false, status, message }.
+ */
+async function advanceAsExecutive({ orderId, admin, otp }) {
+  const ctx = await loadContext(orderId);
+  if (!ctx) return { ok: false, status: 404, message: "Order not found" };
+  if (ctx.order.driver_channel !== "whatsapp") return { ok: false, status: 400, message: "This is not a WhatsApp order" };
+  const { step } = ctx;
+  if (NOTHING_TO_ADVANCE.has(step.key)) {
+    const why = step.key === "unknown" ? "the order's step is unknown - call the driver" : `the order is ${stepLabel(step).toLowerCase()}`;
+    return { ok: false, status: 409, message: `Nothing to advance: ${why}` };
+  }
+  if (OTP_STEPS[step.key]) {
+    const code = normalizeReply(otp);
+    if (!code) return { ok: false, status: 400, message: OTP_STEPS[step.key] };
+    if (!OTP_RE.test(code)) return { ok: false, status: 400, message: "OTP must be 4 to 6 digits" };
+  }
+
+  const outcome = await performStepAction(ctx, { advance: true, otp });
+  if (outcome.type === "invalid") return { ok: false, status: 409, message: "Nothing to advance on this step" };
+  if (outcome.type === "refused") return { ok: false, status: 409, message: outcome.msg || "The step could not be done" };
+  if (outcome.type === "early_drop_required") {
+    const m = Math.round(Number(outcome.result?.distance_m) || 0);
+    return {
+      ok: false, status: 409,
+      message: `Driver is ${m} m from the drop. Ending the trip here changes the fare, so only the driver can confirm it on WhatsApp.`,
+    };
+  }
+
+  const doneStep = stepId(step);
+  const next = await loadContext(orderId);
+  try {
+    await prisma.order_status_history.create({
+      data: {
+        order_id: orderId,
+        rider_id: ctx.riderId || null,
+        status: next?.order?.o_status || ctx.order.o_status,
+        remark: `WhatsApp step '${doneStep}' done by executive #${admin?.id}`,
+      },
+    });
+  } catch (err) {
+    logger.error(`whatsapp advanceAsExecutive: history remark not written for order ${orderId}:`, err);
+  }
+  // Sends the new step, or the completion summary once when this completed the order.
+  await notifyOrderChanged(orderId, { kind: "progress" });
+  const nextStep = next?.step || step;
+  return { ok: true, message: `Done: ${stepLabel(step)}`, step: stepId(nextStep), step_label: stepLabel(nextStep) };
+}
+
 module.exports = {
   loadContext, startOrder, handleDriverReply, handleDriverLocation, sendCurrentStep, notifyOrderChanged, performStepAction,
+  statusForExecutive, advanceAsExecutive,
 };

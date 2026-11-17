@@ -284,6 +284,59 @@ async function assignRider(req, res) {
   }
 }
 
+// --- WhatsApp Trial Order (spec 2026-11-17, section 5) ------------------------------------------------------------
+// The WhatsApp modules are required on use so non-bot processes and tests never load the bot client.
+const whatsappFlow = () => require("../whatsapp/driverOrder/flow");
+
+/** Same city scope as assignRider. Returns the order id, or null after sending the error response. */
+async function guardWhatsappOrder(req, res) {
+  const orderId = parseInt(req.params.id, 10);
+  if (!orderId) { res.status(400).json({ success: false, message: "Invalid order id" }); return null; }
+  const order = await prisma.pkg_order.findUnique({ where: { id: orderId }, select: { id: true, city_id: true } });
+  if (!order) { res.status(404).json({ success: false, message: "Order not found" }); return null; }
+  if (isScopedOut(req, order.city_id)) {
+    res.status(403).json({ success: false, message: "Forbidden: order is outside your assigned city" });
+    return null;
+  }
+  return orderId;
+}
+
+/** GET /admin/orders/:id/whatsapp-status - channel, current step, last reply / location / prompt times. */
+async function whatsappStatus(req, res) {
+  try {
+    const orderId = await guardWhatsappOrder(req, res);
+    if (orderId === null) return undefined;
+    return res.json({ success: true, data: await whatsappFlow().statusForExecutive(orderId) });
+  } catch (err) {
+    return internalError(res, err, "orders.whatsappStatus");
+  }
+}
+
+/** POST /admin/orders/:id/whatsapp-step { otp? } - the executive does the stuck driver's next step. */
+async function whatsappStep(req, res) {
+  try {
+    const orderId = await guardWhatsappOrder(req, res);
+    if (orderId === null) return undefined;
+    const result = await whatsappFlow().advanceAsExecutive({ orderId, admin: req.user, otp: req.body?.otp });
+    if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });
+    return res.json({ success: true, message: result.message, data: { step: result.step, step_label: result.step_label } });
+  } catch (err) {
+    return internalError(res, err, "orders.whatsappStep");
+  }
+}
+
+/** GET /admin/riders/:id/whatsapp-eligibility - can this rider take an order over WhatsApp right now? */
+async function whatsappEligibility(req, res) {
+  try {
+    const riderId = parseInt(req.params.id, 10);
+    if (!riderId) return res.status(400).json({ success: false, message: "Invalid rider id" });
+    const data = await require("../services/whatsappTrialSettings").eligibility(riderId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    return internalError(res, err, "riders.whatsappEligibility");
+  }
+}
+
 const EDITABLE_FIELDS = ["paddress", "pmobile", "daddress", "dmobile", "description", "distance", "total_dcharge"];
 
 async function update(req, res) {
@@ -835,5 +888,5 @@ async function assignNextDayBatch(req, res) {
 
 module.exports = {
   list, getOne, route, assignRider, outsideDriverLookup, outsideDriverVehicles, outsideDriverRegister, outsideDriverStatus, update, cancel, invoice, listScheduled, assignScheduledDriver,
-  listNextDay, suggestNextDaySequence, assignNextDayBatch,
+  listNextDay, suggestNextDaySequence, assignNextDayBatch, whatsappStatus, whatsappStep, whatsappEligibility,
 };

@@ -30,6 +30,8 @@ const EXECUTIVE_WRITES = [
   "POST /booking-guarantee/exec/cases/:orderId/actions", "POST /booking-guarantee/exec/cases/:orderId/candidate/reject",
   "POST /booking-guarantee/exec/cases/:orderId/candidate/refresh-distance",
   "POST /orders/:id/outside-driver-lookup", "POST /orders/:id/outside-driver/register",
+  // WhatsApp Trial Order (spec 2026-11-17, section 5): the executive pushes a stuck WhatsApp driver's next step.
+  "POST /orders/:id/whatsapp-step",
 ];
 
 function parseRoutes() {

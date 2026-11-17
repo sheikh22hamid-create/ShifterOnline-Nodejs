@@ -269,6 +269,9 @@ router.get("/orders/:id/route", auth, authorize(...RIDER_ROLES), scopeFilter, ad
 router.get("/orders/:id/invoice", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.invoice);
 router.get("/orders/:id/daily-drivers", auth, authorize(...RIDER_ROLES), scopeFilter, dailyDriverOrder.listForOrder);
 router.post("/orders/:id/assign-rider", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.assignRider);
+router.get("/orders/:id/whatsapp-status", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.whatsappStatus);
+router.post("/orders/:id/whatsapp-step", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.whatsappStep);
+router.get("/riders/:id/whatsapp-eligibility", auth, authorize(...RIDER_ROLES), adminOrderController.whatsappEligibility);
 router.get("/outside-driver/vehicles", auth, authorize(...RIDER_ROLES), adminOrderController.outsideDriverVehicles);
 router.post("/orders/:id/outside-driver-lookup", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.outsideDriverLookup);
 router.post("/orders/:id/outside-driver/register", auth, authorize(...RIDER_ROLES), scopeFilter, adminOrderController.outsideDriverRegister);

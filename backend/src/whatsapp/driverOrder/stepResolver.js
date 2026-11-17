@@ -43,4 +43,25 @@ function stepId(step) {
   return step.stopNumber ? `${step.key}:${step.stopNumber}` : step.key;
 }
 
-module.exports = { resolveStep, stepId, isCashSettlementPending, cashPayable };
+// English step names for the admin panel and executive alerts (the driver's copy lives in messages.js).
+const STEP_LABELS = {
+  go_pickup: "Going to pickup",
+  pickup_otp: "At pickup - waiting for pickup OTP",
+  loading: "Loading",
+  go_stop: "Going to stop {n}",
+  at_stop: "At stop {n}",
+  go_drop: "Going to drop",
+  at_drop: "At drop - unloading",
+  drop_otp: "At drop - waiting for drop OTP",
+  await_cash: "Completed - waiting for cash confirmation",
+  done: "Completed",
+  cancelled: "Cancelled",
+  unknown: "Unknown step - call the driver",
+};
+
+/** Admin-facing name of a step, e.g. "Going to stop 2". */
+function stepLabel(step) {
+  return (STEP_LABELS[step?.key] || STEP_LABELS.unknown).replace("{n}", step?.stopNumber ?? "");
+}
+
+module.exports = { resolveStep, stepId, stepLabel, isCashSettlementPending, cashPayable };
