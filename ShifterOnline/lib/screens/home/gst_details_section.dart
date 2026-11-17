@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 import '../../services/gst_api_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/gstin_format.dart';
+import '../../theme/app_tokens.dart';
+import 'widgets/booking_option_widgets.dart';
 
 /// Optional GST Details card on the booking-confirm screen (spec 2026-11-15).
 ///
@@ -114,9 +116,9 @@ class _GstDetailsSectionState extends State<GstDetailsSection> {
   }
 
   BoxDecoration _box(ColorNotifier notifier, {bool active = false}) => BoxDecoration(
-        color: active ? linercolor.withOpacity(.06) : notifier.getBgColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: active ? linercolor : notifier.bordecolor),
+        color: active ? AppPalette.current.brandTint : AppPalette.current.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: active ? AppPalette.current.brand : AppPalette.current.line),
       );
 
   @override
@@ -130,24 +132,12 @@ class _GstDetailsSectionState extends State<GstDetailsSection> {
   }
 
   Widget _prompt(ColorNotifier notifier) {
-    return InkWell(
+    return BookingOptionRow(
+      icon: Icons.receipt_long_outlined,
+      title: 'Add GST details (optional)'.tr,
+      subtitle: 'Get a GST invoice for this booking'.tr,
+      active: false,
       onTap: () => setState(() => _editing = true),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: _box(notifier),
-        child: Row(children: [
-          Icon(Icons.receipt_long_outlined, color: greaycolor, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Add GST details (optional)'.tr, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13)),
-              Text('Get a GST invoice for this booking'.tr, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
-            ]),
-          ),
-          Icon(Icons.chevron_right, color: greaycolor, size: 18),
-        ]),
-      ),
     );
   }
 
@@ -176,7 +166,8 @@ class _GstDetailsSectionState extends State<GstDetailsSection> {
             counterText: '',
             hintText: '22AAAAA0000A1Z5',
             isDense: true,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            filled: true,
+            fillColor: AppPalette.current.surface,
             errorText: _error,
             errorMaxLines: 3,
           ),
@@ -193,10 +184,10 @@ class _GstDetailsSectionState extends State<GstDetailsSection> {
           width: double.infinity,
           child: ElevatedButton(
             onPressed: _checking ? null : _verify,
-            style: ElevatedButton.styleFrom(backgroundColor: linercolor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            style: ElevatedButton.styleFrom(backgroundColor: AppPalette.current.brand, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
             child: _checking
-                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text('Verify GSTIN'.tr, style: const TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold')),
+                ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppPalette.current.onBrand))
+                : Text('Verify GSTIN'.tr, style: TextStyle(color: AppPalette.current.onBrand, fontFamily: 'Gilroy_Bold')),
           ),
         ),
       ]),
@@ -212,12 +203,11 @@ class _GstDetailsSectionState extends State<GstDetailsSection> {
       decoration: _box(notifier, active: _include),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Icon(Icons.verified_outlined, color: _include ? linercolor : greaycolor, size: 20),
+          Icon(Icons.verified_outlined, color: _include ? AppPalette.current.brandText : greaycolor, size: 20),
           const SizedBox(width: 8),
           Expanded(child: Text('GST invoice details'.tr, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 13))),
           Switch(
             value: _include,
-            activeColor: linercolor,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             onChanged: (v) {
               setState(() => _include = v);
@@ -238,7 +228,7 @@ class _GstDetailsSectionState extends State<GstDetailsSection> {
           ),
         const SizedBox(height: 4),
         Row(children: [
-          TextButton(onPressed: _startEditing, child: Text('Change'.tr, style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold'))),
+          TextButton(onPressed: _startEditing, child: Text('Change'.tr, style: TextStyle(color: AppPalette.current.brandText, fontFamily: 'Gilroy_Bold'))),
           TextButton(onPressed: _remove, child: Text('Remove'.tr, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Bold'))),
         ]),
       ]),

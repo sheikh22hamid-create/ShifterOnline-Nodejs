@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, unused_local_variable
 
+import 'package:goParcel/theme/widgets/brand_illustration.dart';
 import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/gestures.dart';
@@ -25,7 +26,8 @@ import '../../bottombar.dart';
 import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import '../../utils/node_socket_manager.dart';
-import 'signup.dart';
+import 'complete_profile.dart';
+import 'widgets/profile_form_widgets.dart';
 import 'widgets/delivery_login_hero.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,10 +335,14 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
     setState(() => _isVerifying = false);
 
     if (loginRes == null || loginRes['Result'] != 'true') {
-      // User doesn't exist → redirect to signup
-      ApiWrapper.showToastMessage(
-          loginRes?['ResponseMsg'] ?? 'Account not found. Please create an account.');
-      Get.off(() => SignUp(type: widget.paymenttype));
+      // Only a confirmed "no account" goes to profile details; network/server
+      // errors or a deactivated account keep the user here.
+      if (loginRes?['UserExists'] == false) {
+        Get.off(() => CompleteProfile(mobile: mobile, type: widget.paymenttype));
+      } else {
+        ApiWrapper.showToastMessage(
+            loginRes?['ResponseMsg'] ?? 'Something went wrong. Please try again.');
+      }
       return;
     }
 
@@ -586,7 +592,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
 
                               // Heading
                               const Text(
-                                'Welcome Back 👋',
+                                'Welcome Back',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 26,
@@ -669,21 +675,19 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                             setState(() => _numberError = null);
                                           }
                                         },
+                                        // Same weight/size as the +91 prefix so
+                                        // the number reads as one line.
                                         style: const TextStyle(
-                                          fontFamily: 'Gilroy_Medium',
+                                          fontFamily: 'Gilroy_Bold',
                                           fontSize: 15,
+                                          letterSpacing: 0.8,
                                           color: Color(0xFF111827),
                                         ),
-                                        decoration: const InputDecoration(
-                                          hintText: 'Enter mobile number',
-                                          hintStyle: TextStyle(
-                                            fontFamily: 'Gilroy_Medium',
-                                            fontSize: 14,
-                                            color: Color(0xFF9CA3AF),
-                                          ),
-                                          border: InputBorder.none,
-                                          counterText: '',
-                                          contentPadding: EdgeInsets.symmetric(vertical: 14),
+                                        cursorColor: const Color(0xFFFA4500),
+                                        decoration: borderlessInputDecoration(
+                                          hint: 'Enter mobile number',
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(vertical: 16),
                                         ),
                                       ),
                                     ),
@@ -713,14 +717,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   width: double.infinity,
                                   height: 52,
                                   decoration: BoxDecoration(
-                                    gradient: isPhoneValid
-                                        ? const LinearGradient(
-                                            colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                          )
-                                        : null,
-                                    color: isPhoneValid ? null : const Color(0xFFCFD6DC),
+                                    color: isPhoneValid ? const Color(0xFFFF6B35) : const Color(0xFFCFD6DC),
                                     borderRadius: BorderRadius.circular(14),
                                     boxShadow: isPhoneValid
                                         ? [
@@ -734,7 +731,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   ),
                                   child: Center(
                                     child: _isSendingOtp
-                                        ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                                        ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
                                         : Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: const [
@@ -743,12 +740,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                                 style: TextStyle(
                                                   fontFamily: 'Gilroy_Bold',
                                                   fontSize: 16,
-                                                  color: Colors.white,
+                                                  color: Color(0xFF1A0B04),
                                                 ),
                                               ),
                                               SizedBox(width: 8),
                                               Icon(Icons.arrow_forward_rounded,
-                                                  size: 18, color: Colors.white),
+                                                  size: 18, color: Color(0xFF1A0B04)),
                                             ],
                                           ),
                                   ),
@@ -798,39 +795,6 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                                 'Privacy Policy'),
                                       ),
                                       const TextSpan(text: '.'),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 24),
-
-                              // Create Account link
-                              Center(
-                                child: GestureDetector(
-                                  onTap: () => Get.to(() => SignUp(type: widget.paymenttype)),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Text(
-                                        'New to Shifter Online? ',
-                                        style: TextStyle(
-                                          fontFamily: 'Gilroy_Medium',
-                                          fontSize: 14,
-                                          color: Color(0xFF4B5563),
-                                        ),
-                                      ),
-                                      Text(
-                                        'Create Account',
-                                        style: TextStyle(
-                                          fontFamily: 'Gilroy_Bold',
-                                          fontSize: 14,
-                                          color: Color(0xFFFA4500),
-                                        ),
-                                      ),
-                                      SizedBox(width: 4),
-                                      Icon(Icons.arrow_forward_rounded,
-                                          size: 15, color: Color(0xFFFA4500)),
                                     ],
                                   ),
                                 ),
@@ -973,11 +937,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                   const SizedBox(height: 16),
 
                   // 3D OTP Illustration
-                  Image.asset(
-                    'assets/otp_illustration.jpg',
-                    height: 175,
-                    fit: BoxFit.contain,
-                  ),
+                  const BrandIllustration(kind: BrandIllustrationKind.otp, height: 175),
 
                   const SizedBox(height: 24),
 
@@ -1161,14 +1121,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       width: double.infinity,
                       height: 52,
                       decoration: BoxDecoration(
-                        gradient: isOtpComplete
-                            ? const LinearGradient(
-                                colors: [Color(0xFFFF5C22), Color(0xFFFA4500)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              )
-                            : null,
-                        color: isOtpComplete ? null : const Color(0xFFCFD6DC),
+                        color: isOtpComplete ? const Color(0xFFFF6B35) : const Color(0xFFCFD6DC),
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: isOtpComplete
                             ? [
@@ -1182,7 +1135,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       ),
                       child: Center(
                         child: _isVerifying
-                            ? const SpinKitThreeBounce(color: Colors.white, size: 20)
+                            ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
                             : Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: const [
@@ -1191,12 +1144,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                     style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 16,
-                                      color: Colors.white,
+                                      color: Color(0xFF1A0B04),
                                     ),
                                   ),
                                   SizedBox(width: 8),
                                   Icon(Icons.arrow_forward_rounded,
-                                      size: 18, color: Colors.white),
+                                      size: 18, color: Color(0xFF1A0B04)),
                                 ],
                               ),
                       ),

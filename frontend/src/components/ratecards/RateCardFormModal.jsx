@@ -3,6 +3,7 @@ import { Sparkles } from 'lucide-react'
 import api from '../../services/api'
 import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
+import { cityIdsLabel, parseCityIds, toggleCityId } from '../../utils/cityIds'
 
 const FIELD_STYLE = { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink)' }
 
@@ -71,6 +72,10 @@ export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) 
   const categoriesFetcher = useCallback(() => api.get('/categories').then((res) => res.data?.data || res.data || []), [])
   const { data: rawCategories } = useApiQuery(categoriesFetcher)
   const categories = Array.isArray(rawCategories) ? rawCategories : (Array.isArray(rawCategories?.data) ? rawCategories.data : [])
+
+  const citiesFetcher = useCallback(() => api.get('/cities').then((res) => res.data?.data || res.data || []), [])
+  const { data: rawCities } = useApiQuery(citiesFetcher)
+  const cities = Array.isArray(rawCities) ? rawCities : []
 
   const slabsFetcher = useCallback(() => api.get('/rate-cards/slabs').then((res) => res.data?.data || {}), [])
   const { data: slabConfig } = useApiQuery(slabsFetcher)
@@ -660,11 +665,59 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label htmlFor="city_id">City ID(s)</Label>
-            <Input id="city_id" value={form.city_id} onChange={(e) => set('city_id', e.target.value)} placeholder="1 or 1,2,3" />
+        <div>
+          <Label>Cities</Label>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Cities this rate card applies to">
+            {(() => {
+              // Only an explicit "0" lights "All cities"; an empty value on a new card means nothing picked yet.
+              const all = String(form.city_id ?? '').trim() === '0'
+              const picked = parseCityIds(form.city_id)
+              const known = new Set(cities.map((c) => String(c.id)))
+              const unknown = all ? [] : picked.filter((id) => id !== '0' && !known.has(id))
+              const chip = (key, label, active, onClick, title) => (
+                <button
+                  key={key}
+                  type="button"
+                  title={title}
+                  aria-pressed={active}
+                  onClick={onClick}
+                  className="rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors"
+                  style={
+                    active
+                      ? { borderColor: 'var(--brand)', background: 'rgba(234, 88, 12, 0.10)', color: 'var(--brand)' }
+                      : { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }
+                  }
+                >
+                  {label}
+                </button>
+              )
+              return [
+                chip('all', 'All cities', all, () => set('city_id', '0'), 'Use this rate card in every city'),
+                ...cities.map((c) =>
+                  chip(
+                    c.id,
+                    Number(c.status) === 0 ? `${c.title} (inactive)` : c.title,
+                    !all && picked.includes(String(c.id)),
+                    () => set('city_id', toggleCityId(form.city_id, c.id)),
+                    `City ID ${c.id}`,
+                  ),
+                ),
+                ...unknown.map((id) =>
+                  chip(`u${id}`, `City #${id}`, true, () => set('city_id', toggleCityId(form.city_id, id)), 'This city no longer exists — click to remove'),
+                ),
+              ]
+            })()}
           </div>
+          <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+            {cities.length === 0
+              ? 'Loading cities…'
+              : parseCityIds(form.city_id).length === 0
+                ? 'Pick at least one city, or All cities.'
+                : `Applies to: ${cityIdsLabel(form.city_id, cities)}`}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="type">Applies to</Label>
             <select id="type" value={form.type} onChange={(e) => set('type', e.target.value)} className="w-full rounded-lg border px-2.5 py-1.5 text-[13px] outline-none" style={FIELD_STYLE}>

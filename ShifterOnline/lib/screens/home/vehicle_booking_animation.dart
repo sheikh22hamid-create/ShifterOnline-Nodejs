@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import '../../theme/app_tokens.dart';
+
 /// The vehicle families the app books. Anything unknown draws as the mini truck (4 wheeler).
 enum BookedVehicleKind { bike, eLoader, threeWheeler, fourWheeler }
 
@@ -84,14 +86,15 @@ class _VehicleBookingAnimationState extends State<VehicleBookingAnimation> with 
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            // Shown on the light waiting screen: solid surface pill with ink text (was white-on-white).
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: AppPalette.light.surface,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.45)),
+              border: Border.all(color: AppPalette.light.line),
             ),
             child: Text(
               widget.vehicleName.trim().isEmpty ? 'Your vehicle' : widget.vehicleName.trim(),
-              style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: Colors.white),
+              style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14, color: AppPalette.light.ink),
             ),
           ),
         ],

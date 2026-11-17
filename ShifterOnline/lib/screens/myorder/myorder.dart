@@ -19,6 +19,8 @@ import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../home/select_vehicle.dart';
 import '../../utils/colors.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_skeleton.dart';
 
 class MyOrder extends StatefulWidget {
   final String? type;
@@ -61,36 +63,27 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final p = AppPalette.current;
     return Scaffold(
-      backgroundColor: linercolor,
+      backgroundColor: p.canvas,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: linercolor,
+        backgroundColor: p.surface,
         centerTitle: widget.type == "Profile" ? true : false,
         title: Text(
-          "Pickup/Drop Orders".tr,
-          style: TextStyle(
-            color: whitecolor,
-            fontFamily: 'Gilroy_Bold',
-          ),
+          "My orders".tr,
+          style: AppText.title(p.ink),
         ),
       ),
       body: Container(
         width: Get.width,
-        padding: EdgeInsets.only(top: 15, right: 15, left: 15),
-        decoration: BoxDecoration(
-          // color: lightbgcolor,
-          color: notifier.lightBgColor,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
-          ),
-        ),
+        padding: EdgeInsets.only(top: 14, right: 16, left: 16),
+        color: p.canvas,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: 30,
+              height: 40,
               child: ListView.separated(
                 itemCount: tabBarTitle.length,
                 shrinkWrap: true,
@@ -105,24 +98,20 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
                         if (scrollController.hasClients) scrollController.jumpTo(0);
                       });
                     },
+                    borderRadius: BorderRadius.circular(20),
                     child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      padding: EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: selectTab == index
-                            ? linercolor
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(40),
-                        border: Border.all(
-                          color: selectTab == index ? linercolor : greaycolor,
-                        ),
+                        color: selectTab == index ? p.ink : p.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: selectTab == index ? p.ink : p.line),
                       ),
                       child: Center(
                         child: Text(
                           "${tabBarTitle[index]}",
-                          style: TextStyle(
-                            color: selectTab == index ? whitecolor : notifier.isDark ? notifier.text : greaycolor,
-                            fontSize: 15,
-                            fontFamily: "Gilroy_Regular",
+                          style: AppText.bodyStrong(selectTab == index ? p.surface : p.ink).copyWith(
+                            fontSize: 14,
+                            fontFamily: selectTab == index ? 'Gilroy_Bold' : 'Gilroy_Medium',
                           ),
                         ),
                       ),
@@ -139,7 +128,15 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
               child: GetBuilder<PDOrderHistroyApiController>(
                 builder: (pdOrderHistroyApiController) {
                   if (!orderLoding) {
-                    return Center(child: CircularProgressIndicator(color: linercolor));
+                    return ListView(
+                      children: const [
+                        AppSkeleton(height: 170, radius: 16),
+                        SizedBox(height: 12),
+                        AppSkeleton(height: 170, radius: 16),
+                        SizedBox(height: 12),
+                        AppSkeleton(height: 170, radius: 16),
+                      ],
+                    );
                   }
                   final model = selectTab == 2
                       ? pdOrderHistroyApiController.favoriteOrderApiModel
@@ -150,17 +147,22 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
                   if (model == null || model.result == "false" || orders.isEmpty) {
                     return Column(
                       children: [
-                        SizedBox(height: Get.height * 0.32),
+                        SizedBox(height: Get.height * 0.2),
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle, border: Border.all(color: p.line)),
+                          child: Icon(selectTab == 2 ? Icons.favorite_border_rounded : Icons.receipt_long_outlined,
+                              color: p.inkSubtle, size: 32),
+                        ),
+                        const SizedBox(height: 14),
                         Center(
                           child: Text(
                             selectTab == 2
                                 ? "No favorite orders yet".tr
                                 : "${model?.responseMsg ?? "No Order History Found!"}",
-                            style: TextStyle(
-                              color: blackcolor,
-                              fontSize: 18,
-                              fontFamily: "Gilroy_Bold",
-                            ),
+                            textAlign: TextAlign.center,
+                            style: AppText.bodyStrong(p.ink).copyWith(fontSize: 16),
                           ),
                         ),
                       ],
@@ -413,196 +415,101 @@ Widget orderlistBox(
   bool isFavorite = false,
   bool showActions = true,
 }) {
-  Color? statusColor;
-  switch (ordertype) {
-    case "Pending":
-      statusColor = const Color(0xffFFC96E);
-      break;
-    case "Processing":
-      statusColor = notifier.darklinercolor;
-      break;
-    case "On Route":
-      statusColor = const Color(0xff00D261);
-      break;
-    case "Cancelled":
-      statusColor = const Color(0xffF44336);
-      break;
-    case "Completed":
-      statusColor = const Color(0xff00D261);
-      break;
-    default:
-  }
   notifier = Provider.of(context, listen: true);
+  final p = AppPalette.current;
+  final ({Color fg, Color tint}) status = switch (ordertype) {
+    "Pending" => (fg: p.warning, tint: p.warningTint),
+    "Processing" => (fg: p.brandText, tint: p.brandTint),
+    "On Route" || "Completed" => (fg: p.successText, tint: p.successTint),
+    "Cancelled" => (fg: p.danger, tint: p.dangerTint),
+    _ => (fg: p.inkMuted, tint: p.canvas),
+  };
   return Container(
-    padding: const EdgeInsets.symmetric(vertical: 12),
     decoration: BoxDecoration(
-      color: notifier.getBgColor,
-      borderRadius: BorderRadius.circular(20),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.04),
-          blurRadius: 10,
-          offset: const Offset(0, 4),
-        ),
-      ],
+      color: p.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      border: Border.all(color: p.line),
     ),
     child: Column(
       children: [
         InkWell(
           onTap: onTap,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
                     Container(
-                      height: 46,
-                      width: 46,
-                      padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: notifier.lightBgColor,
-                      ),
-                      child: SvgPicture.asset(
-                        image,
-                        color: linercolor,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(color: status.tint, borderRadius: BorderRadius.circular(8)),
+                      child: Text(ordertype.tr,
+                          style: AppText.caption(status.fg).copyWith(fontFamily: 'Gilroy_Bold')),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                title,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: notifier.text,
-                                  fontSize: 17,
-                                  fontFamily: "Gilroy_Bold",
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  color: statusColor?.withOpacity(0.12) ?? greaycolor.withOpacity(0.2),
-                                ),
-                                child: Text(
-                                  ordertype,
-                                  style: TextStyle(
-                                    color: statusColor ?? greencolor,
-                                    fontSize: 12,
-                                    fontFamily: "Gilroy_Bold",
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            discription,
-                            style: TextStyle(
-                              color: greaycolor,
-                              fontSize: 14,
-                              fontFamily: "Gilroy_Medium",
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    const Spacer(),
+                    Text(orderDate, style: AppText.caption(p.inkSubtle).copyWith(fontFamily: 'Gilroy_Bold')),
                   ],
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Divider(color: greaycolor.withOpacity(0.2)),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      children: [
-                        Container(
-                          height: 10,
-                          width: 10,
-                          decoration: BoxDecoration(
-                            color: greaycolor,
-                            shape: BoxShape.circle,
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(color: p.success, shape: BoxShape.circle),
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 0),
-                          child: DottedLine(
+                          DottedLine(
                             dashGapLength: 3,
                             lineThickness: 2,
-                            dashColor: greaycolor.withOpacity(0.4),
+                            dashColor: p.line,
                             dashGapColor: Colors.transparent,
                             direction: Axis.vertical,
-                            lineLength: 36,
+                            lineLength: 30,
                           ),
-                        ),
-                        Image.asset(
-                          "assets/location_drop.png",
-                          height: 18,
-                          color: greaycolor,
-                        ),
-                      ],
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(color: p.brand, borderRadius: BorderRadius.circular(2.5)),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            pickupAddress,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: notifier.text,
-                              fontSize: 13,
-                              fontFamily: "Gilroy_Medium",
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Divider(height: 1, color: greaycolor.withOpacity(0.15)),
-                          const SizedBox(height: 8),
-                          Text(
-                            dropAddress,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: notifier.text,
-                              fontSize: 13,
-                              fontFamily: "Gilroy_Medium",
-                            ),
-                          ),
+                          Text(pickupAddress,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
+                          const SizedBox(height: 14),
+                          Text(dropAddress,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
                         ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              if (details.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Container(
+                if (discription.trim().isNotEmpty && discription != "null") ...[
+                  const SizedBox(height: 10),
+                  Text(discription, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
+                ],
+                if (details.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: notifier.lightBgColor,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(color: p.canvas, borderRadius: BorderRadius.circular(10)),
                     child: Column(
                       children: [
                         for (final row in details)
@@ -612,17 +519,12 @@ Widget orderlistBox(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 SizedBox(
-                                  width: 86,
-                                  child: Text(
-                                    row.key.tr,
-                                    style: TextStyle(color: greaycolor, fontSize: 12, fontFamily: "Gilroy_Medium"),
-                                  ),
+                                  width: 96,
+                                  child: Text(row.key.tr, style: AppText.caption(p.inkSubtle)),
                                 ),
                                 Expanded(
-                                  child: Text(
-                                    row.value,
-                                    style: TextStyle(color: notifier.text, fontSize: 12.5, fontFamily: "Gilroy_Bold"),
-                                  ),
+                                  child: Text(row.value,
+                                      style: AppText.caption(p.ink).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 12.5)),
                                 ),
                               ],
                             ),
@@ -630,142 +532,65 @@ Widget orderlistBox(
                       ],
                     ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                ],
+                const SizedBox(height: 10),
+                Row(
                   children: [
-                    Text(
-                      orderDate,
-                      style: TextStyle(
-                        color: notifier.isDark ? greaycolor : linercolor,
-                        fontSize: 12,
-                        fontFamily: "Gilroy_Bold",
-                      ),
-                    ),
+                    SvgPicture.asset(image, height: 16, colorFilter: ColorFilter.mode(p.inkSubtle, BlendMode.srcIn)),
+                    const SizedBox(width: 6),
+                    Text(title, style: AppText.caption(p.inkMuted).copyWith(fontFamily: 'Gilroy_Bold')),
+                    const Spacer(),
+                    Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-        
-        // ── Modern Action Buttons ──────────────────────────────────────────
+
+        // ── Actions: favourite + book again ────────────────────────────────
         if (showActions) ...[
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Divider(color: greaycolor.withOpacity(0.2)),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 12, right: 12, top: 4),
-          child: Row(
-            children: [
-              // 1. Add Fav Order Button
-              Expanded(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
+          Divider(height: 1, color: p.divider),
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
                       if (onAddFav != null) {
                         onAddFav();
                       } else {
                         tostmsg("Added to Favorite Orders!");
                       }
                     },
-                    child: Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: linercolor.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: linercolor.withOpacity(0.25),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                            size: 17,
-                            color: isFavorite ? Colors.red : linercolor,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isFavorite ? "Favorite" : "Add Fav Order",
-                            style: TextStyle(
-                              color: linercolor,
-                              fontSize: 13,
-                              fontFamily: "Gilroy_Bold",
-                            ),
-                          ),
-                        ],
-                      ),
+                    icon: Icon(
+                      isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      size: 18,
+                      color: isFavorite ? const Color(0xFF6B3FC2) : p.ink,
                     ),
+                    label: Text((isFavorite ? "Favorite" : "Add Fav Order").tr,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              // 2. Book Again Button
-              Expanded(
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
                       if (onBookAgain != null) {
                         onBookAgain();
                       } else {
                         _handleBookAgain(context, pickupAddress, dropAddress);
                       }
                     },
-                    child: Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xfffa5700), Color(0xffdd6012)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xfffa5700).withOpacity(0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.autorenew_rounded,
-                            size: 18,
-                            color: Colors.white,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            "Book Again",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontFamily: "Gilroy_Bold",
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    icon: const Icon(Icons.autorenew_rounded, size: 18),
+                    label: Text("Book Again".tr, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    style: ElevatedButton.styleFrom(minimumSize: const Size(0, 44)),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ],
       ],
     ),

@@ -1,5 +1,8 @@
 // ignore_for_file: deprecated_member_use, prefer_typing_uninitialized_variables
 
+import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/screens/myorder/tracking_rules.dart';
+import 'package:goParcel/screens/myorder/widgets/trip_complete_widgets.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
@@ -592,15 +595,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // ── HELPER FORMATTERS & STATUS MAPPINGS ───────────────────────────────────
 
-  String _formatOrderDate(String? rawDate) {
-    if (rawDate == null || rawDate.isEmpty) return "";
-    try {
-      final dt = DateTime.parse(rawDate);
-      return DateFormat("EEE, d MMM, yyyy • hh:mm a").format(dt);
-    } catch (_) {
-      return rawDate;
-    }
-  }
+  String _formatOrderDate(String? rawDate) => formatOrderDate(rawDate);
 
   int _getCurrentStepIndex(String? status) {
     final s = (status ?? "").toLowerCase().trim();
@@ -613,17 +608,17 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   Color _getStatusColor(String? status) {
     final s = (status ?? "").toLowerCase().trim();
-    if (s == "completed") return const Color(0xFF00C853);
-    if (s == "cancelled") return const Color(0xFFFF5252);
+    if (s == "completed") return const Color(0xFF16A34A);
+    if (s == "cancelled") return const Color(0xFFB42318);
     if (s == "on route" || s == "on_route" || s == "intransit") return const Color(0xFF2979FF);
-    if (s == "pickup") return const Color(0xFFFF9100);
+    if (s == "pickup") return const Color(0xFFFF6B35);
     return linercolor;
   }
 
   Color _getStatusBgColor(String? status) {
     final s = (status ?? "").toLowerCase().trim();
-    if (s == "completed") return const Color(0xFFE8F8EE);
-    if (s == "cancelled") return const Color(0xFFFFEEEE);
+    if (s == "completed") return const Color(0xFFECFDF3);
+    if (s == "cancelled") return const Color(0xFFFFF4F2);
     if (s == "on route" || s == "on_route" || s == "intransit") return const Color(0xFFEBF3FF);
     if (s == "pickup") return const Color(0xFFFFF4E5);
     return const Color(0xFFFFF3E8);
@@ -665,97 +660,85 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   // ── 1. TOP HEADER ─────────────────────────────────────────────────────────
 
   Widget _buildModernHeader() {
-    return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 6,
-        left: 16,
-        right: 16,
-        bottom: 14,
-      ),
-      decoration: BoxDecoration(
-        color: linercolor,
-        gradient: LinearGradient(
-          colors: [linercolor, const Color(0xFFFF7A45)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    final p = AppPalette.current;
+    Widget roundButton({required Widget child, required VoidCallback? onTap, required String label}) => Semantics(
+          button: true,
+          label: label,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: p.canvas, shape: BoxShape.circle),
+              child: child,
+            ),
+          ),
+        );
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+      child: Container(
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top + 6,
+          left: 16,
+          right: 16,
+          bottom: 12,
         ),
-      ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: () {
-              _handleBackNavigation();
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+        decoration: BoxDecoration(
+          color: p.surface,
+          border: Border(bottom: BorderSide(color: p.divider)),
+        ),
+        child: Row(
+          children: [
+            roundButton(
+              label: 'Back'.tr,
+              onTap: () {
+                _handleBackNavigation();
+              },
+              child: Icon(Icons.arrow_back_rounded, color: p.ink, size: 22),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Order #${orderProduc?["order_id"] ?? getdata.read("OrderID") ?? "0"}",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: "Gilroy_Bold",
-                    fontSize: 22,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "Order #${orderProduc?["order_id"] ?? getdata.read("OrderID") ?? "0"}",
+                    style: AppText.section(p.ink).copyWith(fontSize: 19),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  orderProduc == null ? "Track and manage your order".tr : _heroState().headerSub,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
-                    fontFamily: "Gilroy_Medium",
-                    fontSize: 11.5,
+                  const SizedBox(height: 2),
+                  Text(
+                    orderProduc == null ? "Track and manage your order".tr : _heroState().headerSub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption(p.inkSubtle),
                   ),
-                ),
-              ],
-            ),
-          ),
-          // [ ↻ Refresh ]
-          InkWell(
-            onTap: isLoading ? null : () => pageRefresh(),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
+                ],
               ),
+            ),
+            // [ ↻ Refresh ]
+            roundButton(
+              label: 'Refresh'.tr,
+              onTap: isLoading ? null : () => pageRefresh(),
               child: isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: p.brand),
                     )
-                  : const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                  : Icon(Icons.refresh_rounded, color: p.ink, size: 20),
             ),
-          ),
-          const SizedBox(width: 8),
-          // [ ? Help ]
-          InkWell(
-            onTap: () => _showHelpAndSupportSheet(),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.help_outline_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            // [ ? Help ]
+            roundButton(
+              label: 'Help'.tr,
+              onTap: () => _showHelpAndSupportSheet(),
+              child: Icon(Icons.support_agent_rounded, color: p.ink, size: 20),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1212,13 +1195,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: (distDiff >= 0 ? Colors.orange : Colors.green).withOpacity(0.12),
+                                  color: (distDiff >= 0 ? Colors.orange : const Color(0xFF16A34A)).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
                                   distDiff >= 0 ? "+${distDiff.toStringAsFixed(2)} km" : "${distDiff.toStringAsFixed(2)} km",
                                   style: TextStyle(
-                                    color: distDiff >= 0 ? Colors.deepOrange : Colors.green,
+                                    color: distDiff >= 0 ? Colors.deepOrange : const Color(0xFF16A34A),
                                     fontFamily: "Gilroy_Bold",
                                     fontSize: 10.5,
                                   ),
@@ -1283,7 +1266,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: (fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? Colors.green : Colors.grey)).withOpacity(0.12),
+                                  color: (fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? const Color(0xFF16A34A) : Colors.grey)).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -1291,7 +1274,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                       ? "+₹${fDiff.toStringAsFixed(0)} Difference"
                                       : (fDiff < 0 ? "-₹${(-fDiff).toStringAsFixed(0)} Reduced" : "No Change"),
                                   style: TextStyle(
-                                    color: fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? Colors.green : Colors.grey.shade700),
+                                    color: fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? const Color(0xFF16A34A) : Colors.grey.shade700),
                                     fontFamily: "Gilroy_Bold",
                                     fontSize: 10.5,
                                   ),
@@ -1710,13 +1693,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: (distDiff >= 0 ? Colors.orange : Colors.green).withOpacity(0.12),
+                                  color: (distDiff >= 0 ? Colors.orange : const Color(0xFF16A34A)).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
                                   distDiff >= 0 ? "+${distDiff.toStringAsFixed(2)} km" : "${distDiff.toStringAsFixed(2)} km",
                                   style: TextStyle(
-                                    color: distDiff >= 0 ? Colors.deepOrange : Colors.green,
+                                    color: distDiff >= 0 ? Colors.deepOrange : const Color(0xFF16A34A),
                                     fontFamily: "Gilroy_Bold",
                                     fontSize: 10.5,
                                   ),
@@ -1781,7 +1764,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: (fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? Colors.green : Colors.grey)).withOpacity(0.12),
+                                  color: (fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? const Color(0xFF16A34A) : Colors.grey)).withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -1789,7 +1772,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                       ? "+₹${fDiff.toStringAsFixed(0)} Difference"
                                       : (fDiff < 0 ? "-₹${(-fDiff).toStringAsFixed(0)} Reduced" : "No Change"),
                                   style: TextStyle(
-                                    color: fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? Colors.green : Colors.grey.shade700),
+                                    color: fDiff > 0 ? Colors.deepOrange : (fDiff < 0 ? const Color(0xFF16A34A) : Colors.grey.shade700),
                                     fontFamily: "Gilroy_Bold",
                                     fontSize: 10.5,
                                   ),
@@ -1953,10 +1936,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             Container(
               padding: const EdgeInsets.all(14),
               decoration: const BoxDecoration(
-                color: Color(0xFFE8F8EE),
+                color: Color(0xFFECFDF3),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF00C853), size: 30),
+              child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF16A34A), size: 30),
             ),
             const SizedBox(height: 12),
             Text(
@@ -1964,7 +1947,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               style: const TextStyle(
                 fontFamily: "Gilroy_Bold",
                 fontSize: 18,
-                color: Color(0xFF0F172A),
+                color: Color(0xFF15171C),
               ),
             ),
             const SizedBox(height: 5),
@@ -1973,7 +1956,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               style: const TextStyle(
                 fontFamily: "Gilroy_Medium",
                 fontSize: 12.5,
-                color: Color(0xFF64748B),
+                color: Color(0xFF636977),
               ),
             ),
             const SizedBox(height: 20),
@@ -1989,16 +1972,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F8EE),
+                    color: const Color(0xFFECFDF3),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF00C853).withOpacity(0.35)),
+                    border: Border.all(color: const Color(0xFF16A34A).withOpacity(0.35)),
                   ),
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: const BoxDecoration(
-                          color: Color(0xFF00C853),
+                          color: Color(0xFF16A34A),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.call_rounded, color: Colors.white, size: 20),
@@ -2013,7 +1996,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               style: const TextStyle(
                                 fontFamily: "Gilroy_Bold",
                                 fontSize: 14.5,
-                                color: Color(0xFF0F172A),
+                                color: Color(0xFF15171C),
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -2022,13 +2005,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               style: const TextStyle(
                                 fontFamily: "Gilroy_Medium",
                                 fontSize: 13,
-                                color: Color(0xFF00C853),
+                                color: Color(0xFF16A34A),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF00C853)),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF16A34A)),
                     ],
                   ),
                 ),
@@ -2071,7 +2054,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               style: const TextStyle(
                                 fontFamily: "Gilroy_Bold",
                                 fontSize: 14,
-                                color: Color(0xFF0F172A),
+                                color: Color(0xFF15171C),
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -2080,7 +2063,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                               style: const TextStyle(
                                 fontFamily: "Gilroy_Medium",
                                 fontSize: 12,
-                                color: Color(0xFF64748B),
+                                color: Color(0xFF636977),
                               ),
                             ),
                           ],
@@ -2249,13 +2232,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFEEEE),
+          color: const Color(0xFFFFF4F2),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFFFCDD2)),
+          border: Border.all(color: const Color(0xFFF8CFC7)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.cancel_rounded, color: Color(0xFFFF5252), size: 28),
+            const Icon(Icons.cancel_rounded, color: Color(0xFFB42318), size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -2264,7 +2247,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   Text(
                     "Order Cancelled".tr,
                     style: const TextStyle(
-                      color: Color(0xFFFF5252),
+                      color: Color(0xFFB42318),
                       fontFamily: "Gilroy_Bold",
                       fontSize: 15,
                     ),
@@ -2315,9 +2298,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 BoxBorder? nodeBorder;
 
                 if (isCompleted) {
-                  nodeBg = const Color(0xFFE8F8EE);
-                  iconColor = const Color(0xFF00C853);
-                  nodeBorder = Border.all(color: const Color(0xFF00C853), width: 1.5);
+                  nodeBg = const Color(0xFFECFDF3);
+                  iconColor = const Color(0xFF16A34A);
+                  nodeBorder = Border.all(color: const Color(0xFF16A34A), width: 1.5);
                 } else if (isActive) {
                   nodeBg = linercolor;
                   iconColor = Colors.white;
@@ -2381,7 +2364,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           color: isCurrent
                               ? linercolor
                               : isDone
-                                  ? const Color(0xFF00C853)
+                                  ? const Color(0xFF16A34A)
                                   : greaycolor,
                           fontFamily: "Gilroy_Bold",
                           fontSize: 11.5,
@@ -2413,7 +2396,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
 
   // ── 4. LIVE DRIVER TRACKING MAP CARD ──────────────────────────────────────
 
-  Widget _buildLiveTrackingCard() {
+  /// [hero] = full-bleed map behind the tracking sheet (active orders);
+  /// [bottomInset] keeps markers out from under that sheet.
+  Widget _buildLiveTrackingCard({bool hero = false, double bottomInset = 0}) {
     final pLat = double.tryParse(orderProduc?['plat']?.toString() ?? '');
     final pLng = double.tryParse(orderProduc?['plong']?.toString() ?? '');
     final hasCoords = pLat != null && pLng != null;
@@ -2439,6 +2424,131 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           type: widget.type,
           initialOrderData: Map<String, dynamic>.from(orderProduc ?? {}),
         ));
+
+    final p = AppPalette.current;
+    final floatShadow = [
+      BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 3)),
+    ];
+
+    Widget etaChip(LatLng? driverPos) {
+      if (driverPos == null || status == "Completed" || status == "Cancelled") {
+        return const SizedBox.shrink();
+      }
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(16), boxShadow: floatShadow),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.two_wheeler_rounded, color: p.brand, size: 22),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(chipTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: p.ink, fontFamily: "Gilroy_Bold", fontSize: 13)),
+                  if (chipSub.isNotEmpty)
+                    Text(chipSub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: p.inkSubtle, fontFamily: "Gilroy_Medium", fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget openMapsChip() => Semantics(
+          button: true,
+          child: InkWell(
+            onTap: openLive,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(20), boxShadow: floatShadow),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.map_outlined, size: 16, color: p.brandText),
+                  const SizedBox(width: 5),
+                  Text("Open in Maps".tr,
+                      style: TextStyle(color: p.brandText, fontFamily: "Gilroy_Bold", fontSize: 12.5)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.open_in_new_rounded, size: 13, color: p.brandText),
+                ],
+              ),
+            ),
+          ),
+        );
+
+    if (hero) {
+      if (!hasCoords) {
+        return Container(
+          color: p.brandTint,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.location_searching_rounded, size: 34, color: p.brand),
+              const SizedBox(height: 8),
+              Text(
+                "Driver location will be visible once assigned".tr,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.inkMuted, fontFamily: "Gilroy_Medium", fontSize: 13),
+              ),
+            ],
+          ),
+        );
+      }
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: ValueListenableBuilder<LatLng?>(
+              valueListenable: _driverMapPositionNotifier,
+              builder: (context, driverPos, _) {
+                return GoogleMap(
+                  initialCameraPosition: CameraPosition(target: driverPos ?? LatLng(pLat, pLng), zoom: 13),
+                  markers: _buildMapMarkers(),
+                  padding: EdgeInsets.only(top: 64, bottom: bottomInset),
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  rotateGesturesEnabled: false,
+                  tiltGesturesEnabled: false,
+                  mapToolbarEnabled: false,
+                  onMapCreated: (controller) {
+                    _liveMapController = controller;
+                    _fitMapToMarkers();
+                  },
+                );
+              },
+            ),
+          ),
+          Positioned(
+            top: 12,
+            left: 12,
+            right: 12,
+            child: ValueListenableBuilder<LatLng?>(
+              valueListenable: _driverMapPositionNotifier,
+              builder: (context, driverPos, _) => Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: Align(alignment: Alignment.centerLeft, child: etaChip(driverPos))),
+                  const SizedBox(width: 8),
+                  openMapsChip(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     return Container(
       width: double.infinity,
@@ -2745,12 +2855,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             if (total < freeSec)
               Text(
                 "${"Free time left".tr}: ${_formatTimerText(freeSec - total)}",
-                style: const TextStyle(color: Color(0xFF00C853), fontFamily: "Gilroy_Bold", fontSize: 13),
+                style: const TextStyle(color: Color(0xFF16A34A), fontFamily: "Gilroy_Bold", fontSize: 13),
               )
             else if (rate > 0)
               Text(
                 "${"Waiting charge so far".tr}: $currency${_waitingMoney(chargeSoFar)}",
-                style: const TextStyle(color: Color(0xFFFF9100), fontFamily: "Gilroy_Bold", fontSize: 13),
+                style: const TextStyle(color: Color(0xFFFF6B35), fontFamily: "Gilroy_Bold", fontSize: 13),
               ),
           ],
         ],
@@ -2932,7 +3042,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           _buildShareTrackingCard(),
           const SizedBox(height: 14),
         ],
-        _buildRiderDetailsCard(),
+        if (showRiderCard(
+          status: status,
+          riderId: (orderProduc?["rider_id"] ?? buyMapinfo?["rider_id"] ?? "").toString(),
+        ))
+          _buildRiderDetailsCard(),
       ],
     );
   }
@@ -3061,19 +3175,19 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xff10b981).withValues(alpha: 0.12),
+        color: const Color(0xFF16A34A).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xff10b981).withValues(alpha: 0.4), width: 1.2),
+        border: Border.all(color: const Color(0xFF16A34A).withValues(alpha: 0.4), width: 1.2),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xff10b981).withValues(alpha: 0.2),
+              color: const Color(0xFF16A34A).withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xff059669), size: 24),
+            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xFF15803D), size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -3082,7 +3196,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               children: [
                 Text(
                   badgeText.tr,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xff059669)),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF15803D)),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -3468,18 +3582,18 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFE8F8EE),
+                              color: const Color(0xFFECFDF3),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 12),
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 12),
                                 const SizedBox(width: 3),
                                 Text(
                                   "Verified".tr,
                                   style: const TextStyle(
-                                    color: Color(0xFF00C853),
+                                    color: Color(0xFF16A34A),
                                     fontFamily: "Gilroy_Bold",
                                     fontSize: 10.5,
                                   ),
@@ -3800,17 +3914,17 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       title = "Delivered Successfully".tr;
       message = "Your package has been delivered successfully.".tr;
       icon = Icons.check_circle_outline_rounded;
-      accent = const Color(0xFF00C853);
+      accent = const Color(0xFF16A34A);
     } else if (s == "cancelled") {
       title = "Order Cancelled".tr;
       message = "This order has been cancelled.".tr;
       icon = Icons.cancel_outlined;
-      accent = const Color(0xFFFF5252);
+      accent = const Color(0xFFB42318);
     } else if (orderProduc?["trip_progress"]?["arrived_drop"] == true) {
       title = "Driver Arrived at Drop".tr;
       message = "Your driver has reached the drop location. Please receive your goods.".tr;
       icon = Icons.location_on_outlined;
-      accent = const Color(0xFFFF9100);
+      accent = const Color(0xFFFF6B35);
     } else if (s == "on route" || s == "on_route" || s == "intransit") {
       title = "In Transit — On the Way to Drop".tr;
       message = "Your delivery partner is on the way to the drop location.".tr;
@@ -3820,7 +3934,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       title = "Rider Arrived at Pickup".tr;
       message = "Share the pickup OTP after rider has arrived.".tr;
       icon = Icons.inventory_2_outlined;
-      accent = const Color(0xFFFF9100);
+      accent = const Color(0xFFFF6B35);
     }
 
     return Container(
@@ -3986,12 +4100,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           if (isCompleted && _waitingBilledAmount() > 0)
             buildRow("Waiting Charge".tr, "$currency${_waitingMoney(_waitingBilledAmount())}"),
           if (discount != "0" && discount.isNotEmpty)
-            buildRow("Coupon Discount".tr, "-$currency$discount", valueColor: const Color(0xFF00C853)),
+            buildRow("Coupon Discount".tr, "-$currency$discount", valueColor: const Color(0xFF16A34A)),
           if (_referralDiscountAmount() > 0)
             buildRow(
               "Referral Points Discount".tr,
               "-$currency${_referralDiscountAmount() % 1 == 0 ? _referralDiscountAmount().toInt() : _referralDiscountAmount().toStringAsFixed(2)}",
-              valueColor: const Color(0xFF00C853),
+              valueColor: const Color(0xFF16A34A),
             ),
           const SizedBox(height: 8),
           Divider(color: Colors.grey.shade200),
@@ -4035,7 +4149,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             buildRow(
               "Advance Paid (Online)".tr,
               "-$currency$advanceStr",
-              valueColor: const Color(0xFF00C853),
+              valueColor: const Color(0xFF16A34A),
               isBold: true,
             ),
             buildRow(
@@ -4046,7 +4160,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       : "Remaining to Pay Rider (Cash)".tr,
               isCancelled ? "$currency 0" : "$currency$remainingStr",
               valueColor: isCompleted
-                  ? const Color(0xFF00C853)
+                  ? const Color(0xFF16A34A)
                   : isCancelled
                       ? greaycolor
                       : (remainingDouble > 0 ? const Color(0xFFFF6D00) : notifier.text),
@@ -4067,21 +4181,21 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE8F8EE),
+                        color: const Color(0xFFECFDF3),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFC8E6C9)),
+                        border: Border.all(color: const Color(0xFFBBE5C8)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: const [
-                              Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 12),
+                              Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 12),
                               SizedBox(width: 4),
                               Text(
                                 "Advance Paid",
                                 style: TextStyle(
-                                  color: Color(0xFF00C853),
+                                  color: Color(0xFF16A34A),
                                   fontFamily: "Gilroy_Bold",
                                   fontSize: 10.5,
                                 ),
@@ -4092,7 +4206,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           Text(
                             "$currency$advanceStr",
                             style: const TextStyle(
-                              color: Color(0xFF00C853),
+                              color: Color(0xFF16A34A),
                               fontFamily: "Gilroy_Bold",
                               fontSize: 15,
                             ),
@@ -4100,7 +4214,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                           Text(
                             "Paid Online".tr,
                             style: TextStyle(
-                              color: Colors.green.shade800,
+                              color: const Color(0xFF15803D),
                               fontFamily: "Gilroy_Medium",
                               fontSize: 9.5,
                             ),
@@ -4116,14 +4230,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
                         color: isCompleted
-                            ? const Color(0xFFE8F8EE)
+                            ? const Color(0xFFECFDF3)
                             : isCancelled
                                 ? Colors.grey.shade100
-                                : const Color(0xFFFFF3E0),
+                                : const Color(0xFFFFFBEB),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: isCompleted
-                              ? const Color(0xFFC8E6C9)
+                              ? const Color(0xFFBBE5C8)
                               : isCancelled
                                   ? Colors.grey.shade300
                                   : const Color(0xFFFFCC80),
@@ -4141,10 +4255,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                         ? Icons.cancel_outlined
                                         : Icons.payments_outlined,
                                 color: isCompleted
-                                    ? const Color(0xFF00C853)
+                                    ? const Color(0xFF16A34A)
                                     : isCancelled
                                         ? Colors.grey.shade600
-                                        : const Color(0xFFE65100),
+                                        : const Color(0xFFB83C0C),
                                 size: 12,
                               ),
                               const SizedBox(width: 4),
@@ -4156,10 +4270,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                         : "Pay to Rider".tr,
                                 style: TextStyle(
                                   color: isCompleted
-                                      ? const Color(0xFF00C853)
+                                      ? const Color(0xFF16A34A)
                                       : isCancelled
                                           ? Colors.grey.shade600
-                                          : const Color(0xFFE65100),
+                                          : const Color(0xFFB83C0C),
                                   fontFamily: "Gilroy_Bold",
                                   fontSize: 10.5,
                                 ),
@@ -4171,10 +4285,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                             isCancelled ? "$currency 0" : "$currency$remainingStr",
                             style: TextStyle(
                               color: isCompleted
-                                  ? const Color(0xFF00C853)
+                                  ? const Color(0xFF16A34A)
                                   : isCancelled
                                       ? Colors.grey.shade600
-                                      : const Color(0xFFE65100),
+                                      : const Color(0xFFB83C0C),
                               fontFamily: "Gilroy_Bold",
                               fontSize: 15,
                             ),
@@ -4187,7 +4301,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                     : "Cash on delivery".tr,
                             style: TextStyle(
                               color: isCompleted
-                                  ? Colors.green.shade800
+                                  ? const Color(0xFF15803D)
                                   : isCancelled
                                       ? Colors.grey.shade600
                                       : Colors.deepOrange.shade800,
@@ -4260,14 +4374,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFEEEE),
+              color: const Color(0xFFFFF4F2),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFFCDD2)),
+              border: Border.all(color: const Color(0xFFF8CFC7)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.report_problem_rounded, color: Color(0xFFFF5252), size: 24),
+                const Icon(Icons.report_problem_rounded, color: Color(0xFFB42318), size: 24),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -4276,7 +4390,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       Text(
                         "Payment Under Review".tr,
                         style: const TextStyle(
-                          color: Color(0xFFFF5252),
+                          color: Color(0xFFB42318),
                           fontFamily: "Gilroy_Bold",
                           fontSize: 14,
                         ),
@@ -4306,14 +4420,14 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F8EE),
+          color: const Color(0xFFECFDF3),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFC8E6C9)),
+          border: Border.all(color: const Color(0xFFBBE5C8)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 24),
+            const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -4322,7 +4436,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   Text(
                     "Order Completed • Payment Settled".tr,
                     style: const TextStyle(
-                      color: Color(0xFF00C853),
+                      color: Color(0xFF16A34A),
                       fontFamily: "Gilroy_Bold",
                       fontSize: 14,
                     ),
@@ -4332,7 +4446,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     Text(
                       "Advance Paid Online: $currency$advanceStr • Cash Paid to Rider: $currency$remainingStr (Total Settled: $currency$totalStr)".tr,
                       style: TextStyle(
-                        color: Colors.green.shade800,
+                        color: const Color(0xFF15803D),
                         fontFamily: "Gilroy_Medium",
                         fontSize: 12,
                         height: 1.3,
@@ -4342,7 +4456,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     Text(
                       "Full amount of $currency$advanceStr was paid online. All payments are completed.".tr,
                       style: TextStyle(
-                        color: Colors.green.shade800,
+                        color: const Color(0xFF15803D),
                         fontFamily: "Gilroy_Medium",
                         fontSize: 12,
                         height: 1.3,
@@ -4352,7 +4466,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                     Text(
                       "Total payment of $currency$totalStr was successfully settled with the rider.".tr,
                       style: TextStyle(
-                        color: Colors.green.shade800,
+                        color: const Color(0xFF15803D),
                         fontFamily: "Gilroy_Medium",
                         fontSize: 12,
                         height: 1.3,
@@ -4372,16 +4486,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          color: advDouble > 0 ? const Color(0xFFFFF8E1) : const Color(0xFFFFEEEE),
+          color: advDouble > 0 ? const Color(0xFFFFFBEB) : const Color(0xFFFFF4F2),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: advDouble > 0 ? const Color(0xFFFFE082) : const Color(0xFFFFCDD2)),
+          border: Border.all(color: advDouble > 0 ? const Color(0xFFFFE082) : const Color(0xFFF8CFC7)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
               advDouble > 0 ? Icons.info_outline_rounded : Icons.cancel_outlined,
-              color: advDouble > 0 ? Colors.amber.shade900 : const Color(0xFFFF5252),
+              color: advDouble > 0 ? Colors.amber.shade900 : const Color(0xFFB42318),
               size: 24,
             ),
             const SizedBox(width: 12),
@@ -4392,7 +4506,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   Text(
                     advDouble > 0 ? "Order Cancelled • Advance Payment Details".tr : "Order Cancelled".tr,
                     style: TextStyle(
-                      color: advDouble > 0 ? Colors.amber.shade900 : const Color(0xFFFF5252),
+                      color: advDouble > 0 ? Colors.amber.shade900 : const Color(0xFFB42318),
                       fontFamily: "Gilroy_Bold",
                       fontSize: 14,
                     ),
@@ -4432,13 +4546,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F8EE),
+          color: const Color(0xFFECFDF3),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFC8E6C9)),
+          border: Border.all(color: const Color(0xFFBBE5C8)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 22),
+            const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 22),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -4447,7 +4561,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   Text(
                     "Payment Completed Online".tr,
                     style: const TextStyle(
-                      color: Color(0xFF00C853),
+                      color: Color(0xFF16A34A),
                       fontFamily: "Gilroy_Bold",
                       fontSize: 13.5,
                     ),
@@ -4455,7 +4569,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                   Text(
                     "No cash payment is required to the rider.".tr,
                     style: TextStyle(
-                      color: Colors.green.shade800,
+                      color: const Color(0xFF15803D),
                       fontFamily: "Gilroy_Medium",
                       fontSize: 11,
                     ),
@@ -4539,9 +4653,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F8EE),
+            color: const Color(0xFFECFDF3),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF00C853).withOpacity(0.4), width: 1.2),
+            border: Border.all(color: const Color(0xFF16A34A).withOpacity(0.4), width: 1.2),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -4550,15 +4664,15 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C853)),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF16A34A)),
                 )
               else
-                const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF00C853)),
+                const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF16A34A)),
               const SizedBox(width: 5),
               Text(
                 isInvoiceLoading ? "Please wait...".tr : "Invoice".tr,
                 style: const TextStyle(
-                  color: Color(0xFF00C853),
+                  color: Color(0xFF16A34A),
                   fontFamily: "Gilroy_Bold",
                   fontSize: 12.5,
                 ),
@@ -4602,17 +4716,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_isUnrated()) ...[
-            appButton1(
-              tital: "Order Review".tr,
-              buttonbgColor: linercolor,
-              bordecolor: linercolor,
-              onTap: () {
-                _openCustomerFeedbackSheet();
-              },
-            ),
-            const SizedBox(height: 12),
-          ],
+          // Rating lives in the RateTripCard just above this card.
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -4651,18 +4755,18 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F8EE),
+                            color: const Color(0xFFECFDF3),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: const [
-                              Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 10),
+                              Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 10),
                               SizedBox(width: 3),
                               Text(
                                 "Paid",
                                 style: TextStyle(
-                                  color: Color(0xFF00C853),
+                                  color: Color(0xFF16A34A),
                                   fontFamily: "Gilroy_Bold",
                                   fontSize: 10,
                                 ),
@@ -4834,11 +4938,11 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFF5252),
+              color: const Color(0xFFB42318),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFFF5252).withOpacity(0.25),
+                  color: const Color(0xFFB42318).withOpacity(0.25),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -5017,7 +5121,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             sub: isReceiverPaying(settlement)
                 ? "${"Receiver is paying".tr} - ${"Receiver pays total".tr} ₹${receiverPayTotal(settlement).toStringAsFixed(2)}"
                 : "Please settle ₹$due with your driver or online".tr,
-            color: const Color(0xFFFF9100),
+            color: const Color(0xFFFF6B35),
             headerSub: "Payment pending for completed ride".tr,
           );
         } else if (settleStatus == "customer_owes") {
@@ -5025,7 +5129,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             lead: "Payment is ".tr,
             accent: "due".tr,
             sub: "Please settle ₹$due online to book future rides".tr,
-            color: const Color(0xFFFF9100),
+            color: const Color(0xFFFF6B35),
             headerSub: "Payment due".tr,
           );
         } else if (settleStatus == "disputed") {
@@ -5033,7 +5137,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             lead: "Payment is ".tr,
             accent: "under review".tr,
             sub: "Support is reviewing the reported issue".tr,
-            color: const Color(0xFFFF5252),
+            color: const Color(0xFFB42318),
             headerSub: "Payment under review".tr,
           );
         } else if (settleStatus == "cash_received") {
@@ -5041,7 +5145,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             lead: "Driver confirmed ".tr,
             accent: "₹$due".tr,
             sub: date.isNotEmpty ? date : "Cash collected by driver".tr,
-            color: const Color(0xFF00C853),
+            color: const Color(0xFF16A34A),
             headerSub: "Cash payment confirmed".tr,
           );
         } else if (settleStatus == "paid_online") {
@@ -5049,7 +5153,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             lead: "Paid online ".tr,
             accent: "₹$due".tr,
             sub: date.isNotEmpty ? date : "Payment settled online".tr,
-            color: const Color(0xFF00C853),
+            color: const Color(0xFF16A34A),
             headerSub: "Payment settled online".tr,
           );
         } else if (settleStatus == "waived") {
@@ -5066,7 +5170,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         lead: "Order is ".tr,
         accent: "delivered".tr,
         sub: date.isNotEmpty ? date : "Package delivered successfully".tr,
-        color: const Color(0xFF00C853),
+        color: const Color(0xFF16A34A),
         headerSub: "Package delivered successfully".tr,
       );
     }
@@ -5075,7 +5179,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         lead: "Order is ".tr,
         accent: "cancelled".tr,
         sub: "This order has been cancelled.".tr,
-        color: const Color(0xFFFF5252),
+        color: const Color(0xFFB42318),
         headerSub: "Order has been cancelled".tr,
       );
     }
@@ -5084,7 +5188,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         lead: "Driver reached ".tr,
         accent: "drop location".tr,
         sub: "Please receive your goods".tr,
-        color: const Color(0xFFFF9100),
+        color: const Color(0xFFFF6B35),
         headerSub: "Driver reached the drop location".tr,
       );
     }
@@ -5102,7 +5206,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         lead: "Driver has ".tr,
         accent: "arrived".tr,
         sub: "Share the OTP once your goods are loaded".tr,
-        color: const Color(0xFFFF9100),
+        color: const Color(0xFFFF6B35),
         headerSub: "Driver has arrived at pickup".tr,
       );
     }
@@ -5111,7 +5215,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         lead: "Driver is ".tr,
         accent: "running late".tr,
         sub: "Countdown complete ho gaya. Aap ab cancel kar sakte hain, aap par koi cancellation charge nahi lagega.".tr,
-        color: const Color(0xFFFF9100),
+        color: const Color(0xFFFF6B35),
         headerSub: "Driver missed the pickup ETA".tr,
       );
     }
@@ -5167,13 +5271,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [linercolor.withOpacity(0.12), linercolor.withOpacity(0.03)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: linercolor.withOpacity(0.18)),
+        color: AppPalette.current.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppPalette.current.line),
       ),
       child: Column(
         children: [
@@ -5276,7 +5376,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   /// so the labels sit exactly under their circles.
   Widget _buildHeroStepper(int stepIndex) {
     final labels = ["Assigned".tr, "Picked Up".tr, "In Transit".tr, "Delivered".tr];
-    const green = Color(0xFF00C853);
+    const green = Color(0xFF16A34A);
     return Row(
       children: List.generate(4, (i) {
         final step = i + 1;
@@ -5464,7 +5564,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final remaining = dueAtDrop(total: total, advance: advance, discount: discount, receiverMode: _isReceiverPayActive());
     final waitingBilled = isCompleted ? _waitingBilledAmount() : 0.0;
 
-    const green = Color(0xFF00C853);
+    const green = Color(0xFF16A34A);
     final settlement = _getSettlementData();
     final settleStatus = settlement?['status']?.toString();
     // Receiver is the payer (pending): show the receiver total; legacy maps without `payer` stay normal.
@@ -5484,28 +5584,28 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     if (settlement != null && isCompleted) {
       if (settleStatus == 'cash_received' || settleStatus == 'paid_online') {
         dueColor = green;
-        dueBg = const Color(0xFFE8F8EE);
+        dueBg = const Color(0xFFECFDF3);
       } else if (settleStatus == 'disputed') {
-        dueColor = const Color(0xFFFF5252);
-        dueBg = const Color(0xFFFFEEEE);
+        dueColor = const Color(0xFFB42318);
+        dueBg = const Color(0xFFFFF4F2);
       } else if (settleStatus == 'waived') {
         dueColor = Colors.grey.shade600;
         dueBg = Colors.grey.shade100;
       } else {
-        dueColor = const Color(0xFFE65100);
-        dueBg = const Color(0xFFFFF3E0);
+        dueColor = const Color(0xFFB83C0C);
+        dueBg = const Color(0xFFFFFBEB);
       }
     } else {
       dueColor = isCompleted
           ? green
           : isCancelled
               ? Colors.grey.shade600
-              : const Color(0xFFE65100);
+              : const Color(0xFFB83C0C);
       dueBg = isCompleted
-          ? const Color(0xFFE8F8EE)
+          ? const Color(0xFFECFDF3)
           : isCancelled
               ? Colors.grey.shade100
-              : const Color(0xFFFFF3E0);
+              : const Color(0xFFFFFBEB);
     }
     final open = _openTiles.contains("payment");
 
@@ -5529,13 +5629,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [const Color(0xFFFFB74D).withOpacity(0.16), const Color(0xFFFFB74D).withOpacity(0.05)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: AppPalette.current.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFFFB74D).withOpacity(0.35)),
+            border: Border.all(color: AppPalette.current.line),
           ),
           child: Column(
             children: [
@@ -5719,12 +5815,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                 if (settleStatus == 'cash_received')
                   Row(
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 16),
+                      const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 16),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           "${"Driver confirmed ₹".tr}${settleAmount.toStringAsFixed(0)}",
-                          style: const TextStyle(color: Color(0xFF00C853), fontFamily: "Gilroy_Bold", fontSize: 12.5),
+                          style: const TextStyle(color: Color(0xFF16A34A), fontFamily: "Gilroy_Bold", fontSize: 12.5),
                         ),
                       ),
                       TextButton.icon(
@@ -5861,7 +5957,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   }
 
   Widget _buildMoreOptionsRow() {
-    const red = Color(0xFFFF5252);
+    const red = Color(0xFFB42318);
     return InkWell(
       onTap: _showMoreOptionsSheet,
       borderRadius: BorderRadius.circular(20),
@@ -5967,7 +6063,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               if (_canChangeDestination)
                 option(Icons.edit_location_alt_rounded, const Color(0xFF2979FF), "Change Drop Location".tr,
                     "Change where we deliver".tr, _handleChangeDropLocation),
-              option(Icons.cancel_outlined, const Color(0xFFFF5252), "Cancel Order".tr,
+              option(Icons.cancel_outlined, const Color(0xFFB42318), "Cancel Order".tr,
                   "Cancel this booking".tr, () => dialogShow(cancelOrderId)),
             ],
           ),
@@ -5982,13 +6078,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final s = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     if (s == "completed") {
       if (!_isUnrated()) return const SizedBox.shrink();
-      return appButton1(
-        tital: "Order Review".tr,
-        buttonbgColor: linercolor,
-        bordecolor: linercolor,
-        onTap: () {
-          _openCustomerFeedbackSheet();
-        },
+      return RateTripCard(
+        driverName: _feedbackDriverName(),
+        vehicleName: (orderProduc?["category"] ?? "").toString(),
+        onRate: (stars) => _openCustomerFeedbackSheet(manual: true, rating: stars),
       );
     }
     if (s == "cancelled" || s == "cancel") return const SizedBox.shrink();
@@ -5998,36 +6091,55 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     return _buildMoreOptionsRow();
   }
 
+  /// "Order #1015 · Mon, 16 Nov, 2026 • 09:22 AM" under the trip-complete tick.
+  String _tripCompleteSubtitle() {
+    final id = orderProduc?["order_id"] ?? orderid;
+    final date = _formatOrderDate(orderProduc?["order_date"]?.toString());
+    return date.isEmpty ? "${"Order".tr} #$id" : "${"Order".tr} #$id · $date";
+  }
+
   Widget _buildMainContent(BuildContext context) {
     final status = (orderProduc?["Order_Status"] ?? "").toString().trim().toLowerCase();
     final isFinished = status == "completed" || status == "cancelled" || status == "cancel";
 
-    Widget content = SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    // Active order: Porter-style map hero with the cards in a draggable sheet
+    // (driver + OTP first). Finished orders keep the plain scrolling page.
+    final isCompleted = status == "completed";
+    final rateCard = isCompleted ? _buildActionsArea() : null;
+    final hasRateCard = rateCard != null && rateCard is! SizedBox;
+    final sections = <Widget>[
           if (status == "cancelled" || status == "cancel") ...[
             _buildOrderSummaryCard(),
             const SizedBox(height: 14),
             _buildStatusTimeline(),
+          ] else if (isCompleted) ...[
+            // Trip complete (mockup 7): tick header, what was paid, then the rating card.
+            TripCompleteHeader(subtitle: _tripCompleteSubtitle()),
+            const SizedBox(height: 14),
+            _buildPaymentSummaryCard(),
+            if (hasRateCard) ...[
+              const SizedBox(height: 14),
+              rateCard,
+            ],
           ] else
             _buildHeroCard(),
           const SizedBox(height: 14),
-          if (!isFinished) ...[
-            RepaintBoundary(child: _buildLiveTrackingCard()),
-            const SizedBox(height: 14),
-          ],
           // Completed or cancelled trip: the route the driver actually drove (up to the cancellation) + distance.
           if ((status == "completed" || status == "cancelled" || status == "cancel") && orderid != "0" && orderid.isNotEmpty) ...[
             OrderRouteMap(key: ValueKey("route_$orderid"), orderId: orderid, embedded: true),
             const SizedBox(height: 14),
           ],
-          _buildRouteCard(),
-          const SizedBox(height: 14),
-          _buildOtpAndRiderSection(),
-          const SizedBox(height: 14),
+          if (!isFinished) ...[
+            _buildOtpAndRiderSection(),
+            const SizedBox(height: 14),
+            _buildRouteCard(),
+            const SizedBox(height: 14),
+          ] else ...[
+            _buildRouteCard(),
+            const SizedBox(height: 14),
+            _buildOtpAndRiderSection(),
+            const SizedBox(height: 14),
+          ],
           // The hero card already says where the trip is; keep the extra
           // guidance card only for the two stages that need an instruction.
           if (status == "pickup" || orderProduc?["trip_progress"]?["arrived_drop"] == true) ...[
@@ -6038,8 +6150,10 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             _buildWaitingCard(),
             const SizedBox(height: 14),
           ],
-          _buildPaymentSummaryCard(),
-          const SizedBox(height: 14),
+          if (!isCompleted) ...[
+            _buildPaymentSummaryCard(),
+            const SizedBox(height: 14),
+          ],
           if (status == "completed") ...[
             Builder(
               builder: (context) {
@@ -6073,12 +6187,71 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             ),
             const SizedBox(height: 12),
           ],
-          const SizedBox(height: 8),
-          _buildActionsArea(),
+          if (!isCompleted) ...[
+            const SizedBox(height: 8),
+            _buildActionsArea(),
+          ],
           SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
-        ],
-      ),
-    );
+    ];
+
+    Widget content;
+    if (isFinished) {
+      content = SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        physics: const BouncingScrollPhysics(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: sections),
+      );
+    } else {
+      final p = AppPalette.current;
+      content = LayoutBuilder(
+        builder: (context, box) {
+          const initial = 0.56;
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: _buildLiveTrackingCard(hero: true, bottomInset: box.maxHeight * initial),
+                ),
+              ),
+              DraggableScrollableSheet(
+                initialChildSize: initial,
+                minChildSize: 0.3,
+                maxChildSize: 1.0,
+                snap: true,
+                snapSizes: const [initial],
+                builder: (context, scroll) => Container(
+                  decoration: BoxDecoration(
+                    color: p.canvas,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 16, offset: const Offset(0, -2)),
+                    ],
+                  ),
+                  child: SingleChildScrollView(
+                    controller: scroll,
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(2)),
+                          ),
+                        ),
+                        ...sections,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    }
 
     if (_isAdvancePaymentRequiredForOrder) {
       return ImageFiltered(
@@ -6104,7 +6277,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         return false;
       },
       child: Scaffold(
-        backgroundColor: linercolor,
+        backgroundColor: AppPalette.current.canvas,
         body: Column(
           children: [
             _buildModernHeader(),
@@ -6112,24 +6285,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             Expanded(
               child: Container(
                 width: double.infinity,
-                decoration: BoxDecoration(
-                  color: notifier.lightBgColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(28),
-                    topRight: Radius.circular(28),
-                  ),
-                  child: isLoading && orderProduc == null
-                      ? _buildSkeletonLoader()
-                      : orderProduc == null
-                          ? _buildErrorState()
-                          : _buildMainContent(context),
-                ),
+                color: AppPalette.current.canvas,
+                child: isLoading && orderProduc == null
+                    ? _buildSkeletonLoader()
+                    : orderProduc == null
+                        ? _buildErrorState()
+                        : _buildMainContent(context),
               ),
             ),
           ],
@@ -6767,13 +6928,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         statusColor = notifier.darklinercolor;
         break;
       case "On Route":
-        statusColor = const Color(0xff00D261);
+        statusColor = const Color(0xFF16A34A);
         break;
       case "Cancelled":
-        statusColor = const Color(0xffF44336);
+        statusColor = const Color(0xFFB42318);
         break;
       case "Completed":
-        statusColor = const Color(0xff00D261);
+        statusColor = const Color(0xFF16A34A);
         break;
       default:
     }
@@ -8387,12 +8548,12 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                                   width: double.infinity,
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF1FA85A).withOpacity(0.10),
+                                    color: const Color(0xFF16A34A).withOpacity(0.10),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF1FA85A), size: 20),
+                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
@@ -8944,12 +9105,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     Future.delayed(const Duration(milliseconds: 600), _openCustomerFeedbackSheet);
   }
 
-  void _openCustomerFeedbackSheet() {
-    if (_feedbackSheetShown || !mounted) return;
+  String _feedbackDriverName() =>
+      (orderProduc?["rider_title"] ?? orderProduc?["rider_name"] ?? "").toString();
+
+  /// [manual] = the customer tapped Rate / a star (always opens); [rating] pre-selects stars.
+  void _openCustomerFeedbackSheet({bool manual = false, int? rating}) {
+    if (!canOpenFeedback(shownBefore: _feedbackSheetShown, manual: manual) || !mounted) return;
     final uidInt = int.tryParse(uid.toString()) ?? 0;
     final orderIdInt = int.tryParse(orderid.toString()) ?? 0;
     final riderIdInt = int.tryParse((orderProduc?["rider_id"] ?? "0").toString()) ?? 0;
-    final driverName = (orderProduc?["rider_title"] ?? orderProduc?["rider_name"] ?? "").toString();
+    final driverName = _feedbackDriverName();
 
     if (uidInt <= 0 || orderIdInt <= 0) return;
     _feedbackSheetShown = true;
@@ -8960,6 +9125,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       uid: uidInt,
       riderId: riderIdInt,
       driverName: driverName,
+      vehicleName: (orderProduc?["category"] ?? "").toString(),
+      initialRating: rating,
       onSubmitted: () {
         if (orderProduc is Map) {
           orderProduc["is_rate"] = "1";

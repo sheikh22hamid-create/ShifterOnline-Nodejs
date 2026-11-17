@@ -1,6 +1,5 @@
 // ignore_for_file: deprecated_member_use
 
-import 'package:flutter_svg/svg.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:goParcel/Api/Api_wrapper.dart';
@@ -22,6 +21,8 @@ import '../../../utils/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
+import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/widgets/app_bottom_nav.dart';
 
 import 'screens/authscreen/signin.dart';
 
@@ -256,6 +257,7 @@ class BottombarState extends State<Bottombar> {
       onWillPop: _handleWillPop,
       child: Scaffold(
         resizeToAvoidBottomInset: false,
+        backgroundColor: AppPalette.current.canvas,
         bottomNavigationBar: _buildBottomBar(context),
         body: _pageOption[_selectedIndex],
       ),
@@ -263,119 +265,16 @@ class BottombarState extends State<Bottombar> {
   }
 
   Widget _buildBottomBar(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-          10, 9, 10, 8 + MediaQuery.of(context).padding.bottom),
-      decoration: BoxDecoration(
-        color: notifier.getBgColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: [
-          BoxShadow(
-            color: linercolor.withOpacity(.12),
-            blurRadius: 22,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(child: _navItem(0, 'Home'.tr)),
-          Expanded(child: _navItem(1, 'Orders'.tr)),
-          Expanded(child: _bookAction()),
-          Expanded(child: _navItem(2, 'Wallet'.tr)),
-          Expanded(child: _navItem(3, 'Account'.tr)),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(int index, String label) {
-    final selected = _selectedIndex == index;
-    return InkWell(
-      onTap: () => _selectTab(index),
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-              decoration: BoxDecoration(
-                color:
-                    selected ? linercolor.withOpacity(.12) : Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: SvgPicture.asset(
-                selected ? iconFile[index] : icon[index],
-                color: selected ? linercolor : greaycolor,
-                height: 23,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: selected ? linercolor : greaycolor,
-                fontFamily: selected ? 'Gilroy_Bold' : 'Gilroy_Medium',
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _bookAction() {
-    return InkWell(
-      onTap: () => _selectTab(0),
-      borderRadius: BorderRadius.circular(30),
-      child: Transform.translate(
-        offset: const Offset(0, -14),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 58,
-              width: 58,
-              decoration: BoxDecoration(
-                color: linercolor,
-                shape: BoxShape.circle,
-                border: Border.all(color: notifier.getBgColor, width: 5),
-                boxShadow: [
-                  BoxShadow(
-                    color: linercolor.withOpacity(.28),
-                    blurRadius: 12,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: SvgPicture.asset(
-                  'assets/package_box_file.svg',
-                  color: Colors.white,
-                  height: 27,
-                ),
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Book now',
-              style: TextStyle(
-                color: linercolor,
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AppBottomNav(
+      tabs: [
+        AppNavTab(label: 'Home'.tr, iconAsset: icon[0], selectedIconAsset: iconFile[0]),
+        AppNavTab(label: 'Orders'.tr, iconAsset: icon[1], selectedIconAsset: iconFile[1]),
+        AppNavTab(label: 'Wallet'.tr, iconAsset: icon[2], selectedIconAsset: iconFile[2]),
+        AppNavTab(label: 'Account'.tr, iconAsset: icon[3], selectedIconAsset: iconFile[3]),
+      ],
+      selectedIndex: _selectedIndex,
+      onTabSelected: _selectTab,
+      onBookTap: () => _selectTab(0),
     );
   }
 
