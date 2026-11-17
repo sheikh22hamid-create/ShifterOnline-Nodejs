@@ -14,6 +14,7 @@ import CancelOrderModal from './CancelOrderModal'
 import InvoiceModal from './InvoiceModal'
 import OrderRouteMap from './OrderRouteMap'
 import AreaTitle from './AreaTitle'
+import WhatsAppOrderPanel from './WhatsAppOrderPanel'
 import { extractAreaFromAddress, formatTripDistance } from '../../utils/addressUtils'
 
 const EDIT_FIELDS = [
@@ -311,6 +312,11 @@ export default function OrderDetailDrawer({ orderId, onClose, onChanged }) {
                       </div>
                     )}
                   </div>
+                  {order.driver_channel === 'whatsapp' && (
+                    <div className="mt-2">
+                      <WhatsAppOrderPanel orderId={order.id} onStepDone={() => { refetch(); onChanged?.() }} />
+                    </div>
+                  )}
                 </section>
 
                 {/* Package & Category Details */}

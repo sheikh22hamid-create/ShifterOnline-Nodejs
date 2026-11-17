@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { PhoneCall, RefreshCw, UserSearch, Copy, UserPlus, CheckCircle2 } from 'lucide-react'
 import api from '../../services/api'
+import DriverChannelChoice, { WHATSAPP_HELP_TEXT } from './DriverChannelChoice'
 
 // Shown until the partner's live list loads (or if it cannot be loaded).
 const FALLBACK_VEHICLES = [
@@ -45,6 +46,7 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
   const [registering, setRegistering] = useState(false)
   const [onboarded, setOnboarded] = useState(null) // { rider_id, kind, name, online }
   const [assigning, setAssigning] = useState(false)
+  const [channel, setChannel] = useState('app') // 'app' | 'whatsapp'
 
   // The partner's own catalog, so every vehicle category they support is selectable.
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
     setAssigning(true)
     setError('')
     try {
-      await api.post(`/orders/${order.id}/assign-rider`, { rider_id: onboarded.rider_id })
+      await api.post(`/orders/${order.id}/assign-rider`, channel === 'whatsapp' ? { rider_id: onboarded.rider_id, channel: 'whatsapp' } : { rider_id: onboarded.rider_id })
       onAssigned?.()
     } catch (err) {
       setError(err.response?.data?.message || 'Could not assign this driver.')
@@ -192,7 +194,17 @@ export default function OutsideDriverPanel({ order, onAssigned }) {
           <div className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>
             <CheckCircle2 size={14} /> {onboarded.name || 'Driver'} {onboarded.kind === 'already_on_shifter' ? 'is already a Shifter driver' : 'is registered as a trial driver'}
           </div>
-          {onboarded.online ? (
+          <div className="mt-2">
+            <DriverChannelChoice riderId={onboarded.rider_id} value={channel} onChange={setChannel} disabled={assigning} />
+          </div>
+          {channel === 'whatsapp' ? (
+            <>
+              <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>{WHATSAPP_HELP_TEXT}</p>
+              <button type="button" onClick={assignNow} disabled={assigning} className="mt-2 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-60" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>
+                {assigning ? 'Assigning…' : `Assign order #${order.id} on WhatsApp`}
+              </button>
+            </>
+          ) : onboarded.online ? (
             <button type="button" onClick={assignNow} disabled={assigning} className="mt-2 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-60" style={{ background: 'var(--brand)', color: 'var(--brand-ink)' }}>
               {assigning ? 'Assigning…' : `Driver is online · Assign order #${order.id}`}
             </button>

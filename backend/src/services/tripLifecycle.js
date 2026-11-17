@@ -70,6 +70,16 @@ function notifyAdminStatus(order) {
   }
 }
 
+// WhatsApp Trial Order: tells a WhatsApp-channel driver their order was cancelled by someone else (customer, a
+// timeout sweep). Fire-and-forget; never used on the driver's own cancel (the WhatsApp flow replies to that itself).
+function notifyWhatsAppDriverCancelled(orderId) {
+  try {
+    require("../whatsapp/driverOrder/flow").notifyOrderChanged(Number(orderId), { kind: "cancelled" }).catch(() => {});
+  } catch (err) {
+    logger.warn(`WhatsApp driver cancel notice for order ${orderId} not sent: ${err.message}`);
+  }
+}
+
 function round2(n) {
   return Math.round(n * 100) / 100;
 }
@@ -1171,7 +1181,7 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     // Fire-and-forget, same pattern as above - increments the driver's
     // trial-order counter and auto-blocks them once the trial limit is hit.
     // A no-op for any rider not currently in an active trial.
-    trialOrderTracker.recordTrialOrderCompletion(riderId).catch((err) => {
+    trialOrderTracker.recordTrialOrderCompletion(riderId, orderId).catch((err) => {
       logger.error(`recordTrialOrderCompletion error for rider ${riderId}:`, err);
     });
 
@@ -1496,6 +1506,7 @@ async function customerCancel(uid, orderId, comment) {
         logger.error(`customerCancel: push notify failed for rider ${orderBefore.rid}:`, err);
       });
     }
+    notifyWhatsAppDriverCancelled(orderId);
   }
 
   return { success: true };
@@ -1915,6 +1926,7 @@ async function cancelOverduePickupWithoutCustomerFault(order, riderId, timeoutMi
     return; // resolved another way, or failed: the customer is not penalised either way
   }
   logger.info(`cancelOverduePickup: order #${orderId} cancelled as a driver-side OTP timeout (the customer had shared the OTP)`);
+  notifyWhatsAppDriverCancelled(orderId);
   await prisma.pkg_order_wait_timer.updateMany({ where: { order_id: orderId, rid: riderId }, data: { pickup_wait_end: new Date() } });
   try {
     await prisma.order_status_history.create({
@@ -2075,6 +2087,7 @@ async function cancelOverduePickup(orderId, riderId, timeoutMinutes = PICKUP_OTP
   ]);
   await pushNotifier.notifyCustomerPickupTimeoutCancel(customer?.fcm_token, orderId, cancellationCharge, timeoutMinutes);
   if (rider) await pushNotifier.notifyDriverPickupTimeoutCancel(rider.fcm_token, orderId, timeoutMinutes);
+  if (riderId) notifyWhatsAppDriverCancelled(orderId);
 
   notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
 
@@ -2291,6 +2304,7 @@ async function cancelExpiredAdvancePayment(orderId) {
   ]);
   await pushNotifier.notifyCustomerAdvancePaymentTimeoutCancel(customer?.fcm_token, orderId);
   if (rider) await pushNotifier.notifyDriverAdvancePaymentTimeoutCancel(rider.fcm_token, orderId);
+  if (riderId) notifyWhatsAppDriverCancelled(orderId);
 
   notifyAdminStatus({ ...order, order_status: 4, o_status: "Cancelled" });
 

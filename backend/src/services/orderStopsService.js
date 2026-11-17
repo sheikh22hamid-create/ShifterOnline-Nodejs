@@ -275,6 +275,11 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
         }
       })
       .catch((err) => logger.error(`confirmAddStop: rider lookup failed for rider ${riderId}:`, err));
+
+    // WhatsApp Trial Order: a WhatsApp-channel driver gets the order card with the new stop + their current step.
+    try {
+      require("../whatsapp/driverOrder/flow").notifyOrderChanged(numericOrderId, { kind: "route_changed" }).catch(() => {});
+    } catch (_) { /* bot flow unavailable in this process */ }
   }
 
   dispatchManager.emitCustomerEvent(numericUid, "order:stop_added", eventPayload);

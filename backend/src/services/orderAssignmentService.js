@@ -7,8 +7,14 @@ const { getIO } = require("../sockets/socketServer");
 const bookingGuarantee = require("./bookingGuaranteeService");
 const guaranteeQueue = require("./guaranteeQueueService");
 const freeBookingService = require("./freeBookingService");
+const whatsappTrialSettings = require("./whatsappTrialSettings");
 
 const fail = (status, message) => ({ ok: false, status, message });
+const WHATSAPP_REFUSALS = {
+  disabled: "WhatsApp orders are switched off",
+  bot_offline: "WhatsApp bot is not connected",
+  not_trial: "WhatsApp mode is only for active Trial Drivers",
+};
 
 /**
  * Assigns a still-open order to a driver: the checks, the atomic claim, pricing, guarantee/free-booking bookkeeping
@@ -19,10 +25,15 @@ const fail = (status, message) => ({ ok: false, status, message });
  *   isRiderForbidden(rider) -> true to refuse a driver outside the caller's scope (admin endpoint only)
  *   remark                  -> order_status_history text (default: "Manually assigned by admin ...")
  *   closeEvent / closeAdminId -> how the Booking Guarantee case is closed (defaults: "admin_assigned" by actor.id)
+ *   channel                 -> "app" (default) or "whatsapp": a WhatsApp-channel Trial Driver runs the order over the bot
+ *                              and need not be online in the app (only the online check is skipped)
  * Returns { ok: true, order, pkg } or { ok: false, status, message }.
  */
-async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, remark, closeEvent, closeAdminId }) {
+async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, remark, closeEvent, closeAdminId, channel = "app" }) {
   const orderId = order.id;
+  if (channel !== "app" && channel !== "whatsapp") {
+    return fail(400, "Invalid channel");
+  }
   if (order.rid !== 0 || order.order_status !== 0) {
     return fail(409, "Order is already assigned, completed, or cancelled");
   }
@@ -40,7 +51,19 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
   if (rider.status !== 1) {
     return fail(400, "Driver is not approved");
   }
-  if (rider.a_status !== 1) {
+  if (channel === "whatsapp") {
+    let eligibility;
+    try {
+      eligibility = await whatsappTrialSettings.eligibility(riderId);
+    } catch (eligErr) {
+      logger.error(`assignRider: whatsapp eligibility check failed for rider ${riderId}:`, eligErr);
+      return fail(500, "Could not check WhatsApp eligibility");
+    }
+    if (!eligibility.eligible) {
+      if (eligibility.reason === "not_found") return fail(404, "Driver not found");
+      return fail(400, WHATSAPP_REFUSALS[eligibility.reason] || "WhatsApp mode is not available for this driver");
+    }
+  } else if (rider.a_status !== 1) {
     return fail(400, "Driver is currently offline");
   }
   // order_status alone isn't reliable — cancel() (here and in tripLifecycle)
@@ -72,7 +95,7 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
   const affectedRows = await prisma.$executeRaw`
     UPDATE pkg_order
     SET rid = ${riderId}, order_status = 1, o_status = 'Processing', accept_time = NOW(),
-        payment_status = ${paymentStatus}, advance_payment = ${advancePayment}
+        payment_status = ${paymentStatus}, advance_payment = ${advancePayment}, driver_channel = ${channel}
     WHERE id = ${orderId} AND rid = 0 AND order_status = 0 AND o_status != 'Cancelled'
   `;
   if (affectedRows === 0) {
@@ -175,6 +198,25 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
     adminSocket.notifyOrderStatusUpdate(updatedOrder);
   } catch (adminErr) {
     logger.error(`assignRider: admin socket notify failed for order ${orderId}:`, adminErr);
+  }
+
+  if (channel === "whatsapp") {
+    // Fire-and-forget: a WhatsApp failure must never fail an assign that already happened. A startOrder that fails
+    // outright (e.g. the session upsert) raises the same executive alert as an undelivered order card.
+    const startFailed = (waErr) => {
+      logger.error(`assignRider: whatsapp startOrder failed for order ${orderId}:`, waErr);
+      try {
+        adminSocket.notifyDispatchAlert(orderId, updatedOrder?.city_id ?? order.city_id,
+          `WhatsApp order message could not be sent to the driver of order #${orderId}. Call the driver.`, { kind: "whatsapp_send_failed" });
+      } catch (alertErr) {
+        logger.error(`assignRider: whatsapp send-failed alert not raised for order ${orderId}:`, alertErr);
+      }
+    };
+    try {
+      Promise.resolve(require("../whatsapp/driverOrder/flow").startOrder(orderId)).catch(startFailed);
+    } catch (waErr) {
+      startFailed(waErr);
+    }
   }
 
   return { ok: true, order: updatedOrder, pkg };

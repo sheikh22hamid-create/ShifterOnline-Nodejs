@@ -267,6 +267,11 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
         }
       })
       .catch((err) => logger.error(`confirmDestinationChange: rider lookup failed for rider ${riderId}:`, err));
+
+    // WhatsApp Trial Order: a WhatsApp-channel driver gets the order card with the new drop + their current step.
+    try {
+      require("../whatsapp/driverOrder/flow").notifyOrderChanged(numericOrderId, { kind: "route_changed" }).catch(() => {});
+    } catch (_) { /* bot flow unavailable in this process */ }
   }
 
   dispatchManager.emitCustomerEvent(numericUid, "order:destination_updated", eventPayload);

@@ -19,6 +19,11 @@ async function syncProgress(req, res) {
       orderId, riderId, action: req.body.action || 'sync', otp: req.body.otp, samples: req.body.samples || [], managed: true,
       lat: req.body.lat, lng: req.body.lng,
     });
+    // WhatsApp Trial Order: tell a WhatsApp-channel driver about a step the app moved on (the periodic sync usually
+    // changes nothing, so only a step they weren't told about yet is sent).
+    try {
+      require('../whatsapp/driverOrder/flow').notifyOrderChanged(orderId, { kind: 'progress', onlyNewStep: true }).catch(() => {});
+    } catch (_) { /* bot flow unavailable in this process */ }
     return res.json({ success: true, data });
   } catch (error) {
     if (!error.statusCode) logger.error('Driver trip sync failed:', error);

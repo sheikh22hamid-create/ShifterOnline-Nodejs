@@ -307,6 +307,11 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
         }
       })
       .catch((err) => logger.error(`confirmPickupChange: rider lookup failed for rider ${riderId}:`, err));
+
+    // WhatsApp Trial Order: a WhatsApp-channel driver gets the order card with the new pickup + their current step.
+    try {
+      require("../whatsapp/driverOrder/flow").notifyOrderChanged(numericOrderId, { kind: "route_changed" }).catch(() => {});
+    } catch (_) { /* bot flow unavailable in this process */ }
   }
 
   dispatchManager.emitCustomerEvent(numericUid, "order:pickup_updated", eventPayload);
