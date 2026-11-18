@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:get_storage/get_storage.dart';
+import 'theme/nav_icons.dart';
 import 'package:intl/intl.dart';
 import 'package:goParcel/Api/Api_wrapper.dart';
 import 'package:goParcel/Api/config.dart';
@@ -228,20 +229,6 @@ class BottombarState extends State<Bottombar> {
     );
   }
 
-  List icon = [
-    "assets/home.svg",
-    "assets/package_box.svg",
-    "assets/fast_delivery.svg",
-    "assets/user-circle.svg",
-  ];
-
-  List iconFile = [
-    "assets/home_file.svg",
-    "assets/package_box_file.svg",
-    "assets/fast_delivery_file.svg",
-    "assets/user-circle_file.svg",
-  ];
-
   final _pageOption = [
     Home(),
     MyOrder(),
@@ -267,10 +254,10 @@ class BottombarState extends State<Bottombar> {
   Widget _buildBottomBar(BuildContext context) {
     return AppBottomNav(
       tabs: [
-        AppNavTab(label: 'Home'.tr, iconAsset: icon[0], selectedIconAsset: iconFile[0]),
-        AppNavTab(label: 'Orders'.tr, iconAsset: icon[1], selectedIconAsset: iconFile[1]),
-        AppNavTab(label: 'Wallet'.tr, iconAsset: icon[2], selectedIconAsset: iconFile[2]),
-        AppNavTab(label: 'Account'.tr, iconAsset: icon[3], selectedIconAsset: iconFile[3]),
+        AppNavTab(label: 'Home'.tr, iconAsset: NavIcons.home.outline, selectedIconAsset: NavIcons.home.filled),
+        AppNavTab(label: 'Orders'.tr, iconAsset: NavIcons.orders.outline, selectedIconAsset: NavIcons.orders.filled),
+        AppNavTab(label: 'Wallet'.tr, iconAsset: NavIcons.wallet.outline, selectedIconAsset: NavIcons.wallet.filled),
+        AppNavTab(label: 'Account'.tr, iconAsset: NavIcons.account.outline, selectedIconAsset: NavIcons.account.filled),
       ],
       selectedIndex: _selectedIndex,
       onTabSelected: _selectTab,

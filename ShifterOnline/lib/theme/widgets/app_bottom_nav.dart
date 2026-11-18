@@ -86,7 +86,7 @@ class _NavItem extends StatelessWidget {
             children: [
               SvgPicture.asset(
                 selected ? tab.selectedIconAsset : tab.iconAsset,
-                height: 22,
+                height: 24,
                 colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
               ),
               const SizedBox(height: 4),
