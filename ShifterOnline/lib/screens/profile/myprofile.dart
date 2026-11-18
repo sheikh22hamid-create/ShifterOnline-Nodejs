@@ -30,6 +30,7 @@ import 'LeadReferralScreen.dart';
 import '../home/referral_points_screen.dart';
 import '../../utils/Calculation.dart';
 import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_group_card.dart';
 
 class MyProfile extends StatefulWidget {
   const MyProfile({super.key});
@@ -196,20 +197,18 @@ class _MyProfileState extends State<MyProfile> {
     final quickAccess = overviewData?["quick_access"] ?? {};
     final premiumData = quickAccess["premium"] ?? {};
     final favDriversData = quickAccess["favorite_drivers"] ?? {};
-    final List favDriverList = favDriversData["drivers"] is List
-        ? (favDriversData["drivers"] as List)
-        : [];
 
     // Notification Data
     final notifData = overviewData?["notifications"] ?? {};
     final bool hasUnreadNotif = (notifData["has_unread"] == true) ||
         ((int.tryParse(notifData["unread_count"]?.toString() ?? "0") ?? 0) > 0);
 
+    final p = AppPalette.current;
     return Scaffold(
-      backgroundColor: AppPalette.light.canvas,
+      backgroundColor: p.canvas,
       body: RefreshIndicator(
         onRefresh: fetchProfileOverview,
-        color: const Color(0xFFFA4500),
+        color: p.brand,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(
             parent: BouncingScrollPhysics(),
@@ -239,28 +238,136 @@ class _MyProfileState extends State<MyProfile> {
 
               const SizedBox(height: 18),
 
-              // ── 3. Quick Access Section (Shifter Premium & Favorite Drivers) ──
-              _buildQuickAccessSection(
-                premiumData: premiumData,
-                favDriversData: favDriversData,
-                driverList: favDriverList,
+              // ── 3. Porter-style grouped cards (every row = an existing screen / handler) ──
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AppGroupCard(title: 'Saved Addresses'.tr, children: [
+                      AppMenuRow(
+                        icon: Icons.location_on_outlined,
+                        title: 'Saved Addresses'.tr,
+                        subtitle: 'Home, work and other places'.tr,
+                        onTap: () => Get.to(() => const AddressListPage()),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    AppGroupCard(title: 'Benefits'.tr, children: [
+                      AppMenuRow(
+                        icon: Icons.workspace_premium_rounded,
+                        title: (premiumData["title"]?.toString() ?? "Shifter Premium").tr,
+                        subtitle: (premiumData["subtitle"]?.toString() ??
+                                "Save more on every booking\nFaster • Better • More rewards")
+                            .replaceAll('\n', ' · '),
+                        onTap: () => Get.to(() => const PremiumPlansScreen()),
+                      ),
+                      AppMenuRow(
+                        icon: Icons.toll_outlined,
+                        title: 'Reward Points'.tr,
+                        subtitle: 'Your points and how to use them'.tr,
+                        onTap: () => Get.to(() => const ReferralPointsScreen()),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    AppGroupCard(title: 'Refer'.tr, children: [
+                      AppMenuRow(
+                        icon: Icons.card_giftcard_rounded,
+                        title: 'Refer & Earn'.tr,
+                        subtitle: 'Invite friends and earn exciting rewards'.tr,
+                        onTap: referAndEarn,
+                      ),
+                      AppMenuRow(
+                        icon: Icons.business_center_outlined,
+                        title: 'Refer business leads'.tr,
+                        onTap: () => Get.to(() => const LeadReferralScreen()),
+                      ),
+                      AppMenuRow(
+                        icon: Icons.share_rounded,
+                        title: 'Share Shifter Online'.tr,
+                        subtitle: 'Help us grow, share with your friends'.tr,
+                        onTap: share,
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    AppGroupCard(title: 'Drivers'.tr, children: [
+                      AppMenuRow(
+                        icon: Icons.favorite_rounded,
+                        title: (favDriversData["title"]?.toString() ?? "Favorite Drivers").tr,
+                        subtitle: (favDriversData["subtitle"]?.toString() ?? "Quickly book your preferred drivers")
+                            .replaceAll('\n', ' '),
+                        onTap: () => Get.to(() => const FavoriteDriversScreen()),
+                      ),
+                      AppMenuRow(
+                        icon: Icons.block_rounded,
+                        title: 'Blocked Drivers'.tr,
+                        subtitle: 'Drivers you blocked. Unblock them anytime'.tr,
+                        onTap: () => Get.to(() => const BlockedDriversScreen()),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    AppGroupCard(title: 'Preferences'.tr, children: [
+                      AppMenuRow(
+                        icon: Icons.translate_rounded,
+                        title: 'Language'.tr,
+                        onTap: () => Get.to(() => const LanguageScreen()),
+                      ),
+                      AppMenuRow(
+                        icon: notifier.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                        title: 'Dark Mode'.tr,
+                        trailing: Switch(value: notifier.isDark, activeColor: p.brand, onChanged: _setDarkMode),
+                        onTap: () => _setDarkMode(!notifier.isDark),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    AppGroupCard(title: 'Help & Support'.tr, children: [
+                      AppMenuRow(
+                        icon: Icons.headset_mic_rounded,
+                        title: 'Customer Care'.tr,
+                        subtitle: "Call $customerCareNumber • $customerCareHours",
+                        onTap: () => _callCustomerCare(),
+                      ),
+                      AppMenuRow(
+                        icon: Icons.question_mark_rounded,
+                        title: 'FAQ'.tr,
+                        subtitle: 'Find answers to common questions'.tr,
+                        onTap: () => Get.to(() => Faq()),
+                      ),
+                      AppMenuRow(
+                        icon: Icons.verified_user_rounded,
+                        title: 'Privacy Policy'.tr,
+                        subtitle: 'How we protect your data'.tr,
+                        onTap: () => _openLegalPage("Privacy Policy"),
+                      ),
+                      AppMenuRow(
+                        icon: Icons.description_rounded,
+                        title: 'Terms of Use'.tr,
+                        subtitle: 'Rules and guidelines for using Shifter Online'.tr,
+                        onTap: () => _openLegalPage("Terms of Use"),
+                      ),
+                    ]),
+                  ],
+                ),
               ),
-
-              const SizedBox(height: 22),
-
-              // ── 4. Help & Legal Section (FAQ, Privacy Policy, Terms) ──────────
-              _buildHelpAndLegalSection(),
-
-              const SizedBox(height: 22),
-
-              // ── 5. More Section (Refer & Earn, Share) ────────────────────────
-              _buildMoreSection(),
-
               const SizedBox(height: 16),
-
               // ── 6. Log Out Card ──────────────────────────────────────────────
               _buildLogoutCard(),
-
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: AppGroupCard(children: [
+                  AppMenuRow(
+                    icon: Icons.delete_outline_rounded,
+                    title: 'Delete Account'.tr,
+                    danger: true,
+                    onTap: _askDeleteAccount,
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 14),
+              Center(
+                child: Text("Version ${appVersion ?? '1.0.0'}", style: AppText.caption(p.inkSubtle)),
+              ),
               const SizedBox(height: 10),
             ],
           ),
@@ -499,48 +606,6 @@ class _MyProfileState extends State<MyProfile> {
   // ─────────────────────────────────────────────────────────────────────────────
   // Shared section heading (orange accent bar + title + subtitle)
   // ─────────────────────────────────────────────────────────────────────────────
-  Widget _sectionHeader(String title, String subtitle) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 4,
-            height: 32,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFA4500),
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title.tr,
-                style: TextStyle(
-                  fontFamily: 'Gilroy_Bold',
-                  fontSize: 16.5,
-                  color: AppPalette.light.ink,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              Text(
-                subtitle.tr,
-                style: const TextStyle(
-                  fontFamily: 'Gilroy_Medium',
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. "Complete your profile" Card
   // ─────────────────────────────────────────────────────────────────────────────
@@ -654,270 +719,6 @@ class _MyProfileState extends State<MyProfile> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 3. "Quick Access" Section
-  // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildQuickAccessSection({
-    required Map premiumData,
-    required Map favDriversData,
-    required List driverList,
-  }) {
-    final String premiumTitle = premiumData["title"]?.toString() ?? "Shifter Premium";
-    final String premiumBadge = premiumData["badge"]?.toString() ?? "NEW";
-    // The backend sends two-line copy; on a full-width row it reads better on one flowing line.
-    final String premiumSubtitle = (premiumData["subtitle"]?.toString() ??
-            "Save more on every booking\nFaster • Better • More rewards")
-        .replaceAll('\n', ' · ');
-
-    final String favTitle = favDriversData["title"]?.toString() ?? "Favorite Drivers";
-    final String favSubtitle = (favDriversData["subtitle"]?.toString() ?? "Quickly book your preferred drivers")
-        .replaceAll('\n', ' ');
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader("Quick Access", "Everything you need, quickly"),
-
-          // Premium: highlighted row. Height follows its content (no fixed height), so there is no empty space.
-          Container(
-            decoration: BoxDecoration(
-              color: AppPalette.light.warningTint,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFFED7AA), width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFF59E0B).withOpacity(0.14),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => Get.to(() => const PremiumPlansScreen()),
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B),
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFF59E0B).withOpacity(0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 26),
-                      ),
-                      const SizedBox(width: 13),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    premiumTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontFamily: 'Gilroy_Bold',
-                                      fontSize: 15,
-                                      color: AppPalette.light.ink,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                if (premiumBadge.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEA580C),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      premiumBadge,
-                                      style: const TextStyle(
-                                        fontFamily: 'Gilroy_Bold',
-                                        fontSize: 9,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              premiumSubtitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 11.5,
-                                color: Color(0xFF7C5A3A),
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        child: const Icon(Icons.chevron_right_rounded, color: Color(0xFFEA580C), size: 21),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Favorite + Blocked drivers: one grouped card, same row style as the other sections.
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFF1F5F9)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _buildMenuItem(
-                  icon: Icons.toll_outlined,
-                  iconColor: const Color(0xFF9A6700),
-                  iconBgColor: const Color(0xFFFFF6DB),
-                  title: "Reward Points",
-                  subtitle: "Your points and how to use them",
-                  onTap: () => Get.to(() => const ReferralPointsScreen()),
-                ),
-                _buildItemDivider(),
-                _buildMenuItem(
-                  icon: Icons.favorite_rounded,
-                  iconColor: const Color(0xFFF43F5E),
-                  iconBgColor: const Color(0xFFFFF1F2),
-                  title: favTitle,
-                  subtitle: favSubtitle,
-                  onTap: () => Get.to(() => const FavoriteDriversScreen()),
-                ),
-                _buildItemDivider(),
-                _buildMenuItem(
-                  icon: Icons.block_rounded,
-                  iconColor: const Color(0xFF475569),
-                  iconBgColor: const Color(0xFFF1F5F9),
-                  title: "Blocked Drivers",
-                  subtitle: "Drivers you blocked. Unblock them anytime",
-                  onTap: () => Get.to(() => const BlockedDriversScreen()),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 4. "Help & Legal" Section
-  // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildHelpAndLegalSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader("Help & Legal", "Get support and learn more"),
-
-          // Container with 3 items: FAQ, Privacy Policy, Terms of Use
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFF1F5F9)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Customer Care Helpline
-                _buildMenuItem(
-                  icon: Icons.headset_mic_rounded,
-                  iconColor: const Color(0xFF00C853),
-                  iconBgColor: const Color(0xFFE8F8EE),
-                  title: "Customer Care",
-                  subtitle: "Call $customerCareNumber • $customerCareHours",
-                  onTap: () => _callCustomerCare(),
-                ),
-                _buildItemDivider(),
-
-                // FAQ
-                _buildMenuItem(
-                  icon: Icons.question_mark_rounded,
-                  iconColor: const Color(0xFF0284C7),
-                  iconBgColor: const Color(0xFFE0F2FE),
-                  title: "FAQ",
-                  subtitle: "Find answers to common questions",
-                  onTap: () => Get.to(() => Faq()),
-                ),
-                _buildItemDivider(),
-
-                // Privacy Policy
-                _buildMenuItem(
-                  icon: Icons.verified_user_rounded,
-                  iconColor: const Color(0xFF16A34A),
-                  iconBgColor: const Color(0xFFDCFCE7),
-                  title: "Privacy Policy",
-                  subtitle: "How we protect your data",
-                  onTap: () => _openLegalPage("Privacy Policy"),
-                ),
-                _buildItemDivider(),
-
-                // Terms of Use
-                _buildMenuItem(
-                  icon: Icons.description_rounded,
-                  iconColor: const Color(0xFF6366F1),
-                  iconBgColor: const Color(0xFFEEF2FF),
-                  title: "Terms of Use",
-                  subtitle: "Rules and guidelines for using Shifter Online",
-                  onTap: () => _openLegalPage("Terms of Use"),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1040,60 +841,6 @@ class _MyProfileState extends State<MyProfile> {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 5. "More" Section
-  // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildMoreSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader("More", "Additional options"),
-
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFF1F5F9)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Refer & Earn
-                _buildMenuItem(
-                  icon: Icons.card_giftcard_rounded,
-                  iconColor: const Color(0xFFE11D48),
-                  iconBgColor: const Color(0xFFFFE4E6),
-                  title: "Refer & Earn",
-                  subtitle: "Invite friends and earn exciting rewards",
-                  onTap: referAndEarn,
-                ),
-                _buildItemDivider(),
-
-                // Share Shifter Online
-                _buildMenuItem(
-                  icon: Icons.share_rounded,
-                  iconColor: const Color(0xFF3B82F6),
-                  iconBgColor: const Color(0xFFE0E7FF),
-                  title: "Share Shifter Online",
-                  subtitle: "Help us grow, share with your friends",
-                  onTap: share,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
   // 6. Log Out Card
   // ─────────────────────────────────────────────────────────────────────────────
   Widget _buildLogoutCard() {
@@ -1171,71 +918,6 @@ class _MyProfileState extends State<MyProfile> {
   // ─────────────────────────────────────────────────────────────────────────────
   // Reusable Menu Item & Divider
   // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildMenuItem({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBgColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: iconBgColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 20),
-              ),
-              const SizedBox(width: 14),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title.tr,
-                      style: AppText.bodyStrong(AppPalette.light.ink).copyWith(fontSize: 14.5),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle.tr,
-                      style: AppText.caption(AppPalette.light.inkSubtle).copyWith(fontSize: 11.5),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded, color: AppPalette.light.inkSubtle, size: 22),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildItemDivider() {
-    return const Padding(
-      padding: EdgeInsets.only(left: 68, right: 14),
-      child: Divider(
-        height: 1,
-        thickness: 0.8,
-        color: Color(0xFFF1F5F9),
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Legal Pages Handler (Privacy Policy & Terms)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1290,6 +972,27 @@ class _MyProfileState extends State<MyProfile> {
   // ─────────────────────────────────────────────────────────────────────────────
   // Settings Bottom Sheet (Gear Icon)
   // ─────────────────────────────────────────────────────────────────────────────
+  /// Dark mode switch (Account row + settings sheet).
+  Future<void> _setDarkMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => notifier.setIsDark = value);
+    prefs.setBool("isDark", value);
+  }
+
+  /// Delete-account confirmation (Account row + settings sheet).
+  void _askDeleteAccount() {
+    deleteAndLogoutBottomsheet(
+      context,
+      titel: "Delete Account".tr,
+      description: "Are you sure you want to delete your account permanently?".tr,
+      buttonText: "Yes, Delete".tr,
+      onTap: () {
+        Get.back();
+        deleteAccount();
+      },
+    );
+  }
+
   void _showSettingsBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -1382,11 +1085,7 @@ class _MyProfileState extends State<MyProfile> {
                 trailing: CupertinoSwitch(
                   value: notifier.isDark,
                   activeColor: const Color(0xFFFA4500),
-                  onChanged: (value) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    setState(() => notifier.setIsDark = value);
-                    prefs.setBool("isDark", value);
-                  },
+                  onChanged: _setDarkMode,
                 ),
               ),
 
@@ -1414,16 +1113,7 @@ class _MyProfileState extends State<MyProfile> {
                 ),
                 onTap: () {
                   Navigator.pop(context);
-                  deleteAndLogoutBottomsheet(
-                    context,
-                    titel: "Delete Account".tr,
-                    description: "Are you sure you want to delete your account permanently?".tr,
-                    buttonText: "Yes, Delete".tr,
-                    onTap: () {
-                      Get.back();
-                      deleteAccount();
-                    },
-                  );
+                  _askDeleteAccount();
                 },
               ),
 
