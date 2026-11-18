@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../utils/colors.dart';
+import '../../utils/stop_rules.dart';
 import 'location_search_screen.dart';
 
 class AddStopsScreen extends StatefulWidget {
@@ -322,8 +323,13 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     );
 
     if (result != null && mounted) {
+      final stop = Map<String, dynamic>.from(result);
+      if (isStopBeyondFinalDrop(pickup: _pickupData, drop: _dropData, stop: stop)) {
+        await _showStopBeyondDropDialog();
+        return;
+      }
       setState(() {
-        _stops.add(Map<String, dynamic>.from(result));
+        _stops.add(stop);
       });
       _loadRoadRoute();
     }
@@ -341,8 +347,13 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     );
 
     if (result != null && mounted) {
+      final stop = Map<String, dynamic>.from(result);
+      if (isStopBeyondFinalDrop(pickup: _pickupData, drop: _dropData, stop: stop)) {
+        await _showStopBeyondDropDialog();
+        return;
+      }
       setState(() {
-        _stops[index] = Map<String, dynamic>.from(result);
+        _stops[index] = stop;
       });
       _loadRoadRoute();
     }
@@ -407,7 +418,29 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     _loadRoadRoute();
   }
 
-  void _onConfirm() {
+  // Same rule the old Home route card enforced: a stop may not lie beyond the final drop.
+  Future<void> _showStopBeyondDropDialog() async {
+    await Get.dialog<void>(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Stop location not allowed'.tr),
+        content: Text(
+          'You cannot add a stop beyond the final drop location. Please choose a location before the final drop.'.tr,
+        ),
+        actions: [
+          TextButton(onPressed: Get.back, child: Text('Okay'.tr)),
+        ],
+      ),
+      barrierDismissible: false,
+    );
+  }
+
+  Future<void> _onConfirm() async {
+    // The drop can be changed on this screen, so re-check every stop against the final drop.
+    if (firstStopBeyondDrop(pickup: _pickupData, drop: _dropData, stops: _stops) >= 0) {
+      await _showStopBeyondDropDialog();
+      return;
+    }
     _storage.write("PickupAddress", [_pickupData]);
     _storage.write("DropeAddress", [_dropData]);
 
