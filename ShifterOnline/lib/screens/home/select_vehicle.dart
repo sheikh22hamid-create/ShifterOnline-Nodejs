@@ -77,6 +77,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _vehicleRowKey = GlobalKey();
+  final GlobalKey _selectedCardKey = GlobalKey();
   // Set only by a user tap on a vehicle card, so the screen never auto-scrolls on open.
   bool _autoScrollPending = false;
 
@@ -187,7 +188,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   // delivery options are visible right below it.
   void _scrollToVehicleDetails() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final rowContext = _vehicleRowKey.currentContext;
+      final rowContext = _selectedCardKey.currentContext ?? _vehicleRowKey.currentContext;
       if (!mounted || rowContext == null) return;
       Scrollable.ensureVisible(rowContext, alignment: 0, duration: const Duration(milliseconds: 450), curve: Curves.easeInOut);
     });
@@ -1565,20 +1566,27 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                   else if (_vehicles.isEmpty)
                     _emptyState()
                   else
-                    SizedBox(
+                    Column(
                       key: _vehicleRowKey,
-                      height: 142,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _vehicles.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 10),
-                        itemBuilder: (_, index) => _vehicleCard(index, _vehicles[index]),
-                      ),
+                      children: [
+                        for (var index = 0; index < _vehicles.length; index++) ...[
+                          if (index > 0) const SizedBox(height: 10),
+                          KeyedSubtree(
+                            key: index == _selectedIndex ? _selectedCardKey : null,
+                            child: _vehicleCard(index, _vehicles[index]),
+                          ),
+                          // The chosen vehicle's options (body type, models, fare) open right under its card.
+                          if (index == _selectedIndex && _selected != null && _isAvailable(_selected!['availability'])) ...[
+                            const SizedBox(height: 10),
+                            _selectedVehicleSection(),
+                          ],
+                        ],
+                      ],
                     ),
                   const SizedBox(height: 14),
-                  if (_selected != null && _isAvailable(_selected!['availability']))
-                    _selectedVehicleSection()
-                  else if (_vehicles.isNotEmpty && !_vehicles.any((v) => _isAvailable(v['availability'])))
+                  if (!(_selected != null && _isAvailable(_selected!['availability'])) &&
+                      _vehicles.isNotEmpty &&
+                      !_vehicles.any((v) => _isAvailable(v['availability'])))
                     _noDriversAvailableCard(),
                 ],
               ),
@@ -1603,20 +1611,18 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
   }
 
-  Widget _loadingVehicles() => SizedBox(
-        height: 142,
-        child: Row(children: [
-          const Expanded(child: AppSkeleton(height: 142, radius: 18)),
-          const SizedBox(width: 10),
-          const Expanded(child: AppSkeleton(height: 142, radius: 18)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Center(
-              child: Text('Finding vehicles near pickup...'.tr,
-                  textAlign: TextAlign.center, style: AppText.caption(AppPalette.current.inkSubtle)),
-            ),
-          ),
-        ]),
+  Widget _loadingVehicles() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AppSkeleton(height: 72, radius: 16),
+          const SizedBox(height: 10),
+          const AppSkeleton(height: 72, radius: 16),
+          const SizedBox(height: 10),
+          const AppSkeleton(height: 72, radius: 16),
+          const SizedBox(height: 8),
+          Text('Finding vehicles near pickup...'.tr,
+              textAlign: TextAlign.center, style: AppText.caption(AppPalette.current.inkSubtle)),
+        ],
       );
 
   Widget _routeSummary() {
@@ -1928,10 +1934,15 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     final available = _isAvailable(option['availability']);
     final selected = index == _selectedIndex && available;
     final image = _image(option);
+    final capacity = _availabilityValue(option, ['max_weight_kg', 'capacity', 'max_weight']);
+    final eta = _availabilityValue(option, ['estimated_pickup_minutes', 'eta_minutes', 'eta']);
+    final meta = [if (capacity.isNotEmpty) '$capacity kg', if (eta.isNotEmpty) '$eta mins'].join(' · ');
     return VehicleOptionCard(
       name: _vehicleName(option),
       imageUrl: image.isEmpty ? null : Config.resolveImageUrl(image),
-      caption: available ? _startingFare(option) : _unavailableReason(option),
+      meta: meta,
+      price: _startingFare(option),
+      unavailableText: _unavailableReason(option),
       selected: selected,
       available: available,
       onTap: available

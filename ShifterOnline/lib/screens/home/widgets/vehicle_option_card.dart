@@ -3,13 +3,17 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/pressable_scale.dart';
 
-/// Vehicle choice on the Choose-vehicle screen. Unavailable vehicles stay tappable so the screen can explain why.
+/// Porter-style vehicle row on Select Vehicle. The selected vehicle grows into a large card (bigger image,
+/// brand outline + tint); the rest are compact rows. Unavailable vehicles stay tappable so the screen can
+/// explain why.
 class VehicleOptionCard extends StatelessWidget {
   const VehicleOptionCard({
     super.key,
     required this.name,
     this.imageUrl,
-    this.caption,
+    this.meta,
+    this.price,
+    this.unavailableText,
     this.tag,
     required this.selected,
     required this.available,
@@ -18,8 +22,15 @@ class VehicleOptionCard extends StatelessWidget {
 
   final String name;
   final String? imageUrl;
-  /// Fare text when available, the reason when not.
-  final String? caption;
+
+  /// "500 kg · 4 mins" — built by the screen from the parts it has.
+  final String? meta;
+
+  /// Fare text, shown when available.
+  final String? price;
+
+  /// Reason, shown instead of the price when not available.
+  final String? unavailableText;
   final String? tag;
   final bool selected;
   final bool available;
@@ -28,81 +39,88 @@ class VehicleOptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
-    final placeholder = Icon(Icons.local_shipping_outlined, color: p.inkSubtle, size: 38);
+    final imageSize = selected ? 96.0 : 56.0;
+    final placeholder = Icon(Icons.local_shipping_outlined, color: p.inkSubtle, size: selected ? 44 : 30);
+    final right = available ? price : unavailableText;
     return Opacity(
       key: const ValueKey('vehicle-card-opacity'),
       opacity: available ? 1 : 0.45,
       child: PressableScale(
         onTap: onTap,
+        semanticLabel: name,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          width: 128,
-          clipBehavior: Clip.antiAlias,
+          padding: EdgeInsets.all(selected ? 14 : 10),
           decoration: BoxDecoration(
             color: selected ? p.brandTint : p.surface,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: selected ? p.brand : p.line, width: selected ? 1.6 : 1),
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: selected ? Border.all(color: p.brand, width: 1.5) : null,
+            boxShadow: selected ? null : AppShadow.card,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  color: selected ? p.surface.withValues(alpha: 0.6) : p.canvas,
-                  padding: const EdgeInsets.all(8),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: (imageUrl == null || imageUrl!.isEmpty)
-                            ? Center(child: placeholder)
-                            : Image.network(
-                                imageUrl!,
-                                fit: BoxFit.contain,
-                                cacheWidth: 300,
-                                errorBuilder: (_, __, ___) => Center(child: placeholder),
-                              ),
+              SizedBox(
+                key: const ValueKey('vehicle-image-slot'),
+                width: imageSize,
+                height: imageSize,
+                child: (imageUrl == null || imageUrl!.isEmpty)
+                    ? Center(child: placeholder)
+                    : Image.network(
+                        imageUrl!,
+                        fit: BoxFit.contain,
+                        cacheWidth: 300,
+                        errorBuilder: (_, __, ___) => Center(child: placeholder),
                       ),
-                      if (tag != null)
-                        PositionedDirectional(
-                          top: 0,
-                          start: 0,
-                          child: Container(
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.bodyStrong(available ? p.ink : p.inkSubtle).copyWith(fontSize: 16)),
+                        if (tag != null)
+                          Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(color: p.brandTint, borderRadius: BorderRadius.circular(5)),
                             child: Text(tag!,
-                                style: AppText.caption(p.brandText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 9.5)),
+                                style: AppText.caption(p.brandText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 10)),
                           ),
-                        ),
-                      if (selected)
-                        PositionedDirectional(
-                          top: 0,
-                          end: 0,
-                          child: Icon(Icons.check_circle_rounded, color: p.brand, size: 18),
-                        ),
+                      ],
+                    ),
+                    if (meta != null && meta!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(meta!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
                     ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.bodyStrong(available ? p.ink : p.inkSubtle).copyWith(fontSize: 13)),
-                    if (caption != null && caption!.isNotEmpty)
-                      Text(
-                        caption!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.caption(available ? p.inkSubtle : p.danger).copyWith(fontSize: 11),
-                      ),
                   ],
                 ),
               ),
+              if (right != null && right.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 110),
+                  child: Text(
+                    right,
+                    textAlign: TextAlign.end,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: available
+                        ? AppText.bodyStrong(p.ink).copyWith(fontSize: 16)
+                        : AppText.caption(p.danger).copyWith(fontSize: 12),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
