@@ -91,17 +91,15 @@ class _ServiceTile extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.bodyStrong(p.ink)),
+                  // No line cap: long labels ("Customise Order") wrap on narrow phones / big text instead of cutting off.
+                  child: Text(label, style: AppText.bodyStrong(p.ink).copyWith(height: 1.15)),
                 ),
                 Icon(Icons.chevron_right_rounded, size: 20, color: p.ink),
               ],
             ),
             const SizedBox(height: 2),
             Text(sub,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption(p.inkMuted)),
           ],

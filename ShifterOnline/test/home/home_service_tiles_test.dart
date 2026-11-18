@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/home/widgets/home_service_tiles.dart';
 
@@ -34,13 +35,19 @@ void main() {
     }
   });
 
-  testWidgets('labels stay on one line', (tester) async {
-    await tester.pumpWidget(_host(
-        HomeServiceTiles(onBookNow: () {}, onSchedule: () {}, onLowFare: () {}, onCustomise: () {})));
-    for (final l in ['Book Now', 'Schedule', 'Low Fare', 'Customise Order']) {
-      expect(tester.widget<Text>(find.text(l)).maxLines, 1);
-    }
-  });
+  for (final scale in [1.0, 1.3]) {
+    testWidgets('labels are never cut off on a 360dp phone at textScale $scale', (tester) async {
+      await tester.pumpWidget(_host(
+          HomeServiceTiles(onBookNow: () {}, onSchedule: () {}, onLowFare: () {}, onCustomise: () {}),
+          width: 360,
+          textScale: scale));
+      await tester.pumpAndSettle();
+      for (final l in ['Book Now', 'Schedule', 'Low Fare', 'Customise Order']) {
+        final para = tester.renderObject<RenderParagraph>(find.text(l));
+        expect(para.didExceedMaxLines, isFalse, reason: l);
+      }
+    });
+  }
 
   testWidgets('width 320, textScale 1.3 does not overflow; art placeholders show', (tester) async {
     await tester.pumpWidget(_host(

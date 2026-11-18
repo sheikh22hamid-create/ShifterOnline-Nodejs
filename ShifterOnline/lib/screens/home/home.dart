@@ -42,6 +42,8 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart' as sql;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
+import 'package:goParcel/screens/profile/AddressList.dart';
+import 'package:goParcel/theme/widgets/section_header.dart';
 import 'widgets/home_header.dart';
 import 'widgets/home_pickup_card.dart';
 import 'widgets/home_service_tiles.dart';
@@ -282,6 +284,178 @@ class _HomeState extends State<Home> {
 
 
 
+
+  Future<void> _selectSavedDropLocation(Map<String, dynamic> location) async {
+    await _ensureCurrentPickup();
+    if (_confirmedPickupData == null) {
+      ApiWrapper.showToastMessage("Please select pickup location first".tr);
+      await _changePickupLocation();
+      if (_confirmedPickupData == null) return;
+    }
+
+    final drop = Map<String, dynamic>.from(location);
+    if (!await _locationsServiceable(_confirmedPickupData!, drop)) return;
+    await getdata.write("DropeAddress", [drop]);
+    if (!mounted) return;
+
+    setState(() {
+      _pickupConfirmed = true;
+      _confirmedDropData = drop;
+      _confirmedDropAddress = drop["address"]?.toString();
+      _isLoadingVehicleAvailability = true;
+      _vehicleAvailabilityError = null;
+      _vehicleAvailabilityById.clear();
+    });
+
+    await _loadVehicleAvailability(_confirmedPickupData!);
+    if (!mounted) return;
+    await _openVehicleSelection();
+  }
+
+  Future<void> _addQuickLocation() async {
+    final uid = getdata.read("Uid") ?? getdata.read("UserLogin")?["id"];
+    if (uid == null || uid.toString().isEmpty || uid.toString() == "0") {
+      ApiWrapper.showToastMessage("Please login to save locations".tr);
+      await Get.to(() => SignIn());
+      final newUid = getdata.read("Uid") ?? getdata.read("UserLogin")?["id"];
+      if (newUid == null || newUid.toString().isEmpty || newUid.toString() == "0") return;
+    }
+    final result = await Get.to(() => const LocationSearchScreen(locationType: "Address"));
+    if (result != null) {
+      await _loadSavedLocations();
+    }
+  }
+
+  String _quickLocationTitle(Map<String, dynamic> location) {
+    final type = location["type"]?.toString() ?? "Other";
+    return type.toLowerCase() == "office" ? "Work" : type;
+  }
+
+  String _quickLocationIcon(Map<String, dynamic> location) {
+    switch (location["type"]?.toString().toLowerCase()) {
+      case "home":
+        return "assets/selecthome.png";
+      case "office":
+        return "assets/selectoffice.png";
+      default:
+        return "assets/selectothers.png";
+    }
+  }
+
+  Widget _buildQuickLocations() {
+    if (_isLoadingSavedLocations) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 17),
+        child: AppSkeleton(height: 82, radius: 16),
+      );
+    }
+
+    final locations = _savedLocations.take(3).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 17),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(
+            title: "Saved places".tr,
+            actionLabel: "View all".tr,
+            onAction: () async {
+              await Get.to(() => const AddressListPage());
+              _loadSavedLocations();
+            },
+          ),
+          const SizedBox(height: 9),
+          SizedBox(
+            height: 82,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: locations.length + 1,
+              separatorBuilder: (_, __) => const SizedBox(width: 9),
+              itemBuilder: (context, index) {
+                if (index == locations.length) {
+                  return _quickLocationCard(
+                    title: "Add New".tr,
+                    subtitle: "Save for later".tr,
+                    icon: Icon(Icons.add_rounded,
+                        color: AppPalette.current.ink, size: 26),
+                    background: AppPalette.current.canvas,
+                    onTap: _addQuickLocation,
+                  );
+                }
+
+                final location = locations[index];
+                return _quickLocationCard(
+                  title: _quickLocationTitle(location),
+                  subtitle: location["address"]?.toString() ?? "",
+                  icon: Image.asset(_quickLocationIcon(location), height: 26),
+                  background: AppPalette.current.brandTint,
+                  onTap: () => _selectSavedDropLocation(location),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickLocationCard({
+    required String title,
+    required String subtitle,
+    required Widget icon,
+    required Color background,
+    required VoidCallback onTap,
+  }) {
+    final p = AppPalette.current;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      child: Container(
+        width: 154,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: p.line),
+        ),
+        child: Row(
+          children: [
+            Container(
+              height: 43,
+              width: 43,
+              decoration: BoxDecoration(
+                color: background,
+                shape: BoxShape.circle,
+              ),
+              child: Center(child: icon),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption(p.inkSubtle).copyWith(fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _changePickupLocation() async {
     getdata.remove("PickupAddress");
@@ -1167,6 +1341,17 @@ class _HomeState extends State<Home> {
     );
   }
 
+
+  /// Home tiles always start a new booking at "where to?" (Porter flow): the drop picked for an earlier
+  /// booking is no longer shown on Home, so it must not be reused silently. The handler then takes its
+  /// existing "no drop yet" path.
+  Future<void> _startFreshBooking(Future<void> Function() handler) async {
+    setState(() {
+      _confirmedDropData = null;
+      _confirmedDropAddress = null;
+    });
+    await handler();
+  }
 
   Future<void> _handleBookNowTap() async {
     setState(() {
@@ -2344,9 +2529,9 @@ class _HomeState extends State<Home> {
                       const SizedBox(height: 12),
                       _buildActiveOrderStrip(),
                       HomeServiceTiles(
-                        onBookNow: _handleBookNowTap,
-                        onSchedule: _handleScheduleBookingTap,
-                        onLowFare: _handleNextDayDeliveryTap,
+                        onBookNow: () => _startFreshBooking(_handleBookNowTap),
+                        onSchedule: () => _startFreshBooking(_handleScheduleBookingTap),
+                        onLowFare: () => _startFreshBooking(_handleNextDayDeliveryTap),
                         onCustomise: CustomiseOrderTile.open,
                         scheduleEnabled: _scheduleBookingEnabled,
                       ),
@@ -2355,6 +2540,7 @@ class _HomeState extends State<Home> {
                       const FreeRideChanceTile(),
                       const SizedBox(height: 12),
                       if (showHowToUse) _buildHowToUseCard(),
+                      _buildQuickLocations(),
                       // Wheeler Selection Section (shown after route selection)
                       if (_showLegacyVehicleSection && _pickupConfirmed)
                         Container(
