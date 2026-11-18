@@ -36,7 +36,7 @@ class TripCompleteHeader extends StatelessWidget {
       decoration: BoxDecoration(
         color: p.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.line),
+        boxShadow: AppShadow.card,
       ),
       child: Column(
         children: [
@@ -87,7 +87,7 @@ class RateTripCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: p.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: p.line),
+        boxShadow: AppShadow.card,
       ),
       child: Column(
         children: [

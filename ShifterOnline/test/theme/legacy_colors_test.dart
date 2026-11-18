@@ -4,7 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/theme/legacy_color_map.dart';
 
 /// Files the v2 restyle has swept: they must not regain hard-coded legacy colours.
-const _swept = <String>[];
+const _swept = <String>[
+  'lib/screens/home/waiting_screen.dart',
+  'lib/screens/myorder/widgets/trip_complete_widgets.dart',
+];
 
 void main() {
   test('map covers every colour the plan table names', () {
@@ -25,6 +28,13 @@ void main() {
     for (final path in _swept) {
       final violations = legacyColorViolations(File(path).readAsStringSync());
       expect(violations, isEmpty, reason: '$path:\n${violations.take(20).join('\n')}');
+    }
+  });
+
+  test('swept files never force the light palette (dark mode must follow the app switch)', () {
+    for (final path in _swept) {
+      final src = File(path).readAsStringSync();
+      expect(src.contains('AppPalette.light'), isFalse, reason: path);
     }
   });
 }

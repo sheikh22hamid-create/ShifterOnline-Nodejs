@@ -126,7 +126,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
   }
 
   void _showCancelDialog() {
-    final p = AppPalette.light;
+    final p = AppPalette.current;
     showDialog(
       context: context,
       builder: (context) {
@@ -251,7 +251,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
               children: [
                 Text(title, style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 14.5, color: color)),
                 const SizedBox(height: 2),
-                Text(body, style: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: AppPalette.light.inkMuted)),
+                Text(body, style: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12.5, color: AppPalette.current.inkMuted)),
               ],
             ),
           ),
@@ -551,7 +551,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
           decoration: BoxDecoration(
             color: p.surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: p.line),
+            boxShadow: AppShadow.card,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
