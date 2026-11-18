@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shifter v2 Select Vehicle</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#B83C0C}a:hover{color:#8A2C08}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 1180px; box-sizing: border-box; background: #F3F5F9; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #15171C; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <header style="background: #FFFFFF; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 8px; flex-shrink: 0">
+    <button aria-label="Back" style="width: 44px; height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#15171C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path></svg>
+    </button>
+    <h1 style="margin: 0; font-size: 19px; font-weight: 700">Select Vehicle</h1>
+  </header>
+
+  <div style="padding: 12px 16px 120px; display: flex; flex-direction: column; gap: 12px">
+
+    <section style="background: #FFFFFF; border-radius: 16px; box-shadow: 0 2px 8px rgba(16,24,40,0.06); padding: 14px 14px 6px">
+      <div style="display: flex; gap: 12px">
+        <div style="display: flex; flex-direction: column; align-items: center; padding-top: 2px">
+          <span style="width: 22px; height: 22px; border-radius: 999px; background: #16A34A; display: flex; align-items: center; justify-content: center">
+            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
+          </span>
+          <span style="width: 0; height: 30px; border-left: 2px dotted #C5CAD3; margin: 4px 0"></span>
+          <span style="width: 22px; height: 22px; border-radius: 999px; background: #B42318; display: flex; align-items: center; justify-content: center">
+            <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M19 12l-7 7-7-7"></path></svg>
+          </span>
+        </div>
+        <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 14px; font-weight: 700">Rahul Sharma · 98XXXXXX10</span>
+            <span style="font-size: 13px; color: #4B515E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Rajwada, Indore, Madhya Pradesh</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 14px; font-weight: 700">Amit Verma · 97XXXXXX42</span>
+            <span style="font-size: 13px; color: #4B515E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Vijay Nagar, Indore, Madhya Pradesh</span>
+          </div>
+        </div>
+        <button aria-label="Swap pickup and drop" style="width: 44px; height: 44px; align-self: center; border: 1px solid #E6E9EF; border-radius: 12px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15171C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"></path><path d="M3 8l4-4 4 4"></path><path d="M17 20V4"></path><path d="M21 16l-4 4-4-4"></path></svg>
+        </button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid #EEF0F4; margin-top: 12px">
+        <button style="height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; color: #B83C0C">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B83C0C" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v8"></path><path d="M8 12h8"></path></svg>
+          Add Stop
+        </button>
+        <button style="height: 44px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 700; color: #B83C0C">
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#B83C0C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+          Edit Locations
+        </button>
+      </div>
+    </section>
+
+    <div style="display: flex; gap: 8px">
+      <span style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; background: #FFFFFF; font-size: 13px; font-weight: 700; box-shadow: 0 2px 8px rgba(16,24,40,0.06)">
+        <span style="width: 8px; height: 8px; border-radius: 999px; background: #16A34A"></span>Now
+      </span>
+      <button style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: none; border-radius: 999px; background: #FFFFFF; font-size: 13px; font-weight: 600; color: #15171C; box-shadow: 0 2px 8px rgba(16,24,40,0.06)">
+        Driver search area · 3 km
+        <span style="font-weight: 700; color: #B83C0C">Change</span>
+      </button>
+    </div>
+
+    <div style="background: #FFF0E8; border: 1.5px solid #FF6B35; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
+      <div style="height: 92px; border: 1.5px dashed #D9A88F; border-radius: 12px; background: #FFF8F4; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #8A5A44">Vehicle photo (from admin)</div>
+      <div style="display: flex; align-items: flex-end; justify-content: space-between">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 800">3 Wheeler
+            <svg role="img" aria-label="Vehicle info" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4B515E" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg>
+          </span>
+          <span style="font-size: 13px; color: #4B515E">500 kg · 4 mins away</span>
+        </div>
+        <span style="font-size: 20px; font-weight: 800">₹403</span>
+      </div>
+    </div>
+
+    <sc-for list="{{vehicles}}" as="v" hint-placeholder-count="4">
+      <a href="#" style="text-decoration: none; color: inherit; background: #FFFFFF; border-radius: 16px; box-shadow: 0 2px 8px rgba(16,24,40,0.06); padding: 10px 14px; display: flex; align-items: center; gap: 12px; min-height: 68px; box-sizing: border-box">
+        <span style="width: 56px; height: 44px; border: 1.5px dashed #D9A88F; border-radius: 10px; background: #FFF8F4; flex-shrink: 0"></span>
+        <span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+          <span style="display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700">{{v.name}}
+            <sc-if value="{{v.isNew}}" hint-placeholder-val="{{false}}"><span style="font-size: 10px; font-weight: 800; color: #1A0B04; background: #FFD3BF; border-radius: 999px; padding: 2px 6px">NEW</span></sc-if>
+          </span>
+          <span style="font-size: 12px; color: #4B515E">{{v.meta}}</span>
+        </span>
+        <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px">
+          <span style="font-size: 16px; font-weight: 800">{{v.price}}</span>
+          <sc-if value="{{v.was}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: #636977; text-decoration: line-through">{{v.was}}</span></sc-if>
+        </span>
+      </a>
+    </sc-for>
+
+    <section style="background: #FFFFFF; border-radius: 16px; box-shadow: 0 2px 8px rgba(16,24,40,0.06); padding: 6px 14px">
+      <h2 style="margin: 10px 0 4px; font-size: 16px; font-weight: 700">Offers &amp; Details</h2>
+      <sc-for list="{{details}}" as="d" hint-placeholder-count="4">
+        <a href="#" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; min-height: 52px; border-top: {{d.border}}">
+          <span style="width: 32px; height: 32px; border-radius: 10px; background: #F3F5F9; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #4B515E; flex-shrink: 0">{{d.icon}}</span>
+          <span style="flex-grow: 1; font-size: 14px; font-weight: 600">{{d.label}}</span>
+          <span style="font-size: 13px; font-weight: 700; color: {{d.valueColor}}">{{d.value}}</span>
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4B515E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+        </a>
+      </sc-for>
+    </section>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; background: #FFFFFF; box-shadow: 0 -2px 10px rgba(16,24,40,0.08); padding: 12px 16px 20px">
+    <button style="width: 100%; height: 52px; border: none; border-radius: 12px; background: #FF6B35; color: #1A0B04; font-size: 16px; font-weight: 800">Proceed with 3 Wheeler</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var line = '1px solid #EEF0F4';
+    return {
+      vehicles: [
+        { name: '2 Wheeler', meta: '20 kg · 2 mins', price: '₹111', was: '₹121', isNew: false },
+        { name: 'E Loader', meta: '300 kg · 4 mins', price: '₹325', was: '', isNew: true },
+        { name: 'Tata Ace', meta: '750 kg · 6 mins', price: '₹560', was: '₹590', isNew: false },
+        { name: 'Pickup 8 ft', meta: '1,250 kg · 9 mins', price: '₹720', was: '', isNew: false }
+      ],
+      details: [
+        { icon: 'Gt', label: 'Goods type', value: 'Household', valueColor: '#4B515E', border: 'none' },
+        { icon: '%', label: 'Apply Coupon', value: '', valueColor: '#4B515E', border: line },
+        { icon: 'Rp', label: 'Reward Points', value: 'Use 120', valueColor: '#B83C0C', border: line },
+        { icon: 'GST', label: 'GST details', value: 'Add GSTIN', valueColor: '#B83C0C', border: line }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

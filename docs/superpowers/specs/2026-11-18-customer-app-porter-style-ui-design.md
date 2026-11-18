@@ -6,6 +6,8 @@ Builds on: `docs/superpowers/specs/2026-11-16-customer-app-ui-redesign-design.md
 Reference screenshots (Porter, captured from the owner's phone, Indore pickup, 2026-11-18):
 `docs/design/porter-reference-2026-11-18/` — home, service sheet, drop search, drop details, select
 vehicle, review booking, orders, payments, account.
+Mockups: https://claude.ai/artifact/1da6CdHakdNLknLW959LfP (source copy: `docs/design/porter-style-mockups/`).
+Asset prompts: `docs/design/porter-style-asset-prompts.md`.
 
 ## 1. Intent
 
