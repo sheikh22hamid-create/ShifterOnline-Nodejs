@@ -32,13 +32,14 @@ import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 import '../myorder/trackingway.dart';
 import 'widgets/vehicle_option_card.dart';
+import 'widgets/booking_type_card.dart';
+import '../../theme/widgets/route_marker.dart';
 import 'widgets/booking_option_widgets.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_buttons.dart';
 import '../../theme/widgets/app_info_banner.dart';
 import '../../theme/widgets/app_skeleton.dart';
 import '../../theme/widgets/app_top_bar.dart';
-import '../../theme/widgets/pressable_scale.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
   final Map<String, dynamic> pickup;
@@ -1511,6 +1512,23 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                 children: [
                   if (_freeRideChanceLocked) _freeRideChanceLockedBanner(),
                   _routeSummary(),
+                  const SizedBox(height: 12),
+                  BookingTypeCard(
+                    bookingType: _currentBookingType,
+                    scheduleLabel:
+                        _scheduledFor == null ? null : DateFormat('EEE, d MMM yyyy · h:mm a').format(_scheduledFor!),
+                    onChangeSchedule: _pickScheduleDateTime,
+                    radiusKm: _selectedRadiusKm,
+                    onRadiusTap: _openSearchAreaSheet,
+                    lowFareChild: _lowFareChild(),
+                  ),
+                  if (_currentBookingType == 2) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Your order will go LIVE at the selected time. Once a driver accepts your order, the driver will take some time to reach your pickup location from their current location.',
+                      style: TextStyle(color: AppPalette.current.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -1525,38 +1543,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                                 style: AppText.caption(p.inkSubtle).copyWith(fontSize: 11)),
                           ],
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Kept prominent so customers find it: brand outline + tint.
-                      Flexible(
-                      child: PressableScale(
-                        onTap: _openSearchAreaSheet,
-                        semanticLabel: 'Search area: @km km'.trParams({'km': '$_selectedRadiusKm'}),
-                        child: Container(
-                          height: 40,
-                          padding: const EdgeInsets.fromLTRB(10, 0, 8, 0),
-                          decoration: BoxDecoration(
-                            color: p.brandTint,
-                            border: Border.all(color: p.brand, width: 1.5),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.radar_rounded, color: p.brand, size: 18),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                // Short label: the full "Search area: N km" was cut off next to the title.
-                                child: Text('$_selectedRadiusKm km',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
-                              ),
-                              Icon(Icons.keyboard_arrow_down_rounded, color: p.ink, size: 20),
-                            ],
-                          ),
-                        ),
-                      ),
                       ),
                     ],
                   ),
@@ -1648,16 +1634,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: notifier.getBgColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: AppPalette.current.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: AppShadow.card,
       ),
       child: Column(
         children: [
@@ -1671,15 +1650,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Pickup Icon
-                    Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Color(0xff10B981),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 15),
-                    ),
+                    const RouteMarker.pickup(size: 26),
 
                     // Dashed / solid vertical line
                     Container(
@@ -1691,24 +1662,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
 
                     // Intermediate Stops icons (if any)
                     for (int i = 0; i < _stopsData.length; i++) ...[
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          color: linercolor,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            "${i + 1}",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ),
+                      RouteMarker.stop(i + 1, size: 22),
                       Container(
                         width: 1.5,
                         height: 14,
@@ -1718,15 +1672,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                     ],
 
                     // Drop Icon
-                    Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Color(0xffEF4444),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 15),
-                    ),
+                    const RouteMarker.drop(size: 26),
                   ],
                 ),
 
@@ -2279,6 +2225,49 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   }
 
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
+  /// Low Fare quote + pickup date + pickup window — moved unchanged from the bottom bar into the booking-type card.
+  Widget? _lowFareChild() {
+    if (_currentBookingType != 3 || _lowFare == null) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppInfoBanner(
+          tone: AppBannerTone.brand,
+          icon: Icons.local_offer_rounded,
+          text: 'Low fare: Model 1 ₹${_number(_lowFare!['model1_fare']).toStringAsFixed(2)} - ${_number(_lowFare!['discount_percent']).toStringAsFixed(0)}% off = ₹${_number(_lowFare!['final_fare']).toStringAsFixed(2)}',
+        ),
+        const SizedBox(height: 8),
+        BookingPickerField(
+          icon: Icons.event_rounded,
+          label: 'Pickup date',
+          value: _lowFareWindow.date == null ? null : DateFormat('EEE, d MMM yyyy').format(_lowFareWindow.date!),
+          placeholder: 'Pick a date (from tomorrow)',
+          onTap: _pickLowFareDate,
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          for (final isFrom in [true, false]) ...[
+            if (!isFrom) const SizedBox(width: 8),
+            Expanded(
+              child: BookingPickerField(
+                label: isFrom ? 'Pickup from' : 'Pickup until',
+                value: (isFrom ? _lowFareWindow.from : _lowFareWindow.until)?.format(context),
+                placeholder: 'Pick time',
+                onTap: () => _pickLowFareTime(from: isFrom),
+              ),
+            ),
+          ],
+        ]),
+        const SizedBox(height: 6),
+        Text(
+          'Drivers can accept your order only between these two times. If no driver accepts by the end time, your order is cancelled and refunded.',
+          style: TextStyle(color: AppPalette.current.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3),
+        ),
+      ],
+    );
+  }
+
   Widget _bottomCta() => Container(
     padding: EdgeInsets.fromLTRB(16, 14, 16, 14 + MediaQuery.of(context).padding.bottom),
     decoration: BoxDecoration(
@@ -2299,58 +2288,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               text: guaranteeLine(_guaranteeAmount)!.tr,
             ),
           ),
-        if (_currentBookingType == 3 && _lowFare != null) ...[
-          AppInfoBanner(
-            tone: AppBannerTone.brand,
-            icon: Icons.local_offer_rounded,
-            text: 'Low fare: Model 1 ₹${_number(_lowFare!['model1_fare']).toStringAsFixed(2)} - ${_number(_lowFare!['discount_percent']).toStringAsFixed(0)}% off = ₹${_number(_lowFare!['final_fare']).toStringAsFixed(2)}',
-          ),
-          const SizedBox(height: 8),
-          BookingPickerField(
-            icon: Icons.event_rounded,
-            label: 'Pickup date',
-            value: _lowFareWindow.date == null ? null : DateFormat('EEE, d MMM yyyy').format(_lowFareWindow.date!),
-            placeholder: 'Pick a date (from tomorrow)',
-            onTap: _pickLowFareDate,
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            for (final isFrom in [true, false]) ...[
-              if (!isFrom) const SizedBox(width: 8),
-              Expanded(
-                child: BookingPickerField(
-                  label: isFrom ? 'Pickup from' : 'Pickup until',
-                  value: (isFrom ? _lowFareWindow.from : _lowFareWindow.until)?.format(context),
-                  placeholder: 'Pick time',
-                  onTap: () => _pickLowFareTime(from: isFrom),
-                ),
-              ),
-            ],
-          ]),
-          const SizedBox(height: 6),
-          Text(
-            'Drivers can accept your order only between these two times. If no driver accepts by the end time, your order is cancelled and refunded.',
-            style: TextStyle(color: AppPalette.current.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3),
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (_currentBookingType == 2) ...[
-          BookingPickerField(
-            icon: Icons.schedule_rounded,
-            label: 'Pickup Date & Time',
-            value: _scheduledFor == null ? null : DateFormat('EEE, d MMM yyyy · h:mm a').format(_scheduledFor!),
-            placeholder: 'Pick pickup date & time',
-            onTap: _pickScheduleDateTime,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Your order will go LIVE at the selected time. Once a driver accepts your order, the driver will take some time to reach your pickup location from their current location.',
-            style: TextStyle(color: AppPalette.current.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3),
-          ),
-          const SizedBox(height: 10),
-        ],
         Row(children: [
           Expanded(
+            flex: 2,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}',
                   style: AppText.title(AppPalette.current.ink).copyWith(fontSize: 19)),
@@ -2361,10 +2301,14 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
             ]),
           ),
           const SizedBox(width: 12),
-          SizedBox(
-            width: 170,
+          Expanded(
+            flex: 3,
             child: AppPrimaryButton(
-              label: (_booking ? 'Booking...' : (_currentBookingType == 3 ? 'Book Next Day' : 'Book now')).tr,
+              label: _booking
+                  ? 'Booking...'.tr
+                  : (_currentBookingType == 3
+                      ? 'Book Next Day'.tr
+                      : 'Proceed with @v'.trParams({'v': _vehicleName(_selected!)})),
               onPressed: _booking ? null : _bookSelected,
             ),
           ),
