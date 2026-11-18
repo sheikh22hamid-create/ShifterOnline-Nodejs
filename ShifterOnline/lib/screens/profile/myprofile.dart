@@ -244,7 +244,7 @@ class _MyProfileState extends State<MyProfile> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    AppGroupCard(title: 'Saved Addresses'.tr, children: [
+                    AppGroupCard(children: [
                       AppMenuRow(
                         icon: Icons.location_on_outlined,
                         title: 'Saved Addresses'.tr,

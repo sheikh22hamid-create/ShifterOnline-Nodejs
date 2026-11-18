@@ -66,4 +66,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('W1'), findsOneWidget);
   });
+
+  testWidgets('type chips sit on one line and size to their label', (tester) async {
+    await tester.pumpWidget(_host(TxnTypeChips(selected: '', onSelected: (_) {})));
+    final all = tester.getRect(find.ancestor(of: find.text('All'), matching: find.byType(Container)).first);
+    final credit = tester.getRect(find.ancestor(of: find.text('Credit'), matching: find.byType(Container)).first);
+    final debit = tester.getRect(find.ancestor(of: find.text('Debit'), matching: find.byType(Container)).first);
+    expect(credit.top, all.top);
+    expect(debit.top, all.top);
+    expect(all.width, lessThan(358 / 2));
+  });
 }

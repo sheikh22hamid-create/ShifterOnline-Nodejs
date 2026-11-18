@@ -123,10 +123,9 @@ class TxnTypeChips extends StatelessWidget {
           PressableScale(
             onTap: () => onSelected(value),
             semanticLabel: label.tr,
+            // No `alignment` here: an aligned Container stretches to the full width and stacks the chips.
             child: Container(
-              height: 36,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
               decoration: BoxDecoration(
                 color: selected == value ? p.brandTint : p.surface,
                 borderRadius: BorderRadius.circular(999),
