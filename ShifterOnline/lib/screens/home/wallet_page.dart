@@ -16,6 +16,7 @@ import '../../../utils/colors.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
+import 'widgets/wallet_widgets.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -428,6 +429,12 @@ class _WalletPageState extends State<WalletPage> {
     });
   }
 
+  /// All / Credit / Debit chips: the same transaction-type filter the filter dialog sets (dates untouched).
+  void _setTxnType(String type) {
+    setState(() => filterTxnType = type);
+    _getWalletHistory();
+  }
+
   _showAddMoneyDialog() {
     _amountController.clear();
     _remarkController.clear();
@@ -749,9 +756,9 @@ class _WalletPageState extends State<WalletPage> {
       backgroundColor: p.canvas,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: p.brandTint,
+        backgroundColor: p.surface,
         centerTitle: false,
-        title: Text("Wallet / Ledger".tr, style: AppText.title(p.ink)),
+        title: Text("Wallet".tr, style: AppText.title(p.ink)),
       ),
       body: isLoading
           ? ListView(
@@ -766,51 +773,17 @@ class _WalletPageState extends State<WalletPage> {
             )
           : Column(
               children: [
-                // Balance header
-                Container(
-                  width: double.infinity,
-                  color: p.brandTint,
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                // Balance + Reward Points cards (Porter "Payments" layout)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text("Ledger Balance".tr, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
-                      const SizedBox(height: 2),
-                      Text("₹${walletBalance.toStringAsFixed(2)}",
-                          style: AppText.title(p.ink).copyWith(fontSize: 36, letterSpacing: -0.5)),
+                      WalletBalanceCard(balance: walletBalance, onAddMoney: _showAddMoneyDialog),
                       const SizedBox(height: 12),
-                      InkWell(
+                      RewardPointsCard(
+                        points: walletPoints,
                         onTap: () => Get.to(() => const ReferralPointsScreen()),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: p.surface,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: p.line),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.toll_outlined, color: p.warning, size: 18),
-                              const SizedBox(width: 6),
-                              Text("Points: $walletPoints".tr,
-                                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
-                              const SizedBox(width: 4),
-                              Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 18),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton.icon(
-                          onPressed: _showAddMoneyDialog,
-                          icon: const Icon(Icons.add, size: 20),
-                          label: Text("Add Money".tr, style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16)),
-                        ),
                       ),
                     ],
                   ),
@@ -835,6 +808,13 @@ class _WalletPageState extends State<WalletPage> {
                         icon: Icon(Icons.refresh, color: p.ink),
                       ),
                     ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TxnTypeChips(selected: filterTxnType, onSelected: _setTxnType),
                   ),
                 ),
 

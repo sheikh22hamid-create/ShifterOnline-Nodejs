@@ -15,6 +15,9 @@ class LocalString extends Translations {
           // Porter-style v2 (2026-11-18) — Home
           "Pick up from": "Pick up from",
           "Move anything,\nanywhere": "Move anything,\nanywhere",
+          "All": "All",
+          "@n points": "@n points",
+          "Wallet": "Wallet",
           "Address details": "Address details",
           "View Breakup": "View Breakup",
           "Book @v": "Book @v",
