@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/pressable_scale.dart';
@@ -14,6 +15,7 @@ class PlaceListTile extends StatelessWidget {
     this.trailingText,
     required this.onTap,
     this.trailing,
+    this.onSave,
   });
 
   final String title;
@@ -23,6 +25,8 @@ class PlaceListTile extends StatelessWidget {
   final String? trailingText;
   final VoidCallback onTap;
   final Widget? trailing;
+  /// When set, a "❤ SAVE" button lets the customer save this place as an address.
+  final VoidCallback? onSave;
 
   List<TextSpan> _titleSpans(AppPalette p) {
     final base = AppText.bodyStrong(p.ink).copyWith(fontSize: 14);
@@ -75,6 +79,19 @@ class PlaceListTile extends StatelessWidget {
               if (trailingText != null) ...[
                 const SizedBox(width: 8),
                 Text(trailingText!, style: AppText.caption(p.inkSubtle).copyWith(fontFamily: 'Gilroy_Bold')),
+              ],
+              if (onSave != null) ...[
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: onSave,
+                  style: TextButton.styleFrom(
+                    foregroundColor: p.brandText,
+                    minimumSize: const Size(44, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: Icon(Icons.favorite_border_rounded, size: 16, color: p.brandText),
+                  label: Text('SAVE'.tr, style: AppText.caption(p.brandText).copyWith(fontFamily: 'Gilroy_Bold')),
+                ),
               ],
               if (trailing != null) ...[const SizedBox(width: 4), trailing!],
             ],

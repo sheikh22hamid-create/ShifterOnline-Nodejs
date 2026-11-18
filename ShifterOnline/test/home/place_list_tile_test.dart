@@ -59,4 +59,18 @@ void main() {
     ));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('SAVE shows only when onSave is set and calls it', (tester) async {
+    await tester.pumpWidget(_host(PlaceListTile(title: 'Rajwada', icon: Icons.history_rounded, onTap: () {})));
+    expect(find.text('SAVE'), findsNothing);
+    var saves = 0, taps = 0;
+    await tester.pumpWidget(_host(PlaceListTile(
+        title: 'Rajwada', icon: Icons.history_rounded, onTap: () => taps++, onSave: () => saves++)));
+    expect(find.text('SAVE'), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
+    await tester.tap(find.text('SAVE'));
+    await tester.pumpAndSettle();
+    expect(saves, 1);
+    expect(taps, 0);
+  });
 }

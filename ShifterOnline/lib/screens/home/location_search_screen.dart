@@ -22,6 +22,10 @@ import '../../utils/colors.dart';
 import '../../utils/location_intent_handler.dart';
 import 'location_confirm_map_screen.dart';
 import 'widgets/place_list_tile.dart';
+import 'widgets/saved_places_row.dart';
+import '../authscreen/signin.dart';
+import '../profile/AddressList.dart';
+import '../../theme/widgets/route_marker.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_skeleton.dart';
 import '../../theme/widgets/app_top_bar.dart';
@@ -71,6 +75,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   bool _speechAvailable = false;
   bool _isListening = false;
 
+  // Saved places (Home / Work / Other) — moved here from the Home screen.
+  List<Map<String, dynamic>> _savedPlaces = [];
+  bool _isLoadingSavedPlaces = true;
+
   bool get _isPickup => widget.locationType.toLowerCase() == 'pickup';
   bool get _isDrop => widget.locationType.toLowerCase() == 'drop';
   bool get _isAddress => widget.locationType.toLowerCase() == 'address';
@@ -81,6 +89,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     _loadRecentSearches();
     _detectCurrentLocation();
     _initSpeech();
+    if (_isDrop && !widget.locationOnly) _loadSavedPlaces();
 
     if (widget.initialData != null && widget.initialData!['address'] != null) {
       _searchController.text = widget.initialData!['address'].toString();
@@ -570,12 +579,6 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                 ? "Where is your PickUp ?"
                 : (_isDrop ? "Where is your Drop ?" : "Where is your Stop ${widget.stopIndex + 1} ?")));
 
-    final Color indicatorColor = _isAddress
-        ? themeColor
-        : (_isPickup
-            ? const Color(0xff16A34A) // Green (pickup)
-            : const Color(0xffFF6B35)); // Brand orange (drop/stop), matches the route card
-
     final p = AppPalette.current;
     final String title = _isAddress
         ? "Add New Address".tr
@@ -591,151 +594,134 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
         bottom: true,
         child: Column(
           children: [
-            // ── Header: pickup summary + search field ─────────────────────────
+            // ── Route card: pickup summary + search field (Porter layout) ───────
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
               decoration: BoxDecoration(
                 color: p.surface,
-                border: Border(bottom: BorderSide(color: p.divider)),
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                boxShadow: AppShadow.card,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // If Drop mode and pickupData provided: show pickup summary card
+                  // If Drop/Stop mode and pickupData provided: pickup row
                   if (!_isPickup && widget.pickupData != null) ...[
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: p.canvas,
-                        borderRadius: BorderRadius.circular(AppRadius.input),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: p.success,
-                              shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: p.successTint, spreadRadius: 4)],
-                            ),
+                    Row(
+                      children: [
+                        const RouteMarker.pickup(),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "${widget.pickupData?['c_name'] ?? 'Pickup Contact'.tr} · ${widget.pickupData?['c_number'] ?? ''}",
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.pickupData?['address']?.toString() ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.caption(p.inkSubtle),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "${widget.pickupData?['c_name'] ?? 'Pickup Contact'.tr} · ${widget.pickupData?['c_number'] ?? ''}",
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  widget.pickupData?['address']?.toString() ?? '',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppText.caption(p.inkSubtle),
-                                ),
-                              ],
-                            ),
+                        ),
+                      ],
+                    ),
+                    // Dotted connector between the pickup row and the field
+                    Padding(
+                      padding: const EdgeInsets.only(left: 11),
+                      child: Column(
+                        children: List.generate(
+                          3,
+                          (_) => Container(
+                            width: 2,
+                            height: 3,
+                            margin: const EdgeInsets.symmetric(vertical: 1.5),
+                            color: p.line,
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ],
 
                   // ── Search Input Field ────────────────────────────────────
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.only(left: 14, right: 6),
-                    decoration: BoxDecoration(
-                      color: p.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.input),
-                      border: Border.all(color: _isListening ? p.danger : p.brand, width: _isListening ? 2 : 1.5),
-                      boxShadow: [BoxShadow(color: _isListening ? p.dangerTint : p.brandTint, spreadRadius: 4)],
-                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
                     child: Row(
                       children: [
                         _isListening
-                            ? Icon(Icons.mic_rounded, color: p.danger, size: 18)
-                            : Container(
-                                width: 12,
-                                height: 12,
-                                decoration: BoxDecoration(
-                                  color: indicatorColor,
-                                  shape: _isPickup ? BoxShape.circle : BoxShape.rectangle,
-                                  borderRadius: _isPickup ? null : BorderRadius.circular(3),
-                                ),
-                              ),
+                            ? SizedBox(width: 24, child: Icon(Icons.mic_rounded, color: p.danger, size: 20))
+                            : (_isDrop
+                                ? const RouteMarker.drop()
+                                : (_isPickup || _isAddress
+                                    ? const RouteMarker.pickup()
+                                    : RouteMarker.stop(widget.stopIndex + 1))),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _focusNode,
-                            onChanged: _onSearchChanged,
-                            style: AppText.bodyStrong(p.ink),
-                            decoration: InputDecoration(
-                              hintText: searchPlaceholder.tr,
-                              hintStyle: AppText.body(_isListening ? p.danger : p.inkSubtle).copyWith(fontSize: 14.5),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(vertical: 15),
-                            ),
-                          ),
-                        ),
-                        if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            tooltip: 'Clear'.tr,
-                            icon: Icon(Icons.cancel_rounded, color: p.inkSubtle, size: 20),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          ),
-
-                        // Voice Search Mic Button
-                        PressableScale(
-                          onTap: _toggleListening,
-                          semanticLabel: 'Search by voice'.tr,
-                          child: Container(
-                            width: 40,
-                            height: 40,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.only(left: 12, right: 4),
                             decoration: BoxDecoration(
-                              color: _isListening ? p.dangerTint : p.brandTint,
-                              borderRadius: BorderRadius.circular(10),
+                              color: p.surface,
+                              borderRadius: BorderRadius.circular(AppRadius.input),
+                              border: Border.all(color: _isListening ? p.danger : p.brand, width: _isListening ? 2 : 1.5),
                             ),
-                            child: Icon(
-                              _isListening ? Icons.graphic_eq_rounded : Icons.mic_rounded,
-                              color: _isListening ? p.danger : p.brand,
-                              size: 22,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _searchController,
+                                    focusNode: _focusNode,
+                                    onChanged: _onSearchChanged,
+                                    style: AppText.bodyStrong(p.ink),
+                                    decoration: InputDecoration(
+                                      hintText: searchPlaceholder.tr,
+                                      hintStyle:
+                                          AppText.body(_isListening ? p.danger : p.inkSubtle).copyWith(fontSize: 14.5),
+                                      border: InputBorder.none,
+                                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                                    ),
+                                  ),
+                                ),
+                                if (_searchController.text.isNotEmpty)
+                                  IconButton(
+                                    tooltip: 'Clear'.tr,
+                                    icon: Icon(Icons.cancel_rounded, color: p.inkSubtle, size: 20),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      _onSearchChanged('');
+                                    },
+                                  ),
+
+                                // Voice Search Mic Button
+                                PressableScale(
+                                  onTap: _toggleListening,
+                                  semanticLabel: 'Search by voice'.tr,
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: _isListening ? p.dangerTint : p.brandTint,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      _isListening ? Icons.graphic_eq_rounded : Icons.mic_rounded,
+                                      color: _isListening ? p.danger : p.brand,
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // ── Quick actions: map + WhatsApp ─────────────────────────
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _searchActionChip(
-                          p,
-                          icon: Icon(Icons.map_outlined, color: p.brand, size: 17),
-                          label: "Select on map".tr,
-                          onTap: _selectOnMap,
-                        ),
-                        const SizedBox(width: 8),
-                        _searchActionChip(
-                          p,
-                          icon: SvgPicture.asset('assets/whatsapp_logo.svg', width: 18, height: 18),
-                          label: "Import from WhatsApp".tr,
-                          onTap: _importFromWhatsApp,
                         ),
                       ],
                     ),
@@ -744,10 +730,39 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
               ),
             ),
 
+            // ── Quick actions: map + WhatsApp ─────────────────────────────────
+            SizedBox(
+              height: 56,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                children: [
+                  _searchActionChip(
+                    p,
+                    icon: Icon(Icons.map_outlined, color: p.brand, size: 17),
+                    label: "Select on map".tr,
+                    onTap: _selectOnMap,
+                  ),
+                  const SizedBox(width: 8),
+                  _searchActionChip(
+                    p,
+                    icon: SvgPicture.asset('assets/whatsapp_logo.svg', width: 18, height: 18),
+                    label: "Import from WhatsApp".tr,
+                    onTap: _importFromWhatsApp,
+                  ),
+                ],
+              ),
+            ),
+
             // ── Current location row ─────────────────────────────────────────
             Container(
-              color: p.surface,
-              margin: const EdgeInsets.only(top: 10),
+              margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: p.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                boxShadow: AppShadow.card,
+              ),
               child: PlaceListTile(
                 title: (_isPickup ? "Your Current Location" : "Use Current Location").tr,
                 subtitle: _currentAddress.isNotEmpty
@@ -762,6 +777,19 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                     : Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
               ),
             ),
+
+            // ── Saved places (moved here from Home) ─────────────────────────
+            if (_isDrop && !widget.locationOnly)
+              SavedPlacesRow(
+                places: _savedPlaces,
+                loading: _isLoadingSavedPlaces,
+                onSelect: _selectSavedPlace,
+                onAdd: _addSavedPlace,
+                onManage: () async {
+                  await Get.to(() => const AddressListPage());
+                  _loadSavedPlaces();
+                },
+              ),
 
             // ── Body Results / Recents ───────────────────────────────────────
             Expanded(
@@ -877,6 +905,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
           subtitle: address,
           icon: Icons.history_rounded,
           trailing: Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
+          onSave: (!_isAddress && !widget.locationOnly) ? () => _saveRecentAsPlace(item) : null,
           onTap: () {
             final lat = (item['lat'] as num?)?.toDouble() ?? 0.0;
             final lng = (item['lng'] as num?)?.toDouble() ?? 0.0;
@@ -906,7 +935,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
           decoration: BoxDecoration(
             color: p.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: p.line),
+            boxShadow: AppShadow.card,
           ),
           child: Column(
             children: [
@@ -919,6 +948,78 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
         ),
       ],
     );
+  }
+
+  // ── SAVED PLACES (moved from Home) ───────────────────────────────────────
+  Future<void> _loadSavedPlaces() async {
+    final uid = _storage.read("Uid");
+    if (uid == null || uid.toString().isEmpty || uid.toString() == "0") {
+      if (mounted) setState(() => _isLoadingSavedPlaces = false);
+      return;
+    }
+
+    try {
+      final response = await ApiWrapper.dataPostNode(Config.nodeAddressList, {"uid": uid.toString()});
+      final rawLocations = response is Map ? response["AddressList"] : null;
+      final locations = rawLocations is List
+          ? rawLocations
+              .whereType<Map>()
+              .map((location) => Map<String, dynamic>.from(location))
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      if (!mounted) return;
+      setState(() {
+        _savedPlaces = locations;
+        _isLoadingSavedPlaces = false;
+      });
+    } catch (error) {
+      debugPrint("Saved locations failed: $error");
+      if (mounted) {
+        setState(() {
+          _savedPlaces = [];
+          _isLoadingSavedPlaces = false;
+        });
+      }
+    }
+  }
+
+  /// Same as the old Home saved-place tap: store it as the drop and hand it back. The caller
+  /// (Home._startDropSelection) then runs the service-area check and opens Select Vehicle.
+  void _selectSavedPlace(Map<String, dynamic> place) {
+    final drop = Map<String, dynamic>.from(place);
+    _storage.write("DropeAddress", [drop]);
+    Get.back(result: drop);
+  }
+
+  /// Login guard from the old Home "Add" chip. Returns false when the customer is still logged out.
+  Future<bool> _ensureLoggedInToSave() async {
+    final uid = _storage.read("Uid") ?? _storage.read("UserLogin")?["id"];
+    if (uid != null && uid.toString().isNotEmpty && uid.toString() != "0") return true;
+    ApiWrapper.showToastMessage("Please login to save locations".tr);
+    await Get.to(() => SignIn());
+    final newUid = _storage.read("Uid") ?? _storage.read("UserLogin")?["id"];
+    return newUid != null && newUid.toString().isNotEmpty && newUid.toString() != "0";
+  }
+
+  Future<void> _addSavedPlace() async {
+    if (!await _ensureLoggedInToSave()) return;
+    final result = await Get.to(() => const LocationSearchScreen(locationType: "Address"));
+    if (result != null) await _loadSavedPlaces();
+  }
+
+  /// "❤ SAVE" on a recent: the existing save-address flow, prefilled with that place.
+  Future<void> _saveRecentAsPlace(Map<String, dynamic> item) async {
+    if (!await _ensureLoggedInToSave()) return;
+    final address = (item['address'] ?? '').toString();
+    final result = await Get.to(() => LocationConfirmMapScreen(
+          locationType: 'Address',
+          initialLat: (item['lat'] as num?)?.toDouble() ?? 0.0,
+          initialLng: (item['lng'] as num?)?.toDouble() ?? 0.0,
+          initialAddress: address,
+          initialPlaceName: (item['name'] ?? address).toString(),
+        ));
+    if (result != null && _isDrop) await _loadSavedPlaces();
   }
 
   // ── WHATSAPP LOCATION IMPORT ─────────────────────────────────────────────
