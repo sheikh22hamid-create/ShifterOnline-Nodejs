@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../services/free_booking_api_service.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/pressable_scale.dart';
+import '../../theme/widgets/v2_art.dart';
 import '../../utils/colors.dart';
 import '../customise/my_customise_orders.dart';
 
@@ -508,81 +509,50 @@ class _FreeRideBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
-    const deepText = Color(0xFF3B1404);
+    // v2 (Porter-style rewards strip): white card, soft brand outline, icon slot F1, chevron.
     return PressableScale(
       onTap: onTap,
       child: Container(
-        clipBehavior: Clip.antiAlias,
-        constraints: const BoxConstraints(minHeight: 160),
-        decoration: BoxDecoration(color: p.brand, borderRadius: BorderRadius.circular(AppRadius.hero)),
-        child: Stack(
+        constraints: const BoxConstraints(minHeight: 64),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: const Color(0xFFFFD3BF), width: 1.5),
+        ),
+        child: Row(
           children: [
-            Positioned(
-              right: -40,
-              top: -40,
-              child: Container(
-                width: 170,
-                height: 170,
-                decoration: const BoxDecoration(color: Color(0xFFFF8A5C), shape: BoxShape.circle),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
+            const V2Art(asset: 'assets/v2/free_ride_icon.png', placeholderLabel: 'F1', width: 44, height: 44),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                              color: const Color(0xFFFFD7C4), borderRadius: BorderRadius.circular(6)),
-                          child: Text('FREE RIDE CHANCE'.tr,
-                              style: AppText.caption(deepText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11)),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(copy.heading, style: AppText.section(p.onBrand).copyWith(fontSize: 21, height: 1.2)),
-                        if (copy.subtitle.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(copy.subtitle,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppText.caption(deepText).copyWith(fontSize: 13, fontFamily: 'Gilroy_Bold')),
-                        ],
-                        if (copy.progress != null) ...[
-                          const SizedBox(height: 10),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              value: copy.progress,
-                              minHeight: 6,
-                              backgroundColor: Colors.white.withValues(alpha: 0.45),
-                              valueColor: const AlwaysStoppedAnimation(Colors.white),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        Container(
-                          height: 40,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          alignment: Alignment.center,
-                          decoration:
-                              BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.input)),
-                          child: Text('View details'.tr,
-                              style: AppText.bodyStrong(p.onBrand).copyWith(fontSize: 13)),
-                        ),
-                      ],
+                  Text(copy.heading,
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.bodyStrong(p.ink)),
+                  if (copy.subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(copy.subtitle,
+                        maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.caption(p.inkMuted)),
+                  ],
+                  if (copy.progress != null) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: copy.progress,
+                        minHeight: 5,
+                        backgroundColor: p.brandTint,
+                        valueColor: AlwaysStoppedAnimation(p.brand),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  const ExcludeSemantics(
-                    child: Icon(Icons.card_giftcard_rounded, size: 72, color: Colors.white),
-                  ),
+                  ],
                 ],
               ),
             ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, size: 22, color: p.ink),
           ],
         ),
       ),

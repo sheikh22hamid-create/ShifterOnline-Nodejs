@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:app_links/app_links.dart';
 import 'package:goParcel/bottombar.dart';
 import 'package:goParcel/utils/location_intent_handler.dart';
@@ -23,7 +22,6 @@ import 'package:goParcel/screens/home/trakingStore.dart';
 import 'package:goParcel/screens/myorder/myorder.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/screens/notification/notification.dart';
-import 'package:goParcel/screens/profile/AddressList.dart';
 import 'package:goParcel/screens/home/home_option_tiles.dart';
 import 'package:goParcel/screens/profile/premium_plans_screen.dart';
 import 'package:flutter/material.dart';
@@ -46,19 +44,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'widgets/home_header.dart';
 import 'widgets/home_pickup_card.dart';
-import 'widgets/home_route_card.dart';
-import 'widgets/home_vehicle_row.dart';
-import 'widgets/home_more_grid.dart';
+import 'widgets/home_service_tiles.dart';
 import 'widgets/home_active_order_strip.dart';
 import 'package:goParcel/screens/home/wallet_page.dart';
-import 'package:goParcel/screens/home/referral_points_screen.dart';
-import 'package:goParcel/screens/profile/favorite_drivers.dart';
-import 'package:goParcel/screens/profile/faq.dart';
 import 'package:goParcel/services/wallet_balance_service.dart';
 import 'package:goParcel/theme/app_tokens.dart';
 import 'package:goParcel/theme/widgets/app_card.dart';
 import 'package:goParcel/theme/widgets/app_skeleton.dart';
-import 'package:goParcel/theme/widgets/section_header.dart';
 
 class ItemListDelet {
   static Future<Database> database() async {
@@ -285,177 +277,11 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _selectSavedDropLocation(Map<String, dynamic> location) async {
-    await _ensureCurrentPickup();
-    if (_confirmedPickupData == null) {
-      ApiWrapper.showToastMessage("Please select pickup location first".tr);
-      await _changePickupLocation();
-      if (_confirmedPickupData == null) return;
-    }
 
-    final drop = Map<String, dynamic>.from(location);
-    if (!await _locationsServiceable(_confirmedPickupData!, drop)) return;
-    await getdata.write("DropeAddress", [drop]);
-    if (!mounted) return;
 
-    setState(() {
-      _pickupConfirmed = true;
-      _confirmedDropData = drop;
-      _confirmedDropAddress = drop["address"]?.toString();
-      _isLoadingVehicleAvailability = true;
-      _vehicleAvailabilityError = null;
-      _vehicleAvailabilityById.clear();
-    });
 
-    await _loadVehicleAvailability(_confirmedPickupData!);
-    if (!mounted) return;
-    await _openVehicleSelection();
-  }
 
-  Future<void> _addQuickLocation() async {
-    final uid = getdata.read("Uid") ?? getdata.read("UserLogin")?["id"];
-    if (uid == null || uid.toString().isEmpty || uid.toString() == "0") {
-      ApiWrapper.showToastMessage("Please login to save locations".tr);
-      await Get.to(() => SignIn());
-      final newUid = getdata.read("Uid") ?? getdata.read("UserLogin")?["id"];
-      if (newUid == null || newUid.toString().isEmpty || newUid.toString() == "0") return;
-    }
-    final result = await Get.to(() => const LocationSearchScreen(locationType: "Address"));
-    if (result != null) {
-      await _loadSavedLocations();
-    }
-  }
 
-  String _quickLocationTitle(Map<String, dynamic> location) {
-    final type = location["type"]?.toString() ?? "Other";
-    return type.toLowerCase() == "office" ? "Work" : type;
-  }
-
-  String _quickLocationIcon(Map<String, dynamic> location) {
-    switch (location["type"]?.toString().toLowerCase()) {
-      case "home":
-        return "assets/selecthome.png";
-      case "office":
-        return "assets/selectoffice.png";
-      default:
-        return "assets/selectothers.png";
-    }
-  }
-
-  Widget _buildQuickLocations() {
-    if (_isLoadingSavedLocations) {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 17),
-        child: AppSkeleton(height: 82, radius: 16),
-      );
-    }
-
-    final locations = _savedLocations.take(3).toList();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 17),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SectionHeader(
-            title: "Saved places".tr,
-            actionLabel: "View all".tr,
-            onAction: () async {
-              await Get.to(() => const AddressListPage());
-              _loadSavedLocations();
-            },
-          ),
-          const SizedBox(height: 9),
-          SizedBox(
-            height: 82,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: locations.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(width: 9),
-              itemBuilder: (context, index) {
-                if (index == locations.length) {
-                  return _quickLocationCard(
-                    title: "Add New".tr,
-                    subtitle: "Save for later".tr,
-                    icon: Icon(Icons.add_rounded,
-                        color: AppPalette.current.ink, size: 26),
-                    background: AppPalette.current.canvas,
-                    onTap: _addQuickLocation,
-                  );
-                }
-
-                final location = locations[index];
-                return _quickLocationCard(
-                  title: _quickLocationTitle(location),
-                  subtitle: location["address"]?.toString() ?? "",
-                  icon: Image.asset(_quickLocationIcon(location), height: 26),
-                  background: AppPalette.current.brandTint,
-                  onTap: () => _selectSavedDropLocation(location),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _quickLocationCard({
-    required String title,
-    required String subtitle,
-    required Widget icon,
-    required Color background,
-    required VoidCallback onTap,
-  }) {
-    final p = AppPalette.current;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.card),
-      child: Container(
-        width: 154,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: BorderRadius.circular(AppRadius.card),
-          border: Border.all(color: p.line),
-        ),
-        child: Row(
-          children: [
-            Container(
-              height: 43,
-              width: 43,
-              decoration: BoxDecoration(
-                color: background,
-                shape: BoxShape.circle,
-              ),
-              child: Center(child: icon),
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppText.caption(p.inkSubtle).copyWith(fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Future<void> _changePickupLocation() async {
     getdata.remove("PickupAddress");
@@ -1342,6 +1168,19 @@ class _HomeState extends State<Home> {
   }
 
 
+  Future<void> _handleBookNowTap() async {
+    setState(() {
+      _selectedBookingType = 1; // Instant booking
+    });
+
+    if (_confirmedDropData == null) {
+      await _ensureCurrentPickup();
+      await _startDropSelection();
+    } else {
+      await _openVehicleSelection();
+    }
+  }
+
   Future<void> _handleScheduleBookingTap() async {
     setState(() {
       _selectedBookingType = 2; // Schedule Booking
@@ -1424,133 +1263,11 @@ class _HomeState extends State<Home> {
     ));
   }
 
-  Future<void> _addExtraStop() async {
-    if (_extraStops.length >= _maxExtraStops) {
-      ApiWrapper.showToastMessage('Maximum $_maxExtraStops extra stops allowed.');
-      return;
-    }
-    final selected = await Get.to<Map<String, dynamic>>(
-      () => LocationSearchScreen(
-        locationType: "Stop",
-        stopIndex: _extraStops.length,
-        pickupData: _confirmedPickupData,
-      ),
-    );
 
-    if (!mounted || selected == null) return;
-    final stop = Map<String, dynamic>.from(selected);
 
-    if (_isBeyondFinalDrop(stop)) {
-      await _showStopBeyondDropDialog();
-      return;
-    }
 
-    setState(() => _extraStops.add(stop));
-  }
 
-  Future<void> _editExtraStop(int index) async {
-    if (index < 0 || index >= _extraStops.length) return;
-    final initialStop = _extraStops[index];
-    final selected = await Get.to<Map<String, dynamic>>(
-      () => LocationSearchScreen(
-        locationType: "Stop",
-        stopIndex: index,
-        pickupData: _confirmedPickupData,
-        initialData: initialStop,
-      ),
-    );
 
-    if (!mounted || selected == null) return;
-    final stop = Map<String, dynamic>.from(selected);
-    if (_isBeyondFinalDrop(stop)) {
-      await _showStopBeyondDropDialog();
-      return;
-    }
-    setState(() => _extraStops[index] = stop);
-  }
-
-  void _swapExtraStops(Map<String, dynamic> source, Map<String, dynamic> target) {
-    final from = _extraStops.indexWhere((stop) => identical(stop, source));
-    final to = _extraStops.indexWhere((stop) => identical(stop, target));
-    if (from < 0 || to < 0 || from == to) return;
-    setState(() {
-      _extraStops[from] = target;
-      _extraStops[to] = source;
-    });
-    // Home keeps route drafts locally. _openVehicleSelection already passes
-    // this complete ordered list into the existing distance/pricing flow.
-  }
-
-  bool _isBeyondFinalDrop(Map<String, dynamic> stop) {
-    final pickup = _confirmedPickupData;
-    final drop = _confirmedDropData;
-    if (pickup == null || drop == null) return false;
-
-    final pickupLat = double.tryParse(pickup['lat_map']?.toString() ?? '');
-    final pickupLng = double.tryParse(pickup['long_map']?.toString() ?? '');
-    final dropLat = double.tryParse(drop['lat_map']?.toString() ?? '');
-    final dropLng = double.tryParse(drop['long_map']?.toString() ?? '');
-    final stopLat = double.tryParse(stop['lat_map']?.toString() ?? '');
-    final stopLng = double.tryParse(stop['long_map']?.toString() ?? '');
-
-    if ([pickupLat, pickupLng, dropLat, dropLng, stopLat, stopLng]
-        .any((value) => value == null)) {
-      return false;
-    }
-
-    final pickupToDrop = _distanceInKm(
-      pickupLat!,
-      pickupLng!,
-      dropLat!,
-      dropLng!,
-    );
-    final pickupToStop = _distanceInKm(
-      pickupLat,
-      pickupLng,
-      stopLat!,
-      stopLng!,
-    );
-
-    // A small GPS/map tolerance prevents a stop very close to the drop from
-    // being rejected because of coordinate rounding.
-    return pickupToStop > pickupToDrop + 0.1;
-  }
-
-  double _distanceInKm(
-    double latitude1,
-    double longitude1,
-    double latitude2,
-    double longitude2,
-  ) {
-    const earthRadiusKm = 6371.0;
-    final dLat = (latitude2 - latitude1) * math.pi / 180;
-    final dLng = (longitude2 - longitude1) * math.pi / 180;
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(latitude1 * math.pi / 180) *
-            math.cos(latitude2 * math.pi / 180) *
-            math.sin(dLng / 2) *
-            math.sin(dLng / 2);
-    return earthRadiusKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-  }
-
-  Future<void> _showStopBeyondDropDialog() async {
-    await Get.dialog<void>(
-      AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Stop location not allowed'),
-        content: const Text(
-          'You cannot add a stop beyond the final drop location. Please choose a location before the final drop.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: Get.back,
-            child: const Text('Okay'),
-          ),
-        ],
-      ),
-      barrierDismissible: false,
-    );
-  }
 
   Future<void> _loadVehicleAvailability(Map<dynamic, dynamic> pickup) async {
     final latitude = double.tryParse(pickup["lat_map"]?.toString() ?? "");
@@ -2531,27 +2248,6 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildHomeRouteCard() {
-    final drop = _confirmedDropAddress;
-    return HomeRouteCard(
-      pickupAddress: _confirmedPickupAddress,
-      dropAddress: drop,
-      stops: _extraStops,
-      onStopSwap: _swapExtraStops,
-      canAddStop: _extraStops.length < _maxExtraStops,
-      bookingType: _selectedBookingType,
-      scheduleEnabled: _scheduleBookingEnabled,
-      onPickupTap: _changePickupLocation,
-      onDropTap: drop == null ? _startDropSelection : () => _editRouteLocation('Drop'),
-      onStopTap: _editExtraStop,
-      onStopDelete: (index) => setState(() => _extraStops.removeAt(index)),
-      onAddStop: _addExtraStop,
-      onNow: () => setState(() => _selectedBookingType = 1),
-      onSchedule: _handleScheduleBookingTap,
-      onLowFare: _handleNextDayDeliveryTap,
-      onChooseVehicle: _openVehicleSelection,
-    );
-  }
 
   Widget _buildActiveOrderStrip() {
     final order = _activeHomeOrder();
@@ -2575,63 +2271,7 @@ class _HomeState extends State<Home> {
     );
   }
 
-  List<HomeVehicle> _homeVehicles() => [
-        for (var i = 0; i < wheelerItems.length; i++)
-          HomeVehicle(
-            name: '${wheelerItems[i]}',
-            imageUrl: i < wheelerImages.length && wheelerImages[i] != null
-                ? Config.resolveImageUrl(wheelerImages[i])
-                : null,
-          ),
-      ];
 
-  List<HomeMoreItem> _homeMoreItems() => [
-        HomeMoreItem(
-          label: 'Customise Order'.tr,
-          icon: Icons.sell_outlined,
-          tint: const Color(0xFFFFF0E9),
-          iconColor: const Color(0xFFD9480F),
-          onTap: CustomiseOrderTile.open,
-        ),
-        HomeMoreItem(
-          label: 'Premium Plans'.tr,
-          icon: Icons.workspace_premium_outlined,
-          tint: const Color(0xFFFFF6DB),
-          iconColor: const Color(0xFF9A6700),
-          onTap: () => Get.to(() => const PremiumPlansScreen()),
-        ),
-        HomeMoreItem(
-          label: 'Favourite Drivers'.tr,
-          icon: Icons.favorite_border_rounded,
-          tint: const Color(0xFFF1ECFB),
-          iconColor: const Color(0xFF6B3FC2),
-          onTap: () => Get.to(() => const FavoriteDriversScreen()),
-        ),
-        HomeMoreItem(
-          label: 'Reward Points'.tr,
-          icon: Icons.toll_outlined,
-          tint: const Color(0xFFFFF6DB),
-          iconColor: const Color(0xFF9A6700),
-          onTap: () => Get.to(() => const ReferralPointsScreen()),
-        ),
-        HomeMoreItem(
-          label: 'Saved Addresses'.tr,
-          icon: Icons.bookmark_border_rounded,
-          tint: const Color(0xFFEAF1FB),
-          iconColor: const Color(0xFF2457A6),
-          onTap: () async {
-            await Get.to(() => const AddressListPage());
-            _loadSavedLocations();
-          },
-        ),
-        HomeMoreItem(
-          label: 'Help & FAQs'.tr,
-          icon: Icons.support_agent_rounded,
-          tint: const Color(0xFFE7F5EC),
-          iconColor: const Color(0xFF15803D),
-          onTap: () => Get.to(() => Faq()),
-        ),
-      ];
 
   Widget _buildHowToUseCard() {
     final p = AppPalette.current;
@@ -2702,22 +2342,19 @@ class _HomeState extends State<Home> {
                         onTap: _changePickupLocation,
                       ),
                       const SizedBox(height: 12),
-                      _buildHomeRouteCard(),
-                      const SizedBox(height: 16),
                       _buildActiveOrderStrip(),
-                      _buildRewardMilestoneCard(),
-                      HomeVehicleRow(
-                        vehicles: _homeVehicles(),
-                        onTap: _confirmedDropData == null ? _startDropSelection : _openVehicleSelection,
+                      HomeServiceTiles(
+                        onBookNow: _handleBookNowTap,
+                        onSchedule: _handleScheduleBookingTap,
+                        onLowFare: _handleNextDayDeliveryTap,
+                        onCustomise: CustomiseOrderTile.open,
+                        scheduleEnabled: _scheduleBookingEnabled,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
+                      _buildRewardMilestoneCard(),
                       const FreeRideChanceTile(),
-                      const SizedBox(height: 20),
-                      HomeMoreGrid(items: _homeMoreItems()),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       if (showHowToUse) _buildHowToUseCard(),
-                      _buildQuickLocations(),
-                      const SizedBox(height: 4),
                       // Wheeler Selection Section (shown after route selection)
                       if (_showLegacyVehicleSection && _pickupConfirmed)
                         Container(
