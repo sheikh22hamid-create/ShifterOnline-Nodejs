@@ -78,7 +78,8 @@ owner's approval.
 | secondary button | v1 | white with 1.5 px orange outline + orange text (Porter "Add GSTIN" style) |
 | pickup / drop markers | mixed | green circle ↑ pickup, red circle ↓ drop, grey dots between, everywhere |
 | text | v1 ink | title 18–20 bold, row title 16 semibold, sub 13–14 `inkMuted` |
-| brand tint | `#FFF0E8` | used only for selected-card fill and the Home header |
+| brand tint | `#FFF0E8` | used only for selected-card fill and info strips |
+| Home header | v1 peach tint | solid `#FF6B35`, dark text (owner, 2026-11-18) |
 
 Dark mode keeps working via the existing palette switch; new tokens get dark values (builder's call,
 v1 rule).
@@ -86,8 +87,10 @@ v1 rule).
 ## 6. Screens and where every feature goes
 
 ### 6.1 Home (`screens/home/home.dart`, `lib/bottombar.dart`)
-- **Header** (orange-tint band, Porter header shape): Shifter logo, notification bell, wallet balance
-  chip (existing data only), and the static header illustration (asset H1). No animated truck.
+- **Header** (solid brand orange `#FF6B35` band, Porter header shape, 216 px, bottom radius 24 — owner
+  chose this over the light tint on 2026-11-18): Shifter logo + headline in dark `#1A0B04`, sub-line
+  `#3A1A0B`, wallet balance chip and notification bell as white pills (existing data only), and the static
+  header illustration (asset H1). No animated truck. No white text on orange.
 - **Pickup card** overlapping the header: "Pick up from" + address + chevron →
   `_changePickupLocation` (existing). Pickup-first prompt / not-serviceable state stay as today, restyled
   like Porter's "We are not there yet" card (asset E1).
@@ -210,6 +213,7 @@ Device check on the owner's phone after each step; commit each finished step.
 | Booking-type "Change" = re-pick schedule time only | Claude's call | 2026-11-18 |
 | "How to use" moves to Account → Help card | Claude's call | 2026-11-18 |
 | Canvas `#F3F5F9`, card/button sizes in §5 | Claude's call | 2026-11-18 |
+| Home header solid orange with dark text (mockup review) | Owner | 2026-11-18 |
 
 ## 11. Left to the builder
 - Exact widget split, keeping state where it is.
