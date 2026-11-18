@@ -22,6 +22,10 @@ the exact file name. Claude drops it into `ShifterOnline/assets/v2/`. Until then
 | E2 | `empty_no_orders.png` | 900 × 600 | Orders, when there are no orders |
 | E3 | `empty_no_driver.png` | 900 × 600 | When no driver is found |
 | W1 | `wallet_icon.png` | 256 × 256 | Wallet balance card |
+| V1 | `vehicle_bike.png` | 800 × 560 | "Finding your driver" screen, centre (Bike / 2 wheeler) |
+| V2 | `vehicle_e_loader.png` | 800 × 560 | "Finding your driver" screen, centre (E-Loader / e-rickshaw) |
+| V3 | `vehicle_three_wheeler.png` | 800 × 560 | "Finding your driver" screen, centre (3 Wheeler / tempo) |
+| V4 | `vehicle_four_wheeler.png` | 800 × 560 | "Finding your driver" screen, centre (4 Wheeler / mini truck) — also the default |
 
 ## Style line (already inside every prompt below)
 
@@ -58,3 +62,20 @@ the exact file name. Claude drops it into `ShifterOnline/assets/v2/`. Until then
 
 **W1 — `wallet_icon.png` (256 × 256)**
 > Soft 3D clay illustration, clean and premium, gentle studio lighting, soft shadow, main colour orange #FF6B35 with deep navy #1A2B4C and white accents, no text, no letters, no logos, no brand names, transparent background, centred subject with margin. A navy wallet, slightly open, with one orange coin peeking out. Generate at 256x256 px.
+
+### Vehicles for the "Finding your driver" screen (V1–V4)
+
+Keep all four the same angle and size so they look like one set.
+
+**V1 — `vehicle_bike.png` (800 × 560)**
+> Soft 3D clay illustration, clean and premium, gentle studio lighting, soft shadow, main colour orange #FF6B35 with deep navy #1A2B4C and white accents, no text, no letters, no logos, no brand names, transparent background, centred subject with margin. An Indian delivery motorbike with a large orange delivery box strapped on the back seat. Three-quarter front view facing right, wheels visible, sitting on an invisible floor (the app draws its own shadow, so keep the ground shadow very light), plain unbranded body with no number plate text. Generate at 800x560 px.
+
+**V2 — `vehicle_e_loader.png` (800 × 560)**
+> Soft 3D clay illustration, clean and premium, gentle studio lighting, soft shadow, main colour orange #FF6B35 with deep navy #1A2B4C and white accents, no text, no letters, no logos, no brand names, transparent background, centred subject with margin. An Indian electric cargo three-wheeler (e-loader) with an open orange cargo tray carrying two cardboard parcels. Three-quarter front view facing right, wheels visible, sitting on an invisible floor (the app draws its own shadow, so keep the ground shadow very light), plain unbranded body with no number plate text. Generate at 800x560 px.
+
+**V3 — `vehicle_three_wheeler.png` (800 × 560)**
+> Soft 3D clay illustration, clean and premium, gentle studio lighting, soft shadow, main colour orange #FF6B35 with deep navy #1A2B4C and white accents, no text, no letters, no logos, no brand names, transparent background, centred subject with margin. An Indian three-wheeler goods carrier (tempo) with an orange cabin and an open cargo bed holding a few parcels. Three-quarter front view facing right, wheels visible, sitting on an invisible floor (the app draws its own shadow, so keep the ground shadow very light), plain unbranded body with no number plate text. Generate at 800x560 px.
+
+**V4 — `vehicle_four_wheeler.png` (800 × 560)**
+> Soft 3D clay illustration, clean and premium, gentle studio lighting, soft shadow, main colour orange #FF6B35 with deep navy #1A2B4C and white accents, no text, no letters, no logos, no brand names, transparent background, centred subject with margin. An Indian small four-wheeler mini goods truck with an orange cabin and an open cargo bed holding a few parcels. Three-quarter front view facing right, wheels visible, sitting on an invisible floor (the app draws its own shadow, so keep the ground shadow very light), plain unbranded body with no number plate text. Generate at 800x560 px.
+
